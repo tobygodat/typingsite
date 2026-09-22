@@ -3,7 +3,7 @@
 Dark-only, tonal, minimalist system for developer tools and data-dense dashboards. Named for its warm charcoal neutrals. Mint green for success state, one saturated blue for primary actions.
 
 ## 1. Visual theme & atmosphere
-Quiet, precise, warm. Depth comes from stepping surface tone, not borders or shadows. Nothing glows, nothing bounces. Monospace carries data and metadata; sans carries everything you read. Feels like Linear's precision on Notion's warmth, with Resend's mono accents.
+Quiet, precise, warm. Depth comes from stepping surface tone, not borders or shadows. Nothing glows, nothing bounces — except the typing zone (§6). Monospace carries data and metadata; sans carries everything you read. Feels like Linear's precision on Notion's warmth, with Resend's mono accents.
 
 ## 2. Color palette
 Base (given)
@@ -49,6 +49,14 @@ Code palette (Tokyo Night hues, warm-tuned): keyword `#B49AE6` function `#7FA6F0
 
 ## 6. Motion
 120ms hover/press · 180ms reveal · 260ms dialogs. `cubic-bezier(.2,0,0,1)`. Fades and ≤8px translates. No springs, no scale.
+
+**Exception: the typing zone** (the passage in practice, drill, retest and local challenge; `src/motion.js` + the typing block in `src/styles.css`). Agreed September 2026 so that typing feels smooth and lighthearted. Nowhere else may use it.
+- Caret: a 3px pill in focus blue with a soft glow. It moves on a near-critically damped spring, breathes while idle, turns danger and wobbles once when you mistype. It dims when the input loses focus.
+- Word lens: a surface-2 pill behind the word being typed, gliding between words on a spring.
+- Letters: a correct letter lights up in the caret colour in place, then cools to ink over 620ms. Letters never move vertically. At speed this leaves a comet tail behind the caret. Misses flash a stronger danger tint, then rest at the 14% tint and keep the underline.
+- Heat: `--heat` (0–1) follows the current clean streak (full at 40). It shifts the caret, lens, light and progress bar from focus blue toward mint and brightens a radial light under the caret. This is the only gradient in ash. There is never a streak number during a run.
+- Lines scroll with `cubic-bezier(.16,1,.3,1)` over 460ms behind a 12px edge mask. New passages fade in word by word, staggered at most 250ms. Input is never delayed.
+- Reduced motion: the springs snap, and there is no wobble, rise or breathing. Colour state changes remain.
 
 ## 7. Voice
 Sentence case, plain, second person, present tense. Buttons are verbs. No emoji, no exclamation marks. Status is a mono pill, not a sticker.

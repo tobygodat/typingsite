@@ -1,63 +1,63 @@
 # Handoff — Stilltype
 
-Written 22 September 2026, at the end of a design session. For the next agent picking this up (Codex or otherwise).
+Updated 22 September 2026 after implementing the design handoff. Read `PRODUCT.md`, `design/ash/DESIGN.md`, and `docs/decisions/2026-09-22-learning-loop.md` before changing behavior or visuals.
 
-## Read these first, in this order
+## Current state
 
-1. `PRODUCT.md` — durable product truth. Users, purpose, positioning, the metric contract, principles, accessibility floor. Captured with the owner; do not contradict it, and do not re-interview on anything it already settles.
-2. `AGENTS.md` + `design/ash/DESIGN.md` — the ash design system is **binding** for all UI. Tokens are the source of truth; colours, type sizes and radii are never invented.
-3. `docs/mvp-spec.md` — milestone 1 journey, scope table, scoring contract, acceptance criteria.
-4. `.impeccable/critique/2026-09-22T03-14-22Z__design-canvas-stilltype-landing-redesign.md` — the design review of the proposed redesign, scored 21/40, with the P0/P1 backlog. This is the work queue.
-5. `design/canvas/` — the redesign itself, as reference artboards, with a README explaining the format.
-
-## Where the project actually stands
-
-**Shipped and working** (`index.html`, `src/`, `tests/`): the first typing-only slice. Timed and word-count tests, original short passages, optional punctuation, live WPM and accuracy, results, Escape to restart, an optional keyboard display, local best with undo on reset. Vanilla HTML/CSS/JS modules, zero dependencies. `src/typing.js` keeps text generation and scoring out of the DOM so scoring can be tested and replayed; `src/app.js` is the UI.
+The redesign is application code now, not just canvas artboards. The app remains native HTML/CSS/JavaScript with no runtime dependencies or backend.
 
 ```sh
-npm run dev   # node server.mjs, serves on :5173
-npm test      # node --test over tests/typing.test.js
+npm run dev   # local server on :5173
+npm test      # 8 focused scoring/replay/evidence checks
+npm run build # static copy of the served files into dist/ (Vercel uses this via vercel.json)
 ```
 
-**Designed but not built**: the three-screen loop — Practice → Results → Retest, plus a mobile practice surface — in `design/canvas/`. The running page at `:5173` is still the **pre-redesign** layout. Porting the canvas direction into `index.html` and `src/styles.css` is the main outstanding piece of work.
+Implemented:
 
-**Not started**: the drill itself, any recommender, any persistence beyond local best, all competition features, anything ML.
+- Spacious, borderless typing with centered mode/length controls, stable three-line text, solid caret and underlined errors.
+- Time, word-count and original quote tests; quote length and descriptive difficulty filters; explicit empty-filter recovery.
+- Saved text size, keyboard, live metrics and focus preferences. Focus mode has an exit and Escape support.
+- Versioned deterministic replay, retained first-attempt mistakes, condition-filtered recommendations, sample thresholds and clean pair timing.
+- A real one-minute drill stage, automatic or manually selected. Manual drills work without a baseline; a baseline enables the fresh comparable retest.
+- Retest comparisons with mixed/regression states, timing sample limits and local progress. Seen quote IDs are recorded when displayed; exhausted retests stop with an explanation.
+- Condition-aware bests; drills, challenges and interrupted attempts do not become personal bests.
+- Local two-player shared-keyboard challenges with the same passage, hidden handoff and observed results. This is not networked multiplayer.
+- Typed history-clear confirmation with immediate Undo.
+- Locally bundled Geist/Geist Mono with the SIL license under `src/fonts/`.
 
-## The gap that matters most
+## Typing motion (22 September 2026)
 
-The canvas is a four-step loop — *play → identify → practice → measure* — rendered as three screens. **There is no drill board.** `Start drill` on Results links straight to Retest. Before building, decide what the drill screen is: almost certainly the Practice surface with generated target-heavy text and something that makes clear the user is drilling, not being tested. That decision is not made and not recorded anywhere.
+The typing zone has its own motion language, recorded as an exception in `design/ash/DESIGN.md` §6: a spring caret, a gliding word lens, letters that land lit and settle, and a streak-driven "heat" that warms blue toward mint. `src/motion.js` is presentational only; scoring never reads from it. `--heat` is written in 0.05 steps because every letter inherits it, and stepping it roughly doubled headless frame rate. Live WPM shows "—" for the first second instead of a first-keystroke spike. On a real GPU frame timing is still unmeasured.
 
-## Design decisions already made (preserve these)
+## Validation
 
-- **The typing surface is the composition.** Chrome at the edges, test vertically centred with real empty space around it, no card frame. Settings are one centred pill at the top: `time / words / quote · 15 30 60 120 · punctuation`. This follows Monkeytype and keybr deliberately, at the owner's direction.
-- **Passage type is Geist Mono at 28px/1.9**, against ash's "never mono for prose" rule. The justification is that a typing target is per-character data and fixed advance widths are what keep the surface from reflowing as errors appear — an explicit acceptance criterion. Keep the deviation or raise it, but know it was deliberate.
-- **Error treatment**: mistyped character in `--text-danger` ink **plus a 2px underline** at 5–6px offset. The underline is the non-colour cue the accessibility floor requires; do not drop it for a colour-only treatment.
-- **Caret** is a solid 2px `--primary` bar, not blinking. ash allows one ambient animation (the pulsing in-flight status dot) and nothing else.
-- **Colour discipline**: blue for actions, focus and in-flight progress; mint strictly for success state and never a button fill; danger as ink or tint, never a fill.
-- **Honesty is UI, not footnotes.** `12 attempts · too few to call`, `harder text · kept out of your best`, `26 attempts before · 24 after` — the caveat is typographically equal to the number it qualifies. This is the product's positioning rendered as interface; it is the best work on the canvas. Do not demote these to tooltips.
-- Every screen states its own conditions in an 11px mono line (`english · common words · corpus v3`).
+Read `docs/verification/2026-09-22-browser.md` for the browser checks and limits. The solo run → manual br drill → fresh retest → saved/reloaded progress flow and both players' challenge turns were completed through actual browser input. Tests use a separate 127.0.0.1 origin so the user's localhost profile is not polluted by verification scores.
 
-## The backlog, in priority order
+## Code map
 
-From the critique. Full detail and measured evidence in the snapshot file.
+- `index.html`: application screens and accessible controls.
+- `src/styles.css`: application composition using canonical Ash tokens/components.
+- `src/typing.js`: corpus, metric/event versions, replay, comparison and transparent pattern baseline.
+- `src/app.js`: screen state, input handling, preferences, history and local challenge.
+- `src/motion.js`: typing-zone caret, word lens, line scroll and streak heat (presentational).
+- `docs/ui-contract.md`: DOM integration contract.
+- `server.mjs`: explicit app/font/design-CSS asset serving; canvas artboards and project documents are not served.
 
-1. **[P0] Results makes a recommendation it never explains.** Between the metrics and `Start drill` there is no sentence connecting evidence to target. The product's entire positioning is the *explained* loop. Fix: one sentence naming the evidence (`br is costing you the most — 7 first-attempt errors, and 340 ms before the r against your 210 ms median`), plus the subline that already exists on the mobile `.next` card (`about 1 min, then a fresh 30 s passage`).
-2. **[P1] No deltas, and no failure states anywhere.** Results shows `94` with no comparison to `best 96 wpm`. There is no empty state, no interrupted-run state, no unsupported-input state, and no regression state — when a drill fails (`71% → 68%`) the design's only vocabulary for change is a mint success badge.
-3. **[P1] Measured accessibility failures.** The wordmark's blue full stop is 3.85:1 on the panel (needs 4.5) on every board. Five mobile targets are under 44px: the wordmark link (64.5×16) and the four mode chips (28px tall). Two different focus indicators share one tab order — the ash ring on `.btn`/`.switch`, the browser default on `.tab`/`.nav`/links. The live metric row has no `aria-live` and the progress rail has no `role="progressbar"`. Two controls on Practice share the accessible name "Practice settings".
-4. **[P1] `Clear local history` is unguarded** and permanently on the practice surface. ash requires a typed confirm for destructive actions; `PRODUCT.md` requires an undo in the moment. Neither exists.
-5. **[P2] The keyboard heatmap does not encode what it claims.** Measured: adjacent severity steps are 1.20:1, 1.21:1, 1.26:1; base to hottest is 1.82:1. A one-error key is visually identical to a clean one. Tints also run to 34% against ash's 14% cap. It duplicates the bigram bars directly below it. Cutting it is a legitimate answer.
+## Decisions to preserve
 
-Two defects are visible in the committed artboards and should not be ported: the empty `<span><br></span>` eyebrow above the heatmap in `Results.dc.html`, and 60px of orphaned spacers in `Retest.dc.html`.
+Ash remains dark-only with warm tonal surfaces, blue actions/focus and mint for success. The typing target deliberately uses Geist Mono at 28px/1.9, with 22/36px token-based preferences. Errors retain the non-colour underline. Keep metrics and conditions visible; never turn small-sample timing into a confident weakness or learning claim.
 
-## Constraints that will bite
+This build uses mandatory correction and records that policy in comparison keys. Do not mix future relaxed scoring, quote difficulty/performance points or multiplayer ratings into personal skill progress. Existing unversioned `stilltype-best` data is not imported into comparable bests.
 
-- **The metric contract is versioned and must not drift.** Corrected WPM, input accuracy, first-attempt error retention, and the rule that personal progress / quote difficulty / multiplayer rating stay three separate scores. `PRODUCT.md` has the definitions; `docs/mvp-spec.md` has the worked examples (300 corrected characters over 60 s produces 60 WPM; 300 correct plus 10 incorrect insertions produces 300/310 accuracy even after every error is fixed).
-- **Beginners are a committed second audience**, to be served after the solo loop is proven. The standing constraint: build nothing that would have to be torn out for them. The critique flags one piece of latent debt already — Results has no vertical room for the teaching sentence a beginner path would need.
-- **No framework is chosen.** The shipped slice is vanilla and the implementation plan defers the choice. If you introduce one, record the decision; do not let it arrive as a side effect of a UI task.
-- **No users, no usage data, no benchmarks, no deployment.** `PRODUCT.md` lists these absences explicitly so future work does not fabricate them. The research is qualitative Reddit sampling and is not representative.
+The newest 24 attempt traces are retained in local storage; comparison summaries, seen-text IDs and bests remain until history is cleared. Local challenge scores are transient. There is no cloud collection. Storage failures are reported in result copy.
 
-## Repository state
+## Remaining work
 
-Branch `master`, tracking `origin/master` at `https://github.com/tobygodat/typingsite` (private). History starts at the initial commit `c3dbad5`; there is no `main` branch yet.
+- Validate the proposed p95 input-to-visible-feedback budget on a named reference browser with instrumentation; no latency result is claimed yet.
+- Broaden physical-device/browser coverage, including assistive technology, actual touch keyboards and IME behavior. Responsive layouts and direct physical-keyboard input were tested; this is not a complete accessibility certification.
+- Expand the small original quote corpus and validate difficulty labels. Empty filter combinations are explicit. Generated retests match configured conditions but do not guarantee matched target frequency; target sample limits remain visible.
+- Improve progress exploration and define longer-term local retention/sync requirements before expanding data storage.
+- Recorded ghosts, daily challenges and networked friend rooms remain later roadmap stages. Online rooms need lifecycle, authoritative validation and multi-client testing.
+- The recommender is a transparent baseline, not ML. There are no learning outcome benchmarks, user studies, accounts, deployment or public rankings.
 
-`.impeccable/` holds two critique snapshots: one for `index.html` from an earlier session, and the canvas review described above. `$impeccable polish` reads the latter as its backlog.
+The old critique snapshots describe the former implementation/reference artboards. They remain historical evidence; do not blindly reapply their backlog to the shipped UI.
