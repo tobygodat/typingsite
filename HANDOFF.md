@@ -9,6 +9,7 @@ The redesign is application code now, not just canvas artboards. The app remains
 ```sh
 npm run dev   # local server on :5173
 npm test      # 8 focused scoring/replay/evidence checks
+npm run build # static copy of the served files into dist/ (Vercel uses this via vercel.json)
 ```
 
 Implemented:

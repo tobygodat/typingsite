@@ -9,6 +9,7 @@ Node.js 20 or newer; no dependency installation needed.
 ```sh
 npm run dev
 npm test
+npm run build   # static build in dist/, used by Vercel
 ```
 
 Open [localhost:5173](http://localhost:5173). Everything runs in the browser with local persistence. Fonts are bundled; the app has no external runtime service.
