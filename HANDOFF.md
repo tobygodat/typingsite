@@ -58,6 +58,6 @@ Two defects are visible in the committed artboards and should not be ported: the
 
 ## Repository state
 
-Initial commit, branch `master`, **no remote configured** — nothing has been pushed anywhere. Add a remote before expecting `git push` to work.
+Branch `master`, tracking `origin/master` at `https://github.com/tobygodat/typingsite` (private). History starts at the initial commit `c3dbad5`; there is no `main` branch yet.
 
 `.impeccable/` holds two critique snapshots: one for `index.html` from an earlier session, and the canvas review described above. `$impeccable polish` reads the latter as its backlog.
