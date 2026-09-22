@@ -1,9 +1,8 @@
-// Typing-surface motion: a spring-driven caret, a word lens that glides to the
-// word being typed, and a light whose warmth follows the current clean streak.
-// Everything here is presentational; scoring never reads from it.
+// Typing-surface motion: a spring-driven caret, line scrolling, and an optional
+// ghost pacer. Nothing decorative moves while a run is in progress. Everything
+// here is presentational; scoring never reads from it.
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const STREAK_FOR_FULL_HEAT = 40;
 const IDLE_AFTER_MS = 800;
 
 function spring(stiffness, damping) {
@@ -28,7 +27,7 @@ function snap(s, value) {
   s.velocity = 0;
 }
 
-// Offsets relative to the display, even while an entering word is its own offsetParent.
+// Offsets relative to the display, walking up through any positioned ancestors.
 function offsetIn(element, display) {
   let left = 0;
   let top = 0;
@@ -39,34 +38,25 @@ function offsetIn(element, display) {
   return { left, top };
 }
 
-export function createTypingFx(wrap, display) {
-  const scope = wrap.parentElement;
-  scope.classList.add('fx-scope');
-
-  const light = document.createElement('span');
-  light.className = 'caret-light';
-  const lens = document.createElement('span');
-  lens.className = 'word-lens';
+// The third argument is accepted for compatibility and ignored.
+export function createTypingFx(wrap, display, _options = {}) {
   const caret = document.createElement('span');
   caret.className = 'caret';
   const bar = document.createElement('span');
   bar.className = 'caret-bar';
   caret.append(bar);
-  for (const node of [light, lens, caret]) node.setAttribute('aria-hidden', 'true');
+  const ghostCaret = document.createElement('span');
+  ghostCaret.className = 'ghost-caret is-hidden';
+  for (const node of [caret, ghostCaret]) node.setAttribute('aria-hidden', 'true');
+  const ghost = { cps: 0, start: 0, frame: 0, index: -1, armed: false };
 
   const caretX = spring(1400, 70);
-  const caretY = spring(900, 60);
-  const lensX = spring(520, 42);
-  const lensW = spring(520, 42);
-  const lensY = spring(520, 46);
-  const springs = [caretX, caretY, lensX, lensW, lensY];
+  const caretY = spring(1400, 70);
+  const springs = [caretX, caretY];
 
   let characters = [];
   let position = 0;
   let line = 0;
-  let streak = 0;
-  let heat = 0;
-  let appliedHeat = -1;
   let frame = 0;
   let lastTime = 0;
   let needsMeasure = false;
@@ -90,20 +80,8 @@ export function createTypingFx(wrap, display) {
       x += last.offsetWidth;
     }
     const nextLine = Math.floor((top + lineHeight * 0.25) / lineHeight);
-    const y = nextLine * lineHeight;
-
-    let word = current?.parentElement?.classList.contains('word') ? current.parentElement : current?.nextElementSibling;
-    if (word && !word.classList.contains('word')) word = null;
-    lens.classList.toggle('is-hidden', !word);
-    if (word) {
-      const pad = parseFloat(getComputedStyle(display).fontSize) * 0.28;
-      const box = offsetIn(word, display);
-      lensX.target = box.left - pad;
-      lensW.target = word.offsetWidth + pad * 2;
-      lensY.target = Math.floor((box.top + lineHeight * 0.25) / lineHeight) * lineHeight;
-    }
     caretX.target = x;
-    caretY.target = y;
+    caretY.target = nextLine * lineHeight;
 
     if (nextLine !== line) {
       line = nextLine;
@@ -117,15 +95,6 @@ export function createTypingFx(wrap, display) {
 
   function render() {
     caret.style.transform = `translate3d(${caretX.value}px, ${caretY.value}px, 0)`;
-    light.style.transform = `translate3d(${caretX.value}px, ${caretY.value}px, 0)`;
-    lens.style.transform = `translate3d(${lensX.value}px, ${lensY.value}px, 0)`;
-    lens.style.width = `${Math.max(0, lensW.value)}px`;
-    // --heat is inherited by every letter, so write it in coarse steps; CSS transitions smooth the gaps.
-    const steppedHeat = Math.round(heat * 20) / 20;
-    if (steppedHeat !== appliedHeat) {
-      scope.style.setProperty('--heat', String(steppedHeat));
-      appliedHeat = steppedHeat;
-    }
   }
 
   function tick(time) {
@@ -139,11 +108,6 @@ export function createTypingFx(wrap, display) {
     let moving = false;
     // Two substeps keep stiff springs stable on slow frames.
     for (let i = 0; i < 2; i += 1) for (const s of springs) moving = stepSpring(s, dt / 2) || moving;
-    const targetHeat = Math.min(1, streak / STREAK_FOR_FULL_HEAT);
-    const rate = targetHeat > heat ? 1.6 : 5;
-    heat += (targetHeat - heat) * Math.min(1, dt * rate);
-    if (Math.abs(targetHeat - heat) < 0.004) heat = targetHeat;
-    else moving = true;
     render();
     if (moving) schedule();
     else lastTime = 0;
@@ -153,12 +117,29 @@ export function createTypingFx(wrap, display) {
     if (!frame) frame = requestAnimationFrame(tick);
   }
 
-  function nudge(element) {
-    if (!element || reducedMotion.matches) return;
-    element.animate(
-      [{ transform: 'translateX(0)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(3px)' }, { transform: 'translateX(-1.5px)' }, { transform: 'translateX(0)' }],
-      { duration: 260, easing: 'cubic-bezier(0.2, 0, 0, 1)' },
-    );
+  function placeGhost(index) {
+    if (index === ghost.index || !characters.length) return;
+    ghost.index = index;
+    const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 60;
+    const target = characters[Math.min(index, characters.length - 1)];
+    let { left, top } = offsetIn(target, display);
+    if (index >= characters.length) left += target.offsetWidth;
+    const row = Math.floor((top + lineHeight * 0.25) / lineHeight) * lineHeight;
+    ghostCaret.style.transform = `translate3d(${left}px, ${row}px, 0)`;
+  }
+
+  function ghostTick(now) {
+    ghost.frame = 0;
+    if (!ghost.armed || !ghost.start) return;
+    const index = Math.floor(((now - ghost.start) / 1000) * ghost.cps);
+    placeGhost(Math.min(index, characters.length));
+    if (index < characters.length) ghost.frame = requestAnimationFrame(ghostTick);
+  }
+
+  function stopGhost() {
+    cancelAnimationFrame(ghost.frame);
+    ghost.frame = 0;
+    ghost.start = 0;
   }
 
   return {
@@ -166,29 +147,24 @@ export function createTypingFx(wrap, display) {
       characters = nextCharacters;
       position = 0;
       line = 0;
-      streak = 0;
-      heat = 0;
       clearTimeout(idleTimer);
       display.style.transform = '';
       wrap.dataset.blocked = 'false';
-      display.prepend(light, lens);
-      display.append(caret);
+      stopGhost();
+      ghost.index = -1;
+      display.append(ghostCaret, caret);
+      ghostCaret.classList.toggle('is-hidden', !ghost.armed);
+      if (ghost.armed) requestAnimationFrame(() => placeGhost(0));
       setState('idle');
       snapNext = true;
       needsMeasure = true;
       schedule();
     },
 
-    // outcome: 'correct' | 'wrong' | 'blocked' | 'delete'
-    update(nextPosition, outcome, blocked) {
+    // outcome: 'correct' | 'wrong' | 'blocked' | 'delete'. Only position and blocked affect the caret.
+    update(nextPosition, _outcome, blocked) {
       position = nextPosition;
-      if (outcome === 'correct') streak += 1;
-      else if (outcome === 'wrong' || outcome === 'blocked') streak = 0;
-      wrap.dataset.blocked = String(blocked);
-      if (outcome === 'wrong' || outcome === 'blocked') {
-        nudge(bar);
-        nudge(characters[nextPosition - 1]);
-      }
+      wrap.dataset.blocked = String(Boolean(blocked));
       setState('typing');
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => setState('idle'), IDLE_AFTER_MS);
@@ -197,13 +173,36 @@ export function createTypingFx(wrap, display) {
     },
 
     finish() {
+      stopGhost();
+      ghostCaret.classList.add('is-hidden');
       clearTimeout(idleTimer);
       setState('done');
-      streak = 0;
-      schedule();
+    },
+
+    // Ghost pacer: moves at a fixed characters-per-second from the first keystroke.
+    ghost: {
+      arm(cps) {
+        ghost.armed = cps > 0;
+        ghost.cps = cps;
+        ghost.index = -1;
+        ghostCaret.classList.toggle('is-hidden', !ghost.armed);
+        if (ghost.armed) placeGhost(0);
+        else stopGhost();
+      },
+      run(startTime) {
+        if (!ghost.armed || reducedMotion.matches) return;
+        ghost.start = startTime;
+        if (!ghost.frame) ghost.frame = requestAnimationFrame(ghostTick);
+      },
+      disarm() {
+        ghost.armed = false;
+        stopGhost();
+        ghostCaret.classList.add('is-hidden');
+      },
     },
 
     relayout() {
+      ghost.index = -1;
       if (!characters.length) return;
       line = -1;
       snapNext = true;

@@ -244,6 +244,11 @@ export function summarizePatterns(attempts, limit = 20, compatibleConditions = n
   };
 }
 
+// "3 first-try errors in 24 tries": the counts behind every recommendation.
+function errorCount({ errors, observations }) {
+  return `${errors} first-try ${errors === 1 ? 'error' : 'errors'} in ${observations} ${observations === 1 ? 'try' : 'tries'}`;
+}
+
 export function recommendTarget(attempts, compatibleConditions = null) {
   const evidence = summarizePatterns(attempts, 20, compatibleConditions);
   const errorCandidates = evidence.pairs.filter((pair) => pair.observations >= 10 && pair.errors > 0).sort((a, b) => b.errorRate - a.errorRate || b.observations - a.observations || a.pair.localeCompare(b.pair));
@@ -251,8 +256,8 @@ export function recommendTarget(attempts, compatibleConditions = null) {
   const target = errorCandidates[0] || timingCandidates[0];
   if (target) {
     const reason = target.errors > 0
-      ? `${target.pair} had ${target.errors} first-attempt ${target.errors === 1 ? 'error' : 'errors'} across ${target.observations} opportunities.`
-      : `${target.pair} took a median ${target.medianMs} ms across ${target.timings.length} clean intervals, ${target.slowdownMs} ms slower than your ${evidence.personalMedianMs} ms median.`;
+      ? `“${target.pair}”: ${errorCount(target)}.`
+      : `“${target.pair}”: median ${target.medianMs} ms over ${target.timings.length} clean intervals, ${target.slowdownMs} ms slower than your ${evidence.personalMedianMs} ms median.`;
     return { kind: 'targeted', target: target.pair, title: `Practice “${target.pair}”`, reason, evidence };
   }
 
@@ -260,10 +265,10 @@ export function recommendTarget(attempts, compatibleConditions = null) {
   return {
     kind: 'general',
     target: null,
-    title: 'Build a broader baseline',
+    title: 'General drill',
     reason: early
-      ? `Early signal: “${early.pair}” had ${early.errors} first-attempt ${early.errors === 1 ? 'error' : 'errors'} across ${early.observations} opportunities. That is too little evidence to call it a weakness, so this drill stays general.`
-      : 'There is not enough clean pair evidence to name a weakness yet. This general drill builds a baseline without guessing.',
+      ? `Too little data to target a pattern yet (“${early.pair}”: ${errorCount(early)}).`
+      : 'Not enough clean data to name a weakness yet.',
     evidence,
   };
 }
@@ -318,7 +323,7 @@ export function comparable(before, after) {
 }
 
 export function compareAttempts(before, after) {
-  if (!comparable(before, after)) return { comparable: false, state: 'not-comparable', reason: 'These attempts used different conditions or repeated text, so no improvement claim is shown.' };
+  if (!comparable(before, after)) return { comparable: false, state: 'not-comparable', reason: 'Different conditions or repeated text, so no comparison is made.' };
   const beforeScore = before.summary?.score || replayAttempt(before).score;
   const afterScore = after.summary?.score || replayAttempt(after).score;
   const wpmDelta = afterScore.wpm - beforeScore.wpm;
@@ -338,12 +343,13 @@ export function compareAttempts(before, after) {
     accuracyDelta,
     before: beforeScore,
     after: afterScore,
+    // The heading already states the direction; the reason is only the caveat.
     reason: state === 'improved'
-      ? 'This fresh retest was stronger under the same conditions. One retest is useful feedback, not proof of lasting improvement.'
+      ? 'One retest is feedback, not proof.'
       : state === 'mixed'
-        ? 'Speed and accuracy moved in different directions. Keep both numbers visible; this retest does not support a single improvement claim.'
-      : state === 'regressed'
-        ? 'This fresh retest was lower. That is a real result, not a lost skill score; one attempt can vary.'
-        : 'This fresh retest held steady. More completed sessions will make the pattern clearer.',
+        ? 'Speed and accuracy moved apart.'
+        : state === 'regressed'
+          ? 'One attempt can vary. Your best is untouched.'
+          : 'Held steady on fresh text.',
   };
 }

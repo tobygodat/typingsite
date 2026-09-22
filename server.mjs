@@ -1,16 +1,17 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+// Serves exactly the app: index.html, src/*.js, src/*.css, the self-hosted fonts and their licence.
+// scripts/build-static.mjs copies the same set. Design references (design/), docs and everything else 404.
 const root = process.cwd();
-const designStyles = new Set(['/design/ash/styles.css', '/design/ash/components/components.css', ...['fonts', 'colors', 'typography', 'spacing', 'radius', 'motion', 'code'].map(name => `/design/ash/tokens/${name}.css`)]);
-const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.ttf': 'font/ttf' };
+const servable = /^\/(?:index\.html|src\/[a-z-]+\.(?:js|css)|src\/fonts\/(?:[a-z0-9-]+\.(?:ttf|woff2)|OFL(?:-[a-z]+)?\.txt))$/;
+const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.ttf': 'font/ttf', '.woff2': 'font/woff2', '.txt': 'text/plain' };
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     const pathname = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
     const file = path.resolve(root, '.' + pathname);
-    const appAsset = /^\/src\/(?:[a-z-]+\.(?:js|css)|fonts\/[a-z0-9-]+\.ttf)$/.test(pathname);
-    if (!file.startsWith(root + path.sep) || !(designStyles.has(pathname) || pathname === '/index.html' || appAsset)) { res.writeHead(404).end(); return; }
+    if (!file.startsWith(root + path.sep) || !servable.test(pathname)) { res.writeHead(404).end(); return; }
     const data = await readFile(file);
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'text/plain' }); res.end(data);
   } catch { res.writeHead(404).end('Not found'); }

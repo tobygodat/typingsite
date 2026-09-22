@@ -1,0 +1,23 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "geist mono",
+        "createdAt": "2026-09-22T19:33:48.885Z",
+        "reason": "Claude: self-hosted face kept only for small measurement labels; Literata is the primary face"
+      },
+      {
+        "rule": "em-dash-overuse",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-09-22T19:33:48.906Z",
+        "reason": "Claude: the dashes are empty-metric placeholders (wpm, accuracy before a run), not prose"
+      }
+    ]
+  }
+}

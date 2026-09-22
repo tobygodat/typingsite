@@ -1,0 +1,845 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-22T20:17:00.850Z",
+  "title": "Design System: Stilltype",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Warm Near-Black (dark theme)",
+        "canonical": "#0f0f0e",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#242423",
+          "#40403f",
+          "#5e5e5c",
+          "#80807f",
+          "#a1a1a0",
+          "#c7c7c6",
+          "#eeeeed"
+        ]
+      },
+      "ground-2": {
+        "role": "neutral",
+        "displayName": "Deep Ground (dark theme)",
+        "canonical": "#151514",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#242423",
+          "#40403f",
+          "#5e5e5c",
+          "#80807f",
+          "#a1a1a0",
+          "#c7c7c6",
+          "#eeeeed"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Raised Stock (dark theme)",
+        "canonical": "#1c1b1a",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#252423",
+          "#413f3e",
+          "#5e5d5c",
+          "#81807f",
+          "#a2a1a0",
+          "#c8c7c5",
+          "#efeeed"
+        ]
+      },
+      "raised-2": {
+        "role": "neutral",
+        "displayName": "Raised Wash (dark theme)",
+        "canonical": "rgba(255, 255, 255, 0.085)"
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Bone (dark theme)",
+        "canonical": "#ece8e1",
+        "tonalRamp": [
+          "#0d0b07",
+          "#27241e",
+          "#423f3a",
+          "#615d57",
+          "#838079",
+          "#a5a19a",
+          "#cbc7c0",
+          "#f2eee7"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Pumice (dark theme)",
+        "canonical": "#a39e96",
+        "tonalRamp": [
+          "#0e0b06",
+          "#27231d",
+          "#433f38",
+          "#615d56",
+          "#847f78",
+          "#a6a199",
+          "#ccc7be",
+          "#f3eee5"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline (dark theme)",
+        "canonical": "rgba(255, 255, 255, 0.075)"
+      },
+      "hairline-strong": {
+        "role": "neutral",
+        "displayName": "Strong Hairline (dark theme)",
+        "canonical": "rgba(255, 255, 255, 0.15)"
+      },
+      "outline": {
+        "role": "neutral",
+        "displayName": "Field Outline (dark theme)",
+        "canonical": "#7d7972",
+        "tonalRamp": [
+          "#0e0b06",
+          "#27241e",
+          "#433f39",
+          "#615d56",
+          "#848079",
+          "#a5a19a",
+          "#cbc7bf",
+          "#f2eee6"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Afterimage Green (dark theme)",
+        "canonical": "#8fd18a",
+        "tonalRamp": [
+          "#001400",
+          "#003000",
+          "#074e08",
+          "#2e6e2c",
+          "#52924e",
+          "#74b46f",
+          "#99db94",
+          "#bfffba"
+        ]
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "Green Ink (dark theme)",
+        "canonical": "#0f1a0e",
+        "tonalRamp": [
+          "#050e04",
+          "#1c281b",
+          "#374436",
+          "#556253",
+          "#778575",
+          "#98a696",
+          "#bdccbc",
+          "#e4f4e2"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Green Tint (dark theme)",
+        "canonical": "rgba(143, 209, 138, 0.13)"
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "Ember Coral (dark theme)",
+        "canonical": "#ff8a6b",
+        "tonalRamp": [
+          "#2d0000",
+          "#4f0000",
+          "#711f07",
+          "#95402a",
+          "#bc634c",
+          "#e2856c",
+          "#ffab91",
+          "#ffd2b7"
+        ]
+      },
+      "danger-soft": {
+        "role": "secondary",
+        "displayName": "Coral Tint (dark theme)",
+        "canonical": "rgba(255, 138, 107, 0.16)"
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "Lamp Amber (dark theme)",
+        "canonical": "#e0b565",
+        "tonalRamp": [
+          "#200000",
+          "#3d1900",
+          "#5c3700",
+          "#7c5500",
+          "#a17923",
+          "#c49a4a",
+          "#ecc070",
+          "#ffe897"
+        ]
+      },
+      "selection": {
+        "role": "neutral",
+        "displayName": "Selection (dark theme)",
+        "canonical": "#34322e",
+        "tonalRamp": [
+          "#0d0b08",
+          "#262420",
+          "#423f3b",
+          "#605d59",
+          "#82807b",
+          "#a4a19c",
+          "#c9c7c2",
+          "#f1eee9"
+        ]
+      },
+      "ghost": {
+        "role": "tertiary",
+        "displayName": "Ghost Periwinkle (dark theme)",
+        "canonical": "#b9c3ff",
+        "tonalRamp": [
+          "#07022d",
+          "#1b1d4c",
+          "#353a6c",
+          "#52588d",
+          "#737bb3",
+          "#949dd7",
+          "#b9c3ff",
+          "#dfeaff"
+        ]
+      },
+      "rhythm-hit": {
+        "role": "primary",
+        "displayName": "Rhythm Hit Ink (dark theme)",
+        "canonical": "#8fd18a",
+        "tonalRamp": [
+          "#001400",
+          "#003000",
+          "#074e08",
+          "#2e6e2c",
+          "#52924e",
+          "#74b46f",
+          "#99db94",
+          "#bfffba"
+        ]
+      },
+      "rhythm-miss": {
+        "role": "secondary",
+        "displayName": "Rhythm Miss Ink (dark theme)",
+        "canonical": "#ff7a59",
+        "tonalRamp": [
+          "#2d0000",
+          "#4f0000",
+          "#711f08",
+          "#95402b",
+          "#bc634d",
+          "#e2856d",
+          "#ffaa92",
+          "#ffd1b8"
+        ]
+      },
+      "rhythm-rest": {
+        "role": "neutral",
+        "displayName": "Rhythm Rest Ink (dark theme)",
+        "canonical": "#34322f",
+        "tonalRamp": [
+          "#0d0b08",
+          "#262421",
+          "#413f3c",
+          "#5f5d5a",
+          "#82807c",
+          "#a3a19d",
+          "#c9c7c3",
+          "#f1eeea"
+        ]
+      },
+      "card-top": {
+        "role": "neutral",
+        "displayName": "Card Stock Top (dark theme)",
+        "canonical": "#1f1e1c",
+        "tonalRamp": [
+          "#0c0b09",
+          "#252422",
+          "#41403d",
+          "#5f5d5b",
+          "#81807d",
+          "#a3a19f",
+          "#c8c7c4",
+          "#f0eeeb"
+        ]
+      },
+      "card-bottom": {
+        "role": "neutral",
+        "displayName": "Card Stock Bottom (dark theme)",
+        "canonical": "#121211",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#242423",
+          "#40403f",
+          "#5e5e5c",
+          "#80807f",
+          "#a1a1a0",
+          "#c7c7c6",
+          "#eeeeed"
+        ]
+      },
+      "ground-light": {
+        "role": "neutral",
+        "displayName": "Warm Near-Black (light theme)",
+        "canonical": "#f4f1eb",
+        "tonalRamp": [
+          "#0d0b07",
+          "#26241f",
+          "#423f3b",
+          "#605d58",
+          "#83807a",
+          "#a4a19c",
+          "#cac7c1",
+          "#f1eee8"
+        ]
+      },
+      "ground-2-light": {
+        "role": "neutral",
+        "displayName": "Deep Ground (light theme)",
+        "canonical": "#ece8e0",
+        "tonalRamp": [
+          "#0d0b06",
+          "#27241e",
+          "#433f39",
+          "#615d56",
+          "#838079",
+          "#a5a19a",
+          "#cbc7bf",
+          "#f2eee6"
+        ]
+      },
+      "raised-light": {
+        "role": "neutral",
+        "displayName": "Raised Stock (light theme)",
+        "canonical": "#fbf9f5",
+        "tonalRamp": [
+          "#0c0b09",
+          "#252421",
+          "#413f3c",
+          "#5f5d5a",
+          "#82807c",
+          "#a3a19d",
+          "#c9c7c3",
+          "#f0eeea"
+        ]
+      },
+      "raised-2-light": {
+        "role": "neutral",
+        "displayName": "Raised Wash (light theme)",
+        "canonical": "rgba(27, 26, 25, 0.07)"
+      },
+      "text-light": {
+        "role": "neutral",
+        "displayName": "Bone (light theme)",
+        "canonical": "#1b1a19",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#252423",
+          "#413f3e",
+          "#5e5d5c",
+          "#81807f",
+          "#a2a1a0",
+          "#c8c7c5",
+          "#f0eeed"
+        ]
+      },
+      "muted-light": {
+        "role": "neutral",
+        "displayName": "Pumice (light theme)",
+        "canonical": "#6b665e",
+        "tonalRamp": [
+          "#0e0b05",
+          "#28231d",
+          "#443f38",
+          "#625d55",
+          "#857f77",
+          "#a6a198",
+          "#ccc6bd",
+          "#f3eee4"
+        ]
+      },
+      "hairline-light": {
+        "role": "neutral",
+        "displayName": "Hairline (light theme)",
+        "canonical": "rgba(27, 26, 25, 0.1)"
+      },
+      "hairline-strong-light": {
+        "role": "neutral",
+        "displayName": "Strong Hairline (light theme)",
+        "canonical": "rgba(27, 26, 25, 0.2)"
+      },
+      "outline-light": {
+        "role": "neutral",
+        "displayName": "Field Outline (light theme)",
+        "canonical": "#857f75",
+        "tonalRamp": [
+          "#0f0a04",
+          "#28231b",
+          "#443f36",
+          "#625d53",
+          "#857f75",
+          "#a7a196",
+          "#cdc6bc",
+          "#f4eee2"
+        ]
+      },
+      "accent-light": {
+        "role": "primary",
+        "displayName": "Afterimage Green (light theme)",
+        "canonical": "#2e7d4f",
+        "tonalRamp": [
+          "#001500",
+          "#003108",
+          "#004f24",
+          "#1c6f42",
+          "#459363",
+          "#68b584",
+          "#8edca9",
+          "#b5ffcf"
+        ]
+      },
+      "accent-ink-light": {
+        "role": "primary",
+        "displayName": "Green Ink (light theme)",
+        "canonical": "#fbf9f5",
+        "tonalRamp": [
+          "#0c0b09",
+          "#252421",
+          "#413f3c",
+          "#5f5d5a",
+          "#82807c",
+          "#a3a19d",
+          "#c9c7c3",
+          "#f0eeea"
+        ]
+      },
+      "accent-soft-light": {
+        "role": "primary",
+        "displayName": "Green Tint (light theme)",
+        "canonical": "rgba(46, 125, 79, 0.11)"
+      },
+      "danger-light": {
+        "role": "secondary",
+        "displayName": "Ember Coral (light theme)",
+        "canonical": "#b4432c",
+        "tonalRamp": [
+          "#2d0000",
+          "#4f0000",
+          "#721e0d",
+          "#953f2d",
+          "#bd634f",
+          "#e28470",
+          "#ffaa94",
+          "#ffd1ba"
+        ]
+      },
+      "danger-soft-light": {
+        "role": "secondary",
+        "displayName": "Coral Tint (light theme)",
+        "canonical": "rgba(180, 67, 44, 0.12)"
+      },
+      "warning-light": {
+        "role": "secondary",
+        "displayName": "Lamp Amber (light theme)",
+        "canonical": "#8a5a00",
+        "tonalRamp": [
+          "#230000",
+          "#411500",
+          "#613300",
+          "#815200",
+          "#a7752b",
+          "#ca974f",
+          "#f2bc75",
+          "#ffe49c"
+        ]
+      },
+      "selection-light": {
+        "role": "neutral",
+        "displayName": "Selection (light theme)",
+        "canonical": "#e3dccf",
+        "tonalRamp": [
+          "#0f0a03",
+          "#292319",
+          "#453f34",
+          "#635d52",
+          "#867f74",
+          "#a7a194",
+          "#cdc6ba",
+          "#f5eee0"
+        ]
+      },
+      "ghost-light": {
+        "role": "tertiary",
+        "displayName": "Ghost Periwinkle (light theme)",
+        "canonical": "#4f5bc4",
+        "tonalRamp": [
+          "#07003c",
+          "#17165c",
+          "#2f367e",
+          "#4a56a0",
+          "#6b79c7",
+          "#8b9bec",
+          "#b0c1ff",
+          "#d6e9ff"
+        ]
+      },
+      "rhythm-miss-light": {
+        "role": "secondary",
+        "displayName": "Rhythm Miss Ink (light theme)",
+        "canonical": "#cf4a2a",
+        "tonalRamp": [
+          "#2d0000",
+          "#4f0000",
+          "#721f0a",
+          "#95402b",
+          "#bd634d",
+          "#e2856e",
+          "#ffaa92",
+          "#ffd1b8"
+        ]
+      },
+      "rhythm-rest-light": {
+        "role": "neutral",
+        "displayName": "Rhythm Rest Ink (light theme)",
+        "canonical": "#d3ccbf",
+        "tonalRamp": [
+          "#0f0a03",
+          "#292319",
+          "#453f34",
+          "#635d51",
+          "#867f73",
+          "#a7a194",
+          "#cdc6ba",
+          "#f5eee0"
+        ]
+      },
+      "card-top-light": {
+        "role": "neutral",
+        "displayName": "Card Stock Top (light theme)",
+        "canonical": "#fffdf9",
+        "tonalRamp": [
+          "#0c0b09",
+          "#252421",
+          "#413f3c",
+          "#5f5d5a",
+          "#82807c",
+          "#a3a19d",
+          "#c9c7c3",
+          "#f0eeea"
+        ]
+      },
+      "card-bottom-light": {
+        "role": "neutral",
+        "displayName": "Card Stock Bottom (light theme)",
+        "canonical": "#efeae1",
+        "tonalRamp": [
+          "#0e0b06",
+          "#27241d",
+          "#433f38",
+          "#615d55",
+          "#848078",
+          "#a6a198",
+          "#cbc7be",
+          "#f3eee5"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Run-card WPM figure; 112px under 760px."
+      },
+      "display": {
+        "displayName": "Display",
+        "purpose": "Session and results headings; 38px under 760px."
+      },
+      "live-stat": {
+        "displayName": "Live stat",
+        "purpose": "Live WPM, accuracy and timer above the passage; 40px under 760px."
+      },
+      "passage": {
+        "displayName": "Passage",
+        "purpose": "Typing text; user setting 29/36/44px desktop, 22/26/32px mobile; three visible lines."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section headings in results, progress and challenge."
+      },
+      "lead": {
+        "displayName": "Lead",
+        "purpose": "Token defined (--text-lead); larger introductory copy."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running copy, 56-60ch measure."
+      },
+      "small": {
+        "displayName": "Small",
+        "purpose": "Notes, help, toasts, settings; italic for quiet asides."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Geist Mono measurement labels, units, conditions, keys; lowercase."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-float",
+        "value": "0 8px 24px rgba(0, 0, 0, 0.35)",
+        "purpose": "Dark theme: every floating opaque surface (dock, popover, palette, dialog, handoff card, toasts)."
+      },
+      {
+        "name": "shadow-float-light",
+        "value": "0 8px 24px rgba(70, 56, 30, 0.12)",
+        "purpose": "Light theme float shadow."
+      },
+      {
+        "name": "switch-thumb",
+        "value": "0 1px 3px rgba(0, 0, 0, 0.3)",
+        "purpose": "Toggle knob only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "motion-scale",
+        "value": "1 (0 under prefers-reduced-motion)",
+        "purpose": "Multiplies every duration."
+      },
+      {
+        "name": "dur-micro",
+        "value": "80ms",
+        "purpose": "On-screen key press feedback."
+      },
+      {
+        "name": "dur-quick",
+        "value": "150ms",
+        "purpose": "Hover colours, line scroll, palette in/out, highlight glide, screen fade-in."
+      },
+      {
+        "name": "dur-base",
+        "value": "200ms",
+        "purpose": "Gliding selection pill, running-state chrome fade, toasts, switches."
+      },
+      {
+        "name": "dur-fast",
+        "value": "250ms",
+        "purpose": "Skip link, handoff card fade."
+      },
+      {
+        "name": "dur-medium",
+        "value": "350ms",
+        "purpose": "Theme colour change."
+      },
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "The one easing for all transitions."
+      },
+      {
+        "name": "caret-spring",
+        "value": "stiffness 1400, damping 70",
+        "purpose": "Solid caret position (src/motion.js)."
+      },
+      {
+        "name": "caret-breathe",
+        "value": "1300ms ease-in-out infinite, opacity to 0.25",
+        "purpose": "The only infinite loop; idle caret only."
+      },
+      {
+        "name": "rhythm-develop",
+        "value": "450ms",
+        "purpose": "Run-card dithered art develops once after a run (src/rhythm.js)."
+      },
+      {
+        "name": "progress-line",
+        "value": "140ms linear",
+        "purpose": "Progress bar scaleX."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow",
+        "value": "360px"
+      },
+      {
+        "name": "mobile",
+        "value": "760px"
+      },
+      {
+        "name": "stack",
+        "value": "900px"
+      },
+      {
+        "name": "short",
+        "value": "max-height 720px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled-green action per view.",
+      "html": "<button class=\"ds-btn-primary\">Start the drill</button>",
+      "css": ".ds-btn-primary{font-family:var(--font-serif, Literata, Georgia, serif);height:44px;padding:0 20px;border:1px solid transparent;border-radius:12px;font-size:16px;font-weight:500;display:inline-flex;align-items:center;gap:8px;cursor:pointer;transition:background-color 150ms cubic-bezier(0.22,1,0.36,1),color 150ms cubic-bezier(0.22,1,0.36,1),transform 150ms cubic-bezier(0.22,1,0.36,1);background:var(--accent,#8fd18a);color:var(--accent-ink,#0f1a0e);font-weight:600}.ds-btn-primary:hover{background:color-mix(in oklab,var(--accent,#8fd18a) 88%,var(--text,#ece8e1))}.ds-btn-primary:active{transform:scale(0.98)}.ds-btn-primary:focus-visible{outline:2px solid var(--text,#ece8e1);outline-offset:3px;}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Hairline-bordered alternative action.",
+      "html": "<button class=\"ds-btn-secondary\">Retest</button>",
+      "css": ".ds-btn-secondary{font-family:var(--font-serif, Literata, Georgia, serif);height:44px;padding:0 20px;border:1px solid transparent;border-radius:12px;font-size:16px;font-weight:500;display:inline-flex;align-items:center;gap:8px;cursor:pointer;transition:background-color 150ms cubic-bezier(0.22,1,0.36,1),color 150ms cubic-bezier(0.22,1,0.36,1),transform 150ms cubic-bezier(0.22,1,0.36,1);background:transparent;color:var(--text,#ece8e1);border-color:var(--hairline-strong,rgba(255,255,255,0.15))}.ds-btn-secondary:hover{background:var(--raised-2,rgba(255,255,255,0.085))}.ds-btn-secondary:active{transform:scale(0.98)}.ds-btn-secondary:focus-visible{outline:2px solid var(--text,#ece8e1);outline-offset:3px;}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Quiet tertiary action; coral text variant for quiet destructive actions.",
+      "html": "<button class=\"ds-btn-ghost\">Clear history</button>",
+      "css": ".ds-btn-ghost{font-family:var(--font-serif, Literata, Georgia, serif);height:44px;padding:0 20px;border:1px solid transparent;border-radius:12px;font-size:16px;font-weight:500;display:inline-flex;align-items:center;gap:8px;cursor:pointer;transition:background-color 150ms cubic-bezier(0.22,1,0.36,1),color 150ms cubic-bezier(0.22,1,0.36,1),transform 150ms cubic-bezier(0.22,1,0.36,1);background:transparent;color:var(--muted,#a39e96)}.ds-btn-ghost:hover{color:var(--text,#ece8e1);background:var(--raised-2,rgba(255,255,255,0.085))}.ds-btn-ghost:focus-visible{outline:2px solid var(--text,#ece8e1);outline-offset:3px;}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Raised field with outline border; green border and soft ring on focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"letters, e.g. br\">",
+      "css": ".ds-input{font-family:var(--font-serif, Literata, Georgia, serif);height:44px;width:280px;padding:0 14px;border:1px solid var(--outline,#7d7972);border-radius:12px;background:var(--raised,#1c1b1a);color:var(--text,#ece8e1);font-size:16px;transition:border-color 150ms,box-shadow 150ms}.ds-input::placeholder{color:var(--muted,#a39e96)}.ds-input:focus-visible{outline:0;border-color:var(--accent,#8fd18a);box-shadow:0 0 0 3px var(--accent-soft,rgba(143,209,138,0.13))}"
+    },
+    {
+      "name": "Dock",
+      "kind": "nav",
+      "refersTo": "dock",
+      "description": "Floating opaque navigation bar with wordmark, lowercase items and a raised-wash current pill.",
+      "html": "<nav class=\"ds-dock\"><a class=\"ds-brand\"><i>stilltype</i><b>.</b></a><button class=\"ds-nav is-active\">practice</button><button class=\"ds-nav\">train</button><button class=\"ds-nav\">progress</button><button class=\"ds-nav\">challenge</button></nav>",
+      "css": ".ds-dock{font-family:var(--font-serif, Literata, Georgia, serif);display:inline-flex;align-items:center;gap:2px;height:58px;padding:6px 6px 6px 20px;border:1px solid var(--hairline-strong,rgba(255,255,255,0.15));border-radius:16px;background:var(--raised,#1c1b1a);box-shadow:var(--shadow-float,0 8px 24px rgba(0,0,0,0.35))}.ds-brand{margin-right:16px;font-size:21px;color:var(--text,#ece8e1)}.ds-brand i{font-weight:500;letter-spacing:-0.01em}.ds-brand b{color:var(--accent,#8fd18a)}.ds-nav{font:inherit;font-size:16px;height:44px;padding:0 18px;border:0;border-radius:12px;background:transparent;color:var(--muted,#a39e96);cursor:pointer;transition:color 150ms}.ds-nav:hover{color:var(--text,#ece8e1)}.ds-nav.is-active{color:var(--text,#ece8e1);background:var(--raised-2,rgba(255,255,255,0.085))}.ds-nav:focus-visible{outline:2px solid var(--text,#ece8e1);outline-offset:3px;}"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "chip",
+      "refersTo": "segmented-option",
+      "description": "Mode and length picker in a hairline frame; the selection is a gliding raised-wash pill.",
+      "html": "<div class=\"ds-seg\"><button aria-pressed=\"true\">words</button><button>quote</button><button>code</button></div>",
+      "css": ".ds-seg{font-family:var(--font-serif, Literata, Georgia, serif);display:inline-flex;gap:2px;padding:3px;border:1px solid var(--hairline,rgba(255,255,255,0.075));border-radius:12px}.ds-seg button{font:inherit;font-size:15px;height:36px;padding:0 15px;border:0;border-radius:10px;background:transparent;color:var(--muted,#a39e96);cursor:pointer;transition:color 150ms,background-color 200ms}.ds-seg button:hover{color:var(--text,#ece8e1)}.ds-seg button[aria-pressed=\"true\"]{color:var(--text,#ece8e1);background:var(--raised-2,rgba(255,255,255,0.085))}.ds-seg button:focus-visible{outline:2px solid var(--text,#ece8e1);outline-offset:3px;}"
+    },
+    {
+      "name": "Status Word",
+      "kind": "chip",
+      "refersTo": null,
+      "description": "Dot plus lowercase mono word, coloured by meaning; never boxed.",
+      "html": "<span class=\"ds-status\"><span class=\"ds-dot\"></span>improved</span>",
+      "css": ".ds-status{display:inline-flex;align-items:center;gap:7px;color:var(--accent,#8fd18a);font:500 12px/1.3 var(--font-mono, \"Geist Mono\", ui-monospace, monospace);letter-spacing:0.02em}.ds-dot{width:7px;height:7px;border-radius:50%;background:currentColor}"
+    },
+    {
+      "name": "Typing Passage",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Literata passage: muted untyped, text-colour correct, coral + tint + wavy underline wrong, 3px green caret.",
+      "html": "<p class=\"ds-passage\"><span class=\"ok\">the quiet </span><span class=\"bad\">f</span><span class=\"caret\"></span>ox waits by the river</p>",
+      "css": ".ds-passage{position:relative;font-family:var(--font-serif, Literata, Georgia, serif);font-size:36px;line-height:1.75;letter-spacing:-0.004em;font-variant-ligatures:none;color:var(--muted,#a39e96);margin:0}.ds-passage .ok{color:var(--text,#ece8e1)}.ds-passage .bad{color:var(--danger,#ff8a6b);background:var(--danger-soft,rgba(255,138,107,0.16));border-radius:4px;text-decoration:underline wavy var(--danger,#ff8a6b) 1.5px;text-underline-offset:0.2em}.ds-passage .caret{display:inline-block;width:3px;height:1.15em;margin:0 -1.5px;vertical-align:-0.2em;border-radius:3px;background:var(--accent,#8fd18a)}"
+    },
+    {
+      "name": "Run Card",
+      "kind": "card",
+      "refersTo": "run-card",
+      "description": "The static print of a finished run: stamp, dithered rhythm art, numeral WPM, facts.",
+      "html": "<article class=\"ds-card\"><span class=\"ds-stamp\">22 sep 2026 · 19:40</span><div class=\"ds-art\"></div><div class=\"ds-score\"><strong>84</strong><span>wpm</span></div><dl class=\"ds-facts\"><div><dt>accuracy</dt><dd>97%</dd></div><div><dt>first-try errors</dt><dd>6</dd></div><div><dt>time</dt><dd>30s</dd></div></dl></article>",
+      "css": ".ds-card{width:360px;display:grid;gap:16px;padding:22px;border:1px solid var(--hairline-strong,rgba(255,255,255,0.15));border-radius:22px;background:linear-gradient(165deg,var(--card-top,#1f1e1c),var(--card-bottom,#121211));color:var(--text,#ece8e1);font-family:var(--font-serif, Literata, Georgia, serif)}.ds-stamp{color:var(--muted,#a39e96);font:12px/1.3 var(--font-mono, \"Geist Mono\", ui-monospace, monospace);letter-spacing:0.04em}.ds-art{aspect-ratio:16/9;border-radius:12px;background:repeating-linear-gradient(90deg,var(--rhythm-hit,#8fd18a) 0 4px,transparent 4px 8px) bottom/100% 60% no-repeat,var(--ground,#0f0f0e)}.ds-score{display:flex;align-items:baseline;gap:12px}.ds-score strong{font-size:132px;font-weight:300;line-height:0.9;letter-spacing:-0.04em;font-variant-numeric:tabular-nums lining-nums}.ds-score span{color:var(--muted,#a39e96);font:12px/1.2 var(--font-mono, \"Geist Mono\", ui-monospace, monospace)}.ds-facts{margin:0;padding-top:16px;border-top:1px solid var(--hairline,rgba(255,255,255,0.075));display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.ds-facts dt{color:var(--muted,#a39e96);font:12px/1.3 var(--font-mono, \"Geist Mono\", ui-monospace, monospace)}.ds-facts dd{margin:0;font-size:24px;line-height:1.1;letter-spacing:-0.02em}"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "toast",
+      "description": "Opaque raised confirmation at the bottom centre.",
+      "html": "<div class=\"ds-toast\"><span class=\"ds-dot\"></span>Progress saved on this device.</div>",
+      "css": ".ds-toast{font-family:var(--font-serif, Literata, Georgia, serif);display:inline-flex;align-items:center;gap:12px;min-height:52px;padding:6px 18px;border:1px solid var(--hairline-strong,rgba(255,255,255,0.15));border-radius:16px;background:var(--raised,#1c1b1a);box-shadow:var(--shadow-float,0 8px 24px rgba(0,0,0,0.35));color:var(--text,#ece8e1);font-size:15px}.ds-toast .ds-dot{width:7px;height:7px;border-radius:50%;background:var(--accent,#8fd18a)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Afterimage",
+    "overview": "The typing passage is the screen. Everything readable is set in one book face, Literata, on a warm near-black ground (or warm paper in light), so a passage reads like a page and a result reads like a print rather than a dashboard. One green carries every meaning of \"act here\" or \"you are here\": the caret, the primary button, the current selection and the timer. Content sits on hairline rules and open space. Boxes are kept for the few things that really are objects: the floating dock, the settings popover, the command palette, dialogs, toasts, and the run card.\n\nMotion is governed by \"still run\". While a run is in progress, nothing decorative moves near the passage. The caret is a solid spring-driven bar, letter states change instantly, lines scroll in about 150 ms, and the chrome fades out after the first keystroke. Motion belongs to chrome and to the time after a run: short fades, one gliding selection pill, and the run card's dithered rhythm art developing once in about 450 ms. Every duration comes from one scale that drops to zero under reduced motion.\n\nDensity is low and deliberate. The practice screen centres the passage with the numbers above it and a small set of controls. Results, progress and challenge are single editorial columns separated by rules. The name \"Stilltype\" is a working title, so the wordmark stays a cheap italic word plus a green full stop.",
+    "keyCharacteristics": [
+      "Literata for everything readable, including the passage and every numeral; Geist Mono only for small measurement labels, conditions and keys.",
+      "Dark (default) and light theme sets; the theme follows the system until the user picks one.",
+      "One green accent; coral for mistyped letters and regressions; amber for interrupted and mixed results.",
+      "Rules and space instead of boxes; opaque raised surfaces with a single soft float shadow; no glass, no glow.",
+      "Still run: the passage area stays motionless apart from the caret and line scroll.",
+      "Results are a static print: a run card with dithered rhythm art drawn from real keystroke intervals."
+    ],
+    "rules": [
+      {
+        "name": "The One Green Rule",
+        "body": "Green means \"act here\" or \"you are here\" and nothing else. There is exactly one filled-green control per view: the primary button. Secondary controls get a neutral focus ring, so they never read as a second primary.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two-Cue Rule",
+        "body": "Coral never carries meaning alone. A mistyped letter is coral text, a coral tint behind it, and a wavy underline.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tokens-Only Rule",
+        "body": "Every colour comes from a CSS variable defined in both theme blocks. Add a token to both themes before using a new value.",
+        "section": "colors"
+      },
+      {
+        "name": "The Book-Face Numerals Rule",
+        "body": "Every metric is set in Literata with tabular lining figures (`.num`). Geist Mono sets only the unit or label beside it, never the number.",
+        "section": "typography"
+      },
+      {
+        "name": "The Measuring Mono Rule",
+        "body": "Geist Mono appears at 12–13px for labels, conditions and keys. It is never used for headings, body copy or buttons.",
+        "section": "typography"
+      },
+      {
+        "name": "The Lowercase Chrome Rule",
+        "body": "Chrome labels (dock, settings, palette, mono labels) are lowercase. Headings and buttons use sentence case. Nothing is uppercase.",
+        "section": "typography"
+      },
+      {
+        "name": "The Rules-Not-Boxes Rule",
+        "body": "Sections are separated by a 1px hairline and space, never by a card. If a region is not a floating object or the run card, it has no background and no border box.",
+        "section": "layout"
+      },
+      {
+        "name": "The Step-Back Rule",
+        "body": "While a run is in progress (`body[data-running=\"true\"]`), the dock, controls, shortcuts and footer fade to zero opacity and stop taking pointer input unless they hold focus. Only the passage and the numbers remain.",
+        "section": "layout"
+      },
+      {
+        "name": "The Opaque Float Rule",
+        "body": "A surface that floats is opaque raised stock plus the float shadow. It has no glass, no blur behind it and no coloured glow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do take every colour, size, radius, duration and easing from the CSS variables at the top of `src/styles.css`, and define new colour tokens in both the dark and light blocks.",
+      "Do set every readable word and every number in Literata, with tabular lining figures on metrics. Keep Geist Mono to 12–13px labels, conditions and keys.",
+      "Do keep exactly one filled-green primary action per view. All other actions are secondary, ghost or danger.",
+      "Do separate sections with a 1px hairline and 32px of space.",
+      "Do pair coral with a second cue: a wavy underline, a tint, or a word.",
+      "Do drive every duration from the `--dur-*` scale (80, 150, 200, 250, 350ms × `--motion-scale`) with the `--ease-out` curve (`cubic-bezier(0.22, 1, 0.36, 1)`), so reduced motion takes them all to zero.",
+      "Do keep chrome fades at 200ms or less, and animate the selection pill by transform only.",
+      "Do keep chrome labels lowercase and headings and buttons in sentence case."
+    ],
+    "donts": [
+      "Don't move anything decorative near the passage while a run is in progress. Letter states change instantly; only the caret spring and the ~150ms line scroll move.",
+      "Don't reintroduce the effects removed after the critique: a streak glow or caret aura, a letter ink trail (letters landing lit and cooling), an error shake, digit pop-ins or number reels, a word underline or lens sweeping through the glyphs, run-card tilt, glare or foil, glass surfaces, a live rhythm strip, or blur reveals on restart and results.",
+      "Don't use backdrop-filter, translucent surfaces or coloured glows. Floating surfaces are opaque raised stock with the one float shadow. (The challenge handoff's blurred passage veil is a concealment device that hides the next player's text. It is not a reveal effect and must not spread elsewhere.)",
+      "Don't add kickers or eyebrows above headings, and don't use uppercase tracked labels.",
+      "Don't add a second accent. Periwinkle belongs to the ghost pacer alone, and amber to interrupted and mixed results alone.",
+      "Don't box ordinary sections as cards. The run card is the one card.",
+      "Don't move the app back toward the retired Ash system: no blue call to action, no Geist sans, no dark-only rule, no mono status pills.",
+      "Don't invest in the wordmark. \"Stilltype\" is a working title, and the brand stays an italic word and a green full stop."
+    ]
+  }
+}
