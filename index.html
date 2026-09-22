@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#141311"><meta name="description" content="A little space to find your typing rhythm. Simple, focused typing practice."><title>Stilltype — Find your flow</title><link rel="stylesheet" href="/src/styles.css"></head>
+<body>
+<a class="skip-link" href="#typing-input">Skip to typing</a>
+<div class="page">
+<header class="topbar" aria-label="Practice settings">
+<div class="topbar-brand"><a class="brand" href="/" aria-label="Stilltype home">stilltype<span class="brand-dot">.</span></a></div>
+<div class="topbar-settings">
+<div class="setting-group"><h2 class="setting-label sr-only">Practice</h2><div class="mode-group" aria-label="Test mode"><button data-mode="time" class="selected"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg> time</button><button data-mode="words"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/></svg> words</button><button data-mode="quote"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h5v7H5V6Zm9 0h5v7h-5V6ZM10 13c0 4-2 5-4 5m13-5c0 4-2 5-4 5"/></svg> quote</button></div></div>
+<div class="setting-group" id="length-settings"><h2 class="setting-label sr-only" id="length-label">Duration</h2><div id="lengths" class="length-group" aria-label="Test length"></div></div>
+<div class="setting-group topbar-options"><h2 class="setting-label sr-only">Options</h2><button id="punctuation" aria-pressed="false"><span>@</span> punctuation</button></div>
+</div>
+
+</header>
+<main id="main"><h1 class="sr-only">Typing practice</h1>
+<section class="practice" aria-label="Typing practice">
+<div class="typing-panel" id="panel">
+<div class="session-heading"><span id="session-label">English · Common words</span><span class="ready"><i></i><span id="status" role="status">Ready when you are</span></span></div>
+<div class="stats"><div class="stat timer"><strong id="remaining">30<span>s</span></strong><small id="remaining-label">remaining</small></div><div class="stat"><strong id="wpm">—</strong><small title="Correct characters divided by five, per minute">words / min</small></div><div class="stat"><strong id="accuracy">—</strong><small title="Correct keystrokes as a percentage of all attempts, including corrected mistakes">accuracy</small></div><div class="progress-track"><div id="progress"></div></div></div>
+<div class="typing-wrap" id="typing-wrap"><div id="passage" aria-hidden="true"></div><textarea id="typing-input" aria-label="Typing practice input" aria-describedby="input-help accessible-passage" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" rows="1"></textarea><span id="accessible-passage" class="sr-only"></span></div>
+<div id="result" class="result" hidden><h2>Session complete</h2><p id="result-copy"></p><button class="primary" id="again">Try again</button></div>
+<div class="panel-bottom"><span id="input-help"><span class="small-cursor">▎</span> Start typing to begin</span><button id="restart" class="icon-button" aria-label="Restart test" title="Restart test (Escape)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 7M19 3v5h-5"/></svg></button></div>
+</div>
+<div class="below-panel"><span><kbd>esc</kbd> restart test <span class="hint-divider">/</span> <kbd>tab</kbd> move between controls</span><button id="keyboard-toggle" class="icon-button" title="Show keyboard" aria-controls="keyboard" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 15h10"/></svg> <span id="keyboard-label" class="sr-only">Show keyboard</span></button></div>
+<div id="keyboard" class="keyboard" hidden aria-label="On-screen keyboard"></div>
+</section>
+</main>
+<footer class="page-footer"><span id="best">No completed sessions yet</span><button id="reset-local" title="Clear saved best score">Reset best</button><span id="best-feedback" role="status"></span><button id="undo-best" hidden>Undo reset</button></footer>
+
+</div><div id="announcement" class="sr-only" role="status" aria-live="polite"></div><script type="module" src="/src/app.js"></script>
+</body></html>

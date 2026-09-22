@@ -1,0 +1,46 @@
+<!-- @dsCard group="Overlays" viewport="700x230" subtitle="220px · 32px items · mono kbd hints right · group headers mono-caps · danger item last, after a hairline" name="Dropdown menu" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css"><link rel="stylesheet" href="./components.css">
+<style>
+  html,body{margin:0;background:var(--surface-canvas);color:var(--text-primary);font:var(--type-body);-webkit-font-smoothing:antialiased}
+  body{padding:20px 24px;box-sizing:border-box}
+  .mono{font:var(--type-mono-xs);color:var(--text-secondary)}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .col{display:flex;flex-direction:column;gap:6px}
+  .scrim{background:rgba(20,19,17,0.6);border-radius:8px;padding:28px;display:flex;align-items:center;justify-content:center}
+  .dialog{background:var(--surface-raised);border-radius:var(--radius-lg);box-shadow:var(--shadow-popover);padding:20px 22px;width:100%;max-width:420px;display:flex;flex-direction:column;gap:12px}
+  .dialog h2{margin:0;font:var(--type-label);font-size:var(--text-base)}
+  .dialog p{margin:0;font:var(--type-body);color:var(--text-secondary)}
+  .dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+  .toast{display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:var(--radius-md);background:var(--surface-raised);box-shadow:var(--shadow-popover);width:100%;max-width:380px}
+  .toast .dot{width:8px;height:8px;border-radius:9999px;flex:none}
+  .toast .t{font:var(--type-label);flex:1;min-width:0}
+  .toast .d{font:var(--type-caption);color:var(--text-secondary)}
+  .menu{background:var(--surface-raised);border-radius:var(--radius-md);box-shadow:var(--shadow-popover);padding:4px;width:220px;display:flex;flex-direction:column;gap:1px}
+  .mi{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:var(--radius-sm);font:var(--type-body);cursor:pointer;color:var(--text-primary)}
+  .mi:hover,.mi.is-active{background:var(--overlay-hover)}
+  .mi .k{margin-left:auto}
+  .mi.danger{color:var(--text-danger)}
+  .sep{height:1px;background:var(--border-hairline);margin:3px 6px}
+  .mh{font:var(--type-mono-xs);text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);padding:8px 10px 4px}
+  .cmd{background:var(--surface-raised);border-radius:var(--radius-lg);box-shadow:var(--shadow-popover);width:100%;max-width:520px;overflow:hidden}
+  .cmd .in{display:flex;align-items:center;gap:10px;height:48px;padding:0 16px;box-shadow:inset 0 -1px 0 var(--border-hairline)}
+  .cmd input{flex:1;border:0;background:transparent;color:var(--text-primary);font:var(--type-body);font-size:var(--text-base);outline:0}
+  .cmd input::placeholder{color:var(--text-tertiary)}
+  .cmd .list{padding:6px;display:flex;flex-direction:column;gap:1px;max-height:260px;overflow:auto}
+  .cmd .mi{height:36px}
+  .cmd .foot{display:flex;gap:14px;padding:8px 14px;font:var(--type-caption);color:var(--text-tertiary);box-shadow:inset 0 1px 0 var(--border-hairline)}
+  .ico{width:16px;height:16px;flex:none;color:var(--text-secondary)}
+</style></head><body><div class="row" style="gap:32px;align-items:flex-start">
+  <div class="menu" role="menu">
+    <div class="mi"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2v3h-3"/></svg>Redeploy<span class="kbd k">R</span></div>
+    <div class="mi is-active"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10v10H3zM6 6h4v4H6z"/></svg>View logs<span class="kbd k">L</span></div>
+    <div class="mi"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h8v8H4zM6 2v2M10 2v2"/></svg>Copy deployment ID</div>
+    <div class="sep"></div>
+    <div class="mh">Promote to</div>
+    <div class="mi">Staging</div>
+    <div class="mi">Production<span class="mono k">current</span></div>
+    <div class="sep"></div>
+    <div class="mi danger"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M6 4V2h4v2M5 4l.5 9h5l.5-9"/></svg>Delete deployment</div>
+  </div>
+  <div class="col" style="gap:8px;padding-top:4px"><span class="mono">Anchored to trigger, 4px gap, flips on collision.</span><span class="mono">Opens 120ms ease-out, 4px translate. Closes instantly.</span><span class="mono">Arrow keys move, type-ahead selects, Esc closes.</span></div>
+</div></body></html>

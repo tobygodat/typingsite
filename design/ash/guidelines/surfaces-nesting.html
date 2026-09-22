@@ -1,0 +1,31 @@
+<!-- @dsCard group="Surfaces" viewport="700x220" subtitle="How the ladder nests: canvas → panel → card → raised" name="Surface nesting" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  html,body{margin:0;background:var(--surface-canvas);color:var(--text-primary);font:var(--type-body);-webkit-font-smoothing:antialiased}
+  body{padding:20px 24px;box-sizing:border-box}
+  .mono{font:var(--type-mono-xs);color:var(--text-secondary)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .sw{flex:1 1 0;min-width:90px;display:flex;flex-direction:column;gap:8px}
+  .chip{height:56px;border-radius:var(--radius-sm)}
+  .lbl{font:var(--type-label)}
+</style></head><body><div style="display:grid;grid-template-columns:200px 1fr;gap:0;background:var(--surface-canvas);height:180px;border-radius:var(--radius-md);overflow:hidden">
+  <div style="background:var(--surface-panel);padding:16px;display:flex;flex-direction:column;gap:6px">
+    <div class="mono" style="text-transform:uppercase;letter-spacing:var(--tracking-label);font:var(--type-eyebrow);color:var(--text-tertiary);margin-bottom:6px">Panel · surface-1</div>
+    <div style="padding:6px 10px;border-radius:var(--radius-sm);background:var(--surface-pressed);font:var(--type-label)">Overview</div>
+    <div style="padding:6px 10px;border-radius:var(--radius-sm);color:var(--text-secondary);font:var(--type-label)">Deployments</div>
+    <div style="padding:6px 10px;border-radius:var(--radius-sm);color:var(--text-secondary);font:var(--type-label)">Settings</div>
+  </div>
+  <div style="padding:20px;display:flex;gap:12px">
+    <div style="flex:1;background:var(--surface-card);border-radius:var(--radius-md);padding:16px;display:flex;flex-direction:column;gap:8px">
+      <div class="mono" style="font:var(--type-eyebrow);text-transform:uppercase;letter-spacing:var(--tracking-label);color:var(--text-tertiary)">Card · surface-2</div>
+      <div style="font:var(--type-heading)">3 open issues</div>
+      <div style="color:var(--text-secondary);font:var(--type-caption)">Updated 2 min ago</div>
+    </div>
+    <div style="width:180px;background:var(--surface-raised);border-radius:var(--radius-md);box-shadow:var(--shadow-popover);padding:8px;display:flex;flex-direction:column;gap:2px;align-self:start">
+      <div class="mono" style="font:var(--type-eyebrow);text-transform:uppercase;letter-spacing:var(--tracking-label);color:var(--text-tertiary);padding:4px 8px">Raised · surface-3</div>
+      <div style="padding:6px 8px;border-radius:var(--radius-xs);font:var(--type-label);background:var(--overlay-hover)">Rename</div>
+      <div style="padding:6px 8px;border-radius:var(--radius-xs);font:var(--type-label)">Duplicate</div>
+      <div style="padding:6px 8px;border-radius:var(--radius-xs);font:var(--type-label);color:var(--text-danger)">Delete</div>
+    </div>
+  </div>
+</div></body></html>

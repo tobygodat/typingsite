@@ -1,0 +1,72 @@
+:root {
+  color-scheme: dark;
+
+  /* ── Base palette (given) ── */
+  --ash-text:      #E8E5DF;  /* 12.3:1 */
+  --ash-muted:     #A39E96;  /* 5.8:1 */
+  --ash-faint:     #6F6B65;  /* decorative only */
+  --ash-outline:   #7D7972;
+  --ash-selection: #4A463F;
+  --ash-primary:   #0075DE;  /* saturated CTA blue — white text on it, 4.7:1 */
+  --ash-primary-text: #4DA3F5;  /* blue for links/focus on dark, 6.2:1 */
+  --ash-accent:    #8FD18A;  /* 8.6:1 — success / mint */
+  --ash-danger:    #E8907C;  /* 6.4:1 */
+  --ash-warning:   #E0B565;  /* 8.0:1 */
+  --ash-scrim:     rgba(0, 0, 0, 0.55);
+
+  /* ── Tonal surface ladder (derived, warm neutral) ── */
+  --ash-surface-0: #141311;  /* canvas / app background */
+  --ash-surface-1: #1A1917;  /* panels, sidebars */
+  --ash-surface-2: #22211E;  /* cards, inputs, rows */
+  --ash-surface-3: #2A2926;  /* raised: menus, popovers, hover */
+  --ash-surface-4: #33312D;  /* pressed / active row */
+
+  /* ── Semantic: text ── */
+  --text-primary:   var(--ash-text);
+  --text-secondary: var(--ash-muted);
+  --text-tertiary:  var(--ash-faint);   /* placeholders, disabled — never for readable copy */
+  --text-inverse:   var(--ash-surface-0);
+  --text-accent:    var(--ash-accent);
+  --text-danger:    var(--ash-danger);
+  --text-warning:   var(--ash-warning);
+  --text-link:      var(--ash-primary-text);
+  --text-on-primary: #FFFFFF;
+  --text-success:   var(--ash-accent);
+
+  /* ── Semantic: surfaces ── */
+  --surface-canvas:  var(--ash-surface-0);
+  --surface-panel:   var(--ash-surface-1);
+  --surface-card:    var(--ash-surface-2);
+  --surface-raised:  var(--ash-surface-3);
+  --surface-pressed: var(--ash-surface-4);
+  --surface-scrim:   var(--ash-scrim);
+  --surface-selection: var(--ash-selection);
+
+  /* ── Semantic: lines (used sparingly — tonal system) ── */
+  --border-hairline: color-mix(in oklab, var(--ash-outline) 22%, transparent);
+  --border-strong:   var(--ash-outline);
+  --border-focus:    var(--ash-primary-text);
+
+  /* ── Semantic: primary (actions) ── */
+  --primary:         var(--ash-primary);
+  --primary-hover:   #1A85E8;
+  --primary-pressed: #0066C4;
+  --primary-soft:    color-mix(in oklab, var(--ash-primary) 14%, transparent);
+
+  /* ── Semantic: status ── */
+  --success:         var(--ash-accent);
+  --success-soft:    color-mix(in oklab, var(--ash-accent) 14%, transparent);
+  --accent:          var(--ash-accent);        /* alias: mint, decorative */
+  --accent-soft:     var(--success-soft);
+  --danger:          var(--ash-danger);
+  --danger-soft:     color-mix(in oklab, var(--ash-danger) 14%, transparent);
+  --warning:         var(--ash-warning);
+  --warning-soft:    color-mix(in oklab, var(--ash-warning) 14%, transparent);
+
+  /* ── Interaction overlays (layer on any surface) ── */
+  --overlay-hover:   rgba(232, 229, 223, 0.04);
+  --overlay-pressed: rgba(232, 229, 223, 0.08);
+  --focus-ring:      0 0 0 2px var(--ash-surface-0), 0 0 0 4px var(--ash-primary-text);
+}
+
+::selection { background: var(--ash-selection); color: var(--ash-text); }

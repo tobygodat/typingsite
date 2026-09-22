@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stilltype — practice</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/ash/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+--font-sans:"Geist",ui-sans-serif,system-ui,sans-serif;
+--font-mono:"Geist Mono",ui-monospace,Menlo,Consolas,monospace;
+--ash-text:#E8E5DF;--ash-muted:#A39E96;--ash-faint:#6F6B65;--ash-outline:#7D7972;--ash-selection:#4A463F;
+--ash-primary:#0075DE;--ash-primary-text:#4DA3F5;--ash-accent:#8FD18A;--ash-danger:#E8907C;--ash-warning:#E0B565;
+--ash-surface-0:#141311;--ash-surface-1:#1A1917;--ash-surface-2:#22211E;--ash-surface-3:#2A2926;--ash-surface-4:#33312D;
+--text-primary:var(--ash-text);--text-secondary:var(--ash-muted);--text-tertiary:var(--ash-faint);
+--text-link:var(--ash-primary-text);--text-on-primary:#FFFFFF;--text-danger:var(--ash-danger);--text-warning:var(--ash-warning);
+--surface-canvas:var(--ash-surface-0);--surface-panel:var(--ash-surface-1);--surface-card:var(--ash-surface-2);
+--surface-raised:var(--ash-surface-3);--surface-pressed:var(--ash-surface-4);
+--border-hairline:color-mix(in oklab,var(--ash-outline) 22%,transparent);--border-strong:var(--ash-outline);--border-focus:var(--ash-primary-text);
+--primary:var(--ash-primary);--primary-hover:#1A85E8;--primary-pressed:#0066C4;--primary-soft:color-mix(in oklab,var(--ash-primary) 14%,transparent);
+--success:var(--ash-accent);--success-soft:color-mix(in oklab,var(--ash-accent) 14%,transparent);
+--danger:var(--ash-danger);--danger-soft:color-mix(in oklab,var(--ash-danger) 14%,transparent);
+--warning:var(--ash-warning);--warning-soft:color-mix(in oklab,var(--ash-warning) 14%,transparent);
+--overlay-hover:rgba(232,229,223,0.04);--overlay-pressed:rgba(232,229,223,0.08);
+--control-sm:28px;--control-md:32px;--control-lg:40px;--control-touch:44px;
+--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:12px;--radius-full:9999px;
+--duration-fast:120ms;--duration-base:180ms;--duration-slow:260ms;
+--ease-out:cubic-bezier(0.2,0,0,1);--ease-in-out:cubic-bezier(0.4,0,0.2,1);
+--shadow-popover:0 8px 24px rgba(0,0,0,0.45),0 0 0 1px var(--border-hairline);
+}
+body{margin:0;background:var(--ash-surface-0);color:var(--ash-text);font-family:var(--font-sans);-webkit-font-smoothing:antialiased}
+a{color:var(--ash-primary-text);text-decoration:none}
+a:hover{color:#8CC4F9}
+a.tab{display:inline-flex;align-items:center;color:var(--text-secondary)}
+a.tab.is-active,a.tab:hover{color:var(--text-primary)}
+a.btn{text-decoration:none}
+a.btn-primary,a.btn-primary:hover{color:var(--text-on-primary)}
+a.btn-secondary,a.btn-secondary:hover{color:var(--text-primary)}
+.sep{width:1px;height:16px;background:var(--border-hairline);flex:none}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; background: var(--surface-canvas); display: flex; flex-direction: column;">
+
+  <header style="height: 52px; flex: none; box-sizing: border-box; padding: 0 20px; background: var(--surface-panel); display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+    <div style="display: flex; align-items: center; gap: 18px;">
+      <a href="Main.dc.html" style="font: var(--weight-semibold) 15px/1 var(--font-sans); letter-spacing: -0.01em; color: var(--text-primary);">stilltype<span style="color: var(--primary);">.</span></a>
+      <nav class="tabs" aria-label="Sections" style="gap: 2px;">
+        <a class="tab is-active" href="Main.dc.html" aria-current="page">Practice</a>
+        <a class="tab" href="Results.dc.html">Train</a>
+        <a class="tab" href="Retest.dc.html">Progress</a>
+      </nav>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="font: var(--type-mono-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums;">best 96 wpm</span>
+      <span class="badge badge-neutral">&#9679; guest</span>
+      <button type="button" class="btn btn-ghost btn-icon btn-sm" aria-label="Keyboard display">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M7 14h10"></path></svg>
+      </button>
+      <button type="button" class="btn btn-ghost btn-icon btn-sm" aria-label="Practice settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2M12 19v2M4.2 7.2l1.7 1M18.1 15.8l1.7 1M4.2 16.8l1.7-1M18.1 8.2l1.7-1"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <div style="flex-grow: 1; box-sizing: border-box; padding: 12px 40px 20px; display: flex; flex-direction: column; align-items: center;">
+
+    <div style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 6px; background: var(--surface-card); border-radius: var(--radius-sm);" role="group" aria-label="Practice settings">
+      <div class="tabs" style="gap: 2px;">
+        <button type="button" class="tab is-active" style="height: 28px;">time</button>
+        <button type="button" class="tab" style="height: 28px;">words</button>
+        <button type="button" class="tab" style="height: 28px;">quote</button>
+      </div>
+      <span class="sep"></span>
+      <div class="tabs" style="gap: 2px;">
+        <button type="button" class="tab" style="height: 28px;">15</button>
+        <button type="button" class="tab is-active" style="height: 28px;">30</button>
+        <button type="button" class="tab" style="height: 28px;">60</button>
+        <button type="button" class="tab" style="height: 28px;">120</button>
+      </div>
+      <span class="sep"></span>
+      <label class="opt" style="font: var(--type-label); color: var(--text-secondary); padding: 0 6px;">
+        <input type="checkbox" class="switch" checked>
+        <span>punctuation</span>
+      </label>
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <section aria-label="Typing test" style="width: 1040px; display: flex; flex-direction: column; gap: 18px;">
+
+      <div style="display: flex; align-items: baseline; gap: 20px; font: var(--type-mono); font-variant-numeric: tabular-nums;">
+        <span style="color: var(--text-primary); font-size: var(--text-md);">18<span style="color: var(--text-secondary);">s</span></span>
+        <span style="color: var(--text-primary);">94 <span style="color: var(--text-secondary);">wpm</span></span>
+        <span style="color: var(--text-primary);">96.1% <span style="color: var(--text-secondary);">acc</span></span>
+        <span style="flex-grow: 1;"></span>
+        <span style="font: var(--type-mono-xs); color: var(--text-secondary);">english &middot; common words &middot; corpus v3</span>
+      </div>
+
+      <p style="margin: 0; height: 160px; overflow: hidden; font: var(--weight-regular) 28px/1.9 var(--font-mono);">
+        <span style="color: var(--text-primary);">the quiet part of practice is noticing which </span><span style="color: var(--text-danger); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 6px;">l</span><span style="display: inline-block; width: 2px; height: 32px; margin: 0 -1px; vertical-align: -7px; background: var(--primary);"></span><span style="color: var(--text-secondary);">etters slow you down. small delays are the signal, so type through them and not around them. the rhythm comes back on its own.</span>
+      </p>
+
+      <div style="height: 2px; border-radius: var(--radius-full); background: var(--surface-card); overflow: hidden;">
+        <div style="width: 42%; height: 2px; border-radius: var(--radius-full); background: var(--primary);"></div>
+      </div>
+    </section>
+
+    <div style="height: 40px;"></div>
+
+    <button type="button" class="btn btn-ghost btn-icon" aria-label="Restart test">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 7M19 3v5h-5"></path></svg>
+    </button>
+
+    <div style="flex-grow: 1;"></div>
+
+    <span style="font: var(--type-caption); color: var(--text-secondary);"><span class="kbd">esc</span> restart &middot; <span class="kbd">tab</span> move between controls &middot; <span class="kbd">&#8984;K</span> jump anywhere</span>
+
+    <div style="height: 18px;"></div>
+
+    <div style="width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <span style="font: var(--type-mono-xs); color: var(--text-secondary);">guest profile &middot; stored on this device</span>
+      <button type="button" class="btn btn-danger btn-sm">Clear local history</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

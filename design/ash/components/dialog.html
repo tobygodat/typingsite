@@ -1,0 +1,38 @@
+<!-- @dsCard group="Overlays" viewport="700x260" subtitle="surface-3 on a 60% canvas scrim · radius 12 · max 420px · destructive confirms echo the noun and keep Cancel on the left" name="Dialog" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css"><link rel="stylesheet" href="./components.css">
+<style>
+  html,body{margin:0;background:var(--surface-canvas);color:var(--text-primary);font:var(--type-body);-webkit-font-smoothing:antialiased}
+  body{padding:20px 24px;box-sizing:border-box}
+  .mono{font:var(--type-mono-xs);color:var(--text-secondary)}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .col{display:flex;flex-direction:column;gap:6px}
+  .scrim{background:rgba(20,19,17,0.6);border-radius:8px;padding:28px;display:flex;align-items:center;justify-content:center}
+  .dialog{background:var(--surface-raised);border-radius:var(--radius-lg);box-shadow:var(--shadow-popover);padding:20px 22px;width:100%;max-width:420px;display:flex;flex-direction:column;gap:12px}
+  .dialog h2{margin:0;font:var(--type-label);font-size:var(--text-base)}
+  .dialog p{margin:0;font:var(--type-body);color:var(--text-secondary)}
+  .dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+  .toast{display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:var(--radius-md);background:var(--surface-raised);box-shadow:var(--shadow-popover);width:100%;max-width:380px}
+  .toast .dot{width:8px;height:8px;border-radius:9999px;flex:none}
+  .toast .t{font:var(--type-label);flex:1;min-width:0}
+  .toast .d{font:var(--type-caption);color:var(--text-secondary)}
+  .menu{background:var(--surface-raised);border-radius:var(--radius-md);box-shadow:var(--shadow-popover);padding:4px;width:220px;display:flex;flex-direction:column;gap:1px}
+  .mi{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:var(--radius-sm);font:var(--type-body);cursor:pointer;color:var(--text-primary)}
+  .mi:hover,.mi.is-active{background:var(--overlay-hover)}
+  .mi .k{margin-left:auto}
+  .mi.danger{color:var(--text-danger)}
+  .sep{height:1px;background:var(--border-hairline);margin:3px 6px}
+  .mh{font:var(--type-mono-xs);text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);padding:8px 10px 4px}
+  .cmd{background:var(--surface-raised);border-radius:var(--radius-lg);box-shadow:var(--shadow-popover);width:100%;max-width:520px;overflow:hidden}
+  .cmd .in{display:flex;align-items:center;gap:10px;height:48px;padding:0 16px;box-shadow:inset 0 -1px 0 var(--border-hairline)}
+  .cmd input{flex:1;border:0;background:transparent;color:var(--text-primary);font:var(--type-body);font-size:var(--text-base);outline:0}
+  .cmd input::placeholder{color:var(--text-tertiary)}
+  .cmd .list{padding:6px;display:flex;flex-direction:column;gap:1px;max-height:260px;overflow:auto}
+  .cmd .mi{height:36px}
+  .cmd .foot{display:flex;gap:14px;padding:8px 14px;font:var(--type-caption);color:var(--text-tertiary);box-shadow:inset 0 1px 0 var(--border-hairline)}
+  .ico{width:16px;height:16px;flex:none;color:var(--text-secondary)}
+</style></head><body><div class="scrim"><div class="dialog" role="dialog" aria-modal="true">
+  <h2>Delete atlas-api?</h2>
+  <p>This removes the project, its 24 deployments and all environment variables. Domains are released immediately. This can't be undone.</p>
+  <div class="col" style="gap:6px;margin-top:4px"><label class="label" style="font:var(--type-caption);color:var(--text-secondary)">Type <span class="kbd">atlas-api</span> to confirm</label><input class="input" style="font:var(--type-mono)" placeholder="atlas-api"></div>
+  <div class="actions"><button class="btn btn-secondary">Cancel</button><button class="btn btn-danger" disabled>Delete project</button></div>
+</div></div></body></html>

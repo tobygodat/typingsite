@@ -1,0 +1,7 @@
+:root {
+  --radius-xs: 4px;   /* checkboxes, tags, code chips */
+  --radius-sm: 6px;   /* buttons, inputs, menu items */
+  --radius-md: 8px;   /* cards, popovers, dialogs */
+  --radius-lg: 12px;  /* sheets, large modals, mobile cards */
+  --radius-full: 9999px;  /* pills, avatars, switches */
+}

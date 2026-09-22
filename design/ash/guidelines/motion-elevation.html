@@ -1,0 +1,16 @@
+<!-- @dsCard group="Motion" viewport="700x150" subtitle="Shadows only on floating layers · 120–260ms · ease-out" name="Motion & elevation" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  html,body{margin:0;background:var(--surface-canvas);color:var(--text-primary);font:var(--type-body);-webkit-font-smoothing:antialiased}
+  body{padding:20px 24px;box-sizing:border-box}
+  .mono{font:var(--type-mono-xs);color:var(--text-secondary)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .sw{flex:1 1 0;min-width:90px;display:flex;flex-direction:column;gap:8px}
+  .chip{height:56px;border-radius:var(--radius-sm)}
+  .lbl{font:var(--type-label)}
+</style></head><body><div style="display:flex;gap:24px;align-items:center">
+  <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><div style="width:120px;height:64px;background:var(--surface-card);border-radius:var(--radius-md)"></div><span class="mono">card · no shadow</span></div>
+  <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><div style="width:120px;height:64px;background:var(--surface-raised);border-radius:var(--radius-md);box-shadow:var(--shadow-popover)"></div><span class="mono">popover</span></div>
+  <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><div style="width:120px;height:64px;background:var(--surface-raised);border-radius:var(--radius-md);box-shadow:var(--shadow-dialog)"></div><span class="mono">dialog</span></div>
+  <div style="flex:1;font:var(--type-mono-xs);color:var(--text-secondary);line-height:1.8">fast 120ms · hover, press<br>base 180ms · reveal, collapse<br>slow 260ms · dialog, sheet<br>ease-out cubic-bezier(.2,0,0,1)</div>
+</div></body></html>

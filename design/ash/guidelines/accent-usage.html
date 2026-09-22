@@ -1,0 +1,19 @@
+<!-- @dsCard group="Colors" viewport="700x160" subtitle="Blue = actions (CTA, link, focus). Mint = success state only — never a button" name="Primary vs status" -->
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  html,body{margin:0;background:var(--surface-canvas);color:var(--text-primary);font:var(--type-body);-webkit-font-smoothing:antialiased}
+  body{padding:20px 24px;box-sizing:border-box}
+  .mono{font:var(--type-mono-xs);color:var(--text-secondary)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .sw{flex:1 1 0;min-width:90px;display:flex;flex-direction:column;gap:8px}
+  .chip{height:56px;border-radius:var(--radius-sm)}
+  .lbl{font:var(--type-label)}
+</style></head><body><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+  <div style="height:32px;padding:0 14px;display:flex;align-items:center;background:var(--primary);color:var(--text-on-primary);border-radius:var(--radius-sm);font:var(--type-label)">Deploy</div>
+  <div style="height:32px;padding:0 14px;display:flex;align-items:center;background:var(--surface-raised);border-radius:var(--radius-sm);font:var(--type-label)">Cancel</div>
+  <div style="height:32px;padding:0 14px;display:flex;align-items:center;background:var(--surface-card);border-radius:var(--radius-sm);font:var(--type-label);box-shadow:var(--focus-ring)">Focused</div>
+  <a style="font:var(--type-body);color:var(--text-link);text-decoration:underline;text-underline-offset:3px;text-decoration-color:color-mix(in oklab,var(--ash-primary-text) 40%,transparent)">View logs</a>
+  <span style="font:var(--type-mono-xs);color:var(--success);background:var(--success-soft);padding:3px 8px;border-radius:var(--radius-full)">● ready</span>
+  <span style="font:var(--type-mono-xs);color:var(--warning);background:var(--warning-soft);padding:3px 8px;border-radius:var(--radius-full)">● building</span>
+  <span style="font:var(--type-mono-xs);color:var(--danger);background:var(--danger-soft);padding:3px 8px;border-radius:var(--radius-full)">● failed</span>
+</div></body></html>

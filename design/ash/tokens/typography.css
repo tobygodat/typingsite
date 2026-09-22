@@ -1,0 +1,39 @@
+:root {
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Scale — sans */
+  --text-xs:   12px;  /* metadata, captions */
+  --text-sm:   13px;  /* dense UI: table cells, secondary labels */
+  --text-base: 14px;  /* default UI body */
+  --text-md:   16px;  /* reading body, mobile default */
+  --text-lg:   18px;  /* card titles */
+  --text-xl:   22px;  /* section headings */
+  --text-2xl:  28px;  /* page titles */
+  --text-3xl:  36px;  /* hero / display */
+
+  --leading-tight:  1.2;
+  --leading-snug:   1.35;
+  --leading-normal: 1.5;
+
+  --tracking-tight:  -0.02em;  /* headings ≥ 22px */
+  --tracking-normal: 0;
+  --tracking-mono:   0;
+  --tracking-label:  0.04em;   /* uppercase mono eyebrows */
+
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semibold: 600;
+
+  /* Composites */
+  --type-display: var(--weight-semibold) var(--text-3xl)/var(--leading-tight) var(--font-sans);
+  --type-title:   var(--weight-semibold) var(--text-2xl)/var(--leading-tight) var(--font-sans);
+  --type-heading: var(--weight-medium) var(--text-xl)/var(--leading-snug) var(--font-sans);
+  --type-body:    var(--weight-regular) var(--text-base)/var(--leading-normal) var(--font-sans);
+  --type-body-lg: var(--weight-regular) var(--text-md)/var(--leading-normal) var(--font-sans);
+  --type-label:   var(--weight-medium) var(--text-sm)/var(--leading-snug) var(--font-sans);
+  --type-caption: var(--weight-regular) var(--text-xs)/var(--leading-snug) var(--font-sans);
+  --type-mono:    var(--weight-regular) var(--text-sm)/var(--leading-normal) var(--font-mono);
+  --type-mono-xs: var(--weight-regular) var(--text-xs)/var(--leading-snug) var(--font-mono);
+  --type-eyebrow: var(--weight-medium) 11px/1 var(--font-mono);  /* uppercase, tracking-label */
+}

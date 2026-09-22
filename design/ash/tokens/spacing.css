@@ -1,0 +1,27 @@
+:root {
+  /* 4px base */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Control heights — standard density */
+  --control-sm: 28px;
+  --control-md: 32px;  /* default */
+  --control-lg: 40px;
+  --control-touch: 44px;  /* mobile minimum hit target */
+
+  /* Layout */
+  --sidebar-w: 240px;
+  --content-max: 1200px;
+  --reading-max: 68ch;
+  --gutter: var(--space-6);
+  --gutter-mobile: var(--space-4);
+}

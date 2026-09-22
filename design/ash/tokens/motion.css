@@ -1,0 +1,12 @@
+:root {
+  --duration-fast: 120ms;   /* hover, press */
+  --duration-base: 180ms;  /* reveal, collapse */
+  --duration-slow: 260ms;  /* dialogs, sheets */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Elevation — tonal system: shadows only on floating layers */
+  --shadow-none: none;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--border-hairline);
+  --shadow-dialog:  0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border-hairline);
+}

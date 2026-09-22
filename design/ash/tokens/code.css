@@ -1,0 +1,28 @@
+/* ash code & log palette — canonical. Derived from Tokyo Night, re-tuned (slightly warmer, lower chroma) to sit on warm surfaces */
+:root{
+  --code-fg:#D9D5CE;
+  --code-comment:#6F6B65;         /* tertiary — comments/metadata pushed back */
+  --code-keyword:#B49AE6;         /* purple  (TN #BB9AF7) */
+  --code-function:#7FA6F0;        /* blue    (TN #7AA2F7) */
+  --code-property:#7FC9F0;        /* cyan    (TN #7DCFFF) */
+  --code-string:#A3C97A;          /* green   (TN #9ECE6A) */
+  --code-number:#F0A06E;          /* orange  (TN #FF9E64) */
+  --code-type:#DEB273;            /* yellow  (TN #E0AF68) */
+  --code-error:#EE7E8E;           /* red     (TN #F7768E) */
+  --code-teal:#7CD3C2;            /* teal    (TN #73DACA) */
+  --code-punct:#A39E96;
+  /* log levels */
+  --log-debug:var(--code-comment);
+  --log-info:var(--code-property);
+  --log-warn:var(--code-type);
+  --log-error:var(--code-error);
+  /* diff */
+  --diff-add-bg:rgba(163,201,122,0.12);
+  --diff-add-fg:#A3C97A;
+  --diff-del-bg:rgba(238,126,142,0.12);
+  --diff-del-fg:#EE7E8E;
+  --diff-hunk:#7FC9F0;
+  /* ANSI 16 */
+  --ansi-black:#33312D;--ansi-red:#EE7E8E;--ansi-green:#A3C97A;--ansi-yellow:#DEB273;--ansi-blue:#7FA6F0;--ansi-magenta:#B49AE6;--ansi-cyan:#7CD3C2;--ansi-white:#A39E96;
+  --ansi-bright-black:#6F6B65;--ansi-bright-red:#F59AA6;--ansi-bright-green:#B8D98F;--ansi-bright-yellow:#EBC48A;--ansi-bright-blue:#9BB9F4;--ansi-bright-magenta:#C9B4EE;--ansi-bright-cyan:#9BE0D2;--ansi-bright-white:#E8E5DF;
+}

@@ -1,0 +1,72 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Main.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "title": "01 · Practice (play)",
+      "w": 1280,
+      "x": 0,
+      "y": 0
+    },
+    "Mobile.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "Mobile · practice",
+      "w": 390,
+      "x": 4080,
+      "y": 0
+    },
+    "Results.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "title": "02 · Results (identify)",
+      "w": 1280,
+      "x": 1360,
+      "y": 0
+    },
+    "Retest.dc.html": {
+      "h": 800,
+      "is_interactive": true,
+      "title": "03 · Retest and progress (measure)",
+      "w": 1280,
+      "x": 2720,
+      "y": 0
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-21T12:00:00Z",
+    "v": 1
+  },
+  "designSystems": [
+    {
+      "artifact": "https://claude.ai/code/artifact/8a5fcc81-682d-4780-9c61-72b2ad6b9ef5",
+      "copiedAt": "2026-09-21T12:00:00Z",
+      "namespace": "ash",
+      "title": "ash",
+      "version": "1790039724-dff0"
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "loop": {
+      "kind": "title1",
+      "maxW": 4470,
+      "text": "Stilltype — play, identify, practice, measure",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Results.dc.html",
+    "Retest.dc.html",
+    "Mobile.dc.html"
+  ],
+  "pages": [],
+  "title": "Stilltype landing redesign"
+}
