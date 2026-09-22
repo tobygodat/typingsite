@@ -12,6 +12,7 @@ import {
   selectPassage,
   summarizePatterns,
 } from './typing.js';
+import { createTypingFx } from './motion.js';
 
 const STORAGE_KEY = 'stilltype-profile-v2';
 const MAX_STORED_ATTEMPTS = 24;
@@ -73,6 +74,8 @@ let attempt = null;
 let startTime = null;
 let ticker = null;
 let primaryCharacters = [];
+const primaryFx = createTypingFx($('typing-wrap'), $('text-display'));
+const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'));
 let baselineAttempt = null;
 let activeRecommendation = null;
 let selectedTarget = null;
@@ -143,6 +146,7 @@ function showBest() {
 
 function applyPreferences() {
   document.body.dataset.fontSize = prefs.fontSize;
+  primaryFx.relayout();
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
   document.body.dataset.keyboard = String(prefs.keyboard);
   document.body.dataset.focusMode = String(prefs.focusMode);
@@ -187,6 +191,7 @@ function renderText(display, text) {
   text.split(' ').forEach((word, wordIndex, words) => {
     const group = document.createElement('span');
     group.className = 'word';
+    group.style.setProperty('--i', String(wordIndex));
     for (const letter of word) {
       const span = document.createElement('span');
       span.className = 'char';
@@ -205,7 +210,6 @@ function renderText(display, text) {
   });
   display.replaceChildren(fragment);
   characters[0]?.classList.add('current');
-  display.style.transform = '';
   return characters;
 }
 
@@ -213,19 +217,12 @@ function updateCharacterStates(characters, typed, target, start = 0) {
   const from = Math.max(0, start - 1);
   const to = Math.min(characters.length, Math.max(typed.length + 2, start + 2));
   for (let index = from; index < to; index += 1) {
-    const character = characters[index];
-    character.className = 'char';
-    if (index < typed.length) character.classList.add(typed[index] === target[index] ? 'correct' : 'wrong');
-    else if (index === typed.length) character.classList.add('current');
+    let state = 'char';
+    if (index < typed.length) state = typed[index] === target[index] ? 'char correct' : 'char wrong';
+    else if (index === typed.length) state = 'char current';
+    // Only touch changed characters so settled letters keep their finished animation.
+    if (characters[index].className !== state) characters[index].className = state;
   }
-}
-
-function keepCurrentLineVisible(display, characters, position) {
-  const current = characters[position];
-  if (!current) return;
-  const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 48;
-  const line = Math.floor(current.offsetTop / lineHeight);
-  display.style.transform = `translateY(-${Math.max(0, line - 1) * lineHeight}px)`;
 }
 
 function choosePassage(extraSeen = []) {
@@ -278,6 +275,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
       $('typing-input').value = '';
       $('typing-input').disabled = true;
       $('text-display').style.transform = '';
+      primaryCharacters = [];
       $('text-display').textContent = 'No passage matches these filters.';
       $('accessible-passage').textContent = 'No passage matches these filters.';
       $('typing-status').textContent = 'No matching text';
@@ -285,7 +283,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
       $('condition-line').textContent = describeConditions();
       $('input-help').textContent = 'Choose another quote length or difficulty to continue.';
       for (const id of ['live-wpm', 'live-accuracy', 'timer']) $(id).textContent = '—';
-      $('progress-bar').style.width = '0%';
+      $('progress-bar').style.setProperty('--progress', '0');
       $('progress-track').setAttribute('aria-valuenow', '0');
       configureSessionCopy();
       switchView('practice');
@@ -309,6 +307,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('typing-input').disabled = false;
   $('accessible-passage').textContent = passage.text;
   primaryCharacters = renderText($('text-display'), passage.text);
+  primaryFx.reset(primaryCharacters);
   $('typing-status').className = 'badge badge-info';
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
   $('input-help').textContent = 'Start typing to begin';
@@ -435,12 +434,16 @@ function refreshAfterInput(type, previousLength, blocked = false) {
   const targetAttempt = isPrimary ? attempt : race.attempt;
   const replay = replayAttempt(targetAttempt);
   const input = isPrimary ? $('typing-input') : $('race-input');
-  const display = isPrimary ? $('text-display') : $('race-text-display');
   const characters = isPrimary ? primaryCharacters : race.characters;
   input.value = replay.typed;
   input.setSelectionRange(replay.typed.length, replay.typed.length);
   updateCharacterStates(characters, replay.typed, targetAttempt.text, previousLength);
-  keepCurrentLineVisible(display, characters, replay.typed.length);
+  const length = replay.typed.length;
+  const lastCorrect = length > 0 && replay.typed[length - 1] === targetAttempt.text[length - 1];
+  let outcome = 'delete';
+  if (blocked) outcome = 'blocked';
+  else if (length > previousLength) outcome = lastCorrect ? 'correct' : 'wrong';
+  (isPrimary ? primaryFx : raceFx).update(length, outcome, length > 0 && !lastCorrect);
   if (isPrimary) {
     if (blocked) $('input-help').textContent = 'Correct the underlined character before moving on.';
     else $('input-help').textContent = 'Backspace corrects · Escape restarts';
@@ -459,7 +462,8 @@ function updateLive(reset = false) {
   const duration = sessionDurationMs();
   const boundedElapsed = duration ? Math.min(elapsed, duration) : elapsed;
   const live = { ...replay, score: replayAttempt({ ...attempt, endedAt: boundedElapsed }).score };
-  $('live-wpm').textContent = startTime === null ? '—' : live.score.wpm;
+  // A rate over the first second is mostly noise (one key in 5 ms reads as thousands of wpm).
+  $('live-wpm').textContent = startTime === null || boundedElapsed < 1000 ? '—' : live.score.wpm;
   $('live-accuracy').textContent = startTime === null ? '—' : live.score.accuracy;
   let progress;
   if (duration) {
@@ -477,7 +481,7 @@ function updateLive(reset = false) {
     progress = replay.typed.length / attempt.text.length;
   }
   const percent = Math.max(0, Math.min(100, progress * 100));
-  $('progress-bar').style.width = `${percent}%`;
+  $('progress-bar').style.setProperty('--progress', String(percent / 100));
   $('progress-track').setAttribute('aria-valuenow', String(Math.round(percent)));
   $('progress-track').setAttribute('aria-valuetext', reset ? 'Not started' : `${Math.round(percent)} percent complete`);
   if (duration && startTime !== null && elapsed >= duration && attempt.status === 'running') finishPrimary(duration);
@@ -510,6 +514,7 @@ function finishPrimary(forcedElapsed = null) {
   completed.fresh = attempt.fresh;
   attempt = completed;
   $('typing-input').disabled = true;
+  primaryFx.finish();
   $('typing-status').className = `badge ${valid ? 'badge-success' : 'badge-warning'}`;
   $('typing-status').textContent = valid ? 'Complete' : 'Interrupted';
   const saved = storeAttempt(completed);
@@ -781,6 +786,7 @@ function setupRacePlayer() {
   $('race-input').value = '';
   $('race-input').disabled = false;
   race.characters = renderText($('race-text-display'), race.passage.text);
+  raceFx.reset(race.characters);
   $('race-accessible-passage').textContent = race.passage.text;
   updateRaceProgress(replayAttempt(race.attempt));
   $('race-help').textContent = 'Start typing when you are ready. Escape restarts your attempt.';
@@ -789,7 +795,7 @@ function setupRacePlayer() {
 
 function updateRaceProgress(replay) {
   const percent = Math.round((replay.typed.length / race.attempt.text.length) * 100);
-  $('race-progress').firstElementChild.style.width = `${percent}%`;
+  $('race-progress').firstElementChild.style.setProperty('--progress', String(percent / 100));
   $('race-progress').setAttribute('aria-valuenow', String(percent));
 }
 
@@ -1032,6 +1038,7 @@ function bindEvents() {
 }
 
 document.documentElement.dataset.theme = 'dark';
+addEventListener('resize', () => { primaryFx.relayout(); raceFx.relayout(); });
 buildKeyboard();
 applyPreferences();
 setModeControls();

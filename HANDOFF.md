@@ -24,6 +24,10 @@ Implemented:
 - Typed history-clear confirmation with immediate Undo.
 - Locally bundled Geist/Geist Mono with the SIL license under `src/fonts/`.
 
+## Typing motion (22 September 2026)
+
+The typing zone has its own motion language, recorded as an exception in `design/ash/DESIGN.md` §6: a spring caret, a gliding word lens, letters that land lit and settle, and a streak-driven "heat" that warms blue toward mint. `src/motion.js` is presentational only; scoring never reads from it. `--heat` is written in 0.05 steps because every letter inherits it, and stepping it roughly doubled headless frame rate. Live WPM shows "—" for the first second instead of a first-keystroke spike. On a real GPU frame timing is still unmeasured.
+
 ## Validation
 
 Read `docs/verification/2026-09-22-browser.md` for the browser checks and limits. The solo run → manual br drill → fresh retest → saved/reloaded progress flow and both players' challenge turns were completed through actual browser input. Tests use a separate 127.0.0.1 origin so the user's localhost profile is not polluted by verification scores.
@@ -34,6 +38,7 @@ Read `docs/verification/2026-09-22-browser.md` for the browser checks and limits
 - `src/styles.css`: application composition using canonical Ash tokens/components.
 - `src/typing.js`: corpus, metric/event versions, replay, comparison and transparent pattern baseline.
 - `src/app.js`: screen state, input handling, preferences, history and local challenge.
+- `src/motion.js`: typing-zone caret, word lens, line scroll and streak heat (presentational).
 - `docs/ui-contract.md`: DOM integration contract.
 - `server.mjs`: explicit app/font/design-CSS asset serving; canvas artboards and project documents are not served.
 

@@ -14,7 +14,7 @@ This document is the integration contract between the static interface in `index
 
 Required IDs: `typing-screen`, `typing-form`, `typing-input`, `text-display`, `accessible-passage`, `live-stats`, `live-wpm`, `live-accuracy`, `timer`, `timer-unit`, `timer-label`, `progress-track`, `progress-bar`, `typing-status`, `session-kicker`, `session-title`, `session-description`, `condition-line`, `input-help`, `restart-button`, and `announcement`.
 
-`#text-display` receives `.word > .char` spans. Character state classes are `.correct`, `.wrong`, and `.current`. `.wrong` always has a non-colour underline. The display has a fixed three-line height; live metric updates must not change its geometry.
+`#text-display` receives `.word > .char` spans. Character state classes are `.correct`, `.wrong`, and `.current`. `.wrong` always has a non-colour underline. The display has a fixed three-line height; live metric updates must not change its geometry. `src/motion.js` also inserts aria-hidden `.caret`, `.word-lens` and `.caret-light` elements into the display after each render, drives line scrolling, and sets `data-caret` / `data-blocked` on the wrap. `#progress-bar` fills from its `--progress` custom property (0–1), not its width.
 
 `#typing-input` is the real focus target and remains visually transparent over the displayed text. `#progress-track` has `role="progressbar"`; keep `aria-valuenow`, `aria-valuemin`, `aria-valuemax`, and `aria-valuetext` current. `#live-stats` is `aria-live="polite"` and should be updated at a restrained cadence.
 

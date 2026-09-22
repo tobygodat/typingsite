@@ -525,11 +525,27 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) {
 
 .progress-track > span {
   display: block;
-  width: 0;
+  width: 100%;
   height: 100%;
-  border-radius: inherit;
   background: var(--primary);
+  transform: scaleX(var(--progress, 0));
+  transform-origin: left center;
+  transition: transform 140ms linear, background-color var(--duration-slow) var(--ease-out);
 }
+
+/*
+ * Typing zone. The one place ash is allowed to move with some play: see
+ * design/ash/DESIGN.md §6. --heat (0–1) is written by src/motion.js from the
+ * current clean streak and warms the caret light from focus blue toward mint.
+ */
+.fx-scope {
+  --heat: 0;
+  --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --fx-color: color-mix(in oklab, var(--ash-primary-text), var(--ash-accent) calc(var(--heat) * 100%));
+  --fx-glow: color-mix(in oklab, var(--fx-color) calc(30% + var(--heat) * 35%), transparent);
+}
+
+.fx-scope .progress-track > span { background: var(--fx-color); }
 
 .typing-wrap,
 .race-typing-wrap {
@@ -540,6 +556,9 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) {
   margin: var(--space-10) 0 var(--space-8);
   overflow: hidden;
   cursor: text;
+  /* Soft top and bottom edges so lines glide out instead of being clipped. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--space-3), #000 calc(100% - var(--space-3)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--space-3), #000 calc(100% - var(--space-3)), transparent 100%);
 }
 
 body[data-font-size="22"] .typing-wrap { --passage-size: var(--text-xl); }
@@ -558,29 +577,139 @@ body[data-font-size="36"] .typing-wrap { --passage-size: var(--text-3xl); }
   letter-spacing: var(--tracking-mono);
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  transition: transform var(--duration-fast) var(--ease-out);
+  transition: transform 460ms var(--ease-settle);
 }
 
-.word { display: inline-block; }
+.word {
+  display: inline-block;
+  animation: word-in 420ms var(--ease-settle) backwards;
+  animation-delay: calc(min(var(--i, 0), 28) * 9ms);
+}
 
-.char { position: relative; }
-.char.correct { color: var(--text-primary); }
+.char {
+  position: relative;
+  transition: color var(--duration-base) var(--ease-out);
+}
+
+.word > .char { display: inline-block; }
+
+/* A freshly typed letter lights up in place, then cools to ink: at speed this reads as a comet tail behind the caret. */
+.char.correct {
+  color: var(--text-primary);
+  animation: char-settle 620ms var(--ease-settle);
+}
+
 .char.wrong {
   color: var(--text-danger);
   background: var(--danger-soft);
+  border-radius: 2px;
   text-decoration-line: underline;
   text-decoration-thickness: 2px;
   text-underline-offset: var(--space-2);
+  animation: char-miss 360ms var(--ease-out);
 }
 
-.char.current::before {
-  content: "";
+.caret {
   position: absolute;
   top: 0;
-  left: -1px;
-  width: 2px;
-  height: 1.2em;
-  background: var(--primary);
+  left: 0;
+  z-index: 2;
+  width: 0;
+  height: var(--typing-line);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.caret-bar {
+  position: absolute;
+  top: 50%;
+  left: -1.5px;
+  width: 3px;
+  height: 1.15em;
+  margin-top: -0.6em;
+  border-radius: var(--radius-full);
+  background: var(--fx-color);
+  box-shadow: 0 0 calc(6px + var(--heat) * 14px) var(--fx-glow);
+  transition: background-color var(--duration-fast) var(--ease-out), opacity var(--duration-base) var(--ease-out), box-shadow var(--duration-base) var(--ease-out);
+}
+
+.typing-wrap[data-caret="idle"] .caret-bar,
+.race-typing-wrap[data-caret="idle"] .caret-bar {
+  animation: caret-breathe 1400ms var(--ease-in-out) infinite;
+}
+
+[data-blocked="true"] .caret-bar {
+  background: var(--danger);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--danger) 40%, transparent);
+}
+
+[data-caret="done"] .caret-bar { opacity: 0; }
+
+/* The lens sits behind the word being typed and glides between words. */
+.word-lens {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: var(--typing-line);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--surface-card) 70%, var(--fx-color) calc(4% + var(--heat) * 6%));
+  pointer-events: none;
+  will-change: transform, width;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+
+.word-lens.is-hidden,
+[data-caret="done"] .word-lens { opacity: 0; }
+
+/* Ambient light pooled under the caret. Barely there at rest, it brightens as a clean streak builds. */
+.caret-light {
+  position: absolute;
+  top: calc(var(--typing-line) * -0.5);
+  left: -5em;
+  width: 10em;
+  height: calc(var(--typing-line) * 2);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--fx-color) 16%, transparent), transparent);
+  opacity: calc(0.25 + var(--heat) * 0.75);
+  pointer-events: none;
+  will-change: transform;
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+
+[data-caret="done"] .caret-light { opacity: 0; }
+
+.typing-wrap:not(:focus-within) .caret-bar,
+.race-typing-wrap:not(:focus-within) .caret-bar {
+  opacity: 0.35;
+  animation: none;
+}
+
+.typing-wrap:not(:focus-within) .caret-light,
+.race-typing-wrap:not(:focus-within) .caret-light { opacity: 0; }
+
+@keyframes word-in {
+  from { opacity: 0; }
+}
+
+@keyframes char-settle {
+  0% {
+    color: color-mix(in oklab, var(--fx-color) 70%, var(--text-primary));
+    text-shadow: 0 0 0.45em var(--fx-glow);
+  }
+  100% {
+    color: var(--text-primary);
+    text-shadow: 0 0 0 transparent;
+  }
+}
+
+@keyframes char-miss {
+  0% { background: color-mix(in oklab, var(--danger) 36%, transparent); }
+}
+
+@keyframes caret-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 #typing-input,
@@ -626,7 +755,8 @@ body[data-font-size="36"] .typing-wrap { --passage-size: var(--text-3xl); }
   width: 2px;
   height: var(--space-3);
   margin-right: var(--space-2);
-  background: var(--primary);
+  border-radius: var(--radius-full);
+  background: var(--text-link);
   vertical-align: -2px;
 }
 
@@ -1496,4 +1626,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+
+  /* Keep state legible without movement: letters still brighten, the caret still turns coral. */
+  .caret-bar { animation: none !important; }
+  #text-display,
+  #race-text-display { transition: none; }
 }
