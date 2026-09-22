@@ -1,10 +1,10 @@
 # MVP specification
 
-Status: proposed scope, 21 September 2026. Grounded in the [research summary](research/summary.md); implementation has not started.
+Status: milestone specification, originally written 21 September 2026. Implementation was authorized on 22 September. Grounded in the [research summary](research/summary.md); `PRODUCT.md` owns audience decisions and `HANDOFF.md` records the current delivery state.
 
 ## User and promise
 
-Start with people who already touch type and want to improve while enjoying competition. After a run, help them understand what slowed them down, practice it immediately, and compare performance on unfamiliar text. A beginner typing curriculum is a later product choice.
+Start with people who already touch type and want to improve while enjoying competition. After a run, help them understand what slowed them down, practice it immediately, and compare performance on unfamiliar text. Beginners are the committed second audience; their teaching path follows the proven solo loop.
 
 ## First milestone journey
 
@@ -59,8 +59,8 @@ Public matchmaking, seasons, full anti-cheat, learned ranked difficulty, extra l
 
 ## Essential unresolved decisions
 
-1. **Initial audience:** confirm the proposed English desktop touch-typist focus, or identify a required language/input method before implementing the engine.
-2. **Learning priorities:** confirm that proving the solo loop precedes live friend rooms; bringing multiplayer forward materially changes the first milestone.
+1. **Initial audience, settled:** English typists using a physical keyboard, with a later beginner path, as recorded in `PRODUCT.md`.
+2. **Learning priorities, settled for this build:** complete the solo loop and a local shared-keyboard challenge. Networked friend rooms remain a separate stage.
 3. **Before shared data collection:** choose identity/sync needs, an explicit retention period, and participation terms for model training. Local-only practice can proceed without these services.
 
-Framework and hosting selection are implementation decisions to record when a build is requested. They do not block this research handoff.
+The existing native browser stack is retained for this build. Hosting remains undecided.

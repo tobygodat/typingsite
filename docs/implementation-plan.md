@@ -1,12 +1,12 @@
 # Staged implementation plan
 
-Status: proposed, 21 September 2026. Repository inspection found no application code, dependency manifest, tests, or existing architecture to extend. This plan begins from an empty project; it is not a deployment or full-build authorization.
+Status: staged roadmap, originally written 21 September 2026. Implementation was authorized on 22 September; the repository now contains a native browser application. See [the implementation decision](decisions/2026-09-22-learning-loop.md) and `HANDOFF.md` for the current delivery state. Hosting and online multiplayer remain future work.
 
 ## Architecture direction
 
 Start with a browser application and local persistence. Keep the typing state machine, event schema, scoring, text selection, and recommendation logic separate from UI rendering. Those modules should support deterministic replay so later multiplayer, offline analysis, and model evaluation share the same metric definitions.
 
-Select the UI framework and versions at build kickoff. A small typed implementation is a reasonable default; there is no existing stack to preserve. Avoid committing to hosting, account services, or an ML service before the corresponding stage needs them.
+Keep the existing native HTML/CSS/JavaScript modules for this milestone, as recorded in the implementation decision. Avoid committing to hosting, account services, or an ML service before the corresponding stage needs them.
 
 Proposed module boundaries: `typing` owns input/state/replay; `metrics` owns versioned scoring; `corpus` owns texts and comparability; `training` owns recommendations and drills; `profile` owns history/persistence; `ui` owns interaction and display. Introduce `competition` when ghosts and rooms are added. These are conceptual boundaries, not directories already created.
 

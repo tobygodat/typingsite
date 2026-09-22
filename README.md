@@ -1,40 +1,42 @@
-# typingsite
+# Stilltype
 
-A typing product exploring one connected loop: **play → identify weak patterns → practice → measure improvement on fresh text**.
+Focused typing, explained practice, and friendly local competition. The product connects **play → identify weak patterns → practice → retest on fresh text**. Monkeytype, keybr and TypeGG are influences, not a novelty claim.
 
-The goal is a useful product with substantial engineering and ML depth: Monkeytype-inspired typing feel, keybr-style targeted learning, TypeRacer-style competition, and TypeGG-inspired difficulty and progression. These are influences, not a claim that the combined features are novel.
+## Run locally
 
-## Run the typing page
-
-Requires Node.js 20 or newer. No dependencies or install step are needed.
+Node.js 20 or newer; no dependency installation needed.
 
 ```sh
 npm run dev
+npm test
 ```
 
-Open http://localhost:5173. Run scoring and text-generation checks with `npm test`.
+Open [localhost:5173](http://localhost:5173). Everything runs in the browser with local persistence. Fonts are bundled; the app has no external runtime service.
 
-## Project status
+## Use it
 
-The first typing-only slice is implemented as **Stilltype**, a working title. It includes timed tests, word-count tests, original short passages, optional punctuation, live WPM and accuracy, results, restart via Escape, an optional keyboard display, and the supplied palette. A compact top bar holds the logo and practice settings, with the typing test centered below. A keyboard icon below the test toggles the optional keyboard display. Best WPM is stored locally when browser storage is available; clearing it offers an undo action. Desktop entry focuses the typing field, while touch entry waits for a tap. There are no accounts or backend integrations.
+1. Pick time, words or quote. Typing starts the clock; Backspace corrects mistakes and Escape restarts. Errors must be corrected before advancing.
+2. Finish a run to see corrected WPM, input accuracy and observed pattern evidence. Small samples get a general drill, not a confident diagnosis.
+3. Start the one-minute drill, or enter your own target. Manual drills also work before a baseline exists.
+4. With a baseline, the drill opens an unseen retest under the original conditions. Results show changes, sample limits and whether the comparison is valid. A depleted quote pool does not reuse a quote as a fresh retest.
+5. Open Progress for saved comparisons. Clear local history requires typing `clear` and offers an immediate Undo.
 
-The page uses native HTML/CSS and JavaScript modules. `src/typing.js` separates text generation and scoring from the UI in `src/app.js`. WPM uses correct characters divided by five and elapsed minutes; accuracy includes incorrect attempts even after correction. Timing starts with the first input, continues when unfocused, and uses a monotonic clock. Paste is disabled for practice. The local best is an informal maximum across all modes, not a comparable ranking.
+The settings control changes passage size, live metrics, the keyboard display and focus mode. Preferences survive reload. Focus mode has an explicit exit; Escape also leaves it.
 
-The documents below remain broader planning references; their later milestones are not implemented by this first slice.
+Challenge supports two players taking turns on the same keyboard. Both receive the same original passage, hidden during handoff. Challenge scores stay separate from personal progress and bests. Online rooms are future work.
 
-## Start here
+## Measurement and implementation
 
-| Document | Purpose |
-| --- | --- |
-| [Research summary](docs/research/summary.md) | Findings, differentiation hypothesis, caveats, and original idea |
-| [MVP specification](docs/mvp-spec.md) | First user journey, scope, acceptance criteria, essential decisions |
-| [Implementation plan](docs/implementation-plan.md) | Staged delivery and validation gates |
-| [ML and evaluation plan](docs/ml-data-evaluation.md) | Event data, transparent baseline, modeling, learning evaluation |
-| [Full research brief](docs/research/typing-platform-brief.md) | Readable extraction with all 16 linked sources |
-| [Original Word brief](docs/research/typing-platform-brief.docx) | Unmodified three-page research artifact |
+Corrected WPM counts correct retained characters divided by five and elapsed minutes. Input accuracy counts correct printable insertions out of all printable insertions, preserving errors after correction. First-attempt errors and clean pair timings are retained separately. Timing uses a monotonic clock; interruptions exclude a run from comparable results. See [PRODUCT.md](PRODUCT.md) for the contract.
 
-The documentation is self-contained. Start implementation, when requested, with the solo typing-to-practice loop in milestone 1; add competition after timing, scoring, and progress are trustworthy.
+The app uses native HTML/CSS/JavaScript. [Ash](design/ash/DESIGN.md) supplies the dark palette, typography, geometry and component rules. The canvas artboards remain reference material, not served code.
 
-## Design system
+- [Current handoff](HANDOFF.md)
+- [Implementation decision](docs/decisions/2026-09-22-learning-loop.md)
+- [Browser verification](docs/verification/2026-09-22-browser.md)
+- [MVP specification](docs/mvp-spec.md)
+- [Staged roadmap](docs/implementation-plan.md)
+- [Research summary](docs/research/summary.md)
+- [ML evaluation plan](docs/ml-data-evaluation.md)
 
-UI styles use the supplied dark-only [Ash design system](design/ash/DESIGN.md). `src/styles.css` imports its canonical tokens and component references from `design/ash/styles.css` and `design/ash/components/components.css`. Geist and Geist Mono load through the supplied Google Fonts import, with the system-defined fallbacks when unavailable. The archive specimens are retained as reference assets and are not executed by the app.
+There is no learned recommender, online matchmaking, account service or deployment. An immediate retest is feedback, not proof of lasting learning.

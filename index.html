@@ -1,32 +1,368 @@
 <!doctype html>
 <html lang="en" data-theme="dark">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#141311"><meta name="description" content="A little space to find your typing rhythm. Simple, focused typing practice."><title>Stilltype — Find your flow</title><link rel="stylesheet" href="/src/styles.css"></head>
-<body>
-<a class="skip-link" href="#typing-input">Skip to typing</a>
-<div class="page">
-<header class="topbar" aria-label="Practice settings">
-<div class="topbar-brand"><a class="brand" href="/" aria-label="Stilltype home">stilltype<span class="brand-dot">.</span></a></div>
-<div class="topbar-settings">
-<div class="setting-group"><h2 class="setting-label sr-only">Practice</h2><div class="mode-group" aria-label="Test mode"><button data-mode="time" class="selected"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg> time</button><button data-mode="words"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/></svg> words</button><button data-mode="quote"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h5v7H5V6Zm9 0h5v7h-5V6ZM10 13c0 4-2 5-4 5m13-5c0 4-2 5-4 5"/></svg> quote</button></div></div>
-<div class="setting-group" id="length-settings"><h2 class="setting-label sr-only" id="length-label">Duration</h2><div id="lengths" class="length-group" aria-label="Test length"></div></div>
-<div class="setting-group topbar-options"><h2 class="setting-label sr-only">Options</h2><button id="punctuation" aria-pressed="false"><span>@</span> punctuation</button></div>
-</div>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1C1B18">
+  <meta name="description" content="Focused typing practice that finds weak patterns, drills them, and measures the change on fresh text.">
+  <title>Stilltype — focused typing practice</title>
+  <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body data-view="practice" data-session="practice" data-font-size="28" data-live-metrics="true" data-keyboard="false" data-focus-mode="false">
+  <a class="skip-link" href="#typing-input">Skip to typing</a>
 
-</header>
-<main id="main"><h1 class="sr-only">Typing practice</h1>
-<section class="practice" aria-label="Typing practice">
-<div class="typing-panel" id="panel">
-<div class="session-heading"><span id="session-label">English · Common words</span><span class="ready"><i></i><span id="status" role="status">Ready when you are</span></span></div>
-<div class="stats"><div class="stat timer"><strong id="remaining">30<span>s</span></strong><small id="remaining-label">remaining</small></div><div class="stat"><strong id="wpm">—</strong><small title="Correct characters divided by five, per minute">words / min</small></div><div class="stat"><strong id="accuracy">—</strong><small title="Correct keystrokes as a percentage of all attempts, including corrected mistakes">accuracy</small></div><div class="progress-track"><div id="progress"></div></div></div>
-<div class="typing-wrap" id="typing-wrap"><div id="passage" aria-hidden="true"></div><textarea id="typing-input" aria-label="Typing practice input" aria-describedby="input-help accessible-passage" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" rows="1"></textarea><span id="accessible-passage" class="sr-only"></span></div>
-<div id="result" class="result" hidden><h2>Session complete</h2><p id="result-copy"></p><button class="primary" id="again">Try again</button></div>
-<div class="panel-bottom"><span id="input-help"><span class="small-cursor">▎</span> Start typing to begin</span><button id="restart" class="icon-button" aria-label="Restart test" title="Restart test (Escape)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 7M19 3v5h-5"/></svg></button></div>
-</div>
-<div class="below-panel"><span><kbd>esc</kbd> restart test <span class="hint-divider">/</span> <kbd>tab</kbd> move between controls</span><button id="keyboard-toggle" class="icon-button" title="Show keyboard" aria-controls="keyboard" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 15h10"/></svg> <span id="keyboard-label" class="sr-only">Show keyboard</span></button></div>
-<div id="keyboard" class="keyboard" hidden aria-label="On-screen keyboard"></div>
-</section>
-</main>
-<footer class="page-footer"><span id="best">No completed sessions yet</span><button id="reset-local" title="Clear saved best score">Reset best</button><span id="best-feedback" role="status"></span><button id="undo-best" hidden>Undo reset</button></footer>
+  <div class="app-shell">
+    <header class="site-header">
+      <a class="brand" href="#practice" data-nav="practice" aria-label="Stilltype practice">stilltype<span aria-hidden="true">.</span></a>
 
-</div><div id="announcement" class="sr-only" role="status" aria-live="polite"></div><script type="module" src="/src/app.js"></script>
-</body></html>
+      <nav class="primary-nav" aria-label="Main navigation">
+        <button class="nav-item is-active" type="button" data-nav="practice" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17.5V6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2h-11A2.5 2.5 0 0 1 4 17.5Z"/><path d="M8 9h8M8 13h5"/></svg>
+          <span>Practice</span>
+        </button>
+        <button class="nav-item" type="button" data-nav="results">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16 4-4 3 3 7-8"/><path d="M14 7h5v5"/></svg>
+          <span>Train</span>
+        </button>
+        <button class="nav-item" type="button" data-nav="progress">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9m7 10V5m7 14v-7"/></svg>
+          <span>Progress</span>
+        </button>
+        <button class="nav-item" type="button" data-nav="compete">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5H5v3a4 4 0 0 0 4 4m7-7h3v3a4 4 0 0 1-4 4"/><path d="M8 4h8v5a4 4 0 0 1-8 0V4Zm4 9v4m-3 3h6"/></svg>
+          <span>Challenge</span>
+        </button>
+      </nav>
+
+      <div class="header-meta">
+        <span id="best" class="personal-best num">No completed runs</span>
+        <span class="badge badge-neutral guest-badge"><span class="status-dot" aria-hidden="true"></span>guest</span>
+        <details class="preferences">
+          <summary class="icon-control" aria-label="Display and practice settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.55 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.17 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H2.4v-4h.09A1.7 1.7 0 0 0 4.17 8a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.55 4a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V2.2h4v.09A1.7 1.7 0 0 0 15 4a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 8c.14.38.36.72.66 1 .3.27.69.4 1.1.4h.09v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+          </summary>
+          <div class="preferences-popover">
+            <div class="popover-heading">
+              <strong>Practice settings</strong>
+              <span>Saved on this device</span>
+            </div>
+            <label class="preference-row" for="font-size">
+              <span><strong>Text size</strong><small>Typing passage</small></span>
+              <select class="input select" id="font-size">
+                <option value="22">22</option>
+                <option value="28" selected>28</option>
+                <option value="36">36</option>
+              </select>
+            </label>
+            <label class="preference-row" for="live-toggle">
+              <span><strong>Live metrics</strong><small>WPM and accuracy while typing</small></span>
+              <input class="switch" id="live-toggle" type="checkbox" checked>
+            </label>
+            <label class="preference-row" for="keyboard-toggle">
+              <span><strong>Keyboard</strong><small>Show key positions</small></span>
+              <input class="switch" id="keyboard-toggle" type="checkbox">
+            </label>
+            <label class="preference-row" for="focus-toggle">
+              <span><strong>Focus mode</strong><small>Hide everything but the test</small></span>
+              <input class="switch" id="focus-toggle" type="checkbox">
+            </label>
+          </div>
+        </details>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section id="typing-screen" class="screen typing-screen" data-screen="practice" data-session="practice" aria-labelledby="session-title">
+        <div class="practice-controls" aria-label="Practice setup">
+          <div class="segmented" role="group" aria-label="Test mode">
+            <button id="mode-time" type="button" data-mode="time" aria-pressed="true" class="is-active">time</button>
+            <button id="mode-words" type="button" data-mode="words" aria-pressed="false">words</button>
+            <button id="mode-quote" type="button" data-mode="quote" aria-pressed="false">quote</button>
+          </div>
+          <span class="control-separator" aria-hidden="true"></span>
+          <div id="duration-options" class="segmented compact" role="group" aria-label="Test length">
+            <button type="button" aria-pressed="false" aria-label="15 seconds">15</button>
+            <button type="button" aria-pressed="true" aria-label="30 seconds" class="is-active">30</button>
+            <button type="button" aria-pressed="false" aria-label="60 seconds">60</button>
+            <button type="button" aria-pressed="false" aria-label="120 seconds">120</button>
+          </div>
+          <span class="control-separator" aria-hidden="true"></span>
+          <label class="compact-switch" for="punctuation-toggle">
+            <input id="punctuation-toggle" class="switch" type="checkbox">
+            <span>punctuation</span>
+          </label>
+        </div>
+
+        <div id="quote-options" class="quote-options" hidden>
+          <label for="quote-length">Quote length
+            <select id="quote-length" class="input select">
+              <option value="any">any</option>
+              <option value="short">short</option>
+              <option value="medium" selected>medium</option>
+              <option value="long">long</option>
+            </select>
+          </label>
+          <label for="quote-difficulty">Difficulty
+            <select id="quote-difficulty" class="input select">
+              <option value="any" selected>any</option>
+              <option value="gentle">gentle</option>
+              <option value="steady">steady</option>
+              <option value="precise">precise</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="session-intro">
+          <div>
+            <span id="session-kicker" class="session-kicker">Open practice</span>
+            <h1 id="session-title">Practice</h1>
+            <p id="session-description">Settle into a steady pace. Your next useful exercise comes from what happens here.</p>
+          </div>
+          <span id="typing-status" class="badge badge-info" role="status"><span class="status-dot" aria-hidden="true"></span>Ready</span>
+        </div>
+
+        <form id="typing-form" class="typing-form" autocomplete="off">
+          <div class="measure-row">
+            <p id="condition-line">english · common words · 30 s · corpus v3 · metric v1</p>
+            <div id="live-stats" class="live-stats" aria-live="polite" aria-atomic="true">
+              <div class="live-stat timer-stat">
+                <strong id="timer" class="num">30</strong><span id="timer-unit">s</span>
+                <small id="timer-label">remaining</small>
+              </div>
+              <div class="live-stat">
+                <strong id="live-wpm" class="num">—</strong>
+                <small>corrected wpm</small>
+              </div>
+              <div class="live-stat">
+                <strong id="live-accuracy" class="num">—</strong><span>%</span>
+                <small>input accuracy</small>
+              </div>
+            </div>
+          </div>
+
+          <div id="progress-track" class="progress-track" role="progressbar" aria-label="Test progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Not started">
+            <span id="progress-bar"></span>
+          </div>
+
+          <div id="typing-wrap" class="typing-wrap">
+            <div id="text-display" aria-hidden="true"></div>
+            <textarea id="typing-input" aria-label="Typing input" aria-describedby="input-help accessible-passage condition-line" rows="1" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
+            <span id="accessible-passage" class="sr-only"></span>
+          </div>
+
+          <div id="keyboard" class="keyboard" aria-label="On-screen keyboard" hidden></div>
+
+          <div class="typing-footer">
+            <p id="input-help"><span class="caret-mark" aria-hidden="true"></span>Start typing to begin</p>
+            <button id="restart-button" class="icon-control" type="button" title="Restart test (Escape)" aria-label="Restart test">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
+            </button>
+          </div>
+        </form>
+
+        <div class="shortcut-row" aria-hidden="true">
+          <span><kbd>esc</kbd> restart</span>
+          <span><kbd>tab</kbd> move between controls</span>
+          <span>physical keyboard · touch input is labelled separately</span>
+        </div>
+      </section>
+
+      <section id="results-screen" class="screen results-screen" data-screen="results" aria-labelledby="results-heading" hidden>
+        <header class="section-heading">
+          <div>
+            <p class="condition-copy" id="result-conditions">english · common words · corpus v3 · metric v1</p>
+            <h1 id="results-heading">Here is what shaped that run.</h1>
+            <p>Corrected wpm counts the correct characters you keep. Input accuracy includes every attempt, even after a correction.</p>
+          </div>
+          <button id="run-again" class="btn btn-secondary" type="button" data-action="run-again">Run again</button>
+        </header>
+
+        <div class="result-overview" aria-label="Run results">
+          <div class="result-metric">
+            <span>Corrected wpm</span>
+            <strong id="result-wpm" class="num">—</strong>
+            <small id="result-delta">Complete a run to compare it with your best.</small>
+          </div>
+          <div class="result-metric">
+            <span>Input accuracy</span>
+            <strong id="result-accuracy" class="num">—</strong><b>%</b>
+            <small id="result-comparison-note">Correct insertions from all attempts.</small>
+          </div>
+          <dl class="result-details">
+            <div><dt>First-attempt errors</dt><dd id="result-errors" class="num">—</dd></div>
+            <div><dt>Elapsed time</dt><dd id="result-time" class="num">—</dd></div>
+          </dl>
+        </div>
+
+        <article id="comparison-panel" class="comparison-panel" data-outcome="insufficient" hidden>
+          <div class="comparison-heading">
+            <div>
+              <span class="panel-label">Fresh-text retest</span>
+              <h2 id="comparison-status">There is not enough evidence to call a change yet.</h2>
+            </div>
+            <span id="comparison-sample" class="badge badge-neutral">No observed sample</span>
+          </div>
+          <div class="comparison-rows">
+            <div><span>Input accuracy</span><strong id="comparison-accuracy" class="num">—</strong></div>
+            <div><span>Target timing</span><strong id="comparison-timing" class="num">—</strong></div>
+            <div><span>Corrected wpm</span><strong id="comparison-wpm" class="num">—</strong></div>
+          </div>
+          <p id="comparison-caveat">A before-and-after sample is feedback, not proof of lasting improvement.</p>
+        </article>
+
+        <div class="learning-grid">
+          <article class="recommendation-panel">
+            <div class="panel-label-row">
+              <span class="panel-label">Your next drill</span>
+              <span id="recommendation-confidence" class="badge badge-neutral">Waiting for evidence</span>
+            </div>
+            <h2 id="recommendation-title">Complete a test to reveal a useful target.</h2>
+            <p id="recommendation-evidence">Your recommendation will name the errors or timing observations behind it. If the sample is too small, you will get a general drill instead.</p>
+            <p id="recommendation-meta" class="recommendation-meta">About 1 min, then a fresh 30 s passage.</p>
+            <div id="recommendation-list" class="evidence-list" aria-label="Observed weak patterns"></div>
+            <div class="recommendation-actions">
+              <button id="start-drill" class="btn btn-primary btn-lg" type="button" data-action="start-drill" disabled>Start drill</button>
+              <button id="skip-to-retest" class="btn btn-ghost btn-lg" type="button" data-action="skip-to-retest" disabled>Skip to retest</button>
+            </div>
+          </article>
+
+          <aside class="manual-panel" aria-labelledby="manual-heading">
+            <h2 id="manual-heading">Choose the target yourself</h2>
+            <p>Enter a letter pair or word you want to repeat. This choice is recorded as manual, separate from the recommendation.</p>
+            <form id="manual-target" novalidate>
+              <label for="manual-target-input">Target</label>
+              <div class="input-action">
+                <input id="manual-target-input" class="input" type="text" maxlength="16" placeholder="for example, br" aria-describedby="manual-target-error">
+                <button id="apply-manual-target" class="btn btn-secondary" type="submit">Use target</button>
+              </div>
+              <p id="manual-target-error" class="field-error" role="alert"></p>
+            </form>
+          </aside>
+        </div>
+
+
+      </section>
+
+      <section id="progress-screen" class="screen progress-screen" data-screen="progress" aria-labelledby="progress-heading" hidden>
+        <header class="section-heading">
+          <div>
+            <h1 id="progress-heading">Progress that keeps its context.</h1>
+            <p>Only comparable modes and text conditions are placed side by side.</p>
+          </div>
+          <button id="clear-history" class="btn btn-danger" type="button" disabled>Clear local history</button>
+        </header>
+
+        <div id="progress-empty" class="empty-state">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 39V22m11 17V12m11 27V26m10 13V7"/></svg>
+          <h2>Your progress starts with a complete loop.</h2>
+          <p>Finish a run, drill one pattern, and retest on fresh text. The comparison will appear here with its sample and conditions.</p>
+          <button class="btn btn-primary btn-lg" type="button" data-action="go-practice">Start practicing</button>
+        </div>
+
+        <div id="history-list" class="history-list" aria-live="polite" hidden></div>
+        <template id="history-row-template">
+          <article class="history-row">
+            <div class="history-main">
+              <span class="history-date"></span>
+              <strong class="history-target"></strong>
+              <small class="history-conditions"></small>
+            </div>
+            <div class="history-measure"><span>Accuracy</span><strong class="history-accuracy num"></strong></div>
+            <div class="history-measure"><span>Target timing</span><strong class="history-timing num"></strong></div>
+            <span class="history-status badge badge-neutral"></span>
+          </article>
+        </template>
+      </section>
+
+      <section id="compete-screen" class="screen compete-screen" data-screen="compete" aria-labelledby="compete-heading" hidden>
+        <header class="section-heading challenge-heading">
+          <div>
+            <p class="condition-copy">local challenge · same keyboard · same passage</p>
+            <h1 id="compete-heading">Same passage. One keyboard.</h1>
+            <p>Take turns, then compare the two observed runs.</p>
+          </div>
+        </header>
+
+        <form id="compete-setup" class="challenge-setup">
+          <div class="player-field">
+            <label for="player-one-name"><span class="player-mark">1</span>First player</label>
+            <input id="player-one-name" class="input" type="text" maxlength="24" placeholder="Player one" autocomplete="off">
+          </div>
+          <div class="versus" aria-hidden="true">then</div>
+          <div class="player-field">
+            <label for="player-two-name"><span class="player-mark">2</span>Second player</label>
+            <input id="player-two-name" class="input" type="text" maxlength="24" placeholder="Player two" autocomplete="off">
+          </div>
+          <button id="start-local-race" class="btn btn-primary btn-lg" type="submit">Start local challenge</button>
+        </form>
+
+        <div id="race-stage" class="race-stage" hidden>
+          <div class="race-stage-heading">
+            <div>
+              <span id="race-status" class="panel-label">Player one</span>
+              <h2><span id="race-player">Player one</span>, this passage is yours.</h2>
+            </div>
+            <span class="badge badge-info"><span class="status-dot" aria-hidden="true"></span>Typing</span>
+          </div>
+          <div id="race-progress" class="progress-track" role="progressbar" aria-label="Challenge progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+          <div class="race-typing-wrap">
+            <div id="race-text-display" aria-hidden="true"></div>
+            <textarea id="race-input" aria-label="Challenge typing input" aria-describedby="race-help race-accessible-passage" rows="1" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
+            <span id="race-accessible-passage" class="sr-only"></span>
+          </div>
+          <p id="race-help">Start typing when you are ready. Escape restarts your attempt.</p>
+        </div>
+
+        <div id="race-handoff" class="handoff-panel" hidden>
+          <span class="badge badge-neutral">Pass the keyboard</span>
+          <h2>First run saved. Let the next player get settled.</h2>
+          <p>The passage is hidden until the next player starts.</p>
+          <button id="start-next-player" class="btn btn-primary btn-lg" type="button">Reveal passage</button>
+        </div>
+
+        <div id="race-leaderboard" class="race-leaderboard" hidden aria-live="polite">
+          <div class="race-result-heading">
+            <div><span class="panel-label">Challenge complete</span><h2 id="race-winner">Two observed runs</h2></div>
+            <button id="race-again" class="btn btn-secondary" type="button">Race again</button>
+          </div>
+          <div id="race-results" class="race-results"></div>
+          <p>Local challenge results stay separate from personal skill progress.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>local profile · english · physical keyboard</span>
+      <span>corrected wpm · input accuracy · metric v1</span>
+    </footer>
+  </div>
+
+  <button id="exit-focus" class="btn btn-secondary exit-focus" type="button"><kbd>esc</kbd> Exit focus</button>
+
+  <dialog id="clear-dialog" aria-labelledby="clear-dialog-title">
+    <form method="dialog" class="dialog-content">
+      <div>
+        <span class="badge badge-danger">Local data</span>
+        <h2 id="clear-dialog-title">Clear your practice history?</h2>
+        <p>This removes completed runs, recommendations, and comparisons from this device. Type <strong>clear</strong> to continue.</p>
+      </div>
+      <label for="confirm-clear-input">Type clear
+        <input id="confirm-clear-input" class="input" type="text" autocomplete="off">
+      </label>
+      <div class="dialog-actions">
+        <button id="cancel-clear" class="btn btn-ghost" value="cancel">Cancel</button>
+        <button id="confirm-clear" class="btn btn-danger" type="button" disabled>Clear history</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="history-toast" class="toast" role="status" hidden>
+    <span class="status-dot" aria-hidden="true"></span>
+    <span id="history-feedback">Local history cleared.</span>
+    <button id="undo-clear" class="btn btn-ghost btn-sm" type="button">Undo</button>
+  </div>
+
+  <div id="announcement" class="sr-only" role="status" aria-live="polite"></div>
+  <script type="module" src="/src/app.js"></script>
+</body>
+</html>

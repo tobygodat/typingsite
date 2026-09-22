@@ -36,10 +36,13 @@ This is stated in the research as a hypothesis about usability and learning, not
 
 ## Capabilities and Constraints
 
-**Shipped today** (first typing-only slice, working title Stilltype):
-- Timed and word-count tests, original short passages, optional punctuation, live WPM and accuracy, results, Escape to restart, optional keyboard display, local best with undo on reset.
-- Native HTML/CSS/JS modules, no dependencies. `npm run dev` serves on :5173 via `server.mjs`; `npm test` runs `node --test`.
-- `src/typing.js` keeps text generation and scoring separate from the UI in `src/app.js`, so scoring can be replayed and tested without the DOM.
+**Shipped today** (Stilltype, working title):
+- A complete guest loop: timed/word/quote test, observed recommendation or manual target, one-minute drill, unseen comparable retest, and saved local progress.
+- Quote length/difficulty filters, optional punctuation, corrected WPM and input accuracy, first-attempt error retention, keyboard display, text size, live-metric and focus preferences.
+- Local two-player challenges on one keyboard, with the same passage and separate scores. This is not online multiplayer.
+- Condition-aware personal bests, guarded history deletion with immediate undo, explicit insufficient-evidence and interrupted states.
+- Native HTML/CSS/JS modules with no runtime dependencies. `npm run dev` serves on :5173; `npm test` runs the engine checks. Geist fonts are self-hosted.
+- `src/typing.js` owns corpus selection, scoring, replay and pattern evidence; `src/app.js` owns UI orchestration and local persistence.
 
 **Metric contract** (versioned before any data collection):
 - Corrected WPM = correct target characters retained at finish / 5 / elapsed minutes. Elapsed time runs from the first printable input on a monotonic clock and continues when unfocused.
@@ -50,7 +53,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 - Deterministic event replay must reproduce final text, errors, corrections, time and metrics.
 
 **Explicitly undecided:**
-- UI framework for later stages. The shipped slice is vanilla; the implementation plan defers framework selection to build kickoff and nothing has been recorded.
+- A framework for later stages. This milestone deliberately retains native modules; see `docs/decisions/2026-09-22-learning-loop.md`.
 - Retention period, identity/sync needs, and participation terms for any shared or model-training data. Local-only practice proceeds without them.
 - Whether the beginner path reuses the weak-pattern recommender or needs its own progression model.
 - Hosting and deployment target.

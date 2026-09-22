@@ -15,11 +15,11 @@
   --ash-scrim:     rgba(0, 0, 0, 0.55);
 
   /* ── Tonal surface ladder (derived, warm neutral) ── */
-  --ash-surface-0: #141311;  /* canvas / app background */
-  --ash-surface-1: #1A1917;  /* panels, sidebars */
-  --ash-surface-2: #22211E;  /* cards, inputs, rows */
-  --ash-surface-3: #2A2926;  /* raised: menus, popovers, hover */
-  --ash-surface-4: #33312D;  /* pressed / active row */
+  --ash-surface-0: #1C1B18;  /* canvas / app background */
+  --ash-surface-1: #232220;  /* panels, sidebars */
+  --ash-surface-2: #2B2A26;  /* cards, inputs, rows */
+  --ash-surface-3: #33322E;  /* raised: menus, popovers, hover */
+  --ash-surface-4: #3C3A35;  /* pressed / active row */
 
   /* ── Semantic: text ── */
   --text-primary:   var(--ash-text);
