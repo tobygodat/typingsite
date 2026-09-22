@@ -41,7 +41,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 - Quote length/difficulty filters, optional punctuation, corrected WPM and input accuracy, first-attempt error retention, keyboard display, text size, live-metric and focus preferences.
 - Local two-player challenges on one keyboard, with the same passage and separate scores. This is not online multiplayer.
 - Condition-aware personal bests, guarded history deletion with immediate undo, explicit insufficient-evidence and interrupted states.
-- Native HTML/CSS/JS modules with no runtime dependencies. `npm run dev` serves on :5173; `npm test` runs the engine checks. Geist fonts are self-hosted.
+- Native HTML/CSS/JS modules with no runtime dependencies. `npm run dev` serves on :5173; `npm test` runs the engine checks. Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono are self-hosted in `src/fonts/`.
 - `src/typing.js` owns corpus selection, scoring, replay and pattern evidence; `src/app.js` owns UI orchestration and local persistence.
 
 **Metric contract** (versioned before any data collection):
@@ -63,8 +63,14 @@ This is stated in the research as a hypothesis about usability and learning, not
 ## Brand Commitments
 
 - **"Stilltype" is a working title**, deliberately not hardened. Keep the wordmark cheap to change; no logotype or name-dependent identity investment until the name is settled.
-- **The ash design system (`design/ash/`) is binding for all UI**, per `AGENTS.md`: dark only; depth is tonal, stepping a warm surface ladder rather than borders or shadows; Geist for copy and Geist Mono for data, ids, keys and eyebrows; one saturated blue for actions and focus; mint reserved for success state and never a button fill; danger and warning as ink or 14% tints, never fills; tabular numerals on every metric. Tokens are the source of truth — colours, type sizes and radii are never invented.
-- **Voice:** sentence case everywhere, plain and direct, second person, present tense. Buttons are verbs. No emoji, no exclamation marks. Status is a mono pill, not a sticker.
+- **The Afterimage system, as shipped on 22 September 2026, is binding for all UI**, per `AGENTS.md`. `DESIGN.md` (to be written from the shipped build) will describe it; until then the tokens at the top of `src/styles.css` are the source of truth. Colours, type sizes, radii and durations are never invented. The former Ash system (`design/ash/`) is historical reference and no longer binding.
+- **Type:** Literata (variable weight and optical size, self-hosted under the OFL, with a serif fallback stack) for everything readable, including the typing passage and every numeral. Geist Mono, self-hosted, only for small measurement labels, conditions and keys. Tabular lining numerals on every metric.
+- **Colour:** a warm near-black ground (`#0f0f0e`) in dark and warm paper (`#f4f1eb`) in light. The theme follows the system until the user picks dark or light in settings or the command palette. One green accent (dark `#8fd18a`, light `#2e7d4f`) means action, current state and the caret; the primary button is a filled green. Coral (danger) marks mistyped letters, always with a wavy underline as the non-colour cue, and regressions. Warning marks interrupted and mixed results.
+- **Surfaces:** rules and space, not boxes. The dock, settings, command palette and toasts are opaque raised surfaces: no glass, no glow. A floating dock (top on desktop, bottom on mobile) holds practice, train, progress and challenge, a ⌘K / Ctrl-K command palette, and settings.
+- **Still run:** nothing decorative moves near the passage while typing. The caret is solid and spring-driven, letter states change instantly, and lines scroll in about 150 ms. The rest of the chrome fades out after the first keystroke and returns on pointer movement, finish or restart. Motion belongs after the run and in chrome only: fades of 200 ms or less, a gliding selection pill, and the run card's rhythm art developing in about 450 ms. Everything scales to zero under `prefers-reduced-motion`.
+- **The run card is a static print:** WPM, accuracy, first-try errors, time, a one-line metric definition, the conditions line, and dithered rhythm art drawn from the real keystroke intervals, with misses in coral. The art is presentational; scoring never reads from it.
+- **The ghost pacer is a hidden extra, never scored.** ↑↑↓↓←→←→ b a, or typing "ghost" in the command palette, toggles a pacer caret that moves at the personal best for the current conditions (or 60 wpm). It is presentational only.
+- **Voice:** plain and direct, second person, present tense. Buttons are verbs. No emoji, no exclamation marks. Interface labels in chrome (dock, settings, palette) are lowercase; headings and buttons use sentence case. Say each measurement caveat once, briefly, next to the number it qualifies.
 
 ## Evidence on Hand
 
@@ -72,8 +78,9 @@ This is stated in the research as a hypothesis about usability and learning, not
 - `docs/research/summary.md` — findings, differentiation hypothesis, and stated limits of the evidence.
 - `docs/mvp-spec.md` — first journey, scope table, scoring contract, milestone 1 acceptance criteria.
 - `docs/implementation-plan.md` — staged delivery with exit gates. `docs/ml-data-evaluation.md` — event schema, transparent baseline, model progression, evaluation design.
-- `design/ash/` — complete design system export: tokens, component CSS, guideline and component specimens, two reference mocks.
-- `.impeccable/critique/2026-09-21T21-47-50Z__index-html.md` — one prior critique snapshot of the shipped page.
+- `design/ash/` — the former Ash design system export: tokens, component CSS, guideline and component specimens, two reference mocks. Historical reference since the 22 September 2026 redesign; not binding.
+- `.impeccable/critique/2026-09-21T21-47-50Z__index-html.md` — critique snapshot of the pre-redesign (Ash) page.
+- `.impeccable/critique/2026-09-22T19-57-13Z__index-html.md` — critique of the Afterimage redesign that led to the still-run trim.
 
 **Absences future work must not fabricate:** no users, no usage data, no testimonials, no case studies, no press, no benchmarks, no learning-outcome evidence, no pricing, no deployment. The Reddit sampling is qualitative and not representative. No user study has been run and none is authorized by the research handoff.
 

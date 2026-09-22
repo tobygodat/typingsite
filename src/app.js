@@ -13,6 +13,9 @@ import {
   summarizePatterns,
 } from './typing.js';
 import { createTypingFx } from './motion.js';
+import { renderRunArt } from './rhythm.js';
+import { createPalette } from './palette.js';
+import { listenForSequence } from './egg.js';
 
 const STORAGE_KEY = 'stilltype-profile-v2';
 const MAX_STORED_ATTEMPTS = 24;
@@ -31,6 +34,7 @@ const defaultPreferences = {
   liveMetrics: true,
   keyboard: false,
   focusMode: false,
+  theme: 'system',
 };
 
 function emptyProfile() {
@@ -74,8 +78,15 @@ let attempt = null;
 let startTime = null;
 let ticker = null;
 let primaryCharacters = [];
+let primaryNotice = '';
+let liveSecond = -1;
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'));
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'));
+const prefersLight = matchMedia('(prefers-color-scheme: light)');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let lastCompleted = null;
+let ghostOn = false;
+let palette = null;
 let baselineAttempt = null;
 let activeRecommendation = null;
 let selectedTarget = null;
@@ -135,13 +146,76 @@ function describeConditions(value = conditions()) {
   return `english · ${length} · ${punctuation} · ${input} · corpus v3 · metric v1`;
 }
 
+// A drill is always one minute of generated text, whatever the baseline was.
+function describeRun(run) {
+  if (run.kind !== 'drill') return describeConditions(run.conditions);
+  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`;
+}
+
+function signed(value, unit) {
+  const sign = value > 0 ? '+' : value < 0 ? '−' : '';
+  return `${sign}${Math.abs(value)} ${unit}`;
+}
+
+// The live numbers tick ten times a second; only touch the DOM when the text changes.
+function setText(element, value) {
+  const text = String(value);
+  if (element.textContent !== text) element.textContent = text;
+}
+
+// body[data-running] lets the CSS fade the chrome mid-run; skip no-op writes on every keystroke.
+function setRunning(running) {
+  const value = String(running);
+  if (document.body.dataset.running !== value) document.body.dataset.running = value;
+}
+
 function currentBestKey() {
   return conditionKey(conditions());
 }
 
 function showBest() {
   const best = profile.bests[currentBestKey()];
-  $('best').textContent = best ? `Best · ${best.wpm} wpm` : 'No best for these conditions';
+  $('best').textContent = best ? `Best · ${best.wpm} wpm` : 'No best yet';
+}
+
+function resolvedTheme() {
+  if (prefs.theme === 'light' || prefs.theme === 'dark') return prefs.theme;
+  return prefersLight.matches ? 'light' : 'dark';
+}
+
+function applyTheme() {
+  const theme = resolvedTheme();
+  document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f4f1eb' : '#0f0f0e';
+  $('theme-select').value = prefs.theme;
+  if (document.body.dataset.view === 'results' && lastCompleted) renderRunArt($('card-canvas'), lastCompleted, { animate: false });
+}
+
+// Slides a group's pill under its selected control; used by the dock and the segmented controls.
+function updateGlide(container, { instant = false } = {}) {
+  let pill = container.querySelector(':scope > .glide-pill');
+  if (!pill) {
+    pill = document.createElement('span');
+    pill.className = 'glide-pill';
+    pill.setAttribute('aria-hidden', 'true');
+    container.prepend(pill);
+  }
+  const target = container.querySelector(container.dataset.glide === 'current' ? ':scope > [aria-current="page"]' : ':scope > [aria-pressed="true"]');
+  if (!target || !target.offsetWidth) {
+    pill.style.setProperty('--pill-o', '0');
+    return;
+  }
+  if (instant) container.classList.add('no-anim');
+  pill.style.setProperty('--pill-x', `${target.offsetLeft}px`);
+  pill.style.setProperty('--pill-y', `${target.offsetTop}px`);
+  pill.style.setProperty('--pill-w', `${target.offsetWidth}px`);
+  pill.style.setProperty('--pill-h', `${target.offsetHeight}px`);
+  pill.style.setProperty('--pill-o', '1');
+  if (instant) requestAnimationFrame(() => requestAnimationFrame(() => container.classList.remove('no-anim')));
+}
+
+function updateGlides(options) {
+  document.querySelectorAll('.glide').forEach((container) => updateGlide(container, options));
 }
 
 function applyPreferences() {
@@ -155,6 +229,7 @@ function applyPreferences() {
   $('keyboard-toggle').checked = prefs.keyboard;
   $('focus-toggle').checked = prefs.focusMode;
   $('keyboard').hidden = !prefs.keyboard;
+  applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
@@ -171,7 +246,8 @@ function setModeControls() {
   $('punctuation-toggle').disabled = prefs.mode === 'quote';
   $('duration-options').hidden = prefs.mode === 'quote';
   const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
-  $('duration-options').replaceChildren(...values.map((value) => {
+  const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
+  $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
     const button = document.createElement('button');
     const selected = value === (prefs.mode === 'time' ? prefs.duration : prefs.count);
     button.type = 'button';
@@ -183,6 +259,7 @@ function setModeControls() {
     return button;
   }));
   showBest();
+  requestAnimationFrame(() => updateGlides());
 }
 
 function renderText(display, text) {
@@ -244,9 +321,9 @@ function sessionDurationMs() {
 
 function configureSessionCopy() {
   const copy = {
-    practice: ['Open practice', 'Practice', 'Settle into a steady pace. Your next useful exercise comes from what happens here.'],
-    drill: ['Targeted drill', selectedTarget ? `Practice “${selectedTarget}”` : 'General fluency drill', 'Keep the rhythm calm. This minute is practice, so it stays out of your personal best.'],
-    retest: ['Fresh-text retest', 'Measure the change', passage?.fresh === false ? 'The matching corpus is exhausted. You can type this passage, but it will not support a fresh-text comparison.' : 'Same conditions, unfamiliar text. This is one observed comparison, not a promise of lasting improvement.'],
+    practice: ['practice', 'Practice', ''],
+    drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
+    retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
   }[sessionKind];
   $('session-kicker').textContent = copy[0];
   $('session-title').textContent = copy[1];
@@ -261,14 +338,16 @@ function configureSessionCopy() {
 function resetSession(kind = sessionKind, { focus = false, selectedPassage = null } = {}) {
   clearInterval(ticker);
   ticker = null;
+  setRunning(false);
+  primaryNotice = '';
   sessionKind = kind;
   passage = selectedPassage || (kind === 'drill' ? makeDrill(selectedTarget) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
-    showUnavailableRetest('You have seen every matching quote. Choose another quote filter or a word test and complete a new baseline.');
+    showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
   }
   if (!passage) {
-    if (kind === 'retest') showUnavailableRetest('No passage matches the original conditions. Change the quote filters and run a new baseline.');
+    if (kind === 'retest') showUnavailableRetest('No passage matches the original conditions. Change the quote filters, then run a new baseline.');
     else {
       attempt = null;
       startTime = null;
@@ -281,7 +360,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
       $('typing-status').textContent = 'No matching text';
       $('typing-status').className = 'badge badge-warning';
       $('condition-line').textContent = describeConditions();
-      $('input-help').textContent = 'Choose another quote length or difficulty to continue.';
+      $('input-help').textContent = 'Try another quote length or difficulty.';
       for (const id of ['live-wpm', 'live-accuracy', 'timer']) $(id).textContent = '—';
       $('progress-bar').style.setProperty('--progress', '0');
       $('progress-track').setAttribute('aria-valuenow', '0');
@@ -308,10 +387,12 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('accessible-passage').textContent = passage.text;
   primaryCharacters = renderText($('text-display'), passage.text);
   primaryFx.reset(primaryCharacters);
+  primaryFx.ghost.arm(ghostOn ? ghostPace().cps : 0);
+  markKeyboardTargets(kind === 'drill' ? selectedTarget : null);
   $('typing-status').className = 'badge badge-info';
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
-  $('input-help').textContent = 'Start typing to begin';
-  $('condition-line').textContent = describeConditions(attempt.conditions);
+  $('input-help').textContent = '';
+  $('condition-line').textContent = describeRun(attempt);
   configureSessionCopy();
   updateLive(true);
   switchView('practice');
@@ -323,11 +404,11 @@ function showUnavailableRetest(reason) {
   switchView('results');
   $('comparison-panel').hidden = false;
   $('comparison-panel').dataset.outcome = 'unavailable';
-  $('comparison-status').textContent = 'A comparable retest is unavailable.';
+  $('comparison-status').textContent = 'No fair retest available.';
   $('comparison-accuracy').textContent = '—';
   $('comparison-timing').textContent = '—';
   $('comparison-wpm').textContent = '—';
-  $('comparison-sample').textContent = 'No matching fresh text';
+  $('comparison-sample').textContent = 'no matching fresh text';
   $('comparison-caveat').textContent = reason;
   announce(reason);
 }
@@ -340,6 +421,8 @@ function startAttempt(targetAttempt, type = 'primary') {
     attempt.status = 'running';
     attempt.startedAt = 0;
     ticker = setInterval(updateLive, 100);
+    primaryFx.ghost.run(stamp);
+    setRunning(true);
     $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>In progress';
   } else {
     if (race.startTime !== null) return;
@@ -390,9 +473,7 @@ function beforeTypingInput(event, type = 'primary') {
   }
   if (event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop') {
     event.preventDefault();
-    const help = type === 'primary' ? $('input-help') : $('race-help');
-    help.textContent = 'Paste and drop are disabled. Type the passage with the keyboard.';
-    announce('Paste is disabled for typing practice.');
+    refusePaste(type);
     return;
   }
   if (event.inputType?.includes('Composition') || event.isComposing) {
@@ -400,9 +481,7 @@ function beforeTypingInput(event, type = 'primary') {
     targetAttempt.unsupportedInput = true;
     targetAttempt.interrupted = true;
     targetAttempt.events.push({ type: 'composition', offsetMs: offsetFor(type) });
-    const help = type === 'primary' ? $('input-help') : $('race-help');
-    help.textContent = 'Composition input is not scored in this English physical-keyboard mode. Restart and use direct key input.';
-    announce(help.textContent);
+    showInputNotice(type, NOTICES.composition, { sticky: true });
     return;
   }
   if (event.inputType?.startsWith('delete')) {
@@ -420,13 +499,37 @@ function beforeTypingInput(event, type = 'primary') {
   if ([...event.data].length !== 1) {
     targetAttempt.unsupportedInput = true;
     targetAttempt.interrupted = true;
-    const help = type === 'primary' ? $('input-help') : $('race-help');
-    help.textContent = 'Multi-character input is not scored. Restart and type one key at a time.';
-    announce(help.textContent);
+    showInputNotice(type, NOTICES.multiCharacter, { sticky: true });
     return;
   }
   const change = pushInsert(event.data, type);
   refreshAfterInput(type, change.previousLength, change.blocked);
+}
+
+// Everything the typing surface says, kept short. The focus-lost and composition
+// notices stay until restart because the run no longer counts.
+const NOTICES = {
+  blocked: 'Fix the underlined letter.',
+  paste: 'Paste is off. Type the passage.',
+  composition: 'IME input isn’t scored. Esc to restart.',
+  multiCharacter: 'One key at a time. Esc to restart.',
+  repeat: 'Key repeat ignored.',
+  focusLost: 'Focus lost. This run won’t count. Esc to restart.',
+  leftSurface: 'You left mid-run, so it won’t count.',
+  paletteOpened: 'Commands opened mid-run, so it won’t count.',
+  raceFocusLost: 'Focus lost. Esc to restart this turn.',
+};
+
+function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
+  if (type === 'primary') {
+    $('input-help').textContent = message;
+    if (sticky) primaryNotice = message;
+  } else $('race-help').textContent = message;
+  if (speak) announce(message);
+}
+
+function refusePaste(type) {
+  showInputNotice(type, NOTICES.paste);
 }
 
 function refreshAfterInput(type, previousLength, blocked = false) {
@@ -445,8 +548,8 @@ function refreshAfterInput(type, previousLength, blocked = false) {
   else if (length > previousLength) outcome = lastCorrect ? 'correct' : 'wrong';
   (isPrimary ? primaryFx : raceFx).update(length, outcome, length > 0 && !lastCorrect);
   if (isPrimary) {
-    if (blocked) $('input-help').textContent = 'Correct the underlined character before moving on.';
-    else $('input-help').textContent = 'Backspace corrects · Escape restarts';
+    setRunning(true);
+    $('input-help').textContent = blocked ? NOTICES.blocked : primaryNotice;
     updateLive();
     if ((sessionDurationMs() === null || sessionKind === 'drill') && replay.typed === targetAttempt.text) finishPrimary();
   } else {
@@ -455,29 +558,47 @@ function refreshAfterInput(type, previousLength, blocked = false) {
   }
 }
 
+// The ghost runs at the personal best for these exact conditions, or a gentle 60 wpm without one.
+function ghostPace() {
+  // The active attempt knows its real input class (touch is detected after reset).
+  const best = profile.bests[conditionKey(attempt?.conditions || conditions())];
+  const wpm = best?.wpm || 60;
+  return { wpm, cps: (wpm * 5) / 60, fromBest: Boolean(best) };
+}
+
+function markKeyboardTargets(target) {
+  const letters = new Set((target || '').toLowerCase());
+  document.querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
+}
+
 function updateLive(reset = false) {
   if (!attempt) return;
   const replay = replayAttempt(attempt);
   const elapsed = startTime === null ? 0 : now() - startTime;
   const duration = sessionDurationMs();
   const boundedElapsed = duration ? Math.min(elapsed, duration) : elapsed;
-  const live = { ...replay, score: replayAttempt({ ...attempt, endedAt: boundedElapsed }).score };
-  // A rate over the first second is mostly noise (one key in 5 ms reads as thousands of wpm).
-  $('live-wpm').textContent = startTime === null || boundedElapsed < 1000 ? '—' : live.score.wpm;
-  $('live-accuracy').textContent = startTime === null ? '—' : live.score.accuracy;
+  // A rate over the first second is mostly noise (one key in 5 ms reads as thousands of wpm),
+  // and a number that changes every keystroke pulls the eye off the text: update once a second.
+  const second = startTime === null ? -1 : Math.floor(boundedElapsed / 1000);
+  if (reset || second !== liveSecond) {
+    liveSecond = second;
+    const score = second >= 1 ? replayAttempt({ ...attempt, endedAt: boundedElapsed }).score : null;
+    setText($('live-wpm'), score ? score.wpm : '—');
+    setText($('live-accuracy'), score ? score.accuracy : '—');
+  }
   let progress;
   if (duration) {
     const remaining = Math.max(0, Math.ceil((duration - boundedElapsed) / 1000));
-    $('timer').textContent = remaining;
-    $('timer-unit').textContent = 's';
-    $('timer-label').textContent = 'remaining';
+    setText($('timer'), remaining);
+    setText($('timer-unit'), 's');
+    setText($('timer-label'), 'remaining');
     progress = boundedElapsed / duration;
   } else {
     const wordTotal = attempt.text.split(' ').length;
     const wordCount = replay.typed.length === attempt.text.length ? wordTotal : (replay.typed.match(/ /g) || []).length;
-    $('timer').textContent = wordCount;
-    $('timer-unit').textContent = `/${wordTotal}`;
-    $('timer-label').textContent = 'words';
+    setText($('timer'), wordCount);
+    setText($('timer-unit'), `/${wordTotal}`);
+    setText($('timer-label'), 'words');
     progress = replay.typed.length / attempt.text.length;
   }
   const percent = Math.max(0, Math.min(100, progress * 100));
@@ -515,13 +636,14 @@ function finishPrimary(forcedElapsed = null) {
   attempt = completed;
   $('typing-input').disabled = true;
   primaryFx.finish();
+  setRunning(false);
   $('typing-status').className = `badge ${valid ? 'badge-success' : 'badge-warning'}`;
   $('typing-status').textContent = valid ? 'Complete' : 'Interrupted';
   const saved = storeAttempt(completed);
 
   if (sessionKind === 'drill' && baselineAttempt) {
     if (trainingContext) trainingContext.drillCompleted = valid;
-    announce(valid ? 'Drill complete. Fresh retest ready.' : 'Drill ended with an interruption. The fresh retest is still available.');
+    announce(valid ? 'Drill complete. Retest ready.' : 'Drill interrupted. Retest ready.');
     startRetest();
     return;
   }
@@ -533,53 +655,69 @@ function finishPrimary(forcedElapsed = null) {
   renderResults(completed, saved);
   if (sessionKind === 'retest') renderComparison(baselineAttempt, completed, saved);
   switchView('results');
+  renderCard(completed);
   $('run-again').focus({ preventScroll: true });
+}
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+// Draw after the results view is shown so the canvas has its size.
+function renderCard(completed) {
+  lastCompleted = completed;
+  const kind = completed.kind === 'test' ? 'practice' : completed.kind;
+  const at = new Date();
+  const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+  $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
+  $('run-card').hidden = false;
+  renderRunArt($('card-canvas'), completed, { animate: true });
+}
+
+function resultHeadline(completed) {
+  if (completed.status !== 'complete') return 'Interrupted · not counted';
+  if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
+  if (!resultBestBefore) return 'First run at these settings';
+  const delta = completed.summary.score.wpm - resultBestBefore.wpm;
+  if (delta === 0) return `Matched your best of ${resultBestBefore.wpm}`;
+  return `${delta > 0 ? '+' : '−'}${Math.abs(delta)} vs your best of ${resultBestBefore.wpm}`;
+}
+
+function retestLength(value) {
+  if (value.mode === 'time') return `${value.duration} s`;
+  if (value.mode === 'words') return `${value.count}-word`;
+  return value.quoteLength && value.quoteLength !== 'any' ? `${value.quoteLength} quote` : 'quote';
 }
 
 function renderResults(completed, saved) {
   activeRecommendation ||= recommendTarget([], completed.conditions);
   const replay = completed.summary;
+  const counted = completed.status === 'complete';
   const firstErrors = replay.firstAttempts.filter((item) => !item.correct).length;
   $('result-wpm').textContent = replay.score.wpm;
   $('result-accuracy').textContent = replay.score.accuracy;
   $('result-errors').textContent = firstErrors;
   $('result-time').textContent = `${(replay.elapsedMs / 1000).toFixed(1)} s`;
-  $('result-conditions').textContent = describeConditions(completed.conditions);
-  $('result-comparison-note').textContent = completed.status === 'complete'
-    ? `${replay.correctInsertions} correct insertions from ${replay.insertions} total.`
-    : 'Focus or input method interrupted this run, so it is kept out of comparison.';
-  $('result-delta').textContent = completed.status !== 'complete'
-    ? 'Interrupted · kept out of your best'
-    : completed.kind === 'drill'
-      ? 'Drill · kept out of your best'
-    : resultBestBefore
-      ? `${replay.score.wpm >= resultBestBefore.wpm ? '+' : ''}${replay.score.wpm - resultBestBefore.wpm} vs previous best ${resultBestBefore.wpm}`
-      : 'First completed run for these conditions';
+  $('result-conditions').textContent = describeRun(completed);
+  $('result-delta').textContent = resultHeadline(completed);
+  // A retest reports a failed save once, in the comparison caveat.
+  $('result-comparison-note').textContent = [
+    counted ? '' : 'Focus or input changed during the run, so it isn’t counted.',
+    saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
+  ].filter(Boolean).join(' ');
 
   if (sessionKind === 'practice') {
     activeRecommendation = recommendTarget(profile.attempts, completed.conditions);
     selectedTarget = activeRecommendation.target;
   }
-  $('recommendation-title').textContent = completed.status === 'complete' ? activeRecommendation.title : 'Restart for a comparable baseline';
-  $('recommendation-evidence').textContent = completed.status === 'complete'
-    ? activeRecommendation.reason
-    : 'This run lost focus or used unsupported input. It is stored as interrupted and cannot support a personal recommendation.';
-  $('recommendation-meta').textContent = `About 1 min, then a fresh ${prefs.mode === 'time' ? `${prefs.duration} s` : prefs.mode === 'words' ? `${prefs.count}-word` : prefs.quoteLength} passage.`;
-  const confidence = $('recommendation-confidence');
-  confidence.className = `badge ${activeRecommendation.kind === 'targeted' ? 'badge-info' : 'badge-neutral'}`;
-  confidence.textContent = completed.status !== 'complete'
-    ? 'Interrupted'
-    : activeRecommendation.kind === 'targeted'
-      ? 'Enough local evidence'
-      : activeRecommendation.kind === 'manual' ? 'Manual target' : 'More data needed';
-  $('start-drill').disabled = completed.status !== 'complete';
-  $('skip-to-retest').disabled = completed.status !== 'complete' || !baselineAttempt;
+  $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
+  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
+  $('recommendation-meta').textContent = `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`;
+  $('start-drill').disabled = !counted;
+  $('skip-to-retest').disabled = !counted || !baselineAttempt;
   renderEvidenceList(activeRecommendation.evidence);
   $('comparison-panel').hidden = true;
-  if (!saved) {
-    $('result-delta').textContent += ' · could not save on this device';
-    announce('Run complete, but local storage is unavailable. This result was not saved.');
-  } else announce(`${replay.score.wpm} corrected words per minute, ${replay.score.accuracy} percent input accuracy.`);
+  announce(saved
+    ? `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy.`
+    : `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
 }
 
 function renderEvidenceList(evidence) {
@@ -590,11 +728,22 @@ function renderEvidenceList(evidence) {
   $('recommendation-list').replaceChildren(...strongest.map((item) => {
     const row = document.createElement('div');
     row.className = 'evidence-row';
-    const timing = item.medianMs === null ? 'timing needs more samples' : `${item.medianMs} ms median · ${item.timings.length} clean intervals`;
-    row.innerHTML = `<strong>${item.pair}</strong><span>${item.errors}/${item.observations} first-attempt errors · ${timing}</span>`;
+    const pair = document.createElement('strong');
+    pair.textContent = item.pair;
+    const counts = document.createElement('span');
+    const timing = item.medianMs === null ? 'timing needs more samples' : `${item.medianMs} ms median over ${item.timings.length} ${item.timings.length === 1 ? 'interval' : 'intervals'}`;
+    counts.textContent = `${item.errors}/${item.observations} first-try errors · ${timing}`;
+    row.append(pair, counts);
     return row;
   }));
 }
+
+const COMPARISON_HEADINGS = {
+  improved: 'The retest was stronger.',
+  mixed: 'A mixed result.',
+  regressed: 'The retest was lower.',
+  steady: 'Level with your baseline.',
+};
 
 function renderComparison(before, after, saved) {
   const comparison = compareAttempts(before, after);
@@ -602,13 +751,9 @@ function renderComparison(before, after, saved) {
   panel.hidden = false;
   const outcome = comparison.comparable ? comparison.state : 'unavailable';
   panel.dataset.outcome = outcome;
-  $('comparison-status').textContent = comparison.comparable
-    ? comparison.state === 'improved' ? 'This fresh retest was stronger.'
-      : comparison.state === 'mixed' ? 'Speed and accuracy moved in different directions.'
-        : comparison.state === 'regressed' ? 'This retest was lower.' : 'This retest held steady.'
-    : 'These runs cannot support a fair comparison.';
-  $('comparison-accuracy').textContent = comparison.comparable ? `${comparison.accuracyDelta >= 0 ? '+' : ''}${comparison.accuracyDelta} percentage points` : '—';
-  $('comparison-wpm').textContent = comparison.comparable ? `${comparison.wpmDelta >= 0 ? '+' : ''}${comparison.wpmDelta} wpm` : '—';
+  $('comparison-status').textContent = comparison.comparable ? COMPARISON_HEADINGS[comparison.state] : 'Retest complete.';
+  $('comparison-accuracy').textContent = comparison.comparable ? signed(comparison.accuracyDelta, 'pp') : '—';
+  $('comparison-wpm').textContent = comparison.comparable ? signed(comparison.wpmDelta, 'wpm') : '—';
 
   const trainedTarget = trainingContext?.target || selectedTarget;
   const beforePattern = before ? summarizePatterns([before]).pairs.find((item) => item.pair === trainedTarget) : null;
@@ -618,13 +763,13 @@ function renderComparison(before, after, saved) {
   if (enoughTiming) {
     const delta = afterPattern.medianMs - beforePattern.medianMs;
     timingSummary.deltaMs = delta;
-    $('comparison-timing').textContent = `${delta >= 0 ? '+' : ''}${delta} ms`;
-    $('comparison-sample').textContent = `${trainedTarget} intervals · ${beforePattern.timings.length} before · ${afterPattern.timings.length} after`;
+    $('comparison-timing').textContent = signed(delta, 'ms');
+    $('comparison-sample').textContent = `${trainedTarget} · ${beforePattern.timings.length} before · ${afterPattern.timings.length} after`;
   } else {
-    $('comparison-timing').textContent = 'More data needed';
+    $('comparison-timing').textContent = '—';
     $('comparison-sample').textContent = trainedTarget
-      ? `${trainedTarget} intervals · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
-      : `Insertions · ${before?.summary?.insertions || 0} before · ${after.summary.insertions} after`;
+      ? `${trainedTarget} · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
+      : `keystrokes · ${before?.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
   }
   let comparisonSaved = saved;
   if (comparison.comparable && saved) {
@@ -642,7 +787,7 @@ function renderComparison(before, after, saved) {
     });
     comparisonSaved = saveProfile();
   }
-  $('comparison-caveat').textContent = `${comparison.reason}${comparisonSaved ? ' Saved to local progress.' : ' Local storage is unavailable, so this comparison was not saved.'}`;
+  $('comparison-caveat').textContent = `${comparison.reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
   renderHistory();
 }
 
@@ -679,6 +824,9 @@ function switchView(view) {
     if (active) control.setAttribute('aria-current', 'page');
     else control.removeAttribute('aria-current');
   });
+  setRunning(false);
+  // Pills in a hidden screen measured zero width; remeasure every group now it is visible.
+  updateGlides();
   if (view === 'progress') renderHistory();
 }
 
@@ -689,49 +837,52 @@ function navigate(view) {
     return;
   }
   if (attempt?.status === 'running' && view !== 'practice') {
-    markInterrupted('You left the typing surface. This run is stored as interrupted.');
+    markInterrupted(NOTICES.leftSurface);
     finishPrimary();
   }
-  if (race.attempt?.status === 'running' && view !== 'compete') markInterrupted('The local challenge lost focus. Restart this player for a fair result.');
+  if (race.attempt?.status === 'running' && view !== 'compete') markRaceInterrupted();
   switchView(view);
 }
 
 function markInterrupted(message) {
-  if (attempt?.status === 'running' && !attempt.interrupted) {
-    attempt.interrupted = true;
-    attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor() });
-    $('typing-status').className = 'badge badge-warning';
-    $('typing-status').textContent = 'Interrupted';
-    $('input-help').textContent = message;
-    announce(message);
-  }
-  if (race.attempt?.status === 'running' && !race.attempt.interrupted) {
-    race.attempt.interrupted = true;
-    race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
-    $('race-help').textContent = 'Focus changed. Restart this player for a fair local result.';
-  }
+  if (attempt?.status !== 'running' || attempt.interrupted) return;
+  attempt.interrupted = true;
+  attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor() });
+  $('typing-status').className = 'badge badge-warning';
+  $('typing-status').textContent = 'Interrupted';
+  showInputNotice('primary', message, { sticky: true });
+}
+
+function markRaceInterrupted() {
+  if (race.attempt?.status !== 'running' || race.attempt.interrupted) return;
+  race.attempt.interrupted = true;
+  race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
+  showInputNotice('race', NOTICES.raceFocusLost, { speak: false });
 }
 
 function renderHistory() {
   const loops = [...profile.loops].reverse();
   $('progress-empty').hidden = loops.length > 0;
   $('history-list').hidden = loops.length === 0;
-  $('clear-history').disabled = profile.attempts.length === 0 && loops.length === 0;
+  const hasHistory = profile.attempts.length > 0 || loops.length > 0;
+  $('clear-history').hidden = !hasHistory;
+  $('clear-history').disabled = !hasHistory;
   const template = $('history-row-template');
-  const rows = loops.map((loop) => {
+  const rows = loops.map((loop, index) => {
     const row = template.content.firstElementChild.cloneNode(true);
+    row.style.setProperty('--i', String(index));
     row.querySelector('.history-date').textContent = new Date(loop.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     row.querySelector('.history-target').textContent = loop.drillCompleted
-      ? loop.target ? `“${loop.target}” drill and retest` : 'General fluency drill and retest'
+      ? loop.target ? `“${loop.target}” drill and retest` : 'General drill and retest'
       : 'Fresh-text check';
     row.querySelector('.history-conditions').textContent = describeConditions(loop.conditions);
     if (loop.targetTiming?.target) {
-      row.querySelector('.history-conditions').textContent += ` · ${loop.targetTiming.target}: ${loop.targetTiming.beforeCount} clean intervals before, ${loop.targetTiming.afterCount} after`;
+      row.querySelector('.history-conditions').textContent += ` · ${loop.targetTiming.target} · ${loop.targetTiming.beforeCount} before · ${loop.targetTiming.afterCount} after`;
     }
-    row.querySelector('.history-accuracy').textContent = `${loop.comparison.accuracyDelta >= 0 ? '+' : ''}${loop.comparison.accuracyDelta} pp`;
+    row.querySelector('.history-accuracy').textContent = signed(loop.comparison.accuracyDelta, 'pp');
     const measures = row.querySelectorAll('.history-measure span');
     if (measures[1]) measures[1].textContent = 'Corrected wpm';
-    row.querySelector('.history-timing').textContent = `${loop.comparison.wpmDelta >= 0 ? '+' : ''}${loop.comparison.wpmDelta} wpm`;
+    row.querySelector('.history-timing').textContent = signed(loop.comparison.wpmDelta, 'wpm');
     const status = row.querySelector('.history-status');
     status.textContent = loop.comparison.state;
     status.className = `history-status badge ${loop.comparison.state === 'improved' ? 'badge-success' : loop.comparison.state === 'regressed' ? 'badge-danger' : 'badge-neutral'}`;
@@ -782,14 +933,14 @@ function setupRacePlayer() {
   race.startTime = null;
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
-  $('race-status').textContent = `Player ${race.player + 1} of 2 · local`;
+  $('race-status').textContent = `Player ${race.player + 1} of 2`;
   $('race-input').value = '';
   $('race-input').disabled = false;
   race.characters = renderText($('race-text-display'), race.passage.text);
   raceFx.reset(race.characters);
   $('race-accessible-passage').textContent = race.passage.text;
   updateRaceProgress(replayAttempt(race.attempt));
-  $('race-help').textContent = 'Start typing when you are ready. Escape restarts your attempt.';
+  $('race-help').textContent = 'Esc restarts.';
   $('race-input').focus({ preventScroll: true });
 }
 
@@ -809,6 +960,9 @@ function finishRacePlayer() {
   $('race-stage').hidden = true;
   if (race.player === 0) {
     race.player = 1;
+    $('handoff-name').textContent = race.names[1];
+    $('handoff-veil').textContent = race.passage.text;
+    $('race-handoff').classList.remove('is-revealing');
     $('race-handoff').hidden = false;
     announce(`${race.names[0]} finished. Pass the keyboard to ${race.names[1]}.`);
   } else renderRaceResults();
@@ -823,17 +977,17 @@ function renderRaceResults() {
     && ordered[0].attempt.summary.score.accuracy === ordered[1].attempt.summary.score.accuracy;
   $('race-winner').textContent = ordered.length !== 2
     ? 'A fair result needs two uninterrupted runs.'
-    : tied ? 'This local challenge is a tie.' : `${ordered[0].name} leads this local challenge.`;
+    : tied ? 'It’s a tie.' : `${ordered[0].name} leads.`;
   const ranked = [...race.results].sort((a, b) => {
     if (a.attempt.status !== b.attempt.status) return a.attempt.status === 'complete' ? -1 : 1;
     return b.attempt.summary.score.wpm - a.attempt.summary.score.wpm || b.attempt.summary.score.accuracy - a.attempt.summary.score.accuracy;
   });
-  $('race-results').replaceChildren(...ranked.map((result, index) => {
+  $('race-results').replaceChildren(...ranked.map((result) => {
     const row = document.createElement('article');
     const score = result.attempt.summary.score;
     row.className = 'race-result-row';
     const name = document.createElement('strong');
-    name.textContent = `${index + 1}. ${result.name}`;
+    name.textContent = result.name;
     const speed = document.createElement('span');
     speed.className = 'num';
     speed.textContent = result.attempt.status === 'complete' ? `${score.wpm} wpm` : 'interrupted';
@@ -841,11 +995,12 @@ function renderRaceResults() {
     accuracy.className = 'num';
     accuracy.textContent = `${score.accuracy}% accuracy`;
     const elapsed = document.createElement('span');
-    elapsed.textContent = `${(result.attempt.summary.elapsedMs / 1000).toFixed(1)} s · local only`;
+    elapsed.className = 'num';
+    elapsed.textContent = `${(result.attempt.summary.elapsedMs / 1000).toFixed(1)} s`;
     row.append(name, speed, accuracy, elapsed);
     return row;
   }));
-  announce('Local challenge complete.');
+  announce('Challenge complete.');
 }
 
 function clearHistory() {
@@ -859,11 +1014,15 @@ function clearHistory() {
   selectedTarget = null;
   activeRecommendation = null;
   for (const id of ['result-wpm', 'result-accuracy', 'result-errors', 'result-time']) $(id).textContent = '—';
-  $('result-delta').textContent = 'Complete a run to build a new baseline.';
-  $('result-comparison-note').textContent = 'No saved run selected.';
-  $('recommendation-title').textContent = 'Choose a target or start a new run.';
-  $('recommendation-evidence').textContent = 'Your local history was cleared. Manual practice is always available.';
-  $('recommendation-confidence').textContent = 'No saved evidence';
+  $('result-delta').textContent = 'No run yet.';
+  $('result-comparison-note').textContent = '';
+  $('run-card-stamp').textContent = 'no run yet';
+  $('run-card').hidden = true;
+  lastCompleted = null;
+  const canvas = $('card-canvas');
+  canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+  $('recommendation-title').textContent = 'Finish a run to get a drill.';
+  $('recommendation-evidence').textContent = '';
   $('recommendation-list').replaceChildren();
   $('comparison-panel').hidden = true;
   $('start-drill').disabled = true;
@@ -871,7 +1030,7 @@ function clearHistory() {
   const saved = saveProfile();
   $('clear-dialog').close();
   $('history-toast').hidden = false;
-  $('history-feedback').textContent = saved ? 'Local history cleared.' : 'History cleared in this tab, but storage is unavailable.';
+  $('history-feedback').textContent = saved ? 'History cleared.' : 'Cleared in this tab, but storage is unavailable.';
   $('undo-clear').hidden = false;
   $('undo-clear').focus();
   clearTimeout(clearTimer);
@@ -887,7 +1046,7 @@ function undoClear() {
   saveProfile();
   clearSnapshot = null;
   clearTimeout(clearTimer);
-  $('history-feedback').textContent = 'Local history restored.';
+  $('history-feedback').textContent = 'History restored.';
   $('undo-clear').hidden = true;
   applyPreferences();
   setModeControls();
@@ -939,6 +1098,8 @@ function bindEvents() {
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
+  $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
+  prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
@@ -952,12 +1113,13 @@ function bindEvents() {
   $('typing-input').addEventListener('keydown', (event) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
   });
-  $('typing-input').addEventListener('paste', (event) => { event.preventDefault(); announce('Paste is disabled for typing practice.'); });
+  $('typing-input').addEventListener('paste', (event) => { event.preventDefault(); refusePaste('primary'); });
   $('typing-input').addEventListener('drop', (event) => event.preventDefault());
   $('typing-input').addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'touch' && attempt?.status === 'ready') {
       attempt.conditions.inputClass = 'touch';
-      $('condition-line').textContent = describeConditions(attempt.conditions);
+      $('condition-line').textContent = describeRun(attempt);
+      if (ghostOn) primaryFx.ghost.arm(ghostPace().cps);
     }
   });
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
@@ -967,7 +1129,7 @@ function bindEvents() {
       attempt.unsupportedInput = true;
       attempt.interrupted = true;
       attempt.events.push({ type: 'composition', offsetMs: offsetFor() });
-      $('input-help').textContent = 'Composition input is not scored in this English physical-keyboard mode. Restart and use direct key input.';
+      showInputNotice('primary', NOTICES.composition, { sticky: true });
     }
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
@@ -979,14 +1141,14 @@ function bindEvents() {
     const raw = $('manual-target-input').value.trim();
     const valid = /^[a-z]{1,8}$/i.test(raw);
     $('manual-target-input').setAttribute('aria-invalid', String(!valid));
-    $('manual-target-error').textContent = valid ? '' : 'Use 1–8 English letters with no spaces or punctuation.';
+    $('manual-target-error').textContent = valid ? '' : 'Use 1–8 letters, no spaces or punctuation.';
     if (!valid) return;
     selectedTarget = normalizeManualTarget(raw);
     activeRecommendation = {
       kind: 'manual',
       target: selectedTarget,
       title: `Practice “${selectedTarget}”`,
-      reason: `You chose “${selectedTarget}” manually. It stays separate from the automatic recommendation evidence.`,
+      reason: `You picked “${selectedTarget}”. It’s kept separate from the automatic recommendation.`,
       evidence: activeRecommendation?.evidence || summarizePatterns(profile.attempts, 20, baselineAttempt?.conditions),
     };
     startDrill();
@@ -998,11 +1160,15 @@ function bindEvents() {
   $('race-input').addEventListener('keydown', (event) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
   });
-  $('race-input').addEventListener('paste', (event) => event.preventDefault());
-  $('race-input').addEventListener('blur', () => {
-    if (race.attempt?.status === 'running') markInterrupted('The local challenge lost focus. Restart this player for a fair result.');
+  $('race-input').addEventListener('paste', (event) => { event.preventDefault(); refusePaste('race'); });
+  $('race-input').addEventListener('blur', markRaceInterrupted);
+  $('start-next-player').addEventListener('click', () => {
+    // A short unblur of the passage, then the typing stage takes over.
+    const reveal = () => { $('race-handoff').hidden = true; $('race-handoff').classList.remove('is-revealing'); setupRacePlayer(); };
+    if (reducedMotion.matches) { reveal(); return; }
+    $('race-handoff').classList.add('is-revealing');
+    setTimeout(reveal, 200);
   });
-  $('start-next-player').addEventListener('click', () => { $('race-handoff').hidden = true; setupRacePlayer(); });
   $('race-again').addEventListener('click', () => { $('race-leaderboard').hidden = true; $('compete-setup').hidden = false; $('player-one-name').focus(); });
 
   $('clear-history').addEventListener('click', () => { $('confirm-clear-input').value = ''; $('confirm-clear').disabled = true; $('clear-dialog').showModal(); $('confirm-clear-input').focus(); });
@@ -1011,11 +1177,18 @@ function bindEvents() {
   $('cancel-clear').addEventListener('click', () => $('clear-dialog').close());
   $('undo-clear').addEventListener('click', undoClear);
 
+  const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
+    if (palette?.isOpen() || $('clear-dialog').open) return;
+    if (event.key === 'Escape' && preferences.open) {
+      event.preventDefault();
+      preferences.open = false;
+      preferences.querySelector('summary').focus();
+      return;
+    }
     if (event.repeat && event.key.length === 1 && (document.activeElement === $('typing-input') || document.activeElement === $('race-input'))) {
       event.preventDefault();
-      const help = document.activeElement === $('typing-input') ? $('input-help') : $('race-help');
-      help.textContent = 'Held-key repeats are ignored. Press each key once.';
+      showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
       return;
     }
     if (event.key === 'Escape' && prefs.focusMode) {
@@ -1034,16 +1207,119 @@ function bindEvents() {
     document.querySelectorAll('.key').forEach((key) => key.classList.toggle('active', key.dataset.key === event.key.toLowerCase()));
   });
   document.addEventListener('keyup', () => document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active')));
-  window.addEventListener('blur', () => { document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active')); markInterrupted('Focus changed. The clock kept running, but this run will stay out of comparisons. Restart for a comparable result.'); });
+  window.addEventListener('blur', () => {
+    document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active'));
+    markInterrupted(NOTICES.focusLost);
+    markRaceInterrupted();
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (preferences.open && !preferences.contains(event.target)) preferences.open = false;
+  });
+
+  // The chrome fades while typing; a real mouse nudge (not layout-induced jitter) brings it back.
+  let pointer = null;
+  document.addEventListener('pointermove', (event) => {
+    const moved = pointer ? Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) : 0;
+    if (!pointer || document.body.dataset.running !== 'true' || moved > 4) pointer = { x: event.clientX, y: event.clientY };
+    if (moved > 4) setRunning(false);
+  });
 }
 
-document.documentElement.dataset.theme = 'dark';
-addEventListener('resize', () => { primaryFx.relayout(); raceFx.relayout(); });
+function setTestShape(mode, length) {
+  prefs.mode = mode;
+  if (mode === 'time' && length) prefs.duration = length;
+  if (mode === 'words' && length) prefs.count = length;
+  setModeControls();
+  saveProfile();
+  resetSession('practice', { focus: true });
+}
+
+function togglePreference(key) {
+  prefs[key] = !prefs[key];
+  applyPreferences();
+  saveProfile();
+  if (document.body.dataset.view === 'practice') $('typing-input').focus({ preventScroll: true });
+}
+
+function paletteCommands(query) {
+  const onOff = (value) => (value ? 'on' : 'off');
+  const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  const commands = [
+    ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
+      group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
+    })),
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
+    ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
+    ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
+    { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
+    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
+    ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
+    ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
+    { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
+    { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
+    { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
+    { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
+  ];
+  // Only an exact word finds this one.
+  if (query === 'ghost') commands.unshift({ group: 'secret', secret: true, label: 'ghost pacer', hint: onOff(ghostOn), on: ghostOn, run: toggleGhost });
+  return commands;
+}
+
+function bindPalette() {
+  palette = createPalette({
+    dialog: $('palette'),
+    input: $('palette-input'),
+    list: $('palette-list'),
+    empty: $('palette-empty'),
+    highlight: document.querySelector('.palette-highlight'),
+    trigger: $('palette-trigger'),
+    getCommands: paletteCommands,
+    onOpen: () => {
+      document.querySelector('.preferences')?.removeAttribute('open');
+      markInterrupted(NOTICES.paletteOpened);
+      markRaceInterrupted();
+    },
+  });
+}
+
+// ↑ ↑ ↓ ↓ ← → ← → b a, or "ghost" in the palette: a pacer caret at your best pace for these conditions.
+function toggleGhost() {
+  ghostOn = !ghostOn;
+  document.body.dataset.ghost = ghostOn ? 'on' : 'off';
+  const pace = ghostPace();
+  const message = ghostOn ? `Ghost pacer · ${pace.wpm} wpm${pace.fromBest ? ' (your best)' : ''}` : 'Ghost off';
+  $('egg-feedback').textContent = message;
+  $('egg-toast').hidden = false;
+  $('egg-toast').classList.toggle('is-solo', $('history-toast').hidden);
+  clearTimeout(toggleGhost.timer);
+  toggleGhost.timer = setTimeout(() => { $('egg-toast').hidden = true; }, 3000);
+  announce(message);
+  if (document.body.dataset.view === 'practice' && sessionKind !== 'retest') resetSession(sessionKind, { focus: true });
+  else primaryFx.ghost.arm(ghostOn ? pace.cps : 0);
+}
+
+listenForSequence(toggleGhost);
+
+let resizeFrame = 0;
+addEventListener('resize', () => {
+  primaryFx.relayout();
+  raceFx.relayout();
+  cancelAnimationFrame(resizeFrame);
+  resizeFrame = requestAnimationFrame(() => updateGlides({ instant: true }));
+});
+const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
+document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
 buildKeyboard();
 applyPreferences();
 setModeControls();
 bindEvents();
+bindPalette();
+setRunning(false);
 renderHistory();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
+updateGlides({ instant: true });
+// Literata arrives after first paint; remeasure everything that depends on glyph widths.
+document.fonts?.ready.then(() => { primaryFx.relayout(); updateGlides({ instant: true }); });
+console.info('stilltype · ↑ ↑ ↓ ↓ ← → ← → b a');
 
-if (!storageAvailable) announce('Local storage is unavailable. Results will last only in this tab.');
+if (!storageAvailable) announce('Storage is unavailable. Results last only in this tab.');
