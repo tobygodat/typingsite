@@ -744,7 +744,7 @@
       "refersTo": null,
       "description": "Literata passage: muted untyped, text-colour correct, coral + tint + wavy underline wrong, 3px green caret.",
       "html": "<p class=\"ds-passage\"><span class=\"ok\">the quiet </span><span class=\"bad\">f</span><span class=\"caret\"></span>ox waits by the river</p>",
-      "css": ".ds-passage{position:relative;font-family:var(--font-serif, Literata, Georgia, serif);font-size:36px;line-height:1.75;letter-spacing:-0.004em;font-variant-ligatures:none;color:var(--muted,#a39e96);margin:0}.ds-passage .ok{color:var(--text,#ece8e1)}.ds-passage .bad{color:var(--danger,#ff8a6b);background:var(--danger-soft,rgba(255,138,107,0.16));border-radius:4px;text-decoration:underline wavy var(--danger,#ff8a6b) 1.5px;text-underline-offset:0.2em}.ds-passage .caret{display:inline-block;width:3px;height:1.15em;margin:0 -1.5px;vertical-align:-0.2em;border-radius:3px;background:var(--accent,#8fd18a)}"
+      "css": ".ds-passage{position:relative;font-family:var(--font-serif, Literata, Georgia, serif);font-size:36px;line-height:1.75;letter-spacing:-0.004em;font-variant-ligatures:none;color:var(--muted,#a39e96);margin:0}.ds-passage .ok{color:var(--text,#ece8e1)}.ds-passage .bad{color:var(--danger,#ff8a6b);background:var(--danger-soft,rgba(255,138,107,0.16));border-radius:6px;text-decoration:underline wavy var(--danger,#ff8a6b) 1.5px;text-underline-offset:0.2em}.ds-passage .caret{display:inline-block;width:3px;height:1.15em;margin:0 -1.5px;vertical-align:-0.2em;border-radius:999px;background:var(--accent,#8fd18a)}"
     },
     {
       "name": "Run Card",

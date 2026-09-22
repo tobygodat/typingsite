@@ -293,7 +293,7 @@ The page is flat. Depth appears only where an object floats over the page: the d
 
 ## Shapes
 
-Softly rounded, never pill-shaped except for switches and dots. Controls (buttons, inputs, nav items, icon buttons, segmented frames, the gliding pill and palette rows) use a 12px corner, and segment buttons inside a segmented frame use 10px. Popovers, toasts and the dock use 16px; the palette, dialog and run card 22px. Switches, dots and the 2px lines (caret, progress, ghost) take the full round. Letter tints use 4px, keycaps 6–9px, and the caret bar 3px. Borders are always 1px hairlines. The only drawn geometry is the chevron on the "drill something else" disclosure (a rotated 1.5px corner) and the line icons (19px, 1.6 stroke, round caps).
+Softly rounded, never pill-shaped except for switches and dots. Controls (buttons, inputs, nav items, icon buttons, segmented frames, the gliding pill and palette rows) use a 12px corner, and segment buttons inside a segmented frame use 10px. Popovers, toasts and the dock use 16px; the palette, dialog and run card 22px. Switches, dots, the caret bar and the 2px lines (progress, ghost) take the full round. Letter tints use 6px and keycaps 10px. Every corner comes from the `--radius-*` tokens; there are no raw radii. Borders are always 1px hairlines. The only drawn geometry is the chevron on the "drill something else" disclosure (a rotated 1.5px corner) and the line icons (19px, 1.6 stroke, round caps).
 
 ## Components
 

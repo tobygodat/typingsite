@@ -560,7 +560,8 @@ function refreshAfterInput(type, previousLength, blocked = false) {
 
 // The ghost runs at the personal best for these exact conditions, or a gentle 60 wpm without one.
 function ghostPace() {
-  const best = profile.bests[currentBestKey()];
+  // The active attempt knows its real input class (touch is detected after reset).
+  const best = profile.bests[conditionKey(attempt?.conditions || conditions())];
   const wpm = best?.wpm || 60;
   return { wpm, cps: (wpm * 5) / 60, fromBest: Boolean(best) };
 }
@@ -1118,6 +1119,7 @@ function bindEvents() {
     if (event.pointerType === 'touch' && attempt?.status === 'ready') {
       attempt.conditions.inputClass = 'touch';
       $('condition-line').textContent = describeRun(attempt);
+      if (ghostOn) primaryFx.ghost.arm(ghostPace().cps);
     }
   });
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
