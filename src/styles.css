@@ -723,6 +723,9 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 body[data-running="true"] :is(.dock-zone, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
 body[data-running="true"] :is(.dock, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
 
+.typing-actions .preferences { transition: opacity var(--dur-base) var(--ease-out); }
+body[data-running="true"] .typing-actions .preferences:not(:focus-within) { opacity: 0; pointer-events: none; }
+
 /* ── Typing zone ────────────────────────────────────────────────────────── */
 
 .typing-wrap,
@@ -955,6 +958,7 @@ body[data-focus-mode="true"] .practice-controls,
 body[data-focus-mode="true"] .quote-options,
 body[data-focus-mode="true"] .shortcut-row,
 body[data-focus-mode="true"] .site-footer,
+body[data-focus-mode="true"] .typing-actions .preferences,
 body[data-focus-mode="true"] .session-intro { visibility: hidden; }
 
 .exit-focus {
