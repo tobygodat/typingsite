@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import {
   compareAttempts,
   completeAttempt,
+  conditionKey,
   createAttempt,
   editStats,
   makeDrill,
   makePassage,
   metrics,
+  passageComplete,
   recommendTarget,
   replayAttempt,
 } from '../src/typing.js';
@@ -42,6 +44,24 @@ test('event replay retains a corrected first-attempt error and insertion accurac
   assert.equal(replay.firstAttempts.find((entry) => entry.position === 1).correct, false);
   assert.deepEqual(replay.score, { wpm: 6, accuracy: 75 });
   assert.deepEqual(replay.pairTimings.map((entry) => entry.pair), []);
+});
+
+test('relaxed correction completes with retained errors and a distinct comparison key', () => {
+  const relaxed = createAttempt({ id: 'relaxed', text: 'the', textId: 'one', conditions: { correctionPolicy: 'relaxed' } });
+  relaxed.events = [
+    { type: 'insert', text: 't', offsetMs: 0 },
+    { type: 'insert', text: 'x', offsetMs: 100 },
+    { type: 'insert', text: 'e', offsetMs: 200 },
+  ];
+  relaxed.startedAt = 0;
+  relaxed.endedAt = 1000;
+  const replay = replayAttempt(relaxed);
+  assert.equal(replay.typed, 'txe');
+  assert.equal(replay.firstAttempts.find((entry) => entry.position === 1).correct, false);
+  assert.deepEqual(replay.score, { wpm: 24, accuracy: 67 });
+  assert.equal(passageComplete(relaxed, replay.typed), true);
+  assert.equal(passageComplete({ ...relaxed, conditions: { correctionPolicy: 'mandatory' } }, replay.typed), false);
+  assert.notEqual(conditionKey(relaxed.conditions), conditionKey({ correctionPolicy: 'mandatory' }));
 });
 
 test('recommendations stay general below the evidence threshold', () => {

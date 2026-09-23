@@ -16,7 +16,7 @@ Product behaviour:
 
 - Spacious, borderless typing with centered mode/length controls, a stable three-line passage, a solid caret and underlined errors.
 - Time, word-count and original quote tests; quote length and descriptive difficulty filters; explicit empty-filter recovery.
-- Saved theme, text size, keyboard, live metrics and focus preferences. Focus mode has an exit and Escape support.
+- Saved theme, text size, keyboard, live metrics, stop-on-error and focus preferences. Focus mode has an exit and Escape support.
 - Versioned deterministic replay, retained first-attempt mistakes, condition-filtered recommendations, sample thresholds and clean pair timing.
 - A real one-minute drill stage, automatic or manually selected. Manual drills work without a baseline; a baseline enables the fresh comparable retest.
 - Retest comparisons with mixed/regression states, timing sample limits and local progress. Seen quote IDs are recorded when displayed; exhausted retests stop with an explanation.
@@ -29,7 +29,7 @@ Shipped visual system (Afterimage):
 - **Type.** Literata (variable weight and optical size, self-hosted as woff2 under the OFL in `src/fonts/OFL-literata.txt`, with a serif fallback stack) for everything readable, including the passage and numerals. Geist Mono, self-hosted with the SIL licence under `src/fonts/`, only for small measurement labels, conditions and keys.
 - **Colour and theme.** Warm near-black `#0f0f0e` (dark, default when the system prefers dark) and warm paper `#f4f1eb` (light). The theme follows the system until the user picks dark or light in settings (`#theme-select`) or the command palette; an inline script resolves it before first paint. One green accent (dark `#8fd18a`, light `#2e7d4f`) for action, current state and the caret; the primary button is a filled green. Coral for mistyped letters (always with a wavy underline) and regressions; warning for interrupted and mixed results.
 - **Surfaces.** Rules and space, not boxes. Opaque raised surfaces for the dock, settings, palette and toasts.
-- **Chrome.** A floating dock (top on desktop, bottom on mobile) with practice / train / progress / challenge, a ⌘K / Ctrl-K command palette (views, restart, test shape, punctuation, theme, text size, live metrics, keyboard, focus mode, clear history) and settings. Opening the palette mid-run marks the run interrupted.
+- **Chrome.** A floating dock (top on desktop, bottom on mobile) with practice / train / progress / challenge and a ⌘K / Ctrl-K command palette (views, restart, test shape, punctuation, theme, text size, live metrics, keyboard, stop on error, focus mode, clear history). Settings sit beside Restart below the typing passage. Opening the palette mid-run marks the run interrupted.
 - **Results.** A static "run card": wpm, accuracy, first-try errors, time, a one-line metric definition, the conditions line and dithered rhythm art drawn from the real keystroke intervals, misses in coral.
 - **Ghost pacer (hidden).** ↑↑↓↓←→←→ b a, or typing "ghost" in the palette, toggles a ghost caret that moves at the personal best for the current conditions (or 60 wpm). Presentational only; never scored.
 
@@ -65,7 +65,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 
 Afterimage is binding (see `AGENTS.md` and the Brand Commitments in `PRODUCT.md`): Literata for the passage and numerals, Geist Mono for small labels only; dark and light themes that follow the system until the user picks; one green accent for action, current state and the caret; opaque surfaces with no glass or glow; the still-run motion rule. The text-size preference keeps its stored values `22` / `28` / `36` (small / medium / large), mapped to the passage size in `src/styles.css`. Errors retain the non-colour wavy underline. The ghost pacer and rhythm art are presentational and never scored. Keep metrics and conditions visible; never turn small-sample timing into a confident weakness or learning claim.
 
-This build uses mandatory correction and records that policy in comparison keys. Do not mix future relaxed scoring, quote difficulty/performance points or multiplayer ratings into personal skill progress. Existing unversioned `stilltype-best` data is not imported into comparable bests.
+Stop on error defaults to mandatory correction; turning it off allows typing through mistakes. The selected correction policy is recorded in comparison keys, and retests restore the baseline policy. Do not mix correction policies, quote difficulty/performance points or multiplayer ratings into personal skill progress. Existing unversioned `stilltype-best` data is not imported into comparable bests.
 
 The newest 24 attempt traces are retained in local storage; comparison summaries, seen-text IDs and bests remain until history is cleared. Local challenge scores are transient. There is no cloud collection. Storage failures are reported in result copy.
 
