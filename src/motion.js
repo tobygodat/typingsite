@@ -38,8 +38,7 @@ function offsetIn(element, display) {
   return { left, top };
 }
 
-// The third argument is accepted for compatibility and ignored.
-export function createTypingFx(wrap, display, _options = {}) {
+export function createTypingFx(wrap, display, options = {}) {
   const caret = document.createElement('span');
   caret.className = 'caret';
   const bar = document.createElement('span');
@@ -79,14 +78,20 @@ export function createTypingFx(wrap, display, _options = {}) {
       ({ left: x, top } = offsetIn(last, display));
       x += last.offsetWidth;
     }
-    const nextLine = Math.floor((top + lineHeight * 0.25) / lineHeight);
+    const spacer = display.querySelector('.passage-spacer');
+    const spacerHeight = spacer?.offsetHeight || 0;
+    const logicalTop = top - spacerHeight;
+    const nextLine = Math.floor((logicalTop + lineHeight * 0.25) / lineHeight);
     caretX.target = x;
-    caretY.target = nextLine * lineHeight;
+    // Keep the caret in the display's real content coordinates; the display
+    // transform below removes the spacer from its visible position.
+    caretY.target = top;
 
     if (nextLine !== line) {
       line = nextLine;
-      display.style.transform = line > 1 ? `translateY(-${(line - 1) * lineHeight}px)` : '';
     }
+    const scrollY = spacerHeight + Math.max(0, line - 1) * lineHeight;
+    display.style.transform = scrollY ? `translateY(-${scrollY}px)` : '';
     if (snapNext || reducedMotion.matches) {
       springs.forEach((s) => snap(s, s.target));
       snapNext = false;
@@ -118,10 +123,18 @@ export function createTypingFx(wrap, display, _options = {}) {
   }
 
   function placeGhost(index) {
-    if (index === ghost.index || !characters.length) return;
-    ghost.index = index;
-    const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 60;
+    if (!characters.length) return;
     const target = characters[Math.min(index, characters.length - 1)];
+    const hidden = ghostCaret.classList.contains('is-hidden');
+    if (index === ghost.index && (target?.isConnected ? !hidden : hidden)) return;
+    ghost.index = index;
+    options.ensureCharacters?.(index);
+    if (!target?.isConnected) {
+      ghostCaret.classList.add('is-hidden');
+      return;
+    }
+    const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 60;
+    ghostCaret.classList.remove('is-hidden');
     let { left, top } = offsetIn(target, display);
     if (index >= characters.length) left += target.offsetWidth;
     const row = Math.floor((top + lineHeight * 0.25) / lineHeight) * lineHeight;

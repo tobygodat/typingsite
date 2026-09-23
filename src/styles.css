@@ -290,6 +290,8 @@ kbd {
 .nav-item:hover,
 .nav-item.is-active { color: var(--text); }
 
+.nav-label-short { display: none; }
+
 .dock-sep {
   width: 1px;
   height: 24px;
@@ -755,6 +757,7 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 
 .word { display: inline-block; }
 .word > .char { display: inline-block; }
+.passage-spacer { display: block; width: 100%; pointer-events: none; }
 
 .char { position: relative; }
 .char.correct { color: var(--text); }
@@ -1572,6 +1575,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 @media (max-width: 360px) {
   .nav-item { padding: 0 2px; font-size: 13px; }
+  .nav-label-full { display: none; }
+  .nav-label-short { display: inline; }
 }
 
 @media (pointer: coarse) {

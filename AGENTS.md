@@ -3,10 +3,9 @@ Read HANDOFF.md first — current state, the work queue, and the decisions alrea
 PRODUCT.md holds durable product truth (users, purpose, metric contract, accessibility floor).
 
 ## Design system: Afterimage
-The redesign shipped on 22 September 2026 is the binding visual system. Follow DESIGN.md once it
-exists (it is to be written from the shipped build, not from intentions). Until then the source of
-truth is the shipped app: the tokens at the top of src/styles.css (dark and light sets; there are no
-separate token files) and PRODUCT.md "Brand Commitments". Never invent colours, type sizes, radii,
+The redesign shipped on 22 September 2026 is the binding visual system. Follow DESIGN.md and the
+shipped app: the tokens at the top of src/styles.css (dark and light sets; there are no separate
+token files) and PRODUCT.md "Brand Commitments". Never invent colours, type sizes, radii,
 durations or easings — use the CSS variables, and add a token before using a new value.
 
 - Literata for everything readable, including the passage and numerals. Geist Mono only for small

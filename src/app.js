@@ -78,10 +78,11 @@ let attempt = null;
 let startTime = null;
 let ticker = null;
 let primaryCharacters = [];
+let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
-const primaryFx = createTypingFx($('typing-wrap'), $('text-display'));
-const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'));
+const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
+const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let lastCompleted = null;
@@ -103,6 +104,7 @@ let race = {
   startTime: null,
   results: [],
   characters: [],
+  textView: null,
 };
 
 function saveProfile() {
@@ -263,31 +265,99 @@ function setModeControls() {
 }
 
 function renderText(display, text) {
-  const fragment = document.createDocumentFragment();
+  const words = text.split(' ');
   const characters = [];
-  text.split(' ').forEach((word, wordIndex, words) => {
+  const characterWords = [];
+  const groups = [];
+  let renderedWords = 0;
+  let firstRenderedWord = 0;
+  let lastTrimPosition = 0;
+
+  words.forEach((word, wordIndex) => {
     const group = document.createElement('span');
     group.className = 'word';
-    group.style.setProperty('--i', String(wordIndex));
+    group.dataset.wordIndex = String(wordIndex);
     for (const letter of word) {
       const span = document.createElement('span');
       span.className = 'char';
       span.textContent = letter;
       group.append(span);
       characters.push(span);
+      characterWords.push(wordIndex);
     }
-    fragment.append(group);
     if (wordIndex < words.length - 1) {
       const space = document.createElement('span');
       space.className = 'char';
       space.textContent = ' ';
-      fragment.append(space);
+      groups.push([group, space]);
       characters.push(space);
-    }
+      characterWords.push(wordIndex + 1);
+    } else groups.push([group]);
   });
-  display.replaceChildren(fragment);
+
+  function appendWords(wordCount) {
+    const fragment = document.createDocumentFragment();
+    const end = Math.min(groups.length, renderedWords + wordCount);
+    while (renderedWords < end) {
+      fragment.append(...groups[renderedWords]);
+      renderedWords += 1;
+    }
+    display.insertBefore(fragment, display.querySelector('.caret'));
+  }
+
+  function ensureForward(position) {
+    const targetWord = characterWords[Math.min(position + 160, characters.length - 1)] || 0;
+    if (targetWord >= renderedWords) appendWords(Math.max(80, targetWord - renderedWords + 1));
+  }
+
+  display.replaceChildren();
+  appendWords(100);
   characters[0]?.classList.add('current');
-  return characters;
+  return {
+    characters,
+    ensureAhead(position) {
+      const currentWord = characterWords[Math.min(position, characters.length - 1)] || 0;
+      // A separator before the first mounted word maps to that word, but is
+      // itself detached. Remount it when backspacing reaches the boundary.
+      if (currentWord < firstRenderedWord || (currentWord === firstRenderedWord && !characters[position]?.isConnected)) {
+        const fragment = document.createDocumentFragment();
+        for (let index = 0; index < firstRenderedWord; index += 1) fragment.append(...groups[index]);
+        display.querySelector('.passage-spacer')?.remove();
+        display.insertBefore(fragment, display.querySelector('.word'));
+        firstRenderedWord = 0;
+        lastTrimPosition = position;
+      }
+      ensureForward(position);
+    },
+    ensureForward,
+    trimBehind(position) {
+      if (position - lastTrimPosition < 160) return;
+      lastTrimPosition = position;
+      const current = characters[position];
+      if (!current?.isConnected) return;
+      const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 48;
+      const currentTop = (current.closest('.word') || current).offsetTop;
+      const keepTop = currentTop - lineHeight * 3;
+      if (keepTop <= 0) return;
+      let firstKept = null;
+      for (const word of display.querySelectorAll('.word')) {
+        if (word.offsetLeft <= 1 && word.offsetTop <= keepTop) firstKept = word;
+        else if (word.offsetTop > keepTop) break;
+      }
+      if (!firstKept || firstKept === display.querySelector('.word')) return;
+      const height = firstKept.offsetTop;
+      const spacer = document.createElement('span');
+      spacer.className = 'passage-spacer';
+      spacer.style.height = `${height}px`;
+      for (const child of [...display.childNodes]) {
+        if (child === firstKept) break;
+        if (child.classList?.contains('caret') || child.classList?.contains('ghost-caret')) continue;
+        child.remove();
+      }
+      display.insertBefore(spacer, firstKept);
+      firstRenderedWord = Number(firstKept.dataset.wordIndex);
+    },
+  };
 }
 
 function updateCharacterStates(characters, typed, target, start = 0) {
@@ -355,6 +425,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
       $('typing-input').disabled = true;
       $('text-display').style.transform = '';
       primaryCharacters = [];
+      primaryTextView = null;
       $('text-display').textContent = 'No passage matches these filters.';
       $('accessible-passage').textContent = 'No passage matches these filters.';
       $('typing-status').textContent = 'No matching text';
@@ -385,7 +456,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('typing-input').value = '';
   $('typing-input').disabled = false;
   $('accessible-passage').textContent = passage.text;
-  primaryCharacters = renderText($('text-display'), passage.text);
+  primaryTextView = renderText($('text-display'), passage.text);
+  primaryCharacters = primaryTextView.characters;
   primaryFx.reset(primaryCharacters);
   primaryFx.ghost.arm(ghostOn ? ghostPace().cps : 0);
   markKeyboardTargets(kind === 'drill' ? selectedTarget : null);
@@ -538,8 +610,10 @@ function refreshAfterInput(type, previousLength, blocked = false) {
   const replay = replayAttempt(targetAttempt);
   const input = isPrimary ? $('typing-input') : $('race-input');
   const characters = isPrimary ? primaryCharacters : race.characters;
+  const textView = isPrimary ? primaryTextView : race.textView;
   input.value = replay.typed;
   input.setSelectionRange(replay.typed.length, replay.typed.length);
+  textView.ensureAhead(replay.typed.length);
   updateCharacterStates(characters, replay.typed, targetAttempt.text, previousLength);
   const length = replay.typed.length;
   const lastCorrect = length > 0 && replay.typed[length - 1] === targetAttempt.text[length - 1];
@@ -547,6 +621,7 @@ function refreshAfterInput(type, previousLength, blocked = false) {
   if (blocked) outcome = 'blocked';
   else if (length > previousLength) outcome = lastCorrect ? 'correct' : 'wrong';
   (isPrimary ? primaryFx : raceFx).update(length, outcome, length > 0 && !lastCorrect);
+  textView.trimBehind(length);
   if (isPrimary) {
     setRunning(true);
     $('input-help').textContent = blocked ? NOTICES.blocked : primaryNotice;
@@ -917,6 +992,7 @@ function startRace() {
     startTime: null,
     results: [],
     characters: [],
+    textView: null,
   };
   if (race.passage?.id && !profile.seenTextIds.includes(race.passage.id)) {
     profile.seenTextIds.push(race.passage.id);
@@ -936,7 +1012,8 @@ function setupRacePlayer() {
   $('race-status').textContent = `Player ${race.player + 1} of 2`;
   $('race-input').value = '';
   $('race-input').disabled = false;
-  race.characters = renderText($('race-text-display'), race.passage.text);
+  race.textView = renderText($('race-text-display'), race.passage.text);
+  race.characters = race.textView.characters;
   raceFx.reset(race.characters);
   $('race-accessible-passage').textContent = race.passage.text;
   updateRaceProgress(replayAttempt(race.attempt));
