@@ -18,7 +18,7 @@ const browser = spawn(process.env.CHROMIUM || 'chromium', [
   ...(process.env.HEADLESS === '1' ? ['--headless=new'] : ['--ozone-platform=x11']),
   '--no-sandbox', '--disable-dev-shm-usage',
   '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
-  '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--window-size=1280,800',
+  '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--window-size=1280,720',
   'about:blank',
 ], { stdio: 'ignore' });
 const server = spawn(process.execPath, ['server.mjs'], {
@@ -91,7 +91,7 @@ try {
   };
   await send('Page.enable');
   await send('Runtime.enable');
-  await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+  await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${serverPort}/` });
   await waitFor(() => evaluate("document.readyState === 'complete' && document.querySelectorAll('#text-display .char').length > 100"));
   await send('Page.bringToFront');
@@ -108,6 +108,16 @@ try {
       document.querySelector('#compete-setup').requestSubmit();
     })()`);
     await waitFor(() => evaluate("!document.querySelector('#race-stage').hidden && document.querySelectorAll('#race-text-display .char').length > 50"));
+  }
+  if (process.env.GHOST === '1' && scenario === 'practice') {
+    await evaluate(`(() => {
+      document.querySelector('#palette-trigger').click();
+      const search = document.querySelector('#palette-input');
+      search.value = 'ghost';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      document.querySelector('#palette-list .is-secret').click();
+    })()`);
+    await waitFor(() => evaluate("document.body.dataset.ghost === 'on'"));
   }
   const duration = Number(process.env.DURATION || 30);
   if (scenario === 'practice' && duration !== 30) {
@@ -166,6 +176,10 @@ try {
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: char, code, text: char, unmodifiedText: char, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: char, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
   };
+  const backspace = async () => {
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+  };
   let correctionVerified = false;
   for (let index = 0; index < target.length; index += 1) {
     const char = target[index];
@@ -173,8 +187,7 @@ try {
       const wrong = char === 'z' ? 'q' : 'z';
       await key(wrong);
       correctionVerified = await evaluate(`(() => { const node = document.querySelector('#${displayId} .char.wrong'); return !!node && getComputedStyle(node).textDecorationLine.includes('underline'); })()`);
-      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
-      await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+      await backspace();
       if (!correctionVerified) throw new Error('Wrong character lacked visible underline');
     }
     await key(char);
@@ -189,6 +202,8 @@ try {
     return { data: window.__latency, typed: input.value, browser: navigator.userAgent, viewport: [innerWidth, innerHeight], dpr: devicePixelRatio,
       visible: document.visibilityState, focused: document.hasFocus(), mountedChars: document.querySelectorAll('#${displayId} .char').length,
       spacerHeight: document.querySelector('#${displayId} .passage-spacer')?.getBoundingClientRect().height || 0,
+      ghostHidden: document.querySelector('#${displayId} .ghost-caret')?.classList.contains('is-hidden'),
+      firstRenderedWord: Number(document.querySelector('#${displayId} .word')?.dataset.wordIndex || 0),
       wrapHeight: Math.round(wrap.height), currentWithinWrap: rect ? [Math.round(rect.top - wrap.top), Math.round(rect.bottom - wrap.top)] : null,
     };
   })()`);
@@ -198,6 +213,9 @@ try {
   if (!process.env.ALLOW_UNBOUNDED && result.mountedChars > 1200) throw new Error(`Passage DOM grew beyond bound: ${result.mountedChars} characters`);
   if (!result.currentWithinWrap || result.currentWithinWrap[0] < -20 || result.currentWithinWrap[1] > result.wrapHeight + 20) {
     throw new Error(`Current character left typing viewport: ${result.currentWithinWrap}`);
+  }
+  if (process.env.GHOST === '1' && result.spacerHeight > 0 && !result.ghostHidden) {
+    throw new Error('Trailing ghost remained visible after its character was trimmed');
   }
   if (process.env.SCREENSHOT) {
     const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
@@ -211,7 +229,7 @@ try {
   console.log(JSON.stringify({
     browser: result.browser, viewport: result.viewport, dpr: result.dpr, visible: result.visible, focused: result.focused,
     scenario, durationSeconds: scenario === 'practice' ? duration : null, keys: target.length, intervalMs: delay, correctionVerified,
-    mountedChars: result.mountedChars, spacerHeight: result.spacerHeight, currentWithinWrap: result.currentWithinWrap,
+    mountedChars: result.mountedChars, spacerHeight: result.spacerHeight, ghostHidden: result.ghostHidden, currentWithinWrap: result.currentWithinWrap,
     observed: { records: result.data.records.length, mutations: result.data.records.filter((item) => item.mutation).length, frames: result.data.records.filter((item) => item.frame).length },
     keydownToMutation: summary('mutation', 'keydown'),
     eventToMutation: summary('mutation', 'eventTime'),
@@ -229,6 +247,25 @@ try {
       return { keydowns: total, reportedAtOrAbove16Ms: durations.length, p95UpperBoundMs: upperBound[Math.ceil(total * 0.95) - 1] ?? null, maxReportedMs: durations.at(-1) ?? null };
     })(),
   }, null, 2));
+  if (process.env.VERIFY_TRIM_BOUNDARY === '1') {
+    if (!result.firstRenderedWord) throw new Error('No trimmed word boundary to backspace across');
+    const boundary = target.split(' ').slice(0, result.firstRenderedWord).join(' ').length;
+    for (let position = target.length; position > boundary; position -= 1) await backspace();
+    await sleep(100);
+    const check = await evaluate(`(() => {
+      const current = document.querySelector('#${displayId} .char.current');
+      const wrap = document.querySelector('${wrapSelector}').getBoundingClientRect();
+      const rect = current?.getBoundingClientRect();
+      return { typedLength: document.querySelector('#${inputId}').value.length,
+        currentConnected: !!current?.isConnected, currentText: current?.textContent,
+        currentWithinWrap: rect ? [Math.round(rect.top - wrap.top), Math.round(rect.bottom - wrap.top)] : null };
+    })()`);
+    if (check.typedLength !== boundary || !check.currentConnected || check.currentText !== ' ' ||
+        !check.currentWithinWrap || check.currentWithinWrap[0] < -20 || check.currentWithinWrap[1] > result.wrapHeight + 20) {
+      throw new Error(`Trim-boundary backspace lost the caret target: ${JSON.stringify(check)}`);
+    }
+    console.log(JSON.stringify({ trimBoundaryCheck: check }));
+  }
 } catch (error) {
   console.error(error);
   process.exitCode = 1;

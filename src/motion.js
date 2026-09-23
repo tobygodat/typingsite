@@ -123,15 +123,17 @@ export function createTypingFx(wrap, display, options = {}) {
   }
 
   function placeGhost(index) {
-    if (index === ghost.index || !characters.length) return;
+    if (!characters.length) return;
+    const target = characters[Math.min(index, characters.length - 1)];
+    const hidden = ghostCaret.classList.contains('is-hidden');
+    if (index === ghost.index && (target?.isConnected ? !hidden : hidden)) return;
     ghost.index = index;
     options.ensureCharacters?.(index);
-    const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 60;
-    const target = characters[Math.min(index, characters.length - 1)];
     if (!target?.isConnected) {
       ghostCaret.classList.add('is-hidden');
       return;
     }
+    const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 60;
     ghostCaret.classList.remove('is-hidden');
     let { left, top } = offsetIn(target, display);
     if (index >= characters.length) left += target.offsetWidth;

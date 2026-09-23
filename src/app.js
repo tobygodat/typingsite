@@ -81,8 +81,8 @@ let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
-const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureAhead(index) });
-const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureAhead(index) });
+const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
+const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let lastCompleted = null;
@@ -305,6 +305,11 @@ function renderText(display, text) {
     display.insertBefore(fragment, display.querySelector('.caret'));
   }
 
+  function ensureForward(position) {
+    const targetWord = characterWords[Math.min(position + 160, characters.length - 1)] || 0;
+    if (targetWord >= renderedWords) appendWords(Math.max(80, targetWord - renderedWords + 1));
+  }
+
   display.replaceChildren();
   appendWords(100);
   characters[0]?.classList.add('current');
@@ -312,7 +317,9 @@ function renderText(display, text) {
     characters,
     ensureAhead(position) {
       const currentWord = characterWords[Math.min(position, characters.length - 1)] || 0;
-      if (currentWord < firstRenderedWord) {
+      // A separator before the first mounted word maps to that word, but is
+      // itself detached. Remount it when backspacing reaches the boundary.
+      if (currentWord < firstRenderedWord || (currentWord === firstRenderedWord && !characters[position]?.isConnected)) {
         const fragment = document.createDocumentFragment();
         for (let index = 0; index < firstRenderedWord; index += 1) fragment.append(...groups[index]);
         display.querySelector('.passage-spacer')?.remove();
@@ -320,9 +327,9 @@ function renderText(display, text) {
         firstRenderedWord = 0;
         lastTrimPosition = position;
       }
-      const targetWord = characterWords[Math.min(position + 160, characters.length - 1)] || 0;
-      if (targetWord >= renderedWords) appendWords(Math.max(80, targetWord - renderedWords + 1));
+      ensureForward(position);
     },
+    ensureForward,
     trimBehind(position) {
       if (position - lastTrimPosition < 160) return;
       lastTrimPosition = position;
