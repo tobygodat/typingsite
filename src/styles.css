@@ -913,7 +913,7 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 .shortcut-row kbd { margin-right: 2px; }
 
 .keyboard {
-  margin: calc(var(--space-6) * -1) auto var(--space-4);
+  margin: var(--space-6) auto var(--space-4);
   display: grid;
   justify-content: center;
   gap: 5px;
