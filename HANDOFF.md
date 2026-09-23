@@ -1,6 +1,6 @@
 # Handoff — Stilltype
 
-Updated 22 September 2026 after the "Afterimage" redesign and the still-run trim that followed its critique. Read `PRODUCT.md`, `AGENTS.md` and `docs/decisions/2026-09-22-learning-loop.md` before changing behavior or visuals. `DESIGN.md` does not exist yet; it is to be written from the shipped build. Until then the tokens at the top of `src/styles.css` and the Brand Commitments in `PRODUCT.md` define the visual system.
+Updated 22 September 2026 after the "Afterimage" redesign and the typing-latency pass. Read `PRODUCT.md`, `AGENTS.md`, `DESIGN.md` and `docs/decisions/2026-09-22-learning-loop.md` before changing behavior or visuals. `DESIGN.md` describes the shipped build; the tokens at the top of `src/styles.css` and the Brand Commitments in `PRODUCT.md` are the implementation source of truth.
 
 ## Current state
 
@@ -37,13 +37,15 @@ Shipped visual system (Afterimage):
 
 Nothing decorative moves near the passage while a run is in progress. `src/motion.js` draws a solid spring caret and the optional ghost caret and drives a ~150 ms line scroll; letter states change instantly. After the first keystroke `body[data-running]` fades the rest of the chrome out; pointer movement, finishing or restarting brings it back. Live WPM shows "—" for the first second instead of a first-keystroke spike, and `#live-stats` is no longer a live region; completion is announced once through `#announcement`.
 
-Motion is allowed after the run and in chrome only: fades of 200 ms or less, the gliding selection pill, and the run card's rhythm art (`src/rhythm.js`), which develops in about 450 ms. Every duration scales from `--motion-scale`, which is zero under `prefers-reduced-motion`. `src/motion.js` and `src/rhythm.js` are presentational; scoring never reads from them. Frame timing on a real GPU is still unmeasured.
+Motion is allowed after the run and in chrome only: fades of 200 ms or less, the gliding selection pill, and the run card's rhythm art (`src/rhythm.js`), which develops in about 450 ms. Every duration scales from `--motion-scale`, which is zero under `prefers-reduced-motion`. `src/motion.js` and `src/rhythm.js` are presentational; scoring never reads from them. Browser event-to-next-paint timing is recorded in `docs/verification/2026-09-22-latency.md`; physical key-to-display timing remains unmeasured.
 
 Removed on purpose after the critique; do not reintroduce: the streak "heat" glow and caret aura, the letter ink trail (letters landing lit and cooling), the error shake, digit pop-ins and number reels, the word underline/lens sweeping through glyphs, run-card tilt, glare and foil, glass surfaces, the live rhythm strip, and blur reveals on restart and results. The earlier typing-motion exception recorded in `design/ash/DESIGN.md` §6 is retired with Ash.
 
 ## Validation
 
 `docs/verification/2026-09-22-browser.md` records browser checks run on the pre-redesign build: the solo run → manual br drill → fresh retest → saved/reloaded progress flow and both players' challenge turns were completed through actual browser input. Tests use a separate 127.0.0.1 origin so the user's localhost profile is not polluted by verification scores. **These checks have not been re-run on the Afterimage build**; re-run them, plus theme switching, the command palette, the ghost pacer, the running-state fade and reduced motion, before calling the redesign verified.
+
+The latency pass separately verified 900 individual practice keys, corrected-error feedback, caret alignment after line trimming, a 100-character local-challenge prefix, ghost-pacer toggle, and dark desktop/light and 320 px dark mobile layouts in Chromium. See `docs/verification/2026-09-22-latency.md`. This does not replace the complete learning-loop browser check above.
 
 ## Code map
 
@@ -52,6 +54,7 @@ Removed on purpose after the critique; do not reintroduce: the streak "heat" glo
 - `src/typing.js`: corpus, metric/event versions, replay, comparison and transparent pattern baseline (engine; unchanged in behaviour by the redesign).
 - `src/app.js`: orchestration — screen state, input handling, preferences and theme, history, local challenge, palette commands and the ghost toggle.
 - `src/motion.js`: caret, line scroll and ghost pacer (presentational).
+- `scripts/measure-latency.mjs`: standalone Chromium browser event-to-paint benchmark for an exclusive desktop session.
 - `src/rhythm.js`: run-card rhythm art from the attempt's event log (presentational).
 - `src/palette.js`: the ⌘K / Ctrl-K command palette.
 - `src/egg.js`: the ↑↑↓↓←→←→ b a key sequence.
@@ -69,9 +72,8 @@ The newest 24 attempt traces are retained in local storage; comparison summaries
 ## Remaining work
 
 - Re-run browser verification on the Afterimage build (see Validation).
-- Write `DESIGN.md` from the shipped build, not from intentions.
 - `src/fonts/` still holds the Geist sans files (`geist-400/500/600.ttf`), which nothing references now but which are still served and built. Remove them once confirmed unused.
-- Validate the proposed p95 input-to-visible-feedback budget on a named reference browser with instrumentation; no latency result is claimed yet.
+- Repeat the latency benchmark across more desktop browsers and physical devices. The current named Chromium run is recorded in `docs/verification/2026-09-22-latency.md`.
 - Broaden physical-device/browser coverage, including assistive technology, actual touch keyboards and IME behavior. Responsive layouts and direct physical-keyboard input were tested on the pre-redesign build; this is not a complete accessibility certification.
 - Expand the small original quote corpus and validate difficulty labels. Empty filter combinations are explicit. Generated retests match configured conditions but do not guarantee matched target frequency; target sample limits remain visible.
 - Improve progress exploration and define longer-term local retention/sync requirements before expanding data storage.

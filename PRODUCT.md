@@ -63,7 +63,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 ## Brand Commitments
 
 - **"Stilltype" is a working title**, deliberately not hardened. Keep the wordmark cheap to change; no logotype or name-dependent identity investment until the name is settled.
-- **The Afterimage system, as shipped on 22 September 2026, is binding for all UI**, per `AGENTS.md`. `DESIGN.md` (to be written from the shipped build) will describe it; until then the tokens at the top of `src/styles.css` are the source of truth. Colours, type sizes, radii and durations are never invented. The former Ash system (`design/ash/`) is historical reference and no longer binding.
+- **The Afterimage system, as shipped on 22 September 2026, is binding for all UI**, per `AGENTS.md`. `DESIGN.md` describes it; the tokens at the top of `src/styles.css` are the implementation source of truth. Colours, type sizes, radii and durations are never invented. The former Ash system (`design/ash/`) is historical reference and no longer binding.
 - **Type:** Literata (variable weight and optical size, self-hosted under the OFL, with a serif fallback stack) for everything readable, including the typing passage and every numeral. Geist Mono, self-hosted, only for small measurement labels, conditions and keys. Tabular lining numerals on every metric.
 - **Colour:** a warm near-black ground (`#0f0f0e`) in dark and warm paper (`#f4f1eb`) in light. The theme follows the system until the user picks dark or light in settings or the command palette. One green accent (dark `#8fd18a`, light `#2e7d4f`) means action, current state and the caret; the primary button is a filled green. Coral (danger) marks mistyped letters, always with a wavy underline as the non-colour cue, and regressions. Warning marks interrupted and mixed results.
 - **Surfaces:** rules and space, not boxes. The dock, settings, command palette and toasts are opaque raised surfaces: no glass, no glow. A floating dock (top on desktop, bottom on mobile) holds practice, train, progress and challenge, a ⌘K / Ctrl-K command palette, and settings.
@@ -97,5 +97,5 @@ This is stated in the research as a hypothesis about usability and learning, not
 - Mistyped characters must remain understandable without relying on colour — a non-colour cue is required.
 - Restart and every primary action must work from the keyboard; a skip link reaches the typing field directly.
 - Detailed analytics must not distract during typing.
-- Target p95 input-to-visible-feedback under 50 ms on a named reference desktop and browser, with the measurement method recorded. This is a proposed engineering budget, not an achieved result.
+- Target p95 input-to-visible-feedback under 50 ms on a named reference desktop and browser, with the measurement method recorded. The Afterimage bounded-renderer build measured 32 ms browser event-to-next-paint p95 in the Codex in-app Chromium browser on an Intel Core Ultra 7 155H; see `docs/verification/2026-09-22-latency.md` for method and limits.
 - Unsupported input methods are stated plainly and never silently mis-scored.
