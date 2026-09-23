@@ -352,9 +352,11 @@ kbd {
 .preferences-popover {
   position: absolute;
   z-index: 50;
-  top: calc(100% + 14px);
-  right: -6px;
+  bottom: calc(100% + var(--space-3));
+  right: 0;
   width: 340px;
+  max-height: calc(100svh - var(--space-8));
+  overflow-y: auto;
   padding: var(--space-3);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-lg);
@@ -888,6 +890,13 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
+}
+
+.typing-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: var(--space-1);
 }
 
 #input-help,
@@ -1537,7 +1546,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .preferences { flex: none; }
   .dock-command .search-glyph { display: block; }
 
-  .preferences-popover { position: fixed; top: auto; bottom: 86px; right: 12px; left: 12px; width: auto; }
+  .preferences-popover { width: min(340px, calc(100vw - var(--space-8))); }
 
   .screen { padding-top: var(--space-8); }
   .typing-screen { min-height: auto; padding-top: var(--space-6); }

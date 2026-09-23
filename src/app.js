@@ -7,6 +7,7 @@ import {
   createAttempt,
   makeDrill,
   normalizeManualTarget,
+  passageComplete,
   recommendTarget,
   replayAttempt,
   selectPassage,
@@ -33,6 +34,7 @@ const defaultPreferences = {
   fontSize: '28',
   liveMetrics: true,
   keyboard: false,
+  stopOnError: true,
   focusMode: false,
   theme: 'system',
 };
@@ -98,6 +100,7 @@ let clearTimer = null;
 
 let race = {
   passage: null,
+  conditions: null,
   names: [],
   player: 0,
   attempt: null,
@@ -134,7 +137,7 @@ function conditions(inputClass = 'physical-keyboard') {
     quoteLength: prefs.mode === 'quote' ? prefs.quoteLength : null,
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
     inputClass,
-    correctionPolicy: 'mandatory',
+    correctionPolicy: prefs.stopOnError ? 'mandatory' : 'relaxed',
     language: 'en',
     corpus: CORPUS_VERSION,
     metricVersion: METRIC_VERSION,
@@ -145,13 +148,14 @@ function describeConditions(value = conditions()) {
   const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
   const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
   const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
-  return `english · ${length} · ${punctuation} · ${input} · corpus v3 · metric v1`;
+  const correction = value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error';
+  return `english · ${length} · ${punctuation} · ${input} · ${correction} · corpus v3 · metric v1`;
 }
 
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`;
+  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
 }
 
 function signed(value, unit) {
@@ -229,6 +233,7 @@ function applyPreferences() {
   $('font-size').value = prefs.fontSize;
   $('live-toggle').checked = prefs.liveMetrics;
   $('keyboard-toggle').checked = prefs.keyboard;
+  $('stop-on-error-toggle').checked = prefs.stopOnError;
   $('focus-toggle').checked = prefs.focusMode;
   $('keyboard').hidden = !prefs.keyboard;
   applyTheme();
@@ -517,7 +522,9 @@ function pushInsert(char, type = 'primary') {
   const targetAttempt = type === 'primary' ? attempt : race.attempt;
   startAttempt(targetAttempt, type);
   const replay = replayAttempt(targetAttempt);
-  const unresolved = replay.typed.length > 0 && replay.typed.at(-1) !== targetAttempt.text[replay.typed.length - 1];
+  const unresolved = targetAttempt.conditions.correctionPolicy !== 'relaxed'
+    && replay.typed.length > 0
+    && replay.typed.at(-1) !== targetAttempt.text[replay.typed.length - 1];
   targetAttempt.events.push(unresolved
     ? { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs: offsetFor(type) }
     : { type: 'insert', text: char, position: replay.typed.length, accepted: true, offsetMs: offsetFor(type) });
@@ -626,10 +633,10 @@ function refreshAfterInput(type, previousLength, blocked = false) {
     setRunning(true);
     $('input-help').textContent = blocked ? NOTICES.blocked : primaryNotice;
     updateLive();
-    if ((sessionDurationMs() === null || sessionKind === 'drill') && replay.typed === targetAttempt.text) finishPrimary();
+    if (sessionDurationMs() === null && passageComplete(targetAttempt, replay.typed)) finishPrimary();
   } else {
     updateRaceProgress(replay);
-    if (replay.typed === targetAttempt.text) finishRacePlayer();
+    if (passageComplete(targetAttempt, replay.typed)) finishRacePlayer();
   }
 }
 
@@ -883,6 +890,7 @@ function startRetest() {
     punctuation: Boolean(source.punctuation),
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
+    stopOnError: source.correctionPolicy !== 'relaxed',
   };
   profile.preferences = prefs;
   applyPreferences();
@@ -986,6 +994,7 @@ function buildKeyboard() {
 function startRace() {
   race = {
     passage: selectPassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', seenIds: [] }),
+    conditions: { ...conditions(), mode: 'quote', localRace: true },
     names: [$('player-one-name').value.trim() || 'Player one', $('player-two-name').value.trim() || 'Player two'],
     player: 0,
     attempt: null,
@@ -1005,7 +1014,7 @@ function startRace() {
 }
 
 function setupRacePlayer() {
-  race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...conditions(), mode: 'quote', localRace: true } });
+  race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
@@ -1175,6 +1184,7 @@ function bindEvents() {
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
+  $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
@@ -1318,6 +1328,14 @@ function togglePreference(key) {
   if (document.body.dataset.view === 'practice') $('typing-input').focus({ preventScroll: true });
 }
 
+function setStopOnError(enabled) {
+  if (prefs.stopOnError === enabled) return;
+  prefs.stopOnError = enabled;
+  applyPreferences();
+  saveProfile();
+  if (document.body.dataset.view === 'practice') resetSession('practice');
+}
+
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
   const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
@@ -1330,6 +1348,7 @@ function paletteCommands(query) {
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
+    { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },

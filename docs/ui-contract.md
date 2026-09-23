@@ -17,11 +17,11 @@ This document is the integration contract between the static interface in `index
 
 ## Dock, settings and command palette
 
-The dock (`nav.dock` in `.dock-zone`) holds the brand link, the `.dock-nav` view buttons, `#palette-trigger` and the settings popover (`details.preferences`).
+The dock (`nav.dock` in `.dock-zone`) holds the brand link, the `.dock-nav` view buttons and `#palette-trigger`. The settings popover (`details.preferences`) sits immediately after `#restart-button` in the typing footer and opens above it.
 
 Selection pills: a `.glide` container with `data-glide="current"` follows `aria-current`; `data-glide="pressed"` follows `aria-pressed`. Its `.glide-pill` is aria-hidden decoration; state always lives in the ARIA attributes and `.is-active`.
 
-Settings are `#theme-select` (`system`, `dark`, `light`), `#font-size` (`22`, `28`, `36`), `#live-toggle`, `#keyboard-toggle`, and `#focus-toggle`; `#exit-focus` sits outside the dock. Apply theme as `html[data-theme]`; font size as `body[data-font-size]`; live metrics as `body[data-live-metrics]`; keyboard as `body[data-keyboard]`; focus mode as `body[data-focus-mode]`. The generated keyboard belongs in `#keyboard`. Escape or `#exit-focus` exits focus mode before applying the ordinary Escape restart behavior.
+Settings are `#theme-select` (`system`, `dark`, `light`), `#font-size` (`22`, `28`, `36`), `#live-toggle`, `#keyboard-toggle`, `#stop-on-error-toggle`, and `#focus-toggle`; `#exit-focus` sits outside the dock. Apply theme as `html[data-theme]`; font size as `body[data-font-size]`; live metrics as `body[data-live-metrics]`; keyboard as `body[data-keyboard]`; focus mode as `body[data-focus-mode]`. Stop on error defaults on; turning it off permits advancement after mistakes. Changing the correction policy starts a new practice run. The policy is stored in run conditions, keeping bests and comparisons separate. The generated keyboard belongs in `#keyboard`. Escape or `#exit-focus` exits focus mode before applying the ordinary Escape restart behavior.
 
 The command palette is `dialog#palette`. `#palette-input` is a combobox controlling `#palette-list` (a listbox rebuilt from the app's commands on every keystroke, so hints show current state); `#palette-empty` shows when nothing matches; `.palette-highlight` is aria-hidden. Ctrl-K / ⌘K and `#palette-trigger` open it; Escape closes it and returns focus. Opening it closes settings, and opening it during a run marks that run interrupted.
 
@@ -61,7 +61,7 @@ Retest outcome IDs are `#comparison-panel`, `#comparison-status`, `#comparison-a
 
 Required IDs: `compete-setup`, `player-one-name`, `player-two-name`, `start-local-race`, `race-stage`, `race-player`, `race-status`, `race-handoff`, `handoff-name`, `handoff-veil`, `start-next-player`, `race-text-display`, `race-accessible-passage`, `race-input`, `race-help`, `race-progress`, `race-leaderboard`, `race-winner`, `race-results`, and `race-again`.
 
-The two players type the same original passage sequentially on one keyboard. Mirror that passage into `#race-accessible-passage`; `#race-input` includes it in `aria-describedby`. `#race-progress` is a progressbar whose first child fills from `--progress`. Before player two starts, `#race-handoff` hides the passage and asks the players to hand over the keyboard; `#handoff-name` names the next player, and `#handoff-veil` is aria-hidden decoration that must keep the passage illegible. Do not show online presence, ratings, or fabricated opponents. The result compares corrected WPM, input accuracy, and elapsed time from the two observed attempts.
+The two players type the same original passage sequentially on one keyboard, using the correction policy captured when the challenge starts. Mirror that passage into `#race-accessible-passage`; `#race-input` includes it in `aria-describedby`. `#race-progress` is a progressbar whose first child fills from `--progress`. Before player two starts, `#race-handoff` hides the passage and asks the players to hand over the keyboard; `#handoff-name` names the next player, and `#handoff-veil` is aria-hidden decoration that must keep the passage illegible. Do not show online presence, ratings, or fabricated opponents. The result compares corrected WPM, input accuracy, and elapsed time from the two observed attempts.
 
 ## Progress and local history
 
