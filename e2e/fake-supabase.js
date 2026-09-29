@@ -138,7 +138,9 @@ export class FakeSupabase {
         return reply(201);
       }
 
+      // A request the fake doesn't know means it no longer mirrors src/account.js: fail the test.
       default:
+        this.errors.push(`No fake for ${method} ${url.pathname}`);
         return reply(404, { message: `No fake for ${method} ${url.pathname}` });
     }
   }
