@@ -4,7 +4,7 @@ import { describeSeries, speedSeries } from '../src/graph.js';
 
 test('speed graph buckets correct keystrokes per second and marks misses', () => {
   const text = 'abcdefghij';
-  const events = [...text].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: position * 200 }));
+  const events = [...text].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: 50 + position * 200 }));
   events.splice(3, 0, { type: 'insert', text: 'x', position: 3, accepted: true, offsetMs: 590 }, { type: 'delete', count: 1, offsetMs: 595 });
   const series = speedSeries({ text, events, startedAt: 0, endedAt: 2000 });
   assert.equal(series.durationS, 2);
@@ -41,4 +41,12 @@ test('a correct character deleted and retyped counts once, like the wpm figure',
   ];
   // Five characters kept in one second is 60 wpm; counting the deleted "b" would give 72.
   assert.deepEqual(speedSeries({ text: 'abcde', events, startedAt: 0, endedAt: 1000 }).points, [{ t: 1, wpm: 60, misses: 0 }]);
+});
+
+test('a run ending between whole seconds still averages its last point over three seconds', () => {
+  // One key every 200 ms from 1.2 s to 3.0 s, run ends at 4.001 s.
+  const events = Array.from({ length: 10 }, (_, i) => ({ type: 'insert', text: 'a', position: i, accepted: true, offsetMs: 1200 + i * 200 }));
+  const { points } = speedSeries({ text: 'a'.repeat(10), events, startedAt: 0, endedAt: 4001 });
+  // The window (1001, 4001] holds all ten keys: 10 / 5 words over 3 s is 40 wpm.
+  assert.deepEqual(points.at(-1), { t: 4.001, wpm: 40, misses: 0 });
 });

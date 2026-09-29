@@ -12,7 +12,8 @@ function stepMs(durationMs) {
 }
 
 // Speed points (wpm from correct keystrokes) and mistake counts per point, times in seconds from the first key.
-// Keys are counted in one-second slots so the three-second window holds however coarse the drawn points are.
+// Speed at each point is measured over exactly the trailing three seconds of keystroke timestamps,
+// however coarse the drawn points are; mistakes are summed per drawn point.
 export function speedSeries(attempt) {
   const all = attempt?.events || [];
   const events = all.filter((event) => event.type === 'insert' || event.type === 'blocked-insert');
@@ -20,43 +21,34 @@ export function speedSeries(attempt) {
   const start = attempt.startedAt ?? events[0].offsetMs;
   const end = Math.max(attempt.endedAt ?? 0, events[events.length - 1].offsetMs);
   const durationMs = Math.max(1, end - start);
-  const slots = Math.max(1, Math.ceil(durationMs / 1000));
-  const correct = new Array(slots).fill(0);
-  const misses = new Array(slots).fill(0);
+  const step = stepMs(durationMs);
+  const count = Math.max(1, Math.ceil(durationMs / step));
+  const misses = new Array(count).fill(0);
 
   // Like the wpm figure, speed counts only correct characters still there at the finish:
-  // a correct key that is later deleted is taken back out of its slot.
+  // a correct key that is later deleted is taken back out.
   const kept = [];
   for (const event of all) {
     if (event.type === 'delete') {
-      for (let n = Math.max(1, event.count || 1); n > 0 && kept.length; n -= 1) {
-        const removed = kept.pop();
-        if (removed.hit) correct[removed.slot] -= 1;
-      }
+      kept.splice(Math.max(0, kept.length - Math.max(1, event.count || 1)));
       continue;
     }
     if (event.type !== 'insert' && event.type !== 'blocked-insert') continue;
-    const slot = Math.min(slots - 1, Math.floor(Math.max(0, event.offsetMs - start) / 1000));
+    const at = Math.max(0, event.offsetMs - start);
     const accepted = event.type === 'insert' && event.accepted !== false;
     const hit = accepted && attempt.text?.[event.position] === event.text;
-    if (hit) correct[slot] += 1;
-    else misses[slot] += 1;
-    if (accepted) kept.push({ slot, hit });
+    if (!hit) misses[Math.min(count - 1, Math.floor(at / step))] += 1;
+    if (accepted) kept.push({ at, hit });
   }
+  const hits = kept.filter((key) => key.hit).map((key) => key.at);
 
-  const step = stepMs(durationMs) / 1000;
-  const points = [];
-  for (let last = step - 1; last - step + 1 < slots; last += step) {
-    const index = Math.min(slots - 1, last);
-    const t = Math.min(durationMs, (index + 1) * 1000);
-    const from = Math.max(0, Math.ceil((t - WINDOW_MS) / 1000));
-    let chars = 0;
-    for (let slot = from; slot <= index; slot += 1) chars += correct[slot];
-    let missed = 0;
-    for (let slot = last - step + 1; slot <= index; slot += 1) missed += misses[slot];
-    const windowMs = t - from * 1000;
-    points.push({ t: t / 1000, wpm: windowMs > 0 ? Math.round(chars / 5 / (windowMs / 60000)) : 0, misses: missed });
-  }
+  const points = misses.map((missed, index) => {
+    const t = Math.min(durationMs, (index + 1) * step);
+    const from = t - WINDOW_MS;
+    const chars = hits.filter((at) => at <= t && (from < 0 || at > from)).length;
+    const windowMs = Math.min(WINDOW_MS, t);
+    return { t: t / 1000, wpm: Math.round(chars / 5 / (windowMs / 60000)), misses: missed };
+  });
   return { points, durationS: durationMs / 1000 };
 }
 
