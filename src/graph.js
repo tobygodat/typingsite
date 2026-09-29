@@ -14,7 +14,8 @@ function stepMs(durationMs) {
 // Speed points (wpm from correct keystrokes) and mistake counts per point, times in seconds from the first key.
 // Keys are counted in one-second slots so the three-second window holds however coarse the drawn points are.
 export function speedSeries(attempt) {
-  const events = (attempt?.events || []).filter((event) => event.type === 'insert' || event.type === 'blocked-insert');
+  const all = attempt?.events || [];
+  const events = all.filter((event) => event.type === 'insert' || event.type === 'blocked-insert');
   if (!events.length) return { points: [], durationS: 0 };
   const start = attempt.startedAt ?? events[0].offsetMs;
   const end = Math.max(attempt.endedAt ?? 0, events[events.length - 1].offsetMs);
@@ -23,11 +24,24 @@ export function speedSeries(attempt) {
   const correct = new Array(slots).fill(0);
   const misses = new Array(slots).fill(0);
 
-  for (const event of events) {
+  // Like the wpm figure, speed counts only correct characters still there at the finish:
+  // a correct key that is later deleted is taken back out of its slot.
+  const kept = [];
+  for (const event of all) {
+    if (event.type === 'delete') {
+      for (let n = Math.max(1, event.count || 1); n > 0 && kept.length; n -= 1) {
+        const removed = kept.pop();
+        if (removed.hit) correct[removed.slot] -= 1;
+      }
+      continue;
+    }
+    if (event.type !== 'insert' && event.type !== 'blocked-insert') continue;
     const slot = Math.min(slots - 1, Math.floor(Math.max(0, event.offsetMs - start) / 1000));
-    const hit = event.type === 'insert' && event.accepted !== false && attempt.text?.[event.position] === event.text;
+    const accepted = event.type === 'insert' && event.accepted !== false;
+    const hit = accepted && attempt.text?.[event.position] === event.text;
     if (hit) correct[slot] += 1;
     else misses[slot] += 1;
+    if (accepted) kept.push({ slot, hit });
   }
 
   const step = stepMs(durationMs) / 1000;

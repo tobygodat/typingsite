@@ -28,3 +28,17 @@ test('coarser points on long runs still average speed over three seconds', () =>
   assert.deepEqual(points.at(-1), { t: 120, wpm: 0, misses: 0 });
   assert.equal(points.at(-3).wpm, 60);
 });
+
+test('a correct character deleted and retyped counts once, like the wpm figure', () => {
+  const events = [
+    { type: 'insert', text: 'a', position: 0, accepted: true, offsetMs: 0 },
+    { type: 'insert', text: 'b', position: 1, accepted: true, offsetMs: 100 },
+    { type: 'delete', count: 1, offsetMs: 200 },
+    { type: 'insert', text: 'b', position: 1, accepted: true, offsetMs: 300 },
+    { type: 'insert', text: 'c', position: 2, accepted: true, offsetMs: 400 },
+    { type: 'insert', text: 'd', position: 3, accepted: true, offsetMs: 500 },
+    { type: 'insert', text: 'e', position: 4, accepted: true, offsetMs: 600 },
+  ];
+  // Five characters kept in one second is 60 wpm; counting the deleted "b" would give 72.
+  assert.deepEqual(speedSeries({ text: 'abcde', events, startedAt: 0, endedAt: 1000 }).points, [{ t: 1, wpm: 60, misses: 0 }]);
+});

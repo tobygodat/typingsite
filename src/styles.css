@@ -1093,9 +1093,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .graph-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .graph-miss { fill: var(--danger); stroke: var(--card-top); stroke-width: 1.5; }
 
-/* The line draws once, left to right, and the mistakes land as it finishes. */
+/* The line draws once, left to right, and the mistakes fade in to finish with it. */
 .is-drawing .graph-line { stroke-dasharray: 1; animation: graph-draw var(--dur-develop) var(--ease-out) both; }
-.is-drawing .graph-miss { animation: graph-fade var(--dur-base) var(--ease-out) var(--dur-develop) both; }
+.is-drawing .graph-miss { animation: graph-fade var(--dur-base) var(--ease-out) calc(var(--dur-develop) - var(--dur-base)) both; }
 @keyframes graph-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @keyframes graph-fade { from { opacity: 0; } }
 
