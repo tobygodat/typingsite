@@ -32,9 +32,9 @@ const defaultPreferences = {
   quoteLength: 'medium',
   difficulty: 'any',
   fontSize: '28',
-  liveMetrics: true,
+  liveMetrics: false,
   keyboard: false,
-  stopOnError: true,
+  stopOnError: false,
   focusMode: false,
   theme: 'system',
 };
