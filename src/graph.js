@@ -2,42 +2,47 @@
 // Presentational only. Scoring never reads from here; it reads the event log.
 
 const SVG = 'http://www.w3.org/2000/svg';
-const WINDOW_BUCKETS = 3; // speed is averaged over the last three buckets, so single pauses don't spike
+const WINDOW_MS = 3000; // speed is averaged over the trailing three seconds, so single pauses don't spike
 const MAX_POINTS = 60;
 const PAD = { top: 10, right: 6, bottom: 22, left: 34 };
 
-// Seconds per point: one per second up to a minute, then coarser so a long run stays readable.
-function bucketMs(durationMs) {
+// Seconds per drawn point: one per second up to a minute, then coarser so a long run stays readable.
+function stepMs(durationMs) {
   return Math.max(1, Math.ceil(durationMs / 1000 / MAX_POINTS)) * 1000;
 }
 
-// Speed points (wpm from correct keystrokes) and mistake counts per bucket, times in seconds from the first key.
+// Speed points (wpm from correct keystrokes) and mistake counts per point, times in seconds from the first key.
+// Keys are counted in one-second slots so the three-second window holds however coarse the drawn points are.
 export function speedSeries(attempt) {
   const events = (attempt?.events || []).filter((event) => event.type === 'insert' || event.type === 'blocked-insert');
   if (!events.length) return { points: [], durationS: 0 };
   const start = attempt.startedAt ?? events[0].offsetMs;
   const end = Math.max(attempt.endedAt ?? 0, events[events.length - 1].offsetMs);
   const durationMs = Math.max(1, end - start);
-  const size = bucketMs(durationMs);
-  const count = Math.max(1, Math.ceil(durationMs / size));
-  const correct = new Array(count).fill(0);
-  const misses = new Array(count).fill(0);
+  const slots = Math.max(1, Math.ceil(durationMs / 1000));
+  const correct = new Array(slots).fill(0);
+  const misses = new Array(slots).fill(0);
 
   for (const event of events) {
-    const bucket = Math.min(count - 1, Math.floor(Math.max(0, event.offsetMs - start) / size));
+    const slot = Math.min(slots - 1, Math.floor(Math.max(0, event.offsetMs - start) / 1000));
     const hit = event.type === 'insert' && event.accepted !== false && attempt.text?.[event.position] === event.text;
-    if (hit) correct[bucket] += 1;
-    else misses[bucket] += 1;
+    if (hit) correct[slot] += 1;
+    else misses[slot] += 1;
   }
 
-  const points = correct.map((_, index) => {
-    const t = Math.min(durationMs, (index + 1) * size);
-    const from = Math.max(0, index - WINDOW_BUCKETS + 1);
-    const windowMs = t - from * size;
+  const step = stepMs(durationMs) / 1000;
+  const points = [];
+  for (let last = step - 1; last - step + 1 < slots; last += step) {
+    const index = Math.min(slots - 1, last);
+    const t = Math.min(durationMs, (index + 1) * 1000);
+    const from = Math.max(0, Math.ceil((t - WINDOW_MS) / 1000));
     let chars = 0;
-    for (let b = from; b <= index; b += 1) chars += correct[b];
-    return { t: t / 1000, wpm: windowMs > 0 ? Math.round(chars / 5 / (windowMs / 60000)) : 0, misses: misses[index] };
-  });
+    for (let slot = from; slot <= index; slot += 1) chars += correct[slot];
+    let missed = 0;
+    for (let slot = last - step + 1; slot <= index; slot += 1) missed += misses[slot];
+    const windowMs = t - from * 1000;
+    points.push({ t: t / 1000, wpm: windowMs > 0 ? Math.round(chars / 5 / (windowMs / 60000)) : 0, misses: missed });
+  }
   return { points, durationS: durationMs / 1000 };
 }
 

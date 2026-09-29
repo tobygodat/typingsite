@@ -18,3 +18,13 @@ test('long runs are capped at sixty points and an empty run has none', () => {
   assert.equal(speedSeries({ text: 'a'.repeat(300), events, startedAt: 0, endedAt: 120000 }).points.length, 60);
   assert.deepEqual(speedSeries({ text: 'a', events: [] }), { points: [], durationS: 0 });
 });
+
+test('coarser points on long runs still average speed over three seconds', () => {
+  // 120 s run: two-second points. One key per 200 ms until 117 s, then nothing.
+  const events = Array.from({ length: 585 }, (_, i) => ({ type: 'insert', text: 'a', position: i, accepted: true, offsetMs: i * 200 }));
+  const { points } = speedSeries({ text: 'a'.repeat(585), events, startedAt: 0, endedAt: 120000 });
+  assert.equal(points[0].t, 2);
+  // At 120 s the trailing three seconds hold keys only from 117 s, so speed has fallen to zero; a six-second window would not.
+  assert.deepEqual(points.at(-1), { t: 120, wpm: 0, misses: 0 });
+  assert.equal(points.at(-3).wpm, 60);
+});
