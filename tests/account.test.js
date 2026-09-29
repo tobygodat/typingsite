@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { challengeFor, cleanRedirectUrl, mergeProfiles, parseAuthRedirect, profileKey } from '../src/account.js';
+import { challengeFor, cleanRedirectUrl, MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, suggestionRow } from '../src/account.js';
 
 test('PKCE challenge matches the RFC 7636 example', async () => {
   assert.equal(await challengeFor('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'), 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
@@ -44,4 +44,13 @@ test('the pre-accounts profile folds into an account without losing either side'
   assert.deepEqual(used.loops.map((loop) => loop.id), ['l1']);
   assert.deepEqual(used.seenTextIds, ['q1', 'q2', 'q3']);
   assert.deepEqual(used.bests, { time30: { wpm: 80 }, words25: { wpm: 65 } });
+});
+
+test('a suggestion stores only trimmed text and a known view', () => {
+  assert.deepEqual(suggestionRow('  dvorak layout  ', 'practice'), { row: { body: 'dvorak layout', view: 'practice' } });
+  assert.deepEqual(suggestionRow('idea', '<script>'), { row: { body: 'idea', view: null } });
+  assert.ok(suggestionRow('   ', 'practice').error);
+  assert.ok(suggestionRow(undefined).error);
+  assert.ok(suggestionRow('a'.repeat(MAX_SUGGESTION + 1)).error);
+  assert.ok(suggestionRow('a'.repeat(MAX_SUGGESTION)).row);
 });

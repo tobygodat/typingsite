@@ -230,6 +230,7 @@ kbd {
 }
 
 .dock {
+  position: relative;
   pointer-events: auto;
   height: 58px;
   padding: 6px 6px 6px 20px;
@@ -318,6 +319,10 @@ kbd {
 .dock-command:hover { color: var(--text); background: var(--raised-2); }
 .dock-command .search-glyph { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 
+/* Settings is a labelled dock control so it is findable from every screen. */
+.dock-settings { width: auto; padding: 0 14px 0 12px; gap: var(--space-2); cursor: pointer; }
+.dock-settings .settings-glyph { width: 19px; height: 19px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
 .icon-control {
   width: var(--control);
   height: var(--control);
@@ -344,7 +349,7 @@ kbd {
   stroke-linejoin: round;
 }
 
-.preferences { position: relative; }
+.preferences { flex: none; }
 .preferences summary { list-style: none; }
 .preferences summary::-webkit-details-marker { display: none; }
 .preferences[open] summary { color: var(--text); background: var(--raised-2); }
@@ -352,10 +357,10 @@ kbd {
 .preferences-popover {
   position: absolute;
   z-index: 50;
-  bottom: calc(100% + var(--space-3));
+  top: calc(100% + var(--space-2));
   right: 0;
   width: 340px;
-  max-height: calc(100svh - var(--space-8));
+  max-height: calc(100svh - 58px - var(--space-10));
   overflow-y: auto;
   padding: var(--space-3);
   border: 1px solid var(--hairline-strong);
@@ -479,6 +484,24 @@ kbd {
 .account-member-actions { justify-items: start; }
 
 .guest-note { color: var(--muted); }
+
+.footer-link {
+  margin: calc(var(--space-2) * -1);
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  letter-spacing: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--hairline-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out), text-decoration-color var(--dur-quick) var(--ease-out);
+}
+
+.footer-link:hover { color: var(--text); text-decoration-color: currentColor; }
 
 /* ── Controls ───────────────────────────────────────────────────────────── */
 
@@ -810,9 +833,6 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 body[data-running="true"] :is(.dock-zone, .account, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
 body[data-running="true"] :is(.dock, .account, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
 
-.typing-actions .preferences { transition: opacity var(--dur-base) var(--ease-out); }
-body[data-running="true"] .typing-actions .preferences:not(:focus-within) { opacity: 0; pointer-events: none; }
-
 /* ── Typing zone ────────────────────────────────────────────────────────── */
 
 .typing-wrap,
@@ -1064,7 +1084,6 @@ body[data-focus-mode="true"] .practice-controls,
 body[data-focus-mode="true"] .quote-options,
 body[data-focus-mode="true"] .shortcut-row,
 body[data-focus-mode="true"] .site-footer,
-body[data-focus-mode="true"] .typing-actions .preferences,
 body[data-focus-mode="true"] .session-intro { visibility: hidden; }
 
 .exit-focus {
@@ -1564,7 +1583,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .palette-empty { margin: 0; padding: var(--space-6) var(--space-4); color: var(--muted); font-style: italic; }
 
 #clear-dialog,
-#account-dialog {
+#account-dialog,
+#suggest-dialog {
   width: min(460px, calc(100% - 32px));
   padding: 0;
   border: 1px solid var(--hairline-strong);
@@ -1575,9 +1595,12 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 #clear-dialog[open],
-#account-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
+#account-dialog[open],
+#suggest-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
-#account-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+#account-dialog::backdrop,
+#suggest-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
 
 .account-fields { display: grid; gap: var(--space-3); }
 .account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
@@ -1604,6 +1627,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .dialog-content p { margin: 0; color: var(--muted); }
 .dialog-content > label { display: grid; gap: var(--space-2); color: var(--muted); font-size: 14px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+#suggest-dialog { width: min(520px, calc(100% - 32px)); }
+.textarea { height: auto; min-height: 132px; padding: var(--space-3) 14px; line-height: 1.5; resize: vertical; }
+.suggest-meta { margin-top: calc(var(--space-4) * -1); display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); }
+.suggest-meta .field-error { margin: 0; }
+.suggest-count { flex: none; color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); letter-spacing: 0.02em; }
+.suggest-trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
 .toast {
   position: fixed;
@@ -1656,6 +1686,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .race-result-row { grid-template-columns: 1fr 1fr; }
 }
 
+/* The centred dock must clear the account button: below 900px settings drops to its icon. */
+@media (max-width: 900px) and (min-width: 761px) {
+  .nav-item { padding: 0 12px; }
+  .dock-settings { width: var(--control); padding: 0; justify-content: center; }
+  .dock-settings .dock-label { display: none; }
+}
+
 /* A card taller than the viewport cannot stick without hiding its foot. */
 @media (max-height: 720px) {
   .run-card { position: static; }
@@ -1678,9 +1715,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .dock-nav { flex: 1; min-width: 0; justify-content: space-between; gap: 0; }
   .nav-item { flex: 1 1 auto; min-width: var(--control); padding: 0 4px; font-size: 14px; }
   .dock-command { flex: none; }
-  .preferences { flex: none; }
+  .dock-settings { width: var(--control); padding: 0; justify-content: center; }
+  .dock-settings .dock-label { display: none; }
 
-  .preferences-popover { width: min(340px, calc(100vw - var(--space-8))); }
+  .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, 100%); max-height: calc(100svh - 62px - var(--space-10)); }
 
   /* The dock moves to the bottom; the person stays top right and scrolls with the page. */
   .app-shell { padding-top: var(--space-10); }
@@ -1710,7 +1748,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   body[data-font-size="36"] .typing-wrap { --passage-size: 32px; }
   .shortcut-row { display: none; }
   .keyboard { display: none; }
-  .site-footer { flex-direction: column; gap: var(--space-2); }
+  .site-footer { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: var(--space-2); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
   #result-wpm { font-size: 112px; }
