@@ -35,6 +35,55 @@
 
         <span class="dock-sep" aria-hidden="true"></span>
 
+        <details class="preferences">
+          <summary class="dock-command dock-settings" aria-label="Settings">
+            <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+            <span class="dock-label" aria-hidden="true">settings</span>
+          </summary>
+          <div class="preferences-popover">
+            <label class="preference-row" for="theme-select">
+              <span><strong>theme</strong></span>
+              <select class="input select" id="theme-select">
+                <option value="system">system</option>
+                <option value="dark">dark</option>
+                <option value="light">light</option>
+              </select>
+            </label>
+            <label class="preference-row" for="font-size">
+              <span><strong>text size</strong></span>
+              <select class="input select" id="font-size">
+                <option value="22">small</option>
+                <option value="28" selected>medium</option>
+                <option value="36">large</option>
+              </select>
+            </label>
+            <label class="preference-row" for="word-list">
+              <span><strong>word list</strong></span>
+              <select class="input select" id="word-list">
+                <option value="1k" selected>top 1k</option>
+                <option value="5k">top 5k</option>
+                <option value="10k">top 10k</option>
+              </select>
+            </label>
+            <label class="preference-row" for="live-toggle">
+              <span><strong>live wpm and accuracy</strong></span>
+              <input class="switch" id="live-toggle" type="checkbox">
+            </label>
+            <label class="preference-row" for="keyboard-toggle">
+              <span><strong>keyboard</strong></span>
+              <input class="switch" id="keyboard-toggle" type="checkbox">
+            </label>
+            <label class="preference-row" for="stop-on-error-toggle">
+              <span><strong>stop on error</strong></span>
+              <input class="switch" id="stop-on-error-toggle" type="checkbox">
+            </label>
+            <label class="preference-row" for="focus-toggle">
+              <span><strong>focus mode</strong></span>
+              <input class="switch" id="focus-toggle" type="checkbox">
+            </label>
+          </div>
+        </details>
+
         <button id="palette-trigger" class="dock-command" type="button" aria-label="Commands" aria-haspopup="dialog" aria-controls="palette" aria-keyshortcuts="Control+K Meta+K">
           <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
         </button>
@@ -149,53 +198,6 @@
               <button id="restart-button" class="icon-control" type="button" title="Restart test (Escape)" aria-label="Restart test">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
               </button>
-              <details class="preferences">
-                <summary class="icon-control" aria-label="Display and practice settings">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
-                </summary>
-                <div class="preferences-popover">
-                  <label class="preference-row" for="theme-select">
-                    <span><strong>theme</strong></span>
-                    <select class="input select" id="theme-select">
-                      <option value="system">system</option>
-                      <option value="dark">dark</option>
-                      <option value="light">light</option>
-                    </select>
-                  </label>
-                  <label class="preference-row" for="font-size">
-                    <span><strong>text size</strong></span>
-                    <select class="input select" id="font-size">
-                      <option value="22">small</option>
-                      <option value="28" selected>medium</option>
-                      <option value="36">large</option>
-                    </select>
-                  </label>
-                  <label class="preference-row" for="word-list">
-                    <span><strong>word list</strong></span>
-                    <select class="input select" id="word-list">
-                      <option value="1k" selected>top 1k</option>
-                      <option value="5k">top 5k</option>
-                      <option value="10k">top 10k</option>
-                    </select>
-                  </label>
-                  <label class="preference-row" for="live-toggle">
-                    <span><strong>live wpm and accuracy</strong></span>
-                    <input class="switch" id="live-toggle" type="checkbox">
-                  </label>
-                  <label class="preference-row" for="keyboard-toggle">
-                    <span><strong>keyboard</strong></span>
-                    <input class="switch" id="keyboard-toggle" type="checkbox">
-                  </label>
-                  <label class="preference-row" for="stop-on-error-toggle">
-                    <span><strong>stop on error</strong></span>
-                    <input class="switch" id="stop-on-error-toggle" type="checkbox">
-                  </label>
-                  <label class="preference-row" for="focus-toggle">
-                    <span><strong>focus mode</strong></span>
-                    <input class="switch" id="focus-toggle" type="checkbox">
-                  </label>
-                </div>
-              </details>
             </div>
           </div>
         </form>
@@ -358,6 +360,7 @@
     <footer class="site-footer">
       <span id="best" class="personal-best num">No best yet</span>
       <span id="guest-note" class="guest-note">guest · runs aren’t saved</span>
+      <button id="suggest-trigger" class="footer-link" type="button" aria-haspopup="dialog" aria-controls="suggest-dialog">suggest a feature</button>
     </footer>
   </div>
 
@@ -430,6 +433,30 @@
     </div>
   </dialog>
 
+  <dialog id="suggest-dialog" aria-labelledby="suggest-dialog-title">
+    <form id="suggest-form" class="dialog-content" novalidate>
+      <div>
+        <h2 id="suggest-dialog-title">Suggest a feature</h2>
+        <p>What would make practice better? Only your words and the screen you sent them from are saved: no name, account or scores.</p>
+      </div>
+      <label for="suggest-text">Your suggestion
+        <textarea id="suggest-text" class="input textarea" rows="5" maxlength="1000" aria-describedby="suggest-count suggest-error"></textarea>
+      </label>
+      <div class="suggest-meta">
+        <p id="suggest-error" class="field-error" role="alert"></p>
+        <span id="suggest-count" class="suggest-count">0 / 1000</span>
+      </div>
+      <div class="suggest-trap" aria-hidden="true">
+        <label for="suggest-website">Leave this empty</label>
+        <input id="suggest-website" type="text" tabindex="-1" autocomplete="off">
+      </div>
+      <div class="dialog-actions">
+        <button id="cancel-suggest" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="send-suggest" class="btn btn-primary" type="submit" disabled>Send suggestion</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="history-toast" class="toast" role="status" hidden>
     <span class="status-dot" aria-hidden="true"></span>
     <span id="history-feedback">Local history cleared.</span>
@@ -444,6 +471,11 @@
   <div id="egg-toast" class="toast egg-toast" role="status" hidden>
     <span class="ghost-mark" aria-hidden="true"></span>
     <span id="egg-feedback"></span>
+  </div>
+
+  <div id="suggest-toast" class="toast" role="status" hidden>
+    <span class="status-dot" aria-hidden="true"></span>
+    <span>Suggestion sent. Thank you.</span>
   </div>
 
   <div id="announcement" class="sr-only" role="status" aria-live="polite"></div>

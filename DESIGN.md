@@ -317,7 +317,9 @@ Mode and length pickers are a 14px frame with a hairline border, holding 36px Li
 - **Switch:** a 38×22 track (hairline-strong, accent when on) with a text-coloured knob that slides 16px.
 
 ### Navigation (the dock)
-A floating, opaque 58px bar with 18px corners, sticky at the top on desktop and fixed to the bottom under 760px (62px, full width, with safe-area padding). It holds the italic wordmark and green full stop, four lowercase nav items (muted, text colour on hover and when active, with the gliding pill), a hairline separator, and the ⌘K / Ctrl-K palette trigger, shown as a search icon at every width. The settings popover is a 340px raised panel of 52px rows, anchored above the Settings control beside Restart in the typing footer.
+A floating, opaque 58px bar with 18px corners, sticky at the top on desktop and fixed to the bottom under 760px (62px, full width, with safe-area padding). It holds the italic wordmark and green full stop, four lowercase nav items (muted, text colour on hover and when active, with the gliding pill), a hairline separator, a labelled settings control (icon and lowercase "settings"; icon only below 900px, so the centred dock clears the account button) and the ⌘K / Ctrl-K palette trigger, shown as a search icon at every width. The account button sits apart from the dock, top right. The settings popover is a 340px raised panel of 52px rows, anchored to the dock's right edge: below it on desktop, above it on mobile.
+
+The footer holds the personal best, the guest note and a quiet "suggest a feature" link (mono label, hairline underline). It opens a dialog of the same raised stock as the clear-history dialog: a sentence-case heading, a note on what is stored, a textarea with a mono character count, and Cancel / Send suggestion (filled green). Success closes it and shows a toast; failure keeps the text and explains in coral below the field.
 
 ### Status words
 A 7px dot in the current colour, followed by a lowercase 12px mono word, coloured by meaning (accent, warning, danger, muted). These are never boxed.

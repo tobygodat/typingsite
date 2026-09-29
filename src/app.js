@@ -617,6 +617,7 @@ const NOTICES = {
   focusLost: 'Focus lost. This run won’t count. Esc to restart.',
   leftSurface: 'You left mid-run, so it won’t count.',
   paletteOpened: 'Commands opened mid-run, so it won’t count.',
+  suggestOpened: 'Suggestions opened mid-run, so it won’t count.',
   raceFocusLost: 'Focus lost. Esc to restart this turn.',
 };
 
@@ -1397,6 +1398,52 @@ async function completeAuthRedirect() {
   }
 }
 
+// Feature suggestions go straight to Supabase (account.sendSuggestion), never linked to an account.
+let suggestToastTimer;
+
+function openSuggest() {
+  document.querySelector('.preferences')?.removeAttribute('open');
+  markInterrupted(NOTICES.suggestOpened);
+  markRaceInterrupted();
+  $('suggest-error').textContent = '';
+  updateSuggestCount();
+  $('suggest-dialog').showModal();
+  $('suggest-text').focus();
+}
+
+function updateSuggestCount() {
+  const length = $('suggest-text').value.length;
+  setText($('suggest-count'), `${length} / ${account.MAX_SUGGESTION}`);
+  $('send-suggest').disabled = !$('suggest-text').value.trim();
+}
+
+async function sendSuggestion(event) {
+  event.preventDefault();
+  const text = $('suggest-text').value;
+  const invalid = account.suggestionRow(text).error;
+  if (invalid) { $('suggest-error').textContent = invalid; return; }
+  const button = $('send-suggest');
+  button.disabled = true;
+  button.textContent = 'Sending…';
+  $('suggest-error').textContent = '';
+  try {
+    // Anything that fills the hidden field is a bot: act as if it worked and send nothing.
+    if (!$('suggest-website').value) await account.sendSuggestion(text, document.body.dataset.view);
+    $('suggest-text').value = '';
+    $('suggest-dialog').close();
+    $('suggest-toast').hidden = false;
+    clearTimeout(suggestToastTimer);
+    suggestToastTimer = setTimeout(() => { $('suggest-toast').hidden = true; }, 4000);
+  } catch (error) {
+    $('suggest-error').textContent = error.status
+      ? 'The suggestion couldn’t be saved. Your text is still here; try again later.'
+      : 'Can’t reach the server. Your text is still here; try again when you’re connected.';
+  } finally {
+    button.textContent = 'Send suggestion';
+    updateSuggestCount();
+  }
+}
+
 function bindEvents() {
   document.addEventListener('click', (event) => {
     const skip = event.target.closest('.skip-link');
@@ -1522,9 +1569,15 @@ function bindEvents() {
   $('cancel-clear').addEventListener('click', () => $('clear-dialog').close());
   $('undo-clear').addEventListener('click', undoClear);
 
+  $('suggest-trigger').addEventListener('click', openSuggest);
+  $('suggest-text').addEventListener('input', updateSuggestCount);
+  $('suggest-form').addEventListener('submit', sendSuggestion);
+  $('cancel-suggest').addEventListener('click', () => $('suggest-dialog').close());
+  $('suggest-dialog').addEventListener('click', (event) => { if (event.target === $('suggest-dialog')) $('suggest-dialog').close(); });
+
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open) return;
+    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open || $('suggest-dialog').open) return;
     if (event.key === 'Escape' && preferences.open) {
       event.preventDefault();
       preferences.open = false;
@@ -1627,6 +1680,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'sign in…', keywords: 'log in login account', run: () => openAccountDialog('signin') },
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
+    { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
   // Only an exact word finds this one.

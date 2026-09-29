@@ -17,7 +17,7 @@ This document is the integration contract between the static interface in `index
 
 ## Dock, settings and command palette
 
-The dock (`nav.dock` in `.dock-zone`) holds the brand link, the `.dock-nav` view buttons and `#palette-trigger`. The settings popover (`details.preferences`) sits immediately after `#restart-button` in the typing footer and opens above it.
+The dock (`nav.dock` in `.dock-zone`) holds the brand link, the `.dock-nav` view buttons, the settings popover (`details.preferences`, whose `summary.dock-settings` shows an icon and the label "settings") and `#palette-trigger`. The popover is positioned against the dock: below it on desktop, above it on mobile. Restart (`#restart-button`) stays in the typing footer.
 
 Selection pills: a `.glide` container with `data-glide="current"` follows `aria-current`; `data-glide="pressed"` follows `aria-pressed`. Its `.glide-pill` is aria-hidden decoration; state always lives in the ARIA attributes and `.is-active`.
 
@@ -37,7 +37,7 @@ Required IDs: `typing-screen`, `typing-form`, `typing-input`, `typing-wrap`, `te
 
 Practice mode controls are `#mode-time`, `#mode-words`, `#mode-quote`, `#duration-options`, `#punctuation-toggle`, `#quote-options`, `#quote-length`, and `#quote-difficulty`. Generated length buttons belong in `#duration-options` and use `aria-pressed`.
 
-`#best` in the footer shows the personal best for the current conditions, or states that there is none.
+`#best` in the footer shows the personal best for the current conditions, or states that there is none. `#suggest-trigger` beside it (and the palette command "suggest a feature…") opens `dialog#suggest-dialog`: `#suggest-text` (max 1000 characters, counted in `#suggest-count`), errors in `#suggest-error`, a hidden honeypot `#suggest-website`, and `#send-suggest`, which inserts `{ body, view }` into the Supabase `feature_suggestions` table through `sendSuggestion` in `src/account.js`, always as the anonymous role (a filled honeypot sends nothing). Success closes the dialog and shows `#suggest-toast`; failure keeps the text. Opening it mid-run marks the run interrupted, like the palette.
 
 ## Completed run and recommendation
 

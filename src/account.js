@@ -222,3 +222,22 @@ export function takeLegacyProfile() {
   remove(LEGACY_PROFILE_KEY);
   return legacy;
 }
+
+// Feature suggestions: sent as the anonymous role even when signed in, so a suggestion is never tied
+// to an account. The table accepts inserts only; nothing can be read back through the API.
+export const MAX_SUGGESTION = 1000;
+const SUGGESTION_VIEWS = new Set(['practice', 'results', 'progress', 'compete']);
+
+// The row to store, or the sentence to show instead.
+export function suggestionRow(text, view) {
+  const body = typeof text === 'string' ? text.trim() : '';
+  if (!body) return { error: 'Write a suggestion first.' };
+  if (body.length > MAX_SUGGESTION) return { error: `Keep it under ${MAX_SUGGESTION} characters.` };
+  return { row: { body, view: SUGGESTION_VIEWS.has(view) ? view : null } };
+}
+
+export async function sendSuggestion(text, view) {
+  const { row, error } = suggestionRow(text, view);
+  if (error) throw new AuthError(error);
+  await request('/rest/v1/feature_suggestions', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: row });
+}

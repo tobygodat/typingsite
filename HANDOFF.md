@@ -4,7 +4,7 @@ Updated 22 September 2026 after the "Afterimage" redesign and the typing-latency
 
 ## Current state
 
-The app was redesigned on 22 September 2026, away from the former Ash system (`design/ash/`, now historical reference only), then trimmed after a critique (`.impeccable/critique/2026-09-22T19-57-13Z__index-html.md`). It remains native HTML/CSS/JavaScript with no runtime dependencies; accounts (29 September 2026) use Supabase over plain `fetch`. Scoring, replay and the learning loop are unchanged in behaviour.
+The app was redesigned on 22 September 2026, away from the former Ash system (`design/ash/`, now historical reference only), then trimmed after a critique (`.impeccable/critique/2026-09-22T19-57-13Z__index-html.md`). It remains native HTML/CSS/JavaScript with no runtime dependencies; accounts (29 September 2026) and feature suggestions use Supabase over plain `fetch`. Scoring, replay and the learning loop are unchanged in behaviour.
 
 ```sh
 npm run dev   # local server on :5173
@@ -30,7 +30,7 @@ Shipped visual system (Afterimage):
 - **Type.** Literata (variable weight and optical size, self-hosted as woff2 under the OFL in `src/fonts/OFL-literata.txt`, with a serif fallback stack) for everything readable, including the passage and numerals. Geist Mono, self-hosted with the SIL licence under `src/fonts/`, only for small measurement labels, conditions and keys.
 - **Colour and theme.** Warm near-black `#0f0f0e` (dark, default when the system prefers dark) and warm paper `#f4f1eb` (light). The theme follows the system until the user picks dark or light in settings (`#theme-select`) or the command palette; an inline script resolves it before first paint. One green accent (dark `#8fd18a`, light `#2e7d4f`) for action, current state and the caret; the primary button is a filled green. Coral for mistyped letters (always with a tint) and regressions; warning for interrupted and mixed results.
 - **Surfaces.** Rules and space, not boxes. Opaque raised surfaces for the dock, settings, palette and toasts.
-- **Chrome.** A floating dock (top on desktop, bottom on mobile) with practice / train / progress / challenge and a ⌘K / Ctrl-K command palette (views, restart, test shape, punctuation, word list, theme, text size, live metrics, keyboard, stop on error, focus mode, clear history). Settings sit beside Restart below the typing passage. Opening the palette mid-run marks the run interrupted.
+- **Chrome.** A floating dock (top on desktop, bottom on mobile) with practice / train / progress / challenge and a ⌘K / Ctrl-K command palette (views, restart, test shape, punctuation, word list, theme, text size, live metrics, keyboard, stop on error, focus mode, clear history, suggest a feature). Settings are a labelled control in the dock (icon only below 900 px, where the label would collide with the account button), so they are findable from every screen; the popover opens below the dock on desktop and above it on mobile. Opening the palette mid-run marks the run interrupted.
 - **Results.** A static "run card": wpm, accuracy, first-try errors, time, a one-line metric definition, the conditions line and dithered rhythm art drawn from the real keystroke intervals, misses in coral.
 - **Ghost pacer (hidden).** ↑↑↓↓←→←→ b a, or typing "ghost" in the palette, toggles a ghost caret that moves at the personal best for the current conditions (or 60 wpm). Presentational only; never scored.
 
@@ -71,7 +71,7 @@ Afterimage is binding (see `AGENTS.md` and the Brand Commitments in `PRODUCT.md`
 
 Stop on error is off by default, so mistakes can be typed through; turning it on requires mandatory correction. Live metrics and the on-screen keyboard are also off by default. The selected correction policy is recorded in comparison keys, and retests restore the baseline policy. Do not mix correction policies, quote difficulty/performance points or multiplayer ratings into personal skill progress. Existing unversioned `stilltype-best` data is not imported into comparable bests.
 
-The newest 24 attempt traces are retained per signed-in user (device cache plus the account's `profiles` row); comparison summaries, seen-text IDs and bests remain until history is cleared. Guests keep everything in memory only. Local challenge scores are transient. Nothing is collected beyond the signed-in user's own profile. Storage failures are reported in result copy.
+The newest 24 attempt traces are retained per signed-in user (device cache plus the account's `profiles` row); comparison summaries, seen-text IDs and bests remain until history is cleared. Guests keep everything in memory only. Local challenge scores are transient. Nothing is collected beyond the signed-in user's own profile. The footer's "suggest a feature" dialog (guests and members alike) inserts the typed text and the current view into the `feature_suggestions` table of the same Supabase project, as the anonymous role, so it is never linked to an account; that table accepts inserts only and nobody can read it back through the API. Storage failures are reported in result copy.
 
 ## Remaining work
 
