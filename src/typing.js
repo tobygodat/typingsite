@@ -1,6 +1,8 @@
+import { DEFAULT_WORD_LIST, wordList } from './words.js';
+
 export const METRIC_VERSION = 'stilltype-metrics-v1';
 export const EVENT_VERSION = 'stilltype-events-v1';
-export const CORPUS_VERSION = 'original-en-v3';
+export const CORPUS_VERSION = 'original-en-v4';
 export const MAX_PAIR_PAUSE_MS = 2000;
 
 export function metrics(target, typed, attempts, mistakes, elapsedMs) {
@@ -21,8 +23,6 @@ export function editStats(previous, next, target) {
   };
 }
 
-const bank = 'the a one some this that each all more little quiet day time way work life world place home light water river ocean tree leaf green soft warm clear open new small great kind good still slow steady fresh bright calm begin make find feel keep learn grow move walk read write think know look give take let come see hear share hold turn build bring dream follow listen wonder create explore morning evening air sky sun rain wind path room hand word line story mind moment rhythm space simple nature better over under near through into around between beyond with from for and to in on as you we they it can will may have be is are our your their'.split(' ');
-
 export const quoteCorpus = [
   { id: 'still-quiet-01', difficulty: 'gentle', text: 'There is a certain kind of quiet that arrives when you stop trying to be somewhere else. The light moves across the room, the world carries on, and for a moment, you have everything you need.' },
   { id: 'river-home-01', difficulty: 'gentle', text: 'A small path winds between the trees and follows the river home. Nothing here is in a hurry. Even the afternoon light takes its time, resting on each leaf before moving on.' },
@@ -40,7 +40,8 @@ export const quoteCorpus = [
 
 function punctuate(words) {
   return words.map((word, i) => {
-    let result = word;
+    // Lists are all lowercase so plain tests never need Shift; capitals come only from here.
+    let result = word === 'i' ? 'I' : word;
     if (i % 9 === 0) result = result[0].toUpperCase() + result.slice(1);
     if (i % 9 === 8) result += '.';
     else if (i % 9 === 4) result += ',';
@@ -48,8 +49,9 @@ function punctuate(words) {
   });
 }
 
-export function makePassage(mode, count, punctuation, random = Math.random) {
+export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST) {
   if (mode === 'quote') return quoteCorpus[Math.floor(random() * quoteCorpus.length)].text;
+  const bank = wordList(list);
   // 1,600 words keeps even a 300 WPM typist supplied for the longest 120 s mode.
   const words = Array.from({ length: mode === 'time' ? 1600 : count }, () => bank[Math.floor(random() * bank.length)]);
   return (punctuation ? punctuate(words) : words).join(' ');
@@ -64,7 +66,7 @@ export function textId(text) {
   return `generated-${(hash >>> 0).toString(36)}`;
 }
 
-export function selectPassage({ mode = 'time', count = 25, punctuation = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random } = {}) {
+export function selectPassage({ mode = 'time', count = 25, punctuation = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
   const seen = new Set(seenIds);
   if (mode === 'quote') {
     const candidates = quoteCorpus.filter((item) => {
@@ -87,11 +89,11 @@ export function selectPassage({ mode = 'time', count = 25, punctuation = false, 
   }
 
   for (let i = 0; i < 12; i += 1) {
-    const text = makePassage(mode, count, punctuation, random);
+    const text = makePassage(mode, count, punctuation, random, list);
     const id = textId(text);
     if (!seen.has(id)) return { id, textVersion: `${id}@1`, text, corpus: CORPUS_VERSION, difficulty: 'generated', fresh: true, exhausted: false };
   }
-  const text = makePassage(mode, count, punctuation, random);
+  const text = makePassage(mode, count, punctuation, random, list);
   const id = textId(text);
   return { id, textVersion: `${id}@1`, text, corpus: CORPUS_VERSION, difficulty: 'generated', fresh: !seen.has(id), exhausted: seen.has(id) };
 }
@@ -282,8 +284,9 @@ export function normalizeManualTarget(value) {
   return String(value || '').trim().toLowerCase().replace(/[^a-z]/g, '').slice(0, 8);
 }
 
-export function makeDrill(target = null) {
+export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
   const safeTarget = normalizeManualTarget(target);
+  const bank = wordList(list);
   const corpusWords = [...new Set([
     ...bank,
     ...quoteCorpus.flatMap((item) => item.text.toLowerCase().match(/[a-z]+/g) || []),
@@ -306,6 +309,7 @@ export function conditionKey(conditions = {}) {
     conditions.punctuation ? 'punctuation' : 'plain',
     conditions.quoteLength || '',
     conditions.difficulty || '',
+    conditions.wordList || '',
     conditions.inputClass || 'physical-keyboard',
     conditions.correctionPolicy || 'mandatory',
     conditions.corpus || CORPUS_VERSION,

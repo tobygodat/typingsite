@@ -87,3 +87,22 @@ test('target drills use real corpus words and repeat the requested pair', () => 
   assert.ok((drill.text.match(/br/g) || []).length >= 10);
   assert.equal(drill.text.split(' ').every((word) => word.includes('br')), true);
 });
+
+test('generated passages draw from the selected common-word list', async () => {
+  const { wordList, wordListIds } = await import('../src/words.js');
+  assert.deepEqual(wordListIds, ['1k', '5k', '10k']);
+  assert.equal(wordList('1k').length, 1000);
+  assert.ok(wordList('5k').length > 4500 && wordList('10k').length > 9000);
+  assert.equal(wordList('unknown'), wordList('1k'));
+  for (const id of wordListIds) {
+    const words = new Set(wordList(id));
+    assert.equal(words.size, wordList(id).length);
+    assert.ok(wordList(id).every((word) => /^[a-z]+$/.test(word)), `${id} has only lowercase letters`);
+    let seed = 1;
+    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const passage = makePassage('time', 0, false, random, id).split(' ');
+    assert.ok(passage.every((word) => words.has(word)));
+  }
+  assert.match(makePassage('words', 10, true, () => 0.0172), /\bI\b/);
+  assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
+});
