@@ -13,6 +13,7 @@ import {
   selectPassage,
   summarizePatterns,
 } from './typing.js';
+import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
 import { renderRunArt } from './rhythm.js';
 import { createPalette } from './palette.js';
@@ -31,6 +32,7 @@ const defaultPreferences = {
   punctuation: false,
   quoteLength: 'medium',
   difficulty: 'any',
+  wordList: DEFAULT_WORD_LIST,
   fontSize: '28',
   liveMetrics: false,
   keyboard: false,
@@ -53,6 +55,11 @@ function emptyProfile() {
 
 let storageAvailable = true;
 
+function validPreferences(value) {
+  if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  return value;
+}
+
 function loadProfile() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -60,7 +67,7 @@ function loadProfile() {
     return {
       ...emptyProfile(),
       ...parsed,
-      preferences: { ...defaultPreferences, ...parsed.preferences },
+      preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences }),
       attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
       loops: Array.isArray(parsed.loops) ? parsed.loops : [],
       seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
@@ -136,6 +143,7 @@ function conditions(inputClass = 'physical-keyboard') {
     punctuation: prefs.punctuation,
     quoteLength: prefs.mode === 'quote' ? prefs.quoteLength : null,
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
+    wordList: prefs.mode === 'quote' ? null : prefs.wordList,
     inputClass,
     correctionPolicy: prefs.stopOnError ? 'mandatory' : 'relaxed',
     language: 'en',
@@ -149,7 +157,8 @@ function describeConditions(value = conditions()) {
   const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
   const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
   const correction = value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error';
-  return `english · ${length} · ${punctuation} · ${input} · ${correction} · corpus v3 · metric v1`;
+  const language = value.wordList ? `english ${value.wordList}` : 'english';
+  return `${language} · ${length} · ${punctuation} · ${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
 }
 
 // A drill is always one minute of generated text, whatever the baseline was.
@@ -240,6 +249,7 @@ function applyPreferences() {
   $('punctuation-toggle').checked = prefs.punctuation;
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
+  $('word-list').value = prefs.wordList;
   showBest();
 }
 
@@ -251,6 +261,7 @@ function setModeControls() {
   });
   $('quote-options').hidden = prefs.mode !== 'quote';
   $('punctuation-toggle').disabled = prefs.mode === 'quote';
+  $('word-list').disabled = prefs.mode === 'quote';
   $('duration-options').hidden = prefs.mode === 'quote';
   const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
   const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
@@ -384,6 +395,7 @@ function choosePassage(extraSeen = []) {
     punctuation: prefs.punctuation,
     quoteLength: prefs.quoteLength,
     difficulty: prefs.difficulty,
+    wordList: prefs.wordList,
     seenIds: [...profile.seenTextIds, ...extraSeen],
   });
 }
@@ -416,7 +428,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   setRunning(false);
   primaryNotice = '';
   sessionKind = kind;
-  passage = selectedPassage || (kind === 'drill' ? makeDrill(selectedTarget) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
+  passage = selectedPassage || (kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
@@ -890,6 +902,7 @@ function startRetest() {
     punctuation: Boolean(source.punctuation),
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
+    wordList: source.wordList || prefs.wordList,
     stopOnError: source.correctionPolicy !== 'relaxed',
   };
   profile.preferences = prefs;
@@ -994,7 +1007,7 @@ function buildKeyboard() {
 function startRace() {
   race = {
     passage: selectPassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', seenIds: [] }),
-    conditions: { ...conditions(), mode: 'quote', localRace: true },
+    conditions: { ...conditions(), mode: 'quote', wordList: null, localRace: true },
     names: [$('player-one-name').value.trim() || 'Player one', $('player-two-name').value.trim() || 'Player two'],
     player: 0,
     attempt: null,
@@ -1181,6 +1194,7 @@ function bindEvents() {
   });
   $('quote-length').addEventListener('change', (event) => { prefs.quoteLength = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
+  $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
@@ -1336,6 +1350,13 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession('practice');
 }
 
+function setWordList(id) {
+  prefs.wordList = id;
+  applyPreferences();
+  saveProfile();
+  resetSession('practice', { focus: true });
+}
+
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
   const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
@@ -1348,6 +1369,7 @@ function paletteCommands(query) {
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
+    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 1000 5000 10000 harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),

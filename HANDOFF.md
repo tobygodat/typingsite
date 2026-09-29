@@ -15,8 +15,8 @@ npm run build # static copy of the served files into dist/ (Vercel uses this via
 Product behaviour:
 
 - Spacious, borderless typing with centered mode/length controls, a stable three-line passage, a solid caret and underlined errors.
-- Time, word-count and original quote tests; quote length and descriptive difficulty filters; explicit empty-filter recovery.
-- Saved theme, text size, keyboard, live metrics, stop-on-error and focus preferences. Focus mode has an exit and Escape support.
+- Time and word-count tests draw from a chosen common-word list — top 1k (default), 5k or 10k — set in settings or the palette (`src/words.js`; corpus v4). The word list is part of the test conditions, so bests and retests never mix lists. Original quote tests; quote length and descriptive difficulty filters; explicit empty-filter recovery.
+- Saved theme, text size, word list, keyboard, live metrics, stop-on-error and focus preferences. Focus mode has an exit and Escape support.
 - Versioned deterministic replay, retained first-attempt mistakes, condition-filtered recommendations, sample thresholds and clean pair timing.
 - A real one-minute drill stage, automatic or manually selected. Manual drills work without a baseline; a baseline enables the fresh comparable retest.
 - Retest comparisons with mixed/regression states, timing sample limits and local progress. Seen quote IDs are recorded when displayed; exhausted retests stop with an explanation.
@@ -29,7 +29,7 @@ Shipped visual system (Afterimage):
 - **Type.** Literata (variable weight and optical size, self-hosted as woff2 under the OFL in `src/fonts/OFL-literata.txt`, with a serif fallback stack) for everything readable, including the passage and numerals. Geist Mono, self-hosted with the SIL licence under `src/fonts/`, only for small measurement labels, conditions and keys.
 - **Colour and theme.** Warm near-black `#0f0f0e` (dark, default when the system prefers dark) and warm paper `#f4f1eb` (light). The theme follows the system until the user picks dark or light in settings (`#theme-select`) or the command palette; an inline script resolves it before first paint. One green accent (dark `#8fd18a`, light `#2e7d4f`) for action, current state and the caret; the primary button is a filled green. Coral for mistyped letters (always with a wavy underline) and regressions; warning for interrupted and mixed results.
 - **Surfaces.** Rules and space, not boxes. Opaque raised surfaces for the dock, settings, palette and toasts.
-- **Chrome.** A floating dock (top on desktop, bottom on mobile) with practice / train / progress / challenge and a ⌘K / Ctrl-K command palette (views, restart, test shape, punctuation, theme, text size, live metrics, keyboard, stop on error, focus mode, clear history). Settings sit beside Restart below the typing passage. Opening the palette mid-run marks the run interrupted.
+- **Chrome.** A floating dock (top on desktop, bottom on mobile) with practice / train / progress / challenge and a ⌘K / Ctrl-K command palette (views, restart, test shape, punctuation, word list, theme, text size, live metrics, keyboard, stop on error, focus mode, clear history). Settings sit beside Restart below the typing passage. Opening the palette mid-run marks the run interrupted.
 - **Results.** A static "run card": wpm, accuracy, first-try errors, time, a one-line metric definition, the conditions line and dithered rhythm art drawn from the real keystroke intervals, misses in coral.
 - **Ghost pacer (hidden).** ↑↑↓↓←→←→ b a, or typing "ghost" in the palette, toggles a ghost caret that moves at the personal best for the current conditions (or 60 wpm). Presentational only; never scored.
 
@@ -51,6 +51,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 
 - `index.html`: markup — dock, settings, command palette, application screens, dialogs and toasts; the pre-paint theme script.
 - `src/styles.css`: design tokens at the top (dark and light), then shell and screens. There are no separate token files.
+- `src/words.js`: the 1k / 5k / 10k common-word lists for generated passages and drills. The 5k and 10k lists are cleaned web-frequency lists (see the file header); keep them filtered.
 - `src/typing.js`: corpus, metric/event versions, replay, comparison and transparent pattern baseline (engine; unchanged in behaviour by the redesign).
 - `src/app.js`: orchestration — screen state, input handling, preferences and theme, history, local challenge, palette commands and the ghost toggle.
 - `src/motion.js`: caret, line scroll and ghost pacer (presentational).
