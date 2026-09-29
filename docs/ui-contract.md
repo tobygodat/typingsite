@@ -69,6 +69,12 @@ Required IDs: `history-list`, `history-row-template`, `progress-empty`, `clear-h
 
 `#progress-empty` is visible when no completed loop exists and links back to Practice. History rows state mode, text/corpus conditions, metric version, and sample counts. `#clear-history` opens the typed-confirm dialog. The confirm button stays disabled until the exact word `clear` is entered. After clearing, show `#undo-clear` in `#history-toast` for five seconds.
 
+## Accounts
+
+Required IDs: `account`, `account-trigger`, `account-guest`, `account-create`, `account-google`, `account-signin`, `account-member`, `account-email`, `account-sync`, `account-signout`, `account-dialog`, `account-form`, `account-dialog-title`, `account-dialog-copy`, `account-dialog-google`, `account-email-input`, `account-password`, `account-error`, `account-switch`, `account-cancel`, `account-submit`, `account-confirm`, `account-confirm-email`, `account-confirm-done`, `account-toast`, `account-feedback`, and `guest-note`.
+
+`#account` is a `details` menu fixed top right (it scrolls with the page on mobile, where the dock is at the bottom) and fades with the chrome while a run is in progress. `#account[data-state]` is `guest` or `member`; `#account[data-sync]` is `guest`, `syncing`, `synced`, `offline` or `expired`. Guests see the three sign-in choices and `#guest-note` in the footer; nothing is written to storage for them. Email sign-up that needs confirmation shows `#account-confirm` instead of the form. Signing in or out reloads the page as the new user.
+
 ## Ghost pacer
 
 `src/egg.js` listens for ↑↑↓↓←→←→ b a; typing `ghost` in the palette offers the same toggle. `body[data-ghost]` is `on` or `off`. When on, `.ghost-caret` moves at the personal best for the current conditions (or 60 wpm). `#egg-toast` / `#egg-feedback` confirm the change and it is announced. The ghost is presentational only and never scored.
