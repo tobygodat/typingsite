@@ -4,7 +4,7 @@ Updated 22 September 2026 after the "Afterimage" redesign and the typing-latency
 
 ## Current state
 
-The app was redesigned on 22 September 2026, away from the former Ash system (`design/ash/`, now historical reference only), then trimmed after a critique (`.impeccable/critique/2026-09-22T19-57-13Z__index-html.md`). It remains native HTML/CSS/JavaScript with no runtime dependencies or backend. Scoring, replay and the learning loop are unchanged in behaviour.
+The app was redesigned on 22 September 2026, away from the former Ash system (`design/ash/`, now historical reference only), then trimmed after a critique (`.impeccable/critique/2026-09-22T19-57-13Z__index-html.md`). It remains native HTML/CSS/JavaScript with no runtime dependencies; accounts (29 September 2026) use Supabase over plain `fetch`. Scoring, replay and the learning loop are unchanged in behaviour.
 
 ```sh
 npm run dev   # local server on :5173
@@ -17,6 +17,7 @@ Product behaviour:
 - Spacious, borderless typing with centered mode/length controls, a stable three-line passage, a solid caret and underlined errors.
 - Time and word-count tests draw from a chosen common-word list — top 1k (default), 5k or 10k — set in settings or the palette (`src/words.js`; corpus v4). The word list is part of the test conditions, so bests and retests never mix lists. Original quote tests; quote length and descriptive difficulty filters; explicit empty-filter recovery.
 - Saved theme, text size, word list, keyboard, live metrics, stop-on-error and focus preferences. Focus mode has an exit and Escape support.
+- Per-user sessions. Everyone starts in guest mode: default settings, and nothing is written to storage. The person button (top right; `#account`) offers Create account, Sign in with Google and Sign in with email. Signed-in profiles are cached per user on the device (`stilltype-profile-v2:<user id>`) and synced to Supabase; the newer copy wins on load. Saves only stamp the profile once that first comparison has succeeded (retried when the browser comes back online), so a stale cache can never look newer than the account. Signing out clears that user's device cache unless edits failed to sync. The pre-accounts `stilltype-profile-v2` history is merged into the first account confirmed to have no saved profile; it stays in place if that check fails.
 - Versioned deterministic replay, retained first-attempt mistakes, condition-filtered recommendations, sample thresholds and clean pair timing.
 - A real one-minute drill stage, automatic or manually selected. Manual drills work without a baseline; a baseline enables the fresh comparable retest.
 - Retest comparisons with mixed/regression states, timing sample limits and local progress. Seen quote IDs are recorded when displayed; exhausted retests stop with an explanation.
@@ -58,6 +59,8 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `scripts/measure-latency.mjs`: standalone Chromium browser event-to-paint benchmark for an exclusive desktop session.
 - `src/rhythm.js`: run-card rhythm art from the attempt's event log (presentational).
 - `src/palette.js`: the ⌘K / Ctrl-K command palette.
+- `src/account.js`: Supabase Auth (email/password, Google via PKCE), session refresh and the `profiles` row, over `fetch`.
+- `supabase/migrations/`: the `profiles` table and its owner-only row-level security, as applied to the `typingsite` project.
 - `src/egg.js`: the ↑↑↓↓←→←→ b a key sequence.
 - `docs/ui-contract.md`: DOM integration contract.
 - `server.mjs` / `scripts/build-static.mjs`: serve / copy exactly `index.html`, `src/*.js`, `src/*.css`, `src/fonts/*.ttf`, `src/fonts/*.woff2` and the `OFL*.txt` licences. `design/`, canvas artboards and project documents are not served or built.
@@ -68,7 +71,7 @@ Afterimage is binding (see `AGENTS.md` and the Brand Commitments in `PRODUCT.md`
 
 Stop on error is off by default, so mistakes can be typed through; turning it on requires mandatory correction. Live metrics and the on-screen keyboard are also off by default. The selected correction policy is recorded in comparison keys, and retests restore the baseline policy. Do not mix correction policies, quote difficulty/performance points or multiplayer ratings into personal skill progress. Existing unversioned `stilltype-best` data is not imported into comparable bests.
 
-The newest 24 attempt traces are retained in local storage; comparison summaries, seen-text IDs and bests remain until history is cleared. Local challenge scores are transient. There is no cloud collection. Storage failures are reported in result copy.
+The newest 24 attempt traces are retained per signed-in user (device cache plus the account's `profiles` row); comparison summaries, seen-text IDs and bests remain until history is cleared. Guests keep everything in memory only. Local challenge scores are transient. Nothing is collected beyond the signed-in user's own profile. Storage failures are reported in result copy.
 
 ## Remaining work
 
@@ -79,6 +82,7 @@ The newest 24 attempt traces are retained in local storage; comparison summaries
 - Expand the small original quote corpus and validate difficulty labels. Empty filter combinations are explicit. Generated retests match configured conditions but do not guarantee matched target frequency; target sample limits remain visible.
 - Improve progress exploration and define longer-term local retention/sync requirements before expanding data storage.
 - Recorded ghosts, daily challenges and networked friend rooms remain later roadmap stages. Online rooms need lifecycle, authoritative validation and multi-client testing. (The hidden ghost pacer is a pace line, not a recorded ghost.)
-- The recommender is a transparent baseline, not ML. There are no learning outcome benchmarks, user studies, accounts, deployment or public rankings.
+- The recommender is a transparent baseline, not ML. There are no learning outcome benchmarks, user studies, deployment or public rankings.
+- Accounts: Google sign-in needs the Google provider enabled in Supabase (Auth → Providers) with a Google Cloud OAuth client; every origin the app runs on (local dev, the Vercel URL) must be in Auth → URL Configuration → Redirect URLs. Sync is last-writer-wins for the whole profile; merge concurrent edits from two devices if that becomes a real problem.
 
 The critique snapshots before `2026-09-22T19-57-13Z` describe the Ash implementation or the canvas artboards. They remain historical evidence; do not blindly reapply their backlog to the shipped UI. Check the minor observations in the latest critique against the build rather than assuming they are fixed.

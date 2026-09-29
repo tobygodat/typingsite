@@ -18,6 +18,7 @@
 
   --text-fine: 12px;
   --text-mono: 12px;
+  --text-label: 14px;
   --text-small: 15px;
   --text-body: 17px;
   --text-lead: 20px;
@@ -393,6 +394,92 @@ kbd {
 
 .personal-best { color: var(--muted); }
 
+/* Account: a person button in the top-right corner, level with the dock, on the same raised surface. */
+.account {
+  position: fixed;
+  z-index: 40;
+  top: var(--space-4);
+  right: var(--space-4);
+}
+
+.account summary { list-style: none; }
+.account summary::-webkit-details-marker { display: none; }
+
+.account-trigger {
+  width: 58px;
+  height: 58px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-lg);
+  background: var(--raised);
+  box-shadow: var(--shadow-float);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+
+.account-trigger:hover,
+.account[open] .account-trigger,
+.account[data-state="member"] .account-trigger { color: var(--text); }
+
+.account-trigger svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Signed in: a small green mark on the person, the current state. */
+.account[data-state="member"] .account-trigger { position: relative; }
+.account[data-state="member"] .account-trigger::after {
+  content: "";
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+
+.account-popover {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  width: 300px;
+  padding: var(--space-4);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-lg);
+  background: var(--raised);
+  box-shadow: var(--shadow-float);
+  animation: fade-in var(--dur-quick) var(--ease-out);
+}
+
+.account-section { display: grid; gap: var(--space-2); }
+.account-section p { margin: 0; }
+
+.account-kicker {
+  color: var(--muted);
+  font: var(--text-fine)/1.4 var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.account-lede { color: var(--muted); font-size: var(--text-small); line-height: 1.5; }
+.account-email { font-size: var(--text-body); overflow-wrap: anywhere; }
+.account-sync.status { align-items: baseline; white-space: normal; }
+.account[data-sync="synced"] .account-sync { color: var(--accent); }
+.account:is([data-sync="offline"], [data-sync="expired"]) .account-sync { color: var(--warning); }
+
+.account-actions { margin-top: var(--space-2); display: grid; gap: var(--space-2); }
+.account-member-actions { justify-items: start; }
+
+.guest-note { color: var(--muted); }
+
 /* ── Controls ───────────────────────────────────────────────────────────── */
 
 .btn {
@@ -714,13 +801,14 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 /* While a run is in progress everything but the passage and the numbers steps back.
    app.js sets data-running; keyboard focus brings a control back. */
 .dock-zone,
+.account,
 .practice-controls,
 .quote-options,
 .shortcut-row,
 .site-footer { transition: opacity var(--dur-base) var(--ease-out); }
 
-body[data-running="true"] :is(.dock-zone, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
-body[data-running="true"] :is(.dock, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
+body[data-running="true"] :is(.dock-zone, .account, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
+body[data-running="true"] :is(.dock, .account, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
 
 .typing-actions .preferences { transition: opacity var(--dur-base) var(--ease-out); }
 body[data-running="true"] .typing-actions .preferences:not(:focus-within) { opacity: 0; pointer-events: none; }
@@ -953,6 +1041,7 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 .key.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); transform: translateY(2px); }
 
 body[data-focus-mode="true"] .dock-zone,
+body[data-focus-mode="true"] .account,
 body[data-focus-mode="true"] .practice-controls,
 body[data-focus-mode="true"] .quote-options,
 body[data-focus-mode="true"] .shortcut-row,
@@ -1456,7 +1545,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 .palette-empty { margin: 0; padding: var(--space-6) var(--space-4); color: var(--muted); font-style: italic; }
 
-#clear-dialog {
+#clear-dialog,
+#account-dialog {
   width: min(460px, calc(100% - 32px));
   padding: 0;
   border: 1px solid var(--hairline-strong);
@@ -1466,8 +1556,30 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   box-shadow: var(--shadow-float);
 }
 
-#clear-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
-#clear-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+#clear-dialog[open],
+#account-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
+#clear-dialog::backdrop,
+#account-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+
+.account-fields { display: grid; gap: var(--space-3); }
+.account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
+.account-fields .field-error { margin: 0; color: var(--danger); }
+
+.account-or {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--muted);
+  font: var(--text-fine)/1 var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.account-or::before,
+.account-or::after { content: ""; flex: 1; height: 1px; background: var(--hairline); }
+
+.account-dialog-actions { justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.account-dialog-end { display: flex; gap: var(--space-2); margin-left: auto; }
+#account-switch { padding: 0 var(--space-2); }
 
 .dialog-content { padding: var(--space-8); display: grid; gap: var(--space-6); }
 .dialog-content h2 { margin: var(--space-2) 0; font-size: 26px; }
@@ -1501,6 +1613,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 .toast .status-dot { color: var(--accent); }
+.account-toast { padding-right: 20px; }
+.account-toast .status-dot { color: var(--warning); }
 .egg-toast { padding-right: 20px; bottom: calc(var(--space-6) + 64px); }
 .egg-toast.is-solo { bottom: var(--space-6); }
 
@@ -1549,6 +1663,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .preferences { flex: none; }
 
   .preferences-popover { width: min(340px, calc(100vw - var(--space-8))); }
+
+  /* The dock moves to the bottom; the person stays top right and scrolls with the page. */
+  .app-shell { padding-top: var(--space-10); }
+  .account { position: absolute; top: var(--space-3); right: var(--space-4); }
+  .account-trigger { width: var(--control); height: var(--control); border-radius: var(--radius-control); }
+  .account[data-state="member"] .account-trigger::after { top: 9px; right: 9px; }
+  .account-popover { width: min(300px, calc(100vw - var(--space-8))); }
 
   .screen { padding-top: var(--space-8); }
   .typing-screen { min-height: auto; padding-top: var(--space-6); }

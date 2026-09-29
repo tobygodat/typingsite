@@ -7,9 +7,10 @@
   <meta name="description" content="Focused typing practice that finds weak patterns, drills them, and measures the change on fresh text.">
   <title>Stilltype — focused typing practice</title>
   <script>
-    // Resolve the theme before first paint so there is no flash.
+    // Resolve the theme before first paint so there is no flash. Guests always follow the system.
     try {
-      const saved = JSON.parse(localStorage.getItem('stilltype-profile-v2'))?.preferences?.theme;
+      const user = JSON.parse(localStorage.getItem('stilltype-session-v1'))?.user?.id;
+      const saved = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences?.theme : null;
       const theme = saved === 'light' || saved === 'dark' ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
       document.documentElement.dataset.theme = theme;
     } catch {}
@@ -39,6 +40,31 @@
         </button>
       </nav>
     </header>
+
+    <details id="account" class="account" data-state="guest">
+      <summary id="account-trigger" class="account-trigger" aria-label="Account, guest mode">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+      </summary>
+      <div class="account-popover">
+        <div id="account-guest" class="account-section">
+          <p class="account-kicker">guest mode</p>
+          <p class="account-lede">Default settings, and nothing is kept once you leave.</p>
+          <div class="account-actions">
+            <button id="account-create" class="btn btn-primary" type="button">Create account</button>
+            <button id="account-google" class="btn btn-secondary" type="button">Sign in with Google</button>
+            <button id="account-signin" class="btn btn-ghost btn-sm" type="button">Sign in with email</button>
+          </div>
+        </div>
+        <div id="account-member" class="account-section" hidden>
+          <p class="account-kicker">signed in</p>
+          <p id="account-email" class="account-email"></p>
+          <p class="account-sync status" role="status"><span class="status-dot" aria-hidden="true"></span><span id="account-sync"></span></p>
+          <div class="account-actions account-member-actions">
+            <button id="account-signout" class="btn btn-ghost btn-sm" type="button">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </details>
 
     <main id="main-content">
       <section id="typing-screen" class="screen typing-screen" data-screen="practice" data-session="practice" aria-labelledby="session-title">
@@ -331,6 +357,7 @@
 
     <footer class="site-footer">
       <span id="best" class="personal-best num">No best yet</span>
+      <span id="guest-note" class="guest-note">guest · runs aren’t saved</span>
     </footer>
   </div>
 
@@ -355,7 +382,7 @@
     <form method="dialog" class="dialog-content">
       <div>
         <h2 id="clear-dialog-title">Clear your practice history?</h2>
-        <p>Runs, drills and comparisons on this device will be removed.</p>
+        <p>Runs, drills and comparisons will be removed.</p>
       </div>
       <label for="confirm-clear-input">Type <strong>clear</strong> to confirm
         <input id="confirm-clear-input" class="input" type="text" autocomplete="off">
@@ -367,10 +394,51 @@
     </form>
   </dialog>
 
+  <dialog id="account-dialog" aria-labelledby="account-dialog-title">
+    <form id="account-form" class="dialog-content" novalidate>
+      <div>
+        <h2 id="account-dialog-title">Create an account</h2>
+        <p id="account-dialog-copy"></p>
+      </div>
+      <button id="account-dialog-google" class="btn btn-secondary" type="button">Sign in with Google</button>
+      <p class="account-or" aria-hidden="true"><span>or with email</span></p>
+      <div class="account-fields">
+        <label for="account-email-input">Email
+          <input id="account-email-input" class="input" type="email" autocomplete="email" spellcheck="false" autocapitalize="off" aria-describedby="account-error">
+        </label>
+        <label for="account-password">Password
+          <input id="account-password" class="input" type="password" autocomplete="new-password" aria-describedby="account-error">
+        </label>
+        <p id="account-error" class="field-error" role="alert"></p>
+      </div>
+      <div class="dialog-actions account-dialog-actions">
+        <button id="account-switch" class="btn btn-ghost btn-sm" type="button">Sign in instead</button>
+        <span class="account-dialog-end">
+          <button id="account-cancel" class="btn btn-ghost" type="button">Cancel</button>
+          <button id="account-submit" class="btn btn-primary" type="submit">Create account</button>
+        </span>
+      </div>
+    </form>
+    <div id="account-confirm" class="dialog-content" hidden>
+      <div>
+        <h2>Check your email.</h2>
+        <p>We sent a confirmation link to <strong id="account-confirm-email"></strong>. Open it in this browser to finish signing in.</p>
+      </div>
+      <div class="dialog-actions">
+        <button id="account-confirm-done" class="btn btn-primary" type="button">Done</button>
+      </div>
+    </div>
+  </dialog>
+
   <div id="history-toast" class="toast" role="status" hidden>
     <span class="status-dot" aria-hidden="true"></span>
     <span id="history-feedback">Local history cleared.</span>
     <button id="undo-clear" class="btn btn-ghost btn-sm" type="button">Undo</button>
+  </div>
+
+  <div id="account-toast" class="toast account-toast" role="status" hidden>
+    <span class="status-dot" aria-hidden="true"></span>
+    <span id="account-feedback"></span>
   </div>
 
   <div id="egg-toast" class="toast egg-toast" role="status" hidden>
