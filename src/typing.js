@@ -40,7 +40,8 @@ export const quoteCorpus = [
 
 function punctuate(words) {
   return words.map((word, i) => {
-    let result = word;
+    // Lists are all lowercase so plain tests never need Shift; capitals come only from here.
+    let result = word === 'i' ? 'I' : word;
     if (i % 9 === 0) result = result[0].toUpperCase() + result.slice(1);
     if (i % 9 === 8) result += '.';
     else if (i % 9 === 4) result += ',';

@@ -97,10 +97,12 @@ test('generated passages draw from the selected common-word list', async () => {
   for (const id of wordListIds) {
     const words = new Set(wordList(id));
     assert.equal(words.size, wordList(id).length);
+    assert.ok(wordList(id).every((word) => /^[a-z]+$/.test(word)), `${id} has only lowercase letters`);
     let seed = 1;
     const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const passage = makePassage('time', 0, false, random, id).split(' ');
     assert.ok(passage.every((word) => words.has(word)));
   }
+  assert.match(makePassage('words', 10, true, () => 0.0172), /\bI\b/);
   assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
 });

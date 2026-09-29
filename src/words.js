@@ -13,7 +13,7 @@ export const DEFAULT_WORD_LIST = '1k';
 
 const sources = {
   '1k': `
-  the of to and a in is it you that he was for on are with as I his they be at one have this from or
+  the of to and a in is it you that he was for on are with as i his they be at one have this from or
   had by not word but what some we can out other were all there when up use your how said an each she
   which do their time if will way about many then them write would like so these her long make thing
   see him two has look more day could go come did number sound no most people my over know water than
@@ -75,7 +75,7 @@ const sources = {
   path liquid log meant quotient teeth shell neck program public universe
 `,
   '5k': `
-  the of and a in for is on that by this with I you it not or be are from at as your all have new more
+  the of and a in for is on that by this with i you it not or be are from at as your all have new more
   an was we will home can about if page has search free but our one other do no information time they
   site he up may what which their news out use any there see only so his when contact here business
   who web also now help get view online first am been would how were me services some these click its
@@ -455,7 +455,7 @@ const sources = {
   canvas threshold claimed screens cemetery planner flows stadium exploration fewer sequences
 `,
   '10k': `
-  the of and a in for is on that by this with I you it not or be are from at as your all have new more
+  the of and a in for is on that by this with i you it not or be are from at as your all have new more
   an was we will home can about if page has search free but our one other do no information time they
   site he up may what which their news out use any there see only so his when contact here business
   who web also now help get view online first am been would how were me services some these click its
