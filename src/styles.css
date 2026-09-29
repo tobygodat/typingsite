@@ -1,7 +1,7 @@
 /*
  * Stilltype.
- * Literata on near-black (or warm paper), one green, and a dithered rhythm print
- * of every finished run. Tokens first, then shell, then screens. See DESIGN.md.
+ * Literata on near-black (or warm paper), one green, and a speed graph on the
+ * card of every finished run. Tokens first, then shell, then screens. See DESIGN.md.
  * Motion rule: nothing decorative moves while a run is in progress.
  */
 
@@ -53,6 +53,7 @@
   --dur-base: calc(200ms * var(--motion-scale));
   --dur-fast: calc(250ms * var(--motion-scale));
   --dur-medium: calc(350ms * var(--motion-scale));
+  --dur-develop: calc(450ms * var(--motion-scale));
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -76,9 +77,6 @@
   --warning: #e0b565;
   --selection: #34322e;
   --ghost: #b9c3ff;
-  --rhythm-hit: #8fd18a;
-  --rhythm-miss: #ff7a59;
-  --rhythm-rest: #34322f;
   --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
   --card-top: #1f1e1c;
   --card-bottom: #121211;
@@ -103,9 +101,6 @@
   --warning: #8a5a00;
   --selection: #e3dccf;
   --ghost: #4f5bc4;
-  --rhythm-hit: #2e7d4f;
-  --rhythm-miss: #cf4a2a;
-  --rhythm-rest: #d3ccbf;
   --shadow-float: 0 8px 24px rgba(70, 56, 30, 0.12);
   --card-top: #fffdf9;
   --card-bottom: #efeae1;
@@ -1071,7 +1066,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 /* Before the first run there is no print to show; the copy takes the whole width. */
 .results-layout:has(> .run-card[hidden]) { grid-template-columns: minmax(0, 1fr); }
 
-/* A static print: card stock, the rhythm art, the number, the facts. */
+/* A static print: card stock, the speed graph, the number, the facts. */
 .run-card {
   position: sticky;
   top: 104px;
@@ -1086,20 +1081,30 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .run-card-head { display: flex; align-items: baseline; }
 .run-card-stamp { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.04em; }
 
-.run-card-art {
-  aspect-ratio: 16 / 9;
-  margin-inline: -4px;
-  border-radius: var(--radius-control);
-  background: color-mix(in oklab, var(--ground) 70%, transparent);
-  overflow: hidden;
-}
+.run-card-graph { margin: 0; display: grid; gap: var(--space-2); }
 
-#card-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  image-rendering: pixelated;
-}
+.speed-graph { aspect-ratio: 16 / 9; margin-inline: -4px; }
+.speed-graph svg { display: block; overflow: visible; }
+
+.graph-axis { stroke: var(--hairline-strong); stroke-width: 1; }
+.graph-grid { stroke: var(--hairline); stroke-width: 1; }
+.graph-average { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 4; }
+.graph-label { fill: var(--muted); font: var(--text-fine) var(--font-mono); font-variant-numeric: tabular-nums; }
+.graph-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.graph-miss { fill: var(--danger); stroke: var(--card-top); stroke-width: 1.5; }
+
+/* The line draws once, left to right, and the mistakes land as it finishes. */
+.is-drawing .graph-line { stroke-dasharray: 1; animation: graph-draw var(--dur-develop) var(--ease-out) both; }
+.is-drawing .graph-miss { animation: graph-fade var(--dur-base) var(--ease-out) var(--dur-develop) both; }
+@keyframes graph-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes graph-fade { from { opacity: 0; } }
+
+.graph-legend { display: flex; flex-wrap: wrap; gap: var(--space-4); color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); }
+.graph-legend span { display: inline-flex; align-items: center; gap: var(--space-2); }
+.graph-legend span::before { content: ""; width: 14px; }
+.legend-speed::before { height: 2px; border-radius: var(--radius-full); background: var(--accent); }
+.legend-average::before { border-top: 1px dashed var(--muted); }
+.legend-miss::before { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--danger); }
 
 .run-card-score {
   display: flex;

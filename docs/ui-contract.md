@@ -1,6 +1,6 @@
 # UI contract
 
-This document is the integration contract between the static interface in `index.html` and the behavior in `src/app.js` (with `src/motion.js`, `src/rhythm.js`, `src/palette.js` and `src/egg.js`). The app is a single document with one shared typing surface so practice, targeted drill, and fresh-text retest preserve the same geometry and input behavior.
+This document is the integration contract between the static interface in `index.html` and the behavior in `src/app.js` (with `src/motion.js`, `src/graph.js`, `src/palette.js` and `src/egg.js`). The app is a single document with one shared typing surface so practice, targeted drill, and fresh-text retest preserve the same geometry and input behavior.
 
 ## Screen model
 
@@ -43,7 +43,7 @@ Practice mode controls are `#mode-time`, `#mode-words`, `#mode-quote`, `#duratio
 
 `#results-heading` contains `#result-delta`, the one-line headline for the run. `#result-comparison-note` stays empty except for interrupted-run and storage messages.
 
-The run card is `#run-card`: `#run-card-stamp` (date, time and session kind), `#card-canvas` (aria-hidden rhythm art drawn by `src/rhythm.js` from the attempt's keystroke intervals, misses in coral; presentational only), `#result-wpm`, `#result-accuracy`, `#result-errors`, `#result-time`, a one-line metric definition, and `#result-conditions`. The card is a static print: numbers are set directly, with no tilt, reels or count-up.
+The run card is `#run-card`: `#run-card-stamp` (date, time and session kind), `#speed-graph` (an SVG speed-over-time graph drawn by `src/graph.js` from the attempt's keystrokes, mistakes in coral; `role="img"` with a text summary in its `aria-label`; presentational only) and its legend, `#result-wpm`, `#result-accuracy`, `#result-errors`, `#result-time`, a one-line metric definition, and `#result-conditions`. The card is a static print: numbers are set directly, with no tilt, reels or count-up.
 
 Recommendation IDs are `recommendation-title`, `recommendation-evidence`, `recommendation-list`, `recommendation-meta`, `start-drill`, `skip-to-retest`, and `run-again`.
 

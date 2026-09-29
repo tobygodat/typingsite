@@ -14,7 +14,7 @@ import {
   summarizePatterns,
 } from './typing.js';
 import { createTypingFx } from './motion.js';
-import { renderRunArt } from './rhythm.js';
+import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
@@ -203,7 +203,6 @@ function applyTheme() {
   document.documentElement.dataset.theme = theme;
   document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f4f1eb' : '#0f0f0e';
   $('theme-select').value = prefs.theme;
-  if (document.body.dataset.view === 'results' && lastCompleted) renderRunArt($('card-canvas'), lastCompleted, { animate: false });
 }
 
 // Slides a group's pill under its selected control; used by the dock and the segmented controls.
@@ -752,7 +751,7 @@ function finishPrimary(forcedElapsed = null) {
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
-// Draw after the results view is shown so the canvas has its size.
+// Draw after the results view is shown so the graph has its size.
 function renderCard(completed) {
   lastCompleted = completed;
   const kind = completed.kind === 'test' ? 'practice' : completed.kind;
@@ -760,7 +759,7 @@ function renderCard(completed) {
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
   $('run-card').hidden = false;
-  renderRunArt($('card-canvas'), completed, { animate: true });
+  renderSpeedGraph($('speed-graph'), completed, { animate: true });
 }
 
 function resultHeadline(completed) {
@@ -1114,8 +1113,7 @@ function clearHistory() {
   $('run-card-stamp').textContent = 'no run yet';
   $('run-card').hidden = true;
   lastCompleted = null;
-  const canvas = $('card-canvas');
-  canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+  $('speed-graph').replaceChildren();
   $('recommendation-title').textContent = 'Finish a run to get a drill.';
   $('recommendation-evidence').textContent = '';
   $('recommendation-list').replaceChildren();
@@ -1653,7 +1651,10 @@ addEventListener('resize', () => {
   primaryFx.relayout();
   raceFx.relayout();
   cancelAnimationFrame(resizeFrame);
-  resizeFrame = requestAnimationFrame(() => updateGlides({ instant: true }));
+  resizeFrame = requestAnimationFrame(() => {
+    updateGlides({ instant: true });
+    if (document.body.dataset.view === 'results' && lastCompleted) renderSpeedGraph($('speed-graph'), lastCompleted, { animate: false });
+  });
 });
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });

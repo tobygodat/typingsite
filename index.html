@@ -204,9 +204,14 @@
             <header class="run-card-head">
               <span id="run-card-stamp" class="run-card-stamp">no run yet</span>
             </header>
-            <div class="run-card-art">
-              <canvas id="card-canvas" aria-hidden="true"></canvas>
-            </div>
+            <figure class="run-card-graph">
+              <div id="speed-graph" class="speed-graph" role="img" aria-label="Speed over time"></div>
+              <figcaption class="graph-legend" aria-hidden="true">
+                <span class="legend-speed">speed</span>
+                <span class="legend-average">average</span>
+                <span class="legend-miss">mistake</span>
+              </figcaption>
+            </figure>
             <div class="run-card-score">
               <strong id="result-wpm" class="num">—</strong>
               <span class="run-card-unit">wpm</span>
