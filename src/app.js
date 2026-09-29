@@ -1651,11 +1651,17 @@ addEventListener('resize', () => {
   primaryFx.relayout();
   raceFx.relayout();
   cancelAnimationFrame(resizeFrame);
-  resizeFrame = requestAnimationFrame(() => {
-    updateGlides({ instant: true });
-    if (document.body.dataset.view === 'results' && lastCompleted) renderSpeedGraph($('speed-graph'), lastCompleted, { animate: false });
-  });
+  resizeFrame = requestAnimationFrame(() => updateGlides({ instant: true }));
 });
+// The graph is drawn at its pixel size, so redraw whenever that changes, including when results
+// comes back into view after a resize on another screen.
+new ResizeObserver(() => {
+  const graph = $('speed-graph');
+  const width = Math.round(graph.clientWidth);
+  // Sub-pixel layout settling is ignored so it cannot cut the first draw short.
+  if (!lastCompleted || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
+  renderSpeedGraph(graph, lastCompleted, { animate: false });
+}).observe($('speed-graph'));
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
 buildKeyboard();
