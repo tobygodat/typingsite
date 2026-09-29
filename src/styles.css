@@ -18,6 +18,7 @@
 
   --text-fine: 12px;
   --text-mono: 12px;
+  --text-label: 14px;
   --text-small: 15px;
   --text-body: 17px;
   --text-lead: 20px;
@@ -1561,7 +1562,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 #account-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 
 .account-fields { display: grid; gap: var(--space-3); }
-.account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: 14px; }
+.account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
 .account-fields .field-error { margin: 0; color: var(--danger); }
 
 .account-or {

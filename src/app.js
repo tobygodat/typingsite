@@ -55,6 +55,10 @@ let storageAvailable = true;
 // No session means guest mode: default settings, and nothing leaves this tab.
 let session = account.loadSession();
 let syncTimer = 0;
+// Saves only count as edits once the account row has been compared with the device cache;
+// otherwise a boot-time save (marking the first passage seen) would make a stale cache look newer.
+let cloudChecked = false;
+let unsynced = false;
 
 function normalizeProfile(parsed) {
   if (parsed?.version !== 2) return emptyProfile();
@@ -118,10 +122,13 @@ function saveProfile() {
   profile.preferences = { ...prefs };
   profile.attempts = profile.attempts.slice(-MAX_STORED_ATTEMPTS);
   if (!session) return true;
-  profile.updatedAt = new Date().toISOString();
+  unsynced = true;
+  if (cloudChecked) {
+    profile.updatedAt = new Date().toISOString();
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(pushProfile, 1500);
+  }
   storageAvailable = account.cacheProfile(session.user.id, profile);
-  clearTimeout(syncTimer);
-  syncTimer = setTimeout(pushProfile, 1500);
   return storageAvailable;
 }
 
@@ -1170,16 +1177,20 @@ function renderAccount() {
 
 const authRedirectTarget = () => `${location.origin}/`;
 
+// Resolves true once the account row matches the device.
 async function pushProfile({ keepalive = false } = {}) {
   clearTimeout(syncTimer);
   syncTimer = 0;
-  if (!session) return;
+  if (!session) return false;
   try {
     session = await account.freshSession(session);
     await account.pushCloudProfile(session, profile, { keepalive });
+    unsynced = false;
     setSyncState('synced');
+    return true;
   } catch {
     setSyncState(account.loadSession() ? 'offline' : 'expired');
+    return false;
   }
 }
 
@@ -1199,34 +1210,57 @@ async function syncOnLoad() {
   try {
     session = await account.freshSession(session);
     const cloud = await account.fetchCloudProfile(session);
+    if (cloudChecked) return;
+    cloudChecked = true;
     const localAt = profile.updatedAt || '';
     const cloudAt = cloud?.data?.updatedAt || '';
-    if (cloud && cloudAt > localAt) adoptProfile(cloud.data);
-    if (!cloud || localAt > cloudAt) await pushProfile();
-    else setSyncState('synced');
+    if (!cloud) {
+      // History from before accounts existed goes to the first account that has none of its own.
+      // Taken only once the account is known to be empty, so a failed fetch leaves it in place.
+      const legacy = account.takeLegacyProfile();
+      if (legacy?.version === 2) {
+        profile = account.mergeProfiles(profile, normalizeProfile(legacy));
+        prefs = profile.preferences;
+      }
+      // Stored and sent before anything re-renders, so the import can't be left half done.
+      saveProfile();
+      await pushProfile();
+      if (legacy?.version === 2) adoptProfile(profile);
+    } else if (cloudAt > localAt) {
+      // Edits made here before the check (usually just the passage marked seen) give way to the newer row.
+      adoptProfile(cloud.data);
+      if (!syncTimer) {
+        unsynced = false;
+        setSyncState('synced');
+      }
+    } else if (localAt > cloudAt || unsynced) {
+      saveProfile();
+      await pushProfile();
+    } else {
+      setSyncState('synced');
+    }
   } catch {
+    // Offline or unreachable: edits stay on the device, unstamped, until a check succeeds.
     setSyncState(account.loadSession() ? 'offline' : 'expired');
   }
 }
 
 // Puts the account's profile in the device cache, then starts over as that user.
+// A device copy newer than the account row (unsynced when last signed out) is kept for syncOnLoad.
 async function enterAccount(newSession) {
   try {
     const cloud = await account.fetchCloudProfile(newSession);
-    if (cloud) account.cacheProfile(newSession.user.id, cloud.data);
-    else {
-      // History from before accounts existed goes to the first account that has none of its own.
-      const legacy = account.takeLegacyProfile();
-      if (legacy?.version === 2) account.cacheProfile(newSession.user.id, { ...legacy, updatedAt: new Date().toISOString() });
-    }
+    const cached = account.loadCachedProfile(newSession.user.id);
+    if (cloud && (cloud.data?.updatedAt || '') >= (cached?.updatedAt || '')) account.cacheProfile(newSession.user.id, cloud.data);
   } catch {}
   location.reload();
 }
 
 async function signOutAccount() {
   closeAccountMenu();
-  if (syncTimer) await pushProfile();
-  await account.signOut(session);
+  const synced = !unsynced || await pushProfile();
+  // Unsynced edits stay on this device and go up the next time this account signs in here.
+  await account.signOut(session, { keepCache: !synced });
   location.reload();
 }
 
@@ -1332,6 +1366,11 @@ function bindAccount() {
   // Unsynced changes go out when the tab is hidden; anything too large for that syncs on the next load.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && syncTimer) pushProfile({ keepalive: true });
+  });
+  addEventListener('online', () => {
+    if (!session) return;
+    if (!cloudChecked) syncOnLoad();
+    else if (unsynced) pushProfile();
   });
 }
 

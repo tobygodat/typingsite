@@ -168,9 +168,9 @@ export async function freshSession(session = loadSession()) {
   }
 }
 
-export async function signOut(session) {
+export async function signOut(session, { keepCache = false } = {}) {
   remove(SESSION_KEY);
-  if (session) remove(profileKey(session.user.id));
+  if (session && !keepCache) remove(profileKey(session.user.id));
   try { await request('/auth/v1/logout', { method: 'POST', token: session?.access_token }); } catch {}
 }
 
@@ -195,6 +195,25 @@ export function loadCachedProfile(userId) {
 
 export function cacheProfile(userId, data) {
   return writeJson(profileKey(userId), data);
+}
+
+// Folds a one-off import (the pre-accounts profile) into a profile: runs and loops by id, the higher best.
+// The base keeps its preferences unless it has no history of its own yet.
+export function mergeProfiles(base, extra) {
+  const byId = (items) => [...new Map(items.map((item) => [item.id, item])).values()];
+  const bests = { ...extra.bests };
+  for (const [key, best] of Object.entries(base.bests)) {
+    if (!bests[key] || best.wpm >= bests[key].wpm) bests[key] = best;
+  }
+  const baseIsNew = base.attempts.length === 0 && base.loops.length === 0;
+  return {
+    ...base,
+    preferences: baseIsNew ? extra.preferences : base.preferences,
+    attempts: byId([...extra.attempts, ...base.attempts]),
+    loops: byId([...extra.loops, ...base.loops]),
+    seenTextIds: [...new Set([...extra.seenTextIds, ...base.seenTextIds])],
+    bests,
+  };
 }
 
 // The pre-accounts profile, left from before sign-in existed. The first account on the device adopts it.
