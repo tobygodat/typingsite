@@ -17,8 +17,8 @@ import { createTypingFx } from './motion.js';
 import { renderRunArt } from './rhythm.js';
 import { createPalette } from './palette.js';
 import { listenForSequence } from './egg.js';
+import * as account from './account.js';
 
-const STORAGE_KEY = 'stilltype-profile-v2';
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -52,24 +52,26 @@ function emptyProfile() {
 }
 
 let storageAvailable = true;
+// No session means guest mode: default settings, and nothing leaves this tab.
+let session = account.loadSession();
+let syncTimer = 0;
+
+function normalizeProfile(parsed) {
+  if (parsed?.version !== 2) return emptyProfile();
+  return {
+    ...emptyProfile(),
+    ...parsed,
+    preferences: { ...defaultPreferences, ...parsed.preferences },
+    attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
+    loops: Array.isArray(parsed.loops) ? parsed.loops : [],
+    seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
+    bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
+  };
+}
 
 function loadProfile() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (parsed?.version !== 2) return emptyProfile();
-    return {
-      ...emptyProfile(),
-      ...parsed,
-      preferences: { ...defaultPreferences, ...parsed.preferences },
-      attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
-      loops: Array.isArray(parsed.loops) ? parsed.loops : [],
-      seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
-      bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
-    };
-  } catch {
-    storageAvailable = false;
-    return emptyProfile();
-  }
+  if (!session) return emptyProfile();
+  return normalizeProfile(account.loadCachedProfile(session.user.id));
 }
 
 let profile = loadProfile();
@@ -110,17 +112,17 @@ let race = {
   textView: null,
 };
 
+// Signed in, the profile is cached on this device and synced to the account shortly after.
+// A guest's profile lives only in memory, so there is nothing to fail.
 function saveProfile() {
   profile.preferences = { ...prefs };
   profile.attempts = profile.attempts.slice(-MAX_STORED_ATTEMPTS);
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-    storageAvailable = true;
-    return true;
-  } catch {
-    storageAvailable = false;
-    return false;
-  }
+  if (!session) return true;
+  profile.updatedAt = new Date().toISOString();
+  storageAvailable = account.cacheProfile(session.user.id, profile);
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(pushProfile, 1500);
+  return storageAvailable;
 }
 
 function announce(message) {
@@ -1140,6 +1142,209 @@ function undoClear() {
   setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
+// ── Accounts ──────────────────────────────────────────────────────────────
+
+const SYNC_COPY = {
+  guest: 'Guest · nothing is saved',
+  syncing: 'Syncing…',
+  synced: 'Saved to your account',
+  offline: 'Saved here · syncs when online',
+  expired: 'Session ended · sign in to sync',
+};
+
+function setSyncState(state) {
+  $('account').dataset.sync = state;
+  $('account-sync').textContent = SYNC_COPY[state];
+}
+
+function renderAccount() {
+  const signedIn = Boolean(session);
+  $('account').dataset.state = signedIn ? 'member' : 'guest';
+  $('account-guest').hidden = signedIn;
+  $('account-member').hidden = !signedIn;
+  $('account-email').textContent = session?.user.email || '';
+  $('account-trigger').setAttribute('aria-label', signedIn ? `Account, signed in as ${session.user.email}` : 'Account, guest mode');
+  $('guest-note').hidden = signedIn;
+  setSyncState(signedIn ? 'syncing' : 'guest');
+}
+
+const authRedirectTarget = () => `${location.origin}/`;
+
+async function pushProfile({ keepalive = false } = {}) {
+  clearTimeout(syncTimer);
+  syncTimer = 0;
+  if (!session) return;
+  try {
+    session = await account.freshSession(session);
+    await account.pushCloudProfile(session, profile, { keepalive });
+    setSyncState('synced');
+  } catch {
+    setSyncState(account.loadSession() ? 'offline' : 'expired');
+  }
+}
+
+function adoptProfile(data) {
+  profile = normalizeProfile(data);
+  prefs = profile.preferences;
+  account.cacheProfile(session.user.id, profile);
+  applyPreferences();
+  setModeControls();
+  renderHistory();
+  if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice');
+}
+
+// The newer of the device cache and the account row wins; the other side is brought up to date.
+async function syncOnLoad() {
+  if (!session) return;
+  try {
+    session = await account.freshSession(session);
+    const cloud = await account.fetchCloudProfile(session);
+    const localAt = profile.updatedAt || '';
+    const cloudAt = cloud?.data?.updatedAt || '';
+    if (cloud && cloudAt > localAt) adoptProfile(cloud.data);
+    if (!cloud || localAt > cloudAt) await pushProfile();
+    else setSyncState('synced');
+  } catch {
+    setSyncState(account.loadSession() ? 'offline' : 'expired');
+  }
+}
+
+// Puts the account's profile in the device cache, then starts over as that user.
+async function enterAccount(newSession) {
+  try {
+    const cloud = await account.fetchCloudProfile(newSession);
+    if (cloud) account.cacheProfile(newSession.user.id, cloud.data);
+    else {
+      // History from before accounts existed goes to the first account that has none of its own.
+      const legacy = account.takeLegacyProfile();
+      if (legacy?.version === 2) account.cacheProfile(newSession.user.id, { ...legacy, updatedAt: new Date().toISOString() });
+    }
+  } catch {}
+  location.reload();
+}
+
+async function signOutAccount() {
+  closeAccountMenu();
+  if (syncTimer) await pushProfile();
+  await account.signOut(session);
+  location.reload();
+}
+
+function closeAccountMenu() {
+  $('account').open = false;
+}
+
+let accountMode = 'create';
+
+function openAccountDialog(mode) {
+  accountMode = mode;
+  closeAccountMenu();
+  const creating = mode === 'create';
+  $('account-dialog-title').textContent = creating ? 'Create an account' : 'Sign in';
+  $('account-dialog-copy').textContent = creating
+    ? 'Your settings, runs and progress are kept and follow you to any device.'
+    : 'Pick up your settings, runs and progress where you left them.';
+  $('account-password').autocomplete = creating ? 'new-password' : 'current-password';
+  $('account-submit').textContent = creating ? 'Create account' : 'Sign in';
+  $('account-switch').textContent = creating ? 'Sign in instead' : 'Create one instead';
+  $('account-error').textContent = '';
+  $('account-form').hidden = false;
+  $('account-confirm').hidden = true;
+  if (!$('account-dialog').open) $('account-dialog').showModal();
+  $('account-email-input').focus();
+}
+
+async function submitAccount(event) {
+  event.preventDefault();
+  const email = $('account-email-input').value.trim();
+  const password = $('account-password').value;
+  if (!email || !password) {
+    $('account-error').textContent = 'Enter an email and a password.';
+    return;
+  }
+  $('account-submit').disabled = true;
+  $('account-error').textContent = '';
+  try {
+    if (accountMode === 'create') {
+      const result = await account.signUp(email, password, authRedirectTarget());
+      if (result.confirm) {
+        $('account-confirm-email').textContent = email;
+        $('account-form').hidden = true;
+        $('account-confirm').hidden = false;
+        $('account-confirm-done').focus();
+        return;
+      }
+      await enterAccount(result.session);
+    } else {
+      await enterAccount(await account.signIn(email, password));
+    }
+  } catch (error) {
+    $('account-error').textContent = error.message;
+  } finally {
+    $('account-submit').disabled = false;
+  }
+}
+
+function showAccountToast(message) {
+  $('account-feedback').textContent = message;
+  $('account-toast').hidden = false;
+  clearTimeout(showAccountToast.timer);
+  showAccountToast.timer = setTimeout(() => { $('account-toast').hidden = true; }, 5000);
+  announce(message);
+}
+
+async function continueWithGoogle() {
+  closeAccountMenu();
+  $('account-google').disabled = true;
+  try {
+    await account.startGoogleSignIn(authRedirectTarget());
+  } catch (error) {
+    $('account-google').disabled = false;
+    if ($('account-dialog').open) $('account-error').textContent = error.message;
+    else showAccountToast(error.message);
+  }
+}
+
+function bindAccount() {
+  const menu = $('account');
+  $('account-create').addEventListener('click', () => openAccountDialog('create'));
+  $('account-signin').addEventListener('click', () => openAccountDialog('signin'));
+  $('account-google').addEventListener('click', continueWithGoogle);
+  $('account-dialog-google').addEventListener('click', continueWithGoogle);
+  $('account-signout').addEventListener('click', signOutAccount);
+  $('account-form').addEventListener('submit', submitAccount);
+  $('account-switch').addEventListener('click', () => openAccountDialog(accountMode === 'create' ? 'signin' : 'create'));
+  $('account-cancel').addEventListener('click', () => $('account-dialog').close());
+  $('account-confirm-done').addEventListener('click', () => $('account-dialog').close());
+  document.addEventListener('pointerdown', (event) => {
+    if (menu.open && !menu.contains(event.target)) closeAccountMenu();
+  });
+  menu.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !menu.open) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeAccountMenu();
+    menu.querySelector('summary').focus();
+  });
+  menu.addEventListener('toggle', () => {
+    if (menu.open) document.querySelector('.preferences')?.removeAttribute('open');
+  });
+  // Unsynced changes go out when the tab is hidden; anything too large for that syncs on the next load.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && syncTimer) pushProfile({ keepalive: true });
+  });
+}
+
+// Finishes a Google or email-confirmation return; the page reloads as the signed-in user.
+async function completeAuthRedirect() {
+  try {
+    const newSession = await account.completeRedirect(location.href);
+    if (newSession) await enterAccount(newSession);
+  } catch (error) {
+    showAccountToast(error.message);
+  }
+}
+
 function bindEvents() {
   document.addEventListener('click', (event) => {
     const skip = event.target.closest('.skip-link');
@@ -1266,7 +1471,7 @@ function bindEvents() {
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    if (palette?.isOpen() || $('clear-dialog').open) return;
+    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open) return;
     if (event.key === 'Escape' && preferences.open) {
       event.preventDefault();
       preferences.open = false;
@@ -1354,6 +1559,13 @@ function paletteCommands(query) {
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
+    ...(session
+      ? [{ group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount }]
+      : [
+        { group: 'account', label: 'create account…', keywords: 'sign up register save login', run: () => openAccountDialog('create') },
+        { group: 'account', label: 'sign in…', keywords: 'log in login account', run: () => openAccountDialog('signin') },
+        { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
+      ]),
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
   // Only an exact word finds this one.
@@ -1372,6 +1584,7 @@ function bindPalette() {
     getCommands: paletteCommands,
     onOpen: () => {
       document.querySelector('.preferences')?.removeAttribute('open');
+      closeAccountMenu();
       markInterrupted(NOTICES.paletteOpened);
       markRaceInterrupted();
     },
@@ -1409,7 +1622,9 @@ buildKeyboard();
 applyPreferences();
 setModeControls();
 bindEvents();
+bindAccount();
 bindPalette();
+renderAccount();
 setRunning(false);
 renderHistory();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
@@ -1419,3 +1634,5 @@ document.fonts?.ready.then(() => { primaryFx.relayout(); updateGlides({ instant:
 console.info('stilltype · ↑ ↑ ↓ ↓ ← → ← → b a');
 
 if (!storageAvailable) announce('Storage is unavailable. Results last only in this tab.');
+completeAuthRedirect();
+syncOnLoad();

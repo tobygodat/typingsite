@@ -42,4 +42,4 @@ The app uses native HTML/CSS/JavaScript. Its visual system, Afterimage (Literata
 - [Research summary](docs/research/summary.md)
 - [ML evaluation plan](docs/ml-data-evaluation.md)
 
-There is no learned recommender, online matchmaking, account service or deployment. An immediate retest is feedback, not proof of lasting learning.
+Accounts use Supabase Auth (email/password and Google) with one row-level-secured profile per user; guests save nothing. There is no learned recommender or online matchmaking. An immediate retest is feedback, not proof of lasting learning.

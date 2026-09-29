@@ -12,13 +12,13 @@ web
 
 **Committed second audience, built after the solo loop is proven:** beginners learning to type, also on a physical keyboard. Confirmed during init, September 2026. This supersedes the MVP spec's deferral of beginner instruction as an audience decision — the teaching path itself is not milestone 1 scope, but no architecture, progress model, or UI may be built that would have to be torn out to serve them.
 
-Everyone is a guest by default: no account, profile stored on the device. Touch entry is scored and labelled on its own and is never compared with physical-keyboard runs.
+Everyone starts as a guest: default settings, and nothing is saved beyond the tab. Creating an account (email and password, or Google) keeps settings, runs and progress per person and syncs them across devices. Touch entry is scored and labelled on its own and is never compared with physical-keyboard runs.
 
 ## Product Purpose
 
 One connected loop: **play → identify weak patterns → practice → measure improvement on fresh text.** Existing typing sites make people switch between a clean test, targeted learning, and competition; this product tries to make the next useful exercise the obvious next step from a result.
 
-Success for milestone 1: a guest completes run → explained recommendation → drill → fresh comparable retest → saved progress, without an account or external service, and understands what each number does and does not mean.
+Success for milestone 1: a guest completes run → explained recommendation → drill → fresh comparable retest → progress (kept for the tab as a guest, saved once signed in), and understands what each number does and does not mean.
 
 ## Positioning
 
