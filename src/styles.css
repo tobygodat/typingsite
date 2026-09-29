@@ -854,16 +854,24 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 .char { position: relative; }
 .char.correct { color: var(--text); }
 
-/* Colour plus a wavy underline, so a miss never depends on colour alone. */
+/* Colour plus a tint, so a miss never depends on colour alone. */
 .char.wrong {
   color: var(--danger);
   background: var(--danger-soft);
   border-radius: var(--radius-sm);
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: var(--danger);
-  text-decoration-thickness: 1.5px;
-  text-underline-offset: 0.2em;
+}
+
+/* A space is a plain inline box, shorter than the letter boxes, so its own
+   tint would notch the row. Paint it at full line height instead. */
+:is(#text-display, #race-text-display) > .char.wrong { background: none; }
+:is(#text-display, #race-text-display) > .char.wrong::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: calc(50% - var(--typing-line) / 2);
+  height: var(--typing-line);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
 }
 
 .caret {
