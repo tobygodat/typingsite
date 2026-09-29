@@ -4,13 +4,16 @@ Focused typing, explained practice, and friendly local competition. The product 
 
 ## Run locally
 
-Node.js 20 or newer; no dependency installation needed.
+Node.js 20 or newer. The app itself has no dependencies; `npm install` is only needed for the browser tests.
 
 ```sh
 npm run dev
 npm test
 npm run build   # static build in dist/, used by Vercel
+npm run test:e2e   # Playwright browser verification (e2e/), after npm install
 ```
+
+The browser tests need a Chromium: run `npx playwright install chromium` once, or point `CHROMIUM` at a system build (`CHROMIUM=/usr/bin/chromium npm run test:e2e`). They serve the app on `127.0.0.1:4173` and fake Supabase, so no account or network is touched.
 
 Open [localhost:5173](http://localhost:5173). Everything runs in the browser with local persistence. Fonts are bundled: Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono. The app has no external runtime service.
 
@@ -36,7 +39,7 @@ The app uses native HTML/CSS/JavaScript. Its visual system, Afterimage (Literata
 
 - [Current handoff](HANDOFF.md)
 - [Implementation decision](docs/decisions/2026-09-22-learning-loop.md)
-- [Browser verification](docs/verification/2026-09-22-browser.md)
+- [Browser verification](docs/verification/2026-09-29-browser.md)
 - [MVP specification](docs/mvp-spec.md)
 - [Staged roadmap](docs/implementation-plan.md)
 - [Research summary](docs/research/summary.md)
