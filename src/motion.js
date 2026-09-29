@@ -84,8 +84,9 @@ export function createTypingFx(wrap, display, options = {}) {
     const nextLine = Math.floor((logicalTop + lineHeight * 0.25) / lineHeight);
     caretX.target = x;
     // Keep the caret in the display's real content coordinates; the display
-    // transform below removes the spacer from its visible position.
-    caretY.target = top;
+    // transform below removes the spacer from its visible position. Snap to
+    // the row: a space's inline box sits lower than the letters around it.
+    caretY.target = Math.floor((top + lineHeight * 0.25) / lineHeight) * lineHeight;
 
     if (nextLine !== line) {
       line = nextLine;

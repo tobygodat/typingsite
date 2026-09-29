@@ -17,7 +17,7 @@ This document is the integration contract between the static interface in `index
 
 ## Dock, settings and command palette
 
-The dock (`nav.dock` in `.dock-zone`) holds the brand link, the `.dock-nav` view buttons and `#palette-trigger`. The settings popover (`details.preferences`) sits immediately after `#restart-button` in the typing footer and opens above it.
+The dock (`nav.dock` in `.dock-zone`) holds the brand link, the `.dock-nav` view buttons, the settings popover (`details.preferences`, whose `summary.dock-settings` shows an icon and the label "settings") and `#palette-trigger`. The popover is positioned against the dock: below it on desktop, above it on mobile. Restart (`#restart-button`) stays in the typing footer.
 
 Selection pills: a `.glide` container with `data-glide="current"` follows `aria-current`; `data-glide="pressed"` follows `aria-pressed`. Its `.glide-pill` is aria-hidden decoration; state always lives in the ARIA attributes and `.is-active`.
 
@@ -29,7 +29,7 @@ The command palette is `dialog#palette`. `#palette-input` is a combobox controll
 
 Required IDs: `typing-screen`, `typing-form`, `typing-input`, `typing-wrap`, `text-display`, `accessible-passage`, `live-stats`, `live-wpm`, `live-accuracy`, `timer`, `timer-unit`, `timer-label`, `progress-track`, `progress-bar`, `typing-status`, `session-kicker`, `session-title`, `session-description`, `condition-line`, `input-help`, `restart-button`, and `announcement`.
 
-`#text-display` receives `.word > .char` spans. Character state classes are `.correct`, `.wrong`, and `.current`; they change instantly, without transition. `.wrong` always has a wavy non-colour underline. The display has a fixed three-line height; live metric updates must not change its geometry. `src/motion.js` inserts only two aria-hidden elements into the display after each render, `.caret` and `.ghost-caret`, drives the ~150 ms line scroll, and sets `data-caret` / `data-blocked` on `#typing-wrap`.
+`#text-display` receives `.word > .char` spans. Character state classes are `.correct`, `.wrong`, and `.current`; they change instantly, without transition. `.wrong` always has a non-colour tint; on a space it is painted at full line height so the row keeps an even band. Under `forced-colors: active` it switches to the system `Mark` / `MarkText` highlight so the mark survives the forced palette. The display has a fixed three-line height; live metric updates must not change its geometry. `src/motion.js` inserts only two aria-hidden elements into the display after each render, `.caret` and `.ghost-caret`, drives the ~150 ms line scroll, and sets `data-caret` / `data-blocked` on `#typing-wrap`.
 
 `#typing-input` is the real focus target and remains visually transparent over the displayed text. `#progress-track` is a thin line with `role="progressbar"`; keep `aria-valuenow`, `aria-valuemin`, `aria-valuemax`, and `aria-valuetext` current. `#progress-bar` fills from its `--progress` custom property (0–1), not its width.
 
@@ -37,7 +37,7 @@ Required IDs: `typing-screen`, `typing-form`, `typing-input`, `typing-wrap`, `te
 
 Practice mode controls are `#mode-time`, `#mode-words`, `#mode-quote`, `#duration-options`, `#punctuation-toggle`, `#quote-options`, `#quote-length`, and `#quote-difficulty`. Generated length buttons belong in `#duration-options` and use `aria-pressed`.
 
-`#best` in the footer shows the personal best for the current conditions, or states that there is none.
+`#best` in the footer shows the personal best for the current conditions, or states that there is none. `#suggest-trigger` beside it (and the palette command "suggest a feature…") opens `dialog#suggest-dialog`: `#suggest-text` (max 1000 characters, counted in `#suggest-count`), errors in `#suggest-error`, a hidden honeypot `#suggest-website`, and `#send-suggest`, which inserts `{ body, view }` into the Supabase `feature_suggestions` table through `sendSuggestion` in `src/account.js`, always as the anonymous role (a filled honeypot sends nothing). Success closes the dialog and shows `#suggest-toast`; failure keeps the text. Opening it mid-run marks the run interrupted, like the palette.
 
 ## Completed run and recommendation
 

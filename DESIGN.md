@@ -208,7 +208,7 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 - **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. Focus rings on inputs use its soft tint (accent-soft). Text on a green fill uses accent-ink.
 
 ### Secondary
-- **Ember Coral** (danger): mistyped letters, the blocked caret, regressions, destructive actions and field errors. It is always paired with a second cue (wavy underline, tint, a word) and never used alone.
+- **Ember Coral** (danger): mistyped letters, the blocked caret, regressions, destructive actions and field errors. It is always paired with a second cue (a tint or a word) and never used alone.
 - **Lamp Amber** (warning): interrupted runs and mixed comparison outcomes only.
 
 ### Tertiary
@@ -228,7 +228,7 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 ### Named Rules
 **The One Green Rule.** Green means "act here" or "you are here" and nothing else. There is exactly one filled-green control per view: the primary button. Secondary controls get a neutral focus ring, so they never read as a second primary.
 
-**The Two-Cue Rule.** Coral never carries meaning alone. A mistyped letter is coral text, a coral tint behind it, and a wavy underline.
+**The Two-Cue Rule.** Coral never carries meaning alone. A mistyped letter is coral text with a coral tint behind it; a mistyped space shows the tint at full line height.
 
 **The Tokens-Only Rule.** Every colour comes from a CSS variable defined in both theme blocks. Add a token to both themes before using a new value.
 
@@ -311,13 +311,15 @@ Mode and length pickers are a 14px frame with a hairline border, holding 36px Li
 - **Switch:** a 38×22 track (hairline-strong, accent when on) with a text-coloured knob that slides 16px.
 
 ### Navigation (the dock)
-A floating, opaque 58px bar with 18px corners, sticky at the top on desktop and fixed to the bottom under 760px (62px, full width, with safe-area padding). It holds the italic wordmark and green full stop, four lowercase nav items (muted, text colour on hover and when active, with the gliding pill), a hairline separator, and the ⌘K / Ctrl-K palette trigger, shown as a search icon at every width. The settings popover is a 340px raised panel of 52px rows, anchored above the Settings control beside Restart in the typing footer.
+A floating, opaque 58px bar with 18px corners, sticky at the top on desktop and fixed to the bottom under 760px (62px, full width, with safe-area padding). It holds the italic wordmark and green full stop, four lowercase nav items (muted, text colour on hover and when active, with the gliding pill), a hairline separator, a labelled settings control (icon and lowercase "settings"; icon only below 900px, so the centred dock clears the account button) and the ⌘K / Ctrl-K palette trigger, shown as a search icon at every width. The account button sits apart from the dock, top right. The settings popover is a 340px raised panel of 52px rows, anchored to the dock's right edge: below it on desktop, above it on mobile.
+
+The footer holds the personal best, the guest note and a quiet "suggest a feature" link (mono label, hairline underline). It opens a dialog of the same raised stock as the clear-history dialog: a sentence-case heading, a note on what is stored, a textarea with a mono character count, and Cancel / Send suggestion (filled green). Success closes it and shows a toast; failure keeps the text and explains in coral below the field.
 
 ### Status words
 A 7px dot in the current colour, followed by a lowercase 12px mono word, coloured by meaning (accent, warning, danger, muted). These are never boxed.
 
 ### Typing zone (signature)
-Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint and a 1.5px wavy underline. The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost pacer is a 2px periwinkle bar at 70% opacity.
+Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint (no underline). The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost pacer is a 2px periwinkle bar at 70% opacity.
 
 ### Run card (signature)
 A static print: 22px corners, 22px padding, a strong hairline border, and the card-stock gradient. From top to bottom it holds a mono date stamp, the 16:9 speed graph (an SVG line chart: a 2px accent line of wpm per second, averaged over a trailing three seconds; a dotted muted line at the final wpm; coral dots on the line where mistakes happened; hairline gridlines at 0, half and top with 12px mono labels, and a mono time axis), a one-line mono legend, which draws once over about 450ms (`--dur-develop`), the numeral WPM with a mono unit, a three-column facts list (mono labels, 24px Literata values), an italic 13px metric note, and the mono conditions line. It does not tilt, shine or animate after the graph has drawn.
@@ -335,7 +337,7 @@ Opaque raised pills of 16px radius at the bottom centre, with a status dot and 1
 - **Do** set every readable word and every number in Literata, with tabular lining figures on metrics. Keep Geist Mono to 12–13px labels, conditions and keys.
 - **Do** keep exactly one filled-green primary action per view. All other actions are secondary, ghost or danger.
 - **Do** separate sections with a 1px hairline and 32px of space.
-- **Do** pair coral with a second cue: a wavy underline, a tint, or a word.
+- **Do** pair coral with a second cue: a tint or a word.
 - **Do** drive every duration from the `--dur-*` scale (80, 150, 200, 250, 350ms × `--motion-scale`) with the `--ease-out` curve (`cubic-bezier(0.22, 1, 0.36, 1)`), so reduced motion takes them all to zero.
 - **Do** keep chrome fades at 200ms or less, and animate the selection pill by transform only.
 - **Do** keep chrome labels lowercase and headings and buttons in sentence case.
