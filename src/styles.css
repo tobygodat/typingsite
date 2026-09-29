@@ -874,6 +874,16 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   background: var(--danger-soft);
 }
 
+/* Forced colours strip the tint, so keep the mark as a system highlight. */
+@media (forced-colors: active) {
+  .char.wrong,
+  :is(#text-display, #race-text-display) > .char.wrong::before {
+    forced-color-adjust: none;
+    color: MarkText;
+    background: Mark;
+  }
+}
+
 .caret {
   position: absolute;
   top: 0;
