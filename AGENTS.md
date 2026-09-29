@@ -22,7 +22,7 @@ letter states, a ~150ms line scroll. The rest of the chrome fades out after the 
 (body[data-running]) and returns on pointer movement, finish or restart. Motion belongs after the
 run and in chrome only, kept short (fades ≤200ms; run-card art ~450ms), and scales to zero under
 prefers-reduced-motion. HANDOFF.md lists effects removed on purpose; do not bring them back.
-src/motion.js and src/rhythm.js are presentational; scoring never reads from them.
+src/motion.js and src/graph.js are presentational; scoring never reads from them.
 
 ## Historical references
 design/ash/ (the former Ash system) and design/canvas/ (earlier redesign artboards) are historical

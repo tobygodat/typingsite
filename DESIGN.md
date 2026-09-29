@@ -19,9 +19,6 @@ colors:
   warning: "#e0b565"
   selection: "#34322e"
   ghost: "#b9c3ff"
-  rhythm-hit: "#8fd18a"
-  rhythm-miss: "#ff7a59"
-  rhythm-rest: "#34322f"
   card-top: "#1f1e1c"
   card-bottom: "#121211"
   ground-light: "#f4f1eb"
@@ -41,8 +38,6 @@ colors:
   warning-light: "#8a5a00"
   selection-light: "#e3dccf"
   ghost-light: "#4f5bc4"
-  rhythm-miss-light: "#cf4a2a"
-  rhythm-rest-light: "#d3ccbf"
   card-top-light: "#fffdf9"
   card-bottom-light: "#efeae1"
 typography:
@@ -193,7 +188,7 @@ components:
 
 The typing passage is the screen. Everything readable is set in one book face, Literata, on a warm near-black ground (or warm paper in light), so a passage reads like a page and a result reads like a print rather than a dashboard. One green carries every meaning of "act here" or "you are here": the caret, the primary button, the current selection and the timer. Content sits on hairline rules and open space. Boxes are kept for the few things that really are objects: the floating dock, the settings popover, the command palette, dialogs, toasts, and the run card.
 
-Motion is governed by "still run". While a run is in progress, nothing decorative moves near the passage. The caret is a solid spring-driven bar, letter states change instantly, lines scroll in about 150 ms, and the chrome fades out after the first keystroke. Motion belongs to chrome and to the time after a run: short fades, one gliding selection pill, and the run card's dithered rhythm art developing once in about 450 ms. Every duration comes from one scale that drops to zero under reduced motion.
+Motion is governed by "still run". While a run is in progress, nothing decorative moves near the passage. The caret is a solid spring-driven bar, letter states change instantly, lines scroll in about 150 ms, and the chrome fades out after the first keystroke. Motion belongs to chrome and to the time after a run: short fades, one gliding selection pill, and the run card's speed graph drawing once in about 450 ms. Every duration comes from one scale that drops to zero under reduced motion.
 
 Density is low and deliberate. The practice screen centres the passage with the numbers above it and a small set of controls. Results, progress and challenge are single editorial columns separated by rules. The name "Stilltype" is a working title, so the wordmark stays a cheap italic word plus a green full stop.
 
@@ -203,7 +198,7 @@ Density is low and deliberate. The practice screen centres the passage with the 
 - One green accent; coral for mistyped letters and regressions; amber for interrupted and mixed results.
 - Rules and space instead of boxes; opaque raised surfaces with a single soft float shadow; no glass, no glow.
 - Still run: the passage area stays motionless apart from the caret and line scroll.
-- Results are a static print: a run card with dithered rhythm art drawn from real keystroke intervals.
+- Results are a static print: a run card with a plain speed-over-time graph drawn from the real keystrokes.
 
 ## Colors
 
@@ -229,7 +224,6 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 - **Hairline / Strong Hairline**: rules between sections and rows (hairline), and the borders of raised surfaces, keys and secondary buttons (hairline-strong).
 - **Field Outline** (outline): input borders.
 - **Card Stock** (card-top to card-bottom): the run card's 165-degree gradient, a subtle paper-stock sheen that sits only on that card.
-- **Rhythm inks** (rhythm-hit, rhythm-miss, rhythm-rest): the three inks of the dithered run-card art.
 
 ### Named Rules
 **The One Green Rule.** Green means "act here" or "you are here" and nothing else. There is exactly one filled-green control per view: the primary button. Secondary controls get a neutral focus ring, so they never read as a second primary.
@@ -328,7 +322,7 @@ A 7px dot in the current colour, followed by a lowercase 12px mono word, coloure
 Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint (no underline). The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost pacer is a 2px periwinkle bar at 70% opacity.
 
 ### Run card (signature)
-A static print: 22px corners, 22px padding, a strong hairline border, and the card-stock gradient. From top to bottom it holds a mono date stamp, the 16:9 dithered rhythm art (4px ordered-dither cells, pixelated rendering: hit, miss and rest inks) which develops once over about 450ms, the numeral WPM with a mono unit, a three-column facts list (mono labels, 24px Literata values), an italic 13px metric note, and the mono conditions line. It does not tilt, shine or animate after the art has developed.
+A static print: 22px corners, 22px padding, a strong hairline border, and the card-stock gradient. From top to bottom it holds a mono date stamp, the 16:9 speed graph (an SVG line chart: a 2px accent line of wpm per second, averaged over a trailing three seconds; a dotted muted line at the final wpm; coral dots on the line where mistakes happened; hairline gridlines at 0, half and top with 12px mono labels, and a mono time axis), a one-line mono legend, which draws once over about 450ms (`--dur-develop`), the numeral WPM with a mono unit, a three-column facts list (mono labels, 24px Literata values), an italic 13px metric note, and the mono conditions line. It does not tilt, shine or animate after the graph has drawn.
 
 ### Command palette
 A 600px opaque raised panel with 22px corners over a flat dim. It has a 62px search row (19px input) and 46px option rows with a 6px state dot (accent when selected). Mono group labels and mono hints sit on the right. It enters and exits with a 4px lift and fade over 150ms.
