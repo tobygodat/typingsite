@@ -55,9 +55,11 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     mode = value;
     $('online-challenge').hidden = value !== 'online';
     $('local-challenge').hidden = value !== 'local';
+    $('daily-challenge').hidden = value !== 'daily';
     $('challenge-online').setAttribute('aria-pressed', String(value === 'online'));
     $('challenge-local').setAttribute('aria-pressed', String(value === 'local'));
-    $('compete-heading').textContent = value === 'online' ? 'A passage shared. A race together.' : 'Same passage. One keyboard.';
+    $('challenge-daily').setAttribute('aria-pressed', String(value === 'daily'));
+    $('compete-heading').textContent = value === 'online' ? 'A passage shared. A race together.' : value === 'daily' ? 'A passage for today.' : 'Same passage. One keyboard.';
     setRunning(false);
     if (value === 'online') { fx.relayout(); refreshInvites(); }
   }
@@ -205,6 +207,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('online-stage').hidden = !['countdown', 'racing'].includes(room.status);
     $('online-leave').textContent = terminal(room) ? 'Close race' : 'Leave race';
     $('challenge-local').disabled = !terminal(room);
+    $('challenge-daily').disabled = !terminal(room);
     $('online-share').hidden ||= room.status !== 'waiting';
     const container = $('online-players');
     for (const slot of [1, 2]) {
@@ -355,6 +358,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('online-players').replaceChildren();
     $('online-share').hidden = true;
     $('challenge-local').disabled = false;
+    $('challenge-daily').disabled = false;
     renderHome();
     if (previous) {
       try { await multiplayer.leaveRace(getSession(), previous); }
@@ -364,6 +368,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
   $('challenge-online').addEventListener('click', () => setMode('online'));
   $('challenge-local').addEventListener('click', () => setMode('local'));
+  $('challenge-daily').addEventListener('click', () => setMode('daily'));
   $('online-signin').addEventListener('click', signIn);
   $('refresh-race-invites').addEventListener('click', refreshInvites);
   $('online-setup').addEventListener('submit', (event) => {

@@ -20,6 +20,8 @@ import { createPalette } from './palette.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
+import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
@@ -48,6 +50,7 @@ function emptyProfile() {
     profileId: uid(),
     preferences: { ...defaultPreferences },
     attempts: [],
+    runs: [],
     loops: [],
     seenTextIds: [],
     bests: {},
@@ -70,11 +73,19 @@ function validPreferences(value) {
 
 function normalizeProfile(parsed) {
   if (parsed?.version !== 2) return emptyProfile();
+  const traces = Array.isArray(parsed.attempts) ? parsed.attempts : [];
+  const records = Array.isArray(parsed.runs) ? parsed.runs : traces.map((trace) => {
+    // Older traces did not have wall-clock dates. Preserve unknown dates rather than invent them.
+    const loop = parsed.loops?.find((l) => l.afterAttemptId === trace.id);
+    const best = Object.values(parsed.bests || {}).find((b) => b.attemptId === trace.id);
+    return runRecord(trace, trace.at || loop?.at || best?.at || null);
+  });
   return {
     ...emptyProfile(),
     ...parsed,
     preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences }),
     attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
+    runs: retainRuns(records),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
     bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
@@ -130,6 +141,7 @@ let race = {
 function saveProfile() {
   profile.preferences = { ...prefs };
   profile.attempts = profile.attempts.slice(-MAX_STORED_ATTEMPTS);
+  profile.runs = retainRuns(profile.runs);
   if (!session) return true;
   unsynced = true;
   if (cloudChecked) {
@@ -174,6 +186,7 @@ function describeConditions(value = conditions()) {
 
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
+  if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
   return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
 }
@@ -411,6 +424,7 @@ function choosePassage(extraSeen = []) {
 }
 
 function sessionDurationMs() {
+  if (sessionKind === 'daily') return null;
   if (sessionKind === 'drill') return 60000;
   if (prefs.mode === 'time') return prefs.duration * 1000;
   return null;
@@ -421,6 +435,7 @@ function configureSessionCopy() {
     practice: ['practice', 'Practice', ''],
     drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
+    daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
   }[sessionKind];
   $('session-kicker').textContent = copy[0];
   $('session-title').textContent = copy[1];
@@ -438,7 +453,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   setRunning(false);
   primaryNotice = '';
   sessionKind = kind;
-  passage = selectedPassage || (kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
+  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
@@ -471,13 +486,22 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     profile.seenTextIds.push(passage.id);
     saveProfile();
   }
+  if (kind === 'daily' && !profile.seenTextIds.includes(passage.challengeId)) {
+    profile.seenTextIds.push(passage.challengeId);
+    saveProfile();
+  }
   attempt = createAttempt({
     id: uid(),
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: conditions(),
+    conditions: kind === 'daily' ? dailyConditions() : conditions(),
   });
+  if (kind === 'daily') {
+    attempt.challengeDate = passage.day;
+    attempt.firstDailyAttempt = passage.firstDailyAttempt;
+  }
+  if (kind === 'drill') attempt.target = selectedTarget;
   attempt.fresh = passage.fresh !== false;
   startTime = null;
   $('typing-input').value = '';
@@ -714,11 +738,13 @@ function updateLive(reset = false) {
 }
 
 function storeAttempt(completed) {
+  completed.at = new Date().toISOString();
   const key = conditionKey(completed.conditions);
   const score = completed.summary.score;
-  const eligibleBest = completed.status === 'complete' && !completed.interrupted && completed.kind !== 'drill' && completed.kind !== 'race';
+  const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
   resultBestBefore = profile.bests[key] || null;
   profile.attempts.push(completed);
+  profile.runs.push(runRecord(completed));
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
     profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
   }
@@ -753,7 +779,7 @@ function finishPrimary(forcedElapsed = null) {
     return;
   }
 
-  if (sessionKind === 'practice' && valid) {
+  if ((sessionKind === 'practice' || sessionKind === 'daily') && valid) {
     baselineAttempt = completed;
     trainingContext = null;
   }
@@ -780,6 +806,7 @@ function renderCard(completed) {
 function resultHeadline(completed) {
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
+  if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
   if (!resultBestBefore) return 'First run at these settings';
   const delta = completed.summary.score.wpm - resultBestBefore.wpm;
   if (delta === 0) return `Matched your best of ${resultBestBefore.wpm}`;
@@ -809,16 +836,21 @@ function renderResults(completed, saved) {
     saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
   ].filter(Boolean).join(' ');
 
-  if (sessionKind === 'practice') {
-    activeRecommendation = recommendTarget(profile.attempts, completed.conditions);
+  if (sessionKind === 'practice' || sessionKind === 'daily') {
+    activeRecommendation = trainingRecommendation(completed.conditions);
     selectedTarget = activeRecommendation.target;
   }
   $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
   $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
-  $('recommendation-meta').textContent = `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`;
+  $('recommendation-meta').textContent = baselineAttempt
+    ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
+    : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
   $('start-drill').disabled = !counted;
   $('skip-to-retest').disabled = !counted || !baselineAttempt;
   renderEvidenceList(activeRecommendation.evidence);
+  $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again' : 'Run again';
+  renderTraining();
+  renderDaily();
   $('comparison-panel').hidden = true;
   announce(saved
     ? `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy.`
@@ -889,6 +921,7 @@ function renderComparison(before, after, saved) {
       conditions: after.conditions,
       comparison,
       targetTiming: timingSummary,
+      drill: trainingContext?.drill || null,
     });
     comparisonSaved = saveProfile();
   }
@@ -898,13 +931,21 @@ function renderComparison(before, after, saved) {
 
 function startDrill() {
   selectedTarget = activeRecommendation?.target || null;
+  const source = baselineAttempt?.conditions;
+  if (source) restoreConditions(source);
   trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false };
+  trainingContext.drill = { target: selectedTarget, duration: 60, wordList: prefs.wordList, textVersion: makeDrill(selectedTarget, prefs.wordList).textVersion };
   resetSession('drill', { focus: true });
 }
 
 function startRetest() {
   if (!baselineAttempt || baselineAttempt.status !== 'complete') return;
   const source = baselineAttempt.conditions;
+  restoreConditions(source);
+  resetSession('retest', { focus: true });
+}
+
+function restoreConditions(source) {
   prefs = {
     ...prefs,
     mode: source.mode,
@@ -919,7 +960,6 @@ function startRetest() {
   profile.preferences = prefs;
   applyPreferences();
   setModeControls();
-  resetSession('retest', { focus: true });
 }
 
 function switchView(view) {
@@ -936,6 +976,8 @@ function switchView(view) {
   updateGlides();
   if (view === 'progress') renderHistory();
   onlineRace?.onViewChange(view);
+  if (view === 'results') renderTraining();
+  if (view === 'compete') renderDaily();
 }
 
 function navigate(view) {
@@ -968,13 +1010,141 @@ function markRaceInterrupted() {
   showInputNotice('race', NOTICES.raceFocusLost, { speak: false });
 }
 
+function conditionOptions(select, sources, fallback = null) {
+  const prior = select.value;
+  const groups = new Map();
+  for (const source of [...sources].reverse()) groups.set(conditionKey(source.conditions), source.conditions);
+  if (!groups.size && fallback) groups.set(conditionKey(fallback), fallback);
+  select.replaceChildren(...[...groups].map(([key, value]) => {
+    const option = document.createElement('option');
+    option.value = key;
+    option.textContent = describeConditions(value);
+    return option;
+  }));
+  if (groups.has(prior)) select.value = prior;
+  select.disabled = !groups.size;
+  return groups.get(select.value);
+}
+
+function element(tag, text, className = '') {
+  const node = document.createElement(tag);
+  node.textContent = text;
+  node.className = className;
+  return node;
+}
+
+function dateCopy(at) {
+  return at ? new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Earlier run · date unavailable';
+}
+
+function scoreFacts(items) {
+  const dl = document.createElement('dl');
+  for (const [label, value] of items) {
+    const group = document.createElement('div');
+    group.append(element('dt', label), element('dd', value, 'num'));
+    dl.append(group);
+  }
+  return dl;
+}
+
+function openHistoryRun(id) {
+  const row = [...$('run-history').children].find((item) => item.dataset.runId === id);
+  if (row) { row.open = true; row.scrollIntoView({ block: 'center', behavior: 'instant' }); row.querySelector('summary').focus(); }
+}
+
+function targetButton(target, source) {
+  const button = element('button', `Practice “${target}” again`, 'btn btn-secondary');
+  button.type = 'button';
+  button.addEventListener('click', () => practiceTarget(target, source));
+  return button;
+}
+
+function practiceTarget(target, source) {
+  // Use a retained, compatible baseline when possible. Older corpus versions need a new baseline.
+  baselineAttempt = [...profile.attempts].reverse().find((a) => a.status === 'complete' && !a.interrupted
+    && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
+    && conditionKey(a.conditions) === conditionKey(source) && source.corpus === CORPUS_VERSION) || null;
+  restoreConditions({ ...source, corpus: CORPUS_VERSION });
+  selectedTarget = target;
+  activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
+    reason: baselineAttempt ? `You chose “${target}”. A retained run at these conditions is your baseline.`
+      : `You chose “${target}”. Finish a new practice run afterward to establish a retest baseline.`,
+    evidence: summarizePatterns(profile.attempts, 20, source) };
+  startDrill();
+  if (!baselineAttempt) $('session-description').textContent = 'Standalone drill. Finish a new practice run afterward for a comparable retest.';
+}
+
+function trainingRecommendation(source) {
+  const recommendation = recommendTarget(profile.attempts, source);
+  const recurring = recurringTargets(profile.runs, profile.loops, source)[0];
+  if (!recurring) return recommendation;
+  const counts = recurring.errors
+    ? `${recurring.errors} first-try errors in ${recurring.observations} tries across ${recurring.runs} matching runs`
+    : `slower than your own run median in ${recurring.slowRuns} matching runs, with at least 10 clean intervals in each`;
+  return { ...recommendation, kind: 'targeted', target: recurring.pair,
+    title: `${recurring.review ? 'Revisit' : 'Practice'} “${recurring.pair}”`,
+    reason: `“${recurring.pair}”: ${counts}. ${recurring.review ? 'Fresh runs have enough new observations to revisit this target.' : 'This pattern recurred in more than one run.'}` };
+}
+
+function renderTraining() {
+  const source = conditionOptions($('training-conditions'), profile.runs.filter((r) => validRun(r)
+    && ['test', 'retest', 'daily'].includes(r.kind)), conditions());
+  const targets = recurringTargets(profile.runs, profile.loops, source);
+  $('training-memory-note').textContent = targets.length
+    ? 'Counts come from up to 120 recent matching runs. Revisit checks use fresh text; one retest does not establish lasting improvement.'
+    : 'No recurring pattern has enough evidence yet. Finish more runs at these conditions, or choose a manual drill above.';
+  $('training-targets').replaceChildren(...targets.slice(0, 8).map((target) => {
+    const row = element('article', '', 'training-target');
+    const copy = document.createElement('div');
+    copy.append(element('h3', `${target.review ? 'Revisit' : 'Practice'} “${target.pair}”`));
+    copy.append(element('p', `${target.errors} first-try errors / ${target.observations} tries · observed in ${target.runs} runs · errors in ${target.errorRuns} · slower than your median in ${target.slowRuns}`));
+    if (target.lastPracticed) copy.append(element('p', `Last practiced ${dateCopy(target.lastPracticed)}. ${target.laterObservations} observations on fresh runs since then.${target.lastCheck ? ` Last retest: ${target.lastCheck.comparison.state}.` : ''}`));
+    row.append(copy, targetButton(target.pair, source));
+    return row;
+  }));
+}
+
 function renderHistory() {
-  const loops = [...profile.loops].reverse();
-  $('progress-empty').hidden = loops.length > 0;
-  $('history-list').hidden = loops.length === 0;
-  const hasHistory = profile.attempts.length > 0 || loops.length > 0;
+  const eligible = profile.runs.filter(trendRun);
+  const hasProgress = eligible.length > 0 || profile.loops.length > 0;
+  $('progress-empty').hidden = hasProgress;
+  $('progress-content').hidden = !hasProgress;
+  const hasHistory = profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0;
   $('clear-history').hidden = !hasHistory;
   $('clear-history').disabled = !hasHistory;
+  const source = conditionOptions($('progress-conditions'), [...eligible, ...profile.loops]);
+  const key = source ? conditionKey(source) : '';
+  const period = $('progress-period').value;
+  const matching = source ? filterRuns(eligible, key, period) : [];
+  const week = weeklyChange(eligible, key);
+  $('progress-week').textContent = week.wpm === null
+    ? `This week: ${week.current.length} matching runs. A week-to-week change needs runs in both this week and the preceding week.`
+    : `Weekly median: ${signed(week.wpm, 'wpm')} · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs this week / ${week.previous.length} last week. This describes your runs, not a proven learning effect.`;
+  renderTrend($('progress-trend'), matching, openHistoryRun);
+  $('progress-trend-note').textContent = matching.length
+    ? `${matching.length} completed practice runs and retests, oldest to newest. Select a point or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs appear only in All saved runs.' : ''}`
+    : 'No completed practice runs at these conditions in this period. Try a longer period or different conditions.';
+  $('run-history').replaceChildren(...[...matching].reverse().map((run) => {
+    const row = element('details', '', 'run-row');
+    row.dataset.runId = run.id;
+    const summary = element('summary', '', 'run-summary');
+    summary.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
+      element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : 'practice'} · view details`));
+    const detail = element('div', '', 'run-detail');
+    detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
+      element('p', describeConditions(run.conditions)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
+    const trace = profile.attempts.find((a) => a.id === run.id);
+    if (trace) {
+      const passageDetails = document.createElement('details');
+      passageDetails.append(element('summary', 'View passage'), element('p', trace.text));
+      detail.append(passageDetails);
+    }
+    row.append(summary, detail);
+    return row;
+  }));
+  const loops = source ? filterRuns(profile.loops, key, period).reverse() : [];
+  $('history-list').hidden = !loops.length;
+  $('history-empty').hidden = Boolean(loops.length);
   const template = $('history-row-template');
   const rows = loops.map((loop, index) => {
     const row = template.content.firstElementChild.cloneNode(true);
@@ -994,9 +1164,58 @@ function renderHistory() {
     const status = row.querySelector('.history-status');
     status.textContent = loop.comparison.state;
     status.className = `history-status badge ${loop.comparison.state === 'improved' ? 'badge-success' : loop.comparison.state === 'regressed' ? 'badge-danger' : 'badge-neutral'}`;
+    const detail = row.querySelector('.history-detail');
+    detail.append(scoreFacts([
+      ['before', loop.comparison.before ? `${loop.comparison.before.wpm} wpm · ${loop.comparison.before.accuracy}%` : 'Not retained in this older comparison'],
+      ['after', loop.comparison.after ? `${loop.comparison.after.wpm} wpm · ${loop.comparison.after.accuracy}%` : 'Not retained in this older comparison'],
+      ['drill', loop.drillCompleted ? `${loop.drill?.duration || 60} s · ${loop.target || 'general'}` : 'Skipped'],
+    ]));
+    const timing = loop.targetTiming;
+    if (timing?.target) detail.append(element('p', `“${timing.target}” clean intervals: ${timing.beforeCount} before / ${timing.afterCount} after. ${timing.deltaMs === null ? 'Too few samples to call a timing change.' : `${signed(timing.deltaMs, 'ms')} median timing change.`}`));
+    detail.append(element('p', loop.comparison.reason || 'One retest is feedback, not proof.'));
+    if (loop.beforeAttemptId && loop.afterAttemptId) detail.append(element('p', `Baseline ${loop.beforeAttemptId} · retest ${loop.afterAttemptId}. Open their run entries above for saved details.`));
+    if (loop.target) detail.append(targetButton(loop.target, loop.conditions));
     return row;
   });
   $('history-list').replaceChildren(...rows);
+}
+
+function dailyConditions() {
+  return { ...conditions(), mode: 'quote', duration: null, count: null, punctuation: true,
+    quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
+}
+
+function todayPassage() {
+  const daily = dailyPassage();
+  return { ...daily, id: daily.sourceTextId, challengeId: daily.id, corpus: CORPUS_VERSION,
+    firstDailyAttempt: !profile.seenTextIds.includes(daily.id), fresh: !profile.seenTextIds.includes(daily.sourceTextId) };
+}
+
+function startDaily() {
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
+  if (race.attempt?.status === 'running') markRaceInterrupted();
+  baselineAttempt = null;
+  trainingContext = null;
+  activeRecommendation = null;
+  resetSession('daily', { focus: true });
+}
+
+function renderDaily() {
+  const daily = dailyPassage();
+  $('daily-date').textContent = `${daily.day} · english · resets 00:00 UTC`;
+  const completed = profile.runs.filter((r) => r.kind === 'daily' && validRun(r));
+  const today = completed.filter((r) => r.challengeDate === daily.day && conditionKey(r.conditions) === conditionKey(dailyConditions()));
+  const best = [...today].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
+  $('daily-status').textContent = best
+    ? `Today’s best: ${best.score.wpm} wpm · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard.${session ? '' : ' Sign in to save future results beyond this tab.'}`
+    : `No completed physical-keyboard attempt today.${session ? ' Your results save to your account.' : ' Results last in this tab; sign in to save future attempts.'}`;
+  $('daily-history-panel').hidden = !completed.length;
+  $('daily-history').replaceChildren(...[...completed].reverse().slice(0, 30).map((run) => {
+    const row = element('div', '', 'daily-result');
+    row.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
+      element('span', `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`));
+    return row;
+  }));
 }
 
 function buildKeyboard() {
@@ -1117,6 +1336,7 @@ function renderRaceResults() {
 function clearHistory() {
   clearSnapshot = JSON.stringify(profile);
   profile.attempts = [];
+  profile.runs = [];
   profile.loops = [];
   profile.seenTextIds = [];
   profile.bests = {};
@@ -1146,6 +1366,8 @@ function clearHistory() {
   clearTimeout(clearTimer);
   clearTimer = setTimeout(() => { $('history-toast').hidden = true; clearSnapshot = null; }, 5000);
   renderHistory();
+  renderTraining();
+  renderDaily();
   showBest();
 }
 
@@ -1161,6 +1383,8 @@ function undoClear() {
   applyPreferences();
   setModeControls();
   renderHistory();
+  renderTraining();
+  renderDaily();
   setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
@@ -1527,7 +1751,11 @@ function bindEvents() {
     }
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
-  $('run-again').addEventListener('click', () => resetSession('practice', { focus: true }));
+  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
+  $('progress-conditions').addEventListener('change', renderHistory);
+  $('progress-period').addEventListener('change', renderHistory);
+  $('training-conditions').addEventListener('change', renderTraining);
+  $('start-daily').addEventListener('click', startDaily);
   $('start-drill').addEventListener('click', startDrill);
   $('skip-to-retest').addEventListener('click', startRetest);
   $('manual-target').addEventListener('submit', (event) => {
@@ -1664,6 +1892,7 @@ function paletteCommands(query) {
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
+    { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
@@ -1683,7 +1912,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
-    { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
+    { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.runs.length === 0 && profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
   // Only an exact word finds this one.
   if (query === 'ghost') commands.unshift({ group: 'secret', secret: true, label: 'ghost pacer', hint: onOff(ghostOn), on: ghostOn, run: toggleGhost });
@@ -1742,6 +1971,13 @@ new ResizeObserver(() => {
   if (!lastCompleted || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
   renderSpeedGraph(graph, lastCompleted, { animate: false });
 }).observe($('speed-graph'));
+let trendWidth = 0;
+new ResizeObserver(() => {
+  const container = $('progress-trend');
+  if (!container.clientWidth || trendWidth === container.clientWidth) return;
+  trendWidth = container.clientWidth;
+  renderTrend(container, filterRuns(profile.runs.filter(trendRun), $('progress-conditions').value, $('progress-period').value), openHistoryRun);
+}).observe($('progress-trend'));
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
 buildKeyboard();
@@ -1753,6 +1989,8 @@ bindPalette();
 renderAccount();
 setRunning(false);
 renderHistory();
+renderTraining();
+renderDaily();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
 onlineRace = createOnlineRace({
   getSession: () => session,
@@ -1772,3 +2010,8 @@ console.info('stilltype · ↑ ↑ ↓ ↓ ← → ← → b a');
 if (!storageAvailable) announce('Storage is unavailable. Results last only in this tab.');
 completeAuthRedirect();
 syncOnLoad();
+// Refresh the day label when a tab returns, and across midnight without reloading.
+setInterval(() => { if (document.body.dataset.view === 'compete') renderDaily(); }, 30000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) renderDaily();
+});

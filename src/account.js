@@ -205,11 +205,12 @@ export function mergeProfiles(base, extra) {
   for (const [key, best] of Object.entries(base.bests)) {
     if (!bests[key] || best.wpm >= bests[key].wpm) bests[key] = best;
   }
-  const baseIsNew = base.attempts.length === 0 && base.loops.length === 0;
+  const baseIsNew = base.attempts.length === 0 && base.loops.length === 0 && !base.runs?.length;
   return {
     ...base,
     preferences: baseIsNew ? extra.preferences : base.preferences,
     attempts: byId([...extra.attempts, ...base.attempts]),
+    runs: byId([...(extra.runs || []), ...(base.runs || [])]),
     loops: byId([...extra.loops, ...base.loops]),
     seenTextIds: [...new Set([...extra.seenTextIds, ...base.seenTextIds])],
     bests,

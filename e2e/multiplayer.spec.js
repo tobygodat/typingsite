@@ -11,6 +11,7 @@ async function hostRace(page, supabase, email = '') {
   await page.locator('#online-invite-email').fill(email);
   await page.locator('#create-online-race').click();
   await expect(page.locator('#online-room')).toBeVisible();
+  await expect(page.locator('#challenge-daily')).toBeDisabled();
   return [...supabase.races.rooms.values()][0];
 }
 
@@ -98,6 +99,10 @@ test('a guest resumes the same seat after reload and sees host cancellation', as
     await expect(guest.locator('#online-room')).toBeVisible();
     expect(room.players).toHaveLength(2);
     await page.locator('#online-leave').click();
+    await expect(page.locator('#challenge-daily')).toBeEnabled();
+    await page.locator('#challenge-daily').click();
+    await expect(page.locator('#daily-challenge')).toBeVisible();
+    await expect(page.locator('#online-challenge')).toBeHidden();
     await expect(guest.locator('#online-room-status')).toContainText(/cancel|left/i);
     await expect(guest.locator('#online-input')).toBeDisabled();
   } finally { await context.close(); }

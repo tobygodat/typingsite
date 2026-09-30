@@ -40,8 +40,13 @@ This is stated in the research as a hypothesis about usability and learning, not
 - A complete guest loop: timed/word/quote test, observed recommendation or manual target, one-minute drill, unseen comparable retest, and saved local progress.
 - Quote length/difficulty filters, optional punctuation, corrected WPM and input accuracy, first-attempt error retention, keyboard display, text size, live-metric, stop-on-error and focus preferences.
 - Private online two-player races with account invitations, guest links, a shared server countdown, live progress and unranked results. A signed-in account hosts; guests can join without an account. Shared-keyboard challenges remain available.
+- Daily passage shared by UTC date, reset at midnight, from a frozen pool of 14 original texts. Fixed continue-on-error rule, saved personal results and labelled repeat attempts. A first attempt on a new day can still be a previously displayed passage; returning texts keep their identity and do not become fresh training evidence. Daily scores stay separate from personal practice bests and trends.
+- Progress with condition/period filters, keyboard-accessible WPM and accuracy charts, weekly medians with sample counts, expandable run/comparison details and actions to practice an old target again.
+- Recurring pattern counts across recent matching runs, last-practice information and later fresh observations for revisits. No confident target from a single sparse run.
+- Corpus v5: 39 original quotes, at least three in each length/difficulty bucket, plus expanded real-word targeted drills. Difficulty labels remain descriptive, not calibrated.
 - Condition-aware personal bests, guarded history deletion with immediate undo, explicit insufficient-evidence and interrupted states.
 - Native HTML/CSS/JS modules with no runtime dependencies. `npm run dev` serves on :5173; `npm test` runs the engine checks. Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono are self-hosted in `src/fonts/`.
+- Signed-in retention: newest 24 full attempt traces, 1,000 compact run summaries and pattern counts on the newest 120 summaries; comparison summaries remain until cleared. Clear/Undo includes daily history. Guests retain everything only in memory for the tab. Older records keep unknown dates and missing score snapshots explicit.
 - `src/typing.js` owns corpus selection, scoring, replay and pattern evidence; `src/app.js` owns UI orchestration and local persistence.
 
 **Metric contract** (versioned before any data collection):
