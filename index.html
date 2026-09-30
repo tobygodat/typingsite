@@ -310,10 +310,78 @@
       <section id="compete-screen" class="screen compete-screen" data-screen="compete" aria-labelledby="compete-heading" hidden>
         <header class="section-heading page-heading challenge-heading">
           <div>
-            <h1 id="compete-heading">Same passage. One keyboard.</h1>
+            <h1 id="compete-heading">A passage shared. A race together.</h1>
           </div>
         </header>
 
+        <div class="challenge-modes" role="group" aria-label="Challenge type">
+          <button id="challenge-online" class="btn btn-secondary btn-sm" type="button" aria-pressed="true">Online</button>
+          <button id="challenge-local" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">One keyboard</button>
+        </div>
+
+        <div id="online-challenge">
+          <p id="online-error" class="field-error" role="alert"></p>
+          <div id="online-host">
+            <p class="online-copy">Race on the same passage, starting together. Invite an account or share a guest link. Each race lasts up to one minute.</p>
+            <div id="online-account-required">
+              <p>Sign in to host a race. An invited guest can join without an account.</p>
+              <button id="online-signin" class="btn btn-primary" type="button">Sign in to host</button>
+            </div>
+            <form id="online-setup" class="online-setup" hidden>
+              <div class="player-field">
+                <label for="online-name">Your race name</label>
+                <input id="online-name" class="input" type="text" maxlength="24" required autocomplete="nickname" placeholder="Name">
+              </div>
+              <div class="player-field">
+                <label for="online-invite-email">Account to invite <span class="online-optional">optional</span></label>
+                <input id="online-invite-email" class="input" type="email" maxlength="254" autocomplete="off" placeholder="Their account email" aria-describedby="online-invite-note">
+              </div>
+              <p id="online-invite-note" class="online-copy">Account invitations appear in their challenge screen. Leave the email empty to share a guest link.</p>
+              <button id="create-online-race" class="btn btn-primary" type="submit">Create race</button>
+            </form>
+            <section id="online-inbox" class="online-inbox" aria-labelledby="online-inbox-heading" hidden>
+              <div class="online-section-heading"><h2 id="online-inbox-heading">Race invitations</h2><button id="refresh-race-invites" class="btn btn-ghost btn-sm" type="button">Refresh</button></div>
+              <p id="online-invites-empty" class="online-copy">No invitations yet.</p>
+              <div id="online-invites"></div>
+            </section>
+          </div>
+          <form id="online-guest-join" class="online-join" hidden>
+            <h2>You’re invited to race.</h2>
+            <p class="online-copy">Choose a name to join. You don’t need an account, and this race won’t enter your personal progress.</p>
+            <div class="player-field"><label for="online-guest-name">Your race name</label><input id="online-guest-name" class="input" type="text" maxlength="24" required autocomplete="nickname" placeholder="Name"></div>
+            <div class="online-actions"><button id="join-online-race" class="btn btn-primary" type="submit">Join race</button><button id="dismiss-race-invite" class="btn btn-ghost" type="button">Cancel</button></div>
+          </form>
+          <section id="online-room" class="online-room" aria-labelledby="online-room-heading" hidden>
+            <div class="online-section-heading"><h2 id="online-room-heading">Your race</h2><button id="online-leave" class="btn btn-ghost btn-sm" type="button">Leave race</button></div>
+            <p id="online-room-status" class="online-copy" role="status"></p>
+            <p id="online-connection" class="online-copy" role="status"></p>
+            <p id="online-account-invite-status" class="online-copy" role="status" hidden></p>
+            <div id="online-share" class="online-share" hidden>
+              <label for="online-guest-link">Guest invitation link</label>
+              <div class="online-link-row"><input id="online-guest-link" class="input" type="text" readonly><button id="copy-race-link" class="btn btn-secondary" type="button">Copy link</button></div>
+              <p id="online-invite-sent" class="online-copy"></p>
+            </div>
+            <div id="online-players" class="online-players"></div>
+            <button id="online-ready" class="btn btn-primary" type="button">Ready to race</button>
+            <div id="online-stage" hidden>
+              <p id="online-countdown" class="online-countdown num" role="status"></p>
+              <p id="online-timer" class="panel-label num"></p>
+              <div class="online-typing-wrap">
+                <div id="online-text-display" aria-hidden="true"></div>
+                <textarea id="online-input" aria-label="Online race typing input" aria-describedby="online-help online-accessible-passage" rows="1" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" disabled></textarea>
+                <span id="online-accessible-passage" class="sr-only"></span>
+              </div>
+              <p id="online-help" class="online-copy">Type when the countdown ends. Paste and key repeat are off.</p>
+            </div>
+            <section id="online-results" class="race-leaderboard" hidden aria-labelledby="online-winner">
+              <div class="race-result-heading"><h2 id="online-winner">Race results</h2><button id="online-again" class="btn btn-secondary" type="button">New race</button></div>
+              <div id="online-result-rows" class="race-results"></div>
+              <p>Corrected wpm uses matching characters and elapsed race time. Accuracy includes corrected mistakes. Online scores are unranked and don’t count in your progress.</p>
+            </section>
+          </section>
+        </div>
+
+        <div id="local-challenge" hidden>
         <form id="compete-setup" class="challenge-setup">
           <div class="player-field">
             <label for="player-one-name">Player 1</label>
@@ -358,6 +426,7 @@
           </div>
           <div id="race-results" class="race-results"></div>
           <p>Not counted in your progress.</p>
+        </div>
         </div>
       </section>
     </main>

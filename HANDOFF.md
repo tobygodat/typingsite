@@ -1,6 +1,6 @@
 # Handoff — Stilltype
 
-Updated 29 September 2026 (browser test suite); last major revision 22 September 2026 after the "Afterimage" redesign and the typing-latency pass. Read `PRODUCT.md`, `AGENTS.md`, `DESIGN.md` and `docs/decisions/2026-09-22-learning-loop.md` before changing behavior or visuals. `DESIGN.md` describes the shipped build; the tokens at the top of `src/styles.css` and the Brand Commitments in `PRODUCT.md` are the implementation source of truth.
+Updated 30 September 2026 (online multiplayer); last major revision 22 September 2026 after the "Afterimage" redesign and the typing-latency pass. Read `PRODUCT.md`, `AGENTS.md`, `DESIGN.md` and `docs/decisions/2026-09-22-learning-loop.md` before changing behavior or visuals. `DESIGN.md` describes the shipped build; the tokens at the top of `src/styles.css` and the Brand Commitments in `PRODUCT.md` are the implementation source of truth.
 
 ## Current state
 
@@ -23,7 +23,7 @@ Product behaviour:
 - A real one-minute drill stage, automatic or manually selected. Manual drills work without a baseline; a baseline enables the fresh comparable retest.
 - Retest comparisons with mixed/regression states, timing sample limits and local progress. Seen quote IDs are recorded when displayed; exhausted retests stop with an explanation.
 - Condition-aware bests; drills, challenges and interrupted attempts do not become personal bests.
-- Local two-player shared-keyboard challenges with the same passage, hidden handoff and observed results. This is not networked multiplayer.
+- Online two-player challenges via Supabase: account invitations in the Challenge inbox or a shareable guest link, ready states, a synchronized countdown, live progress, reconnection and observed results. Hosts sign in; invited guests need no account. Original shared-keyboard challenges remain under One keyboard.
 - Typed history-clear confirmation with immediate Undo.
 
 Shipped visual system (Afterimage):
@@ -45,6 +45,8 @@ Removed on purpose after the critique; do not reintroduce: the streak "heat" glo
 
 ## Validation
 
+Online multiplayer (30 September): build and four Node test files pass; all 48 Chromium scenarios verified across the full regression run and a final targeted rerun. Seven new scenarios cover independent player contexts, account invites, guest links, reload/reconnect, occupied/expired links and narrow layouts. Transaction-wrapped database authorization and lifecycle checks passed against the applied migration. See `docs/online-races.md` and `supabase/tests/online-races.sql`.
+
 The browser verification is now a Playwright suite in `e2e/` (`npm run test:e2e`; see README for the Chromium it needs). It serves the app on `127.0.0.1:4173`, fakes Supabase in memory (`e2e/fake-supabase.js`), and fails on any page or console error. It covers the pre-redesign checks from `docs/verification/2026-09-22-browser.md` (solo run → manual br drill → fresh retest → saved progress, the local challenge, filters, clear/undo, paste and interruption) plus theme switching, the command palette, the ghost pacer, the running-state fade, reduced motion, accounts and responsive layout. The first run on the Afterimage build (29 September 2026, 41/41 in Chromium 152) is recorded in `docs/verification/2026-09-29-browser.md`, with one known narrow-screen defect and one intermittent test hang.
 
 The latency pass separately verified 900 individual practice keys, corrected-error feedback, caret alignment after line trimming, a 100-character local-challenge prefix, ghost-pacer toggle, and dark desktop/light and 320 px dark mobile layouts in Chromium. See `docs/verification/2026-09-22-latency.md`. This does not replace the complete learning-loop browser check above.
@@ -61,6 +63,8 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `scripts/measure-latency.mjs`: standalone Chromium browser event-to-paint benchmark for an exclusive desktop session.
 - `src/graph.js`: run-card speed graph (SVG) from the attempt's event log (presentational).
 - `src/palette.js`: the ⌘K / Ctrl-K command palette.
+- `src/online-race.js`: online lobby, invitation inbox, synchronized race surface and transient results.
+- `src/multiplayer.js`: race RPC transport, link handling and tab-scoped reconnect credentials.
 - `src/account.js`: Supabase Auth (email/password, Google via PKCE), session refresh and the `profiles` row, over `fetch`.
 - `supabase/migrations/`: the `profiles` table and its owner-only row-level security, as applied to the `typingsite` project.
 - `src/egg.js`: the ↑↑↓↓←→←→ b a key sequence.
@@ -73,7 +77,7 @@ Afterimage is binding (see `AGENTS.md` and the Brand Commitments in `PRODUCT.md`
 
 Stop on error is off by default, so mistakes can be typed through; turning it on requires mandatory correction. Live metrics and the on-screen keyboard are also off by default. The selected correction policy is recorded in comparison keys, and retests restore the baseline policy. Do not mix correction policies, quote difficulty/performance points or multiplayer ratings into personal skill progress. Existing unversioned `stilltype-best` data is not imported into comparable bests.
 
-The newest 24 attempt traces are retained per signed-in user (device cache plus the account's `profiles` row); comparison summaries, seen-text IDs and bests remain until history is cleared. Guests keep everything in memory only. Local challenge scores are transient. Nothing is collected beyond the signed-in user's own profile. The footer's "suggest a feature" dialog (guests and members alike) inserts the typed text and the current view into the `feature_suggestions` table of the same Supabase project, as the anonymous role, so it is never linked to an account; that table accepts inserts only and nobody can read it back through the API. Storage failures are reported in result copy.
+The newest 24 attempt traces are retained per signed-in user (device cache plus the account's `profiles` row); comparison summaries, seen-text IDs and bests remain until history is cleared. Solo guests keep everything in memory only. Local challenge scores are transient. Online races store room state, chosen names, current typed text and score counters on the race service; guest reconnect credentials stay in sessionStorage for that tab. Online results never enter the profile. The footer's "suggest a feature" dialog (guests and members alike) inserts the typed text and the current view into the `feature_suggestions` table of the same Supabase project, as the anonymous role, so it is never linked to an account; that table accepts inserts only and nobody can read it back through the API. Storage failures are reported in result copy.
 
 ## Remaining work
 
@@ -83,7 +87,7 @@ The newest 24 attempt traces are retained per signed-in user (device cache plus 
 - Broaden physical-device/browser coverage, including assistive technology, actual touch keyboards and IME behavior. Responsive layouts and direct physical-keyboard input were tested on the pre-redesign build; this is not a complete accessibility certification.
 - Expand the small original quote corpus and validate difficulty labels. Empty filter combinations are explicit. Generated retests match configured conditions but do not guarantee matched target frequency; target sample limits remain visible.
 - Improve progress exploration and define longer-term local retention/sync requirements before expanding data storage.
-- Recorded ghosts, daily challenges and networked friend rooms remain later roadmap stages. Online rooms need lifecycle, authoritative validation and multi-client testing. (The hidden ghost pacer is a pace line, not a recorded ghost.)
+- Recorded ghosts, daily challenges and public matchmaking remain later roadmap stages. Private friend rooms now have lifecycle enforcement, server timing and multi-client testing; full anti-cheat and rankings remain deferred. (The hidden ghost pacer is a pace line, not a recorded ghost.)
 - The recommender is a transparent baseline, not ML. There are no learning outcome benchmarks, user studies, deployment or public rankings.
 - Accounts: Google sign-in needs the Google provider enabled in Supabase (Auth → Providers) with a Google Cloud OAuth client; every origin the app runs on (local dev, the Vercel URL) must be in Auth → URL Configuration → Redirect URLs. Sync is last-writer-wins for the whole profile; merge concurrent edits from two devices if that becomes a real problem.
 

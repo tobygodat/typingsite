@@ -81,7 +81,7 @@ function storeSession(data) {
   return session;
 }
 
-async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false } = {}) {
+export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false } = {}) {
   let response;
   try {
     response = await fetch(`${SUPABASE_URL}${path}`, {

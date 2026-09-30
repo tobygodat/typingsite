@@ -2,6 +2,7 @@
 // so account flows run without a network or a real project. Row access mirrors the owner-only policy:
 // a token only ever sees its own profile row.
 import { createHash, randomUUID } from 'node:crypto';
+import { FakeRaces } from './fake-races.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -24,6 +25,7 @@ export class FakeSupabase {
     this.googleCodes = new Map();
     // Routed requests bypass context.setOffline, so offline tests flip this too.
     this.offline = false;
+    this.races = new FakeRaces(this);
   }
 
   addUser(email, password = 'correct horse battery') {
@@ -79,6 +81,8 @@ export class FakeSupabase {
     const caller = this.tokens.get((request.headers().authorization || '').replace(/^Bearer /, ''));
 
     switch (`${method} ${url.pathname}`) {
+      case 'POST /rest/v1/rpc/race_action':
+        return this.races.handle(caller, body, reply);
       case 'GET /auth/v1/settings':
         return reply(200, { external: { google: this.googleEnabled, email: true } });
 

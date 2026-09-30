@@ -1,6 +1,6 @@
 # Stilltype
 
-Focused typing, explained practice, and friendly local competition. The product connects **play → identify weak patterns → practice → retest on fresh text**. Monkeytype, keybr and TypeGG are influences, not a novelty claim.
+Focused typing, explained practice, and friendly online and local competition. The product connects **play → identify weak patterns → practice → retest on fresh text**. Monkeytype, keybr and TypeGG are influences, not a novelty claim.
 
 ## Run locally
 
@@ -15,7 +15,7 @@ npm run test:e2e   # Playwright browser verification (e2e/), after npm install
 
 The browser tests need a Chromium: run `npx playwright install chromium` once, or point `CHROMIUM` at a system build (`CHROMIUM=/usr/bin/chromium npm run test:e2e`). They serve the app on `127.0.0.1:4173` and fake Supabase, so no account or network is touched.
 
-Open [localhost:5173](http://localhost:5173). Everything runs in the browser with local persistence. Fonts are bundled: Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono. The app has no external runtime service.
+Open [localhost:5173](http://localhost:5173). The interface and solo practice run in the browser. Accounts and online races use Supabase. Fonts are bundled: Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono.
 
 ## Use it
 
@@ -29,7 +29,11 @@ Press ⌘K (Ctrl-K on Windows and Linux) for commands: go to a view, restart, ch
 
 The settings control changes theme (system, dark or light), passage size, live metrics, the keyboard display and focus mode. Preferences survive reload. Focus mode has an explicit exit; Escape also leaves it.
 
-Challenge supports two players taking turns on the same keyboard. Both receive the same original passage, hidden during handoff. Challenge scores stay separate from personal progress and bests. Online rooms are future work.
+Challenge opens online play. Sign in to host, enter a race name, then either enter another account’s email for an in-app invitation or leave it blank to create a guest link. The recipient opens Challenge to accept an account invitation; a guest opens the link and chooses a name without signing up. Both players press Ready, then share a five-second countdown and a race of up to one minute. Progress and final results update across devices. Account invitations are delivered inside the app, not by email.
+
+A guest link admits one opponent. After joining, a separate tab-scoped credential lets that guest reconnect without allowing someone else with the invitation link to take their seat. Leaving closes the room for both players. These are friendly, unranked races; scores never enter personal progress or bests. Choose **One keyboard** for the original local challenge.
+
+The backend migration is in `supabase/migrations/20260930085227_online_races.sql`; deploy it to the Supabase project configured in `src/account.js` before serving the updated frontend. It provides one `race_action` RPC over protected private tables, so static hosting needs no WebSocket server or new runtime dependency. See [online race implementation and verification](docs/online-races.md).
 
 ## Measurement and implementation
 
@@ -45,4 +49,4 @@ The app uses native HTML/CSS/JavaScript. Its visual system, Afterimage (Literata
 - [Research summary](docs/research/summary.md)
 - [ML evaluation plan](docs/ml-data-evaluation.md)
 
-Accounts use Supabase Auth (email/password and Google) with one row-level-secured profile per user; guests save nothing. There is no learned recommender or online matchmaking. An immediate retest is feedback, not proof of lasting learning.
+Accounts use Supabase Auth (email/password and Google) with one row-level-secured profile per user; guests save nothing. There is no learned recommender or public matchmaking. An immediate retest is feedback, not proof of lasting learning.

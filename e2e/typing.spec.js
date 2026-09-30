@@ -1,6 +1,6 @@
 import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openView } from './fixtures.js';
 
-test('a corrected mistake keeps its first-try error and wavy underline', async ({ page }) => {
+test('a corrected mistake keeps its first-try error and visible tint', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
@@ -9,8 +9,13 @@ test('a corrected mistake keeps its first-try error and wavy underline', async (
   await typeInto(page, text.slice(0, 2) + miss);
   const wrong = page.locator('#text-display .char.wrong');
   await expect(wrong).toHaveCount(1);
-  await expect(wrong).toHaveCSS('text-decoration-style', 'wavy');
-  await expect(wrong).toHaveCSS('text-decoration-line', 'underline');
+  // Afterimage uses a tint as its second error cue; the old underline was retired.
+  const errorCue = await wrong.evaluate((node) => ({
+    background: getComputedStyle(node).backgroundColor,
+    expected: getComputedStyle(document.documentElement).getPropertyValue('--danger-soft').trim(),
+  }));
+  expect(errorCue.background).toBe(errorCue.expected);
+  expect(errorCue.background).not.toBe('rgba(0, 0, 0, 0)');
 
   await page.keyboard.press('Backspace');
   await expect(wrong).toHaveCount(0);

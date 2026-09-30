@@ -57,6 +57,18 @@ The manual target lives in `details.manual-panel` (summary `#manual-heading`): `
 
 Retest outcome IDs are `#comparison-panel`, `#comparison-status`, `#comparison-accuracy`, `#comparison-timing`, `#comparison-wpm`, `#comparison-sample`, and `#comparison-caveat`. The panel supports `data-outcome="improved|mixed|regressed|steady|insufficient|unavailable"`. The green accent appears only for `improved`; `mixed` uses warning. Regression uses plain coral (danger) ink and explanatory copy. Insufficient samples and incomparable conditions state that no claim can be made.
 
+## Online challenge
+
+Challenge defaults to `#online-challenge`; `#challenge-online` and `#challenge-local` select online or shared-keyboard play with `aria-pressed`. `src/online-race.js` owns online state and uses the same text renderer and caret effects as practice.
+
+Hosts use `#online-name`, optional `#online-invite-email` and `#create-online-race`. Guests are offered `#online-signin` to host. Account invitations appear in `#online-invites` with `[data-accept-invite]` buttons. A fragment invitation opens `#online-guest-join` with `#online-guest-name` and `#join-online-race`.
+
+`#online-room` contains `#online-room-status`, `#online-connection`, `#online-players`, `#online-ready` and `#online-leave`. A guest room exposes the copyable `#online-guest-link` and `#copy-race-link`; account rooms instead show generic delivery copy in `#online-account-invite-status`. Each player has a labelled progressbar with no decorative animation.
+
+`#online-stage` contains `#online-countdown`, `#online-timer`, `#online-text-display`, `#online-accessible-passage` and `#online-input`. Input remains disabled until the shared start and after completion; paste, key repeat and composition are refused. `#online-results`, `#online-winner` and `#online-result-rows` display server results, with `#online-again` to return to setup. Leaving ends an active room; transient network failures retry without freeing the seat.
+
+Room credentials and pending guest invites use expiring tab-scoped sessionStorage; guest run history remains unsaved. Online scores do not enter solo progress or bests. See [online race behavior and verification](online-races.md).
+
 ## Local challenge
 
 Required IDs: `compete-setup`, `player-one-name`, `player-two-name`, `start-local-race`, `race-stage`, `race-player`, `race-status`, `race-handoff`, `handoff-name`, `handoff-veil`, `start-next-player`, `race-text-display`, `race-accessible-passage`, `race-input`, `race-help`, `race-progress`, `race-leaderboard`, `race-winner`, `race-results`, and `race-again`.
