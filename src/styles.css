@@ -831,7 +831,8 @@ body[data-running="true"] :is(.dock, .account, .practice-controls, .quote-option
 /* ── Typing zone ────────────────────────────────────────────────────────── */
 
 .typing-wrap,
-.race-typing-wrap {
+.race-typing-wrap,
+.online-typing-wrap {
   --passage-size: 36px;
   --typing-line: calc(var(--passage-size) * 1.75);
   position: relative;
@@ -848,7 +849,8 @@ body[data-font-size="28"] .typing-wrap { --passage-size: 36px; }
 body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 
 #text-display,
-#race-text-display {
+#race-text-display,
+#online-text-display {
   position: relative;
   color: var(--muted);
   font-family: var(--font-serif);
@@ -878,8 +880,8 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 
 /* A space is a plain inline box, shorter than the letter boxes, so its own
    tint would notch the row. Paint it at full line height instead. */
-:is(#text-display, #race-text-display) > .char.wrong { background: none; }
-:is(#text-display, #race-text-display) > .char.wrong::before {
+:is(#text-display, #race-text-display, #online-text-display) > .char.wrong { background: none; }
+:is(#text-display, #race-text-display, #online-text-display) > .char.wrong::before {
   content: "";
   position: absolute;
   inset-inline: 0;
@@ -892,7 +894,7 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 /* Forced colours strip the tint, so keep the mark as a system highlight. */
 @media (forced-colors: active) {
   .char.wrong,
-  :is(#text-display, #race-text-display) > .char.wrong::before {
+  :is(#text-display, #race-text-display, #online-text-display) > .char.wrong::before {
     forced-color-adjust: none;
     color: MarkText;
     background: Mark;
@@ -933,7 +935,8 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 [data-caret="done"] .caret-bar { opacity: 0; }
 
 .typing-wrap:not(:focus-within) .caret-bar,
-.race-typing-wrap:not(:focus-within) .caret-bar { opacity: 0.35; animation: none; }
+.race-typing-wrap:not(:focus-within) .caret-bar,
+.online-typing-wrap:not(:focus-within) .caret-bar { opacity: 0.35; animation: none; }
 
 /* The ghost pacer: a plain thin caret in its own colour. */
 .ghost-caret {
@@ -964,7 +967,8 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 .ghost-caret.is-hidden { opacity: 0; }
 
 #typing-input,
-#race-input {
+#race-input,
+#online-input {
   position: absolute;
   inset: 0;
   z-index: 4;
@@ -984,7 +988,8 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 }
 
 #typing-input:focus-visible,
-#race-input:focus-visible { outline: 0; }
+#race-input:focus-visible,
+#online-input:focus-visible { outline: 0; }
 
 /* ── Progress line ──────────────────────────────────────────────────────── */
 
@@ -1351,6 +1356,42 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .history-status { justify-self: end; }
 
 /* ── Challenge ──────────────────────────────────────────────────────────── */
+
+.challenge-modes { display: flex; gap: var(--space-2); margin-bottom: var(--space-8); }
+.challenge-modes [aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.online-copy { color: var(--muted); font-size: var(--text-small); }
+.online-optional { font-size: var(--text-fine); }
+.online-setup { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-6); }
+.online-setup > .online-copy { grid-column: 1 / -1; margin: 0; }
+.online-setup > button { justify-self: start; }
+.online-section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.online-section-heading h2, .online-join h2 { margin: 0; font-size: var(--text-title); }
+.online-inbox, .online-room, .online-join { border-top: 1px solid var(--hairline); padding-top: var(--space-8); margin-top: var(--space-8); }
+.online-join .player-field { max-width: calc(var(--content-max) / 2); }
+.online-actions { display: flex; gap: var(--space-3); margin-top: var(--space-6); }
+.online-invite-row { display: flex; gap: var(--space-4); align-items: center; justify-content: space-between; padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
+.online-invite-row p { margin: 0; }
+.online-share { margin: var(--space-6) 0; }
+.online-share > label { color: var(--muted); font-size: var(--text-small); }
+.online-link-row { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
+.online-link-row input { min-width: 0; flex: 1; }
+.online-players { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); margin: var(--space-6) 0; }
+.online-player-row { min-width: 0; display: grid; grid-template-columns: 1fr; gap: var(--space-2); }
+.online-player-row strong { font-weight: 400; overflow-wrap: anywhere; }
+.online-player-row > span { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
+.online-player-row .progress-track > span { transition: none; }
+.online-countdown { min-height: var(--space-10); margin: var(--space-6) 0 var(--space-2); font-size: var(--text-title); color: var(--accent); }
+.online-typing-wrap { margin-top: var(--space-6); }
+#online-connection:not(:empty) { color: var(--warning); }
+#online-help { min-height: var(--space-6); }
+
+@media (max-width: 760px) {
+  .online-setup, .online-players { grid-template-columns: 1fr; }
+  .online-link-row { flex-wrap: wrap; }
+  .online-link-row input { flex-basis: 100%; }
+  .online-section-heading { flex-wrap: wrap; }
+  .online-typing-wrap { --passage-size: var(--text-title); }
+}
 
 .challenge-setup {
   padding-top: var(--space-8);

@@ -202,14 +202,17 @@ test.describe('reduced motion', () => {
       // styles.css pins transitions to 1ms so transitionend still fires.
       expect(durations.every((value) => parseFloat(value) <= 0.001), `${selector} ${durations}`).toBe(true);
     }
-    // The run card is still drawn, just without the develop animation.
+    // The speed graph stays visible with no drawing animation.
     await chooseWords(page, 10);
     await completePassage(page);
     await expect(page.locator('#run-card')).toBeVisible();
-    const painted = await page.locator('#card-canvas').evaluate((canvas) => {
-      const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-      return data.some((value, index) => index % 4 === 3 && value > 0);
-    });
-    expect(painted).toBe(true);
+    const line = page.locator('#speed-graph .graph-line');
+    // A flat SVG path has a zero-height geometry box even when its stroke is painted.
+    await expect(page.locator('#speed-graph svg')).toBeVisible();
+    await expect(line).toBeAttached();
+    await expect(line).not.toHaveCSS('stroke', 'none');
+    await expect(line).toHaveAttribute('d', /^M.+ L/);
+    const durations = await line.evaluate((node) => getComputedStyle(node).animationDuration.split(', '));
+    expect(durations.every((value) => parseFloat(value) <= 0.001)).toBe(true);
   });
 });

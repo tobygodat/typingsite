@@ -28,7 +28,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 
 ## Operating Context
 
-- Browser on desktop, physical keyboard, single player. Practice works offline and without an account; signed-in profiles sync through Supabase, and a feature suggestion (text and current view only, never linked to an account) is sent only when the visitor presses Send.
+- Browser on desktop, physical keyboard, solo practice and private two-player online races. Practice works offline and without an account; signed-in profiles sync through Supabase, and a feature suggestion (text and current view only, never linked to an account) is sent only when the visitor presses Send.
 - A run is short (15–120 s) and repeated many times in a sitting; the practice surface is returned to constantly, so its chrome is seen more often than any other screen.
 - Practice is a focused, low-interruption moment. Detailed analytics belong after the run, never during it.
 - History is local. Clearing it is user-initiated and offers an undo in the moment.
@@ -39,13 +39,14 @@ This is stated in the research as a hypothesis about usability and learning, not
 **Shipped today** (Stilltype, working title):
 - A complete guest loop: timed/word/quote test, observed recommendation or manual target, one-minute drill, unseen comparable retest, and saved local progress.
 - Quote length/difficulty filters, optional punctuation, corrected WPM and input accuracy, first-attempt error retention, keyboard display, text size, live-metric, stop-on-error and focus preferences.
-- Local two-player challenges on one keyboard, with the same passage and separate scores. This is not online multiplayer.
+- Private online two-player races with account invitations, guest links, a shared server countdown, live progress and unranked results. A signed-in account hosts; guests can join without an account. Shared-keyboard challenges remain available.
 - Condition-aware personal bests, guarded history deletion with immediate undo, explicit insufficient-evidence and interrupted states.
 - Native HTML/CSS/JS modules with no runtime dependencies. `npm run dev` serves on :5173; `npm test` runs the engine checks. Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono are self-hosted in `src/fonts/`.
 - `src/typing.js` owns corpus selection, scoring, replay and pattern evidence; `src/app.js` owns UI orchestration and local persistence.
 
 **Metric contract** (versioned before any data collection):
 - Corrected WPM = correct target characters retained at finish / 5 / elapsed minutes. Elapsed time runs from the first printable input on a monotonic clock and continues when unfocused.
+- Online race elapsed time starts at the shared server start, including any delay before a player’s first key. Online results are separate from solo skill measurements and rankings.
 - Input accuracy = correct printable insertions / all printable insertions. Corrections consume time and corrected errors stay in the denominator; backspace is not an insertion.
 - First-attempt errors are recorded per target position. A corrected passage must not erase the evidence that a mistake happened.
 - Personal skill progress, quote difficulty / performance points, and multiplayer rating are three separate scores. A harder practice exercise must never read as a loss of skill or reduce a race rating.

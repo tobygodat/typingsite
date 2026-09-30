@@ -19,6 +19,7 @@ import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
+import { createOnlineRace } from './online-race.js';
 
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
@@ -103,6 +104,7 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let lastCompleted = null;
 let ghostOn = false;
 let palette = null;
+let onlineRace = null;
 let baselineAttempt = null;
 let activeRecommendation = null;
 let selectedTarget = null;
@@ -933,6 +935,7 @@ function switchView(view) {
   // Pills in a hidden screen measured zero width; remeasure every group now it is visible.
   updateGlides();
   if (view === 'progress') renderHistory();
+  onlineRace?.onViewChange(view);
 }
 
 function navigate(view) {
@@ -1270,6 +1273,7 @@ async function enterAccount(newSession) {
 
 async function signOutAccount() {
   closeAccountMenu();
+  await onlineRace?.leave();
   const synced = !unsynced || await pushProfile();
   // Unsynced edits stay on this device and go up the next time this account signs in here.
   await account.signOut(session, { keepCache: !synced });
@@ -1750,6 +1754,16 @@ renderAccount();
 setRunning(false);
 renderHistory();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
+onlineRace = createOnlineRace({
+  getSession: () => session,
+  signIn: () => openAccountDialog('signin'),
+  navigate, renderText, updateCharacterStates, setRunning, announce,
+  onPassageSeen(id) {
+    if (!id || profile.seenTextIds.includes(id)) return;
+    profile.seenTextIds.push(id);
+    saveProfile();
+  },
+});
 updateGlides({ instant: true });
 // Literata arrives after first paint; remeasure everything that depends on glyph widths.
 document.fonts?.ready.then(() => { primaryFx.relayout(); updateGlides({ instant: true }); });
