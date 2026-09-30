@@ -96,9 +96,10 @@ test('an exhausted quote pool refuses a retest and explains why', async ({ page 
   await page.locator('#mode-quote').click();
   await note();
   await page.locator('#quote-length').selectOption('medium');
+  await note();
   await page.locator('#quote-difficulty').selectOption('gentle');
   // Every displayed quote is marked seen, so restarting walks the whole pool.
-  for (let tries = 0; seen.size < pool.length && tries < 10; tries += 1) {
+  for (let tries = 0; seen.size < pool.length && tries < pool.length + 3; tries += 1) {
     await note();
     if (seen.size < pool.length) await page.locator('#restart-button').click();
   }
@@ -113,18 +114,18 @@ test('an exhausted quote pool refuses a retest and explains why', async ({ page 
 });
 
 test('an empty quote filter says so and recovers', async ({ page }) => {
-  const empty = quoteCorpus.filter((quote) => quote.difficulty === 'gentle' && quote.text.split(/\s+/).length <= 30);
-  expect(empty).toHaveLength(0);
-
   await openApp(page);
   await page.locator('#mode-quote').click();
   await expect(page.locator('#quote-options')).toBeVisible();
   await page.locator('#quote-length').selectOption('short');
-  await page.locator('#quote-difficulty').selectOption('gentle');
+  // All supported buckets now contain text. Exercise defensive recovery from an unsupported filter.
+  await page.locator('#quote-difficulty').evaluate((select) => select.add(new Option('Unavailable', 'unavailable')));
+  await page.locator('#quote-difficulty').selectOption('unavailable');
   await expect(page.locator('#text-display')).toHaveText('No passage matches these filters.');
   await expect(page.locator('#typing-input')).toBeDisabled();
   await expect(page.locator('#input-help')).toHaveText('Try another quote length or difficulty.');
 
+  await page.locator('#quote-difficulty').selectOption('gentle');
   await page.locator('#quote-length').selectOption('medium');
   await expect(page.locator('#typing-input')).toBeEnabled();
   const words = (await passageText(page)).split(/\s+/).length;

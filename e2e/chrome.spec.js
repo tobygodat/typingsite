@@ -214,5 +214,6 @@ test.describe('reduced motion', () => {
     await expect(line).toHaveAttribute('d', /^M.+ L/);
     const durations = await line.evaluate((node) => getComputedStyle(node).animationDuration.split(', '));
     expect(durations.every((value) => parseFloat(value) <= 0.001)).toBe(true);
+    await expect(page.locator('#speed-graph')).toHaveAttribute('aria-label', /Speed over time/);
   });
 });

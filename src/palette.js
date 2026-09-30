@@ -30,7 +30,7 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
   function filtered(query) {
     const q = query.trim().toLowerCase();
     return getCommands(q)
-      .map((command) => ({ command, score: command.secret ? 1 : fuzzyScore(`${command.label} ${command.keywords || ''} ${command.group}`, q) }))
+      .map((command) => ({ command, score: command.secret ? 100 : fuzzyScore(`${command.label} ${command.keywords || ''} ${command.group}`, q) }))
       .filter(({ score, command }) => score > 0 && !command.disabled)
       .sort((a, b) => (q ? b.score - a.score : 0))
       .map(({ command }) => command);

@@ -59,7 +59,7 @@ Retest outcome IDs are `#comparison-panel`, `#comparison-status`, `#comparison-a
 
 ## Online challenge
 
-Challenge defaults to `#online-challenge`; `#challenge-online` and `#challenge-local` select online or shared-keyboard play with `aria-pressed`. `src/online-race.js` owns online state and uses the same text renderer and caret effects as practice.
+Challenge defaults to `#online-challenge`; `#challenge-online`, `#challenge-daily` and `#challenge-local` select online, daily or shared-keyboard play with `aria-pressed`. `src/online-race.js` owns online state and uses the same text renderer and caret effects as practice.
 
 Hosts use `#online-name`, optional `#online-invite-email` and `#create-online-race`. Guests are offered `#online-signin` to host. Account invitations appear in `#online-invites` with `[data-accept-invite]` buttons. A fragment invitation opens `#online-guest-join` with `#online-guest-name` and `#join-online-race`.
 
@@ -68,6 +68,10 @@ Hosts use `#online-name`, optional `#online-invite-email` and `#create-online-ra
 `#online-stage` contains `#online-countdown`, `#online-timer`, `#online-text-display`, `#online-accessible-passage` and `#online-input`. Input remains disabled until the shared start and after completion; paste, key repeat and composition are refused. `#online-results`, `#online-winner` and `#online-result-rows` display server results, with `#online-again` to return to setup. Leaving ends an active room; transient network failures retry without freeing the seat.
 
 Room credentials and pending guest invites use expiring tab-scoped sessionStorage; guest run history remains unsaved. Online scores do not enter solo progress or bests. See [online race behavior and verification](online-races.md).
+
+## Daily challenge
+
+`#daily-challenge` contains `#daily-date`, `#start-daily`, `#daily-status` and `#daily-history-panel`. Daily uses the primary typing surface with `data-session="daily"`, fixed quote conditions and continue-on-error. Its UTC date is captured at start. Saved completed scores distinguish first/repeat attempts and fresh/previously displayed text. Daily scores stay out of practice trends and bests. Daily and One keyboard selectors are disabled while an online room is active.
 
 ## Local challenge
 

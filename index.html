@@ -274,6 +274,14 @@
                 <p id="manual-target-error" class="field-error" role="alert"></p>
               </form>
             </details>
+            <section class="training-memory" aria-labelledby="training-memory-heading">
+              <h2 id="training-memory-heading">Patterns across runs</h2>
+              <label class="filter-field" for="training-conditions">Test conditions
+                <select id="training-conditions" class="input"></select>
+              </label>
+              <p id="training-memory-note" class="result-note"></p>
+              <div id="training-targets"></div>
+            </section>
           </div>
         </div>
       </section>
@@ -287,14 +295,38 @@
         </header>
 
         <div id="progress-empty" class="empty-state">
-          <h2>No retests yet.</h2>
-          <p>Run, drill, then retest on fresh text. Each comparison lands here.</p>
+          <h2>No practice runs yet.</h2>
+          <p>Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.</p>
           <button class="btn btn-primary" type="button" data-action="go-practice">Start practicing</button>
         </div>
 
-        <div id="history-list" class="history-list" aria-live="polite" hidden></div>
+        <div id="progress-content" hidden>
+          <div class="progress-filters">
+            <label class="filter-field" for="progress-conditions">Test conditions
+              <select id="progress-conditions" class="input"></select>
+            </label>
+            <label class="filter-field" for="progress-period">Period
+              <select id="progress-period" class="input">
+                <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="all">All saved runs</option>
+              </select>
+            </label>
+          </div>
+          <p id="progress-week" class="result-note"></p>
+          <div id="progress-trend" class="progress-trend"></div>
+          <p id="progress-trend-note" class="result-note"></p>
+          <section class="progress-section" aria-labelledby="run-history-heading">
+            <h2 id="run-history-heading">Runs</h2>
+            <div id="run-history"></div>
+          </section>
+          <section class="progress-section" aria-labelledby="comparison-history-heading">
+            <h2 id="comparison-history-heading">Drills and retests</h2>
+            <p id="history-empty" class="result-note" hidden>No comparisons in this period at these conditions.</p>
+            <div id="history-list" class="history-list" aria-live="polite" hidden></div>
+          </section>
+        </div>
         <template id="history-row-template">
-          <article class="history-row">
+          <details class="history-row">
+            <summary class="history-summary">
             <div class="history-main">
               <span class="history-date"></span>
               <strong class="history-target"></strong>
@@ -303,7 +335,9 @@
             <div class="history-measure"><span>Accuracy</span><strong class="history-accuracy num"></strong></div>
             <div class="history-measure"><span>Target timing</span><strong class="history-timing num"></strong></div>
             <span class="history-status status"></span>
-          </article>
+            </summary>
+            <div class="history-detail"></div>
+          </details>
         </template>
       </section>
 
@@ -316,6 +350,7 @@
 
         <div class="challenge-modes" role="group" aria-label="Challenge type">
           <button id="challenge-online" class="btn btn-secondary btn-sm" type="button" aria-pressed="true">Online</button>
+          <button id="challenge-daily" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">Daily</button>
           <button id="challenge-local" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">One keyboard</button>
         </div>
 
@@ -381,6 +416,16 @@
           </section>
         </div>
 
+        <section id="daily-challenge" class="daily-challenge" hidden aria-labelledby="daily-heading">
+          <div class="daily-heading">
+            <div><h2 id="daily-heading">Daily passage</h2><p id="daily-date" class="condition-copy"></p></div>
+            <button id="start-daily" class="btn btn-primary" type="button">Start daily challenge</button>
+          </div>
+          <p>A shared passage, new each day at midnight UTC. Finish at your own pace; repeat attempts are labelled.</p>
+          <p id="daily-status" class="result-note" aria-live="polite"></p>
+          <details id="daily-history-panel" hidden><summary>Your daily results</summary><div id="daily-history"></div></details>
+        </section>
+
         <div id="local-challenge" hidden>
         <form id="compete-setup" class="challenge-setup">
           <div class="player-field">
@@ -392,7 +437,7 @@
             <label for="player-two-name">Player 2</label>
             <input id="player-two-name" class="input" type="text" maxlength="24" placeholder="Name" autocomplete="off">
           </div>
-          <button id="start-local-race" class="btn btn-primary" type="submit">Start</button>
+          <button id="start-local-race" class="btn btn-secondary" type="submit">Start</button>
         </form>
 
         <div id="race-stage" class="race-stage" hidden>

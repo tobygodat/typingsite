@@ -25,6 +25,8 @@
   --text-title: 30px;
   --text-display: 48px;
   --text-numeral: 132px;
+  --text-numeral-mobile: 112px;
+  --text-numeral-narrow: 80px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -1340,6 +1342,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .history-row {
   padding: var(--space-6) 0;
   border-bottom: 1px solid var(--hairline);
+  display: block;
+}
+
+.history-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px 150px 110px;
   align-items: center;
@@ -1354,6 +1360,49 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .history-measure span { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); }
 .history-measure strong { font-size: 24px; font-weight: 400; letter-spacing: -0.02em; }
 .history-status { justify-self: end; }
+
+.history-summary, .run-summary { cursor: pointer; list-style: none; }
+.history-summary::-webkit-details-marker, .run-summary::-webkit-details-marker { display: none; }
+.history-summary:hover .history-target, .run-summary:hover strong { color: var(--accent); }
+.history-row[open] .history-target { color: var(--accent); }
+.history-detail { padding-top: var(--space-6); }
+.history-detail p { color: var(--muted); }
+.history-detail dl, .run-detail dl { display: flex; flex-wrap: wrap; gap: var(--space-6); }
+.history-detail dt, .run-detail dt { font: var(--text-mono)/1.5 var(--font-mono); color: var(--muted); }
+.history-detail dd, .run-detail dd { margin: var(--space-2) 0 0; font-size: var(--text-lead); }
+.progress-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.filter-field { min-width: 0; display: grid; gap: var(--space-2); font-size: var(--text-small); }
+.progress-filters .filter-field:first-child { flex: 1; }
+.filter-field select { width: 100%; max-width: 100%; text-overflow: ellipsis; }
+.progress-trend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-6); }
+.trend-figure { margin: var(--space-6) 0; min-width: 0; }
+.trend-figure figcaption { font-size: var(--text-lead); }
+.trend-figure svg { width: 100%; height: auto; overflow: visible; }
+.trend-rule { stroke: var(--hairline-strong); }
+.trend-label { fill: var(--muted); font: var(--text-mono) var(--font-mono); }
+.trend-line { fill: none; stroke-width: 2; }
+.trend-wpm { stroke: var(--accent); }
+.trend-accuracy { stroke: var(--text); }
+.trend-dot { fill: var(--ground); stroke-width: 2; cursor: pointer; }
+.trend-hit { fill: transparent; stroke: none; }
+.trend-dot:hover, .trend-dot:focus { fill: var(--accent); stroke: var(--text); }
+.progress-section, .training-memory, .daily-challenge { padding: var(--space-8) 0; border-top: 1px solid var(--hairline); }
+.progress-section h2, .training-memory h2, .daily-challenge h2, .local-challenge-heading { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
+.training-memory { margin-top: var(--space-8); }
+.training-target, .run-row, .daily-result { padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
+.training-target { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: center; }
+.training-target h3 { margin: 0; font-size: var(--text-lead); }
+.training-target p { margin: var(--space-2) 0 0; font-size: var(--text-small); color: var(--muted); }
+.run-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3); }
+.run-summary strong { font-size: var(--text-lead); font-weight: 400; }
+.run-summary span { color: var(--muted); }
+.run-detail { padding-top: var(--space-4); }
+.run-detail p { color: var(--muted); font-size: var(--text-small); }
+.daily-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-4); align-items: start; }
+.daily-challenge > p { color: var(--muted); max-width: 60ch; }
+.daily-result { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-4); }
+.daily-result span { color: var(--muted); }
+.local-challenge-heading { margin-top: var(--space-8); }
 
 /* ── Challenge ──────────────────────────────────────────────────────────── */
 
@@ -1725,7 +1774,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 @media (max-width: 900px) {
   .results-layout { grid-template-columns: 1fr; gap: var(--space-10); }
   .run-card { position: static; width: min(420px, 100%); justify-self: center; }
-  .history-row { grid-template-columns: minmax(0, 1fr) 120px 120px; }
+  .history-summary { grid-template-columns: minmax(0, 1fr) 120px 120px; }
   .history-status { grid-column: 1 / -1; justify-self: start; }
   .challenge-setup { grid-template-columns: 1fr; }
   .versus { padding: 0; }
@@ -1797,9 +1846,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .site-footer { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: var(--space-2); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
-  #result-wpm { font-size: 112px; }
+  #result-wpm { font-size: var(--text-numeral-mobile); }
   .comparison-rows { grid-template-columns: 1fr; gap: var(--space-3); }
-  .history-row { grid-template-columns: 1fr 1fr; gap: var(--space-3) var(--space-4); }
+  .history-summary { grid-template-columns: 1fr 1fr; gap: var(--space-3) var(--space-4); }
   .history-main { grid-column: 1 / -1; }
   .input-action { flex-direction: column; }
   .toast { bottom: 90px; }
@@ -1815,4 +1864,16 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 @media (pointer: coarse) {
   .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
+}
+
+@media (max-width: 760px) {
+  .progress-trend { grid-template-columns: 1fr; }
+  .progress-filters { flex-direction: column; }
+  .training-target { grid-template-columns: 1fr; }
+  .training-target button { justify-self: start; }
+  .daily-heading { flex-direction: column; }
+}
+
+@media (max-width: 360px) {
+  #result-wpm { font-size: var(--text-numeral-narrow); }
 }

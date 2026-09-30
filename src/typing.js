@@ -1,8 +1,9 @@
 import { DEFAULT_WORD_LIST, wordList } from './words.js';
+import { additionalQuotes, drillWords } from './corpus.js';
 
 export const METRIC_VERSION = 'stilltype-metrics-v1';
 export const EVENT_VERSION = 'stilltype-events-v1';
-export const CORPUS_VERSION = 'original-en-v4';
+export const CORPUS_VERSION = 'original-en-v5';
 export const MAX_PAIR_PAUSE_MS = 2000;
 
 export function metrics(target, typed, attempts, mistakes, elapsedMs) {
@@ -24,6 +25,7 @@ export function editStats(previous, next, target) {
 }
 
 export const quoteCorpus = [
+  ...additionalQuotes,
   { id: 'still-quiet-01', difficulty: 'gentle', text: 'There is a certain kind of quiet that arrives when you stop trying to be somewhere else. The light moves across the room, the world carries on, and for a moment, you have everything you need.' },
   { id: 'river-home-01', difficulty: 'gentle', text: 'A small path winds between the trees and follows the river home. Nothing here is in a hurry. Even the afternoon light takes its time, resting on each leaf before moving on.' },
   { id: 'beginning-01', difficulty: 'gentle', text: 'Every new beginning is made of little things. A window opened, a page turned, a word written. Give yourself the time to learn, and let the next small step be enough.' },
@@ -215,6 +217,7 @@ export function summarizePatterns(attempts, limit = 20, compatibleConditions = n
     && !attempt.interrupted
     && attempt.kind !== 'drill'
     && attempt.kind !== 'race'
+    && (attempt.kind !== 'daily' || attempt.fresh !== false)
     && (!key || conditionKey(attempt.conditions) === key)).slice(-limit);
   const pairs = new Map();
   const allTimings = [];
@@ -289,16 +292,17 @@ export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
   const bank = wordList(list);
   const corpusWords = [...new Set([
     ...bank,
+    ...drillWords,
     ...quoteCorpus.flatMap((item) => item.text.toLowerCase().match(/[a-z]+/g) || []),
   ])];
   const candidates = safeTarget ? corpusWords.filter((word) => word.includes(safeTarget)) : bank;
   // A manual target may itself be a valid word that the small local corpus does
   // not contain. Repeat that exact user choice; never fabricate word forms.
   const words = candidates.length ? candidates : [safeTarget];
-  const sequence = Array.from({ length: 150 }, (_, index) => words[(index * 7 + Math.floor(index / Math.max(1, words.length))) % words.length]);
+  const sequence = Array.from({ length: 1600 }, (_, index) => words[(index * 7 + Math.floor(index / Math.max(1, words.length))) % words.length]);
   const text = sequence.join(' ');
   const label = safeTarget || 'general';
-  return { id: `drill-${label}-${textId(text)}`, textVersion: `drill-${label}@1`, text, target: safeTarget, corpus: CORPUS_VERSION };
+  return { id: `drill-${label}-${textId(text)}`, textVersion: `drill-${label}@2`, text, target: safeTarget, corpus: CORPUS_VERSION };
 }
 
 export function conditionKey(conditions = {}) {

@@ -29,6 +29,8 @@ Build in small vertical slices:
 
 ## Stage 2 — Add repeatable competition
 
+Delivery update, 30 September 2026: the daily challenge is implemented with a shared UTC passage, fixed correction rules, labelled repeats, stable text identity across the 14-day cycle, and saved personal results. Progress exploration, recurring-target memory and corpus v5 are also implemented. Recorded personal-best ghosts remain future work; the hidden pacer is still constant-speed.
+
 Add personal-best ghosts and daily quote challenges. Label ghosts as recordings. Make ghost playback use the same text/rule/metric versions as the current run. Keep any local score display distinct from a trusted public leaderboard. Add transparent quote difficulty descriptions; calibrate numerical difficulty before introducing performance points.
 
 **Exit:** a saved run replays reproducibly; daily content and reset timezone are explicit; incompatible recordings cannot be compared; these modes feed the same training profile. If shared scores are introduced, add server validation and identity then.
