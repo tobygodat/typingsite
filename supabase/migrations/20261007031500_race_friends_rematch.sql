@@ -23,7 +23,13 @@ revoke all on race_private.friends from public, anon, authenticated;
 alter table race_private.rooms
   add column rematch_of uuid references race_private.rooms(id) on delete set null,
   add column rematch_id uuid references race_private.rooms(id) on delete set null,
-  add column rematch_slot integer check (rematch_slot in (1,2));
+  add column rematch_slot integer check (rematch_slot in (1,2)),
+  -- Who asked for the room, for quotas: the host for a new race, either racer for a rematch.
+  -- 'user:<id>' for an account, 'guest:<seat hash>' for a guest, whose seat capability carries over.
+  add column opened_by text;
+update race_private.rooms set opened_by = 'user:' || host_id::text where opened_by is null;
+alter table race_private.rooms alter column opened_by set not null;
+create index rooms_opened_by on race_private.rooms (opened_by, created_at);
 
 create or replace function race_private.friend_list(p_owner uuid)
 returns jsonb language sql set search_path = '' as $$
@@ -34,33 +40,33 @@ returns jsonb language sql set search_path = '' as $$
 $$;
 revoke all on function race_private.friend_list(uuid) from public, anon, authenticated;
 
--- Shared by create and rematch: validation, cleanup and per-host quotas, then the room row.
+-- Shared by create and rematch: validation, cleanup and quotas for whoever asked, then the room row.
 create or replace function race_private.open_room(p_host uuid, p_invited uuid, p_kind text, p_hash text,
-  p_passage text, p_conditions jsonb, p_rematch_of uuid)
+  p_passage text, p_conditions jsonb, p_rematch_of uuid, p_opener text)
 returns race_private.rooms language plpgsql set search_path = '' as $$
 declare
   v_now timestamptz := clock_timestamp();
   v_room race_private.rooms%rowtype;
 begin
-  -- Serialize per host to make quotas reliable under concurrent requests.
-  perform pg_advisory_xact_lock(hashtextextended(p_host::text, 0));
+  -- Serialize per requester to make quotas reliable under concurrent requests.
+  perform pg_advisory_xact_lock(hashtextextended(p_opener, 0));
   -- Terminal room data is transient; opportunistic cleanup needs no scheduler.
   -- A rematch's source room stays: the new room points back at it.
   delete from race_private.rooms where expires_at < v_now - interval '1 day' and id is distinct from p_rematch_of;
-  if (select count(*) from race_private.rooms where host_id = p_host and created_at > v_now - interval '1 hour') >= 10 then
+  if (select count(*) from race_private.rooms where opened_by = p_opener and created_at > v_now - interval '1 hour') >= 10 then
     raise exception 'You have created several races. Please wait before hosting another.';
   end if;
-  if (select count(*) from race_private.rooms where host_id = p_host and status in ('waiting','countdown','racing') and expires_at > v_now) >= 3 then
+  if (select count(*) from race_private.rooms where opened_by = p_opener and status in ('waiting','countdown','racing') and expires_at > v_now) >= 3 then
     raise exception 'Close an existing race before creating another.';
   end if;
   if p_passage is null or length(p_passage) not between 40 and 8000 or p_passage ~ '[^ -~]' then raise exception 'Use a passage of 40 to 8000 ordinary English characters.'; end if;
   if jsonb_typeof(coalesce(p_conditions,'{}')) <> 'object' or octet_length(coalesce(p_conditions,'{}')::text) > 2000 then raise exception 'Invalid race conditions.'; end if;
-  insert into race_private.rooms(host_id, invited_id, invite_kind, invite_hash, passage, conditions, rematch_of)
-    values (p_host, p_invited, p_kind, p_hash, p_passage, coalesce(p_conditions, '{}'), p_rematch_of)
+  insert into race_private.rooms(host_id, invited_id, invite_kind, invite_hash, passage, conditions, rematch_of, opened_by)
+    values (p_host, p_invited, p_kind, p_hash, p_passage, coalesce(p_conditions, '{}'), p_rematch_of, p_opener)
     returning * into v_room;
   return v_room;
 end $$;
-revoke all on function race_private.open_room(uuid,uuid,text,text,text,jsonb,uuid) from public, anon, authenticated;
+revoke all on function race_private.open_room(uuid,uuid,text,text,text,jsonb,uuid,text) from public, anon, authenticated;
 
 create or replace function race_private.snapshot(p_room_id uuid, p_slot integer)
 returns jsonb language sql set search_path = '' as $$
@@ -70,6 +76,9 @@ returns jsonb language sql set search_path = '' as $$
    'expiresAt', r.expires_at, 'selfSlot', p_slot, 'inviteKind', r.invite_kind,
    'rematchOf', r.rematch_of, 'rematchId', r.rematch_id, 'rematchSlot', r.rematch_slot,
    'rematchBy', (select m.name from race_private.players m where m.room_id = r.id and m.slot = r.rematch_slot),
+   'rematchExpiresAt', (select n.expires_at from race_private.rooms n where n.id = r.rematch_id),
+   'rematchOpen', exists(select 1 from race_private.rooms n where n.id = r.rematch_id
+     and n.status = 'waiting' and n.expires_at > clock_timestamp()),
    'players', coalesce((select jsonb_agg(jsonb_build_object(
      'slot', p.slot, 'name', p.name, 'ready', p.ready,
      'progress', round(p.correct::numeric / length(r.passage) * 100, 1),
@@ -140,7 +149,7 @@ begin
     end if;
     v_room := race_private.open_room(v_uid, v_invited, case when v_token is null then 'account' else 'guest' end,
       case when v_token is not null then encode(extensions.digest(v_token,'sha256'),'hex') end,
-      p_data->>'passage', p_data->'conditions', null);
+      p_data->>'passage', p_data->'conditions', null, 'user:' || v_uid::text);
     insert into race_private.players(room_id,slot,user_id,name) values(v_room.id,1,v_uid,v_name);
     return jsonb_build_object('roomId',v_room.id,'room',race_private.snapshot(v_room.id,1))
       || case when v_token is not null then jsonb_build_object('inviteToken',v_token) else '{}'::jsonb end;
@@ -271,8 +280,10 @@ begin
       end if;
     end if;
     select user_id into v_other from race_private.players where room_id=p_room_id and slot<>v_slot;
+    -- The racer who asks is charged for the room, not the original host.
     v_next := race_private.open_room(v_room.host_id, v_other, v_room.invite_kind, null,
-      p_data->>'passage', p_data->'conditions', p_room_id);
+      p_data->>'passage', p_data->'conditions', p_room_id,
+      case when v_player.user_id is not null then 'user:' || v_player.user_id::text else 'guest:' || v_player.guest_hash end);
     -- Same seats, names and identities. The opponent counts as away until they open the rematch.
     insert into race_private.players(room_id,slot,user_id,guest_hash,name,last_seen)
       select v_next.id, slot, user_id, guest_hash, name, case when slot=v_slot then v_now else '-infinity'::timestamptz end

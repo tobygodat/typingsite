@@ -10,6 +10,12 @@ export class FakeRaces {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  rematchState(room) {
+    const next = this.rooms.get(room.rematchId);
+    return { rematchExpiresAt: next?.expiresAt || null,
+      rematchOpen: Boolean(next) && next.status === 'waiting' && Date.now() < Date.parse(next.expiresAt) };
+  }
+
   snapshot(room, slot) {
     const now = Date.now();
     if (now >= Date.parse(room.expiresAt) && !['finished', 'cancelled'].includes(room.status)) room.status = 'expired';
@@ -21,6 +27,7 @@ export class FakeRaces {
       serverNow: new Date(now).toISOString(), selfSlot: slot, inviteKind: room.inviteKind,
       rematchOf: room.rematchOf || null, rematchId: room.rematchId || null, rematchSlot: room.rematchSlot || null,
       rematchBy: room.players.find((p) => p.slot === room.rematchSlot)?.name || null,
+      ...this.rematchState(room),
       players: room.players.map(({ userId, guestToken, typed, sequence, keystrokes, errors, lastSeen, ...player }) => ({
         ...player, connected: now - lastSeen < 10000, account: Boolean(userId),
         friend: Boolean(userId) && (this.friends.get(room.players.find((p) => p.slot === slot)?.userId) || []).some((f) => f.friendId === userId),

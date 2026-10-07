@@ -19,6 +19,7 @@ declare
   guest_room uuid;
   guest_token text;
   denied boolean;
+  busy_rooms uuid[] := '{}';
 begin
   insert into auth.users (id,email,email_confirmed_at) values
     (host_id,host_email,now()), (friend_id,friend_email,now()),
@@ -27,7 +28,7 @@ begin
   if has_table_privilege('anon','race_private.friends','SELECT')
     or has_table_privilege('authenticated','race_private.friends','SELECT')
     or has_function_privilege('authenticated','race_private.friend_list(uuid)','EXECUTE')
-    or has_function_privilege('authenticated','race_private.open_room(uuid,uuid,text,text,text,jsonb,uuid)','EXECUTE') then
+    or has_function_privilege('authenticated','race_private.open_room(uuid,uuid,text,text,text,jsonb,uuid,text)','EXECUTE') then
     raise exception 'Friend storage or helpers are exposed.';
   end if;
 
@@ -89,9 +90,16 @@ begin
   begin perform public.race_action('rematch',room_id,jsonb_build_object('passage',other_passage),null);
   exception when others then denied := true; end;
   if not denied then raise exception 'Outsider opened a rematch.'; end if;
+  -- The racer who asks is charged for the rematch: the host's own live races do not block it.
+  perform set_config('request.jwt.claim.sub',host_id::text,true);
+  for i in 1..3 loop
+    busy_rooms := busy_rooms || (public.race_action('create',null,jsonb_build_object('passage',passage,'displayName','Ada'),null)->>'roomId')::uuid;
+  end loop;
   perform set_config('request.jwt.claim.sub',friend_id::text,true);
   again := public.race_action('rematch',room_id,jsonb_build_object('passage',other_passage,'conditions','{"quoteLength":"medium"}'::jsonb),null);
   next_room := (again->>'roomId')::uuid;
+  if (select opened_by from race_private.rooms where id = next_room) <> 'user:' || friend_id::text then raise exception 'Rematch was not charged to the racer who asked.'; end if;
+  delete from race_private.rooms where id = any(busy_rooms);
   if next_room = room_id or again->'room'->>'selfSlot' <> '2' or again->'room'->>'rematchOf' <> room_id::text
     or again->'room'->>'passage' <> other_passage or jsonb_array_length(again->'room'->'players') <> 2
     or (again->'room'->'players'->0->>'connected')::boolean then
@@ -100,7 +108,8 @@ begin
   if (select r.host_id from race_private.rooms r where r.id = next_room) <> host_id then raise exception 'Rematch changed the host.'; end if;
   perform set_config('request.jwt.claim.sub',host_id::text,true);
   snap := public.race_action('get',room_id,'{}',null);
-  if snap->>'rematchId' <> next_room::text or snap->>'rematchBy' <> 'Lin' or snap->>'rematchSlot' <> '2' then raise exception 'Original room does not point at the rematch.'; end if;
+  if snap->>'rematchId' <> next_room::text or snap->>'rematchBy' <> 'Lin' or snap->>'rematchSlot' <> '2'
+    or not (snap->>'rematchOpen')::boolean or (snap->>'rematchExpiresAt')::timestamptz <> (select expires_at from race_private.rooms where id = next_room) then raise exception 'Original room does not point at the rematch.'; end if;
   if public.race_action('invites',null,'{}',null)->0->>'hostName' <> 'Lin'
     or not (public.race_action('invites',null,'{}',null)->0->>'rematch')::boolean then raise exception 'Rematch invitation missing.'; end if;
   again := public.race_action('rematch',room_id,jsonb_build_object('passage',passage),null);
@@ -109,6 +118,7 @@ begin
   perform set_config('request.jwt.claim.sub',friend_id::text,true);
   snap := public.race_action('ready',next_room,'{"ready":true}',null);
   if snap->>'status' <> 'countdown' then raise exception 'Rematch did not start.'; end if;
+  if (public.race_action('get',room_id,'{}',null)->>'rematchOpen')::boolean then raise exception 'A started rematch still reads as open.'; end if;
 
   denied := false;
   begin perform public.race_action('rematch',next_room,jsonb_build_object('passage',passage),null);
@@ -135,6 +145,7 @@ begin
   update race_private.rooms set expires_at = now() - interval '2 days' where id = guest_room;
   again := public.race_action('rematch',guest_room,jsonb_build_object('passage',other_passage),guest_token);
   if again->>'guestToken' <> guest_token or again->'room'->>'selfSlot' <> '2' then raise exception 'Guest rematch lost the seat.'; end if;
+  if (select opened_by from race_private.rooms where id = (again->>'roomId')::uuid) not like 'guest:%' then raise exception 'Guest rematch was charged to the host.'; end if;
   perform set_config('request.jwt.claim.sub',friend_id::text,true);
   if exists(select 1 from jsonb_array_elements(public.race_action('invites',null,'{}',null)) i where i->>'id' = again->>'roomId') then
     raise exception 'Guest rematch leaked into an unrelated inbox.';

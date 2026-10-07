@@ -5,7 +5,8 @@ import * as multiplayer from './multiplayer.js';
 const $ = (id) => document.getElementById(id);
 const stamp = (value) => typeof value === 'number' ? value : Date.parse(value);
 const RESULT_RETAINED_MS = 23 * 60 * 60 * 1000;
-const REMATCH_OPEN_MS = 15 * 60 * 1000;
+// The opponent opened a rematch that is still waiting for this player.
+const rematchAsked = (room) => Boolean(room?.rematchId && room.rematchOpen && room.rematchSlot && room.rematchSlot !== room.selfSlot);
 const terminal = (room) => ['finished', 'cancelled', 'expired'].includes(room?.status);
 const PENDING_INVITE = 'stilltype-race-invite-tab-v1';
 
@@ -297,10 +298,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       inbox.notify({ id: `joined:${room.id}`, kind: 'joined', roomId: room.id,
         text: room.rematchOf ? `${opponent.name} is back for the rematch.` : `${opponent.name} joined your race.` }, { toast: away() });
     }
-    if (room.rematchId && room.rematchSlot && room.rematchSlot !== room.selfSlot) {
-      // Guests have no service inbox; a rematch room stops accepting racers after 15 minutes.
+    if (rematchAsked(room)) {
+      // Guests have no service inbox, so the entry lapses when the rematch room stops accepting racers.
       inbox.notify({ id: `invite:${room.rematchId}`, kind: 'invite', roomId: room.rematchId, local: true,
-        until: new Date(Date.now() + REMATCH_OPEN_MS).toISOString(),
+        until: room.rematchExpiresAt,
         text: `${room.rematchBy || 'Your opponent'} wants a rematch.` }, { toast: true });
     }
     const justFinished = previousStatus && previousStatus !== 'finished';
@@ -321,7 +322,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const show = terminal(room) && Boolean(opponent);
     $('online-after').hidden = !show;
     if (!show) return;
-    const asked = room.rematchId && room.rematchSlot && room.rematchSlot !== room.selfSlot;
+    const asked = rematchAsked(room);
     $('online-rematch-note').hidden = !asked;
     $('online-rematch-note').textContent = asked ? `${room.rematchBy || opponent.name} wants a rematch.` : '';
     $('online-rematch').textContent = asked ? 'Join rematch' : 'Race again';
@@ -406,9 +407,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       poll();
     }
   }
-  // A closed race with two players keeps a slow watch, so a rematch request reaches both, until
-  // the service is due to delete the room.
-  const watchingRematch = () => terminal(room) && room.players.length === 2 && !room.rematchId
+  // A closed race with two players keeps a slow watch, so a rematch request reaches both and an
+  // unanswered one is withdrawn when it lapses, until the service is due to delete the room.
+  const watchingRematch = () => terminal(room) && room.players.length === 2 && (!room.rematchId || room.rematchOpen)
     && Date.now() < Date.parse(room.expiresAt) + RESULT_RETAINED_MS;
   async function poll() {
     if (!credentials || networkBusy || (terminal(room) && !watchingRematch())) return;
@@ -558,7 +559,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   $('online-leave').addEventListener('click', () => perform($('online-leave'), leave));
   $('online-again').addEventListener('click', () => perform($('online-again'), async () => { await leave(); refreshInvites(); $('online-name').focus(); }));
   $('online-rematch').addEventListener('click', () => {
-    if (room.rematchId && room.rematchSlot !== room.selfSlot) joinInvite(room.rematchId, $('online-rematch'));
+    if (rematchAsked(room)) joinInvite(room.rematchId, $('online-rematch'));
     else rematch(credentials, room.conditions, $('online-rematch'));
   });
   $('online-befriend').addEventListener('click', () => perform($('online-befriend'), async () => {
