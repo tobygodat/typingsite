@@ -3,7 +3,12 @@
 import { randomUUID } from 'node:crypto';
 
 export class FakeRaces {
-  constructor(auth) { this.auth = auth; this.rooms = new Map(); }
+  constructor(auth) { this.auth = auth; this.rooms = new Map(); this.friends = new Map(); }
+
+  friendList(owner) {
+    return (this.friends.get(owner) || []).map(({ id, name, email, friendId }) => ({ id, name, account: Boolean(friendId), ...(email ? { email } : {}) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
 
   snapshot(room, slot) {
     const now = Date.now();
@@ -13,15 +18,19 @@ export class FakeRaces {
     return {
       id: room.id, status: room.status, passage: room.passage, conditions: room.conditions,
       duration: room.duration, startAt: room.startAt, expiresAt: room.expiresAt,
-      serverNow: new Date(now).toISOString(), selfSlot: slot,
-      players: room.players.map(({ userId, guestToken, typed, sequence, keystrokes, errors, ...player }) => ({
-        ...player, ...(player.slot === slot ? { typed, sequence, keystrokes, errors } : {}),
+      serverNow: new Date(now).toISOString(), selfSlot: slot, inviteKind: room.inviteKind,
+      rematchOf: room.rematchOf || null, rematchId: room.rematchId || null, rematchSlot: room.rematchSlot || null,
+      rematchBy: room.players.find((p) => p.slot === room.rematchSlot)?.name || null,
+      players: room.players.map(({ userId, guestToken, typed, sequence, keystrokes, errors, lastSeen, ...player }) => ({
+        ...player, connected: now - lastSeen < 10000, account: Boolean(userId),
+        friend: Boolean(userId) && (this.friends.get(room.players.find((p) => p.slot === slot)?.userId) || []).some((f) => f.friendId === userId),
+        ...(player.slot === slot ? { typed, sequence, keystrokes, errors } : {}),
       })),
     };
   }
 
   player(slot, name, userId, guestToken) {
-    return { slot, name, userId, guestToken, ready: false, progress: 0, finished: false,
+    return { slot, name, userId, guestToken, ready: false, progress: 0, finished: false, lastSeen: Date.now(),
       wpm: 0, accuracy: 100, elapsed: 0, sequence: 0, typed: '', keystrokes: 0, errors: 0 };
   }
 
@@ -29,16 +38,37 @@ export class FakeRaces {
     const failure = (message) => reply(400, { message });
     if (action === 'invites') return reply(200, [...this.rooms.values()]
       .filter((room) => room.invitedUser === caller && caller && room.status === 'waiting' && Date.parse(room.expiresAt) > Date.now())
-      .map((room) => ({ id: room.id, hostName: room.players[0].name, createdAt: room.createdAt, expiresAt: room.expiresAt })));
+      .map((room) => ({ id: room.id, hostName: room.players.find((p) => p.userId !== caller).name, createdAt: room.createdAt,
+        expiresAt: room.expiresAt, rematch: Boolean(room.rematchOf) })));
+    if (['friends', 'befriend', 'unfriend'].includes(action) && !id) {
+      if (!caller) return failure('Sign in to keep a friend list.');
+      const list = this.friends.get(caller) || [];
+      if (action === 'befriend') {
+        const email = (data.email || '').trim().toLowerCase();
+        const existing = list.find((f) => f.email === email);
+        if (existing) existing.name = data.name || existing.name;
+        else list.push({ id: randomUUID(), email, name: data.name || email.split('@')[0] });
+      }
+      this.friends.set(caller, action === 'unfriend' ? list.filter((f) => f.id !== data.friendId) : list);
+      return reply(200, this.friendList(caller));
+    }
     if (action === 'create') {
       if (!caller) return failure('Sign in to host a race.');
-      const email = (data.inviteEmail || '').trim().toLowerCase();
+      let email = (data.inviteEmail || '').trim().toLowerCase();
+      let invitedUser = null;
+      if (data.friendId) {
+        const friend = (this.friends.get(caller) || []).find((f) => f.id === data.friendId);
+        if (!friend) return failure('That friend is no longer on your list.');
+        email = friend.email || '';
+        invitedUser = friend.friendId || null;
+      }
+      if (email) invitedUser = [...this.auth.users.values()].find((user) => user.email === email)?.id || 'unknown';
       const room = {
         id: randomUUID(), passage: data.passage, conditions: data.conditions, duration: 60,
         status: 'waiting', startAt: null, createdAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 15 * 60000).toISOString(),
-        invitedUser: email ? this.auth.users.get(email)?.id || 'unknown' : null,
-        inviteToken: email ? null : randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', ''),
+        invitedUser, inviteKind: invitedUser ? 'account' : 'guest',
+        inviteToken: invitedUser ? null : randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', ''),
         players: [this.player(1, data.displayName, caller)],
       };
       this.rooms.set(room.id, room);
@@ -49,7 +79,7 @@ export class FakeRaces {
     this.snapshot(room, null);
     let player = room.players.find((p) => (caller && p.userId === caller) || (guestToken && p.guestToken === guestToken));
     if (action === 'join') {
-      if (player) return reply(200, { room: this.snapshot(room, player.slot), roomId: id, guestToken: player.guestToken });
+      if (player) { player.lastSeen = Date.now(); return reply(200, { room: this.snapshot(room, player.slot), roomId: id, guestToken: player.guestToken }); }
       if (room.status !== 'waiting') return failure('This race is no longer accepting players.');
       if (room.invitedUser ? room.invitedUser !== caller : room.inviteToken !== data.inviteToken) return failure('This invite is unavailable.');
       if (room.players.length === 2) return failure('This race is full.');
@@ -59,6 +89,38 @@ export class FakeRaces {
       return reply(200, { room: this.snapshot(room, 2), roomId: id, guestToken: token });
     }
     if (!player) return failure('This race is unavailable.');
+    player.lastSeen = Date.now();
+    if (action === 'rematch') {
+      if (!['finished', 'cancelled', 'expired'].includes(room.status)) return failure('Finish this race before starting another.');
+      if (room.players.length < 2) return failure('Nobody joined this race, so there is no one to race again.');
+      const open = this.rooms.get(room.rematchId);
+      if (open && ['waiting', 'countdown', 'racing'].includes(open.status)) {
+        open.players.find((p) => p.slot === player.slot).lastSeen = Date.now();
+        return reply(200, { room: this.snapshot(open, player.slot), roomId: open.id, guestToken: player.guestToken });
+      }
+      const other = room.players.find((p) => p.slot !== player.slot);
+      const next = {
+        id: randomUUID(), passage: data.passage, conditions: data.conditions, duration: 60,
+        status: 'waiting', startAt: null, createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 15 * 60000).toISOString(),
+        invitedUser: other.userId || null, inviteKind: room.inviteKind, inviteToken: null, rematchOf: room.id,
+        players: room.players.map((p) => ({ ...this.player(p.slot, p.name, p.userId, p.guestToken), lastSeen: p.slot === player.slot ? Date.now() : 0 })),
+      };
+      this.rooms.set(next.id, next);
+      Object.assign(room, { rematchId: next.id, rematchSlot: player.slot });
+      return reply(200, { room: this.snapshot(next, player.slot), roomId: next.id, guestToken: player.guestToken });
+    }
+    if (action === 'befriend') {
+      const other = room.players.find((p) => p.slot !== player.slot);
+      if (!caller) return failure('Sign in to keep a friend list.');
+      if (!other?.userId) return failure('Only racers with an account can be added as friends.');
+      const list = this.friends.get(caller) || [];
+      const existing = list.find((f) => f.friendId === other.userId);
+      if (existing) existing.name = other.name;
+      else list.push({ id: randomUUID(), friendId: other.userId, name: other.name });
+      this.friends.set(caller, list);
+      return reply(200, this.friendList(caller));
+    }
     if (action === 'leave') { room.status = 'cancelled'; return reply(200, this.snapshot(room, player.slot)); }
     if (action === 'ready' && room.status === 'waiting') {
       player.ready = data.ready;

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRace, joinRace, getRace, updateRaceProgress, parseRaceLink, makeGuestRaceLink,
-  clearRaceLink, rememberRace, recallRace, forgetRace } from '../src/multiplayer.js';
+  clearRaceLink, rememberRace, recallRace, forgetRace, rematchRace, addFriend, addFriendFromRace,
+  listFriends } from '../src/multiplayer.js';
 
 const roomId = '00000000-0000-4000-8000-000000000001';
 const inviteToken = 'a'.repeat(64);
@@ -62,4 +63,32 @@ test('reconnect credentials expire within the tab without storing any run profil
     assert.equal(values.size,0);
     rememberRace({roomId,guestToken}); forgetRace(); assert.equal(values.size,0);
   } finally { globalThis.sessionStorage = original; }
+});
+
+test('friend races send only the friend id, and rematches keep the guest seat', async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    const data = JSON.parse(options.body);
+    calls.push(data);
+    const room = {id:roomId,selfSlot:2,passage:'A fresh passage.',conditions:{textId:'next'},players:[{slot:2,sequence:0}]};
+    return new Response(JSON.stringify(['friends','befriend'].includes(data.p_action) ? [] : {roomId,guestToken,room}));
+  };
+  try {
+    await createRace(session,{passage:{id:'q',text:'The shared passage.'},displayName:'Host',inviteEmail:'typed@example.com',friendId:roomId});
+    assert.equal(calls[0].p_data.friendId,roomId);
+    assert.equal(calls[0].p_data.inviteEmail,'');
+    await rematchRace(null,{roomId,guestToken},{passage:{id:'next',text:'A fresh passage.'},conditions:{quoteLength:'medium',textId:'old'}});
+    assert.equal(calls[1].p_action,'rematch');
+    assert.equal(calls[1].p_guest_token,guestToken);
+    assert.equal(calls[1].p_room_id,roomId);
+    assert.deepEqual(calls[1].p_data,{passage:'A fresh passage.',conditions:{quoteLength:'medium',textId:'next'}});
+    await addFriend(session,{email:' lin@example.com ',name:' Lin '});
+    assert.deepEqual(calls[2].p_data,{email:'lin@example.com',name:'Lin'});
+    await addFriendFromRace(session,{roomId,guestToken});
+    assert.equal(calls[3].p_room_id,roomId);
+    assert.equal(calls[3].p_guest_token,null);
+    assert.deepEqual(await listFriends(null),[]);
+    assert.equal(calls.length,4);
+  } finally { globalThis.fetch = original; }
 });

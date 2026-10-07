@@ -90,30 +90,43 @@
       </nav>
     </header>
 
-    <details id="account" class="account" data-state="guest">
-      <summary id="account-trigger" class="account-trigger" aria-label="Account, guest mode">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
-      </summary>
-      <div class="account-popover">
-        <div id="account-guest" class="account-section">
-          <p class="account-kicker">guest mode</p>
-          <p class="account-lede">Default settings, and nothing is kept once you leave.</p>
-          <div class="account-actions">
-            <button id="account-create" class="btn btn-primary" type="button">Create account</button>
-            <button id="account-google" class="btn btn-secondary" type="button">Sign in with Google</button>
-            <button id="account-signin" class="btn btn-ghost btn-sm" type="button">Sign in with email</button>
+    <div class="corner">
+      <details id="inbox" class="inbox" hidden>
+        <summary id="inbox-trigger" class="corner-trigger" aria-label="Inbox">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          <span id="inbox-count" class="inbox-count num" hidden></span>
+        </summary>
+        <div class="corner-popover inbox-popover">
+          <div class="inbox-heading"><p class="account-kicker">inbox</p><button id="inbox-clear" class="btn btn-ghost btn-sm" type="button" hidden>Clear</button></div>
+          <p id="inbox-empty" class="account-lede">Race challenges, rematches and results arrive here.</p>
+          <ul id="inbox-list" class="inbox-list"></ul>
+        </div>
+      </details>
+      <details id="account" class="account" data-state="guest">
+        <summary id="account-trigger" class="corner-trigger account-trigger" aria-label="Account, guest mode">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+        </summary>
+        <div class="corner-popover account-popover">
+          <div id="account-guest" class="account-section">
+            <p class="account-kicker">guest mode</p>
+            <p class="account-lede">Default settings, and nothing is kept once you leave.</p>
+            <div class="account-actions">
+              <button id="account-create" class="btn btn-primary" type="button">Create account</button>
+              <button id="account-google" class="btn btn-secondary" type="button">Sign in with Google</button>
+              <button id="account-signin" class="btn btn-ghost btn-sm" type="button">Sign in with email</button>
+            </div>
+          </div>
+          <div id="account-member" class="account-section" hidden>
+            <p class="account-kicker">signed in</p>
+            <p id="account-email" class="account-email"></p>
+            <p class="account-sync status" role="status"><span class="status-dot" aria-hidden="true"></span><span id="account-sync"></span></p>
+            <div class="account-actions account-member-actions">
+              <button id="account-signout" class="btn btn-ghost btn-sm" type="button">Sign out</button>
+            </div>
           </div>
         </div>
-        <div id="account-member" class="account-section" hidden>
-          <p class="account-kicker">signed in</p>
-          <p id="account-email" class="account-email"></p>
-          <p class="account-sync status" role="status"><span class="status-dot" aria-hidden="true"></span><span id="account-sync"></span></p>
-          <div class="account-actions account-member-actions">
-            <button id="account-signout" class="btn btn-ghost btn-sm" type="button">Sign out</button>
-          </div>
-        </div>
-      </div>
-    </details>
+      </details>
+    </div>
 
     <main id="main-content">
       <section id="typing-screen" class="screen typing-screen" data-screen="practice" data-session="practice" aria-labelledby="session-title">
@@ -371,9 +384,20 @@
                 <label for="online-invite-email">Account to invite <span class="online-optional">optional</span></label>
                 <input id="online-invite-email" class="input" type="email" maxlength="254" autocomplete="off" placeholder="Their account email" aria-describedby="online-invite-note">
               </div>
-              <p id="online-invite-note" class="online-copy">Account invitations appear in their challenge screen. Leave the email empty to share a guest link.</p>
-              <button id="create-online-race" class="btn btn-primary" type="submit">Create race</button>
+              <p id="online-invite-note" class="online-copy">Account invitations appear in their inbox and challenge screen. Leave the email empty to share a guest link.</p>
+              <div class="online-setup-actions">
+                <button id="create-online-race" class="btn btn-primary" type="submit">Create race</button>
+                <label id="online-save-friend-row" class="compact-switch" for="online-save-friend" hidden>
+                  <input id="online-save-friend" class="switch" type="checkbox" checked>
+                  <span>save to friends</span>
+                </label>
+              </div>
             </form>
+            <section id="online-friends" class="online-friends" aria-labelledby="online-friends-heading" hidden>
+              <div class="online-section-heading"><h2 id="online-friends-heading">Friends</h2></div>
+              <p id="online-friends-empty" class="online-copy">Save someone when you invite them by email, or add them after a race. Then challenge them here without typing their email again.</p>
+              <ul id="online-friend-list" class="online-friend-list"></ul>
+            </section>
             <section id="online-inbox" class="online-inbox" aria-labelledby="online-inbox-heading" hidden>
               <div class="online-section-heading"><h2 id="online-inbox-heading">Race invitations</h2><button id="refresh-race-invites" class="btn btn-ghost btn-sm" type="button">Refresh</button></div>
               <p id="online-invites-empty" class="online-copy">No invitations yet.</p>
@@ -413,6 +437,13 @@
               <div id="online-result-rows" class="race-results"></div>
               <p>Corrected wpm uses matching characters and elapsed race time. Accuracy includes corrected mistakes. Online scores are unranked and don’t count in your progress.</p>
             </section>
+            <div id="online-after" class="online-after" hidden>
+              <p id="online-rematch-note" class="online-copy" role="status"></p>
+              <div class="online-actions">
+                <button id="online-rematch" class="btn btn-primary" type="button">Race again</button>
+                <button id="online-befriend" class="btn btn-ghost" type="button" hidden>Add to friends</button>
+              </div>
+            </div>
           </section>
         </div>
 
@@ -596,6 +627,15 @@
     <span class="status-dot" aria-hidden="true"></span>
     <span>Suggestion sent. Thank you.</span>
   </div>
+
+  <aside id="challenge-toast" class="toast challenge-toast" aria-label="Race notification" hidden>
+    <span class="status-dot" aria-hidden="true"></span>
+    <span id="challenge-toast-text"></span>
+    <button id="challenge-toast-action" class="btn btn-primary btn-sm" type="button">Join</button>
+    <button id="challenge-toast-close" class="btn btn-ghost btn-sm toast-close" type="button" aria-label="Dismiss">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
+    </button>
+  </aside>
 
   <div id="announcement" class="sr-only" role="status" aria-live="polite"></div>
   <script type="module" src="/src/app.js"></script>

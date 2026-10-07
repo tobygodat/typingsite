@@ -29,15 +29,27 @@ async function action(session, type, credentials = {}, data = {}) {
     if (error.status === 404 || /schema cache|could not find.*function/i.test(error.message)) {
       throw new AuthError('Online races are being set up. Please try again shortly.');
     }
+    if (/unknown race action/i.test(error.message)) throw new AuthError('Friends and rematches are being set up. Please try again shortly.');
     if (/account service/.test(error.message)) throw new AuthError('Can’t reach the race. Check your connection; your place is held.');
     throw error;
   }
 }
-export function createRace(session, { passage, conditions = {}, displayName, inviteEmail = '' }) {
+export function createRace(session, { passage, conditions = {}, displayName, inviteEmail = '', friendId = '' }) {
   if (!session?.user?.id) throw new AuthError('Sign in to host an online race.');
   return action(session, 'create', {}, { passage: typeof passage === 'string' ? passage : passage?.text,
-    conditions: { ...conditions, textId: conditions.textId || passage?.id }, displayName, inviteEmail: inviteEmail.trim() });
+    conditions: { ...conditions, textId: conditions.textId || passage?.id }, displayName,
+    inviteEmail: friendId ? '' : inviteEmail.trim(), ...(friendId ? { friendId } : {}) });
 }
+// A rematch keeps both seats. The first player to ask opens the room; the second joins it.
+export function rematchRace(session, credentials, { passage, conditions = {} }) {
+  return action(session, 'rematch', credentials, { passage: typeof passage === 'string' ? passage : passage?.text,
+    conditions: { ...conditions, textId: passage?.id || conditions.textId } });
+}
+// Friends are private to the signed-in owner. Rows carry an email only when the owner typed it.
+export const listFriends = (session) => session ? action(session, 'friends') : Promise.resolve([]);
+export const addFriend = (session, { email, name = '' }) => action(session, 'befriend', {}, { email: email.trim(), name: name.trim() });
+export const addFriendFromRace = (session, credentials) => action(session, 'befriend', { roomId: credentials.roomId });
+export const removeFriend = (session, friendId) => action(session, 'unfriend', {}, { friendId });
 export const listRaceInvites = (session) => session ? action(session, 'invites') : Promise.resolve([]);
 export function joinRace(session, { roomId, inviteToken, displayName, guestToken }) {
   return action(session, 'join', { roomId, guestToken }, { inviteToken: inviteToken || null, displayName });

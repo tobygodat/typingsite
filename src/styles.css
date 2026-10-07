@@ -396,18 +396,24 @@ kbd {
 
 .personal-best { color: var(--muted); }
 
-/* Account: a person button in the top-right corner, level with the dock, on the same raised surface. */
-.account {
+/* Corner: the inbox and the person button, top right, level with the dock, on the same raised surface. */
+.corner {
   position: fixed;
   z-index: 40;
   top: var(--space-4);
   right: var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
-.account summary { list-style: none; }
-.account summary::-webkit-details-marker { display: none; }
+.account,
+.inbox { position: relative; }
 
-.account-trigger {
+.corner summary { list-style: none; }
+.corner summary::-webkit-details-marker { display: none; }
+
+.corner-trigger {
   width: 58px;
   height: 58px;
   border: 1px solid var(--hairline-strong);
@@ -421,11 +427,11 @@ kbd {
   transition: color var(--dur-quick) var(--ease-out);
 }
 
-.account-trigger:hover,
-.account[open] .account-trigger,
+.corner-trigger:hover,
+.corner details[open] > .corner-trigger,
 .account[data-state="member"] .account-trigger { color: var(--text); }
 
-.account-trigger svg {
+.corner-trigger svg {
   width: 21px;
   height: 21px;
   fill: none;
@@ -448,7 +454,7 @@ kbd {
   background: var(--accent);
 }
 
-.account-popover {
+.corner-popover {
   position: absolute;
   z-index: 50;
   top: calc(100% + var(--space-2));
@@ -461,6 +467,50 @@ kbd {
   box-shadow: var(--shadow-float);
   animation: fade-in var(--dur-quick) var(--ease-out);
 }
+
+/* Inbox: unread entries are counted on the envelope; the list keeps the newest thirty. */
+.corner-trigger { position: relative; }
+
+.inbox-count {
+  position: absolute;
+  top: 9px;
+  right: 7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 500 var(--text-fine)/18px var(--font-mono);
+  text-align: center;
+}
+
+.inbox-popover { width: 340px; }
+.inbox-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 32px; }
+.inbox-heading p { margin: 0; }
+.inbox-popover > .account-lede { margin: var(--space-2) 0 0; }
+
+.inbox-list {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+}
+
+.inbox-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.inbox-entry p { margin: 0; color: var(--muted); font-size: var(--text-small); line-height: 1.45; overflow-wrap: anywhere; }
+.inbox-entry[data-unread] p { color: var(--text); }
+.inbox-meta { grid-column: 1; color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); }
+.inbox-entry button { grid-column: 2; grid-row: 1 / span 2; }
 
 .account-section { display: grid; gap: var(--space-2); }
 .account-section p { margin: 0; }
@@ -821,14 +871,14 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 /* While a run is in progress everything but the passage and the numbers steps back.
    app.js sets data-running; keyboard focus brings a control back. */
 .dock-zone,
-.account,
+.corner,
 .practice-controls,
 .quote-options,
 .shortcut-row,
 .site-footer { transition: opacity var(--dur-base) var(--ease-out); }
 
-body[data-running="true"] :is(.dock-zone, .account, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
-body[data-running="true"] :is(.dock, .account, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
+body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
+body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
 
 /* ── Typing zone ────────────────────────────────────────────────────────── */
 
@@ -1081,7 +1131,7 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 .key.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); transform: translateY(2px); }
 
 body[data-focus-mode="true"] .dock-zone,
-body[data-focus-mode="true"] .account,
+body[data-focus-mode="true"] .corner,
 body[data-focus-mode="true"] .practice-controls,
 body[data-focus-mode="true"] .quote-options,
 body[data-focus-mode="true"] .shortcut-row,
@@ -1412,14 +1462,23 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .online-optional { font-size: var(--text-fine); }
 .online-setup { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-6); }
 .online-setup > .online-copy { grid-column: 1 / -1; margin: 0; }
-.online-setup > button { justify-self: start; }
+.online-setup-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
 .online-section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .online-section-heading h2, .online-join h2 { margin: 0; font-size: var(--text-title); }
-.online-inbox, .online-room, .online-join { border-top: 1px solid var(--hairline); padding-top: var(--space-8); margin-top: var(--space-8); }
+.online-inbox, .online-friends, .online-room, .online-join { border-top: 1px solid var(--hairline); padding-top: var(--space-8); margin-top: var(--space-8); }
 .online-join .player-field { max-width: calc(var(--content-max) / 2); }
 .online-actions { display: flex; gap: var(--space-3); margin-top: var(--space-6); }
 .online-invite-row { display: flex; gap: var(--space-4); align-items: center; justify-content: space-between; padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
 .online-invite-row p { margin: 0; }
+.online-friend-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
+.online-friend-row { display: flex; gap: var(--space-4); align-items: center; justify-content: space-between; padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
+.online-friend-name { min-width: 0; display: grid; gap: 2px; }
+.online-friend-name strong { font-weight: 400; overflow-wrap: anywhere; }
+.online-friend-name span { color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
+.online-friend-row .online-actions { margin: 0; flex: none; gap: var(--space-2); }
+.online-after { margin-top: var(--space-6); }
+.online-after > p { margin: 0 0 var(--space-3); }
+.online-after .online-actions { margin-top: 0; flex-wrap: wrap; }
 .online-share { margin: var(--space-6) 0; }
 .online-share > label { color: var(--muted); font-size: var(--text-small); }
 .online-link-row { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
@@ -1439,6 +1498,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .online-link-row { flex-wrap: wrap; }
   .online-link-row input { flex-basis: 100%; }
   .online-section-heading { flex-wrap: wrap; }
+  .online-friend-row { flex-wrap: wrap; }
   .online-typing-wrap { --passage-size: var(--text-title); }
 }
 
@@ -1759,6 +1819,25 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .account-toast { padding-right: 20px; }
 .account-toast .status-dot { color: var(--warning); }
 .egg-toast { padding-right: 20px; bottom: calc(var(--space-6) + 64px); }
+
+/* A race challenge drops in under the corner buttons, then leaves after TOAST_MS in src/inbox.js. */
+.challenge-toast {
+  top: calc(var(--space-4) + 58px + var(--space-2));
+  right: var(--space-4);
+  bottom: auto;
+  left: auto;
+  max-width: min(440px, calc(100% - 32px));
+  transform: none;
+  animation: toast-drop var(--dur-base) var(--ease-out);
+}
+
+@keyframes toast-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+
+.challenge-toast #challenge-toast-text { min-width: 0; overflow-wrap: anywhere; }
+.toast-close { width: 36px; padding: 0; justify-content: center; }
+.toast-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .egg-toast.is-solo { bottom: var(--space-6); }
 
 .ghost-mark {
@@ -1788,6 +1867,12 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .dock-settings .dock-label { display: none; }
 }
 
+/* Side by side, the corner would meet the centred dock: the inbox moves under the person. */
+@media (max-width: 1023px) and (min-width: 761px) {
+  .corner { flex-direction: column-reverse; align-items: flex-end; }
+  .challenge-toast { top: calc(var(--space-4) + 2 * (58px + var(--space-2))); }
+}
+
 /* A card taller than the viewport cannot stick without hiding its foot. */
 @media (max-height: 720px) {
   .run-card { position: static; }
@@ -1815,12 +1900,15 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
   .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, 100%); max-height: calc(100svh - 62px - var(--space-10)); }
 
-  /* The dock moves to the bottom; the person stays top right and scrolls with the page. */
+  /* The dock moves to the bottom; the corner stays top right and scrolls with the page. */
   .app-shell { padding-top: var(--space-10); }
-  .account { position: absolute; top: var(--space-3); right: var(--space-4); }
-  .account-trigger { width: var(--control); height: var(--control); border-radius: var(--radius-control); }
+  .corner { position: absolute; top: var(--space-3); right: var(--space-4); }
+  .corner-trigger { width: var(--control); height: var(--control); border-radius: var(--radius-control); }
   .account[data-state="member"] .account-trigger::after { top: 9px; right: 9px; }
-  .account-popover { width: min(300px, calc(100vw - var(--space-8))); }
+  .corner-popover { width: min(300px, calc(100vw - var(--space-8))); }
+  .inbox-popover { right: calc(-1 * (var(--control) + var(--space-2))); width: min(340px, calc(100vw - var(--space-8))); }
+  .inbox-count { top: 2px; right: 1px; }
+
 
   .screen { padding-top: var(--space-8); }
   .typing-screen { min-height: auto; padding-top: var(--space-6); }
@@ -1852,6 +1940,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .history-main { grid-column: 1 / -1; }
   .input-action { flex-direction: column; }
   .toast { bottom: 90px; }
+  .toast.challenge-toast { top: calc(var(--space-3) + var(--control) + var(--space-2)); right: var(--space-4); bottom: auto; left: var(--space-4); max-width: none; }
   .egg-toast, .egg-toast.is-solo { bottom: 150px; }
   .handoff-veil { font-size: 26px; }
 }

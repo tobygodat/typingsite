@@ -20,6 +20,8 @@ import { createPalette } from './palette.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
+import { createInbox } from './inbox.js';
+import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
@@ -116,6 +118,7 @@ let lastCompleted = null;
 let ghostOn = false;
 let palette = null;
 let onlineRace = null;
+let inbox = null;
 let baselineAttempt = null;
 let activeRecommendation = null;
 let selectedTarget = null;
@@ -1498,6 +1501,7 @@ async function enterAccount(newSession) {
 async function signOutAccount() {
   closeAccountMenu();
   await onlineRace?.leave();
+  inbox?.forget();
   const synced = !unsynced || await pushProfile();
   // Unsynced edits stay on this device and go up the next time this account signs in here.
   await account.signOut(session, { keepCache: !synced });
@@ -1992,8 +1996,19 @@ renderHistory();
 renderTraining();
 renderDaily();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
+inbox = createInbox({
+  getSession: () => session,
+  listInvites: listRaceInvites,
+  announce,
+  actions: {
+    invite: { label: 'Join', run: (entry) => onlineRace.joinInvite(entry.roomId) },
+    joined: { label: 'Open', run: () => onlineRace.open() },
+    result: { label: 'Race again', run: (entry) => onlineRace.rematch({ roomId: entry.roomId }, entry.conditions) },
+  },
+});
 onlineRace = createOnlineRace({
   getSession: () => session,
+  inbox,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
   onPassageSeen(id) {
@@ -2010,6 +2025,7 @@ console.info('stilltype · ↑ ↑ ↓ ↓ ← → ← → b a');
 if (!storageAvailable) announce('Storage is unavailable. Results last only in this tab.');
 completeAuthRedirect();
 syncOnLoad();
+inbox.refresh();
 // Refresh the day label when a tab returns, and across midnight without reloading.
 setInterval(() => { if (document.body.dataset.view === 'compete') renderDaily(); }, 30000);
 document.addEventListener('visibilitychange', () => {
