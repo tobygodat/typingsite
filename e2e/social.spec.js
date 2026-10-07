@@ -1,4 +1,4 @@
-import { test, expect, openApp, openView, signInWithEmail, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto, chooseWords, passageText } from './fixtures.js';
 
 test.setTimeout(90000);
 
@@ -91,6 +91,32 @@ test('the challenge toast leaves on its own after about eighteen seconds', async
   await expect(page.locator('#challenge-toast')).toBeHidden();
   await page.locator('#inbox-trigger').click();
   await expect(page.locator('#inbox-list [data-inbox-action="invite"]')).toHaveText('Join');
+});
+
+test('a challenge that arrives mid-run waits for the run to end, even with the chrome revealed', async ({ page, supabase }) => {
+  const host = supabase.addUser('host@stilltype.test');
+  supabase.addUser('lin@stilltype.test');
+  await page.clock.install();
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 3));
+  await page.mouse.move(10, 10);
+  await page.mouse.move(80, 80);
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'false');
+  await new Promise((resolve) => supabase.races.handle(host.id, { p_action: 'create', p_data: {
+    passage: 'The quick brown fox jumps over the lazy dog, twice over.', conditions: {}, displayName: 'Ada', inviteEmail: 'lin@stilltype.test',
+  } }, resolve));
+  await page.clock.fastForward(11000);
+  // Give a poll, had one started, time to come back.
+  await page.waitForTimeout(1500);
+  await expect(page.locator('#challenge-toast')).toBeHidden();
+  await expect(page.locator('#inbox-count')).toBeHidden();
+  await page.keyboard.type(text.slice(3));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await page.clock.fastForward(11000);
+  await expect(page.locator('#challenge-toast')).toContainText('Ada challenged you to a race.');
 });
 
 test('after a race either player can race again against the same opponent, and add them as a friend', async ({ page, browser, supabase }) => {

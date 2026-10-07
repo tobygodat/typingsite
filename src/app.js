@@ -205,9 +205,19 @@ function setText(element, value) {
   if (element.textContent !== text) element.textContent = text;
 }
 
-// body[data-running] lets the CSS fade the chrome mid-run; skip no-op writes on every keystroke.
+// Whether an attempt or race is in progress. body[data-running] follows it so the CSS can fade
+// the chrome mid-run, but a pointer nudge only reveals the chrome; the run itself goes on.
+let runActive = false;
 function setRunning(running) {
-  const value = String(running);
+  if (runActive !== running) {
+    runActive = running;
+    inbox?.runChanged();
+  }
+  showChrome(!running);
+}
+// Skip no-op writes on every keystroke.
+function showChrome(shown) {
+  const value = String(!shown);
   if (document.body.dataset.running !== value) document.body.dataset.running = value;
 }
 
@@ -1854,7 +1864,7 @@ function bindEvents() {
   document.addEventListener('pointermove', (event) => {
     const moved = pointer ? Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) : 0;
     if (!pointer || document.body.dataset.running !== 'true' || moved > 4) pointer = { x: event.clientX, y: event.clientY };
-    if (moved > 4) setRunning(false);
+    if (moved > 4) showChrome(true);
   });
 }
 
@@ -1998,6 +2008,7 @@ renderTraining();
 renderDaily();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
 inbox = createInbox({
+  isRunning: () => runActive,
   getSession: () => session,
   listInvites: listRaceInvites,
   announce,

@@ -16,7 +16,7 @@ function ago(at, now = Date.now()) {
   return new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-export function createInbox({ getSession, listInvites, actions, announce }) {
+export function createInbox({ getSession, listInvites, actions, announce, isRunning }) {
   let entries = [];
   let invites = [];
   let polling = false;
@@ -31,7 +31,8 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
   // Guests keep no entries, so toasts are also remembered for this page alone.
   const toasted = new Set();
   const userId = () => getSession()?.user?.id || null;
-  const running = () => document.body.dataset.running === 'true';
+  // The run itself, not the chrome fade: a pointer nudge mid-run reveals the chrome but is still a run.
+  const running = () => isRunning();
 
   function load() {
     entries = [];
@@ -154,7 +155,7 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
       const open = new Set(invites.map((invite) => `invite:${invite.id}`));
       for (const invite of [...invites].reverse()) {
         // Once the service lists an invitation it decides when the entry closes.
-        notify({ id: `invite:${invite.id}`, kind: 'invite', roomId: invite.id, closed: false, local: false,
+        notify({ id: `invite:${invite.id}`, kind: 'invite', roomId: invite.id, closed: false, local: false, until: invite.expiresAt,
           text: invite.rematch ? `${invite.hostName} wants a rematch.` : `${invite.hostName} challenged you to a race.` }, { toast: true });
       }
       // An invitation that left the service's list was joined, cancelled or expired.
@@ -211,10 +212,10 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
   $('challenge-toast').addEventListener('pointerleave', releaseToast);
   $('challenge-toast').addEventListener('focusout', () => setTimeout(releaseToast));
   // Nothing new appears while a run is in progress; a held toast shows once the run ends.
-  new MutationObserver(() => {
+  function runChanged() {
     if (!running() && pendingToast) showToast(pendingToast);
     else if (running() && !$('challenge-toast').hidden && !$('challenge-toast').contains(document.activeElement)) { pendingToast = toastEntry; hideToast(); }
-  }).observe(document.body, { attributes: true, attributeFilter: ['data-running'] });
+  }
 
   setInterval(() => { if (!document.hidden && !running()) refresh(); }, POLL_MS);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
@@ -225,6 +226,7 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
   return {
     refresh,
     notify,
+    runChanged,
     get invites() { return invites; },
     subscribe(listener) { listeners.add(listener); },
     // The room was opened another way: the toast for it goes and its entry counts as read. An
