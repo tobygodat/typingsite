@@ -565,6 +565,7 @@ function startAttempt(targetAttempt, type = 'primary') {
     race.startTime = stamp;
     race.attempt.status = 'running';
     race.attempt.startedAt = 0;
+    inbox?.runChanged();
   }
 }
 
@@ -1021,6 +1022,12 @@ function markRaceInterrupted() {
   race.attempt.interrupted = true;
   race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
   showInputNotice('race', NOTICES.raceFocusLost, { speak: false });
+  inbox?.runChanged();
+}
+
+// A one-keyboard race keeps the chrome, but its passage is still being typed.
+function localRaceRunning() {
+  return race.attempt?.status === 'running' && !race.attempt.interrupted && document.body.dataset.view === 'compete';
 }
 
 function conditionOptions(select, sources, fallback = null) {
@@ -1273,6 +1280,7 @@ function startRace() {
 function setupRacePlayer() {
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
+  inbox?.runChanged();
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
   $('race-status').textContent = `Player ${race.player + 1} of 2`;
@@ -1298,6 +1306,7 @@ function finishRacePlayer() {
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
   race.attempt = completed;
+  inbox?.runChanged();
   race.results.push({ name: race.names[race.player], attempt: completed });
   $('race-input').disabled = true;
   $('race-stage').hidden = true;
@@ -2008,7 +2017,7 @@ renderTraining();
 renderDaily();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
 inbox = createInbox({
-  isRunning: () => runActive,
+  isRunning: () => runActive || localRaceRunning(),
   getSession: () => session,
   listInvites: listRaceInvites,
   announce,

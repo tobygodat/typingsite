@@ -178,6 +178,8 @@ begin
       if v_email = (select lower(email) from auth.users where id = v_uid) then raise exception 'That’s your own account.'; end if;
       if v_name = '' then v_name := left(split_part(v_email, '@', 1), 40); end if;
       if length(v_name) not between 1 and 40 or v_name ~ '[[:cntrl:]]' then raise exception 'Use a friend name of 1 to 40 characters.'; end if;
+      -- Serialize per owner so concurrent adds cannot pass the cap together.
+      perform pg_advisory_xact_lock(hashtextextended('friends:' || v_uid::text, 0));
       if not exists(select 1 from race_private.friends where owner_id = v_uid and email = v_email)
         and (select count(*) from race_private.friends where owner_id = v_uid) >= 100 then raise exception 'Your friend list is full. Remove someone first.'; end if;
       insert into race_private.friends(owner_id, email, name) values (v_uid, v_email, v_name)
@@ -298,6 +300,7 @@ begin
     if v_uid is null then raise exception 'Sign in to keep a friend list.'; end if;
     select user_id, name into v_other, v_name from race_private.players where room_id=p_room_id and slot<>v_slot;
     if v_other is null then raise exception 'Only racers with an account can be added as friends.'; end if;
+    perform pg_advisory_xact_lock(hashtextextended('friends:' || v_uid::text, 0));
     if not exists(select 1 from race_private.friends where owner_id = v_uid and friend_id = v_other)
       and (select count(*) from race_private.friends where owner_id = v_uid) >= 100 then raise exception 'Your friend list is full. Remove someone first.'; end if;
     insert into race_private.friends(owner_id, friend_id, name) values (v_uid, v_other, v_name)

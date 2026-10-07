@@ -119,6 +119,31 @@ test('a challenge that arrives mid-run waits for the run to end, even with the c
   await expect(page.locator('#challenge-toast')).toContainText('Ada challenged you to a race.');
 });
 
+test('a challenge waits while a one-keyboard race is being typed', async ({ page, supabase }) => {
+  const host = supabase.addUser('host@stilltype.test');
+  supabase.addUser('lin@stilltype.test');
+  await page.clock.install();
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-local').click();
+  await page.locator('#player-one-name').fill('Ada');
+  await page.locator('#player-two-name').fill('Lin');
+  await page.locator('#start-local-race').click();
+  const text = await page.locator('#race-accessible-passage').textContent();
+  await typeInto(page, text.slice(0, 3), '#race-input');
+  await new Promise((resolve) => supabase.races.handle(host.id, { p_action: 'create', p_data: {
+    passage: 'The quick brown fox jumps over the lazy dog, twice over.', conditions: {}, displayName: 'Ada', inviteEmail: 'lin@stilltype.test',
+  } }, resolve));
+  await page.clock.fastForward(11000);
+  await page.waitForTimeout(1500);
+  await expect(page.locator('#challenge-toast')).toBeHidden();
+  await page.keyboard.type(text.slice(3));
+  await expect(page.locator('#race-handoff')).toBeVisible();
+  await page.clock.fastForward(11000);
+  await expect(page.locator('#challenge-toast')).toContainText('Ada challenged you to a race.');
+});
+
 test('after a race either player can race again against the same opponent, and add them as a friend', async ({ page, browser, supabase }) => {
   supabase.addUser('host@stilltype.test');
   supabase.addUser('lin@stilltype.test');
