@@ -20,6 +20,8 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
   let entries = [];
   let invites = [];
   let polling = false;
+  // Set on sign-out: nothing in flight may write this account's entries back.
+  let forgotten = false;
   let pendingToast = null;
   let toastEntry = null;
   let toastLeft = 0;
@@ -90,6 +92,7 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
 
   // Adds or refreshes an entry. A new entry can raise the toast; a known one never does again.
   function notify(entry, { toast = false } = {}) {
+    if (forgotten) return;
     const known = entries.find((value) => value.id === entry.id);
     if (known) {
       Object.assign(known, { ...entry, read: known.read, at: known.at });
@@ -142,10 +145,12 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
 
   async function refresh() {
     const session = getSession();
-    if (!session || polling) return invites;
+    if (!session || polling || forgotten) return invites;
     polling = true;
     try {
-      invites = await listInvites(session);
+      const listed = await listInvites(session);
+      if (forgotten) return invites;
+      invites = listed;
       const open = new Set(invites.map((invite) => `invite:${invite.id}`));
       for (const invite of [...invites].reverse()) {
         // Once the service lists an invitation it decides when the entry closes.
@@ -235,6 +240,13 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
       }
       toasted.add(id);
     },
-    forget() { if (userId()) { try { localStorage.removeItem(STORE + userId()); } catch {} } },
+    forget() {
+      forgotten = true;
+      pendingToast = null;
+      hideToast();
+      if (userId()) { try { localStorage.removeItem(STORE + userId()); } catch {} }
+      entries = [];
+      invites = [];
+    },
   };
 }

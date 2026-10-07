@@ -162,7 +162,10 @@ begin
         'expiresAt',r.expires_at,'rematch',r.rematch_of is not null) order by r.created_at desc),'[]'::jsonb)
       into v_result from race_private.rooms r
       join race_private.players p on p.room_id=r.id and p.user_id is distinct from v_uid
-      where r.invited_id=v_uid and r.status='waiting' and r.expires_at > v_now;
+      where r.invited_id=v_uid and r.status='waiting' and r.expires_at > v_now
+        -- Accepted invitations drop out: a joined seat, or a rematch seat its holder has opened.
+        and not exists(select 1 from race_private.players s where s.room_id=r.id and s.user_id=v_uid
+          and s.last_seen > '-infinity'::timestamptz);
     return v_result;
   end if;
 

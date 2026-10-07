@@ -44,7 +44,8 @@ export class FakeRaces {
   handle(caller, { p_action: action, p_room_id: id, p_data: data = {}, p_guest_token: guestToken }, reply) {
     const failure = (message) => reply(400, { message });
     if (action === 'invites') return reply(200, [...this.rooms.values()]
-      .filter((room) => room.invitedUser === caller && caller && room.status === 'waiting' && Date.parse(room.expiresAt) > Date.now())
+      .filter((room) => room.invitedUser === caller && caller && room.status === 'waiting' && Date.parse(room.expiresAt) > Date.now()
+        && !room.players.some((p) => p.userId === caller && p.lastSeen > 0))
       .map((room) => ({ id: room.id, hostName: room.players.find((p) => p.userId !== caller).name, createdAt: room.createdAt,
         expiresAt: room.expiresAt, rematch: Boolean(room.rematchOf) })));
     if (['friends', 'befriend', 'unfriend'].includes(action) && !id) {

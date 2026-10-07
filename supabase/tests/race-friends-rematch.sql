@@ -72,6 +72,7 @@ begin
   if public.race_action('invites',null,'{}',null)->0->>'hostName' <> 'Ada' then raise exception 'Friend invite missing.'; end if;
   joined := public.race_action('join',room_id,'{"displayName":"Lin"}',null);
   if joined->'room'->>'selfSlot' <> '2' then raise exception 'Friend did not join.'; end if;
+  if jsonb_array_length(public.race_action('invites',null,'{}',null)) <> 0 then raise exception 'An accepted invitation is still listed.'; end if;
   if (joined->'room'->'players'->0->>'friend')::boolean then raise exception 'Friend flag set before befriending.'; end if;
 
   -- An account racer can be added from the race without learning their email or id.
@@ -114,6 +115,7 @@ begin
     or not (public.race_action('invites',null,'{}',null)->0->>'rematch')::boolean then raise exception 'Rematch invitation missing.'; end if;
   again := public.race_action('rematch',room_id,jsonb_build_object('passage',passage),null);
   if (again->>'roomId')::uuid <> next_room or again->'room'->>'selfSlot' <> '1' then raise exception 'Second rematch request opened another room.'; end if;
+  if jsonb_array_length(public.race_action('invites',null,'{}',null)) <> 0 then raise exception 'An opened rematch is still listed.'; end if;
   perform public.race_action('ready',next_room,'{"ready":true}',null);
   perform set_config('request.jwt.claim.sub',friend_id::text,true);
   snap := public.race_action('ready',next_room,'{"ready":true}',null);
