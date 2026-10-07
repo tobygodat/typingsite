@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { challengeFor, cleanRedirectUrl, MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, suggestionRow } from '../src/account.js';
+import { challengeFor, cleanRedirectUrl, freshSession, MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, suggestionRow } from '../src/account.js';
 
 test('PKCE challenge matches the RFC 7636 example', async () => {
   assert.equal(await challengeFor('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'), 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
@@ -53,4 +53,20 @@ test('a suggestion stores only trimmed text and a known view', () => {
   assert.ok(suggestionRow(undefined).error);
   assert.ok(suggestionRow('a'.repeat(MAX_SUGGESTION + 1)).error);
   assert.ok(suggestionRow('a'.repeat(MAX_SUGGESTION)).row);
+});
+
+test('a stale copy of the session gives way to the newest stored one instead of reusing its refresh token', async () => {
+  const later = Math.floor(Date.now() / 1000) + 3600;
+  const store = new Map([['stilltype-session-v1', JSON.stringify({ access_token: 'new', refresh_token: 'rotated', expires_at: later, user: { id: 'u1' } })]]);
+  const originalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  globalThis.fetch = async () => { throw new Error('no refresh expected'); };
+  try {
+    const stale = { access_token: 'old', refresh_token: 'used', expires_at: 1, user: { id: 'u1' } };
+    assert.equal((await freshSession(stale)).refresh_token, 'rotated');
+  } finally {
+    globalThis.localStorage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
 });

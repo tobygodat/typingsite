@@ -124,7 +124,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     });
   }
   function rematchPassage(conditions = {}) {
-    return selectPassage({ mode: 'quote', quoteLength: conditions.quoteLength || 'medium', difficulty: conditions.difficulty || 'any' });
+    return selectPassage({ mode: 'quote', quoteLength: conditions.quoteLength || 'medium', difficulty: conditions.difficulty || 'any',
+      seenIds: conditions.textId ? [conditions.textId] : [] });
   }
   // Same opponent, same settings, a fresh passage. Whoever asks second joins the first one's room.
   function rematch(from, conditions, button = null) {

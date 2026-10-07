@@ -131,6 +131,8 @@ begin
   exception when others then denied := true; end;
   if not denied then raise exception 'Guest befriended an account.'; end if;
   perform public.race_action('leave',guest_room,'{}',guest_token);
+  -- A result old enough for cleanup can still be raced again.
+  update race_private.rooms set expires_at = now() - interval '2 days' where id = guest_room;
   again := public.race_action('rematch',guest_room,jsonb_build_object('passage',other_passage),guest_token);
   if again->>'guestToken' <> guest_token or again->'room'->>'selfSlot' <> '2' then raise exception 'Guest rematch lost the seat.'; end if;
   perform set_config('request.jwt.claim.sub',friend_id::text,true);

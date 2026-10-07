@@ -45,7 +45,8 @@ begin
   -- Serialize per host to make quotas reliable under concurrent requests.
   perform pg_advisory_xact_lock(hashtextextended(p_host::text, 0));
   -- Terminal room data is transient; opportunistic cleanup needs no scheduler.
-  delete from race_private.rooms where expires_at < v_now - interval '1 day';
+  -- A rematch's source room stays: the new room points back at it.
+  delete from race_private.rooms where expires_at < v_now - interval '1 day' and id is distinct from p_rematch_of;
   if (select count(*) from race_private.rooms where host_id = p_host and created_at > v_now - interval '1 hour') >= 10 then
     raise exception 'You have created several races. Please wait before hosting another.';
   end if;
