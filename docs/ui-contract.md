@@ -5,7 +5,7 @@ This document is the integration contract between the static interface in `index
 ## Screen model
 
 - `body[data-view]` is one of `practice`, `results`, `progress`, or `compete`.
-- Only the matching `[data-screen]` is visible. Navigation controls use `[data-nav]` with the same values and set `aria-current="page"` (and `.is-active`) on the active item. The dock labels them practice, train, progress and challenge; the brand link also navigates to practice.
+- Only the matching `[data-screen]` is visible. Navigation controls use `[data-nav]` with the same values and set `aria-current="page"` (and `.is-active`) on the active item. The masthead labels them practice, train, progress and challenge; the brand link also navigates to practice.
 - `#typing-screen` is the shared typing surface. Its `data-session` value is one of `practice`, `drill`, or `retest`; `body[data-session]` mirrors it for styling.
 - Results, progress, and challenge use `#results-screen`, `#progress-screen`, and `#compete-screen`.
 - `body[data-running]` is present from the first keystroke of a run until it finishes or restarts. While it is set, chrome other than the passage and its measure row fades out; pointer movement, finishing or restarting brings it back. It never changes the passage geometry.
@@ -15,11 +15,11 @@ This document is the integration contract between the static interface in `index
 
 `html[data-theme]` is `dark` or `light`. An inline script in `<head>` resolves it before first paint from `preferences.theme` in the `stilltype-profile-v2` profile, falling back to `prefers-color-scheme`. The stored preference is `system`, `dark` or `light`; `system` follows the OS and updates when it changes. `meta[name="theme-color"]` is kept in step with the resolved theme.
 
-## Dock, settings and command palette
+## Masthead, settings and command palette
 
-The dock (`nav.dock` in `.dock-zone`) holds the brand link, the `.dock-nav` view buttons, the settings popover (`details.preferences`, whose `summary.dock-settings` shows an icon and the label "settings") and `#palette-trigger`. The popover is positioned against the dock: below it on desktop, above it on mobile. Restart (`#restart-button`) stays in the typing footer.
+The masthead (`nav.dock` in `.dock-zone`, a 72px row on a hairline rule on desktop, a flush bar at the bottom under 760px) holds the brand link, the `.dock-nav` view buttons, the settings popover (`details.preferences`, whose `summary.dock-settings` is the word "settings") and `#palette-trigger` (the word "commands" and its shortcut; hidden under 760px). The popover is positioned against the masthead: below it on desktop, above the bar on mobile. Chrome controls are words; there are no icons. Restart (`#restart-button`) stays in the typing footer.
 
-Selection pills: a `.glide` container with `data-glide="current"` follows `aria-current`; `data-glide="pressed"` follows `aria-pressed`. Its `.glide-pill` is aria-hidden decoration; state always lives in the ARIA attributes and `.is-active`.
+Gliding underline: a `.glide` container with `data-glide="current"` follows `aria-current`; `data-glide="pressed"` follows `aria-pressed`. Its `.glide-pill` is an aria-hidden 2px green underline; state always lives in the ARIA attributes and `.is-active`, and app.js moves the underline whenever those attributes change. The challenge tabs (`#challenge-online`, `#challenge-daily`, `#challenge-local` in `.challenge-modes`) are a `data-glide="pressed"` group.
 
 Settings are `#theme-select` (`system`, `dark`, `light`), `#font-size` (`22`, `28`, `36`), `#live-toggle`, `#keyboard-toggle`, `#stop-on-error-toggle`, and `#focus-toggle`; `#exit-focus` sits outside the dock. Apply theme as `html[data-theme]`; font size as `body[data-font-size]`; live metrics as `body[data-live-metrics]`; keyboard as `body[data-keyboard]`; focus mode as `body[data-focus-mode]`. Stop on error defaults on; turning it off permits advancement after mistakes. Changing the correction policy starts a new practice run. The policy is stored in run conditions, keeping bests and comparisons separate. The generated keyboard belongs in `#keyboard`. Escape or `#exit-focus` exits focus mode before applying the ordinary Escape restart behavior.
 
@@ -36,6 +36,8 @@ Required IDs: `typing-screen`, `typing-form`, `typing-input`, `typing-wrap`, `te
 `#live-stats` is plain text and is not a live region; update it at a restrained cadence. Completion is announced once through `#announcement`.
 
 Practice mode controls are `#mode-time`, `#mode-words`, `#mode-quote`, `#duration-options`, `#punctuation-toggle`, `#quote-options`, `#quote-length`, and `#quote-difficulty`. Generated length buttons belong in `#duration-options` and use `aria-pressed`.
+
+The footer's `.footer-links` holds links to `/privacy.html` and `/privacy.html#terms` (one static page, served and built alongside `index.html`) and `#suggest-trigger`. `#online-friends` and `#online-inbox` start with `aria-busy="true"` and show `.loading-rows` placeholders until their first load finishes or fails.
 
 `#best` in the footer shows the personal best for the current conditions, or states that there is none. `#suggest-trigger` beside it (and the palette command "suggest a feature…") opens `dialog#suggest-dialog`: `#suggest-text` (max 1000 characters, counted in `#suggest-count`), errors in `#suggest-error`, a hidden honeypot `#suggest-website`, and `#send-suggest`, which inserts `{ body, view }` into the Supabase `feature_suggestions` table through `sendSuggestion` in `src/account.js`, always as the anonymous role (a filled honeypot sends nothing). Success closes the dialog and shows `#suggest-toast`; failure keeps the text. Opening it mid-run marks the run interrupted, like the palette.
 
@@ -91,9 +93,9 @@ Required IDs: `history-list`, `history-row-template`, `progress-empty`, `clear-h
 
 Required IDs: `account`, `account-trigger`, `account-guest`, `account-create`, `account-google`, `account-signin`, `account-member`, `account-email`, `account-sync`, `account-signout`, `account-dialog`, `account-form`, `account-dialog-title`, `account-dialog-copy`, `account-dialog-google`, `account-email-input`, `account-password`, `account-error`, `account-switch`, `account-cancel`, `account-submit`, `account-confirm`, `account-confirm-email`, `account-confirm-done`, `account-toast`, `account-feedback`, and `guest-note`.
 
-`.corner` holds `details#inbox` and `#account` top right; between 761 and 1023 px the inbox sits under the account button so the pair clears the dock. `#inbox` (members only) has `#inbox-trigger`, the unread count `#inbox-count`, `#inbox-list` entries with `[data-inbox-action]`, `#inbox-empty` and `#inbox-clear`. `aside#challenge-toast` (`#challenge-toast-text`, `#challenge-toast-action`, `#challenge-toast-close`) drops in under the corner for a new challenge or rematch and leaves after 18 s, held on hover or focus, and waits while a run is in progress.
+`.corner` holds `details#inbox` and `#account` at the right end of the masthead row, on the same rule; under 760px it is a short row at the top of the page. `#inbox-trigger` reads "inbox" and `#account-trigger` reads "sign in" or "account"; both keep their aria-labels. `#inbox` (members only) has `#inbox-trigger`, the unread count `#inbox-count`, `#inbox-list` entries with `[data-inbox-action]`, `#inbox-empty` and `#inbox-clear`. `aside#challenge-toast` (`#challenge-toast-text`, `#challenge-toast-action`, `#challenge-toast-close`) drops in under the masthead, on the content's right edge, for a new challenge or rematch and leaves after 18 s, held on hover or focus, and waits while a run is in progress.
 
-`#account` is a `details` menu fixed top right (it scrolls with the page on mobile, where the dock is at the bottom) and fades with the chrome while a run is in progress. `#account[data-state]` is `guest` or `member`; `#account[data-sync]` is `guest`, `syncing`, `synced`, `offline` or `expired`. Guests see the three sign-in choices and `#guest-note` in the footer; nothing is written to storage for them. Email sign-up that needs confirmation shows `#account-confirm` instead of the form. Signing in or out reloads the page as the new user.
+`#account` is a `details` menu at the right of the masthead (it scrolls with the page) and fades with the chrome while a run is in progress. `#account[data-state]` is `guest` or `member`; `#account[data-sync]` is `guest`, `syncing`, `synced`, `offline` or `expired`. Guests see the three sign-in choices and `#guest-note` in the footer; nothing is written to storage for them. Email sign-up that needs confirmation shows `#account-confirm` instead of the form. Signing in or out reloads the page as the new user.
 
 ## Ghost pacer
 

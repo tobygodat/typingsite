@@ -38,14 +38,14 @@
   --space-14: 56px;
   --space-16: 64px;
 
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-control: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 22px;
+  /* Two corners only: small for marks and keys, the rest for every control and surface. */
+  --radius-sm: 4px;
+  --radius: 6px;
   --radius-full: 999px;
 
   --control: 44px;
+  --masthead: 72px;
+  --rule-mark: 2px;
   --content-max: 1080px;
 
   /* Motion: every duration scales from one place and drops to zero for reduced motion. */
@@ -79,9 +79,6 @@
   --warning: #e0b565;
   --selection: #34322e;
   --ghost: #b9c3ff;
-  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --card-top: #1f1e1c;
-  --card-bottom: #121211;
 }
 
 :root[data-theme="light"] {
@@ -103,9 +100,6 @@
   --warning: #8a5a00;
   --selection: #e3dccf;
   --ghost: #4f5bc4;
-  --shadow-float: 0 8px 24px rgba(70, 56, 30, 0.12);
-  --card-top: #fffdf9;
-  --card-bottom: #efeae1;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -207,41 +201,41 @@ kbd {
 
 /* ── Shell ──────────────────────────────────────────────────────────────── */
 
+/* Desktop: a masthead on one hairline rule that scrolls with the page, the corner closing the
+   same row. Phones: the navigation becomes a flush bar along the bottom edge. */
 .app-shell {
   width: min(var(--content-max), calc(100% - 48px));
   min-height: 100vh;
   min-height: 100svh;
   margin-inline: auto;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: auto 1fr auto;
 }
 
+.app-shell > * { grid-column: 1 / -1; }
+#main-content { grid-row: 2; }
+.site-footer { grid-row: 3; }
+
 .dock-zone {
-  position: sticky;
-  top: 0;
+  grid-column: 1;
+  grid-row: 1;
+  position: relative;
   z-index: 40;
-  display: flex;
-  justify-content: center;
-  padding-top: var(--space-4);
-  pointer-events: none;
+  min-width: 0;
+  border-bottom: 1px solid var(--hairline);
 }
 
 .dock {
   position: relative;
-  pointer-events: auto;
-  height: 58px;
-  padding: 6px 6px 6px 20px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
-  background: var(--raised);
-  box-shadow: var(--shadow-float);
+  height: var(--masthead);
   display: flex;
   align-items: center;
   gap: var(--space-1);
 }
 
 .brand {
-  margin-right: var(--space-4);
+  margin-right: var(--space-6);
   padding: 4px 2px;
   color: var(--text);
   text-decoration: none;
@@ -253,35 +247,41 @@ kbd {
 .brand-word { font-style: italic; font-weight: 500; letter-spacing: -0.01em; }
 .brand-dot { color: var(--accent); font-weight: 700; }
 
-/* Gliding indicator shared by the dock, the mode segments and the length segments. */
+/* Gliding underline shared by the masthead, the mode and length choices and the challenge
+   tabs: a short green rule under the current word. --glide-inset trims it to the text. */
 .glide { position: relative; isolation: isolate; }
 
 .glide-pill {
   position: absolute;
   z-index: -1;
-  top: var(--pill-y, 3px);
-  left: 0;
-  width: var(--pill-w, 0);
-  height: var(--pill-h, 0);
-  border-radius: var(--radius-control);
-  background: var(--raised-2);
-  transform: translateX(var(--pill-x, 0));
+  top: calc(var(--pill-y, 0px) + var(--pill-h, 0px) - var(--rule-mark) - var(--glide-lift, 0px));
+  left: var(--glide-inset, 0px);
+  width: calc(var(--pill-w, 0px) - 2 * var(--glide-inset, 0px));
+  height: var(--rule-mark);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  transform: translateX(var(--pill-x, 0px));
   opacity: var(--pill-o, 0);
-  transition: transform var(--dur-base) var(--ease-out);
+  transition: transform var(--dur-base) var(--ease-out), width var(--dur-base) var(--ease-out);
 }
 
 .glide.no-anim .glide-pill { transition: none; }
 
-.dock-nav { display: flex; align-items: center; gap: 2px; }
+.dock-nav {
+  --glide-inset: var(--space-3);
+  --glide-lift: var(--space-2);
+  display: flex;
+  align-items: center;
+}
 
 .nav-item {
   height: var(--control);
-  padding: 0 18px;
+  padding: 0 var(--space-3);
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
   background: transparent;
   color: var(--muted);
-  font-size: 16px;
+  font-size: var(--text-body);
   white-space: nowrap;
   transition: color var(--dur-quick) var(--ease-out);
 }
@@ -291,65 +291,47 @@ kbd {
 
 .nav-label-short { display: none; }
 
-.dock-sep {
-  width: 1px;
-  height: 24px;
-  margin: 0 var(--space-1);
-  background: var(--hairline-strong);
-  flex: none;
-}
+/* Settings and commands are words at the right of the masthead, before the corner. */
+.preferences { margin-left: auto; }
 
 .dock-command {
-  width: var(--control);
   height: var(--control);
-  padding: 0;
+  padding: 0 var(--space-3);
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
   background: transparent;
   color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out);
+  font-size: var(--text-body);
+  line-height: var(--control);
+  white-space: nowrap;
+  display: inline-block;
+  transition: color var(--dur-quick) var(--ease-out);
 }
 
-.dock-command:hover { color: var(--text); background: var(--raised-2); }
-.dock-command .search-glyph { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.dock-command:hover { color: var(--text); }
+/* The shortcut shares the word's baseline. */
+.dock-command kbd { min-width: 0; height: auto; margin-left: var(--space-1); padding: 0; border: 0; display: inline; color: var(--muted); white-space: nowrap; }
+.dock-settings { cursor: pointer; }
 
-/* Settings is a labelled dock control so it is findable from every screen. */
-.dock-settings { width: auto; padding: 0 14px 0 12px; gap: var(--space-2); cursor: pointer; }
-.dock-settings .settings-glyph { width: 19px; height: 19px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-
-.icon-control {
-  width: var(--control);
+/* Small word actions, such as restart, set in Literata like the rest of the chrome. */
+.text-control {
   height: var(--control);
-  padding: 0;
+  padding: 0 var(--space-3);
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
   background: transparent;
   color: var(--muted);
-  display: inline-grid;
-  place-items: center;
-  transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out);
+  font-size: var(--text-small);
+  white-space: nowrap;
+  transition: color var(--dur-quick) var(--ease-out);
 }
 
-.icon-control:hover { color: var(--text); background: var(--raised-2); }
-
-.icon-control svg,
-.palette-search svg {
-  width: 19px;
-  height: 19px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
+.text-control:hover { color: var(--text); }
 
 .preferences { flex: none; }
 .preferences summary { list-style: none; }
 .preferences summary::-webkit-details-marker { display: none; }
-.preferences[open] summary { color: var(--text); background: var(--raised-2); }
+.preferences[open] summary { color: var(--text); }
 
 .preferences-popover {
   position: absolute;
@@ -357,13 +339,12 @@ kbd {
   top: calc(100% + var(--space-2));
   right: 0;
   width: 340px;
-  max-height: calc(100svh - 58px - var(--space-10));
+  max-height: calc(100svh - var(--masthead) - var(--space-10));
   overflow-y: auto;
   padding: var(--space-3);
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   background: var(--raised);
-  box-shadow: var(--shadow-float);
   animation: fade-in var(--dur-quick) var(--ease-out);
 }
 
@@ -385,107 +366,84 @@ kbd {
 .preference-row .select { width: 104px; height: 36px; font-size: 14px; }
 
 .site-footer {
-  padding: var(--space-8) 0 var(--space-6);
+  padding: var(--space-6) 0;
+  border-top: 1px solid var(--hairline);
   display: flex;
-  justify-content: space-between;
-  gap: var(--space-6);
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-6);
   color: var(--muted);
-  font: var(--text-fine)/1.5 var(--font-mono);
-  letter-spacing: 0.02em;
+  font-size: var(--text-label);
+  line-height: 1.5;
 }
+
+.footer-links { margin-left: auto; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
 
 .personal-best { color: var(--muted); }
 
-/* Corner: the inbox and the person button, top right, level with the dock, on the same raised surface. */
+/* Corner: the inbox and the account, closing the masthead row on the same rule (the grid
+   row stretches it to the masthead's height). */
 .corner {
-  position: fixed;
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
   z-index: 40;
-  top: var(--space-4);
-  right: var(--space-4);
+  padding-left: var(--space-4);
+  border-bottom: 1px solid var(--hairline);
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-1);
 }
-
-.account,
-.inbox { position: relative; }
 
 .corner summary { list-style: none; }
 .corner summary::-webkit-details-marker { display: none; }
 
 .corner-trigger {
-  width: 58px;
-  height: 58px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
-  background: var(--raised);
-  box-shadow: var(--shadow-float);
+  height: var(--control);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius);
   color: var(--muted);
-  display: grid;
-  place-items: center;
+  font-size: var(--text-body);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   cursor: pointer;
   transition: color var(--dur-quick) var(--ease-out);
 }
+
+/* The last word ends flush with the rule, like the brand starts it. */
+.account-trigger { padding-right: 0; }
 
 .corner-trigger:hover,
 .corner details[open] > .corner-trigger,
 .account[data-state="member"] .account-trigger { color: var(--text); }
 
-.corner-trigger svg {
-  width: 21px;
-  height: 21px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
+/* Guests are offered "sign in"; a signed-in person sees "account". */
+.account-label-member,
+.account[data-state="member"] .account-label-guest { display: none; }
+.account[data-state="member"] .account-label-member { display: inline; }
 
-/* Signed in: a small green mark on the person, the current state. */
-.account[data-state="member"] .account-trigger { position: relative; }
-.account[data-state="member"] .account-trigger::after {
-  content: "";
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-}
-
+/* Panels hang from the corner's right edge, just under the rule. */
 .corner-popover {
   position: absolute;
   z-index: 50;
   top: calc(100% + var(--space-2));
   right: 0;
   width: 300px;
+  max-width: calc(100vw - var(--space-8));
   padding: var(--space-4);
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   background: var(--raised);
-  box-shadow: var(--shadow-float);
   animation: fade-in var(--dur-quick) var(--ease-out);
 }
 
-/* Inbox: unread entries are counted on the envelope; the list keeps the newest thirty. */
-.corner-trigger { position: relative; }
-
+/* Inbox: the unread count is a green numeral after the word; the list keeps the newest thirty. */
 .inbox-count {
-  position: absolute;
-  top: 9px;
-  right: 7px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-family: var(--font-serif);
-  font-size: var(--text-fine);
+  color: var(--accent);
+  font-size: var(--text-label);
   font-weight: 500;
-  line-height: 18px;
-  text-align: center;
 }
 
 .inbox-popover { width: 340px; }
@@ -559,7 +517,7 @@ kbd {
   height: var(--control);
   padding: 0 20px;
   border: 1px solid transparent;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
   background: transparent;
   color: var(--text);
   font-size: 16px;
@@ -604,7 +562,7 @@ kbd {
   width: 100%;
   padding: 0 14px;
   border: 1px solid var(--outline);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
   background: var(--raised);
   color: var(--text);
   font-size: 16px;
@@ -638,7 +596,6 @@ kbd {
   height: 16px;
   border-radius: var(--radius-full);
   background: var(--text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   transition: transform var(--dur-base) var(--ease-out), background-color var(--dur-base) var(--ease-out);
 }
 
@@ -710,34 +667,37 @@ kbd {
   padding-top: var(--space-10);
 }
 
+/* The choices' own padding is pulled back so their words line up with the passage. */
 .practice-controls {
-  margin: 0 auto var(--space-14);
+  margin: 0 0 var(--space-14) calc(var(--space-2) * -1);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
+  gap: var(--space-3) var(--space-6);
+}
+
+/* Choices are words on the page; the current one carries the green underline. Groups are
+   divided by a short hairline, not boxed. */
+.practice-controls > :not(:first-child) {
+  padding-left: var(--space-6);
+  border-left: 1px solid var(--hairline);
 }
 
 .segmented {
-  padding: 3px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-control);
+  --glide-inset: var(--space-2);
+  --glide-lift: var(--space-1);
   display: flex;
   align-items: center;
-  gap: 2px;
 }
-
-.segmented .glide-pill { border-radius: var(--radius); }
 
 .segmented button {
   height: 36px;
-  padding: 0 15px;
+  padding: 0 var(--space-2);
   border: 0;
   border-radius: var(--radius);
   background: transparent;
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--text-small);
   transition: color var(--dur-quick) var(--ease-out);
 }
 
@@ -745,18 +705,15 @@ kbd {
 .segmented button[aria-pressed="true"] { color: var(--text); }
 
 .segmented.compact button {
-  min-width: 46px;
-  padding: 0 8px;
+  min-width: 36px;
+  padding: 0 var(--space-2);
   font: 500 13px/1 var(--font-mono);
 }
 
 .compact-switch {
-  height: 44px;
-  padding: 0 14px 0 12px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-control);
+  height: 36px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--text-small);
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -770,10 +727,9 @@ kbd {
 .compact-switch .switch:checked::before { transform: translateX(12px); }
 
 .quote-options {
-  margin: calc(var(--space-10) * -1) auto var(--space-10);
+  margin: calc(var(--space-10) * -1) 0 var(--space-10);
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
   gap: var(--space-2) var(--space-4);
 }
 
@@ -1076,6 +1032,7 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 }
 
 .typing-actions {
+  margin-right: calc(var(--space-3) * -1);
   display: flex;
   align-items: center;
   flex: none;
@@ -1163,14 +1120,14 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 /* Before the first run there is no print to show; the copy takes the whole width. */
 .results-layout:has(> .run-card[hidden]) { grid-template-columns: minmax(0, 1fr); }
 
-/* A static print: card stock, the speed graph, the number, the facts. */
+/* A static print: one flat raised sheet, the speed graph, the number, the facts. */
 .run-card {
   position: sticky;
-  top: 104px;
+  top: var(--space-8);
   padding: 22px;
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xl);
-  background: linear-gradient(165deg, var(--card-top), var(--card-bottom));
+  border-radius: var(--radius);
+  background: var(--raised);
   display: grid;
   gap: var(--space-4);
 }
@@ -1188,7 +1145,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .graph-average { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 4; }
 .graph-label { fill: var(--muted); font: var(--text-fine) var(--font-mono); font-variant-numeric: tabular-nums; }
 .graph-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.graph-miss { fill: var(--danger); stroke: var(--card-top); stroke-width: 1.5; }
+.graph-miss { fill: var(--danger); stroke: var(--raised); stroke-width: 1.5; }
 
 /* The line draws once, left to right, and the mistakes fade in to finish with it. */
 .is-drawing .graph-line { stroke-dasharray: 1; animation: graph-draw var(--dur-develop) var(--ease-out) both; }
@@ -1459,9 +1416,58 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 /* ── Challenge ──────────────────────────────────────────────────────────── */
 
-.challenge-modes { display: flex; gap: var(--space-2); margin-bottom: var(--space-8); }
-.challenge-modes [aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+/* Online, daily and one keyboard are tabs in words, underlined like the masthead. */
+.challenge-heading { flex-wrap: wrap; border-bottom: 1px solid var(--hairline); padding-bottom: var(--space-4); }
+.challenge-modes {
+  --glide-inset: var(--space-2);
+  --glide-lift: var(--space-1);
+  margin-right: calc(var(--space-2) * -1);
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.challenge-tab {
+  height: var(--control);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-body);
+  white-space: nowrap;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+
+.challenge-tab:hover:not(:disabled),
+.challenge-tab[aria-pressed="true"] { color: var(--text); }
+.challenge-tab:disabled { opacity: 0.38; cursor: not-allowed; }
 .online-copy { color: var(--muted); font-size: var(--text-small); }
+
+/* Until friends and invitations arrive, quiet ruled rows stand in for them instead of empty copy. */
+.loading-rows { display: none; }
+[aria-busy="true"] > .loading-rows { display: grid; }
+[aria-busy="true"] > .online-copy { display: none; }
+
+.loading-rows span {
+  min-height: var(--space-16);
+  border-bottom: 1px solid var(--hairline);
+  display: grid;
+  align-content: center;
+  gap: var(--space-2);
+}
+
+.loading-rows span::before,
+.loading-rows span::after {
+  content: "";
+  height: var(--space-3);
+  width: 38%;
+  border-radius: var(--radius-sm);
+  background: var(--raised-2);
+}
+
+.loading-rows span::after { height: var(--space-2); width: 56%; }
+.loading-rows span:nth-child(2)::before { width: 28%; }
+.loading-rows span:nth-child(3)::before { width: 44%; }
 .online-optional { font-size: var(--text-fine); }
 .online-setup { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-6); }
 .online-setup > .online-copy { grid-column: 1 / -1; margin: 0; }
@@ -1594,9 +1600,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   max-width: 460px;
   padding: var(--space-8);
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   background: var(--raised);
-  box-shadow: var(--shadow-float);
   display: grid;
   justify-items: center;
   gap: var(--space-6);
@@ -1648,9 +1653,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 .palette-box {
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius);
   background: var(--raised);
-  box-shadow: var(--shadow-float);
   overflow: hidden;
   animation: palette-in var(--dur-quick) var(--ease-out);
 }
@@ -1699,7 +1703,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   left: var(--space-2);
   right: var(--space-2);
   height: var(--hl-h, 46px);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
   background: var(--raised-2);
   transform: translateY(var(--hl-y, 0));
   opacity: var(--hl-o, 0);
@@ -1719,7 +1723,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .palette-option {
   min-height: 46px;
   padding: 0 var(--space-3);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1746,10 +1750,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   width: min(460px, calc(100% - 32px));
   padding: 0;
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius);
   background: var(--raised);
   color: var(--text);
-  box-shadow: var(--shadow-float);
 }
 
 #clear-dialog[open],
@@ -1802,9 +1805,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   max-width: calc(100% - 32px);
   padding: 6px 6px 6px 18px;
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   background: var(--raised);
-  box-shadow: var(--shadow-float);
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -1823,10 +1825,11 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .account-toast .status-dot { color: var(--warning); }
 .egg-toast { padding-right: 20px; bottom: calc(var(--space-6) + 64px); }
 
-/* A race challenge drops in under the corner buttons, then leaves after TOAST_MS in src/inbox.js. */
+/* A race challenge drops in under the corner, aligned to the content's right edge, then leaves
+   after TOAST_MS in src/inbox.js. */
 .challenge-toast {
-  top: calc(var(--space-4) + 58px + var(--space-2));
-  right: var(--space-4);
+  top: calc(var(--masthead) + var(--space-2));
+  right: max(var(--space-6), calc((100% - var(--content-max)) / 2));
   bottom: auto;
   left: auto;
   max-width: min(440px, calc(100% - 32px));
@@ -1839,8 +1842,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 .challenge-toast #challenge-toast-text { min-width: 0; overflow-wrap: anywhere; }
-.toast-close { width: 36px; padding: 0; justify-content: center; }
-.toast-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .egg-toast.is-solo { bottom: var(--space-6); }
 
 .ghost-mark {
@@ -1850,6 +1851,47 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   border-radius: var(--radius-full);
   background: var(--ghost);
 }
+
+/* ── Privacy and terms (privacy.html) ──────────────────────────────────── */
+
+.document-back { margin: 0 calc(var(--space-3) * -1) 0 auto; text-decoration: none; }
+
+.document { padding: var(--space-14) 0 var(--space-16); }
+
+.document-head {
+  padding-bottom: var(--space-8);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.document-head h1 {
+  margin: var(--space-3) 0;
+  font-size: var(--text-display);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+}
+
+.document-lede { max-width: 58ch; margin: 0; color: var(--muted); font-size: var(--text-lead); }
+
+.document-body {
+  padding-top: var(--space-10);
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--space-16);
+  align-items: start;
+}
+
+.document-toc { position: sticky; top: var(--space-8); display: grid; justify-items: start; gap: var(--space-2); }
+.document-toc .panel-label { margin: 0 0 var(--space-1); }
+.document-toc a { color: var(--muted); font-size: var(--text-small); text-decoration: none; transition: color var(--dur-quick) var(--ease-out); }
+.document-toc a:hover { color: var(--text); }
+
+.document-text { max-width: 62ch; }
+.document-text h2 { margin: 0 0 var(--space-2); font-size: var(--text-title); }
+.document-text section { padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
+.document-text h3 { margin: 0 0 var(--space-2); font-size: var(--text-lead); }
+.document-text p { margin: 0; color: var(--muted); }
+.document-text #terms { margin-top: var(--space-10); }
+.document-text [id] { scroll-margin-top: var(--space-8); }
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 
@@ -1863,17 +1905,20 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .race-result-row { grid-template-columns: 1fr 1fr; }
 }
 
-/* The centred dock must clear the account button: below 900px settings drops to its icon. */
-@media (max-width: 900px) and (min-width: 761px) {
-  .nav-item { padding: 0 12px; }
-  .dock-settings { width: var(--control); padding: 0; justify-content: center; }
-  .dock-settings .dock-label { display: none; }
+/* Narrower desktops: the masthead tightens, and below 900px the brand gives its room to the
+   words (the practice link still leads home). */
+@media (max-width: 1023px) and (min-width: 761px) {
+  .brand { margin-right: var(--space-3); }
+  .dock-nav { --glide-inset: var(--space-2); }
+  .nav-item, .dock-command { padding: 0 var(--space-2); }
+  .dock-command kbd { display: none; }
+  .corner { padding-left: var(--space-2); }
+  .corner-trigger { padding: 0 var(--space-2); }
+  .account-trigger { padding-right: 0; }
 }
 
-/* Side by side, the corner would meet the centred dock: the inbox moves under the person. */
-@media (max-width: 1023px) and (min-width: 761px) {
-  .corner { flex-direction: column-reverse; align-items: flex-end; }
-  .challenge-toast { top: calc(var(--space-4) + 2 * (58px + var(--space-2))); }
+@media (max-width: 900px) and (min-width: 761px) {
+  .brand { display: none; }
 }
 
 /* A card taller than the viewport cannot stick without hiding its foot. */
@@ -1884,45 +1929,43 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 @media (max-width: 760px) {
   .app-shell { width: calc(100% - 32px); padding-bottom: 96px; }
 
+  /* A flush bar along the bottom edge: one rule above it, the ground behind it. */
   .dock-zone {
     position: fixed;
-    top: auto;
     bottom: 0;
     left: 0;
     right: 0;
-    padding: 0 12px calc(12px + env(safe-area-inset-bottom));
+    padding: 0 var(--space-2) env(safe-area-inset-bottom);
+    border-top: 1px solid var(--hairline-strong);
+    border-bottom: 0;
+    background: var(--ground);
   }
 
-  .dock { width: 100%; height: 62px; padding: 6px 4px; gap: 2px; justify-content: space-between; }
-  .brand, .dock-sep { display: none; }
-  .dock-nav { flex: 1; min-width: 0; justify-content: space-between; gap: 0; }
-  .nav-item { flex: 1 1 auto; min-width: var(--control); padding: 0 4px; font-size: 14px; }
-  .dock-command { flex: none; }
-  .dock-settings { width: var(--control); padding: 0; justify-content: center; }
-  .dock-settings .dock-label { display: none; }
+  .dock { height: 60px; gap: 0; justify-content: space-between; }
+  .brand { display: none; }
+  .dock-nav { flex: 1; min-width: 0; justify-content: space-between; --glide-inset: var(--space-1); }
+  .nav-item { min-width: var(--control); padding: 0 var(--space-1); font-size: var(--text-small); }
+  /* Commands is a keyboard palette; everything in it is on screen as well. */
+  #palette-trigger { display: none; }
+  .preferences { margin-left: var(--space-2); }
+  .dock-settings { padding: 0 var(--space-1); font-size: var(--text-small); }
 
-  .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, 100%); max-height: calc(100svh - 62px - var(--space-10)); }
+  .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, calc(100vw - var(--space-4))); max-height: calc(100svh - 60px - var(--space-10)); }
 
-  /* The dock moves to the bottom; the corner stays top right and scrolls with the page. */
-  .app-shell { padding-top: var(--space-10); }
-  .corner { position: absolute; top: var(--space-3); right: var(--space-4); }
-  .corner-trigger { width: var(--control); height: var(--control); border-radius: var(--radius-control); }
-  .account[data-state="member"] .account-trigger::after { top: 9px; right: 9px; }
-  .corner-popover { width: min(300px, calc(100vw - var(--space-8))); }
-  .inbox-popover { right: calc(-1 * (var(--control) + var(--space-2))); width: min(340px, calc(100vw - var(--space-8))); }
-  .inbox-count { top: 2px; right: 1px; }
-
+  /* The bar moves to the bottom; the corner keeps a short row at the top and scrolls with the page. */
+  .corner { grid-column: 1 / -1; padding: var(--space-2) 0 0; border-bottom: 0; justify-content: flex-end; }
+  .corner-trigger { font-size: var(--text-small); }
 
   .screen { padding-top: var(--space-8); }
   .typing-screen { min-height: auto; padding-top: var(--space-6); }
 
   /* Two rows at most: mode and punctuation, then lengths. */
-  .practice-controls { margin-bottom: var(--space-6); gap: var(--space-2); }
+  .practice-controls { margin-bottom: var(--space-6); gap: var(--space-2) var(--space-4); }
+  .practice-controls > :not(:first-child) { padding-left: 0; border-left: 0; }
   #duration-options { order: 1; }
-  .segmented button { height: 40px; padding: 0 12px; }
-  .segmented.compact button { min-width: 44px; padding: 0 6px; }
-  .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
-  .quote-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
+  .segmented.compact button { min-width: var(--control); }
+  .compact-switch { gap: var(--space-2); }
+  .quote-options { margin: calc(var(--space-4) * -1) 0 var(--space-6); }
   .quote-options .input { width: 112px; }
 
   .measure-row { flex-direction: column; align-items: stretch; gap: var(--space-4); }
@@ -1934,7 +1977,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   body[data-font-size="36"] .typing-wrap { --passage-size: 32px; }
   .shortcut-row { display: none; }
   .keyboard { display: none; }
-  .site-footer { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: var(--space-2); }
+  .site-footer { flex-direction: column; align-items: flex-start; gap: var(--space-3); }
+  .footer-links { margin-left: 0; }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
   #result-wpm { font-size: var(--text-numeral-mobile); }
@@ -1943,19 +1987,20 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .history-main { grid-column: 1 / -1; }
   .input-action { flex-direction: column; }
   .toast { bottom: 90px; }
-  .toast.challenge-toast { top: calc(var(--space-3) + var(--control) + var(--space-2)); right: var(--space-4); bottom: auto; left: var(--space-4); max-width: none; }
+  .toast.challenge-toast { top: calc(var(--space-2) + var(--control) + var(--space-2)); right: var(--space-4); bottom: auto; left: var(--space-4); max-width: none; }
   .egg-toast, .egg-toast.is-solo { bottom: 150px; }
   .handoff-veil { font-size: 26px; }
 }
 
 @media (max-width: 360px) {
-  .nav-item { padding: 0 2px; font-size: 13px; }
+  .nav-item { padding: 0 var(--space-1); font-size: 13px; }
+  .practice-controls { column-gap: var(--space-2); }
   .nav-label-full { display: none; }
   .nav-label-short { display: inline; }
 }
 
 @media (pointer: coarse) {
-  .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
+  .btn, .input, .nav-item, .segmented button, .text-control, .challenge-tab, .dock-command, .corner-trigger { min-height: 44px; }
 }
 
 @media (max-width: 760px) {
@@ -1968,4 +2013,15 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 @media (max-width: 360px) {
   #result-wpm { font-size: var(--text-numeral-narrow); }
+}
+
+/* The document page keeps its masthead at the top on phones: it has no navigation bar. */
+@media (max-width: 760px) {
+  .document-page .app-shell { padding-bottom: 0; }
+  .document-page .dock-zone { position: relative; padding: 0; border-top: 0; border-bottom: 1px solid var(--hairline); background: none; }
+  .document-page .brand { display: inline; }
+  .document-page .document { padding-top: var(--space-8); }
+  .document-body { grid-template-columns: 1fr; gap: var(--space-8); padding-top: var(--space-8); }
+  .document-toc { position: static; }
+  .document-head h1 { font-size: 38px; }
 }

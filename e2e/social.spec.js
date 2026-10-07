@@ -53,10 +53,12 @@ test('a saved friend is challenged without retyping their email, and the challen
     const toast = lin.locator('#challenge-toast');
     await expect(toast).toBeVisible({ timeout: 12000 });
     await expect(toast).toContainText('Ada challenged you to a race.');
+    // Under the masthead, its right edge on the content's right edge with the account.
     const box = await toast.boundingBox();
-    const viewport = lin.viewportSize();
+    const account = await lin.locator('#account-trigger').boundingBox();
     expect(box.y).toBeLessThan(200);
-    expect(box.x + box.width).toBeGreaterThan(viewport.width - 40);
+    expect(box.y).toBeGreaterThan(account.y + account.height);
+    expect(Math.abs(box.x + box.width - (account.x + account.width))).toBeLessThan(2);
     await expect(lin.locator('#inbox-count')).toHaveText(/^[1-9]/);
     await toast.getByRole('button', { name: 'Join' }).click();
     await expect(toast).toBeHidden();

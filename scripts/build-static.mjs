@@ -1,5 +1,5 @@
 // Copies exactly the files server.mjs serves into dist/ for static hosting:
-// index.html, src/*.js, src/*.css, the self-hosted fonts and their licence.
+// index.html, privacy.html, src/*.js, src/*.css, the self-hosted fonts and their licence.
 // Design references (design/), research and project documents stay out of the build.
 import { cp, mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
@@ -12,6 +12,7 @@ const matching = async (dir, pattern) => (await readdir(path.join(root, dir)))
   .map((name) => `${dir}/${name}`);
 const files = [
   'index.html',
+  'privacy.html',
   ...(await matching('src', /^[a-z-]+\.(?:js|css)$/)),
   ...(await matching('src/fonts', /^(?:[a-z0-9-]+\.(?:ttf|woff2)|OFL(?:-[a-z]+)?\.txt)$/)),
 ];

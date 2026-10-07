@@ -64,7 +64,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('challenge-online').setAttribute('aria-pressed', String(value === 'online'));
     $('challenge-local').setAttribute('aria-pressed', String(value === 'local'));
     $('challenge-daily').setAttribute('aria-pressed', String(value === 'daily'));
-    $('compete-heading').textContent = value === 'online' ? 'A passage shared. A race together.' : value === 'daily' ? 'A passage for today.' : 'Same passage. One keyboard.';
+    $('compete-heading').textContent = value === 'online' ? 'Race a friend' : value === 'daily' ? 'Today’s passage' : 'Take turns on one keyboard';
     setRunning(false);
     if (value === 'online') { fx.relayout(); refreshInvites(); }
   }
@@ -82,6 +82,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   }
   // The inbox polls invitations for every view; this screen lists the same ones.
   function renderInvites(invitations, failure) {
+    $('online-inbox').removeAttribute('aria-busy');
     if (failure) {
       $('online-invites-empty').hidden = false;
       $('online-invites-empty').textContent = failure.message;
@@ -143,6 +144,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   }
 
   function renderFriends(failure = null) {
+    $('online-friends').removeAttribute('aria-busy');
     $('online-friends-empty').hidden = friends.length > 0 && !failure;
     if (failure) $('online-friends-empty').textContent = failure.message;
     $('online-friend-list').replaceChildren(...friends.map((friend) => {

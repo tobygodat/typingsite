@@ -28,6 +28,8 @@ import { renderTrend } from './progress-view.js';
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
+// "1 run", "2 runs": counts in copy agree with their number.
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 const defaultPreferences = {
@@ -268,6 +270,13 @@ function updateGlide(container, { instant = false } = {}) {
 function updateGlides(options) {
   document.querySelectorAll('.glide').forEach((container) => updateGlide(container, options));
 }
+
+// Whoever changes the selection (a click, a shortcut, another module), the underline follows it.
+const glideWatch = new MutationObserver((changes) => {
+  const containers = new Set(changes.map((change) => change.target.closest('.glide')).filter(Boolean));
+  if (containers.size) requestAnimationFrame(() => containers.forEach((container) => updateGlide(container)));
+});
+document.querySelectorAll('.glide').forEach((container) => glideWatch.observe(container, { subtree: true, attributeFilter: ['aria-pressed', 'aria-current'] }));
 
 function applyPreferences() {
   document.body.dataset.fontSize = prefs.fontSize;
@@ -1099,7 +1108,7 @@ function trainingRecommendation(source) {
   const recurring = recurringTargets(profile.runs, profile.loops, source)[0];
   if (!recurring) return recommendation;
   const counts = recurring.errors
-    ? `${recurring.errors} first-try errors in ${recurring.observations} tries across ${recurring.runs} matching runs`
+    ? `${plural(recurring.errors, 'first-try error')} in ${plural(recurring.observations, 'try', 'tries')} across ${plural(recurring.runs, 'matching run')}`
     : `slower than your own run median in ${recurring.slowRuns} matching runs, with at least 10 clean intervals in each`;
   return { ...recommendation, kind: 'targeted', target: recurring.pair,
     title: `${recurring.review ? 'Revisit' : 'Practice'} “${recurring.pair}”`,
@@ -1117,7 +1126,7 @@ function renderTraining() {
     const row = element('article', '', 'training-target');
     const copy = document.createElement('div');
     copy.append(element('h3', `${target.review ? 'Revisit' : 'Practice'} “${target.pair}”`));
-    copy.append(element('p', `${target.errors} first-try errors / ${target.observations} tries · observed in ${target.runs} runs · errors in ${target.errorRuns} · slower than your median in ${target.slowRuns}`));
+    copy.append(element('p', `${plural(target.errors, 'first-try error')} / ${plural(target.observations, 'try', 'tries')} · observed in ${plural(target.runs, 'run')} · errors in ${target.errorRuns} · slower than your median in ${target.slowRuns}`));
     if (target.lastPracticed) copy.append(element('p', `Last practiced ${dateCopy(target.lastPracticed)}. ${target.laterObservations} observations on fresh runs since then.${target.lastCheck ? ` Last retest: ${target.lastCheck.comparison.state}.` : ''}`));
     row.append(copy, targetButton(target.pair, source));
     return row;
@@ -1138,11 +1147,11 @@ function renderHistory() {
   const matching = source ? filterRuns(eligible, key, period) : [];
   const week = weeklyChange(eligible, key);
   $('progress-week').textContent = week.wpm === null
-    ? `This week: ${week.current.length} matching runs. A week-to-week change needs runs in both this week and the preceding week.`
-    : `Weekly median: ${signed(week.wpm, 'wpm')} · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs this week / ${week.previous.length} last week. This describes your runs, not a proven learning effect.`;
+    ? `This week: ${plural(week.current.length, 'matching run')}. A week-to-week change needs runs in both this week and the preceding week.`
+    : `Weekly median: ${signed(week.wpm, 'wpm')} · ${signed(week.accuracy, 'pp accuracy')} · ${plural(week.current.length, 'run')} this week / ${week.previous.length} last week. This describes your runs, not a proven learning effect.`;
   renderTrend($('progress-trend'), matching, openHistoryRun);
   $('progress-trend-note').textContent = matching.length
-    ? `${matching.length} completed practice runs and retests, oldest to newest. Select a point or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs appear only in All saved runs.' : ''}`
+    ? `${plural(matching.length, 'completed practice run or retest', 'completed practice runs and retests')}, oldest to newest. Select a point or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs appear only in All saved runs.' : ''}`
     : 'No completed practice runs at these conditions in this period. Try a longer period or different conditions.';
   $('run-history').replaceChildren(...[...matching].reverse().map((run) => {
     const row = element('details', '', 'run-row');

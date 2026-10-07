@@ -19,8 +19,6 @@ colors:
   warning: "#e0b565"
   selection: "#34322e"
   ghost: "#b9c3ff"
-  card-top: "#1f1e1c"
-  card-bottom: "#121211"
   ground-light: "#f4f1eb"
   ground-2-light: "#ece8e0"
   raised-light: "#fbf9f5"
@@ -38,8 +36,6 @@ colors:
   warning-light: "#8a5a00"
   selection-light: "#e3dccf"
   ghost-light: "#4f5bc4"
-  card-top-light: "#fffdf9"
-  card-bottom-light: "#efeae1"
 typography:
   numeral:
     fontFamily: "Literata, Iowan Old Style, Palatino Linotype, Palatino, Book Antiqua, Georgia, serif"
@@ -95,11 +91,8 @@ typography:
     lineHeight: 1.4
     letterSpacing: "0.04em"
 rounded:
-  sm: "6px"
-  md: "10px"
-  control: "12px"
-  lg: "16px"
-  xl: "22px"
+  sm: "4px"
+  md: "6px"
   full: "999px"
 spacing:
   "1": "4px"
@@ -115,13 +108,13 @@ components:
   button-primary:
     backgroundColor: "{colors.accent}"
     textColor: "{colors.accent-ink}"
-    rounded: "{rounded.control}"
+    rounded: "{rounded.md}"
     padding: "0 20px"
     height: "44px"
   button-secondary:
     backgroundColor: "transparent"
     textColor: "{colors.text}"
-    rounded: "{rounded.control}"
+    rounded: "{rounded.md}"
     padding: "0 20px"
     height: "44px"
   button-secondary-hover:
@@ -129,7 +122,7 @@ components:
   button-ghost:
     backgroundColor: "transparent"
     textColor: "{colors.muted}"
-    rounded: "{rounded.control}"
+    rounded: "{rounded.md}"
     padding: "0 20px"
     height: "44px"
   button-ghost-hover:
@@ -138,7 +131,7 @@ components:
   button-danger:
     backgroundColor: "transparent"
     textColor: "{colors.danger}"
-    rounded: "{rounded.control}"
+    rounded: "{rounded.md}"
     padding: "0 20px"
     height: "44px"
   button-danger-hover:
@@ -146,14 +139,14 @@ components:
   input:
     backgroundColor: "{colors.raised}"
     textColor: "{colors.text}"
-    rounded: "{rounded.control}"
+    rounded: "{rounded.md}"
     padding: "0 14px"
     height: "44px"
   nav-item:
     backgroundColor: "transparent"
     textColor: "{colors.muted}"
-    rounded: "{rounded.control}"
-    padding: "0 18px"
+    rounded: "{rounded.md}"
+    padding: "0 12px"
     height: "44px"
   nav-item-active:
     textColor: "{colors.text}"
@@ -161,22 +154,21 @@ components:
     backgroundColor: "transparent"
     textColor: "{colors.muted}"
     rounded: "{rounded.md}"
-    padding: "0 15px"
+    padding: "0 8px"
     height: "36px"
-  dock:
+  masthead:
+    backgroundColor: "transparent"
+    textColor: "{colors.muted}"
+    height: "72px"
+  run-card:
     backgroundColor: "{colors.raised}"
     textColor: "{colors.text}"
-    padding: "6px 6px 6px 20px"
-    height: "58px"
-  run-card:
-    backgroundColor: "{colors.card-top}"
-    textColor: "{colors.text}"
-    rounded: "{rounded.xl}"
+    rounded: "{rounded.md}"
     padding: "22px"
   toast:
     backgroundColor: "{colors.raised}"
     textColor: "{colors.text}"
-    rounded: "{rounded.lg}"
+    rounded: "{rounded.md}"
     padding: "6px 6px 6px 18px"
 ---
 
@@ -186,9 +178,9 @@ components:
 
 **Creative North Star: "Afterimage"**
 
-The typing passage is the screen. Everything readable is set in one book face, Literata, on a warm near-black ground (or warm paper in light), so a passage reads like a page and a result reads like a print rather than a dashboard. One green carries every meaning of "act here" or "you are here": the caret, the primary button, the current selection and the timer. Content sits on hairline rules and open space. Boxes are kept for the few things that really are objects: the floating dock, the settings popover, the command palette, dialogs, toasts, and the run card.
+The typing passage is the screen. Everything readable is set in one book face, Literata, on a warm near-black ground (or warm paper in light), so a passage reads like a page and a result reads like a print rather than a dashboard. One green carries every meaning of "act here" or "you are here": the caret, the primary button, the current selection and the timer. Content sits on hairline rules and open space. Boxes are kept for the few things that really are objects: the settings and account popovers, the command palette, dialogs, toasts, and the run card. The navigation is a masthead of words on one hairline rule, not a floating bar.
 
-Motion is governed by "still run". While a run is in progress, nothing decorative moves near the passage. The caret is a solid spring-driven bar, letter states change instantly, lines scroll in about 150 ms, and the chrome fades out after the first keystroke. Motion belongs to chrome and to the time after a run: short fades, one gliding selection pill, and the run card's speed graph drawing once in about 450 ms. Every duration comes from one scale that drops to zero under reduced motion.
+Motion is governed by "still run". While a run is in progress, nothing decorative moves near the passage. The caret is a solid spring-driven bar, letter states change instantly, lines scroll in about 150 ms, and the chrome fades out after the first keystroke. Motion belongs to chrome and to the time after a run: short fades, one gliding green underline under the current choice, and the run card's speed graph drawing once in about 450 ms. Every duration comes from one scale that drops to zero under reduced motion.
 
 Density is low and deliberate. The practice screen centres the passage with the numbers above it and a small set of controls. Results, progress and challenge are single editorial columns separated by rules. The name "Stilltype" is a working title, so the wordmark stays a cheap italic word plus a green full stop.
 
@@ -196,7 +188,9 @@ Density is low and deliberate. The practice screen centres the passage with the 
 - Literata for everything readable, including the passage and every numeral; Geist Mono only for small measurement labels, conditions and keys.
 - Dark (default) and light theme sets; the theme follows the system until the user picks one.
 - One green accent; coral for mistyped letters and regressions; amber for interrupted and mixed results.
-- Rules and space instead of boxes; opaque raised surfaces with a single soft float shadow; no glass, no glow.
+- Rules and space instead of boxes; opaque raised surfaces with a strong hairline border and no shadow; no glass, no glow.
+- Words, not icons: settings, commands, inbox and account are lowercase words in the masthead.
+- Two corners only: 4px for marks and keys, 6px for every control and surface.
 - Still run: the passage area stays motionless apart from the caret and line scroll.
 - Results are a static print: a run card with a plain speed-over-time graph drawn from the real keystrokes.
 
@@ -217,13 +211,12 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 ### Neutral
 - **Warm Near-Black / Warm Paper** (ground): the page.
 - **Deep Ground** (ground-2): a quieter second ground.
-- **Raised Stock** (raised): opaque surfaces: dock, settings popover, palette, dialog, toasts, inputs.
-- **Raised Wash** (raised-2): the translucent hover and selection wash under nav items, ghost buttons, the gliding pill and the palette highlight.
+- **Raised Stock** (raised): opaque surfaces: the settings and account popovers, palette, dialog, toasts, inputs and the run card.
+- **Raised Wash** (raised-2): the translucent wash under ghost and secondary buttons on hover, the palette highlight and the loading placeholder bars.
 - **Bone** (text): primary text and correctly typed letters.
 - **Pumice** (muted): untyped passage letters, secondary copy, labels and inactive navigation.
 - **Hairline / Strong Hairline**: rules between sections and rows (hairline), and the borders of raised surfaces, keys and secondary buttons (hairline-strong).
 - **Field Outline** (outline): input borders.
-- **Card Stock** (card-top to card-bottom): the run card's 165-degree gradient, a subtle paper-stock sheen that sits only on that card.
 
 ### Named Rules
 **The One Green Rule.** Green means "act here" or "you are here" and nothing else. There is exactly one filled-green control per view: the primary button. Secondary controls get a neutral focus ring, so they never read as a second primary.
@@ -257,43 +250,42 @@ Weights in use are 300 (large numerals), 400 (headings and text), 500 (buttons, 
 
 **The Measuring Mono Rule.** Geist Mono appears at 12–13px for labels, conditions and keys. It is never used for headings, body copy or buttons.
 
-**The Lowercase Chrome Rule.** Chrome labels (dock, settings, palette, mono labels) are lowercase. Headings and buttons use sentence case. Nothing is uppercase.
+**The Lowercase Chrome Rule.** Chrome labels (masthead, corner, settings, palette, footer links, mono labels) are lowercase. Headings and buttons use sentence case. Nothing is uppercase.
 
 ## Layout
 
-A single centred column, `min(1080px, 100% - 48px)` wide (100% - 32px under 760px), in a three-row grid of dock, screen and footer. Screens open with 56px top padding (32px on mobile).
+A single centred column, `min(1080px, 100% - 48px)` wide (100% - 32px under 760px), in a three-row grid of masthead, screen and footer. The masthead row is two columns: the navigation, then the corner (inbox and account), both closed by the same hairline rule. Screens open with 56px top padding (32px on mobile).
 
-- **Practice:** the passage block is vertically centred in the viewport. Above it, a centred row of segmented controls; then a measure row of numbers (and, for drills and retests, the heading block) closed by a hairline rule; then the three-line passage, a 2px progress line, and a footer of help text and actions. A mono shortcut row and an optional on-screen keyboard sit below.
-- **Results:** a two-column grid (run card 320–400px, copy fluid, 64px gap). The run card is sticky at 104px from the top. Under 900px it stacks, with the card centred at up to 420px, and it stops sticking when the viewport is shorter than 720px.
-- **Progress / Challenge:** heading row, then hairline-separated rows on fixed column grids that collapse to two columns under 900px and 760px.
+- **Practice:** the passage block is vertically centred in the viewport. Above it, a left-aligned row of word choices (mode, length, punctuation) divided by short hairlines; then a measure row of numbers (and, for drills and retests, the heading block) closed by a hairline rule; then the three-line passage, a 2px progress line, and a footer of help text and actions. A mono shortcut row and an optional on-screen keyboard sit below.
+- **Results:** a two-column grid (run card 320–400px, copy fluid, 64px gap). The run card is sticky at 32px from the top. Under 900px it stacks, with the card centred at up to 420px, and it stops sticking when the viewport is shorter than 720px.
+- **Progress / Challenge:** heading row (Challenge carries its online, daily and one keyboard tabs on the right of its heading, over a hairline), then hairline-separated rows on fixed column grids that collapse to two columns under 900px and 760px.
 - **Spacing:** a 4px-based scale (4, 8, 12, 16, 24, 32, 40, 56, 64). Section breaks are 32px of padding above a hairline rule. Row padding is 12px (evidence) or 24px (history, race results).
-- **Breakpoints:** 900px (results and tables stack), 760px (dock moves to the bottom, keyboard and shortcuts hidden, type steps down), 360px (nav tightens), max-height 720px (run card un-sticks). Coarse pointers keep a 44px minimum target.
+- **Breakpoints:** 900px (results and tables stack), 1023px (masthead tightens, the shortcut beside "commands" hides), 900px (the wordmark leaves the masthead), 760px (the navigation becomes a flush bar along the bottom edge, commands hides, keyboard and shortcuts hidden, type steps down), 360px (nav tightens), max-height 720px (run card un-sticks). Coarse pointers keep a 44px minimum target.
 
 ### Named Rules
 **The Rules-Not-Boxes Rule.** Sections are separated by a 1px hairline and space, never by a card. If a region is not a floating object or the run card, it has no background and no border box.
 
-**The Step-Back Rule.** While a run is in progress (`body[data-running="true"]`), the dock, controls, shortcuts and footer fade to zero opacity and stop taking pointer input unless they hold focus. Only the passage and the numbers remain.
+**The Step-Back Rule.** While a run is in progress (`body[data-running="true"]`), the masthead, corner, controls, shortcuts and footer fade to zero opacity and stop taking pointer input unless they hold focus. Only the passage and the numbers remain.
 
 ## Elevation & Depth
 
-The page is flat. Depth appears only where an object floats over the page: the dock, the settings popover, the palette, the clear-history dialog, the challenge handoff card and toasts. These are opaque raised stock with a strong hairline border and one shared soft shadow. There is no backdrop blur and no translucency on surfaces. Modal backdrops are a flat dim (black at 42–50% in dark, warm brown at 22% in light). Keycaps (`kbd`, on-screen keys) get physical depth from a thicker bottom border (2px and 3px). This is the key's own material, not a shadow style.
+The page is flat, and so is everything on it. Objects that float over the page (the settings and account popovers, the palette, the dialogs, the challenge handoff card and toasts) are opaque raised stock with a strong hairline border. Nothing casts a shadow. There is no backdrop blur and no translucency on surfaces. Modal backdrops are a flat dim (black at 42–50% in dark, warm brown at 22% in light). Keycaps (`kbd`, on-screen keys) get physical depth from a thicker bottom border (2px and 3px). This is the key's own material, not a shadow style.
 
 ### Shadow Vocabulary
-- **Float** (`box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35)` dark; `0 8px 24px rgba(70, 56, 30, 0.12)` light): every floating surface, and only those.
-- **Switch thumb** (`box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3)`): the toggle knob only.
+None. The float shadow and the switch-thumb shadow were removed in the October 2026 audit; separation comes from the raised fill and the strong hairline. The only `box-shadow` left is the input focus ring.
 
 ### Named Rules
-**The Opaque Float Rule.** A surface that floats is opaque raised stock plus the float shadow. It has no glass, no blur behind it and no coloured glow.
+**The Opaque Float Rule.** A surface that floats is opaque raised stock with a strong hairline border. It has no shadow, no glass, no blur behind it and no coloured glow.
 
 ## Shapes
 
-Softly rounded, never pill-shaped except for switches and dots. Controls (buttons, inputs, nav items, icon buttons, segmented frames, the gliding pill and palette rows) use a 12px corner, and segment buttons inside a segmented frame use 10px. Popovers, toasts and the dock use 16px; the palette, dialog and run card 22px. Switches, dots, the caret bar and the 2px lines (progress, ghost) take the full round. Letter tints use 6px and keycaps 10px. Every corner comes from the `--radius-*` tokens; there are no raw radii. Borders are always 1px hairlines. The only drawn geometry is the chevron on the "drill something else" disclosure (a rotated 1.5px corner) and the line icons (19px, 1.6 stroke, round caps).
+Nearly square. There are two corners: `--radius-sm` (4px) for letter tints, keycaps and placeholder bars, and `--radius` (6px) for everything else: buttons, inputs, popovers, the palette, dialogs, toasts and the run card. Switches, dots, the caret bar and the 2px lines (progress, ghost, the gliding underline) take the full round. Every corner comes from the `--radius-*` tokens; there are no raw radii. Borders are always 1px hairlines. The only drawn geometry is the chevron on the "drill something else" disclosure (a rotated 1.5px corner). There are no icons: controls are words.
 
 ## Components
 
 ### Buttons
 Quiet and confident: one filled green button, and everything else recedes.
-- **Shape:** gently rounded (12px), 44px tall (34px for the small size), 16px Literata at weight 500.
+- **Shape:** 6px corners, 44px tall (34px for the small size), 16px Literata at weight 500.
 - **Primary:** accent fill, accent-ink text, weight 600. On hover, the fill mixes 12% toward the text colour.
 - **Secondary:** transparent with a strong hairline border; raised-wash fill on hover.
 - **Ghost:** muted text, no border; text brightens and gains the raised wash on hover.
@@ -301,19 +293,19 @@ Quiet and confident: one filled green button, and everything else recedes.
 - **Press / Disabled:** scale 0.98 on press, over 150ms; 38% opacity when disabled.
 - **Focus:** a neutral 2px ring in the text colour, 3px offset, on every control.
 
-### Segmented controls and the gliding pill
-Mode and length pickers are a 14px frame with a hairline border, holding 36px Literata options (13px Geist Mono for numeric lengths). The selected option's text turns to the text colour, and a raised-wash pill glides under it with a transform-only 200ms slide. The same pill marks the current dock item. The palette highlight glides the same way, vertically, in 150ms.
+### Word choices and the gliding underline
+Mode and length pickers are plain words with no frame: 36px Literata options (13px Geist Mono for numeric lengths). The selected option's text turns to the text colour, and a 2px green underline (`--rule-mark`), trimmed to the word by `--glide-inset`, glides under it with a 200ms slide. The same underline marks the current masthead item and the current challenge tab, and it follows any change to `aria-pressed` or `aria-current`, whoever makes it. The palette highlight glides the same way, vertically, in 150ms.
 
 ### Inputs / Fields
-- **Style:** raised fill, 1px outline border, 12px corners, 44px tall, 16px text.
+- **Style:** raised fill, 1px outline border, 6px corners, 44px tall, 16px text.
 - **Focus:** the border turns accent and gains a 3px accent-soft ring.
 - **Error:** a coral border (`aria-invalid`) and a 14px coral message below.
-- **Switch:** a 38×22 track (hairline-strong, accent when on) with a text-coloured knob that slides 16px.
+- **Switch:** a 38×22 track (hairline-strong, accent when on) with a flat text-coloured knob that slides 16px.
 
-### Navigation (the dock)
-A floating, opaque 58px bar with 18px corners, sticky at the top on desktop and fixed to the bottom under 760px (62px, full width, with safe-area padding). It holds the italic wordmark and green full stop, four lowercase nav items (muted, text colour on hover and when active, with the gliding pill), a hairline separator, a labelled settings control (icon and lowercase "settings"; icon only below 900px, so the centred dock clears the account button) and the ⌘K / Ctrl-K palette trigger, shown as a search icon at every width. The account button sits apart from the dock, top right. The settings popover is a 340px raised panel of 52px rows, anchored to the dock's right edge: below it on desktop, above it on mobile.
+### Navigation (the masthead)
+A 72px row on one hairline rule that scrolls with the page (`--masthead`). From the left: the italic wordmark and green full stop, four lowercase nav items in 17px Literata (muted, text colour on hover and when current, with the gliding underline), then, pushed right, the words "settings" and "commands" (with its ⌘K / Ctrl-K shortcut in mono), and the corner: "inbox" (a green numeral counts unread entries) and "sign in", or "account" once signed in. The last word ends flush with the rule. Below 1024px the masthead tightens and hides the shortcut; below 900px the wordmark leaves it. Under 760px the navigation becomes a flush 60px bar along the bottom edge on the page ground, with one strong hairline above it and safe-area padding; it holds the four nav items and "settings" (commands hides, since everything in the palette is also on screen), and the corner keeps a short row at the top of the page. The settings popover is a 340px raised panel of 52px rows, anchored to the masthead's right edge: below it on desktop, above the bar on mobile. The inbox and account panels hang from the corner's right edge, just under the rule.
 
-The footer holds the personal best, the guest note and a quiet "suggest a feature" link (mono label, hairline underline). It opens a dialog of the same raised stock as the clear-history dialog: a sentence-case heading, a note on what is stored, a textarea with a mono character count, and Cancel / Send suggestion (filled green). Success closes it and shows a toast; failure keeps the text and explains in coral below the field.
+The footer sits on a hairline rule in 14px Literata: the personal best and the guest note on the left, and "privacy", "terms" and "suggest a feature" on the right (hairline underlines). Privacy and terms lead to `privacy.html`, a document page that reuses the masthead with a "back to practice" link. "Suggest a feature" It opens a dialog of the same raised stock as the clear-history dialog: a sentence-case heading, a note on what is stored, a textarea with a mono character count, and Cancel / Send suggestion (filled green). Success closes it and shows a toast; failure keeps the text and explains in coral below the field.
 
 ### Status words
 A 7px dot in the current colour, followed by a lowercase 12px mono word, coloured by meaning (accent, warning, danger, muted). These are never boxed.
@@ -332,13 +324,16 @@ Below 360px, the run-card WPM uses `--text-numeral-narrow` (80px); the existing 
 Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint (no underline). The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost pacer is a 2px periwinkle bar at 70% opacity.
 
 ### Run card (signature)
-A static print: 22px corners, 22px padding, a strong hairline border, and the card-stock gradient. From top to bottom it holds a mono date stamp, the 16:9 speed graph (an SVG line chart: a 2px accent line of wpm per second, averaged over a trailing three seconds; a dotted muted line at the final wpm; coral dots on the line where mistakes happened; hairline gridlines at 0, half and top with 12px mono labels, and a mono time axis), a one-line mono legend, which draws once over about 450ms (`--dur-develop`), the numeral WPM with a mono unit, a three-column facts list (mono labels, 24px Literata values), an italic 13px metric note, and the mono conditions line. It does not tilt, shine or animate after the graph has drawn.
+A static print: 6px corners, 22px padding, a strong hairline border, and a flat raised fill. From top to bottom it holds a mono date stamp, the 16:9 speed graph (an SVG line chart: a 2px accent line of wpm per second, averaged over a trailing three seconds; a dotted muted line at the final wpm; coral dots on the line where mistakes happened; hairline gridlines at 0, half and top with 12px mono labels, and a mono time axis), a one-line mono legend, which draws once over about 450ms (`--dur-develop`), the numeral WPM with a mono unit, a three-column facts list (mono labels, 24px Literata values), an italic 13px metric note, and the mono conditions line. It does not tilt, shine or animate after the graph has drawn.
 
 ### Command palette
-A 600px opaque raised panel with 22px corners over a flat dim. It has a 62px search row (19px input) and 46px option rows with a 6px state dot (accent when selected). Mono group labels and mono hints sit on the right. It enters and exits with a 4px lift and fade over 150ms.
+A 600px opaque raised panel with 6px corners over a flat dim. It has a 62px search row (19px input, no glyph) and 46px option rows with a 6px state dot (accent when selected). Mono group labels and mono hints sit on the right. It enters and exits with a 4px lift and fade over 150ms.
 
 ### Toasts
-Opaque raised pills of 16px radius at the bottom centre, with a status dot and 15px text, rising 6px over 200ms.
+Opaque raised panels with 6px corners at the bottom centre, with a status dot and 15px text, rising 6px over 200ms. A race challenge drops in top right instead, just under the masthead, on the content's right edge, with a "Dismiss" word in place of a close icon.
+
+### Loading placeholders
+Until friends and invitations arrive, their sections (`aria-busy="true"`) show quiet ruled rows of raised-wash bars (4px corners) in place of the empty copy. They do not shimmer or pulse.
 
 ## Do's and Don'ts
 
@@ -349,15 +344,16 @@ Opaque raised pills of 16px radius at the bottom centre, with a status dot and 1
 - **Do** separate sections with a 1px hairline and 32px of space.
 - **Do** pair coral with a second cue: a tint or a word.
 - **Do** drive every duration from the `--dur-*` scale (80, 150, 200, 250, 350ms × `--motion-scale`) with the `--ease-out` curve (`cubic-bezier(0.22, 1, 0.36, 1)`), so reduced motion takes them all to zero.
-- **Do** keep chrome fades at 200ms or less, and animate the selection pill by transform only.
+- **Do** keep chrome fades at 200ms or less, and let only the gliding underline slide.
 - **Do** keep chrome labels lowercase and headings and buttons in sentence case.
 
 ### Don't:
 - **Don't** move anything decorative near the passage while a run is in progress. Letter states change instantly; only the caret spring and the ~150ms line scroll move.
 - **Don't** reintroduce the effects removed after the critique: a streak glow or caret aura, a letter ink trail (letters landing lit and cooling), an error shake, digit pop-ins or number reels, a word underline or lens sweeping through the glyphs, run-card tilt, glare or foil, glass surfaces, a live rhythm strip, or blur reveals on restart and results.
-- **Don't** use backdrop-filter, translucent surfaces or coloured glows. Floating surfaces are opaque raised stock with the one float shadow. (The challenge handoff's blurred passage veil is a concealment device that hides the next player's text. It is not a reveal effect and must not spread elsewhere.)
+- **Don't** use backdrop-filter, translucent surfaces or coloured glows. Floating surfaces are opaque raised stock with a strong hairline and no shadow. (The challenge handoff's blurred passage veil is a concealment device that hides the next player's text. It is not a reveal effect and must not spread elsewhere.)
 - **Don't** add kickers or eyebrows above headings, and don't use uppercase tracked labels.
 - **Don't** add a second accent. Periwinkle belongs to the ghost pacer alone, and amber to interrupted and mixed results alone.
 - **Don't** box ordinary sections as cards. The run card is the one card.
 - **Don't** move the app back toward the retired Ash system: no blue call to action, no Geist sans, no dark-only rule, no mono status pills.
+- **Don't** bring back what the October 2026 audit removed: the floating dock, drop shadows, soft 12–22px corners, line icons for chrome controls, boxed segmented frames, the run card's gradient, or empty copy while a list is still loading.
 - **Don't** invest in the wordmark. "Stilltype" is a working title, and the brand stays an italic word and a green full stop.

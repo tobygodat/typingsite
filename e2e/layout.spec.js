@@ -50,6 +50,19 @@ test('desktop keeps the dock at the top and the passage at three lines', async (
   expect(Math.round(wrap.height)).toBe(Math.round(lineHeight * 3));
 });
 
+test('the masthead is a ruled row of words, and the footer leads to privacy and terms', async ({ page }) => {
+  await openApp(page);
+  await expect(page.locator('.dock-zone')).toHaveCSS('border-bottom-style', 'solid');
+  for (const selector of ['nav.dock', '#account-trigger', '.preferences-popover']) await expect(page.locator(selector).first()).toHaveCSS('box-shadow', 'none');
+  expect(await page.locator('.dock-zone svg, .corner svg').count()).toBe(0);
+  expect(await page.locator('#account-trigger').evaluate((node) => node.innerText.trim())).toBe('sign in');
+  await page.getByRole('link', { name: 'privacy', exact: true }).click();
+  await expect(page).toHaveURL(/\/privacy\.html$/);
+  await expect(page.locator('h1')).toHaveText('Privacy and terms');
+  await expect(page.locator('#terms')).toBeVisible();
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+});
+
 test('Literata and Geist Mono load from this origin', async ({ page }) => {
   const fonts = [];
   page.on('response', (response) => { if (/\/src\/fonts\//.test(response.url())) fonts.push([new URL(response.url()).pathname, response.status()]); });
@@ -64,6 +77,7 @@ test('Literata and Geist Mono load from this origin', async ({ page }) => {
 test('the server hands out the app and nothing else', async ({ request }) => {
   for (const [path, type] of [
     ['/', 'text/html'],
+    ['/privacy.html', 'text/html'],
     ['/src/app.js', 'text/javascript'],
     ['/src/styles.css', 'text/css'],
     ['/src/fonts/literata-roman.woff2', 'font/woff2'],

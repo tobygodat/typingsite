@@ -1,10 +1,10 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-// Serves exactly the app: index.html, src/*.js, src/*.css, the self-hosted fonts and their licence.
+// Serves exactly the app: index.html, privacy.html, src/*.js, src/*.css, the self-hosted fonts and their licence.
 // scripts/build-static.mjs copies the same set. Design references (design/), docs and everything else 404.
 const root = process.cwd();
-const servable = /^\/(?:index\.html|src\/[a-z-]+\.(?:js|css)|src\/fonts\/(?:[a-z0-9-]+\.(?:ttf|woff2)|OFL(?:-[a-z]+)?\.txt))$/;
+const servable = /^\/(?:index\.html|privacy\.html|src\/[a-z-]+\.(?:js|css)|src\/fonts\/(?:[a-z0-9-]+\.(?:ttf|woff2)|OFL(?:-[a-z]+)?\.txt))$/;
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.ttf': 'font/ttf', '.woff2': 'font/woff2', '.txt': 'text/plain' };
 http.createServer(async (req, res) => {
   try {

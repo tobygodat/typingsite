@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f0f0e">
+  <meta name="description" content="What Stilltype stores, who can read it, and the terms for using it.">
+  <title>Privacy and terms · Stilltype</title>
+  <script>
+    // Same theme as the app: an account's saved choice, otherwise the system.
+    try {
+      const user = JSON.parse(localStorage.getItem('stilltype-session-v1'))?.user?.id;
+      const saved = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences?.theme : null;
+      const theme = saved === 'light' || saved === 'dark' ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.dataset.theme = theme;
+      document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f4f1eb' : '#0f0f0e';
+    } catch {}
+  </script>
+  <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body class="document-page">
+  <div class="app-shell">
+    <header class="dock-zone">
+      <nav class="dock" aria-label="Main navigation">
+        <a class="brand" href="/" aria-label="Stilltype practice"><span class="brand-word">stilltype</span><span class="brand-dot" aria-hidden="true">.</span></a>
+        <a class="dock-command document-back" href="/">back to practice</a>
+      </nav>
+    </header>
+
+    <main id="main-content" class="document">
+      <header class="document-head">
+        <p class="panel-label">updated 7 october 2026</p>
+        <h1>Privacy and terms</h1>
+        <p class="document-lede">Stilltype keeps what it needs to show your progress and run races, and nothing else. No ads, no analytics, no selling.</p>
+      </header>
+
+      <div class="document-body">
+        <nav class="document-toc" aria-label="On this page">
+          <p class="panel-label">on this page</p>
+          <a href="#stored">What is stored</a>
+          <a href="#guests">Guests</a>
+          <a href="#accounts">Accounts</a>
+          <a href="#races">Races and friends</a>
+          <a href="#suggestions">Suggestions</a>
+          <a href="#device">This device</a>
+          <a href="#terms">Terms of use</a>
+        </nav>
+
+        <div class="document-text">
+          <h2 id="stored">What is stored</h2>
+
+          <section aria-labelledby="guests">
+            <h3 id="guests">Guests</h3>
+            <p>Nothing on our side. Without an account, your runs stay in this tab and are gone when you leave.</p>
+          </section>
+
+          <section aria-labelledby="accounts">
+            <h3 id="accounts">Accounts</h3>
+            <p>Your email address, and one profile holding your settings, your newest 24 full runs and up to 1,000 run summaries. It is stored with Supabase, and only your signed-in account can read it. Signing in with Google shares your email address with us and nothing else.</p>
+          </section>
+
+          <section aria-labelledby="races">
+            <h3 id="races">Races and friends</h3>
+            <p>During a race the server holds the room, the names you chose, what each of you has typed and the score. Rooms are deleted a day after they expire, and race results never enter your profile. Your friend list is the names and emails you saved, and only you can see it.</p>
+          </section>
+
+          <section aria-labelledby="suggestions">
+            <h3 id="suggestions">Suggestions</h3>
+            <p>A feature suggestion is saved with the screen you sent it from, never with your account. Nobody can read suggestions back through the public API.</p>
+          </section>
+
+          <section aria-labelledby="device">
+            <h3 id="device">This device</h3>
+            <p>Your browser keeps your sign-in, a copy of your profile and your inbox so the app works offline. Signing out removes the inbox from this device.</p>
+          </section>
+
+          <h2 id="terms">Terms of use</h2>
+          <p>Stilltype is free and offered as is, without any guarantee. Keep race names decent, and do not script races or flood the service. You can clear your history from Progress at any time. Deleting an account is not self-serve yet.</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <span>Stilltype</span>
+      <nav class="footer-links" aria-label="About Stilltype">
+        <a class="footer-link" href="#stored">privacy</a>
+        <a class="footer-link" href="#terms">terms</a>
+      </nav>
+    </footer>
+  </div>
+</body>
+</html>

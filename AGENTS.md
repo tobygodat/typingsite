@@ -13,8 +13,9 @@ durations or easings — use the CSS variables, and add a token before using a n
 - Warm near-black (dark) and warm paper (light). The theme follows the system until the user picks
   one. One green accent for action, current state and the caret; the primary button is filled green.
   Coral marks mistyped letters (always with a coral tint behind them) and regressions.
-- Rules and space, not boxes. Dock, settings, palette and toasts are opaque raised surfaces:
-  no glass, no glow.
+- Rules and space, not boxes. The navigation is a masthead of words on one hairline rule (a flush
+  bar at the bottom on phones). Settings, panels, palette and toasts are opaque raised surfaces with
+  a hairline border: no shadow, no glass, no glow. Two corners only (4px, 6px). Words, not icons.
 
 ## Motion: still run
 Nothing decorative moves near the passage while a run is in progress: a solid spring caret, instant
