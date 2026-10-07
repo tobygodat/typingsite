@@ -301,7 +301,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     }
     if (room.status === 'finished' && previousStatus && previousStatus !== 'finished' && opponent) {
       const me = self();
-      const lead = me.wpm === opponent.wpm ? 'You tied with' : me.wpm > opponent.wpm ? 'You beat' : 'You raced';
+      // Accuracy breaks a WPM tie, as on the results board.
+      const ahead = (me.wpm || 0) - (opponent.wpm || 0) || (me.accuracy ?? 100) - (opponent.accuracy ?? 100);
+      const lead = ahead === 0 ? 'You tied with' : ahead > 0 ? 'You beat' : 'You raced';
       // Finished rooms are deleted a day after they expire, so Race again lapses a little before.
       const until = new Date(Date.parse(room.expiresAt || new Date().toISOString()) + RESULT_RETAINED_MS).toISOString();
       inbox.notify({ id: `result:${room.id}`, kind: 'result', roomId: room.id, until,

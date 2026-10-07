@@ -167,6 +167,8 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
 
   $('inbox').addEventListener('toggle', () => {
     if (!$('inbox').open) return;
+    // Only one corner panel at a time, however the inbox was opened.
+    $('account').open = false;
     // The open inbox holds everything the toast would say.
     hideToast();
     render();

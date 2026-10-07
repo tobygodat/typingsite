@@ -212,4 +212,16 @@ test('the inbox sits beside the account button without touching the dock', async
     await page.keyboard.press('Escape');
     await expect(page.locator('.inbox-popover')).toBeHidden();
   }
+  // From the keyboard too, opening one corner panel closes the other.
+  await page.locator('#account-trigger').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#account')).toHaveAttribute('open', '');
+  await page.locator('#inbox-trigger').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#inbox')).toHaveAttribute('open', '');
+  await expect(page.locator('#account')).not.toHaveAttribute('open', '');
+  await page.locator('#account-trigger').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#account')).toHaveAttribute('open', '');
+  await expect(page.locator('#inbox')).not.toHaveAttribute('open', '');
 });

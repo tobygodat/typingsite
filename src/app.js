@@ -1605,7 +1605,8 @@ function bindAccount() {
     menu.querySelector('summary').focus();
   });
   menu.addEventListener('toggle', () => {
-    if (menu.open) document.querySelector('.preferences')?.removeAttribute('open');
+    // Only one corner panel at a time; a keyboard open sends no pointerdown to close the other.
+    if (menu.open) { document.querySelector('.preferences')?.removeAttribute('open'); $('inbox').open = false; }
   });
   // Unsynced changes go out when the tab is hidden; anything too large for that syncs on the next load.
   document.addEventListener('visibilitychange', () => {
