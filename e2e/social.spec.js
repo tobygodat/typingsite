@@ -194,15 +194,23 @@ test('after a race either player can race again against the same opponent, and a
     await race(page, lin);
     expect(supabase.races.rooms.size).toBe(2);
 
-    // A result outlives its room only so long: past the service's retention it has no Race again.
+    // A result outlives its room only so long: past the service's retention it has no Race again,
+    // even when it lapses while the inbox is already open.
     await page.locator('#online-leave').click();
     await page.evaluate(() => {
       const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-inbox-v1:'));
       const entries = JSON.parse(localStorage.getItem(key));
-      for (const entry of entries) if (entry.kind === 'result') entry.until = new Date(Date.now() - 1000).toISOString();
+      for (const entry of entries) if (entry.kind === 'result') entry.until = new Date(Date.now() + 4000).toISOString();
       localStorage.setItem(key, JSON.stringify(entries));
     });
     await page.reload();
+    await page.locator('#inbox-trigger').click();
+    const stale = page.locator('#inbox-list [data-inbox-action="result"]').first();
+    await expect(stale).toBeVisible();
+    await page.waitForTimeout(4500);
+    await stale.click();
+    await expect(page.locator('#online-room')).toBeHidden();
+    expect(supabase.races.rooms.size).toBe(2);
     await page.locator('#inbox-trigger').click();
     await expect(page.locator('#inbox-list [data-kind="result"]').first()).toContainText('closed');
     await expect(page.locator('#inbox-list [data-inbox-action="result"]')).toHaveCount(0);
@@ -272,6 +280,9 @@ test('the inbox sits beside the account button without touching the dock', async
   await openApp(page);
   await expect(page.locator('#inbox')).toBeHidden();
   await signInWithEmail(page, 'host@stilltype.test');
+  // The unread badge counts in the same tabular Literata figures as every other numeral.
+  const badge = await page.locator('#inbox-count').evaluate((node) => getComputedStyle(node).fontVariantNumeric);
+  expect(badge).toContain('tabular-nums');
   for (const width of [320, 390, 761, 800, 900, 901, 1000, 1280]) {
     await page.setViewportSize({ width, height: 760 });
     for (const theme of ['light', 'dark']) {

@@ -84,7 +84,12 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
         button.className = 'btn btn-secondary btn-sm';
         button.dataset.inboxAction = entry.kind;
         button.textContent = action.label;
-        button.addEventListener('click', () => { $('inbox').open = false; action.run(entry); });
+        button.addEventListener('click', () => {
+          $('inbox').open = false;
+          // The offer can lapse while the inbox sits open; re-check before acting on it.
+          if (isClosed(entry)) { render(); return; }
+          action.run(entry);
+        });
         row.append(button);
       }
       return row;
