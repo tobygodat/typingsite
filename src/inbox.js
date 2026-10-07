@@ -148,7 +148,8 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
       invites = await listInvites(session);
       const open = new Set(invites.map((invite) => `invite:${invite.id}`));
       for (const invite of [...invites].reverse()) {
-        notify({ id: `invite:${invite.id}`, kind: 'invite', roomId: invite.id, closed: false,
+        // Once the service lists an invitation it decides when the entry closes.
+        notify({ id: `invite:${invite.id}`, kind: 'invite', roomId: invite.id, closed: false, local: false,
           text: invite.rematch ? `${invite.hostName} wants a rematch.` : `${invite.hostName} challenged you to a race.` }, { toast: true });
       }
       // An invitation that left the service's list was joined, cancelled or expired.
@@ -221,11 +222,17 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
     notify,
     get invites() { return invites; },
     subscribe(listener) { listeners.add(listener); },
-    // The room was opened another way: the toast for it goes and its entry counts as read.
+    // The room was opened another way: the toast for it goes and its entry counts as read. An
+    // invitation only this device knew about is used up, since nothing else will close it.
     settle(id) {
       if (toastEntry?.id === id || pendingToast?.id === id) { pendingToast = null; hideToast(); }
       const known = entries.find((entry) => entry.id === id);
-      if (known && !known.read) { known.read = true; save(); render(); }
+      if (known && (!known.read || (known.local && !known.closed))) {
+        known.read = true;
+        if (known.local) known.closed = true;
+        save();
+        render();
+      }
       toasted.add(id);
     },
     forget() { if (userId()) { try { localStorage.removeItem(STORE + userId()); } catch {} } },

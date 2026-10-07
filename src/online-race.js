@@ -5,6 +5,7 @@ import * as multiplayer from './multiplayer.js';
 const $ = (id) => document.getElementById(id);
 const stamp = (value) => typeof value === 'number' ? value : Date.parse(value);
 const RESULT_RETAINED_MS = 23 * 60 * 60 * 1000;
+const REMATCH_OPEN_MS = 15 * 60 * 1000;
 const terminal = (room) => ['finished', 'cancelled', 'expired'].includes(room?.status);
 const PENDING_INVITE = 'stilltype-race-invite-tab-v1';
 
@@ -239,7 +240,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     room = result.room;
     inbox.settle(`invite:${room.id}`);
     renderHome();
-    applyRoom(room);
+    applyRoom(room, { entering: true });
     pollTimer = setTimeout(poll, 150);
     navigate('compete');
     setMode('online');
@@ -268,11 +269,11 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     finishRequested = Boolean(me?.finished);
   }
   function opponentOf(value) { return value?.players.find((player) => player.slot !== value.selfSlot); }
-  function applyRoom(next) {
+  function applyRoom(next, { entering = false } = {}) {
     const previousStatus = room?.status;
     const previousOpponent = room?.id === next.id ? opponentOf(room) : null;
     room = next;
-    notifyChanges(previousStatus, previousOpponent);
+    notifyChanges(previousStatus, previousOpponent, entering);
     if (room.startAt && startPerf === null) {
       startPerf = performance.now() + stamp(room.startAt) - stamp(room.serverNow);
     }
@@ -288,7 +289,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   }
   const away = () => document.hidden || document.body.dataset.view !== 'compete';
   // Inbox entries for this room: the opponent arriving, a rematch request and the result.
-  function notifyChanges(previousStatus, previousOpponent) {
+  // `entering` is a room opened or recovered after a reload: its result is recorded without a toast.
+  function notifyChanges(previousStatus, previousOpponent, entering) {
     const opponent = opponentOf(room);
     if (room.status === 'waiting' && opponent?.connected && !previousOpponent?.connected && previousStatus
       && (room.selfSlot === 1 || room.rematchOf)) {
@@ -296,10 +298,13 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
         text: room.rematchOf ? `${opponent.name} is back for the rematch.` : `${opponent.name} joined your race.` }, { toast: away() });
     }
     if (room.rematchId && room.rematchSlot && room.rematchSlot !== room.selfSlot) {
+      // Guests have no service inbox; a rematch room stops accepting racers after 15 minutes.
       inbox.notify({ id: `invite:${room.rematchId}`, kind: 'invite', roomId: room.rematchId, local: true,
+        until: new Date(Date.now() + REMATCH_OPEN_MS).toISOString(),
         text: `${room.rematchBy || 'Your opponent'} wants a rematch.` }, { toast: true });
     }
-    if (room.status === 'finished' && previousStatus && previousStatus !== 'finished' && opponent) {
+    const justFinished = previousStatus && previousStatus !== 'finished';
+    if (room.status === 'finished' && opponent && (justFinished || entering)) {
       const me = self();
       // Accuracy breaks a WPM tie, as on the results board.
       const ahead = (me.wpm || 0) - (opponent.wpm || 0) || (me.accuracy ?? 100) - (opponent.accuracy ?? 100);
@@ -308,7 +313,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       const until = new Date(Date.parse(room.expiresAt || new Date().toISOString()) + RESULT_RETAINED_MS).toISOString();
       inbox.notify({ id: `result:${room.id}`, kind: 'result', roomId: room.id, until,
         conditions: room.conditions,
-        text: `${lead} ${opponent.name}: ${me.wpm || 0} wpm to ${opponent.wpm || 0}.` }, { toast: away() });
+        text: `${lead} ${opponent.name}: ${me.wpm || 0} wpm to ${opponent.wpm || 0}.` }, { toast: justFinished && away() });
     }
   }
   function renderAfter() {
@@ -401,8 +406,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       poll();
     }
   }
-  // A closed race with two players keeps a slow watch, so a rematch request reaches both.
-  const watchingRematch = () => terminal(room) && room.players.length === 2 && !room.rematchId;
+  // A closed race with two players keeps a slow watch, so a rematch request reaches both, until
+  // the service is due to delete the room.
+  const watchingRematch = () => terminal(room) && room.players.length === 2 && !room.rematchId
+    && Date.now() < Date.parse(room.expiresAt) + RESULT_RETAINED_MS;
   async function poll() {
     if (!credentials || networkBusy || (terminal(room) && !watchingRematch())) return;
     clearTimeout(pollTimer);

@@ -144,6 +144,7 @@ test('after a race either player can race again against the same opponent, and a
     expect(supabase.races.rooms.size).toBe(2);
 
     // A result outlives its room only so long: past the service's retention it has no Race again.
+    await page.locator('#online-leave').click();
     await page.evaluate(() => {
       const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-inbox-v1:'));
       const entries = JSON.parse(localStorage.getItem(key));
@@ -154,6 +155,9 @@ test('after a race either player can race again against the same opponent, and a
     await page.locator('#inbox-trigger').click();
     await expect(page.locator('#inbox-list [data-kind="result"]').first()).toContainText('closed');
     await expect(page.locator('#inbox-list [data-inbox-action="result"]')).toHaveCount(0);
+    // The rematch request Ada answered from the race is used up too.
+    await expect(page.locator('#inbox-list [data-kind="invite"]').first()).toContainText('closed');
+    await expect(page.locator('#inbox-list [data-inbox-action="invite"]')).toHaveCount(0);
   } finally { await context.close(); }
 });
 
