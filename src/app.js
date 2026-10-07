@@ -2002,7 +2002,7 @@ inbox = createInbox({
   announce,
   actions: {
     invite: { label: 'Join', run: (entry) => onlineRace.joinInvite(entry.roomId) },
-    joined: { label: 'Open', run: () => onlineRace.open() },
+    joined: { label: 'Open', available: (entry) => onlineRace?.liveRoomId === entry.roomId, run: () => onlineRace.open() },
     result: { label: 'Race again', run: (entry) => onlineRace.rematchRoom(entry.roomId, entry.conditions) },
   },
 });

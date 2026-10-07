@@ -4,6 +4,7 @@ import * as multiplayer from './multiplayer.js';
 
 const $ = (id) => document.getElementById(id);
 const stamp = (value) => typeof value === 'number' ? value : Date.parse(value);
+const RESULT_RETAINED_MS = 23 * 60 * 60 * 1000;
 const terminal = (room) => ['finished', 'cancelled', 'expired'].includes(room?.status);
 const PENDING_INVITE = 'stilltype-race-invite-tab-v1';
 
@@ -301,7 +302,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     if (room.status === 'finished' && previousStatus && previousStatus !== 'finished' && opponent) {
       const me = self();
       const lead = me.wpm === opponent.wpm ? 'You tied with' : me.wpm > opponent.wpm ? 'You beat' : 'You raced';
-      inbox.notify({ id: `result:${room.id}`, kind: 'result', roomId: room.id,
+      // Finished rooms are deleted a day after they expire, so Race again lapses a little before.
+      const until = new Date(Date.parse(room.expiresAt || new Date().toISOString()) + RESULT_RETAINED_MS).toISOString();
+      inbox.notify({ id: `result:${room.id}`, kind: 'result', roomId: room.id, until,
         conditions: room.conditions,
         text: `${lead} ${opponent.name}: ${me.wpm || 0} wpm to ${opponent.wpm || 0}.` }, { toast: away() });
     }
@@ -588,6 +591,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     joinInvite,
     // A guest's seat capability is only in this tab's credentials, so reuse them for the same room.
     rematchRoom: (roomId, conditions) => rematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions),
+    // The race this tab is seated in and still waiting or racing, if any.
+    get liveRoomId() { return room && !terminal(room) ? room.id : null; },
     open() { navigate('compete'); setMode('online'); },
     onViewChange(view) {
       if (view === 'compete') { renderHome(); if (mode === 'online') { refreshInvites(); loadFriends(); fx.relayout(); } }

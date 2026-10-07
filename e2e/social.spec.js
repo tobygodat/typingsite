@@ -122,6 +122,10 @@ test('after a race either player can race again against the same opponent, and a
     // The result is in the inbox with its own Race again.
     await page.locator('#inbox-trigger').click();
     await expect(page.locator('#inbox-list')).toContainText(/Lin: \d+ wpm to \d+/);
+    await expect(page.locator('#inbox-list [data-inbox-action="result"]')).toHaveText('Race again');
+    // The race Lin joined is over, so that entry no longer opens it.
+    await expect(page.locator('#inbox-list [data-kind="joined"]')).toContainText('closed');
+    await expect(page.locator('#inbox-list [data-inbox-action="joined"]')).toHaveCount(0);
     await page.locator('#inbox-trigger').click();
 
     // Lin asks first; Ada sees the request and joins the same new room with one click.
@@ -138,6 +142,18 @@ test('after a race either player can race again against the same opponent, and a
     await expect(lin.locator('#online-room-status')).toContainText('Both players are here.', { timeout: 5000 });
     await race(page, lin);
     expect(supabase.races.rooms.size).toBe(2);
+
+    // A result outlives its room only so long: past the service's retention it has no Race again.
+    await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-inbox-v1:'));
+      const entries = JSON.parse(localStorage.getItem(key));
+      for (const entry of entries) if (entry.kind === 'result') entry.until = new Date(Date.now() - 1000).toISOString();
+      localStorage.setItem(key, JSON.stringify(entries));
+    });
+    await page.reload();
+    await page.locator('#inbox-trigger').click();
+    await expect(page.locator('#inbox-list [data-kind="result"]').first()).toContainText('closed');
+    await expect(page.locator('#inbox-list [data-inbox-action="result"]')).toHaveCount(0);
   } finally { await context.close(); }
 });
 

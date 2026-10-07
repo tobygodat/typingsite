@@ -44,6 +44,14 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
     try { localStorage.setItem(STORE + userId(), JSON.stringify(entries.slice(0, MAX_ENTRIES))); } catch {}
   }
 
+  // An entry's action lapses when the service would no longer honour it (`until`), or when the
+  // action says the thing it points at is gone (an opponent-joined entry for a race already left).
+  function isClosed(entry) {
+    if (entry.closed) return true;
+    if (entry.until && Date.now() > Date.parse(entry.until)) return true;
+    return actions[entry.kind]?.available?.(entry) === false;
+  }
+
   function render() {
     const signedIn = Boolean(userId());
     $('inbox').hidden = !signedIn;
@@ -63,9 +71,10 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
       copy.textContent = entry.text;
       const meta = document.createElement('span');
       meta.className = 'inbox-meta';
-      meta.textContent = entry.closed ? `${ago(entry.at)} · closed` : ago(entry.at);
+      const closed = isClosed(entry);
+      meta.textContent = closed ? `${ago(entry.at)} · closed` : ago(entry.at);
       row.append(copy, meta);
-      const action = !entry.closed && actions[entry.kind];
+      const action = !closed && actions[entry.kind];
       if (action) {
         const button = document.createElement('button');
         button.type = 'button';
@@ -186,7 +195,7 @@ export function createInbox({ getSession, listInvites, actions, announce }) {
     if (entry) {
       const known = entries.find((value) => value.id === entry.id);
       if (known && !known.read) { known.read = true; save(); render(); }
-      actions[entry.kind]?.run(entry);
+      if (!isClosed(known || entry)) actions[entry.kind]?.run(entry);
     }
   });
   $('challenge-toast-close').addEventListener('click', hideToast);
