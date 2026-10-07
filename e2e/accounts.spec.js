@@ -139,7 +139,8 @@ test('the pre-accounts profile moves into the first empty account', async ({ pag
     attempts: [],
     loops: [{
       id: 'legacy-loop',
-      at: '2026-09-01T10:00:00.000Z',
+      // Recent, so it stays inside Progress's default 30-day period whenever the suite runs.
+      at: new Date(Date.now() - 86400000).toISOString(),
       target: null,
       drillCompleted: false,
       conditions: { mode: 'words', count: 10, punctuation: false, inputClass: 'physical-keyboard', correctionPolicy: 'relaxed' },
