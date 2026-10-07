@@ -1,6 +1,9 @@
 // Word lists for generated passages and drills, most frequent first. Each list is
 // stored as one string and split on first use, so unused lists cost nothing at runtime.
 //
+// 200: Monkeytype's default "english" list (frontend/static/languages/english.json in
+// monkeytypegame/monkeytype), in its order, with "I" stored as "i" like the other lists.
+// It is the default, so a first test feels like Monkeytype's.
 // 1k: the 1,000 most common English words (Fry-style frequency order, the "english 1k"
 // list common to typing tests), unfiltered.
 // 5k and 10k: the 5,000 and 10,000 most common words from web frequency data, cleaned
@@ -9,9 +12,22 @@
 //
 // Changing a list changes what "the same conditions" means, so bump CORPUS_VERSION.
 
-export const DEFAULT_WORD_LIST = '1k';
+export const DEFAULT_WORD_LIST = '200';
 
 const sources = {
+  '200': `
+  the be of and a to in he have it that for they i with as not on she at by this we you do but from or
+  which one would all will there say who make when can more if no man out other so what time up go
+  about than into could state only new year some take come these know see use get like then first any
+  work now may such give over think most even find day also after way many must look before great back
+  through long where much should well people down own just because good each those feel seem how high
+  too place little world very still nation hand old life tell write become here show house both
+  between need mean call develop under last right move thing general school never same another begin
+  while number part turn real leave might want point form off child few small since against ask late
+  home interest large person end open public follow during present without again hold govern around
+  possible head consider word program problem however lead system set order eye plan run keep face
+  fact group play stand increase early course change help line
+`,
   '1k': `
   the of to and a in is it you that he was for on are with as i his they be at one have this from or
   had by not word but what some we can out other were all there when up use your how said an each she

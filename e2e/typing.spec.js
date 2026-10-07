@@ -4,9 +4,11 @@ test('a corrected mistake keeps its first-try error and visible tint', async ({ 
   await openApp(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
-  const miss = text[2] === 'x' ? 'z' : 'x';
+  // Miss a letter, not a space: the default list has many two-letter words.
+  const at = [...text].findIndex((char, index) => index > 1 && /[a-z]/.test(char));
+  const miss = text[at] === 'x' ? 'z' : 'x';
 
-  await typeInto(page, text.slice(0, 2) + miss);
+  await typeInto(page, text.slice(0, at) + miss);
   const wrong = page.locator('#text-display .char.wrong');
   await expect(wrong).toHaveCount(1);
   // Afterimage uses a tint as its second error cue; the old underline was retired.
@@ -19,7 +21,7 @@ test('a corrected mistake keeps its first-try error and visible tint', async ({ 
 
   await page.keyboard.press('Backspace');
   await expect(wrong).toHaveCount(0);
-  await page.keyboard.type(text.slice(2));
+  await page.keyboard.type(text.slice(at));
 
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-errors')).toHaveText('1');

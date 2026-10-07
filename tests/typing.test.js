@@ -89,11 +89,14 @@ test('target drills use real corpus words and repeat the requested pair', () => 
 });
 
 test('generated passages draw from the selected common-word list', async () => {
-  const { wordList, wordListIds } = await import('../src/words.js');
-  assert.deepEqual(wordListIds, ['1k', '5k', '10k']);
+  const { DEFAULT_WORD_LIST, wordList, wordListIds } = await import('../src/words.js');
+  assert.deepEqual(wordListIds, ['200', '1k', '5k', '10k']);
+  assert.equal(DEFAULT_WORD_LIST, '200');
+  assert.equal(wordList('200').length, 200);
+  assert.deepEqual(wordList('200').slice(0, 6), ['the', 'be', 'of', 'and', 'a', 'to']);
   assert.equal(wordList('1k').length, 1000);
   assert.ok(wordList('5k').length > 4500 && wordList('10k').length > 9000);
-  assert.equal(wordList('unknown'), wordList('1k'));
+  assert.equal(wordList('unknown'), wordList('200'));
   for (const id of wordListIds) {
     const words = new Set(wordList(id));
     assert.equal(words.size, wordList(id).length);
@@ -103,6 +106,7 @@ test('generated passages draw from the selected common-word list', async () => {
     const passage = makePassage('time', 0, false, random, id).split(' ');
     assert.ok(passage.every((word) => words.has(word)));
   }
-  assert.match(makePassage('words', 10, true, () => 0.0172), /\bI\b/);
+  const bank = wordList(DEFAULT_WORD_LIST);
+  assert.match(makePassage('words', 10, true, () => (bank.indexOf('i') + 0.5) / bank.length), /\bI\b/);
   assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
 });
