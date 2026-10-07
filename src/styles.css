@@ -481,7 +481,7 @@ kbd {
   border-radius: var(--radius-full);
   background: var(--accent);
   color: var(--accent-ink);
-  font: 500 var(--text-fine)/18px var(--font-mono);
+  font: 500 var(--text-fine)/18px var(--font-serif);
   text-align: center;
 }
 

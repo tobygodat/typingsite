@@ -585,7 +585,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   return {
     leave,
     joinInvite,
-    rematch,
+    // A guest's seat capability is only in this tab's credentials, so reuse them for the same room.
+    rematchRoom: (roomId, conditions) => rematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions),
     open() { navigate('compete'); setMode('online'); },
     onViewChange(view) {
       if (view === 'compete') { renderHome(); if (mode === 'online') { refreshInvites(); loadFriends(); fx.relayout(); } }
