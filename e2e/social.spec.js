@@ -216,6 +216,32 @@ test('a guest races again with the same seat and no new link', async ({ page, br
   } finally { await context.close(); }
 });
 
+test('a guest’s rematch toast goes away when the host cancels the rematch', async ({ page, browser, supabase }) => {
+  supabase.addUser('host@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'host@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#online-name').fill('Ada');
+  await page.locator('#create-online-race').click();
+  const link = await page.locator('#online-guest-link').inputValue();
+  const context = await browser.newContext();
+  const guest = await context.newPage();
+  await supabase.attach(guest);
+  try {
+    await guest.goto(link);
+    await guest.locator('#online-guest-name').fill('Lin');
+    await guest.locator('#join-online-race').click();
+    await race(page, guest);
+    await page.locator('#online-rematch').click();
+    await expect(guest.locator('#challenge-toast')).toContainText('Ada wants a rematch.', { timeout: 8000 });
+    await expect(guest.locator('#online-rematch')).toHaveText('Join rematch');
+    await page.locator('#online-leave').click();
+    await expect(guest.locator('#challenge-toast')).toBeHidden({ timeout: 8000 });
+    await expect(guest.locator('#online-rematch-note')).toBeHidden();
+    await expect(guest.locator('#online-rematch')).toHaveText('Race again');
+  } finally { await context.close(); }
+});
+
 test('the inbox sits beside the account button without touching the dock', async ({ page, supabase }) => {
   supabase.addUser('host@stilltype.test');
   await openApp(page);

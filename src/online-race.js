@@ -303,6 +303,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       inbox.notify({ id: `invite:${room.rematchId}`, kind: 'invite', roomId: room.rematchId, local: true,
         until: room.rematchExpiresAt,
         text: `${room.rematchBy || 'Your opponent'} wants a rematch.` }, { toast: true });
+    } else if (room.rematchId && !room.rematchOpen) {
+      // Cancelled, expired or already under way: a request this device found is no longer open.
+      inbox.withdraw(`invite:${room.rematchId}`);
     }
     const justFinished = previousStatus && previousStatus !== 'finished';
     if (room.status === 'finished' && opponent && (justFinished || entering)) {

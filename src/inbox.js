@@ -242,6 +242,12 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
       }
       toasted.add(id);
     },
+    // A request this device discovered has lapsed: its toast goes and its entry closes.
+    withdraw(id) {
+      if (toastEntry?.id === id || pendingToast?.id === id) { pendingToast = null; hideToast(); }
+      const known = entries.find((entry) => entry.id === id);
+      if (known?.local && !known.closed) { known.closed = true; save(); render(); }
+    },
     forget() {
       forgotten = true;
       pendingToast = null;
