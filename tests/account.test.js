@@ -65,6 +65,9 @@ test('a stale copy of the session gives way to the newest stored one instead of 
   try {
     const stale = { access_token: 'old', refresh_token: 'used', expires_at: 1, user: { id: 'u1' } };
     assert.equal((await freshSession(stale)).refresh_token, 'rotated');
+    // Refreshed in the same second as the stored one: equal expiry, but storage holds the later token.
+    const sameSecond = { access_token: 'earlier', refresh_token: 'superseded', expires_at: later, user: { id: 'u1' } };
+    assert.equal((await freshSession(sameSecond)).refresh_token, 'rotated');
   } finally {
     globalThis.localStorage = originalStorage;
     globalThis.fetch = originalFetch;

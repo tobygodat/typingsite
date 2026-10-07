@@ -158,9 +158,10 @@ export async function completeRedirect(href) {
 export async function freshSession(session = loadSession()) {
   if (!session) return null;
   // Background polls (race, inbox) may already have rotated this user's refresh token; a stale
-  // copy would be rejected and end the session, so the newest stored one wins.
+  // copy would be rejected and end the session, so the newest stored one wins. Two refreshes in
+  // the same second share an expiry, and storage always holds the later of them, so a tie goes to it.
   const stored = loadSession();
-  if (stored?.user?.id === session.user?.id && stored.expires_at > session.expires_at) session = stored;
+  if (stored?.user?.id === session.user?.id && stored.expires_at >= session.expires_at) session = stored;
   if (session.expires_at - 60 > Date.now() / 1000) return session;
   try {
     const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token } });
