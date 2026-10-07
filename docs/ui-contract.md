@@ -65,6 +65,8 @@ Hosts use `#online-name`, optional `#online-invite-email` and `#create-online-ra
 
 `#online-room` contains `#online-room-status`, `#online-connection`, `#online-players`, `#online-ready` and `#online-leave`. A guest room exposes the copyable `#online-guest-link` and `#copy-race-link`; account rooms instead show generic delivery copy in `#online-account-invite-status`. Each player has a labelled progressbar with no decorative animation.
 
+`#online-friends` (signed in only) lists `#online-friend-list` rows with `[data-race-friend]` (Challenge) and `[data-remove-friend]`; `#online-save-friend` beside `#create-online-race` appears once an email is typed. After a closed race with two players, `#online-after` shows `#online-rematch` (Race again, or Join rematch when the opponent asked first, explained in `#online-rematch-note`) and `#online-befriend` when the opponent is an account not yet on the list.
+
 `#online-stage` contains `#online-countdown`, `#online-timer`, `#online-text-display`, `#online-accessible-passage` and `#online-input`. Input remains disabled until the shared start and after completion; paste, key repeat and composition are refused. `#online-results`, `#online-winner` and `#online-result-rows` display server results, with `#online-again` to return to setup. Leaving ends an active room; transient network failures retry without freeing the seat.
 
 Room credentials and pending guest invites use expiring tab-scoped sessionStorage; guest run history remains unsaved. Online scores do not enter solo progress or bests. See [online race behavior and verification](online-races.md).
@@ -88,6 +90,8 @@ Required IDs: `history-list`, `history-row-template`, `progress-empty`, `clear-h
 ## Accounts
 
 Required IDs: `account`, `account-trigger`, `account-guest`, `account-create`, `account-google`, `account-signin`, `account-member`, `account-email`, `account-sync`, `account-signout`, `account-dialog`, `account-form`, `account-dialog-title`, `account-dialog-copy`, `account-dialog-google`, `account-email-input`, `account-password`, `account-error`, `account-switch`, `account-cancel`, `account-submit`, `account-confirm`, `account-confirm-email`, `account-confirm-done`, `account-toast`, `account-feedback`, and `guest-note`.
+
+`.corner` holds `details#inbox` and `#account` top right; between 761 and 1023 px the inbox sits under the account button so the pair clears the dock. `#inbox` (members only) has `#inbox-trigger`, the unread count `#inbox-count`, `#inbox-list` entries with `[data-inbox-action]`, `#inbox-empty` and `#inbox-clear`. `aside#challenge-toast` (`#challenge-toast-text`, `#challenge-toast-action`, `#challenge-toast-close`) drops in under the corner for a new challenge or rematch and leaves after 18 s, held on hover or focus, and waits while a run is in progress.
 
 `#account` is a `details` menu fixed top right (it scrolls with the page on mobile, where the dock is at the bottom) and fades with the chrome while a run is in progress. `#account[data-state]` is `guest` or `member`; `#account[data-sync]` is `guest`, `syncing`, `synced`, `offline` or `expired`. Guests see the three sign-in choices and `#guest-note` in the footer; nothing is written to storage for them. Email sign-up that needs confirmation shows `#account-confirm` instead of the form. Signing in or out reloads the page as the new user.
 

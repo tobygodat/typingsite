@@ -20,6 +20,8 @@ import { createPalette } from './palette.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
+import { createInbox } from './inbox.js';
+import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
@@ -116,6 +118,7 @@ let lastCompleted = null;
 let ghostOn = false;
 let palette = null;
 let onlineRace = null;
+let inbox = null;
 let baselineAttempt = null;
 let activeRecommendation = null;
 let selectedTarget = null;
@@ -202,9 +205,19 @@ function setText(element, value) {
   if (element.textContent !== text) element.textContent = text;
 }
 
-// body[data-running] lets the CSS fade the chrome mid-run; skip no-op writes on every keystroke.
+// Whether an attempt or race is in progress. body[data-running] follows it so the CSS can fade
+// the chrome mid-run, but a pointer nudge only reveals the chrome; the run itself goes on.
+let runActive = false;
 function setRunning(running) {
-  const value = String(running);
+  if (runActive !== running) {
+    runActive = running;
+    inbox?.runChanged();
+  }
+  showChrome(!running);
+}
+// Skip no-op writes on every keystroke.
+function showChrome(shown) {
+  const value = String(!shown);
   if (document.body.dataset.running !== value) document.body.dataset.running = value;
 }
 
@@ -552,6 +565,7 @@ function startAttempt(targetAttempt, type = 'primary') {
     race.startTime = stamp;
     race.attempt.status = 'running';
     race.attempt.startedAt = 0;
+    inbox?.runChanged();
   }
 }
 
@@ -1008,6 +1022,12 @@ function markRaceInterrupted() {
   race.attempt.interrupted = true;
   race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
   showInputNotice('race', NOTICES.raceFocusLost, { speak: false });
+  inbox?.runChanged();
+}
+
+// A one-keyboard race keeps the chrome, but its passage is still being typed.
+function localRaceRunning() {
+  return race.attempt?.status === 'running' && !race.attempt.interrupted && document.body.dataset.view === 'compete';
 }
 
 function conditionOptions(select, sources, fallback = null) {
@@ -1260,6 +1280,7 @@ function startRace() {
 function setupRacePlayer() {
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
+  inbox?.runChanged();
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
   $('race-status').textContent = `Player ${race.player + 1} of 2`;
@@ -1285,6 +1306,7 @@ function finishRacePlayer() {
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
   race.attempt = completed;
+  inbox?.runChanged();
   race.results.push({ name: race.names[race.player], attempt: completed });
   $('race-input').disabled = true;
   $('race-stage').hidden = true;
@@ -1498,6 +1520,7 @@ async function enterAccount(newSession) {
 async function signOutAccount() {
   closeAccountMenu();
   await onlineRace?.leave();
+  inbox?.forget();
   const synced = !unsynced || await pushProfile();
   // Unsynced edits stay on this device and go up the next time this account signs in here.
   await account.signOut(session, { keepCache: !synced });
@@ -1601,7 +1624,8 @@ function bindAccount() {
     menu.querySelector('summary').focus();
   });
   menu.addEventListener('toggle', () => {
-    if (menu.open) document.querySelector('.preferences')?.removeAttribute('open');
+    // Only one corner panel at a time; a keyboard open sends no pointerdown to close the other.
+    if (menu.open) { document.querySelector('.preferences')?.removeAttribute('open'); $('inbox').open = false; }
   });
   // Unsynced changes go out when the tab is hidden; anything too large for that syncs on the next load.
   document.addEventListener('visibilitychange', () => {
@@ -1849,7 +1873,7 @@ function bindEvents() {
   document.addEventListener('pointermove', (event) => {
     const moved = pointer ? Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) : 0;
     if (!pointer || document.body.dataset.running !== 'true' || moved > 4) pointer = { x: event.clientX, y: event.clientY };
-    if (moved > 4) setRunning(false);
+    if (moved > 4) showChrome(true);
   });
 }
 
@@ -1992,8 +2016,20 @@ renderHistory();
 renderTraining();
 renderDaily();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
+inbox = createInbox({
+  isRunning: () => runActive || localRaceRunning(),
+  getSession: () => session,
+  listInvites: listRaceInvites,
+  announce,
+  actions: {
+    invite: { label: 'Join', run: (entry) => onlineRace.joinInvite(entry.roomId) },
+    joined: { label: 'Open', available: (entry) => onlineRace?.liveRoomId === entry.roomId, run: () => onlineRace.open() },
+    result: { label: 'Race again', run: (entry) => onlineRace.rematchRoom(entry.roomId, entry.conditions) },
+  },
+});
 onlineRace = createOnlineRace({
   getSession: () => session,
+  inbox,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
   onPassageSeen(id) {
@@ -2010,6 +2046,7 @@ console.info('stilltype · ↑ ↑ ↓ ↓ ← → ← → b a');
 if (!storageAvailable) announce('Storage is unavailable. Results last only in this tab.');
 completeAuthRedirect();
 syncOnLoad();
+inbox.refresh();
 // Refresh the day label when a tab returns, and across midnight without reloading.
 setInterval(() => { if (document.body.dataset.view === 'compete') renderDaily(); }, 30000);
 document.addEventListener('visibilitychange', () => {

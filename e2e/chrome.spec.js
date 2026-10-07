@@ -171,7 +171,7 @@ test('chrome fades while typing and returns on pointer movement and finish', asy
   await typeInto(page, text.slice(0, 3));
 
   await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
-  for (const selector of ['.dock-zone', '.account', '.practice-controls', '.site-footer', '.shortcut-row']) {
+  for (const selector of ['.dock-zone', '.corner', '.practice-controls', '.site-footer', '.shortcut-row']) {
     await expect(page.locator(selector)).toHaveCSS('opacity', '0');
   }
   await expect(page.locator('#text-display')).toHaveCSS('opacity', '1');
