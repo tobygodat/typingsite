@@ -1915,12 +1915,14 @@ function setRestartKey(key) {
   saveProfile();
 }
 
-// The chosen quick-restart key only acts from the typing input, the bare page or the result
-// card's run-again button (focused on finish), so Tab still moves focus through settings,
-// the palette, dialogs and the other result-screen controls.
+// The restart keys (esc, plus tab or enter when chosen) only act from the typing input, the bare
+// page or the result card's run-again button (focused on finish), so Tab still moves focus through
+// settings, the palette, dialogs and the other result-screen controls. Open dialogs, settings and
+// menus have already claimed esc by now, and esc leaves focus mode before it restarts anything.
 function quickRestart(event) {
-  const key = prefs.restartKey;
-  if (key === 'Escape' || event.key !== key || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return false;
+  const key = event.key;
+  if ((key !== prefs.restartKey && key !== 'Escape') || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return false;
+  if (key === 'Escape' && prefs.focusMode) return false;
   const view = document.body.dataset.view;
   const active = document.activeElement;
   const onInput = active === $('typing-input');

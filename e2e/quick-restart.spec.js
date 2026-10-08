@@ -31,6 +31,19 @@ test('tab as the restart key resets the passage, and esc still works', async ({ 
   await expect(page.locator('#typing-input')).toBeFocused();
 });
 
+test('esc, the default key, restarts from the focused run-again button', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await expect(page.locator('#restart-key-hint')).toHaveText('esc');
+  await completePassage(page);
+  await expect(page.locator('#run-again')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#typing-input')).toBeFocused();
+  await expect(page.locator('#typing-status')).toContainText('Ready');
+  await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
+});
+
 test('holding the restart key restarts once, not on every repeat', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
