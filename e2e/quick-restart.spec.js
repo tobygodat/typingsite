@@ -23,9 +23,9 @@ test('tab as the restart key resets the passage, and esc still works', async ({ 
   await page.keyboard.press('Escape');
   await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
 
-  // From the result card, Tab starts a fresh run.
+  // From the result card, where finishing focuses run again, Tab starts a fresh run.
   await completePassage(page);
-  await page.locator('body').evaluate(() => document.activeElement?.blur());
+  await expect(page.locator('#run-again')).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
   await expect(page.locator('#typing-input')).toBeFocused();
@@ -75,7 +75,7 @@ test('enter restarts from the result card but not mid-run', async ({ page }) => 
 
   await page.keyboard.press('Escape');
   await completePassage(page);
-  await page.locator('body').evaluate(() => document.activeElement?.blur());
+  await expect(page.locator('#run-again')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
   await expect(page.locator('#text-display .char.correct')).toHaveCount(0);

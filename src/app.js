@@ -1915,8 +1915,9 @@ function setRestartKey(key) {
   saveProfile();
 }
 
-// The chosen quick-restart key only acts from the typing input or the bare page, so Tab
-// still moves focus through settings, the palette, dialogs and result-screen controls.
+// The chosen quick-restart key only acts from the typing input, the bare page or the result
+// card's run-again button (focused on finish), so Tab still moves focus through settings,
+// the palette, dialogs and the other result-screen controls.
 function quickRestart(event) {
   const key = prefs.restartKey;
   if (key === 'Escape' || event.key !== key || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return false;
@@ -1924,16 +1925,21 @@ function quickRestart(event) {
   const active = document.activeElement;
   const onInput = active === $('typing-input');
   const onPage = !active || active === document.body;
-  if (!onInput && !(onPage && (view === 'practice' || view === 'results'))) return false;
+  const onRunAgain = view === 'results' && active === $('run-again');
+  if (!onInput && !onRunAgain && !(onPage && (view === 'practice' || view === 'results'))) return false;
   // Enter only restarts from the result card or before a run starts, never mid-run.
   if (key === 'Enter' && (runActive || (view !== 'results' && !onInput))) return false;
   event.preventDefault();
   // A held key restarts once; its repeats would otherwise burn through fresh passages.
-  if (event.repeat) return true;
-  // The result card restarts exactly as its run-again button does: one reset, one new passage.
-  if (view === 'results') runAgain();
-  else resetSession(sessionKind, { focus: true });
+  if (!event.repeat) restartTest();
   return true;
+}
+
+// One restart, one new passage: the result card runs again as its button does; anywhere
+// else the current test restarts as esc does.
+function restartTest() {
+  if (document.body.dataset.view === 'results') runAgain();
+  else resetSession(sessionKind, { focus: true });
 }
 
 function runAgain() {
@@ -1955,7 +1961,7 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartKeys[prefs.restartKey], run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartKeys[prefs.restartKey], run: restartTest },
     ...Object.entries(restartKeys).map(([key, name]) => ({ group: 'test', label: `restart key · ${name}`, keywords: 'quick restart tab enter escape shortcut', hint: prefs.restartKey === key ? 'current' : '', on: prefs.restartKey === key, run: () => setRestartKey(key) })),
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
