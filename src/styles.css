@@ -750,6 +750,9 @@ kbd {
   font: 500 13px/1 var(--font-mono);
 }
 
+/* Code language names are readable words, so they set in Literata like the mode buttons. */
+.segmented.compact button[data-language] { font: inherit; font-family: var(--font-serif); font-size: var(--text-small); }
+
 .compact-switch {
   height: 44px;
   padding: 0 14px 0 12px;
