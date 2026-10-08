@@ -35,6 +35,23 @@ for (const [policy, reason] of [['fail-any', 'wrong key'], ['fail-word', 'word e
   });
 }
 
+// The timer is a word boundary too: a wrong letter left mid-word when time runs out fails the run.
+test('fail on word error fails a timed run that ends on an unfinished wrong word', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await chooseCorrection(page, 'fail-word');
+  await page.locator('#duration-options [data-length="15"]').click();
+  await expect(page.locator('#timer')).toHaveText('15');
+  const text = await passageText(page);
+  const at = [...text].findIndex((char, index) => index >= 10 && char !== ' ' && text[index + 1] !== ' ');
+  await typeInto(page, text.slice(0, at) + (text[at] === 'x' ? 'z' : 'x'));
+  await expect(page.locator('#typing-status')).toHaveText('In progress');
+  await page.clock.fastForward(15_000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('failed · word error');
+  await expect(page.locator('#best')).toHaveText('No best yet');
+});
+
 test('fail on any error ends a local challenge turn as failed', async ({ page }) => {
   await openApp(page);
   await chooseCorrection(page, 'fail-any');

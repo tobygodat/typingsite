@@ -12,6 +12,7 @@ import {
   blocksOnError,
   allowsBackspace,
   failureFor,
+  failureAtEnd,
   recommendTarget,
   replayAttempt,
   selectPassage,
@@ -793,11 +794,22 @@ function storeAttempt(completed) {
   return saved;
 }
 
+// The end of a run (the timer, the passage end) is a word boundary for the failure
+// policies, so a wrong letter typed just before the timer runs out still fails the run.
+function markEndFailure(target) {
+  if (target.interrupted) return;
+  const failed = failureAtEnd(target.conditions.correctionPolicy, target.text, replayAttempt(target).typed);
+  if (!failed) return;
+  target.interrupted = true;
+  target.failed = failed;
+}
+
 function finishPrimary(forcedElapsed = null) {
   if (!attempt || attempt.status !== 'running') return;
   clearInterval(ticker);
   ticker = null;
   const endedAt = forcedElapsed ?? offsetFor();
+  markEndFailure(attempt);
   const valid = !attempt.interrupted && !attempt.unsupportedInput;
   const completed = completeAttempt(attempt, { endedAt, status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = attempt.interrupted;
@@ -1330,6 +1342,7 @@ function updateRaceProgress(replay) {
 }
 
 function finishRacePlayer() {
+  markEndFailure(race.attempt);
   const valid = !race.attempt.interrupted && !race.attempt.unsupportedInput;
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;

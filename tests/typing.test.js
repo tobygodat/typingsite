@@ -15,6 +15,7 @@ import {
   allowsBackspace,
   blocksOnError,
   failureFor,
+  failureAtEnd,
   recommendTarget,
   replayAttempt,
 } from '../src/typing.js';
@@ -135,6 +136,14 @@ test('correction policies map old preferences, fail on errors and keep separate 
   assert.equal(failureFor('fail-word', 'the cat', 'the cx', 't'), 'word error');
   assert.equal(failureFor('fail-word', 'the cat', 'the ca', 'x'), 'word error');
   assert.equal(failureFor('fail-word', 'the cat', 'the ca', 't'), null);
+  assert.equal(failureFor('fail-word', 'the cat sat', 'thexcat', ' '), 'word error');
+  // The end of a timed run is a word boundary: an unfinished wrong word fails.
+  assert.equal(failureAtEnd('fail-word', 'the cat sat', 'the cx'), 'word error');
+  assert.equal(failureAtEnd('fail-word', 'the cat sat', 'the ca'), null);
+  assert.equal(failureAtEnd('fail-any', 'the cat sat', 'the cx'), 'wrong key');
+  assert.equal(failureAtEnd('relaxed', 'the cat sat', 'the cx'), null);
+  assert.equal(failureAtEnd('no-backspace', 'the cat sat', 'the cx'), null);
+  assert.equal(failureAtEnd('fail-word', 'the cat sat', ''), null);
   assert.equal(failureFor('relaxed', 'the cat', 'th', 'x'), null);
   const attempt = createAttempt({ id: 'nb', text: 'ab', textId: 'one', conditions: { correctionPolicy: 'no-backspace' } });
   assert.equal(passageComplete(attempt, 'ax'), true);

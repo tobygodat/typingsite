@@ -132,15 +132,21 @@ export function correctionPreference(preferences = {}) {
 export const blocksOnError = (policy) => (policy || 'mandatory') === 'mandatory';
 export const allowsBackspace = (policy) => policy !== 'no-backspace';
 
-// Why inserting `char` at the end of `typed` fails the run, or null. The passage's
-// last letter closes the final word, which has no trailing space.
+// Why inserting `char` at the end of `typed` fails the run, or null. A space or the
+// passage's last letter closes a word; the whole prefix is checked so a letter typed
+// in place of a space can't slip through.
 export function failureFor(policy, text, typed, char) {
-  const position = typed.length;
-  if (policy === 'fail-any' && char !== text[position]) return 'wrong key';
-  if (policy === 'fail-word' && (char === ' ' || position === text.length - 1)) {
-    const start = text.lastIndexOf(' ', position - 1) + 1;
-    if (typed.slice(start) + char !== text.slice(start, position + 1)) return 'word error';
-  }
+  if (policy === 'fail-any' && char !== text[typed.length]) return 'wrong key';
+  if (policy === 'fail-word' && (char === ' ' || typed.length === text.length - 1)) return failureAtEnd(policy, text, typed + char);
+  return null;
+}
+
+// Why a run that stops at `typed` fails, or null. The end of a run (the timer, the
+// passage end) is a word boundary, so an unfinished word with a wrong letter fails.
+export function failureAtEnd(policy, text, typed) {
+  if (typed === text.slice(0, typed.length)) return null;
+  if (policy === 'fail-any') return 'wrong key';
+  if (policy === 'fail-word') return 'word error';
   return null;
 }
 
