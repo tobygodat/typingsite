@@ -282,6 +282,8 @@ function applyPreferences() {
   $('stop-on-error-toggle').checked = prefs.stopOnError;
   $('focus-toggle').checked = prefs.focusMode;
   $('fatigue-toggle').checked = prefs.fatigueNotice !== false;
+  // Turning break suggestions off from anywhere (settings, the dismiss link, a synced profile) takes a showing notice down too.
+  if (prefs.fatigueNotice === false) $('fatigue-notice').hidden = true;
   $('keyboard').hidden = !prefs.keyboard;
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
@@ -1771,7 +1773,6 @@ function bindEvents() {
     prefs.fatigueNotice = false;
     applyPreferences();
     saveProfile();
-    $('fatigue-notice').hidden = true;
     $('run-again').focus({ preventScroll: true });
   });
   $('exit-focus').addEventListener('click', () => {

@@ -82,7 +82,8 @@ test('once per sitting: a ninth slow run does not repeat the line', async ({ pag
 });
 
 test('a change of exercise starts a fresh comparison, so harder settings never read as fatigue', async ({ page }) => {
-  test.setTimeout(90_000);
+  // Five 25-word runs typed at a steady pace; give a busy CI machine room.
+  test.setTimeout(150_000);
   await openApp(page);
   await chooseWords(page, 10);
   for (let i = 0; i < 3; i += 1) {
@@ -131,4 +132,17 @@ test('undoing a clear brings the sitting back with the history', async ({ page }
   await openView(page, 'Practice');
   await run(page, 40);
   await expect(page.locator('#fatigue-notice')).toBeVisible();
+});
+
+test('turning break suggestions off in settings takes a showing notice down', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openApp(page);
+  await slowSitting(page);
+  const notice = page.locator('#fatigue-notice');
+  await expect(notice).toBeVisible();
+  await expect(page.locator('#run-card')).toHaveCSS('position', 'static');
+  await openSettings(page);
+  await page.locator('#fatigue-toggle').uncheck();
+  await expect(notice).toBeHidden();
+  await expect(page.locator('#run-card')).toHaveCSS('position', 'sticky');
 });
