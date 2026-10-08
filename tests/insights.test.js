@@ -1,7 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+import { dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+
+test('missed and slow words come from first tries and per-word speed', () => {
+  const text = 'the cat sat on mat';
+  // One keystroke every 100 ms, except "on" is slow and "cat" has a wrong first try.
+  const events = [];
+  let t = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    t += i >= 12 && i <= 13 ? 600 : 100;
+    if (i === 5) events.push({ type: 'insert', text: 'x', position: i, offsetMs: t - 50 }, { type: 'delete', count: 1, offsetMs: t - 25 });
+    events.push({ type: 'insert', text: text[i], position: i, offsetMs: t });
+  }
+  const { missed, slow } = missedAndSlowWords({ text, events }, 2);
+  assert.deepEqual(missed, ['cat']);
+  assert.equal(slow[0], 'on');
+  assert.equal(slow.length, 2);
+  assert.ok(!slow.includes('cat'));
+  const passage = practiceWordsPassage(['cat', 'on'], 40);
+  assert.equal(passage, practiceWordsPassage(['cat', 'on'], 40));
+  assert.equal(passage.split(' ').length, 40);
+  assert.ok(!/\b(\w+) \1\b/.test(passage));
+  assert.equal(practiceWordsPassage([]), '');
+});
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',

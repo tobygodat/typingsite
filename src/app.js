@@ -12,6 +12,7 @@ import {
   replayAttempt,
   selectPassage,
   summarizePatterns,
+  textId,
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
@@ -22,7 +23,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -115,6 +116,7 @@ const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('ra
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let lastCompleted = null;
+let wordsPassage = null;
 let ghostOn = false;
 let palette = null;
 let onlineRace = null;
@@ -190,6 +192,7 @@ function describeConditions(value = conditions()) {
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
+  if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
   return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
 }
@@ -448,6 +451,7 @@ function configureSessionCopy() {
     practice: ['practice', 'Practice', ''],
     drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
+    missed: ['missed words', 'Practice missed and slow words', 'Doesn’t count toward your best.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
   }[sessionKind];
   $('session-kicker').textContent = copy[0];
@@ -466,7 +470,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   setRunning(false);
   primaryNotice = '';
   sessionKind = kind;
-  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
+  passage = selectedPassage || (kind === 'missed' ? wordsPassage : kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
@@ -495,7 +499,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     }
     return false;
   }
-  if (kind !== 'drill' && passage.id && !profile.seenTextIds.includes(passage.id)) {
+  if (!['drill', 'missed'].includes(kind) && passage.id && !profile.seenTextIds.includes(passage.id)) {
     profile.seenTextIds.push(passage.id);
     saveProfile();
   }
@@ -508,7 +512,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: kind === 'daily' ? dailyConditions() : conditions(),
+    conditions: kind === 'daily' ? dailyConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, quoteLength: null, difficulty: null, wordList: null } : conditions(),
   });
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;
@@ -815,11 +819,28 @@ function renderCard(completed) {
   $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
   $('run-card').hidden = false;
   renderSpeedGraph($('speed-graph'), completed, { animate: true });
+  renderPracticeWords(completed);
+}
+
+// Offer the words this run tripped on or crawled through as their own uncounted run.
+function renderPracticeWords(completed) {
+  const { missed, slow } = completed.status === 'complete' ? missedAndSlowWords(completed) : { missed: [], slow: [] };
+  const words = [...missed, ...slow];
+  const button = $('practice-words');
+  button.hidden = !words.length;
+  if (!words.length) return;
+  const text = practiceWordsPassage(words);
+  button.textContent = `Practice ${missed.length} missed · ${slow.length} slow word${slow.length === 1 ? '' : 's'}`;
+  button.onclick = () => {
+    wordsPassage = { id: `missed-${textId(text)}`, text, fresh: false, words };
+    resetSession('missed', { focus: true });
+  };
 }
 
 function resultHeadline(completed) {
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
+  if (completed.kind === 'missed') return 'Word practice complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
   if (!resultBestBefore) return 'First run at these settings';
   const delta = completed.summary.score.wpm - resultBestBefore.wpm;
@@ -1775,7 +1796,7 @@ function bindEvents() {
     }
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
-  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
+  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(sessionKind === 'missed' ? 'missed' : 'practice', { focus: true }));
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);

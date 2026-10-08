@@ -111,3 +111,63 @@ const DAILY_TEXTS = [
   'The letter arrived without an explanation for its long journey. Its corners were soft, and the stamp had almost faded. Inside was a short account of a summer by the sea, written by someone who had thought an ordinary day was worth sharing.',
   'When the power returned, we left the candles burning for a little longer. The room looked familiar again, but conversation had found a different pace. Nobody reached for a screen until the last story was finished and the kettle began to sing.',
 ];
+
+const cleanWord = (word) => word.toLowerCase().replace(/[^\p{L}\p{N}'-]/gu, '');
+
+// Missed words had any wrong first try; slow words are the slowest clean words by per-word wpm.
+export function missedAndSlowWords(attempt, slowLimit = 5) {
+  const replay = attempt.summary || replayAttempt(attempt);
+  const first = new Map(replay.firstAttempts.map((item) => [item.position, item]));
+  const missed = [];
+  const timed = [];
+  let start = 0;
+  for (const raw of attempt.text.split(' ')) {
+    const end = start + raw.length;
+    const word = cleanWord(raw);
+    const tries = [];
+    for (let i = start; i < end; i += 1) if (first.has(i)) tries.push(first.get(i));
+    if (word && tries.length) {
+      if (tries.some((item) => !item.correct)) {
+        if (!missed.includes(word)) missed.push(word);
+      } else if (tries.length === raw.length) {
+        // Time from the keystroke before the word (its space) to the word's last letter.
+        const from = first.get(start - 1)?.offsetMs ?? tries[0].offsetMs;
+        const ms = tries.at(-1).offsetMs - from;
+        if (ms > 0) timed.push({ word, wpm: (raw.length / 5) / (ms / 60000) });
+      }
+    }
+    start = end + 1;
+  }
+  const slow = [];
+  for (const item of timed.sort((a, b) => a.wpm - b.wpm)) {
+    if (slow.length >= slowLimit) break;
+    if (!missed.includes(item.word) && !slow.includes(item.word)) slow.push(item.word);
+  }
+  return { missed, slow };
+}
+
+// Deterministic: the same words always build the same practice passage.
+export function practiceWordsPassage(words, length = 40) {
+  if (!words.length) return '';
+  let seed = 2166136261;
+  for (const char of words.join(' ')) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
+  const random = () => {
+    seed = (seed + 0x6D2B79F5) >>> 0;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const out = [];
+  while (out.length < length) {
+    const round = [...words];
+    for (let i = round.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(random() * (i + 1));
+      [round[i], round[j]] = [round[j], round[i]];
+    }
+    // Avoid the same word twice in a row across rounds.
+    if (round.length > 1 && round[0] === out.at(-1)) round.push(round.shift());
+    out.push(...round);
+  }
+  return out.slice(0, length).join(' ');
+}
