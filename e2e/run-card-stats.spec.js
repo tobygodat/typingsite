@@ -65,6 +65,33 @@ test('the run card shows raw wpm, consistency, c/i/e/m and the words typed', asy
   expect(await page.locator('#run-card').evaluate((node) => getComputedStyle(node).position)).toBe('sticky');
 });
 
+test('a words list past four lines is reached and scrolled from the keyboard', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openApp(page);
+  await chooseWords(page, 50);
+  await typeInto(page, await passageText(page));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  const list = page.locator('#result-words');
+  // Chromium and Firefox focus a scroller on their own; Safari needs the tabindex.
+  await expect(list).toHaveAttribute('tabindex', '0');
+  await expect(list).toHaveAttribute('role', 'region');
+  await expect(list).toHaveAttribute('aria-label', /words typed/i);
+  expect(await list.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
+  // Finish focuses "run again", after the card; Shift+Tab walks back into the list.
+  for (let i = 0; i < 12 && !(await list.evaluate((node) => node === document.activeElement)); i += 1) {
+    await page.keyboard.press('Shift+Tab');
+  }
+  await expect(list).toBeFocused();
+  const ring = await list.evaluate((node) => ({
+    visible: node.matches(':focus-visible'),
+    style: getComputedStyle(node).outlineStyle,
+    width: getComputedStyle(node).outlineWidth,
+  }));
+  expect(ring).toEqual({ visible: true, style: 'solid', width: '2px' });
+  await page.keyboard.press('End');
+  await expect.poll(() => list.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+});
+
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 

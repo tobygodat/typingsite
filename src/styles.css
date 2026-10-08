@@ -1241,11 +1241,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .run-card-more dd { font-size: var(--text-lead); }
 .run-card-more b { font-size: var(--text-label); }
 
-/* Words reached, static: plain ink, mistyped words in coral on the error tint; title gives pace. */
+/* Words reached, static: plain ink, mistyped words in coral on the error tint; title gives pace.
+   Past four lines it scrolls, so it takes focus (tabindex) and the shared focus ring. */
 .run-card-words {
   margin: 0;
   max-height: calc(var(--text-label) * 1.7 * 4);
   overflow-y: auto;
+  border-radius: var(--radius-sm);
   color: var(--muted);
   font: var(--text-label)/1.7 var(--font-serif);
 }

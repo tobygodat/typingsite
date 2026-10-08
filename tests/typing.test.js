@@ -96,6 +96,18 @@ test('word pace runs to the kept last letter, so a fixed final slip slows the wo
   assert.equal(cat.wpm, 28);
 });
 
+test('a run that stops inside a word lists only the letters typed', () => {
+  const attempt = createAttempt({ id: 'm', text: 'the cat sat', textId: 't', conditions: {} });
+  attempt.events = [...'the c'].map((char, i) => ({ type: 'insert', text: char, offsetMs: i * 100 }));
+  const words = wordHistory(attempt);
+  // "c", not "cat": the untyped "at" is counted as missed, never shown as typed.
+  assert.deepEqual(words.map((item) => item.word), ['the', 'c']);
+  assert.equal(words[1].wrong, false);
+  // The pace covers what was typed: space at 300 ms to "c" at 400 ms, 1 letter in 100 ms = 120 wpm.
+  assert.equal(words[1].wpm, 120);
+  assert.equal(characterBreakdown(attempt).missed, 2);
+});
+
 test('first-word pace starts at the first key, so a fixed first-letter slip slows the word', () => {
   const attempt = createAttempt({ id: 'g', text: 'the cat', textId: 't', conditions: {} });
   attempt.events = [
