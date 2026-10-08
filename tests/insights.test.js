@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, filterRuns, keyAnalysis, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage } from '../src/typing.js';
+import { KEY_COUNTS_VERSION, dailyPassage, filterRuns, keyAnalysis, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
@@ -49,6 +49,9 @@ test('run summaries outlive trace retention, while pattern memory stays bounded'
   assert.equal(kept.length, 1000);
   assert.equal(kept[0].id, '100');
   assert.equal(kept.filter((r) => r.patterns.length).length, 120);
+  assert.equal(kept.filter((r) => r.keys?.length).length, 0);
+  const withKeys = retainRuns(Array.from({ length: 200 }, (_, i) => run(String(i), { keys: [['t', 3, 0]], keysVersion: KEY_COUNTS_VERSION })));
+  assert.equal(withKeys.filter((r) => r.keys.length).length, 120);
   assert.equal(kept[0].score.wpm, 60);
 });
 
@@ -93,4 +96,33 @@ test('key analysis sums first attempts per key and ranks pairs only with enough 
   assert.equal(result.keys.n.enough, false);
   assert.equal(result.keys.n.samples, 8);
   assert.deepEqual(result.pairs.map((p) => [p.pair, p.samples, p.errors, p.slowRuns]), [['th', 20, 2, 1]]);
+  assert.equal(result.pairDerivedRuns, 2);
+});
+
+test('run summaries count every letter directly, including word-initial presses', () => {
+  const text = 'quiet quay';
+  const attempt = createAttempt({ id: 'q', text, textId: 'q', conditions });
+  attempt.startedAt = 0;
+  // Mistype the first "q" (word-initial) and the "i" after "u" (mid-word).
+  attempt.events = [...text].map((char, position) => ({ type: 'insert', position, offsetMs: (position + 1) * 100, accepted: true,
+    text: position === 0 ? 'w' : position === 2 ? 'o' : char }));
+  const record = runRecord({ ...completeAttempt(attempt, { endedAt: 1100 }), fresh: true });
+  assert.equal(record.keysVersion, KEY_COUNTS_VERSION);
+  const keys = Object.fromEntries(record.keys.map(([key, samples, errors]) => [key, { samples, errors }]));
+  assert.deepEqual(keys.q, { samples: 2, errors: 1 });
+  assert.deepEqual(keys.i, { samples: 1, errors: 1 });
+  assert.equal(keys[' '], undefined);
+  assert.equal(record.keys.reduce((n, k) => n + k[1], 0), 9);
+  // Pair memory alone would see no "q" at all: both are word-initial.
+  assert.equal(record.patterns.some(([pair]) => pair[1] === 'q'), false);
+
+  // Direct counts win over pairs; an older summary without them still contributes its pairs.
+  const direct = run('new', { keysVersion: KEY_COUNTS_VERSION, keys: [['q', 12, 3], ['h', 4, 0]] });
+  const legacy = run('old');
+  const result = keyAnalysis([legacy, direct]);
+  assert.equal(result.runs, 2);
+  assert.equal(result.pairDerivedRuns, 1);
+  assert.deepEqual(result.keys.q, { key: 'q', samples: 12, errors: 3, missRate: 0.25, enough: true });
+  assert.deepEqual(result.keys.h, { key: 'h', samples: 16, errors: 2, missRate: 2 / 16, enough: true });
+  assert.equal(keyAnalysis([run('drill', { kind: 'drill', patterns: [], keys: [], keysVersion: KEY_COUNTS_VERSION })]).runs, 0);
 });

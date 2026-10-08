@@ -2,6 +2,23 @@ import { conditionKey, replayAttempt, summarizePatterns, textId } from './typing
 
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
+// Per-letter first-attempt counts saved with each run. Summaries without this version predate
+// them and fall back to pair-derived counts, which miss letters at the start of a word.
+export const KEY_COUNTS_VERSION = 1;
+
+// [letter, tries, first-try errors] for every a–z first attempt, whatever came before it.
+function keyCounts(replay) {
+  const keys = new Map();
+  for (const first of replay.firstAttempts) {
+    const letter = (first.expected || '').toLowerCase();
+    if (!/^[a-z]$/.test(letter)) continue;
+    const k = keys.get(letter) || [letter, 0, 0];
+    k[1] += 1;
+    if (!first.correct) k[2] += 1;
+    keys.set(letter, k);
+  }
+  return [...keys.values()];
+}
 
 export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
@@ -16,12 +33,15 @@ export function runRecord(attempt, at = attempt.at || null) {
     firstDailyAttempt: attempt.firstDailyAttempt,
     // Keep counts and each run's measured median, rather than another keystroke log.
     patterns: evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]),
+    // Same eligibility as patterns (no drills, races or repeated dailies).
+    keys: evidence.attemptCount ? keyCounts(replay) : [],
+    keysVersion: KEY_COUNTS_VERSION,
   };
 }
 
 export function retainRuns(runs) {
   const kept = runs.slice(-MAX_RUN_SUMMARIES);
-  return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS ? { ...run, patterns: [] } : run);
+  return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS ? { ...run, patterns: [], keys: [] } : run);
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
@@ -115,18 +135,30 @@ const DAILY_TEXTS = [
 // Stilltype rule: no confident per-key or per-pair claim below this many first attempts.
 export const MIN_PATTERN_SAMPLES = 10;
 
-// Compact pattern memory → per-key and per-pair totals. A pair's first attempt is a try at its
-// second letter, so a key's miss rate is first-attempt errors on that letter over its tries.
+const directKeys = (run) => run.keysVersion === KEY_COUNTS_VERSION && Array.isArray(run.keys) ? run.keys : null;
+
+// Compact run memory → per-key and per-pair totals. A key's miss rate is first-attempt errors on
+// that letter over its tries. Older summaries without per-letter counts fall back to their pairs
+// (a pair's first attempt is a try at its second letter), so they only count letters typed after
+// another letter; pairDerivedRuns says how many runs that applies to.
 export function keyAnalysis(runs, limit = 8) {
-  const recent = runs.filter((r) => validRun(r) && (r.patterns || []).length).slice(-MAX_PATTERN_RUNS);
+  const recent = runs.filter((r) => validRun(r) && ((r.patterns || []).length || directKeys(r)?.length))
+    .slice(-MAX_PATTERN_RUNS);
   const keys = new Map();
   const pairs = new Map();
+  let pairDerivedRuns = 0;
+  const addKey = (key, samples, errors) => {
+    const k = keys.get(key) || { key, samples: 0, errors: 0 };
+    k.samples += samples;
+    k.errors += errors;
+    keys.set(key, k);
+  };
   for (const run of recent) {
-    for (const [pair, observations, errors, timingCount, medianMs, slowdownMs] of run.patterns) {
-      const k = keys.get(pair[1]) || { key: pair[1], samples: 0, errors: 0 };
-      k.samples += observations;
-      k.errors += errors;
-      keys.set(pair[1], k);
+    const direct = directKeys(run);
+    if (direct) for (const [key, samples, errors] of direct) addKey(key, samples, errors);
+    else pairDerivedRuns += 1;
+    for (const [pair, observations, errors, timingCount, medianMs, slowdownMs] of run.patterns || []) {
+      if (!direct) addKey(pair[1], observations, errors);
       const p = pairs.get(pair) || { pair, samples: 0, errors: 0, slowRuns: 0, runs: 0 };
       p.samples += observations;
       p.errors += errors;
@@ -138,6 +170,7 @@ export function keyAnalysis(runs, limit = 8) {
   const rate = (v) => ({ ...v, missRate: v.samples ? v.errors / v.samples : 0, enough: v.samples >= MIN_PATTERN_SAMPLES });
   return {
     runs: recent.length,
+    pairDerivedRuns,
     keys: Object.fromEntries([...keys.values()].map((k) => [k.key, rate(k)])),
     pairs: [...pairs.values()].map(rate).filter((p) => p.enough && (p.errors > 0 || p.slowRuns > 0))
       .sort((a, b) => b.missRate - a.missRate || b.slowRuns - a.slowRuns || b.samples - a.samples || a.pair.localeCompare(b.pair))

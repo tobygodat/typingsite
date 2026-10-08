@@ -1128,7 +1128,9 @@ function renderTraining() {
 function renderKeys(runs) {
   const analysis = keyAnalysis(runs);
   const pct = (v) => `${(v * 100).toFixed(1)}%`;
-  $('key-note').textContent = `First-try misses per key from ${analysis.runs} saved ${analysis.runs === 1 ? 'run' : 'runs'} at these conditions. Keys with fewer than ${MIN_PATTERN_SAMPLES} samples stay neutral.`;
+  const older = analysis.pairDerivedRuns;
+  $('key-note').textContent = `First-try misses per key from ${analysis.runs} saved ${analysis.runs === 1 ? 'run' : 'runs'} at these conditions. Keys with fewer than ${MIN_PATTERN_SAMPLES} samples stay neutral.${older
+    ? ` ${older} older ${older === 1 ? 'run counts' : 'runs count'} only letters typed after another letter, not the first letter of a word.` : ''}`;
   $('key-heatmap').replaceChildren(...['qwertyuiop', 'asdfghjkl', 'zxcvbnm'].map((letters) => {
     const row = element('div', '', 'key-row');
     for (const letter of letters) {
