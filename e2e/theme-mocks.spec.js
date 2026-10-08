@@ -1,8 +1,8 @@
-import { test, expect, openApp, chooseWords, completePassage, passageText, typeInto } from './fixtures.js';
+import { test, expect, openApp, chooseWords, passageText, typeInto } from './fixtures.js';
 
 // Mock themes are opt-in proposals (token swaps in styles.css). Each must apply, persist like
 // dark/light, and paint a ground that differs from both shipped themes.
-const MOCKS = ['paper', 'shadcn', 'terminal', 'soft', 'midnight'];
+const MOCKS = ['paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'eink', 'nord'];
 const shot = (name) => `docs/screenshots/theme-mocks/${name}.png`;
 
 async function pickTheme(page, theme) {
@@ -45,21 +45,27 @@ for (const theme of MOCKS) {
     await chooseWords(page, 10);
     await page.mouse.move(640, 790);
     await page.screenshot({ path: shot(`${theme}-practice`) });
-    await completePassage(page);
+    // Type at a human pace (~90 wpm) with one slip, so the card shows a believable run and the mistake mark.
+    const text = await passageText(page);
+    await typeInto(page, `${text.slice(0, 6)}${text[6] === 'x' ? 'z' : 'x'}${text.slice(7)}`, '#typing-input', { delay: 70 });
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
     await expect(page.locator('#run-card')).toBeVisible();
     await page.waitForTimeout(600);
     await page.screenshot({ path: shot(`${theme}-run-card`) });
   });
 }
 
-test('screenshots · paper mid-run', async ({ page }) => {
-  await openApp(page);
-  await pickTheme(page, 'paper');
-  await chooseWords(page, 10);
-  const text = await passageText(page);
-  // One deliberate slip so the coral mistake tint shows mid-run.
-  await typeInto(page, `${text.slice(0, 6)}${text[6] === 'x' ? 'z' : 'x'}${text.slice(7, 18)}`);
-  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: shot('paper-midrun') });
-});
+// Mid-run frames for the themes whose mistake cue differs: Paper (coral tint), Swiss and E-ink (tint plus underline).
+for (const theme of ['paper', 'swiss', 'eink']) {
+  test(`screenshots · ${theme} mid-run`, async ({ page }) => {
+    await openApp(page);
+    await pickTheme(page, theme);
+    await chooseWords(page, 10);
+    const text = await passageText(page);
+    // One deliberate slip so the mistake cue shows mid-run.
+    await typeInto(page, `${text.slice(0, 6)}${text[6] === 'x' ? 'z' : 'x'}${text.slice(7, 18)}`);
+    await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: shot(`${theme}-midrun`) });
+  });
+}

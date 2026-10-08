@@ -69,8 +69,8 @@ let cloudChecked = false;
 let unsynced = false;
 
 // Mock themes are proposals awaiting approval (tokens in styles.css); unknown ids fall back to system.
-const MOCK_THEMES = ['paper', 'shadcn', 'terminal', 'soft', 'midnight'];
-const THEME_COLOR = { dark: '#0f0f0e', light: '#f4f1eb', paper: '#fbf8f1', shadcn: '#ffffff', terminal: '#2c2e31', soft: '#f5f3fb', midnight: '#08080a' };
+const MOCK_THEMES = ['paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'eink', 'nord'];
+const THEME_COLOR = { dark: '#0f0f0e', light: '#f4f1eb', paper: '#fbf8f1', shadcn: '#ffffff', terminal: '#2c2e31', soft: '#f5f3fb', midnight: '#08080a', swiss: '#ffffff', eink: '#eeeeea', nord: '#2e3440' };
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;

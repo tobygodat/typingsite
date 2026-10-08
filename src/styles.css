@@ -268,6 +268,105 @@
   --card-bottom: #0a0a0c;
 }
 
+/* Swiss: strict grotesk, black on white, one signal red, hairline rules, zero radius, no shadows. */
+:root[data-theme="swiss"] {
+  color-scheme: light;
+  --font-serif: "Helvetica Neue", Helvetica, Arial, "Nimbus Sans", "Liberation Sans", sans-serif;
+  --font-mono: "Helvetica Neue", Helvetica, Arial, "Nimbus Sans", "Liberation Sans", sans-serif;
+  --radius-sm: 0;
+  --radius: 0;
+  --radius-control: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --ground: #ffffff;
+  --ground-2: #f5f5f5;
+  --raised: #ffffff;
+  --raised-2: #f0f0f0;
+  --text: #000000;
+  --muted: #555555;
+  --hairline: rgba(0, 0, 0, 0.12);
+  --hairline-strong: rgba(0, 0, 0, 0.3);
+  --outline: #777777;
+  --accent: #e30613;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(227, 6, 19, 0.08);
+  --danger: #e30613;
+  --danger-soft: rgba(227, 6, 19, 0.12);
+  --warning: #8a5a00;
+  --selection: #e6e6e6;
+  --ghost: #1f3fbf;
+  --shadow-float: none;
+  --card-top: #ffffff;
+  --card-bottom: #ffffff;
+}
+/* Accent and coral share the one red, so a mistyped letter also gets an underline. */
+:root[data-theme="swiss"] :is(.dock, .run-card) { border-color: var(--text); }
+:root[data-theme="swiss"] .char.wrong { text-decoration: underline 2px; text-underline-offset: 0.16em; }
+
+/* E-ink: greyscale reading device; ui-serif, quiet chrome, crisp text, a dark-grey caret. No colour. */
+:root[data-theme="eink"] {
+  color-scheme: light;
+  --font-serif: ui-serif, "New York", Charter, "Iowan Old Style", Georgia, serif;
+  --radius-sm: 2px;
+  --radius: 4px;
+  --radius-control: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --ground: #eeeeea;
+  --ground-2: #e7e7e3;
+  --raised: #f6f6f2;
+  --raised-2: rgba(0, 0, 0, 0.05);
+  --text: #111111;
+  --muted: #555552;
+  --hairline: rgba(0, 0, 0, 0.08);
+  --hairline-strong: rgba(0, 0, 0, 0.16);
+  --outline: #8a8a86;
+  --accent: #3a3a3a;
+  --accent-ink: #f6f6f2;
+  --accent-soft: rgba(0, 0, 0, 0.07);
+  --danger: #333333;
+  --danger-soft: rgba(0, 0, 0, 0.13);
+  --warning: #4a4a4a;
+  --selection: #dcdcd8;
+  --ghost: #6a6a6a;
+  --shadow-float: none;
+  --card-top: #f6f6f2;
+  --card-bottom: #f6f6f2;
+}
+/* Without colour, a mistyped letter is marked by its grey tint plus a wavy underline. */
+:root[data-theme="eink"] .char.wrong { text-decoration: underline wavy 1.5px; text-underline-offset: 0.18em; }
+
+/* Nord: cool arctic blue-grey night, frosted-blue accent (flat, no blur), medium radius, clean sans. */
+:root[data-theme="nord"] {
+  color-scheme: dark;
+  --font-serif: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-control: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --ground: #2e3440;
+  --ground-2: #323a47;
+  --raised: #3b4252;
+  --raised-2: rgba(236, 239, 244, 0.08);
+  --text: #eceff4;
+  --muted: #b3bccb;
+  --hairline: rgba(236, 239, 244, 0.08);
+  --hairline-strong: rgba(236, 239, 244, 0.16);
+  --outline: #8892a4;
+  --accent: #88c0d0;
+  --accent-ink: #1d2430;
+  --accent-soft: rgba(136, 192, 208, 0.15);
+  --danger: #e5848c;
+  --danger-soft: rgba(229, 132, 140, 0.18);
+  --warning: #ebcb8b;
+  --selection: #434c5e;
+  --ghost: #b48ead;
+  --shadow-float: 0 8px 24px rgba(15, 18, 24, 0.35);
+  --card-top: #3b4252;
+  --card-bottom: #353c4a;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root { --motion-scale: 0; }
   *, *::before, *::after {
