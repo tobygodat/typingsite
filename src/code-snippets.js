@@ -1,5 +1,6 @@
 // Short original code snippets for code mode. The engine has no line breaks, so each snippet is
-// auto-unindented and its lines are joined with a single space. Tokens stay at MAX_CODE_TOKEN
+// auto-unindented and its lines are joined with a single space, and must still be valid code once
+// joined (in Python, only simple statements after a colon). Tokens stay at MAX_CODE_TOKEN
 // characters or fewer so they rarely have to break mid-token on a narrow screen.
 export const CODE_LANGUAGES = ['js', 'python', 'go', 'rust'];
 export const DEFAULT_CODE_LANGUAGE = 'js';
@@ -28,9 +29,8 @@ export const CODE_SNIPPETS = {
     `if __name__ == "__main__":
         main(sys.argv[1:])`,
     `pairs = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))[:10]`,
-    `class Point:
-        def __init__(self, x=0, y=0):
-            self._x, self._y = x, y`,
+    `while stack:
+        seen.add(stack.pop())`,
   ],
   go: [
     `func add(a, b int) int {
