@@ -1221,8 +1221,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .run-card-unit { color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
 
 /* Fatigue: a quiet line of evidence, no motion. */
-.fatigue-notice { margin: 0; color: var(--warning); font-size: var(--text-small); line-height: 1.5; }
+.fatigue-notice { margin: 0; color: var(--text); font-size: var(--text-small); line-height: 1.5; }
 .fatigue-notice[hidden] { display: none; }
+/* The notice makes the print taller than a short viewport; let it scroll so the dismiss stays reachable. */
+.run-card:has(> .fatigue-notice:not([hidden])) { position: static; }
 .fatigue-dismiss { padding: 0; border: 0; background: none; color: var(--muted); font: inherit; text-decoration: underline; text-underline-offset: 0.2em; cursor: pointer; }
 .fatigue-dismiss:hover { color: var(--text); }
 

@@ -83,7 +83,7 @@ test('original quote pool has fresh choices in every length and difficulty bucke
   }
 });
 
-test('fatigue speaks only when every recent run sits below the sitting median', async () => {
+test('fatigue speaks only when every recent run sits below the median of the earlier runs', async () => {
   const { fatigueSignal } = await import('../src/insights.js');
   assert.deepEqual(fatigueSignal([]), { show: false, median: null, lastN: [] });
   assert.equal(fatigueSignal([70, 70, 50, 50, 50, 50, 50]).show, false, 'seven runs is too few');

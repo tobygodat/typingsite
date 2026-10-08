@@ -799,24 +799,27 @@ function finishPrimary(forcedElapsed = null) {
     baselineAttempt = completed;
     trainingContext = null;
   }
-  if (sessionKind === 'practice' && valid && completed.kind === 'test') sitting.wpms.push(completed.summary.score.wpm);
+  const sittingKey = sessionKind === 'practice' && valid && completed.kind === 'test' ? conditionKey(completed.conditions) : null;
+  if (sittingKey) sitting.runs.push({ key: sittingKey, wpm: completed.summary.score.wpm });
   renderResults(completed, saved);
   if (sessionKind === 'retest') renderComparison(baselineAttempt, completed, saved);
   switchView('results');
   renderCard(completed);
-  renderFatigueNotice(sessionKind === 'practice' && valid && completed.kind === 'test');
+  renderFatigueNotice(sittingKey);
   $('run-again').focus({ preventScroll: true });
 }
 
-// The current sitting lives only in memory: completed practice tests in this page session.
-const sitting = { wpms: [], noticeShown: false };
+// The current sitting lives only in memory: completed practice tests in this page session. Runs are
+// compared only within one condition set, so a harder exercise never reads as a tired typist.
+const sitting = { runs: [], noticeShown: false };
 
-function renderFatigueNotice(eligible) {
-  const signal = eligible && prefs.fatigueNotice !== false && !sitting.noticeShown ? fatigueSignal(sitting.wpms) : { show: false };
+function renderFatigueNotice(key) {
+  const wpms = sitting.runs.filter((run) => run.key === key).map((run) => run.wpm);
+  const signal = key && prefs.fatigueNotice !== false && !sitting.noticeShown ? fatigueSignal(wpms) : { show: false };
   $('fatigue-notice').hidden = !signal.show;
   if (!signal.show) return;
   sitting.noticeShown = true;
-  $('fatigue-notice-text').textContent = `Your last ${signal.lastN.length} runs are below this session’s median (${Math.round(signal.median)} wpm). A short break usually helps.`;
+  $('fatigue-notice-text').textContent = `Your last ${signal.lastN.length} runs are below the median of your earlier runs this session (${Math.round(signal.median)} wpm). You might take a short break.`;
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
