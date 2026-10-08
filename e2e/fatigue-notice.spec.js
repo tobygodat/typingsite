@@ -48,7 +48,7 @@ test('a slowing sitting shows the evidence once, and "don’t show this" turns i
   await slowSitting(page, 100, 200);
   const notice = page.locator('#fatigue-notice');
   await expect(notice).toBeVisible();
-  await expect(notice).toContainText(/Your last 5 runs are below the median of your 3 earlier runs this session \(\d+ wpm\)\. You might take a short break\./);
+  await expect(notice).toContainText(/At these settings, your last 5 runs this session are below the median of the 3 before them \(\d+ wpm\)\. You might take a short break\./);
   // The taller print lets go of the viewport while the notice shows, so "don’t show this" stays reachable.
   await expect(page.locator('#run-card')).toHaveCSS('position', 'static');
 

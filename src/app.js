@@ -821,8 +821,8 @@ function renderFatigueNotice(key) {
   $('fatigue-notice').hidden = !signal.show;
   if (!signal.show) return;
   sitting.noticeShown = true;
-  const earlier = `${signal.earlier} earlier ${signal.earlier === 1 ? 'run' : 'runs'}`;
-  $('fatigue-notice-text').textContent = `Your last ${signal.lastN.length} runs are below the median of your ${earlier} this session (${Math.round(signal.median)} wpm). You might take a short break.`;
+  // Only runs at the current settings are compared, so the copy is scoped to them.
+  $('fatigue-notice-text').textContent = `At these settings, your last ${signal.lastN.length} runs this session are below the median of the ${signal.earlier} before them (${Math.round(signal.median)} wpm). You might take a short break.`;
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
