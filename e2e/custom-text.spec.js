@@ -53,6 +53,37 @@ test('emoji are dropped and the length cap holds after punctuation expands', asy
   expect((await passageText(page)).length).toBe(10000);
 });
 
+test('invisible format characters are stripped', async ({ page }) => {
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill('\uFEFFsoft\u00ADware left\u200Eto \u2066right\u2069 zero\u200Bwidth jo\u200Din no\u200Cn');
+  await page.locator('#custom-use').click();
+  expect(await passageText(page)).toBe('software leftto right zerowidth join non');
+});
+
+test('the panel appears without motion and never opens beside a live run', async ({ page }) => {
+  await openApp(page);
+  await page.mouse.move(10, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 3));
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+
+  // Pointer movement brings the controls back; opening custom then restarts the run first.
+  await page.mouse.move(80, 80);
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'false');
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await expect(page.locator('#custom-options')).toHaveCSS('animation-name', 'none');
+  await expect(page.locator('#typing-status')).toHaveText('Ready');
+  await expect(page.locator('#typing-input')).toHaveValue('');
+
+  // If a run starts with the panel open, it steps back with the rest of the setup.
+  const fresh = await passageText(page);
+  await typeInto(page, fresh.slice(0, 2));
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+  await expect(page.locator('#custom-options')).toHaveCSS('opacity', '0');
+});
+
 test('characters typed through an input method are refused with a message', async ({ page }) => {
   await openApp(page);
   await page.locator('#mode-custom').click();

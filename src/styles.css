@@ -787,7 +787,8 @@ kbd {
 
 .quote-options .input { width: 128px; height: 38px; font-size: 14px; }
 
-/* Bring your own text: an open section on a hairline rule, not a box (only floating objects are raised). */
+/* Bring your own text: an open section on a hairline rule, not a box (only floating objects are raised).
+   It sits beside the passage, so it appears instantly, without a fade. */
 .custom-options {
   width: min(560px, 100%);
   margin: calc(var(--space-10) * -1) auto var(--space-10);
@@ -795,7 +796,6 @@ kbd {
   display: grid;
   gap: var(--space-2);
   border-top: 1px solid var(--hairline);
-  animation: fade-in var(--dur-quick) var(--ease-out);
 }
 .custom-options .field-error { margin: 0; }
 .custom-label { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: var(--text-label); }
@@ -895,11 +895,12 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 .corner,
 .practice-controls,
 .quote-options,
+.custom-options,
 .shortcut-row,
 .site-footer { transition: opacity var(--dur-base) var(--ease-out); }
 
-body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
-body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
+body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .custom-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
+body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .custom-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
 
 /* ── Typing zone ────────────────────────────────────────────────────────── */
 

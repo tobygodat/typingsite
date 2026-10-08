@@ -54,14 +54,17 @@ let customOpen = false;
 
 // Pasted text is made typeable: smart punctuation becomes ASCII, control characters go, whitespace collapses.
 // Characters outside the BMP (emoji) are dropped: scoring indexes the passage by UTF-16 unit, so each
-// letter must be one unit. The cap applies after expansion so a saved passage is stable across reloads.
+// letter must be one unit. Format controls (\p{Cf}: soft hyphen, ZWSP, ZWJ/ZWNJ, bidi marks, BOM) are
+// invisible, so they would be targets nobody can see. The cap applies after expansion so a saved passage
+// is stable across reloads.
 function normalizeCustomText(value) {
   return String(value || '').normalize('NFC')
+    .replace(/\p{Cf}/gu, '')
     .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
     .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
     .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
     .replace(/\u2026/g, '...')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200D\uFEFF\uFE00-\uFE0F\uD800-\uDFFF]/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uFE00-\uFE0F\uD800-\uDFFF]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, CUSTOM_MAX)
@@ -1955,7 +1958,9 @@ function setCustomError(message = '') {
   $('custom-text').setAttribute('aria-invalid', String(Boolean(message)));
 }
 
+// The panel never opens or closes beside a live run: like the other mode buttons, it restarts the run first.
 function openCustom(open = true) {
+  if (attempt?.status === 'running') resetSession(sessionKind === 'custom' ? 'custom' : 'practice');
   customOpen = open;
   if (open) {
     if (!$('custom-text').value) $('custom-text').value = prefs.customText || '';
