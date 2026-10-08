@@ -1793,8 +1793,11 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 /* Watch replay: the passage at reading size, instant letter states, a caret that jumps. */
 #replay-dialog { width: min(760px, calc(100% - 32px)); }
+#replay-dialog .dialog-actions { flex-wrap: wrap; }
 .replay-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); }
-.replay-clock { font-family: var(--font-mono); font-size: var(--text-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Number and unit share one baseline: the seconds in Literata, the unit a small mono label. */
+.replay-clock { display: flex; align-items: baseline; gap: var(--space-1); color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
+.replay-clock-value { color: var(--text); font: var(--text-lead)/1 var(--font-serif); font-variant-numeric: tabular-nums; }
 .replay-text {
   color: var(--muted);
   font-family: var(--font-serif);

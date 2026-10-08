@@ -3,6 +3,8 @@
 // matches the scored run exactly. Letter states are instant and the caret jumps (no spring).
 import { replaySpan, stateAt } from './typing.js';
 
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
 export function createReplayView(dialog) {
   const display = dialog.querySelector('#replay-text');
   const clock = dialog.querySelector('#replay-clock');
@@ -40,7 +42,7 @@ export function createReplayView(dialog) {
       const name = `char${letter ? ` ${letter}` : ''}${index === state.caret ? ' is-caret' : ''}`;
       if (drawn[index] !== name) node.className = drawn[index] = name;
     });
-    clock.textContent = `${(position / 1000).toFixed(1)} s`;
+    clock.textContent = (position / 1000).toFixed(1);
     toggle.textContent = playing ? 'Pause' : 'Play';
     dialog.dataset.state = playing ? 'playing' : position >= length() ? 'done' : 'paused';
   }
@@ -86,7 +88,13 @@ export function createReplayView(dialog) {
       position = 0;
       build();
       dialog.showModal();
-      play();
+      // Reduced motion: open on the finished frame, still; Play remains an explicit choice.
+      if (reducedMotion.matches) {
+        position = length();
+        pause();
+      } else {
+        play();
+      }
     },
   };
 }

@@ -203,9 +203,13 @@ export function stateAt(attempt, t = Infinity) {
   return { typed: replay.typed, letters, caret: replay.typed.length, mistakes: replay.mistakes, done: events.length === (attempt.events || []).length };
 }
 
+// The scored bounds (startedAt/endedAt) widened to cover every event, so a timed run's idle tail
+// plays out and the replay clock ends on the elapsed time the result used.
 export function replaySpan(attempt) {
   const offsets = (attempt.events || []).map((event) => event.offsetMs).filter(Number.isFinite);
-  return offsets.length ? { start: Math.min(...offsets), end: Math.max(...offsets) } : { start: 0, end: 0 };
+  if (!offsets.length) return { start: 0, end: 0 };
+  const bound = (value) => (Number.isFinite(value) ? [value] : []);
+  return { start: Math.min(...offsets, ...bound(attempt.startedAt)), end: Math.max(...offsets, ...bound(attempt.endedAt)) };
 }
 
 export function completeAttempt(attempt, { endedAt, status = 'complete' } = {}) {

@@ -135,4 +135,8 @@ test('stateAt replays letters as they were and ends on the scored result', () =>
   assert.equal(end.letters.filter((s) => s === 'wrong').length, [...completed.typed].filter((c, i) => c !== completed.text[i]).length);
   assert.equal(end.done, true);
   assert.deepEqual(replaySpan(completed), { start: 0, end: 800 });
+  // A timed run that idles before the timer ends replays to the scored end, not the last key.
+  const timed = completeAttempt({ ...attempt, startedAt: 0 }, { endedAt: 15000 });
+  assert.deepEqual(replaySpan(timed), { start: 0, end: timed.endedAt });
+  assert.equal(replaySpan(timed).end - replaySpan(timed).start, timed.summary.elapsedMs);
 });
