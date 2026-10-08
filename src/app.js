@@ -24,6 +24,7 @@ import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
+import { exportFilename, runsToCsv } from './export.js';
 
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
@@ -1355,6 +1356,25 @@ function renderRaceResults() {
   announce('Challenge complete.');
 }
 
+function downloadFile(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportRunsCsv() {
+  downloadFile(exportFilename('runs', 'csv'), runsToCsv(profile.runs || []), 'text/csv;charset=utf-8');
+  announce('Runs exported as CSV.');
+}
+
+function exportAllJson() {
+  downloadFile(exportFilename('data', 'json'), JSON.stringify(profile, null, 2), 'application/json');
+  announce('All data exported as JSON.');
+}
+
 function clearHistory() {
   clearSnapshot = JSON.stringify(profile);
   profile.attempts = [];
@@ -1820,6 +1840,8 @@ function bindEvents() {
   $('clear-history').addEventListener('click', () => { $('confirm-clear-input').value = ''; $('confirm-clear').disabled = true; $('clear-dialog').showModal(); $('confirm-clear-input').focus(); });
   $('confirm-clear-input').addEventListener('input', (event) => { $('confirm-clear').disabled = event.target.value !== 'clear'; });
   $('confirm-clear').addEventListener('click', clearHistory);
+  $('export-csv').addEventListener('click', exportRunsCsv);
+  $('export-json').addEventListener('click', exportAllJson);
   $('cancel-clear').addEventListener('click', () => $('clear-dialog').close());
   $('undo-clear').addEventListener('click', undoClear);
 
@@ -1936,6 +1958,8 @@ function paletteCommands(query) {
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
+    { group: 'local data', label: 'export runs (CSV)', keywords: 'download export csv spreadsheet history data', run: exportRunsCsv },
+    { group: 'local data', label: 'export all data (JSON)', keywords: 'download export json backup profile data', run: exportAllJson },
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.runs.length === 0 && profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
   // Only an exact word finds this one.
