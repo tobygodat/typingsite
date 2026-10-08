@@ -28,6 +28,20 @@ test('word sessions contain requested number of words and punctuation is optiona
   assert.match(makePassage('words', 10, true, () => 0), /^The the the the the, the the the the\. The$/);
 });
 
+test('numbers mix in only when on, stay seeded, and split condition keys', () => {
+  const seeded = (seed) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const plain = makePassage('words', 200, false, seeded(7));
+  const mixed = makePassage('words', 200, false, seeded(7), undefined, true);
+  assert.doesNotMatch(plain, /\d/);
+  assert.match(mixed, /\b\d{1,4}\b/);
+  assert.ok(mixed.split(' ').every((word) => /^(\d{1,4}|[a-z']+)$/.test(word)));
+  assert.equal(mixed, makePassage('words', 200, false, seeded(7), undefined, true));
+  assert.doesNotMatch(makePassage('time', 0, true, seeded(3)), /\d/);
+  const base = { mode: 'words', count: 10, punctuation: false };
+  assert.notEqual(conditionKey(base), conditionKey({ ...base, numbers: true }));
+  assert.equal(conditionKey(base), conditionKey({ ...base, numbers: false }));
+});
+
 test('event replay retains a corrected first-attempt error and insertion accuracy', () => {
   const attempt = createAttempt({ id: 'a', text: 'the', textId: 'one', conditions: {} });
   attempt.events = [
