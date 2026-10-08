@@ -47,6 +47,8 @@ const defaultPreferences = {
   restartKey: 'Escape',
 };
 const restartKeys = { Escape: 'esc', Tab: 'tab', Enter: 'enter' };
+// Own keys only, so a stored "toString" or "__proto__" can't pass as a restart key.
+const isRestartKey = (key) => Object.hasOwn(restartKeys, key);
 
 function emptyProfile() {
   return {
@@ -72,7 +74,7 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
-  if (!restartKeys[value.restartKey]) value.restartKey = 'Escape';
+  if (!isRestartKey(value.restartKey)) value.restartKey = 'Escape';
   return value;
 }
 
@@ -1910,7 +1912,7 @@ function setStopOnError(enabled) {
 }
 
 function setRestartKey(key) {
-  prefs.restartKey = restartKeys[key] ? key : 'Escape';
+  prefs.restartKey = isRestartKey(key) ? key : 'Escape';
   applyPreferences();
   saveProfile();
 }

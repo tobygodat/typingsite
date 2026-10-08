@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, signInWithEmail } from './fixtures.js';
 
 test('tab as the restart key resets the passage, and esc still works', async ({ page }) => {
   await openApp(page);
@@ -112,6 +112,18 @@ test('enter stays inert mid-run after the chrome returns via the practice nav', 
   await expect(page.locator('#text-display .char.correct')).toHaveCount(3);
   await expect(page.locator('#typing-status')).toContainText('In progress');
 });
+
+for (const stored of ['toString', '__proto__']) {
+  test(`a synced restart key of "${stored}" falls back to esc`, async ({ page, supabase }) => {
+    const user = supabase.addUser(`restart-${stored.replace(/_/g, '')}@stilltype.test`);
+    supabase.profiles.set(user.id, { data: { version: 2, preferences: { restartKey: stored }, attempts: [], runs: [], loops: [],
+      seenTextIds: [], bests: {}, updatedAt: new Date(Date.now() + 60000).toISOString() } });
+    await openApp(page);
+    await signInWithEmail(page, user.email);
+    await expect(page.locator('#restart-key')).toHaveValue('Escape');
+    await expect(page.locator('#restart-key-hint')).toHaveText('esc');
+  });
+}
 
 test('screenshots', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
