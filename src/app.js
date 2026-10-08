@@ -44,7 +44,9 @@ const defaultPreferences = {
   stopOnError: false,
   focusMode: false,
   theme: 'system',
+  restartKey: 'Escape',
 };
+const restartKeys = { Escape: 'esc', Tab: 'tab', Enter: 'enter' };
 
 function emptyProfile() {
   return {
@@ -70,6 +72,7 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  if (!restartKeys[value.restartKey]) value.restartKey = 'Escape';
   return value;
 }
 
@@ -286,6 +289,9 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  $('restart-key').value = prefs.restartKey;
+  $('restart-key-hint').textContent = restartKeys[prefs.restartKey];
+  $('restart-button').title = `Restart test (${prefs.restartKey === 'Escape' ? 'Escape' : `${prefs.restartKey} or Escape`})`;
   showBest();
 }
 
@@ -1737,6 +1743,7 @@ function bindEvents() {
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
+  $('restart-key').addEventListener('change', (event) => setRestartKey(event.target.value));
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
   $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
@@ -1843,6 +1850,7 @@ function bindEvents() {
       showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
       return;
     }
+    if (quickRestart(event)) return;
     if (event.key === 'Escape' && prefs.focusMode) {
       event.preventDefault();
       prefs.focusMode = false;
@@ -1901,6 +1909,30 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession('practice');
 }
 
+function setRestartKey(key) {
+  prefs.restartKey = restartKeys[key] ? key : 'Escape';
+  applyPreferences();
+  saveProfile();
+}
+
+// The chosen quick-restart key only acts from the typing input or the bare page, so Tab
+// still moves focus through settings, the palette, dialogs and result-screen controls.
+function quickRestart(event) {
+  const key = prefs.restartKey;
+  if (key === 'Escape' || event.key !== key || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return false;
+  const view = document.body.dataset.view;
+  const active = document.activeElement;
+  const onInput = active === $('typing-input');
+  const onPage = !active || active === document.body;
+  if (!onInput && !(onPage && (view === 'practice' || view === 'results'))) return false;
+  // Enter only restarts from the result card or before a run starts, never mid-run.
+  if (key === 'Enter' && (runActive || (view !== 'results' && !onInput))) return false;
+  event.preventDefault();
+  if (view !== 'practice') navigate('practice');
+  resetSession(sessionKind, { focus: true });
+  return true;
+}
+
 function setWordList(id) {
   prefs.wordList = id;
   applyPreferences();
@@ -1915,7 +1947,8 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartKeys[prefs.restartKey], run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
+    ...Object.entries(restartKeys).map(([key, name]) => ({ group: 'test', label: `restart key · ${name}`, keywords: 'quick restart tab enter escape shortcut', hint: prefs.restartKey === key ? 'current' : '', on: prefs.restartKey === key, run: () => setRestartKey(key) })),
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
