@@ -44,7 +44,45 @@ const defaultPreferences = {
   stopOnError: false,
   focusMode: false,
   theme: 'system',
+  customText: '',
+  customOrder: 'as-written',
 };
+
+const CUSTOM_MAX = 10000;
+const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
+let customOpen = false;
+
+// Pasted text is made typeable: smart punctuation becomes ASCII, control characters go, whitespace collapses.
+function normalizeCustomText(value) {
+  return String(value || '').slice(0, CUSTOM_MAX)
+    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+    .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function customPassage() {
+  const text = normalizeCustomText(prefs.customText);
+  if (!text) return null;
+  const words = text.split(' ');
+  const shuffle = (list) => {
+    for (let i = list.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    return list;
+  };
+  const order = prefs.customOrder;
+  const picked = order === 'shuffled' ? shuffle([...words])
+    : order === 'random' ? words.map(() => words[Math.floor(Math.random() * words.length)])
+      : words;
+  return { id: null, text: picked.join(' '), fresh: false };
+}
+
+const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
 
 function emptyProfile() {
   return {
@@ -70,6 +108,8 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  value.customText = typeof value.customText === 'string' ? value.customText.slice(0, CUSTOM_MAX) : '';
+  if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
   return value;
 }
 
@@ -178,6 +218,12 @@ function conditions(inputClass = 'physical-keyboard') {
   };
 }
 
+// Custom text has its own condition key, so it can never share a best, trend or retest with a test.
+function customConditions() {
+  return { ...conditions(), mode: 'custom', duration: null, count: null, punctuation: false,
+    quoteLength: null, difficulty: null, wordList: null, customOrder: prefs.customOrder };
+}
+
 function describeConditions(value = conditions()) {
   const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
   const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
@@ -190,6 +236,7 @@ function describeConditions(value = conditions()) {
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
+  if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'} · not counted`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
   return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
 }
@@ -290,15 +337,21 @@ function applyPreferences() {
 }
 
 function setModeControls() {
+  const custom = customOpen || sessionKind === 'custom';
+  $('mode-custom').classList.toggle('is-active', custom);
+  $('mode-custom').setAttribute('aria-pressed', String(custom));
+  $('mode-custom').setAttribute('aria-expanded', String(customOpen));
+  $('custom-options').hidden = !customOpen;
   document.querySelectorAll('[data-mode]').forEach((button) => {
-    const selected = button.dataset.mode === prefs.mode;
+    const selected = !custom && button.dataset.mode === prefs.mode;
     button.classList.toggle('is-active', selected);
     button.setAttribute('aria-pressed', String(selected));
   });
-  $('quote-options').hidden = prefs.mode !== 'quote';
+  $('quote-options').hidden = custom || prefs.mode !== 'quote';
   $('punctuation-toggle').disabled = prefs.mode === 'quote';
   $('word-list').disabled = prefs.mode === 'quote';
-  $('duration-options').hidden = prefs.mode === 'quote';
+  $('duration-options').hidden = custom || prefs.mode === 'quote';
+  document.querySelector('.compact-switch').hidden = custom;
   const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
   const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
   $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
@@ -439,6 +492,7 @@ function choosePassage(extraSeen = []) {
 function sessionDurationMs() {
   if (sessionKind === 'daily') return null;
   if (sessionKind === 'drill') return 60000;
+  if (sessionKind === 'custom') return null;
   if (prefs.mode === 'time') return prefs.duration * 1000;
   return null;
 }
@@ -447,6 +501,7 @@ function configureSessionCopy() {
   const copy = {
     practice: ['practice', 'Practice', ''],
     drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
+    custom: ['custom text', 'Your text', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
   }[sessionKind];
@@ -456,7 +511,7 @@ function configureSessionCopy() {
   $('typing-screen').dataset.session = sessionKind;
   document.body.dataset.session = sessionKind;
   const setup = document.querySelector('.practice-controls');
-  if (setup) setup.hidden = sessionKind !== 'practice';
+  if (setup) setup.hidden = sessionKind !== 'practice' && sessionKind !== 'custom';
   $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote';
 }
 
@@ -466,7 +521,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   setRunning(false);
   primaryNotice = '';
   sessionKind = kind;
-  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
+  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : kind === 'custom' ? customPassage() : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
@@ -508,7 +563,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: kind === 'daily' ? dailyConditions() : conditions(),
+    conditions: kind === 'daily' ? dailyConditions() : kind === 'custom' ? customConditions() : conditions(),
   });
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;
@@ -820,6 +875,7 @@ function renderCard(completed) {
 function resultHeadline(completed) {
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
+  if (completed.kind === 'custom') return 'Custom text complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
   if (!resultBestBefore) return 'First run at these settings';
   const delta = completed.summary.score.wpm - resultBestBefore.wpm;
@@ -1713,7 +1769,11 @@ function bindEvents() {
     const practice = event.target.closest('[data-action="go-practice"]');
     if (practice) resetSession('practice', { focus: true });
   });
+  $('mode-custom').addEventListener('click', () => openCustom(!customOpen));
+  $('custom-text').addEventListener('input', updateCustomCount);
+  $('custom-use').addEventListener('click', useCustomText);
   document.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => {
+    customOpen = false;
     prefs.mode = button.dataset.mode;
     setModeControls();
     saveProfile();
@@ -1877,7 +1937,39 @@ function bindEvents() {
   });
 }
 
+function updateCustomCount() {
+  $('custom-count').textContent = `${$('custom-text').value.length.toLocaleString('en')} / ${CUSTOM_MAX.toLocaleString('en')}`;
+}
+
+function openCustom(open = true) {
+  customOpen = open;
+  if (open) {
+    if (!$('custom-text').value) $('custom-text').value = prefs.customText || '';
+    $('custom-order').value = prefs.customOrder;
+    updateCustomCount();
+  }
+  setModeControls();
+  if (open) $('custom-text').focus();
+}
+
+// Signed in, the text is kept with the other preferences; a guest's preferences live only in memory.
+function useCustomText() {
+  const text = normalizeCustomText($('custom-text').value);
+  if (!text) {
+    announce('Add some text first.');
+    $('custom-text').focus();
+    return;
+  }
+  prefs.customText = text;
+  prefs.customOrder = CUSTOM_ORDERS.includes($('custom-order').value) ? $('custom-order').value : 'as-written';
+  saveProfile();
+  customOpen = false;
+  resetSession('custom', { focus: true });
+  setModeControls();
+}
+
 function setTestShape(mode, length) {
+  customOpen = false;
   prefs.mode = mode;
   if (mode === 'time' && length) prefs.duration = length;
   if (mode === 'words' && length) prefs.count = length;
@@ -1919,6 +2011,7 @@ function paletteCommands(query) {
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
+    { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: sessionKind === 'custom' ? 'current' : '', on: sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),

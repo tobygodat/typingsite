@@ -1,0 +1,52 @@
+import { test, expect, openApp, passageText, typeInto } from './fixtures.js';
+
+const TEXT = 'the quick brown fox jumps over the lazy dog';
+
+test('custom text runs under its own condition and never becomes a best', async ({ page }) => {
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#custom-text').fill(`  ${TEXT}\n  `);
+  await expect(page.locator('#custom-count')).toContainText('/ 10,000');
+  await page.locator('#custom-use').click();
+
+  await expect(page.locator('#custom-options')).toBeHidden();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(TEXT);
+
+  await typeInto(page, TEXT);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-conditions')).toContainText('custom text');
+  await expect(page.locator('#result-delta')).toContainText('not counted toward your best');
+
+  // Back on a normal test, nothing was recorded as a personal best.
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await page.locator('#mode-time').click();
+  await expect(page.locator('#best')).toHaveText('No best yet');
+});
+
+test('smart punctuation is normalised to typeable characters', async ({ page }) => {
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill('“It’s fine” — she said…\n\tok');
+  await page.locator('#custom-use').click();
+  expect(await passageText(page)).toBe('"It\'s fine" - she said... ok');
+});
+
+test('screenshots', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  for (const theme of ['dark', 'light']) {
+    await page.emulateMedia({ colorScheme: theme });
+    await openApp(page);
+    await page.locator('#mode-custom').click();
+    await page.waitForTimeout(400);
+    await page.locator('#custom-text').fill('Paste anything you like to practise on: a paragraph from a book, an email you keep retyping, or a list of tricky words.');
+    await page.screenshot({ path: `docs/screenshots/custom-text/panel-${theme}.png` });
+  }
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: 'docs/screenshots/custom-text/passage-dark.png' });
+});
