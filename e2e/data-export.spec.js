@@ -22,9 +22,9 @@ test('exports run history as CSV from settings', async ({ page }) => {
   expect(download.suggestedFilename()).toBe(`stilltype-runs-${today()}.csv`);
   const csv = await fs.readFile(await download.path(), 'utf8');
   const lines = csv.trim().split('\r\n');
-  expect(lines[0]).toBe('date,mode,length,word list,punctuation,difficulty,input,correction policy,corpus,metric version,wpm,accuracy,errors,duration,kind,interrupted');
+  expect(lines[0]).toBe('date,mode,length,word list,punctuation,difficulty,input,correction policy,corpus,metric version,wpm,accuracy,errors,duration,kind,interrupted,challenge date,first daily attempt,text id,fresh text');
   expect(lines).toHaveLength(2);
-  expect(lines[1]).toMatch(/^\d{4}-\d{2}-\d{2}T.*,words,10 words,.*,physical keyboard,.*,original-en-v\d+,stilltype-metrics-v\d+,/);
+  expect(lines[1]).toMatch(/^\d{4}-\d{2}-\d{2}T.*,words,10 words,.*,physical keyboard,.*,original-en-v\d+,stilltype-metrics-v\d+,.*,test,no,,,[^,]+,yes$/);
 });
 
 test('exports all data as pretty JSON, also from the palette', async ({ page }) => {

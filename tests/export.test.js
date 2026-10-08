@@ -19,15 +19,27 @@ test('runsToCsv writes a header and one row per run summary', () => {
       conditions: { mode: 'time', duration: 30, punctuation: true, wordList: '200', correctionPolicy: 'relaxed', inputClass: 'touch', corpus: 'original-en-v4', metricVersion: 'stilltype-metrics-v1' } },
     { at: '2026-10-08T11:00:00.000Z', kind: 'retest, "focused"', interrupted: true, errors: 0, elapsedMs: 1234, score: { wpm: 40, accuracy: 100 },
       conditions: { mode: 'words', count: 25, punctuation: false, wordList: '1k' } },
-    { at: '2026-10-08T12:00:00.000Z', kind: 'test', errors: 1, elapsedMs: 20000, score: { wpm: 55, accuracy: 99 },
+    { at: '2026-10-08T12:00:00.000Z', kind: 'test', errors: 1, elapsedMs: 20000, score: { wpm: 55, accuracy: 99 }, textId: 'quote-17', fresh: false,
       conditions: { mode: 'quote', quoteLength: 'short', difficulty: 'hard', inputClass: 'physical-keyboard' } },
   ]);
   const lines = csv.split('\r\n');
   assert.equal(lines[0], CSV_COLUMNS.join(','));
-  assert.equal(lines[1], '2026-10-08T10:00:00.000Z,time,30s,200,yes,,touch input,continue on error,original-en-v4,stilltype-metrics-v1,61,97,2,30.0,test,no');
-  assert.equal(lines[2], `2026-10-08T11:00:00.000Z,words,25 words,1k,no,,physical keyboard,stop on error,${CORPUS_VERSION},${METRIC_VERSION},40,100,0,1.2,"retest, ""focused""",yes`);
-  assert.equal(lines[3], `2026-10-08T12:00:00.000Z,quote,short,,no,hard,physical keyboard,stop on error,${CORPUS_VERSION},${METRIC_VERSION},55,99,1,20.0,test,no`);
+  assert.equal(lines[1], '2026-10-08T10:00:00.000Z,time,30s,200,yes,,touch input,continue on error,original-en-v4,stilltype-metrics-v1,61,97,2,30.0,test,no,,,,yes');
+  assert.equal(lines[2], `2026-10-08T11:00:00.000Z,words,25 words,1k,no,,physical keyboard,stop on error,${CORPUS_VERSION},${METRIC_VERSION},40,100,0,1.2,"retest, ""focused""",yes,,,,yes`);
+  assert.equal(lines[3], `2026-10-08T12:00:00.000Z,quote,short,,no,hard,physical keyboard,stop on error,${CORPUS_VERSION},${METRIC_VERSION},55,99,1,20.0,test,no,,,quote-17,no`);
   assert.equal(lines[4], '');
+});
+
+test('a daily row keeps its challenge day, attempt order and passage identity', () => {
+  const tail = (run) => runRow({ kind: 'daily', conditions: { mode: 'quote' }, ...run }).slice(-4);
+  // Finished just after midnight UTC: the date column moves on, the challenge date does not.
+  assert.deepEqual(tail({ at: '2026-10-09T00:00:30.000Z', challengeDate: '2026-10-08', firstDailyAttempt: true, textId: 'daily-a', fresh: true }),
+    ['2026-10-08', 'yes', 'daily-a', 'yes']);
+  assert.deepEqual(tail({ challengeDate: '2026-10-08', firstDailyAttempt: false, textId: 'daily-a', fresh: true }), ['2026-10-08', 'no', 'daily-a', 'yes']);
+  // First try at a passage shown before, inside the reuse window.
+  assert.deepEqual(tail({ challengeDate: '2026-10-22', firstDailyAttempt: true, textId: 'daily-a', fresh: false }), ['2026-10-22', 'yes', 'daily-a', 'no']);
+  // Stored before firstDailyAttempt existed: falls back to fresh, as the history view does.
+  assert.deepEqual(tail({ challengeDate: '2026-09-01', textId: 'daily-b', fresh: false }), ['2026-09-01', 'no', 'daily-b', 'no']);
 });
 
 test('a drill row is the one-minute timed run it was, not its baseline', () => {

@@ -1,8 +1,9 @@
 // Pure serialisers for "Download my data". No DOM here; app.js turns the strings into downloads.
 import { CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 
-// Every field conditionKey() compares is a column, so rows from different conditions stay distinguishable.
-export const CSV_COLUMNS = ['date', 'mode', 'length', 'word list', 'punctuation', 'difficulty', 'input', 'correction policy', 'corpus', 'metric version', 'wpm', 'accuracy', 'errors', 'duration', 'kind', 'interrupted'];
+// Every field conditionKey() compares is a column, so rows from different conditions stay distinguishable,
+// and so is the passage identity runRecord() keeps, so repeated text never reads as fresh evidence.
+export const CSV_COLUMNS = ['date', 'mode', 'length', 'word list', 'punctuation', 'difficulty', 'input', 'correction policy', 'corpus', 'metric version', 'wpm', 'accuracy', 'errors', 'duration', 'kind', 'interrupted', 'challenge date', 'first daily attempt', 'text id', 'fresh text'];
 
 export function csvCell(value) {
   if (value === null || value === undefined) return '';
@@ -38,6 +39,12 @@ export function runRow(run) {
     Number.isFinite(run.elapsedMs) ? (run.elapsedMs / 1000).toFixed(1) : '',
     run.kind || '',
     run.interrupted ? 'yes' : 'no',
+    // The challenge's own day, which a run finishing after midnight UTC would otherwise lose.
+    run.challengeDate || '',
+    // Older daily runs predate firstDailyAttempt; the history view falls back to fresh the same way.
+    run.kind === 'daily' ? ((run.firstDailyAttempt ?? run.fresh) ? 'yes' : 'no') : '',
+    run.textId || '',
+    run.fresh === false ? 'no' : 'yes',
   ];
 }
 
