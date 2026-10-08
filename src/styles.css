@@ -367,6 +367,36 @@
   --card-bottom: #353c4a;
 }
 
+/* Mock theme layout: scoped differences so each proposal is more than a palette swap. */
+:root[data-theme="shadcn"] .typing-form {
+  padding: var(--space-8);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xl);
+  background: var(--raised);
+  box-shadow: var(--shadow-float);
+}
+:root[data-theme="terminal"] .dock-zone { justify-content: flex-start; padding-top: 0; }
+:root[data-theme="terminal"] .dock {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--hairline-strong);
+  border-radius: 0;
+  background: var(--ground);
+  box-shadow: none;
+}
+:root[data-theme="terminal"] .typing-form { max-width: 760px; }
+:root[data-theme="terminal"] .practice-controls { justify-content: flex-start; }
+:root[data-theme="soft"] .typing-form {
+  padding: var(--space-10);
+  border-radius: var(--radius-xl);
+  background: var(--raised);
+  box-shadow: var(--shadow-float);
+}
+:root[data-theme="swiss"] :is(.dock-zone, .practice-controls) { justify-content: flex-start; }
+:root[data-theme="swiss"] .timer-stat strong { font-size: var(--text-numeral-narrow); font-weight: 700; letter-spacing: -0.04em; }
+:root[data-theme="nord"] .practice-controls { margin-bottom: var(--space-8); }
+:root[data-theme="nord"] .typing-screen { align-content: start; padding-top: var(--space-16); }
+
 @media (prefers-reduced-motion: reduce) {
   :root { --motion-scale: 0; }
   *, *::before, *::after {

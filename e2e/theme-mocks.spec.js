@@ -45,9 +45,9 @@ for (const theme of MOCKS) {
     await chooseWords(page, 10);
     await page.mouse.move(640, 790);
     await page.screenshot({ path: shot(`${theme}-practice`) });
-    // Type at a human pace (~90 wpm) with one slip, so the card shows a believable run and the mistake mark.
+    // Type at a human pace (~100 wpm) with one slip, so the card shows a believable run and the mistake mark.
     const text = await passageText(page);
-    await typeInto(page, `${text.slice(0, 6)}${text[6] === 'x' ? 'z' : 'x'}${text.slice(7)}`, '#typing-input', { delay: 70 });
+    await typeInto(page, `${text.slice(0, 6)}${text[6] === 'x' ? 'z' : 'x'}${text.slice(7)}`, '#typing-input', { delay: 115 });
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
     await expect(page.locator('#run-card')).toBeVisible();
     await page.waitForTimeout(600);
