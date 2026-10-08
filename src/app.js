@@ -819,7 +819,8 @@ function renderFatigueNotice(key) {
   $('fatigue-notice').hidden = !signal.show;
   if (!signal.show) return;
   sitting.noticeShown = true;
-  $('fatigue-notice-text').textContent = `Your last ${signal.lastN.length} runs are below the median of your earlier runs this session (${Math.round(signal.median)} wpm). You might take a short break.`;
+  const earlier = `${signal.earlier} earlier ${signal.earlier === 1 ? 'run' : 'runs'}`;
+  $('fatigue-notice-text').textContent = `Your last ${signal.lastN.length} runs are below the median of your ${earlier} this session (${Math.round(signal.median)} wpm). You might take a short break.`;
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];

@@ -114,10 +114,12 @@ const DAILY_TEXTS = [
 
 // Fatigue in one sitting: show the evidence or say nothing. The last `lastN` runs must all sit strictly
 // below the median of the sitting's earlier runs, and the sitting needs `minRuns` runs before we speak.
+// `earlier` is how many runs that median rests on, so the copy can say so.
 export function fatigueSignal(wpms, { minRuns = 8, lastN = 5 } = {}) {
   const values = (wpms || []).filter((value) => Number.isFinite(value));
-  if (values.length < Math.max(minRuns, lastN + 1)) return { show: false, median: null, lastN: [] };
+  if (values.length < Math.max(minRuns, lastN + 1)) return { show: false, median: null, lastN: [], earlier: 0 };
   const recent = values.slice(-lastN);
-  const middle = median(values.slice(0, -lastN));
-  return { show: recent.every((value) => value < middle), median: middle, lastN: recent };
+  const before = values.slice(0, -lastN);
+  const middle = median(before);
+  return { show: recent.every((value) => value < middle), median: middle, lastN: recent, earlier: before.length };
 }

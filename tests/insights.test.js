@@ -85,12 +85,13 @@ test('original quote pool has fresh choices in every length and difficulty bucke
 
 test('fatigue speaks only when every recent run sits below the median of the earlier runs', async () => {
   const { fatigueSignal } = await import('../src/insights.js');
-  assert.deepEqual(fatigueSignal([]), { show: false, median: null, lastN: [] });
+  assert.deepEqual(fatigueSignal([]), { show: false, median: null, lastN: [], earlier: 0 });
   assert.equal(fatigueSignal([70, 70, 50, 50, 50, 50, 50]).show, false, 'seven runs is too few');
   const tired = fatigueSignal([70, 64, 60, 58, 55, 52, 50, 49]);
   assert.equal(tired.show, true);
   assert.equal(tired.median, 64);
   assert.deepEqual(tired.lastN, [58, 55, 52, 50, 49]);
+  assert.equal(tired.earlier, 3, 'the median rests on the three earlier runs');
   assert.equal(fatigueSignal([70, 64, 60, 58, 66, 52, 50, 49]).show, false, 'one recent run above the median');
   assert.equal(fatigueSignal([70, 64, 60, 64, 55, 52, 50, 49]).show, false, 'exactly at the median is not below');
   assert.equal(fatigueSignal([60, 70, 58, 72, 58, 57, 56, 55, 54]).median, 65, 'even counts average the middle pair');
