@@ -885,14 +885,15 @@ body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-op
 body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
 
 /* Caps Lock warning: sits in the gap under the measure rule, so showing it moves nothing.
-   It is a warning, not chrome, so the running fade leaves it alone. */
+   It is a warning, not chrome, so the running fade leaves it alone; it is a readable
+   sentence, so it is set in Literata. */
 .caps-warning {
   position: absolute;
   top: calc(100% + var(--space-1));
   right: 0;
   margin: 0;
   color: var(--warning);
-  font: var(--text-mono)/1.5 var(--font-mono);
+  font: var(--text-mono)/1.5 var(--font-serif);
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
@@ -905,6 +906,9 @@ body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options
   visibility: visible;
   transition: opacity var(--dur-base) var(--ease-out), visibility 0s;
 }
+
+/* Still run: next to the passage mid-run, the warning appears and leaves instantly. */
+body[data-running="true"] .caps-warning { transition: none; }
 
 /* ── Typing zone ────────────────────────────────────────────────────────── */
 

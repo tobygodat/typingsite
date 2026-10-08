@@ -17,6 +17,7 @@ test('shows while Caps Lock is on, stays during a run, hides once it is off', as
   await capsKey(page, 'keydown', true);
   await expect(warning).toBeVisible();
   await expect(warning).toHaveText('Caps Lock is on');
+  await expect(warning).toHaveCSS('font-family', /^"?Literata/);
   await expect(page.locator('#announcement')).toHaveText('Caps Lock is on');
   expect(await wrap.boundingBox()).toEqual(before);
 
@@ -25,6 +26,7 @@ test('shows while Caps Lock is on, stays during a run, hides once it is off', as
   await capsKey(page, 'keyup', true);
   await expect(warning).toBeVisible();
   await expect(warning).toHaveCSS('opacity', '1');
+  await expect(warning).toHaveCSS('transition-duration', '0s');
 
   await capsKey(page, 'keyup', false);
   await expect(warning).toBeHidden();
@@ -40,7 +42,12 @@ test('blurring the typing field hides the warning', async ({ page }) => {
   await expect(page.locator('#caps-warning')).toBeHidden();
 });
 
-test('screenshots', async ({ page }) => {
+// Committed docs are only rewritten on request (SCREENSHOTS=1); normal runs write to the test output dir.
+const shotPath = (testInfo, name) => (process.env.SCREENSHOTS
+  ? `docs/screenshots/caps-lock-warning/${name}.png`
+  : testInfo.outputPath(`${name}.png`));
+
+test('screenshots', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme });
@@ -49,6 +56,6 @@ test('screenshots', async ({ page }) => {
     await capsKey(page, 'keydown', true);
     await expect(page.locator('#caps-warning')).toBeVisible();
     await page.waitForTimeout(300);
-    await page.screenshot({ path: `docs/screenshots/caps-lock-warning/warning-${scheme}.png` });
+    await page.screenshot({ path: shotPath(testInfo, `warning-${scheme}`) });
   }
 });
