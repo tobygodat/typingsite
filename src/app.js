@@ -22,7 +22,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { DAILY_GOALS, dailyPassage, dayKey, filterRuns, minutesByDay, practiceLevel, practiceStreak, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -44,6 +44,7 @@ const defaultPreferences = {
   stopOnError: false,
   focusMode: false,
   theme: 'system',
+  dailyGoal: 0,
 };
 
 function emptyProfile() {
@@ -70,6 +71,7 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  if (!DAILY_GOALS.includes(value.dailyGoal)) value.dailyGoal = 0;
   return value;
 }
 
@@ -286,6 +288,7 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  $('daily-goal').value = String(prefs.dailyGoal);
   showBest();
 }
 
@@ -1124,9 +1127,31 @@ function renderTraining() {
   }));
 }
 
+// Daily goal line and an 18-week practice calendar (Sunday-first columns), static by design.
+function renderGoal(date = new Date()) {
+  const byDay = minutesByDay(profile.runs);
+  $('practice-goal').hidden = Object.keys(byDay).length === 0;
+  const goal = prefs.dailyGoal;
+  const today = Math.round(byDay[dayKey(date)] || 0);
+  const streak = practiceStreak(byDay, goal, date);
+  $('goal-line').replaceChildren(element('span', 'Today', 'goal-label'), ` ${today}${goal ? ` / ${goal}` : ''} min · ${streak}-day streak`);
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - 17 * 7 - date.getDay());
+  const cells = [];
+  for (const day = new Date(start); day <= date; day.setDate(day.getDate() + 1)) {
+    const minutes = byDay[dayKey(day)] || 0;
+    const cell = element('span', '', 'goal-day');
+    cell.dataset.level = String(practiceLevel(minutes, goal));
+    cell.title = `${day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: ${Math.round(minutes)} min`;
+    cells.push(cell);
+  }
+  $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last 18 weeks. ${Object.keys(byDay).length} days with practice.`);
+  $('goal-calendar').replaceChildren(...cells);
+}
+
 function renderHistory() {
   const eligible = profile.runs.filter(trendRun);
   const hasProgress = eligible.length > 0 || profile.loops.length > 0;
+  renderGoal();
   $('progress-empty').hidden = hasProgress;
   $('progress-content').hidden = !hasProgress;
   const hasHistory = profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0;
@@ -1736,6 +1761,7 @@ function bindEvents() {
   $('quote-length').addEventListener('change', (event) => { prefs.quoteLength = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
+  $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveProfile(); renderGoal(); });
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });

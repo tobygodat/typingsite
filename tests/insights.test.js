@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+import { dailyPassage, dayKey, filterRuns, minutesByDay, practiceLevel, practiceStreak, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
@@ -81,4 +81,27 @@ test('original quote pool has fresh choices in every length and difficulty bucke
       }
     }
   }
+});
+
+test('daily minutes sum every run on the local day, and the streak counts days meeting the goal', () => {
+  const at = (y, m, d, h = 12) => new Date(y, m - 1, d, h).toISOString();
+  const runs = [
+    run('a', { at: at(2026, 10, 8, 9), elapsedMs: 4 * 60000 }),
+    run('b', { at: at(2026, 10, 8, 21), elapsedMs: 2 * 60000, kind: 'drill' }),
+    run('c', { at: at(2026, 10, 7), elapsedMs: 6 * 60000, kind: 'daily' }),
+    run('d', { at: at(2026, 10, 6), elapsedMs: 3 * 60000 }),
+    run('e', { at: at(2026, 10, 5), elapsedMs: 0 }),
+    run('f', { at: null, elapsedMs: 60000 }),
+  ];
+  const byDay = minutesByDay(runs);
+  assert.equal(byDay[dayKey(at(2026, 10, 8))], 6);
+  assert.equal(byDay[dayKey(at(2026, 10, 5))], undefined);
+  const today = new Date(2026, 9, 8, 22);
+  assert.equal(practiceStreak(byDay, 5, today), 2);
+  assert.equal(practiceStreak(byDay, 0, today), 3);
+  assert.equal(practiceStreak(byDay, 10, today), 0);
+  // Today not yet practised: yesterday's streak still stands until the day is over.
+  assert.equal(practiceStreak(byDay, 0, new Date(2026, 9, 9, 8)), 3);
+  assert.equal(practiceStreak(byDay, 0, new Date(2026, 9, 10, 8)), 0);
+  assert.deepEqual([0, 1, 4, 6, 25].map((m) => practiceLevel(m, 5)), [0, 1, 2, 3, 4]);
 });

@@ -86,6 +86,42 @@ export function recurringTargets(runs, loops, compatibleConditions) {
       || b.slowRuns - a.slowRuns || a.pair.localeCompare(b.pair));
 }
 
+// Daily practice goal: minutes practised per local calendar day, from the compact run summaries.
+export const DAILY_GOALS = [0, 5, 10, 15, 30];
+
+export function dayKey(value) {
+  const d = new Date(value);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function minutesByDay(runs) {
+  const totals = {};
+  for (const run of runs) {
+    if (!run.at || !(run.elapsedMs > 0)) continue;
+    const key = dayKey(run.at);
+    totals[key] = (totals[key] || 0) + run.elapsedMs / 60000;
+  }
+  return totals;
+}
+
+// Consecutive days meeting the goal (or with any practice when the goal is off), ending today.
+// An unfinished today does not break the streak until the day is over.
+export function practiceStreak(byDay, goal = 0, date = new Date()) {
+  const met = (d) => (goal ? (byDay[dayKey(d)] || 0) >= goal : (byDay[dayKey(d)] || 0) > 0);
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  if (!met(day)) day.setDate(day.getDate() - 1);
+  let streak = 0;
+  while (met(day)) { streak += 1; day.setDate(day.getDate() - 1); }
+  return streak;
+}
+
+// 0 = no practice, 1–4 = increasing share of the goal (10 minutes when the goal is off).
+export function practiceLevel(minutes, goal = 0) {
+  if (!(minutes > 0)) return 0;
+  const ratio = minutes / (goal || 10);
+  return ratio < 0.5 ? 1 : ratio < 1 ? 2 : ratio < 2 ? 3 : 4;
+}
+
 // Stable UTC selection from a frozen text pool: preferences and seen history never change it.
 export function dailyPassage(date = new Date()) {
   const day = date.toISOString().slice(0, 10);
