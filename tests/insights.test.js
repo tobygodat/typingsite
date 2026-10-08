@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage } from '../src/typing.js';
+import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
@@ -81,4 +81,19 @@ test('original quote pool has fresh choices in every length and difficulty bucke
       }
     }
   }
+});
+
+test('custom run records keep the score but no per-pair patterns', () => {
+  const typed = (kind) => {
+    const attempt = createAttempt({ id: kind, text: 'the then', kind, conditions });
+    [...'the then'].forEach((char, i) => attempt.events.push({ type: 'insert', text: char, position: i, accepted: true, offsetMs: i * 120 }));
+    return completeAttempt(attempt, { endedAt: 1000 });
+  };
+  const custom = runRecord(typed('custom'));
+  assert.equal('patterns' in custom, false);
+  assert.equal(custom.kind, 'custom');
+  assert.ok(custom.score.wpm > 0);
+  assert.ok(runRecord(typed('test')).patterns.length > 0);
+  // Retention never adds an empty pattern list back to a record that had none.
+  assert.equal('patterns' in retainRuns([custom, ...Array.from({ length: 130 }, (_, i) => run(String(i)))])[0], false);
 });

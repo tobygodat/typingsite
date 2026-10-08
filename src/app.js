@@ -1,17 +1,20 @@
 import {
   CORPUS_VERSION,
+  CUSTOM_MAX,
   METRIC_VERSION,
   compareAttempts,
   completeAttempt,
   conditionKey,
   createAttempt,
   makeDrill,
+  normalizeCustomText,
   normalizeManualTarget,
   passageComplete,
   recommendTarget,
   replayAttempt,
   selectPassage,
   summarizePatterns,
+  untypableCharacter,
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
@@ -48,30 +51,8 @@ const defaultPreferences = {
   customOrder: 'as-written',
 };
 
-// About ten minutes of typing. Each keystroke replays the whole run, so a longer passage makes late keys lag
-// (measured: ~2 ms per key at 3,000 characters, ~9 ms at 9,000).
-const CUSTOM_MAX = 3000;
 const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
 let customOpen = false;
-
-// Pasted text is made typeable: smart punctuation becomes ASCII, control characters go, whitespace collapses.
-// Characters outside the BMP (emoji) are dropped: scoring indexes the passage by UTF-16 unit, so each
-// letter must be one unit. Format controls (\p{Cf}: soft hyphen, ZWSP, ZWJ/ZWNJ, bidi marks, BOM) are
-// invisible, so they would be targets nobody can see. The cap applies after expansion so a saved passage
-// is stable across reloads; pass max = Infinity to measure the full text before refusing it.
-function normalizeCustomText(value, max = CUSTOM_MAX) {
-  return String(value || '').normalize('NFC')
-    .replace(/\p{Cf}/gu, '')
-    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
-    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
-    .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
-    .replace(/\u2026/g, '...')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uFE00-\uFE0F\uD800-\uDFFF]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, max)
-    .trim();
-}
 
 function customPassage() {
   const text = normalizeCustomText(prefs.customText);
@@ -90,10 +71,6 @@ function customPassage() {
       : words;
   return { id: null, text: picked.join(' '), fresh: false };
 }
-
-// Scripts typed through an IME (CJK, kana, Hangul, Yi, full-width forms) can't be scored, because composition
-// input is refused while typing, so a passage containing them is rejected before a run starts.
-const IME_SCRIPT = /[\u1100-\u11FF\u2E80-\u2FFF\u3000-\u303F\u3040-\u31FF\u3200-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uA960-\uA97F\uAC00-\uD7FF\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF]/;
 
 const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
 
@@ -121,7 +98,8 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
-  value.customText = typeof value.customText === 'string' ? value.customText.slice(0, CUSTOM_MAX) : '';
+  const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
+  value.customText = untypableCharacter(customText) ? '' : customText;
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
   return value;
 }
@@ -1980,10 +1958,11 @@ function openCustom(open = true) {
 // Signed in, the text is kept with the other preferences; a guest's preferences live only in memory.
 function useCustomText() {
   const text = normalizeCustomText($('custom-text').value, Infinity);
+  const untypable = untypableCharacter(text);
   const error = !text ? 'Add some text first.'
-    : text.length > CUSTOM_MAX ? `Keep it to ${CUSTOM_MAX.toLocaleString('en')} characters, about ten minutes of typing. This text has ${text.length.toLocaleString('en')}.`
-    : IME_SCRIPT.test(text) ? 'Chinese, Japanese and Korean characters need an input method, which isn’t scored. Remove them to continue.'
-      : '';
+    : untypable ? `“${untypable}” (U+${untypable.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}) can’t be typed here. Custom text uses the letters, digits, spaces and punctuation of an English keyboard.`
+      : text.length > CUSTOM_MAX ? `Keep it to ${CUSTOM_MAX.toLocaleString('en')} characters, about ten minutes of typing. This text has ${text.length.toLocaleString('en')}.`
+        : '';
   setCustomError(error);
   if (error) {
     $('custom-text').focus();

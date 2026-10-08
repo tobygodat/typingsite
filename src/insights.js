@@ -5,8 +5,7 @@ export const MAX_PATTERN_RUNS = 120;
 
 export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
-  const evidence = summarizePatterns([attempt]);
-  return {
+  const record = {
     id: attempt.id, at, kind: attempt.kind, status: attempt.status,
     conditions: attempt.conditions, textId: attempt.textId, fresh: attempt.fresh,
     interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput),
@@ -14,14 +13,17 @@ export function runRecord(attempt, at = attempt.at || null) {
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
     firstDailyAttempt: attempt.firstDailyAttempt,
-    // Keep counts and each run's measured median, rather than another keystroke log.
-    patterns: evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]),
   };
+  // Custom text is never compared or mined for targets, so its record carries no per-pair evidence.
+  if (attempt.kind === 'custom') return record;
+  // Keep counts and each run's measured median, rather than another keystroke log.
+  record.patterns = summarizePatterns([attempt]).pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
+  return record;
 }
 
 export function retainRuns(runs) {
   const kept = runs.slice(-MAX_RUN_SUMMARIES);
-  return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS ? { ...run, patterns: [] } : run);
+  return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS && run.patterns ? { ...run, patterns: [] } : run);
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;

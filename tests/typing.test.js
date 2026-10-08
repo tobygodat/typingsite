@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  CUSTOM_MAX,
   compareAttempts,
   completeAttempt,
   conditionKey,
@@ -9,9 +10,11 @@ import {
   makeDrill,
   makePassage,
   metrics,
+  normalizeCustomText,
   passageComplete,
   recommendTarget,
   replayAttempt,
+  untypableCharacter,
 } from '../src/typing.js';
 test('speed counts correct characters at five characters per word', () => {
   assert.deepEqual(metrics('hello world', 'hello worxd', 11, 1, 30000), {wpm:4, accuracy:91});
@@ -109,4 +112,28 @@ test('generated passages draw from the selected common-word list', async () => {
   const bank = wordList(DEFAULT_WORD_LIST);
   assert.match(makePassage('words', 10, true, () => (bank.indexOf('i') + 0.5) / bank.length), /\bI\b/);
   assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
+});
+
+test('custom text keeps only what an English keyboard types, one unit per letter', () => {
+  const clean = (value) => normalizeCustomText(value);
+  // Invisible code points go silently: CGJ (Mn), ZWSP, ZWJ/ZWNJ, variation selectors, soft hyphen, bidi marks, BOM, controls.
+  assert.equal(clean('gra\u034Fph'), 'graph');
+  assert.equal(clean('zero\u200Bwidth jo\u200Din no\u200Cn'), 'zerowidth join non');
+  assert.equal(clean('ok\uFE0F'), 'ok');
+  assert.equal(clean('\uFEFFsoft\u00ADware left\u200Eto \u2066right\u2069 b\u0007ell'), 'software leftto right bell');
+  // Smart punctuation and compatibility forms become ASCII; whitespace collapses.
+  assert.equal(clean('  “It’s fine” — she said…\n\tok  '), '"It\'s fine" - she said... ok');
+  assert.equal(clean('ＡＢＣ\u00A0ﬁne'), 'ABC fine');
+  // Accents on Latin letters fold to the plain letter, composed or not.
+  assert.equal(clean('café résumé nai\u0308ve'), 'cafe resume naive');
+  for (const text of ['gra\u034Fph', 'ok\uFE0F', 'café', '“quoted”']) assert.equal(untypableCharacter(clean(text)), null);
+  // Visible characters outside the alphabet survive normalising so they can be named and refused.
+  assert.equal(untypableCharacter(clean('go 🚀 now')), '🚀');
+  assert.equal(untypableCharacter(clean('hello 世界')), '世');
+  assert.equal(untypableCharacter(clean('❤\uFE0F')), '❤');
+  assert.equal(untypableCharacter(clean('straße')), 'ß');
+  // The cap applies after expansion, so a saved passage is stable; Infinity measures the whole text.
+  assert.equal(clean('…'.repeat(1001)).length, CUSTOM_MAX);
+  assert.equal(normalizeCustomText('…'.repeat(1001), Infinity).length, 3003);
+  assert.equal(clean(clean('“a” — b…')), clean('“a” — b…'));
 });

@@ -128,6 +128,42 @@ function printable(text) {
   return typeof text === 'string' && text.length > 0 && !/[\r\n]/u.test(text);
 }
 
+// Custom text is held to the passage alphabet: printable ASCII, which every corpus passage uses and an
+// English keyboard types one key at a time without an input method. Each letter is then one UTF-16 unit,
+// which is how replay indexes the passage. About ten minutes of typing: each keystroke replays the whole
+// run, so a longer passage makes late keys lag (measured: ~2 ms per key at 3,000 characters, ~9 ms at 9,000).
+export const CUSTOM_MAX = 3000;
+const TYPABLE = /^[\x20-\x7E]$/;
+
+// Smart punctuation becomes ASCII; NFKC folds compatibility forms (full-width letters, ligatures, no-break
+// spaces); invisible code points go (every default-ignorable, such as ZWSP, ZWJ, CGJ, variation selectors,
+// bidi marks, soft hyphens and BOM, plus control characters); accents on Latin letters fold away (é → e);
+// whitespace collapses. Anything left outside the alphabet is for untypableCharacter to refuse. The cap
+// applies last, so a saved passage is stable across reloads; pass max = Infinity to measure the full text.
+export function normalizeCustomText(value, max = CUSTOM_MAX) {
+  return String(value || '')
+    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+    .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .replace(/\u2026/g, '...')
+    .normalize('NFKC')
+    .replace(/[\t\n\v\f\r\u0085\u2028\u2029]/g, ' ')
+    .replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, '')
+    .normalize('NFD')
+    .replace(/([\x20-\x7E])[\u0300-\u036F]+/g, '$1')
+    .normalize('NFC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max)
+    .trim();
+}
+
+// The first character outside the passage alphabet, or null when every letter can be typed.
+export function untypableCharacter(text) {
+  for (const char of text) if (!TYPABLE.test(char)) return char;
+  return null;
+}
+
 export function replayAttempt(attempt) {
   let typed = '';
   let insertions = 0;

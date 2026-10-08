@@ -40,12 +40,12 @@ test('smart punctuation is normalised to typeable characters', async ({ page }) 
   expect(await passageText(page)).toBe('"It\'s fine" - she said... ok');
 });
 
-test('emoji are dropped and the length cap is checked after punctuation expands', async ({ page }) => {
+test('accents fold to plain letters and the length cap is checked after punctuation expands', async ({ page }) => {
   await openApp(page);
   await page.locator('#mode-custom').click();
-  await page.locator('#custom-text').fill('go 🚀 now');
+  await page.locator('#custom-text').fill('café\u034F au lait');
   await page.locator('#custom-use').click();
-  expect(await passageText(page)).toBe('go now');
+  expect(await passageText(page)).toBe('cafe au lait');
 
   // 1,001 ellipses become 3,003 characters: refused with the count, not silently cut.
   await page.locator('#mode-custom').click();
@@ -105,12 +105,16 @@ test('the panel appears without motion and never opens beside a live run', async
   await expect(page.locator('#custom-options')).toHaveCSS('opacity', '0');
 });
 
-test('characters typed through an input method are refused with a message', async ({ page }) => {
+test('characters an English keyboard can’t type are refused by name', async ({ page }) => {
   await openApp(page);
   await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill('go 🚀 now');
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#custom-error')).toContainText('“🚀” (U+1F680) can’t be typed here');
+
   await page.locator('#custom-text').fill('hello 世界');
   await page.locator('#custom-use').click();
-  await expect(page.locator('#custom-error')).toContainText('input method');
+  await expect(page.locator('#custom-error')).toContainText('“世” (U+4E16) can’t be typed here');
   await expect(page.locator('#custom-text')).toHaveAttribute('aria-invalid', 'true');
   await expect(page.locator('#custom-options')).toBeVisible();
   await expect(page.locator('#condition-line')).not.toContainText('custom text');
