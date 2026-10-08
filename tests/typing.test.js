@@ -37,6 +37,9 @@ test('numbers mix in only when on, stay seeded, and split condition keys', () =>
   assert.ok(mixed.split(' ').every((word) => /^(\d{1,4}|[a-z']+)$/.test(word)));
   assert.equal(mixed, makePassage('words', 200, false, seeded(7), undefined, true));
   assert.doesNotMatch(makePassage('time', 0, true, seeded(3)), /\d/);
+  // A short passage that draws no numbers still gets one.
+  assert.equal(makePassage('words', 1, false, () => 0.99, undefined, true), '9910');
+  for (let seed = 1; seed <= 200; seed += 1) assert.match(makePassage('words', 10, false, seeded(seed), undefined, true), /\d/);
   const base = { mode: 'words', count: 10, punctuation: false };
   assert.notEqual(conditionKey(base), conditionKey({ ...base, numbers: true }));
   assert.equal(conditionKey(base), conditionKey({ ...base, numbers: false }));

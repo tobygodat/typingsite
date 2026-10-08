@@ -52,14 +52,22 @@ function punctuate(words) {
 }
 
 // Roughly 1 word in 8 becomes a 1–4 digit number, drawn from the same random source so a
-// seeded passage stays reproducible.
+// seeded passage stays reproducible. A passage that drew none still gets one, so short
+// tests with numbers on always contain a number.
 function numberize(words, random) {
-  return words.map((word) => {
-    if (random() >= 1 / 8) return word;
+  const number = () => {
     const digits = 1 + Math.floor(random() * 4);
     const low = digits === 1 ? 0 : 10 ** (digits - 1);
     return String(low + Math.floor(random() * (10 ** digits - low)));
+  };
+  let drawn = false;
+  const result = words.map((word) => {
+    if (random() >= 1 / 8) return word;
+    drawn = true;
+    return number();
   });
+  if (!drawn && result.length) result[Math.floor(random() * result.length)] = number();
+  return result;
 }
 
 export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST, numbers = false) {
