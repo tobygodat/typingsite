@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, dayKey, filterRuns, goalMinutes, MAX_RUN_SUMMARIES, minutesByDay, practiceLevel, practiceStreak, recurringTargets, retainHistory, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+import { completeAttempt, CORPUS_VERSION, conditionKey, createAttempt, quoteCorpus, selectPassage } from '../src/typing.js';
+import { dailyPassage, dayKey, filterRuns, goalMinutes, MAX_RUN_SUMMARIES, minutesByDay, practiceLevel, practiceStreak, recurringTargets, retainHistory, retainRuns, runDay, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
@@ -117,4 +117,29 @@ test('practice minutes outlive the run summaries that retention drops', () => {
   assert.equal(kept.runs.length, MAX_RUN_SUMMARIES);
   assert.deepEqual(minutesByDay(kept.runs, kept.practiceDays), { ...before, '2025-01-01': 1 });
   assert.deepEqual(retainHistory(kept.runs, kept.practiceDays), kept, 'retaining again moves nothing twice');
+});
+
+test('a run keeps the day it was practised on, whichever time zone reads it later', () => {
+  const zone = process.env.TZ;
+  try {
+    // 23:30 on 8 October in Los Angeles is already 9 October in Tokyo.
+    process.env.TZ = 'America/Los_Angeles';
+    const attempt = completeAttempt(createAttempt({ id: 'late', text: 'the', textId: 'one', conditions }), { endedAt: 0 });
+    const late = { ...runRecord({ ...attempt, status: 'complete' }, '2026-10-09T06:30:00Z'), elapsedMs: 10 * 60000 };
+    assert.equal(late.day, '2026-10-08');
+    const newer = Array.from({ length: MAX_RUN_SUMMARIES }, (_, i) => run(`n${i}`, { at: '2026-10-11T18:00:00Z', day: '2026-10-11', elapsedMs: 1000 }));
+    const readings = ['America/Los_Angeles', 'Asia/Tokyo'].map((tz) => {
+      process.env.TZ = tz;
+      const kept = retainHistory([late, ...newer]);
+      return [kept.practiceDays, minutesByDay([late]), minutesByDay(kept.runs, kept.practiceDays)['2026-10-08']];
+    });
+    assert.deepEqual(readings[0], [{ '2026-10-08': 600000 }, { '2026-10-08': 10 }, 10]);
+    assert.deepEqual(readings[1], readings[0], 'retained and archived runs land on the same day in both zones');
+    // A summary from before days were recorded falls back to its timestamp in the reading zone.
+    assert.equal(runDay({ ...late, day: undefined }), '2026-10-09');
+    assert.equal(runDay({ at: null }), null);
+  } finally {
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
+  }
 });

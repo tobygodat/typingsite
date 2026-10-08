@@ -8,6 +8,8 @@ export function runRecord(attempt, at = attempt.at || null) {
   const evidence = summarizePatterns([attempt]);
   return {
     id: attempt.id, at, kind: attempt.kind, status: attempt.status,
+    // The calendar day where the run happened, so a later reader in another zone keeps the same day.
+    day: at ? dayKey(at) : null,
     conditions: attempt.conditions, textId: attempt.textId, fresh: attempt.fresh,
     interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput),
     score: replay.score, elapsedMs: replay.elapsedMs,
@@ -94,11 +96,20 @@ export function dayKey(value) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+// The day recorded with the run; older summaries without one fall back to their timestamp here.
+export function runDay(run) {
+  if (DAY.test(run.day)) return run.day;
+  const key = run.at ? dayKey(run.at) : '';
+  return DAY.test(key) ? key : null;
+}
+
 // Interrupted runs keep their clock going after focus is lost, so only valid runs count as practice.
 function addRunTime(totals, runs) {
   for (const run of runs) {
-    if (!validRun(run) || !run.at || !(run.elapsedMs > 0)) continue;
-    const key = dayKey(run.at);
+    const key = runDay(run);
+    if (!validRun(run) || !key || !(run.elapsedMs > 0)) continue;
     totals[key] = (totals[key] || 0) + run.elapsedMs;
   }
   return totals;
@@ -110,7 +121,7 @@ export const MAX_PRACTICE_DAYS = 730;
 
 export function validPracticeDays(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return Object.fromEntries(Object.entries(value).filter(([key, ms]) => /^\d{4}-\d{2}-\d{2}$/.test(key) && Number.isFinite(ms) && ms > 0));
+  return Object.fromEntries(Object.entries(value).filter(([key, ms]) => DAY.test(key) && Number.isFinite(ms) && ms > 0));
 }
 
 export function retainHistory(runs, practiceDays = {}) {
