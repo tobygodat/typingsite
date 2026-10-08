@@ -34,6 +34,21 @@ test('missed and slowest words come from first tries and per-word speed', () => 
   assert.deepEqual([...long].sort(), [...many].sort());
 });
 
+test('a corrected space does not charge its correction to the next word', () => {
+  const text = 'the cat sat';
+  const at = (char, position, offsetMs) => ({ type: 'insert', text: char, position, offsetMs });
+  const events = [...'the cat'].map((char, i) => at(char, i, (i + 1) * 100));
+  // The space after "cat" is mistyped at 800 ms, deleted, and only typed 2 s later; "sat" then
+  // follows quickly. Timed from the deleted keystroke, "sat" would read as 15 wpm and slowest.
+  events.push(at('x', 7, 800), { type: 'delete', count: 1, offsetMs: 900 }, at(' ', 7, 2900));
+  events.push(at('s', 8, 2980), at('a', 9, 3060), at('t', 10, 3140));
+  const { missed, slow, timedCount } = missedAndSlowWords({ text, events }, 3);
+  assert.deepEqual(missed, []);
+  assert.equal(timedCount, 3);
+  // "sat" is timed from the kept space: 3 letters in 240 ms is 150 wpm.
+  assert.deepEqual(slow, [{ word: 'cat', wpm: 120 }, { word: 'sat', wpm: 150 }, { word: 'the', wpm: 180 }]);
+});
+
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
   conditions, score: { wpm: 60, accuracy: 98 }, patterns: [['th', 12, 2, 10, 140, 20]], ...overrides });

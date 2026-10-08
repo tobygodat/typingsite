@@ -1,4 +1,4 @@
-import { conditionKey, replayAttempt, summarizePatterns, textId } from './typing.js';
+import { conditionKey, printable, replayAttempt, summarizePatterns, textId } from './typing.js';
 
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
@@ -114,11 +114,31 @@ const DAILY_TEXTS = [
 
 const cleanWord = (word) => word.toLowerCase().replace(/[^\p{L}\p{N}'-]/gu, '');
 
+// When each letter kept at the finish was typed, mirroring replayAttempt's kept text: a mistyped
+// and corrected space times the next word from the space that stayed, not the one deleted.
+function keptOffsets(attempt) {
+  const times = [];
+  for (const event of attempt.events || []) {
+    if (event.type === 'delete') {
+      times.splice(Math.max(0, times.length - Math.max(1, event.count || 1)));
+      continue;
+    }
+    if (event.type !== 'insert' || !printable(event.text)) continue;
+    for (const _char of event.text) {
+      const position = Number.isInteger(event.position) ? event.position : times.length;
+      if (position >= attempt.text.length) break;
+      if (event.accepted !== false) times.push(event.offsetMs);
+    }
+  }
+  return times;
+}
+
 // Missed words had any wrong first try. The slowest are this run's slowest clean words by per-word
 // wpm: one timing each, so they carry their speed and the run's median for comparison, not a verdict.
 export function missedAndSlowWords(attempt, slowLimit = 5) {
   const replay = attempt.summary || replayAttempt(attempt);
   const first = new Map(replay.firstAttempts.map((item) => [item.position, item]));
+  const kept = keptOffsets(attempt);
   const missed = [];
   const timed = [];
   let start = 0;
@@ -131,9 +151,9 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
       if (tries.some((item) => !item.correct)) {
         if (!missed.includes(word)) missed.push(word);
       } else if (tries.length === raw.length) {
-        // Time from the keystroke before the word (its space) to the word's last letter.
-        const from = first.get(start - 1)?.offsetMs ?? tries[0].offsetMs;
-        const ms = tries.at(-1).offsetMs - from;
+        // Time from the kept keystroke before the word (its space) to the word's last kept letter.
+        const from = kept[start > 0 ? start - 1 : start];
+        const ms = kept[end - 1] - from;
         if (ms > 0) timed.push({ word, wpm: (raw.length / 5) / (ms / 60000) });
       }
     }

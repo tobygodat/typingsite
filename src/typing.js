@@ -124,7 +124,7 @@ export function passageComplete(attempt, typed) {
     && (attempt.conditions.correctionPolicy === 'relaxed' || typed === attempt.text);
 }
 
-function printable(text) {
+export function printable(text) {
   return typeof text === 'string' && text.length > 0 && !/[\r\n]/u.test(text);
 }
 
