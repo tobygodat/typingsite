@@ -11,12 +11,20 @@ test('daily goal line and practice calendar render on Progress', async ({ page }
   await completePassage(page);
   await openView(page, 'Progress');
   await expect(page.locator('#practice-goal')).toBeVisible();
-  await expect(page.locator('#goal-line')).toHaveText(/^Today \d+ \/ 5 min · \d+-day streak$/);
+  await expect(page.locator('#goal-line')).toHaveText(/^Today (<1|\d+) \/ 5 min · \d+-day streak$/);
   const days = page.locator('#goal-calendar .goal-day');
   expect(await days.count()).toBeGreaterThanOrEqual(17 * 7 + 1);
   const today = days.last();
   await expect(today).toHaveAttribute('data-level', '1');
-  await expect(today).toHaveAttribute('title', /^[A-Z][a-z]{2} \d{1,2}: \d+ min$/);
+  await expect(today).toHaveAttribute('title', /^[A-Z][a-z]{2} \d{1,2}: (<1|\d+) min$/);
+  // One tab stop; arrows move a day (up/down) or a week (left/right), and each day says what it holds.
+  await expect(page.locator('#goal-calendar [tabindex="0"]')).toHaveCount(1);
+  await expect(today).toHaveAttribute('tabindex', '0');
+  await today.focus();
+  await page.keyboard.press('ArrowLeft');
+  const weekAgo = days.nth((await days.count()) - 8);
+  await expect(weekAgo).toBeFocused();
+  await expect(weekAgo).toHaveAttribute('aria-label', /^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2}: 0 min$/);
 });
 
 // Ten weeks of plausible practice for a signed-in profile: 60s timed tests drifting from the low 60s
@@ -47,7 +55,7 @@ function seededHistory(now = new Date()) {
   return runs;
 }
 
-test('Progress screenshots with ten weeks of seeded history', async ({ page, supabase }) => {
+test('Progress screenshots with ten weeks of seeded history', async ({ page, supabase }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const user = supabase.addUser('streak@stilltype.test');
   const runs = seededHistory();
@@ -65,6 +73,8 @@ test('Progress screenshots with ten weeks of seeded history', async ({ page, sup
     await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
     await page.mouse.move(640, 300);
     await page.waitForTimeout(600);
-    await page.screenshot({ path: `docs/screenshots/daily-goal-streak/progress-${theme}.png` });
+    // Committed docs are rewritten only on request (SCREENSHOTS=1); a normal run keeps its captures in test output.
+    const name = `progress-${theme}.png`;
+    await page.screenshot({ path: process.env.SCREENSHOTS ? `docs/screenshots/daily-goal-streak/${name}` : testInfo.outputPath(name) });
   }
 });

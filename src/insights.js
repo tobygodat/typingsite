@@ -86,7 +86,7 @@ export function recurringTargets(runs, loops, compatibleConditions) {
       || b.slowRuns - a.slowRuns || a.pair.localeCompare(b.pair));
 }
 
-// Daily practice goal: minutes practised per local calendar day, from the compact run summaries.
+// Daily practice goal: minutes practised per local calendar day, from the run summaries and the archive.
 export const DAILY_GOALS = [0, 5, 10, 15, 30];
 
 export function dayKey(value) {
@@ -94,15 +94,39 @@ export function dayKey(value) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export function minutesByDay(runs) {
-  const totals = {};
+// Interrupted runs keep their clock going after focus is lost, so only valid runs count as practice.
+function addRunTime(totals, runs) {
   for (const run of runs) {
-    if (!run.at || !(run.elapsedMs > 0)) continue;
+    if (!validRun(run) || !run.at || !(run.elapsedMs > 0)) continue;
     const key = dayKey(run.at);
-    totals[key] = (totals[key] || 0) + run.elapsedMs / 60000;
+    totals[key] = (totals[key] || 0) + run.elapsedMs;
   }
   return totals;
 }
+
+// Runs that retention drops leave their time behind as whole milliseconds per day, so the calendar
+// and streak outlive the run summaries. Only the newest MAX_PRACTICE_DAYS practised days are kept.
+export const MAX_PRACTICE_DAYS = 730;
+
+export function validPracticeDays(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([key, ms]) => /^\d{4}-\d{2}-\d{2}$/.test(key) && Number.isFinite(ms) && ms > 0));
+}
+
+export function retainHistory(runs, practiceDays = {}) {
+  const days = addRunTime({ ...practiceDays }, runs.slice(0, Math.max(0, runs.length - MAX_RUN_SUMMARIES)));
+  const kept = Object.keys(days).sort().slice(-MAX_PRACTICE_DAYS);
+  return { runs: retainRuns(runs), practiceDays: Object.fromEntries(kept.map((key) => [key, Math.round(days[key])])) };
+}
+
+export function minutesByDay(runs, practiceDays = {}) {
+  const totals = addRunTime({ ...practiceDays }, runs);
+  for (const key of Object.keys(totals)) totals[key] /= 60000;
+  return totals;
+}
+
+// Whole minutes rounded down, so a day short of the goal never reads as meeting it.
+export const goalMinutes = (minutes) => (minutes > 0 && minutes < 1 ? '<1' : String(Math.floor(minutes || 0)));
 
 // Consecutive days meeting the goal (or with any practice when the goal is off), ending today.
 // An unfinished today does not break the streak until the day is over.

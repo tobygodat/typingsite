@@ -22,7 +22,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { DAILY_GOALS, dailyPassage, dayKey, filterRuns, minutesByDay, practiceLevel, practiceStreak, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { DAILY_GOALS, dailyPassage, dayKey, filterRuns, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recurringTargets, retainHistory, runRecord, trendRun, validPracticeDays, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -54,6 +54,7 @@ function emptyProfile() {
     preferences: { ...defaultPreferences },
     attempts: [],
     runs: [],
+    practiceDays: {},
     loops: [],
     seenTextIds: [],
     bests: {},
@@ -89,7 +90,7 @@ function normalizeProfile(parsed) {
     ...parsed,
     preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences }),
     attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
-    runs: retainRuns(records),
+    ...retainHistory(records, validPracticeDays(parsed.practiceDays)),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
     bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
@@ -146,7 +147,7 @@ let race = {
 function saveProfile() {
   profile.preferences = { ...prefs };
   profile.attempts = profile.attempts.slice(-MAX_STORED_ATTEMPTS);
-  profile.runs = retainRuns(profile.runs);
+  Object.assign(profile, retainHistory(profile.runs, profile.practiceDays));
   if (!session) return true;
   unsynced = true;
   if (cloudChecked) {
@@ -1128,24 +1129,46 @@ function renderTraining() {
 }
 
 // Daily goal line and an 18-week practice calendar (Sunday-first columns), static by design.
+// The calendar is one tab stop: each day is a labelled cell, and the arrow keys move between them as drawn.
+let goalDay = '';
 function renderGoal(date = new Date()) {
-  const byDay = minutesByDay(profile.runs);
+  goalDay = dayKey(date);
+  const byDay = minutesByDay(profile.runs, profile.practiceDays);
   $('practice-goal').hidden = Object.keys(byDay).length === 0;
   const goal = prefs.dailyGoal;
-  const today = Math.round(byDay[dayKey(date)] || 0);
   const streak = practiceStreak(byDay, goal, date);
-  $('goal-line').replaceChildren(element('span', 'Today', 'goal-label'), ` ${today}${goal ? ` / ${goal}` : ''} min · ${streak}-day streak`);
+  $('goal-line').replaceChildren(element('span', 'Today', 'goal-label'), ` ${goalMinutes(byDay[goalDay])}${goal ? ` / ${goal}` : ''} min · ${streak}-day streak`);
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - 17 * 7 - date.getDay());
   const cells = [];
   for (const day = new Date(start); day <= date; day.setDate(day.getDate() + 1)) {
     const minutes = byDay[dayKey(day)] || 0;
     const cell = element('span', '', 'goal-day');
     cell.dataset.level = String(practiceLevel(minutes, goal));
-    cell.title = `${day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: ${Math.round(minutes)} min`;
+    cell.setAttribute('role', 'img');
+    cell.tabIndex = -1;
+    cell.title = `${day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: ${goalMinutes(minutes)} min`;
+    cell.setAttribute('aria-label', `${day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}: ${goalMinutes(minutes)} min${goal && minutes >= goal ? ', goal met' : ''}`);
     cells.push(cell);
   }
-  $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last 18 weeks. ${Object.keys(byDay).length} days with practice.`);
+  cells.at(-1).tabIndex = 0;
+  const practised = cells.filter((cell) => cell.dataset.level !== '0').length;
+  const hadFocus = $('goal-calendar').contains(document.activeElement);
+  $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last 18 weeks: ${practised} days with practice. Arrow keys move between days.`);
   $('goal-calendar').replaceChildren(...cells);
+  if (hadFocus) cells.at(-1).focus();
+}
+
+function moveGoalFocus(event) {
+  const cells = [...$('goal-calendar').children];
+  const from = cells.indexOf(event.target);
+  const step = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7, Home: -from, End: cells.length - 1 - from }[event.key];
+  if (from < 0 || step === undefined) return;
+  event.preventDefault();
+  const to = cells[from + step];
+  if (!to) return;
+  cells[from].tabIndex = -1;
+  to.tabIndex = 0;
+  to.focus();
 }
 
 function renderHistory() {
@@ -1384,6 +1407,7 @@ function clearHistory() {
   clearSnapshot = JSON.stringify(profile);
   profile.attempts = [];
   profile.runs = [];
+  profile.practiceDays = {};
   profile.loops = [];
   profile.seenTextIds = [];
   profile.bests = {};
@@ -1762,6 +1786,7 @@ function bindEvents() {
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveProfile(); renderGoal(); });
+  $('goal-calendar').addEventListener('keydown', moveGoalFocus);
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
@@ -2073,8 +2098,12 @@ if (!storageAvailable) announce('Storage is unavailable. Results last only in th
 completeAuthRedirect();
 syncOnLoad();
 inbox.refresh();
-// Refresh the day label when a tab returns, and across midnight without reloading.
-setInterval(() => { if (document.body.dataset.view === 'compete') renderDaily(); }, 30000);
+// Refresh the day label and the practice calendar when a tab returns, and across midnight without reloading.
+const refreshGoalDay = () => { if (dayKey(new Date()) !== goalDay) renderGoal(); };
+setInterval(() => {
+  if (document.body.dataset.view === 'compete') renderDaily();
+  if (document.body.dataset.view === 'progress') refreshGoalDay();
+}, 30000);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) renderDaily();
+  if (!document.hidden) { renderDaily(); refreshGoalDay(); }
 });

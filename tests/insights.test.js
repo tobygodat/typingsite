@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, dayKey, filterRuns, minutesByDay, practiceLevel, practiceStreak, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+import { dailyPassage, dayKey, filterRuns, goalMinutes, MAX_RUN_SUMMARIES, minutesByDay, practiceLevel, practiceStreak, recurringTargets, retainHistory, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
@@ -92,6 +92,7 @@ test('daily minutes sum every run on the local day, and the streak counts days m
     run('d', { at: at(2026, 10, 6), elapsedMs: 3 * 60000 }),
     run('e', { at: at(2026, 10, 5), elapsedMs: 0 }),
     run('f', { at: null, elapsedMs: 60000 }),
+    run('g', { at: at(2026, 10, 7, 15), elapsedMs: 20 * 60000, status: 'interrupted', interrupted: true }),
   ];
   const byDay = minutesByDay(runs);
   assert.equal(byDay[dayKey(at(2026, 10, 8))], 6);
@@ -104,4 +105,16 @@ test('daily minutes sum every run on the local day, and the streak counts days m
   assert.equal(practiceStreak(byDay, 0, new Date(2026, 9, 9, 8)), 3);
   assert.equal(practiceStreak(byDay, 0, new Date(2026, 9, 10, 8)), 0);
   assert.deepEqual([0, 1, 4, 6, 25].map((m) => practiceLevel(m, 5)), [0, 1, 2, 3, 4]);
+  assert.equal(byDay[dayKey(at(2026, 10, 7))], 6, 'an interrupted run keeps no idle time');
+  assert.deepEqual([0, undefined, 0.2, 4.99, 5, 12.7].map(goalMinutes), ['0', '0', '<1', '4', '5', '12']);
+});
+
+test('practice minutes outlive the run summaries that retention drops', () => {
+  const at = (back) => new Date(2026, 9, 8 - back, 12).toISOString();
+  const runs = Array.from({ length: MAX_RUN_SUMMARIES + 40 }, (_, i) => run(`r${i}`, { at: at(Math.floor((MAX_RUN_SUMMARIES + 39 - i) / 20)), elapsedMs: 30000 }));
+  const before = minutesByDay(runs);
+  const kept = retainHistory(runs, { '2025-01-01': 60000 });
+  assert.equal(kept.runs.length, MAX_RUN_SUMMARIES);
+  assert.deepEqual(minutesByDay(kept.runs, kept.practiceDays), { ...before, '2025-01-01': 1 });
+  assert.deepEqual(retainHistory(kept.runs, kept.practiceDays), kept, 'retaining again moves nothing twice');
 });
