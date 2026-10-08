@@ -89,3 +89,10 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - "Today" rounds to whole minutes, so short sessions show "0 / 5 min". Consider "<1 min".
 - The goal block only appears once a dated run exists. A user who sets a goal before any run sees nothing on Progress; show "Today 0 / 10 min" right after a goal is set.
 - Adds a new `--radius-cell` token for calendar squares.
+
+### From the custom-text work (PR #28)
+- In custom mode, the word-list setting in the settings popover stays enabled but has no effect (src/app.js `setModeControls`). Grey it out as quote mode does.
+- The palette can still mark "quote" as current during a custom run, because the check only reads the saved mode (src/app.js `shape` in `paletteCommands`).
+- No "practise this text again" action on custom results, and the retest/drill copy (src/app.js ~861) doesn't mention custom runs.
+- The mode-bar selection pill slides for 0.4 s; screenshots taken during the slide catch the highlight between two buttons. Specs should wait for the transition to end.
+- Custom-text cleanup lives in src/app.js with no unit test. Move it to a pure module with tests if it grows (book mode, EPUB import).
