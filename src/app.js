@@ -1148,8 +1148,14 @@ function renderKeys(runs) {
   }));
   const rows = analysis.pairs.map((p) => {
     const tr = document.createElement('tr');
+    // Denominator: runs with at least MIN_PATTERN_SAMPLES clean intervals for this pair.
+    const slow = element('td', p.timedRuns ? `${p.slowRuns} of ${p.timedRuns}` : '—', 'num');
+    slow.title = p.timedRuns
+      ? `Slower than your median in ${p.slowRuns} of ${p.timedRuns} ${p.timedRuns === 1 ? 'run' : 'runs'} with at least ${MIN_PATTERN_SAMPLES} clean intervals`
+      : `No run has ${MIN_PATTERN_SAMPLES} clean intervals for this pair yet`;
+    if (!p.timedRuns) slow.append(element('span', ` ${slow.title}`, 'sr-only'));
     tr.append(element('td', `“${p.pair}”`), element('td', `${pct(p.missRate)} (${p.errors})`, 'num'),
-      element('td', `${p.slowRuns} of ${p.runs}`, 'num'), element('td', String(p.samples), 'num'));
+      slow, element('td', String(p.samples), 'num'));
     return tr;
   });
   $('pairs-table').querySelector('tbody').replaceChildren(...rows);

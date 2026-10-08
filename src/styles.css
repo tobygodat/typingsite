@@ -76,6 +76,8 @@
   --accent-soft: rgba(143, 209, 138, 0.13);
   --danger: #ff8a6b;
   --danger-soft: rgba(255, 138, 107, 0.16);
+  --danger-mid: rgba(255, 138, 107, 0.32);
+  --danger-strong: rgba(255, 138, 107, 0.55);
   --warning: #e0b565;
   --selection: #34322e;
   --ghost: #b9c3ff;
@@ -100,6 +102,8 @@
   --accent-soft: rgba(46, 125, 79, 0.11);
   --danger: #b4432c;
   --danger-soft: rgba(180, 67, 44, 0.12);
+  --danger-mid: rgba(180, 67, 44, 0.32);
+  --danger-strong: rgba(180, 67, 44, 0.55);
   --warning: #8a5a00;
   --selection: #e3dccf;
   --ghost: #4f5bc4;
@@ -1451,8 +1455,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .key-heatmap .key[data-heat="none"] { border-style: dashed; color: var(--outline); }
 .key-heatmap .key[data-heat="0"] { color: var(--text); }
 .key-heatmap .key[data-heat="1"] { color: var(--text); background: var(--danger-soft); }
-.key-heatmap .key[data-heat="2"] { color: var(--text); background: color-mix(in oklab, var(--danger) 32%, transparent); }
-.key-heatmap .key[data-heat="3"] { color: var(--text); background: color-mix(in oklab, var(--danger) 55%, transparent); border-color: var(--danger); }
+.key-heatmap .key[data-heat="2"] { color: var(--text); background: var(--danger-mid); }
+.key-heatmap .key[data-heat="3"] { color: var(--text); background: var(--danger-strong); border-color: var(--danger); }
 .pairs-heading { margin: 0 0 var(--space-2); font-size: var(--text-lead); font-weight: 400; }
 .pairs-table { border-collapse: collapse; font-size: var(--text-small); }
 .pairs-table th { font: 500 var(--text-mono)/1.4 var(--font-mono); color: var(--muted); text-align: left; padding: var(--space-2) var(--space-6) var(--space-2) 0; border-bottom: 1px solid var(--hairline); }

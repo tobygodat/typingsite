@@ -99,6 +99,20 @@ test('key analysis sums first attempts per key and ranks pairs only with enough 
   assert.equal(result.pairDerivedRuns, 2);
 });
 
+test('slow-run share counts only runs with enough clean intervals for that pair', () => {
+  // Five runs see "th"; one has 12 clean intervals and was slow, four have too few to say either way.
+  const runs = [run('timed', { patterns: [['th', 12, 0, 12, 180, 40]] }),
+    ...['a', 'b', 'c', 'd'].map((id) => run(id, { patterns: [['th', 12, 3, 9, 150, 10]] })),
+    run('none', { patterns: [['he', 12, 4, 0, null, null]] })];
+  const th = keyAnalysis(runs).pairs.find((p) => p.pair === 'th');
+  assert.deepEqual([th.slowRuns, th.timedRuns, th.runs], [1, 1, 5]);
+  const he = keyAnalysis(runs).pairs.find((p) => p.pair === 'he');
+  assert.deepEqual([he.slowRuns, he.timedRuns, he.runs], [0, 0, 1]);
+  // A timed run that was not slow still counts in the denominator.
+  const mixed = keyAnalysis([...runs, run('quick', { patterns: [['th', 12, 0, 11, 120, -20]] })]).pairs.find((p) => p.pair === 'th');
+  assert.deepEqual([mixed.slowRuns, mixed.timedRuns, mixed.runs], [1, 2, 6]);
+});
+
 test('run summaries count every letter directly, including word-initial presses', () => {
   const text = 'quiet quay';
   const attempt = createAttempt({ id: 'q', text, textId: 'q', conditions });

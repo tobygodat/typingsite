@@ -59,6 +59,11 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   expect(await rows.count()).toBeLessThanOrEqual(8);
   await expect(rows.first().locator('td').last()).toHaveText(/^\d+$/);
   await expect(page.locator('#pairs-table')).toContainText('“ro”');
+  // Every "ro" is mistyped, so no run has clean intervals for it: slow runs are unknown, not "0 of 2".
+  const pairRow = (pair) => rows.filter({ has: page.locator('td').first().filter({ hasText: `“${pair}”` }) });
+  await expect(pairRow('ro').locator('td').nth(2)).toHaveText(/^—/);
+  await expect(pairRow('ro').locator('td').nth(2)).toHaveAttribute('title', 'No run has 10 clean intervals for this pair yet');
+  await expect(pairRow('do').locator('td').nth(2)).toHaveText('2 of 2');
 
   const section = page.locator('section[aria-labelledby="keys-heading"]');
   await section.scrollIntoViewIfNeeded();

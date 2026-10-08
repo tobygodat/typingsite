@@ -159,11 +159,14 @@ export function keyAnalysis(runs, limit = 8) {
     else pairDerivedRuns += 1;
     for (const [pair, observations, errors, timingCount, medianMs, slowdownMs] of run.patterns || []) {
       if (!direct) addKey(pair[1], observations, errors);
-      const p = pairs.get(pair) || { pair, samples: 0, errors: 0, slowRuns: 0, runs: 0 };
+      const p = pairs.get(pair) || { pair, samples: 0, errors: 0, slowRuns: 0, timedRuns: 0, runs: 0 };
       p.samples += observations;
       p.errors += errors;
       p.runs += 1;
-      if (timingCount >= MIN_PATTERN_SAMPLES && slowdownMs > 0 && medianMs !== null) p.slowRuns += 1;
+      // Only runs with enough clean intervals can say slow or not; the rest stay unknown.
+      const timed = timingCount >= MIN_PATTERN_SAMPLES && medianMs !== null && slowdownMs !== null;
+      if (timed) p.timedRuns += 1;
+      if (timed && slowdownMs > 0) p.slowRuns += 1;
       pairs.set(pair, p);
     }
   }
