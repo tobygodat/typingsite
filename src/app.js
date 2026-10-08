@@ -719,7 +719,8 @@ function ghostPace(mode = prefs.paceCaret) {
   if (mode === 'custom') wpm = prefs.paceWpm;
   else if (mode === 'best') wpm = profile.bests[key]?.wpm || null;
   else if (mode === 'average' || mode === 'last') {
-    const runs = filterRuns(profile.runs, key).filter((run) => validRun(run) && run.score?.wpm);
+    // Only test and retest runs are comparable, as for trends and bests: drills would skew the pace.
+    const runs = filterRuns(profile.runs.filter(trendRun), key).filter((run) => run.score?.wpm);
     const recent = runs.slice(mode === 'last' ? -1 : -10);
     if (recent.length) wpm = Math.round(recent.reduce((sum, run) => sum + run.score.wpm, 0) / recent.length);
   }
@@ -745,8 +746,13 @@ function setPaceCaret(mode) {
   prefs.paceCaret = mode;
   saveProfile();
   showPace();
-  if (document.body.dataset.view === 'practice' && sessionKind !== 'retest' && attempt?.status !== 'running') resetSession(sessionKind, { focus: true });
-  else primaryFx.ghost.arm(ghostOn() ? ghostPace().cps : 0);
+  if (document.body.dataset.view === 'practice' && sessionKind !== 'retest' && attempt?.status !== 'running') {
+    resetSession(sessionKind, { focus: true });
+    return;
+  }
+  primaryFx.ghost.arm(ghostOn() ? ghostPace().cps : 0);
+  // Enabled mid-run: the first keystroke has passed, so start the caret from the run's own clock.
+  if (attempt?.status === 'running' && startTime !== null) primaryFx.ghost.run(startTime);
 }
 
 function markKeyboardTargets(target) {
@@ -1804,6 +1810,7 @@ function bindEvents() {
       attempt.conditions.inputClass = 'touch';
       $('condition-line').textContent = describeRun(attempt);
       if (ghostOn()) primaryFx.ghost.arm(ghostPace().cps);
+      showPace();
     }
   });
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
