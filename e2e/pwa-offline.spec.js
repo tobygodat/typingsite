@@ -25,12 +25,16 @@ test('the app installs, reloads offline and still types', async ({ page, context
   await context.setOffline(false);
 });
 
-test('screenshots', async ({ page, context }) => {
+// Committed docs are only rewritten on purpose (SCREENSHOTS=1); a normal run writes to the test output dir.
+const shot = (testInfo, name) =>
+  process.env.SCREENSHOTS ? `docs/screenshots/pwa-offline/${name}.png` : testInfo.outputPath(`${name}.png`);
+
+test('screenshots', async ({ page, context }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await goOffline(page, context);
-  await page.screenshot({ path: 'docs/screenshots/pwa-offline/offline-dark.png' });
+  await page.screenshot({ path: shot(testInfo, 'offline-dark') });
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await page.screenshot({ path: 'docs/screenshots/pwa-offline/offline-light.png' });
+  await page.screenshot({ path: shot(testInfo, 'offline-light') });
   await context.setOffline(false);
 });
