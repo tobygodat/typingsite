@@ -820,9 +820,15 @@ function finishPrimary(forcedElapsed = null) {
     return;
   }
 
-  if ((sessionKind === 'practice' || sessionKind === 'daily') && valid && completed.conditions?.mode !== 'code') {
-    baselineAttempt = completed;
-    trainingContext = null;
+  if (sessionKind === 'practice' || sessionKind === 'daily') {
+    // A code run is never a baseline, so it drops the earlier one rather than retest against it.
+    if (completed.conditions?.mode === 'code') {
+      baselineAttempt = null;
+      trainingContext = null;
+    } else if (valid) {
+      baselineAttempt = completed;
+      trainingContext = null;
+    }
   }
   renderResults(completed, saved);
   if (sessionKind === 'retest') renderComparison(baselineAttempt, completed, saved);

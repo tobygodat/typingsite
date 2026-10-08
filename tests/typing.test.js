@@ -122,6 +122,14 @@ test('every code snippet unindents to a non-empty single line the engine accepts
       assert.doesNotMatch(text, /^ | $| {2}/u, text);
     }
     assert.equal(codePassage(language).language, language);
+    const seenIds = [];
+    for (const _ of CODE_SNIPPETS[language]) {
+      const next = codePassage(language, { seenIds });
+      assert.deepEqual([next.fresh, next.exhausted], [true, false], language);
+      seenIds.push(next.id);
+    }
+    const repeat = codePassage(language, { seenIds });
+    assert.deepEqual([repeat.fresh, repeat.exhausted], [false, true], language);
   }
   assert.notEqual(conditionKey({ mode: 'code', codeLanguage: 'js' }), conditionKey({ mode: 'code', codeLanguage: 'go' }));
 });

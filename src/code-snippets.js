@@ -83,5 +83,5 @@ export function codePassage(language = DEFAULT_CODE_LANGUAGE, { seenIds = [], ra
   const fresh = all.filter((item) => !seen.has(item.id));
   const pool = fresh.length ? fresh : all;
   const item = pool[Math.floor(random() * pool.length)];
-  return { ...item, textVersion: `${item.id}@1`, difficulty: 'code', language: lang, fresh: true, exhausted: false };
+  return { ...item, textVersion: `${item.id}@1`, difficulty: 'code', language: lang, fresh: fresh.length > 0, exhausted: fresh.length === 0 };
 }
