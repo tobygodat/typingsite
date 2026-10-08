@@ -6,7 +6,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 1. **Merge order and conflicts.** PRs #18–#26 and later each touch `src/app.js`, `index.html` and `src/styles.css`, and so does the open PR #17. Merge the small ones first (caps lock #18, restart key #19, export #20). Then merge master into the rest and let CI re-run.
 2. **The settings popover is full.** The restart key, pace caret, export, daily goal, error modes and break suggestions all add rows (about 490 px at 1280×800 already). It needs sections (Test · Behaviour · Display · Data) or a sheet before more settings land.
 3. **Conditions strings.** `describeConditions` and `describeRun` in src/app.js are chained template strings, duplicated for drills and missed-words practice. A structured conditions builder would make numbers, custom text, code mode and error modes consistent.
-4. **Guest preferences don't persist.** `loadProfile` returns `emptyProfile()` when signed out, so every setting resets on reload. Keep preferences (not history) for guests in localStorage.
+4. **Guest preferences reset on reload (a product decision, not a bug).** `loadProfile` returns `emptyProfile()` when signed out, as PRODUCT.md requires (guests use defaults and nothing is saved beyond the tab). Several new settings (restart key, pace caret, daily goal) feel worse because of it. Changing this would mean revising the PRODUCT.md guest contract first.
 5. **Results-page action hierarchy.** It can now show Start drill, Skip to retest, Run again, Practice words and Watch replay together. Keep one primary and make the rest quiet.
 6. **Screenshot realism and best plausibility.** e2e types instantly, so screenshots and seeded bests show 400–3,800 wpm. Add a fixture that types at a set speed, and consider a plausibility ceiling before a run can become a personal best.
 7. **Account deletion** needs a server side (see PR #20 notes) before the privacy page can promise it.
@@ -21,7 +21,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 
 ### From the quick-restart work (PR #19)
 - Where does focus land after a run finishes? If it lands on a results control, Tab moves focus and Enter clicks that control instead of restarting. Check finishPrimary/switchView focus handling (src/app.js ~771).
-- Guest preferences don't survive a reload: loadProfile returns emptyProfile() when signed out (src/app.js:97). Every preference behaves this way today, but people expect settings to stick. Consider persisting preferences (not history) for guests.
+- Guest preferences don't survive a reload: loadProfile returns emptyProfile() when signed out (src/app.js:97). This follows PRODUCT.md's guest contract (nothing saved beyond the tab). Persisting guest preferences would be a deliberate product change, not a routine follow-up.
 - The restart-hint row is aria-hidden (index.html:219), so screen-reader users never hear which key restarts. Put the chosen key in #input-help.
 - Key naming is inconsistent: the restart button tooltip says "Escape" while the hint says "esc" (index.html:212 vs 220).
 
@@ -66,7 +66,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 ### From the PWA/offline work (PR #26)
 - The other e2e specs now run with service workers blocked (`serviceWorkers: 'block'` in playwright.config.js) so the Supabase `page.route` fake can't be bypassed. Only the PWA spec exercises the worker.
 - The offline spec covers a guest only. A signed-in user reloading offline will hit failing Supabase refresh/sync requests; check account.js fails quietly there.
-- `#f4f1eb` / `#0f0f0e` are hardcoded in `applyTheme` (src/app.js ~241) and in the manifest. Derive them from the tokens via a shared constant.
+- `#f4f1eb` / `#0f0f0e` are hardcoded in `applyTheme` (src/app.js ~241) and in the manifest. Keep the CSS tokens at the top of src/styles.css as the only source: read the resolved values at runtime (e.g. `getComputedStyle`) and generate the manifest colours from the tokens at build time, rather than adding a JS constant.
 - With `node server.mjs` (no build) the cache name stays `stilltype-shell-v1`, so local changes won't show until it's bumped. Builds stamp a content hash.
 - No update notice: a new shell takes over on the next load silently. A quiet "Updated — reload" toast is a natural follow-up.
 - vercel.json has no `Cache-Control: no-cache` for `/sw.js`. Browsers re-check it anyway, but the header is safer.
