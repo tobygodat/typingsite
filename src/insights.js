@@ -112,7 +112,17 @@ const DAILY_TEXTS = [
   'When the power returned, we left the candles burning for a little longer. The room looked familiar again, but conversation had found a different pace. Nobody reached for a screen until the last story was finished and the kettle began to sing.',
 ];
 
-const cleanWord = (word) => word.toLowerCase().replace(/[^\p{L}\p{N}'-]/gu, '');
+// A word without the punctuation around it, lowercased: "Table," → "table". Punctuation inside
+// stays ("9:30", "don't"), so no merged, made-up tokens.
+const bareWord = (raw) => raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
+
+// The token that practises these misses: the bare word when every miss was on a character it keeps
+// as typed, else the word as written ("table," for a missed comma, "The" for a missed capital).
+function missedToken(raw, misses) {
+  const bare = bareWord(raw);
+  const lead = raw.search(/[\p{L}\p{N}]/u);
+  return bare && misses.every((k) => k >= lead && bare[k - lead] === raw[k]) ? bare : raw;
+}
 
 // When each letter kept at the finish was typed, mirroring replayAttempt's kept text: a mistyped
 // and corrected space times the next word from the space that stayed, not the one deleted.
@@ -144,18 +154,18 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
   let start = 0;
   for (const raw of attempt.text.split(' ')) {
     const end = start + raw.length;
-    const word = cleanWord(raw);
+    const word = bareWord(raw);
     const tries = [];
     for (let i = start; i < end; i += 1) if (first.has(i)) tries.push(first.get(i));
-    if (word && tries.length) {
-      if (tries.some((item) => !item.correct)) {
-        if (!missed.includes(word)) missed.push(word);
-      } else if (tries.length === raw.length) {
-        // Time from the kept keystroke before the word (its space) to the word's last kept letter.
-        const from = kept[start > 0 ? start - 1 : start];
-        const ms = kept[end - 1] - from;
-        if (ms > 0) timed.push({ word, wpm: (raw.length / 5) / (ms / 60000) });
-      }
+    const misses = tries.filter((item) => !item.correct).map((item) => item.position - start);
+    if (misses.length) {
+      const token = missedToken(raw, misses);
+      if (!missed.includes(token)) missed.push(token);
+    } else if (word && tries.length === raw.length) {
+      // Time from the kept keystroke before the word (its space) to the word's last kept letter.
+      const from = kept[start > 0 ? start - 1 : start];
+      const ms = kept[end - 1] - from;
+      if (ms > 0) timed.push({ word, wpm: (raw.length / 5) / (ms / 60000) });
     }
     start = end + 1;
   }

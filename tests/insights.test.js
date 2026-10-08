@@ -49,6 +49,38 @@ test('a corrected space does not charge its correction to the next word', () => 
   assert.deepEqual(slow, [{ word: 'cat', wpm: 120 }, { word: 'sat', wpm: 150 }, { word: 'the', wpm: 180 }]);
 });
 
+// Types `text` at 100 ms a key, with a wrong first try (then fixed) at each position in `misses`.
+function typedWithMisses(text, misses) {
+  const events = [];
+  let t = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    if (misses.includes(i)) events.push({ type: 'insert', text: '~', position: i, offsetMs: (t += 100) }, { type: 'delete', count: 1, offsetMs: (t += 100) });
+    events.push({ type: 'insert', text: text[i], position: i, offsetMs: (t += 100) });
+  }
+  return { text, events };
+}
+
+test('a missed comma or capital is practised as written; a missed letter as the bare word', () => {
+  const text = 'The table, is set';
+  const missedAt = (...positions) => missedAndSlowWords(typedWithMisses(text, positions)).missed;
+  assert.deepEqual(missedAt(9), ['table,']); // only the comma
+  assert.deepEqual(missedAt(6), ['table']); // the "b"
+  assert.deepEqual(missedAt(6, 9), ['table,']); // both: the comma still needs practice
+  assert.deepEqual(missedAt(0), ['The']); // the capital
+  assert.deepEqual(missedAt(1), ['the']); // the "h"
+  // A clean punctuated word is timed as the bare word.
+  assert.ok(missedAndSlowWords(typedWithMisses(text, [])).slow.some((item) => item.word === 'table'));
+});
+
+test('punctuation inside a token is kept, never merged into a made-up token', () => {
+  const text = 'At 9:30 the 0.8 mark, 11:40.';
+  const { missed, slow } = missedAndSlowWords(typedWithMisses(text, [5, 13]), 10);
+  assert.deepEqual(missed, ['9:30', '0.8']); // the "3" and the "."
+  assert.ok(slow.some((item) => item.word === '11:40'));
+  for (const word of [...missed, ...slow.map((item) => item.word)]) assert.ok(!['930', '08', '1140'].includes(word), word);
+  assert.deepEqual(missedAndSlowWords(typedWithMisses(text, [12])).missed, ['0.8']); // the "0"
+});
+
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
   conditions, score: { wpm: 60, accuracy: 98 }, patterns: [['th', 12, 2, 10, 140, 20]], ...overrides });

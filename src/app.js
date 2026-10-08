@@ -192,7 +192,7 @@ function describeConditions(value = conditions()) {
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
-  if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
+  if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words${run.conditions.punctuation ? ' · punctuation' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
   return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
 }
@@ -513,7 +513,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: kind === 'daily' ? dailyConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: null } : conditions(),
+    conditions: kind === 'daily' ? dailyConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, punctuation: /[^\p{Ll}\p{N} ]/u.test(passage.text), quoteLength: null, difficulty: null, wordList: null } : conditions(),
   });
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;
@@ -833,7 +833,8 @@ function renderPracticeWords(completed) {
   button.hidden = evidence.hidden = !words.length;
   if (!words.length) return;
   evidence.textContent = [
-    missed.length ? `missed first try: ${missed.join(', ')}` : '',
+    // Quote a token that carries punctuation, so "table," reads as the word typed.
+    missed.length ? `missed first try: ${missed.map((word) => /[^\p{L}\p{N}]/u.test(word) ? `“${word}”` : word).join(', ')}` : '',
     slow.length ? `slowest in this run: ${slow.map((item) => `${item.word} ${item.wpm} wpm`).join(', ')} · median ${medianWpm} wpm over ${timedCount} clean words` : '',
   ].filter(Boolean).join('\n');
   const text = practiceWordsPassage(words);
