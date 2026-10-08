@@ -75,7 +75,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 ### Tooling / repo hygiene
 - `.gitignore` has `node_modules/` (with a slash), which doesn't match a symlinked node_modules; four separate agents hit this. Change it to `node_modules`. (Done in the notes PR.)
 - The impeccable skill isn't installed for cloud sessions (only the `.impeccable/` config is in the repo). Commit the skill under `.claude/skills/` so cloud agents can use it.
-- The "Paper" redesign mockups live only on your laptop. Commit or export them under `design/paper/` so future sessions can build from them.
+- The "Paper" redesign mockups live only on your laptop. Commit or export them under `design/paper/` as reference material, so a future session can build them as an opt-in proposal theme (like PR #24). They stay non-binding until PRODUCT.md and DESIGN.md adopt them; Afterimage remains the shipped system.
 - Hosting check (22:45 UTC): PRs still deploy only to Vercel (Vercel status + Vercel Preview Comments check); there's no Cloudflare config or check. Production `typingsite-toby-godats-projects.vercel.app` is behind Vercel Deployment Protection. `typingsite.vercel.app` is someone else's site. If a custom domain is behind Cloudflare DNS, that couldn't be verified from the sandbox.
 - Many open PRs (#18–#26+) each touch src/app.js, index.html and src/styles.css, as does #17. Expect merge conflicts; merge small ones first (caps lock, restart key, export), then re-run CI on the rest.
 
