@@ -1835,7 +1835,9 @@ function bindEvents() {
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open || $('suggest-dialog').open) return;
+    // An open dialog (palette, replay, account, clear, suggestion, or any later one) owns the
+    // keyboard, so its native Escape closes it rather than leaving focus mode or restarting.
+    if (document.querySelector('dialog[open]')) return;
     if (event.key === 'Escape' && preferences.open) {
       event.preventDefault();
       preferences.open = false;

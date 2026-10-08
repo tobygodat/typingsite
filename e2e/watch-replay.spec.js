@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings } from './fixtures.js';
 
 async function finishWithCorrectedMiss(page) {
   await openApp(page);
@@ -57,6 +57,24 @@ test('under reduced motion the replay opens still, on the finished frame', async
   // Playback is still there when asked for.
   await page.locator('#replay-toggle').click();
   await expect(dialog).toHaveAttribute('data-state', 'playing');
+});
+
+test('in focus mode, one Escape closes the replay and focus mode stays on', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await openSettings(page);
+  await page.locator('#focus-toggle').check();
+  // Clicking the passage closes the settings popover, which would otherwise take the first Escape.
+  await page.locator('#typing-input').click();
+  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await completePassage(page);
+  await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
+
+  await page.locator('#watch-replay').click();
+  await expect(page.locator('#replay-dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#replay-dialog')).toBeHidden();
+  await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
 });
 
 test('replay controls wrap inside the dialog at phone width', async ({ page }) => {
