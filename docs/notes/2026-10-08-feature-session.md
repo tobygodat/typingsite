@@ -8,7 +8,8 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 3. **Conditions strings.** `describeConditions` and `describeRun` in src/app.js are chained template strings, duplicated for drills and missed-words practice. A structured conditions builder would make numbers, custom text, code mode and error modes consistent.
 4. **Guest preferences don't persist.** `loadProfile` returns `emptyProfile()` when signed out, so every setting resets on reload. Keep preferences (not history) for guests in localStorage.
 5. **Results-page action hierarchy.** It can now show Start drill, Skip to retest, Run again, Practice words and Watch replay together. Keep one primary and make the rest quiet.
-6. **Account deletion** needs a server side (see PR #20 notes) before the privacy page can promise it.
+6. **Screenshot realism and best plausibility.** e2e types instantly, so screenshots and seeded bests show 400–3,800 wpm. Add a fixture that types at a set speed, and consider a plausibility ceiling before a run can become a personal best.
+7. **Account deletion** needs a server side (see PR #20 notes) before the privacy page can promise it.
 
 ## By source
 
@@ -120,3 +121,19 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - A failure on the very last character isn't reported, because completion is checked before the fail check. Rare edge case.
 - The failed run card still offers "Start drill" / "Skip to retest" as interrupted runs do. Failed runs want a "try again" focus.
 - The new 180px correction select (src/styles.css:386) hasn't been checked at 390px.
+
+### From the code-mode work (PR #33)
+- src/typing.js rejects `\r`/`\n` in passages (`printable`, ~line 127), so code snippets are joined into one line and lose their shape. Real line-break/Enter support in the engine would let code mode keep indentation-free lines (needs a metric/event version bump).
+- `recurringTargets` (src/insights.js:55) still counts code runs within their own code key, so a drill after a code run may target symbol pairs. Consider excluding code mode from recurring-target evidence.
+- No palette entries for code mode or its languages yet.
+- The language buttons reuse `#duration-options` and so render in Geist Mono. Confirm that fits "small labels".
+- In quote and code modes the punctuation switch is shown greyed out. Hiding it would read better.
+
+### From the break-notice work (PR #34)
+- Personal bests accept physically impossible runs (e.g. thousands of wpm from instant e2e typing, or paste/automation). Every later run then shows "−2191 vs your best". Consider a plausibility ceiling (e.g. >300 wpm or <30 ms median interval → not eligible for best, labelled).
+- The notice line has the same size and spacing as the condition copy above it. Give it a rule or more space ("rules and space, not boxes").
+- No palette command for "break suggestions" yet.
+- At 1280×800 (light), the bottom of the floating dock overlaps the top-right of the run card. Same family as the scrolled-heading note.
+
+### Fix pushed by me after review
+- PR #30: "Watch replay" is now hidden when a run recorded no events (it previously opened nothing). Unit tests 33/33; watch-replay, typing and learning-loop e2e 16/16.
