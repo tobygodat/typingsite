@@ -1,4 +1,5 @@
-import { test, expect, openApp, chooseWords, completePassage, openView } from './fixtures.js';
+import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
+import { test, expect, openApp, chooseWords, completePassage, openView, signInWithEmail } from './fixtures.js';
 
 test('daily goal line and practice calendar render on Progress', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -16,6 +17,49 @@ test('daily goal line and practice calendar render on Progress', async ({ page }
   const today = days.last();
   await expect(today).toHaveAttribute('data-level', '1');
   await expect(today).toHaveAttribute('title', /^[A-Z][a-z]{2} \d{1,2}: \d+ min$/);
+});
+
+// Ten weeks of plausible practice for a signed-in profile: 60s timed tests drifting from the low 60s
+// toward the low 90s, a few long days past the 10-minute goal, and the last five days all meeting it.
+function seededHistory(now = new Date()) {
+  let seed = 7;
+  const random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const conditions = { mode: 'time', count: null, duration: 60, punctuation: false, quoteLength: null,
+    difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
+    language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+  const plan = new Map([[0, 11], [1, 12], [2, 10.5], [3, 14], [4, 11], [9, 6], [12, 11], [16, 3]]);
+  for (let back = 5; back < 70; back += 1) if (!plan.has(back) && random() < 0.42) plan.set(back, 1 + random() * (random() < 0.15 ? 14 : 7));
+  const runs = [];
+  for (const [back, minutes] of [...plan].sort((a, b) => b[0] - a[0])) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back, 19, 5);
+    let left = minutes * 60;
+    while (left > 15) {
+      const seconds = Math.min(left, [30, 45, 60, 60, 90, 120][Math.floor(random() * 6)]);
+      const wpm = Math.round(Math.min(95, Math.max(60, 64 + (70 - back) * 0.36 + (random() - 0.5) * 10)));
+      day.setSeconds(day.getSeconds() + seconds + 20 + Math.floor(random() * 90));
+      const id = `seed-${runs.length}`;
+      runs.push({ id, at: day.toISOString(), kind: 'test', status: 'complete', conditions, textId: id, fresh: true,
+        interrupted: false, score: { wpm, accuracy: 93 + Math.floor(random() * 7) }, elapsedMs: seconds * 1000,
+        errors: Math.floor(random() * 6), target: null, challengeDate: null, patterns: [] });
+      left -= seconds;
+    }
+  }
+  return runs;
+}
+
+test('Progress screenshots with ten weeks of seeded history', async ({ page, supabase }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const user = supabase.addUser('streak@stilltype.test');
+  const runs = seededHistory();
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { dailyGoal: 10 }, attempts: [], runs, loops: [],
+    seenTextIds: runs.map((r) => r.textId), bests: {}, updatedAt: runs.at(-1).at } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await page.locator('.preferences summary').click();
+  await page.locator('#daily-goal').selectOption('10');
+  await page.keyboard.press('Escape');
+  await openView(page, 'Progress');
+  await expect(page.locator('#goal-line')).toHaveText(/^Today \d+ \/ 10 min · 5-day streak$/);
 
   for (const theme of ['dark', 'light']) {
     await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
