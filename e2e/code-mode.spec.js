@@ -52,7 +52,28 @@ test('a code run clears the earlier practice baseline', async ({ page }) => {
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText('Code run complete · not counted toward your best');
   await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#recommendation-meta')).toContainText('A standalone drill');
+  await expect(page.locator('#recommendation-meta')).toHaveText('A standalone drill. Code runs have no fresh-text retest.');
+});
+
+test('the palette hides punctuation and word lists in code mode', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  const options = page.locator('#palette-list [role="option"]');
+  const search = async (query, count) => {
+    await page.locator('#palette-trigger').click();
+    await page.keyboard.type(query);
+    if (count) await expect(options.filter({ hasText: query })).not.toHaveCount(0);
+    else await expect(options.filter({ hasText: query })).toHaveCount(0);
+    await page.locator('#palette-input').fill('');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#palette')).toBeHidden();
+  };
+  await search('punctuation', true);
+  await search('word list', true);
+  await page.locator('#mode-code').click();
+  await expect(page.locator('#condition-line')).toContainText('code ·');
+  await search('punctuation', false);
+  await search('word list', false);
 });
 
 test('code mode screenshots', async ({ page }, testInfo) => {

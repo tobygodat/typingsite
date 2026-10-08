@@ -867,6 +867,9 @@ function retestLength(value) {
   return value.quoteLength && value.quoteLength !== 'any' ? `${value.quoteLength} quote` : 'quote';
 }
 
+// Code runs never become retest baselines, so a drill at code settings always stands alone.
+const CODE_DRILL_NOTE = 'A standalone drill. Code runs have no fresh-text retest.';
+
 function renderResults(completed, saved) {
   activeRecommendation ||= recommendTarget([], completed.conditions);
   const replay = completed.summary;
@@ -892,7 +895,8 @@ function renderResults(completed, saved) {
   $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
     ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
-    : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
+    : completed.conditions?.mode === 'code' ? CODE_DRILL_NOTE
+      : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
   $('start-drill').disabled = !counted;
   $('skip-to-retest').disabled = !counted || !baselineAttempt;
   renderEvidenceList(activeRecommendation.evidence);
@@ -1121,12 +1125,14 @@ function practiceTarget(target, source) {
     && conditionKey(a.conditions) === conditionKey(source) && source.corpus === CORPUS_VERSION) || null;
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
+  const code = source.mode === 'code';
   activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
     reason: baselineAttempt ? `You chose “${target}”. A retained run at these conditions is your baseline.`
-      : `You chose “${target}”. Finish a new practice run afterward to establish a retest baseline.`,
+      : code ? `You chose “${target}”. Code runs have no fresh-text retest.`
+        : `You chose “${target}”. Finish a new practice run afterward to establish a retest baseline.`,
     evidence: summarizePatterns(profile.attempts, 20, source) };
   startDrill();
-  if (!baselineAttempt) $('session-description').textContent = 'Standalone drill. Finish a new practice run afterward for a comparable retest.';
+  if (!baselineAttempt) $('session-description').textContent = code ? CODE_DRILL_NOTE : 'Standalone drill. Finish a new practice run afterward for a comparable retest.';
 }
 
 function trainingRecommendation(source) {
@@ -1963,8 +1969,8 @@ function paletteCommands(query) {
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
-    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
-    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
+    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: ['quote', 'code'].includes(prefs.mode), run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
+    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: ['quote', 'code'].includes(prefs.mode), run: () => { navigate('practice'); setWordList(id); } })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
