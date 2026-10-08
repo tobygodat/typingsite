@@ -96,3 +96,27 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - No "practise this text again" action on custom results, and the retest/drill copy (src/app.js ~861) doesn't mention custom runs.
 - The mode-bar selection pill slides for 0.4 s; screenshots taken during the slide catch the highlight between two buttons. Specs should wait for the transition to end.
 - Custom-text cleanup lives in src/app.js with no unit test. Move it to a pure module with tests if it grows (book mode, EPUB import).
+
+### From the watch-replay work (PR #30)
+- "Watch replay" shows even for interrupted runs or runs with no events, and then does nothing (`replay-view.js` `open()` returns early). Hide or disable it in those cases. (Follow-up fix candidate.)
+- The button sits in the recommendation actions next to `#run-again`, not on the run card; the card has no action slot. Decide where post-run actions live (ties into the action-hierarchy note).
+- The replay text is a fixed `--text-lead` size and ignores the passage font-size preference (`body[data-font-size]`).
+- The replay dialog has no screen-reader text: the passage is aria-hidden, so only the clock is read. Add a summary ("Replaying: 3 corrections, 1 hesitation…").
+- Only tested with "continue on error" runs. Stop-on-error and relaxed (daily) correction policies aren't covered.
+- The replay's `stateAt(attempt, t)` (src/typing.js) is the building block for asynchronous ghost challenges (brief #8) and "Race your best". The ghost caret can be driven from a recorded attempt with the same function.
+
+### From the key-heatmap work (PR #31)
+- Verified separately: full `e2e/depth.spec.js` plus `e2e/key-heatmap.spec.js` pass 10/10 on the branch (the agent's first run had a 320px overflow it then fixed).
+- Patterns only record a–z pairs (src/typing.js:228), so letters mostly typed at word starts (t in "the", q, j, b…) show "not enough samples" even after many keystrokes. Count single-key first attempts directly in `summarizePatterns` (needs a pattern version bump).
+- Per-key median interval can't be rebuilt from stored per-pair medians. Store per-key timing in `runRecord` (src/insights.js:18) if wanted.
+- "Slow runs" needs ≥10 timed intervals of a pair within one run, which is rare, so the column is mostly "0 of N". Pool slowdowns across runs instead.
+- Heat thresholds (>0, ≥4%, ≥8%) are arbitrary constants in `renderKeys` and there's no legend. Add a one-line legend.
+- New raw sizes (row offsets 20/40px, 14/28px, 34px mobile key) should become key-size tokens.
+- QWERTY only; a layout setting (brief #18) would change this and the on-screen keyboard together.
+
+### From the error-modes work (PR #32)
+- src/online-race.js:479 decides blocking with `!== 'relaxed'`. Any new policy would block like stop-on-error there. Switch it to `blocksOnError` from src/typing.js.
+- Local challenge races hard-code `correctionPolicy: 'relaxed'` (src/app.js:1205). Fail policies are ignored there, and no-backspace is enforced.
+- A failure on the very last character isn't reported, because completion is checked before the fail check. Rare edge case.
+- The failed run card still offers "Start drill" / "Skip to retest" as interrupted runs do. Failed runs want a "try again" focus.
+- The new 180px correction select (src/styles.css:386) hasn't been checked at 390px.
