@@ -439,8 +439,9 @@ function choosePassage(extraSeen = []) {
   });
 }
 
+// Daily and missed-word passages run to the end of their text, whatever the practice shape is.
 function sessionDurationMs() {
-  if (sessionKind === 'daily') return null;
+  if (sessionKind === 'daily' || sessionKind === 'missed') return null;
   if (sessionKind === 'drill') return 60000;
   if (prefs.mode === 'time') return prefs.duration * 1000;
   return null;
@@ -512,7 +513,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: kind === 'daily' ? dailyConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, quoteLength: null, difficulty: null, wordList: null } : conditions(),
+    conditions: kind === 'daily' ? dailyConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: null } : conditions(),
   });
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;

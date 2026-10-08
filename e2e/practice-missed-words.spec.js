@@ -62,6 +62,37 @@ test('missed and slowest words become their own uncounted practice run', async (
   expect((await passageText(page)).split(' ')).toEqual(practice);
 });
 
+test('after a timed test, the practice run lasts until its passage is typed', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await page.locator('#duration-options [data-length="15"]').click();
+  await expect(page.locator('#timer')).toHaveText('15');
+  // Two distinct words with a fixed miss each, then the 15 s limit ends the run.
+  const words = (await passageText(page)).split(' ');
+  const second = words.findIndex((word, index) => index > 1 && word !== words[1]);
+  await typeWithMisses(page, words.slice(0, second + 2).join(' '), [1, second]);
+  await page.clock.fastForward(15_000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-time')).toHaveText('15.0 s');
+
+  await page.locator('#practice-words').click();
+  await expect(page.locator('#session-kicker')).toHaveText('missed words');
+  await expect(page.locator('#timer-label')).toHaveText('words');
+  await expect(page.locator('#timer-unit')).toHaveText('/40');
+  await expect(page.locator('#condition-line')).not.toContainText('15 s');
+  const practice = await passageText(page);
+  await typeInto(page, practice.slice(0, 20));
+  // Well past the timed test's 15 s, the practice run is still going.
+  await page.clock.fastForward(20_000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#typing-status')).toHaveText('In progress');
+  await typeInto(page, practice.slice(20));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('Word practice complete · not counted toward your best');
+  expect(parseFloat(await page.locator('#result-time').textContent())).toBeGreaterThan(20);
+  await expect(page.locator('#result-conditions')).not.toContainText('15 s');
+});
+
 // Committed docs images are only rewritten on request (SCREENSHOTS=1); normal runs still take
 // the shots, into the test's own output folder.
 const shot = (testInfo, name) => process.env.SCREENSHOTS
