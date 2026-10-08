@@ -9,6 +9,10 @@ import {
   makeDrill,
   makePassage,
   metrics,
+  MINIMUM_GRACE_CHARACTERS,
+  MINIMUM_GRACE_MS,
+  minimumGrace,
+  minimumMissed,
   passageComplete,
   recommendTarget,
   replayAttempt,
@@ -109,4 +113,36 @@ test('generated passages draw from the selected common-word list', async () => {
   const bank = wordList(DEFAULT_WORD_LIST);
   assert.match(makePassage('words', 10, true, () => (bank.indexOf('i') + 0.5) / bank.length), /\bI\b/);
   assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
+});
+
+test('minimums wait out a five-second, twenty-character grace and judge the shown numbers', () => {
+  assert.equal(MINIMUM_GRACE_MS, 5000);
+  assert.equal(MINIMUM_GRACE_CHARACTERS, 20);
+  assert.equal(minimumGrace({ elapsedMs: 4999, insertions: 200 }), true);
+  assert.equal(minimumGrace({ elapsedMs: 60000, insertions: 19 }), true);
+  assert.equal(minimumGrace({ elapsedMs: 5000, insertions: 20 }), false);
+
+  assert.equal(minimumMissed(null, { wpm: 10, accuracy: 50 }), null);
+  assert.equal(minimumMissed({ accuracy: 95 }, { wpm: 10, accuracy: 95 }), null, 'at the minimum is not below it');
+  assert.deepEqual(minimumMissed({ accuracy: 95 }, { wpm: 80, accuracy: 94 }), { metric: 'accuracy', minimum: 95, value: 94 });
+  assert.deepEqual(minimumMissed({ wpm: 40 }, { wpm: 39, accuracy: 100 }), { metric: 'wpm', minimum: 40, value: 39 });
+  assert.equal(minimumMissed({ accuracy: 90, wpm: 40 }, { wpm: 40, accuracy: 90 }), null);
+  assert.equal(minimumMissed({ accuracy: 90, wpm: 40 }, { wpm: 30, accuracy: 80 }).metric, 'accuracy', 'accuracy is reported first when both miss');
+});
+
+test('minimums never enter the conditions key, so bests and retests keep matching', () => {
+  // conditions() in app.js for the default 30 s practice test; the key is byte-identical to before minimums.
+  const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
+    inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: 'original-en-v5', metricVersion: 'stilltype-metrics-v1' };
+  const key = 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1';
+  assert.equal(conditionKey(practice), key);
+  assert.equal(conditionKey({ ...practice, minimums: { accuracy: 95, wpm: 40 } }), key);
+
+  // A run with a minimum on replays to exactly the same score: minimums only decide when it ends.
+  const attempt = createAttempt({ id: 'm', text: 'the', textId: 'one', conditions: practice });
+  attempt.events = [{ type: 'insert', text: 't', offsetMs: 0 }, { type: 'insert', text: 'h', offsetMs: 100 }, { type: 'insert', text: 'e', offsetMs: 200 }];
+  attempt.startedAt = 0;
+  const plain = completeAttempt(attempt, { endedAt: 1000 });
+  const withMinimum = completeAttempt({ ...attempt, minimums: { accuracy: 95 } }, { endedAt: 1000 });
+  assert.deepEqual(withMinimum.summary.score, plain.summary.score);
 });

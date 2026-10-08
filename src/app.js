@@ -6,6 +6,8 @@ import {
   conditionKey,
   createAttempt,
   makeDrill,
+  minimumGrace,
+  minimumMissed,
   normalizeManualTarget,
   passageComplete,
   recommendTarget,
@@ -44,7 +46,13 @@ const defaultPreferences = {
   stopOnError: false,
   focusMode: false,
   theme: 'system',
+  // Minimum accuracy (%) and speed (wpm) to continue a practice run; 0 is off.
+  minAccuracy: 0,
+  minWpm: 0,
 };
+
+const MIN_ACCURACY_OPTIONS = [0, 80, 90, 95, 98];
+const MIN_WPM_OPTIONS = [0, 20, 30, 40, 60, 80, 100];
 
 function emptyProfile() {
   return {
@@ -70,6 +78,8 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  if (!MIN_ACCURACY_OPTIONS.includes(value.minAccuracy)) value.minAccuracy = 0;
+  if (!MIN_WPM_OPTIONS.includes(value.minWpm)) value.minWpm = 0;
   return value;
 }
 
@@ -187,10 +197,27 @@ function describeConditions(value = conditions()) {
   return `${language} · ${length} · ${punctuation} · ${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
 }
 
+// Minimums ride along on the conditions line without joining the conditions key.
+function practiceMinimums() {
+  const minimums = {};
+  if (prefs.minAccuracy) minimums.accuracy = prefs.minAccuracy;
+  if (prefs.minWpm) minimums.wpm = prefs.minWpm;
+  return Object.keys(minimums).length ? minimums : null;
+}
+
+function describeMinimums(minimums) {
+  return [minimums?.accuracy ? `min ${minimums.accuracy}% accuracy` : '', minimums?.wpm ? `min ${minimums.wpm} wpm` : ''].filter(Boolean).join(' · ');
+}
+
+// "accuracy fell below 95%", "speed fell below 40 wpm".
+function stopReason(stop) {
+  return stop.metric === 'accuracy' ? `accuracy fell below ${stop.minimum}%` : `speed fell below ${stop.minimum} wpm`;
+}
+
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
-  if (run.kind !== 'drill') return describeConditions(run.conditions);
+  if (run.kind !== 'drill') return [describeConditions(run.conditions), describeMinimums(run.minimums)].filter(Boolean).join(' · ');
   return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
 }
 
@@ -286,6 +313,11 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  $('min-accuracy').value = String(prefs.minAccuracy);
+  $('min-wpm').value = String(prefs.minWpm);
+  const minimums = describeMinimums(practiceMinimums());
+  $('minimum-note').textContent = minimums;
+  $('minimum-note').hidden = !minimums;
   showBest();
 }
 
@@ -515,6 +547,9 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     attempt.firstDailyAttempt = passage.firstDailyAttempt;
   }
   if (kind === 'drill') attempt.target = selectedTarget;
+  // Only open practice stops at a minimum: drills, retests and the daily challenge always run to
+  // the end, so a threshold can never filter what the learning loop compares.
+  if (kind === 'practice') attempt.minimums = practiceMinimums();
   attempt.fresh = passage.fresh !== false;
   startTime = null;
   $('typing-input').value = '';
@@ -725,9 +760,19 @@ function updateLive(reset = false) {
   const second = startTime === null ? -1 : Math.floor(boundedElapsed / 1000);
   if (reset || second !== liveSecond) {
     liveSecond = second;
-    const score = second >= 1 ? replayAttempt({ ...attempt, endedAt: boundedElapsed }).score : null;
+    const live = second >= 1 ? replayAttempt({ ...attempt, endedAt: boundedElapsed }) : null;
+    const score = live?.score;
     setText($('live-wpm'), score ? score.wpm : '—');
     setText($('live-accuracy'), score ? score.accuracy : '—');
+    // Minimums are judged on this once-a-second tick, after the grace period, never per keystroke.
+    if (!reset && live && attempt.minimums && attempt.status === 'running' && !attempt.interrupted && !attempt.unsupportedInput
+      && !minimumGrace({ elapsedMs: live.elapsedMs, insertions: live.insertions })) {
+      const stop = minimumMissed(attempt.minimums, score);
+      if (stop) {
+        finishPrimary(boundedElapsed, stop);
+        return;
+      }
+    }
   }
   let progress;
   if (duration) {
@@ -768,13 +813,18 @@ function storeAttempt(completed) {
   return saved;
 }
 
-function finishPrimary(forcedElapsed = null) {
+function finishPrimary(forcedElapsed = null, stop = null) {
   if (!attempt || attempt.status !== 'running') return;
   clearInterval(ticker);
   ticker = null;
   const endedAt = forcedElapsed ?? offsetFor();
-  const valid = !attempt.interrupted && !attempt.unsupportedInput;
-  const completed = completeAttempt(attempt, { endedAt, status: valid ? 'complete' : 'interrupted' });
+  const clean = !attempt.interrupted && !attempt.unsupportedInput;
+  const final = completeAttempt(attempt, { endedAt });
+  // A run that reaches its end under a minimum stops there too, so every counted run met them.
+  const stopped = clean ? stop || minimumMissed(attempt.minimums, final.summary.score) : null;
+  const valid = clean && !stopped;
+  const completed = { ...final, status: valid ? 'complete' : 'interrupted' };
+  if (stopped) completed.stopped = stopped;
   completed.interrupted = attempt.interrupted;
   completed.unsupportedInput = attempt.unsupportedInput;
   completed.fresh = attempt.fresh;
@@ -844,9 +894,10 @@ function renderResults(completed, saved) {
   $('result-time').textContent = `${(replay.elapsedMs / 1000).toFixed(1)} s`;
   $('result-conditions').textContent = describeRun(completed);
   $('result-delta').textContent = resultHeadline(completed);
+  const stopped = completed.stopped ? `Stopped: ${stopReason(completed.stopped)}` : '';
   // A retest reports a failed save once, in the comparison caveat.
   $('result-comparison-note').textContent = [
-    counted ? '' : 'Focus or input changed during the run, so it isn’t counted.',
+    counted ? '' : stopped ? `${stopped}, so it isn’t counted.` : 'Focus or input changed during the run, so it isn’t counted.',
     saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
   ].filter(Boolean).join(' ');
 
@@ -855,7 +906,8 @@ function renderResults(completed, saved) {
     selectedTarget = activeRecommendation.target;
   }
   $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
-  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
+  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason
+    : stopped ? 'Practice runs stop when they fall below your minimums. Change them in settings.' : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
     ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
@@ -866,9 +918,7 @@ function renderResults(completed, saved) {
   renderTraining();
   renderDaily();
   $('comparison-panel').hidden = true;
-  announce(saved
-    ? `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy.`
-    : `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+  announce(`${stopped ? `${stopped}. ` : ''}${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy.${saved ? '' : ' Couldn’t save on this device.'}`);
 }
 
 function renderEvidenceList(evidence) {
@@ -1152,7 +1202,7 @@ function renderHistory() {
       element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : 'practice'} · view details`));
     const detail = element('div', '', 'run-detail');
     detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
-      element('p', describeConditions(run.conditions)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
+      element('p', describeRun(run)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
     const trace = profile.attempts.find((a) => a.id === run.id);
     if (trace) {
       const passageDetails = document.createElement('details');
@@ -1740,6 +1790,8 @@ function bindEvents() {
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
   $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
+  $('min-accuracy').addEventListener('change', (event) => setMinimum('minAccuracy', Number(event.target.value)));
+  $('min-wpm').addEventListener('change', (event) => setMinimum('minWpm', Number(event.target.value)));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
@@ -1901,6 +1953,19 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession('practice');
 }
 
+// A ready practice run takes a new minimum in place; one already under way restarts with it.
+function setMinimum(key, value) {
+  if (prefs[key] === value) return;
+  prefs[key] = value;
+  applyPreferences();
+  saveProfile();
+  if (sessionKind !== 'practice' || !attempt) return;
+  if (attempt.status === 'ready') {
+    attempt.minimums = practiceMinimums();
+    $('condition-line').textContent = describeRun(attempt);
+  } else if (attempt.status === 'running') resetSession('practice');
+}
+
 function setWordList(id) {
   prefs.wordList = id;
   applyPreferences();
@@ -1923,6 +1988,8 @@ function paletteCommands(query) {
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
+    ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: prefs.minAccuracy === value ? 'current' : '', on: prefs.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
+    ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? `${value} wpm` : 'off'}`, keywords: 'min wpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },

@@ -769,6 +769,14 @@ kbd {
 .compact-switch .switch::before { width: 12px; height: 12px; }
 .compact-switch .switch:checked::before { transform: translateX(12px); }
 
+/* Practice minimums, when set: a quiet condition label beside the test shape, never a control. */
+.minimum-note {
+  color: var(--muted);
+  font: var(--text-mono)/1.4 var(--font-mono);
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
 .quote-options {
   margin: calc(var(--space-10) * -1) auto var(--space-10);
   display: flex;

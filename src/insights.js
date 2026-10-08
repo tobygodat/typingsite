@@ -9,7 +9,10 @@ export function runRecord(attempt, at = attempt.at || null) {
   return {
     id: attempt.id, at, kind: attempt.kind, status: attempt.status,
     conditions: attempt.conditions, textId: attempt.textId, fresh: attempt.fresh,
-    interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput),
+    interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput || attempt.stopped),
+    // Practice minimums are labelled on the run, not keyed into its conditions.
+    ...(attempt.minimums ? { minimums: attempt.minimums } : {}),
+    ...(attempt.stopped ? { stopped: attempt.stopped } : {}),
     score: replay.score, elapsedMs: replay.elapsedMs,
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,

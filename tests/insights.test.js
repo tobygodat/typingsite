@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage } from '../src/typing.js';
+import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
@@ -81,4 +81,26 @@ test('original quote pool has fresh choices in every length and difficulty bucke
       }
     }
   }
+});
+
+test('a run stopped by a minimum is interrupted everywhere; a completed run keeps its minimums as a label', () => {
+  const attempt = createAttempt({ id: 'min', text: 'the cat', textId: 'one', kind: 'test', conditions });
+  attempt.events = [...'thx cat'].map((text, i) => ({ type: 'insert', text, offsetMs: i * 200 }));
+  attempt.startedAt = 0;
+  attempt.minimums = { accuracy: 95 };
+  const stopped = { ...completeAttempt(attempt, { endedAt: 6000 }), status: 'interrupted', stopped: { metric: 'accuracy', minimum: 95, value: 86 } };
+  const record = runRecord(stopped, '2026-10-08T12:00:00Z');
+  assert.equal(record.interrupted, true);
+  assert.equal(validRun(record), false);
+  assert.equal(trendRun(record), false);
+  assert.deepEqual(record.stopped, { metric: 'accuracy', minimum: 95, value: 86 });
+  // The stop alone keeps a run out of trends and practice time, whatever its stored status says.
+  assert.equal(validRun(runRecord({ ...stopped, status: 'complete' })), false);
+
+  const kept = runRecord(completeAttempt({ ...attempt, minimums: { wpm: 20 } }, { endedAt: 6000 }), '2026-10-08T12:00:00Z');
+  assert.equal(trendRun(kept), true);
+  assert.deepEqual(kept.minimums, { wpm: 20 });
+  assert.equal(conditionKey(kept.conditions), conditionKey(conditions));
+  assert.equal('stopped' in kept, false);
+  assert.equal('minimums' in runRecord(completeAttempt({ ...attempt, minimums: undefined }, { endedAt: 6000 })), false);
 });
