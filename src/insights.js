@@ -111,3 +111,13 @@ const DAILY_TEXTS = [
   'The letter arrived without an explanation for its long journey. Its corners were soft, and the stamp had almost faded. Inside was a short account of a summer by the sea, written by someone who had thought an ordinary day was worth sharing.',
   'When the power returned, we left the candles burning for a little longer. The room looked familiar again, but conversation had found a different pace. Nobody reached for a screen until the last story was finished and the kettle began to sing.',
 ];
+
+// Fatigue in one sitting: show the evidence or say nothing. The last `lastN` runs must all sit strictly
+// below the median of the sitting's earlier runs, and the sitting needs `minRuns` runs before we speak.
+export function fatigueSignal(wpms, { minRuns = 8, lastN = 5 } = {}) {
+  const values = (wpms || []).filter((value) => Number.isFinite(value));
+  if (values.length < Math.max(minRuns, lastN + 1)) return { show: false, median: null, lastN: [] };
+  const recent = values.slice(-lastN);
+  const middle = median(values.slice(0, -lastN));
+  return { show: recent.every((value) => value < middle), median: middle, lastN: recent };
+}

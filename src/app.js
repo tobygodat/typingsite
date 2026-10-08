@@ -22,7 +22,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { dailyPassage, fatigueSignal, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -43,6 +43,7 @@ const defaultPreferences = {
   keyboard: false,
   stopOnError: false,
   focusMode: false,
+  fatigueNotice: true,
   theme: 'system',
 };
 
@@ -280,6 +281,7 @@ function applyPreferences() {
   $('keyboard-toggle').checked = prefs.keyboard;
   $('stop-on-error-toggle').checked = prefs.stopOnError;
   $('focus-toggle').checked = prefs.focusMode;
+  $('fatigue-toggle').checked = prefs.fatigueNotice !== false;
   $('keyboard').hidden = !prefs.keyboard;
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
@@ -797,11 +799,24 @@ function finishPrimary(forcedElapsed = null) {
     baselineAttempt = completed;
     trainingContext = null;
   }
+  if (sessionKind === 'practice' && valid && completed.kind === 'test') sitting.wpms.push(completed.summary.score.wpm);
   renderResults(completed, saved);
   if (sessionKind === 'retest') renderComparison(baselineAttempt, completed, saved);
   switchView('results');
   renderCard(completed);
+  renderFatigueNotice(sessionKind === 'practice' && valid && completed.kind === 'test');
   $('run-again').focus({ preventScroll: true });
+}
+
+// The current sitting lives only in memory: completed practice tests in this page session.
+const sitting = { wpms: [], noticeShown: false };
+
+function renderFatigueNotice(eligible) {
+  const signal = eligible && prefs.fatigueNotice !== false && !sitting.noticeShown ? fatigueSignal(sitting.wpms) : { show: false };
+  $('fatigue-notice').hidden = !signal.show;
+  if (!signal.show) return;
+  sitting.noticeShown = true;
+  $('fatigue-notice-text').textContent = `Your last ${signal.lastN.length} runs are below this session’s median (${Math.round(signal.median)} wpm). A short break usually helps.`;
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -1743,6 +1758,14 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
+  $('fatigue-toggle').addEventListener('change', (event) => { prefs.fatigueNotice = event.target.checked; applyPreferences(); saveProfile(); });
+  $('fatigue-dismiss').addEventListener('click', () => {
+    prefs.fatigueNotice = false;
+    applyPreferences();
+    saveProfile();
+    $('fatigue-notice').hidden = true;
+    $('run-again').focus({ preventScroll: true });
+  });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
     applyPreferences();

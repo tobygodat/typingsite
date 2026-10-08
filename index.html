@@ -82,6 +82,10 @@
               <span><strong>focus mode</strong></span>
               <input class="switch" id="focus-toggle" type="checkbox">
             </label>
+            <label class="preference-row" for="fatigue-toggle">
+              <span><strong>break suggestions</strong></span>
+              <input class="switch" id="fatigue-toggle" type="checkbox">
+            </label>
           </div>
         </details>
 
@@ -247,6 +251,7 @@
             </dl>
             <p class="metric-note">wpm counts correct characters kept · accuracy counts every character typed, corrected ones included</p>
             <p class="condition-copy" id="result-conditions">english · common words · corpus v3 · metric v1</p>
+            <p id="fatigue-notice" class="fatigue-notice" role="status" hidden><span id="fatigue-notice-text"></span> <button id="fatigue-dismiss" class="fatigue-dismiss" type="button">don’t show this</button></p>
           </article>
 
           <div class="results-copy">
