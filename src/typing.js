@@ -444,12 +444,15 @@ function keptTimes(attempt) {
 }
 
 // The passage words the run reached, flagged if any first try or kept letter in them missed, with
-// the pace from the previous word's space (or the first keystroke) to the word's last letter,
+// the pace from the previous word's space (or the run's first keystroke) to the word's last letter,
 // timed by the keystrokes kept at the finish so corrections count against the pace.
 export function wordHistory(attempt, replay = replayAttempt(attempt)) {
   const target = attempt.text;
   const firsts = new Map(replay.firstAttempts.map((item) => [item.position, item]));
   const times = keptTimes(attempt);
+  // The first word has no space to start from: it runs from the first key pressed, even one later
+  // fixed, and then every kept letter typed after that key counts.
+  const firstKey = (attempt.events || []).find((event) => event.type === 'insert' && printable(event.text))?.offsetMs;
   const words = [];
   const pattern = /\S+/gu;
   let match;
@@ -460,12 +463,13 @@ export function wordHistory(attempt, replay = replayAttempt(attempt)) {
     for (let i = start; i <= end; i += 1) {
       if (firsts.get(i)?.correct === false || replay.typed[i] !== target[i]) wrong = true;
     }
-    const anchor = start > 0 ? start - 1 : start;
-    const durationMs = times[anchor] !== undefined && times[end] !== undefined ? times[end] - times[anchor] : 0;
+    const from = start > 0 ? times[start - 1] : firstKey;
+    const letters = start > 0 || times[start] > from ? end - start + 1 : end - start;
+    const durationMs = from !== undefined && times[end] !== undefined ? times[end] - from : 0;
     words.push({
       word: match[0],
       wrong,
-      wpm: durationMs > 0 ? Math.round((end - anchor) / 5 / (durationMs / 60000)) : null,
+      wpm: durationMs > 0 ? Math.round(letters / 5 / (durationMs / 60000)) : null,
     });
   }
   return words;

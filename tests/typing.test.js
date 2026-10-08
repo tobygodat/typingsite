@@ -96,6 +96,23 @@ test('word pace runs to the kept last letter, so a fixed final slip slows the wo
   assert.equal(cat.wpm, 28);
 });
 
+test('first-word pace starts at the first key, so a fixed first-letter slip slows the word', () => {
+  const attempt = createAttempt({ id: 'g', text: 'the cat', textId: 't', conditions: {} });
+  attempt.events = [
+    { type: 'insert', text: 'x', position: 0, accepted: true, offsetMs: 0 },
+    { type: 'delete', count: 1, offsetMs: 1000 },
+    { type: 'insert', text: 't', position: 0, accepted: true, offsetMs: 1100 },
+    { type: 'insert', text: 'h', position: 1, accepted: true, offsetMs: 1200 },
+    { type: 'insert', text: 'e', position: 2, accepted: true, offsetMs: 1300 },
+  ];
+  const [the] = wordHistory(attempt);
+  assert.equal(the.wrong, true);
+  // Slip at 0 ms to the kept "e" at 1300 ms: 3 kept letters in 1.3 s ≈ 28 wpm, not 120 from "t".
+  assert.equal(the.wpm, 28);
+  // A clean first word still paces from its own first letter: 2 letters in 200 ms = 120 wpm.
+  assert.equal(wordHistory(evenRun('the cat', 100))[0].wpm, 120);
+});
+
 test('the new stats leave the versioned metrics untouched', () => {
   const attempt = evenRun('the cat sat', 200, { 5: 'x' });
   const before = JSON.stringify(replayAttempt(attempt).score);
