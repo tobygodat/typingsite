@@ -68,8 +68,13 @@ let syncTimer = 0;
 let cloudChecked = false;
 let unsynced = false;
 
+// Mock themes are proposals awaiting approval (tokens in styles.css); unknown ids fall back to system.
+const MOCK_THEMES = ['paper', 'shadcn', 'terminal', 'soft', 'midnight'];
+const THEME_COLOR = { dark: '#0f0f0e', light: '#f4f1eb', paper: '#fbf8f1', shadcn: '#ffffff', terminal: '#2c2e31', soft: '#f5f3fb', midnight: '#08080a' };
+
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  if (!['system', 'dark', 'light', ...MOCK_THEMES].includes(value.theme)) value.theme = 'system';
   return value;
 }
 
@@ -231,14 +236,14 @@ function showBest() {
 }
 
 function resolvedTheme() {
-  if (prefs.theme === 'light' || prefs.theme === 'dark') return prefs.theme;
+  if (prefs.theme === 'light' || prefs.theme === 'dark' || MOCK_THEMES.includes(prefs.theme)) return prefs.theme;
   return prefersLight.matches ? 'light' : 'dark';
 }
 
 function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f4f1eb' : '#0f0f0e';
+  document.querySelector('meta[name="theme-color"]').content = THEME_COLOR[theme];
   $('theme-select').value = prefs.theme;
 }
 
@@ -1923,7 +1928,7 @@ function paletteCommands(query) {
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
-    ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
+    ...['dark', 'light', 'system', ...MOCK_THEMES].map((theme) => ({ group: 'display', label: `theme · ${theme}${MOCK_THEMES.includes(theme) ? ' (mock)' : ''}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },

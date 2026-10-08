@@ -11,7 +11,8 @@
     try {
       const user = JSON.parse(localStorage.getItem('stilltype-session-v1'))?.user?.id;
       const saved = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences?.theme : null;
-      const theme = saved === 'light' || saved === 'dark' ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      const known = ['light', 'dark', 'paper', 'shadcn', 'terminal', 'soft', 'midnight'];
+      const theme = known.includes(saved) ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
       document.documentElement.dataset.theme = theme;
     } catch {}
   </script>
@@ -47,6 +48,13 @@
                 <option value="system">system</option>
                 <option value="dark">dark</option>
                 <option value="light">light</option>
+                <optgroup label="Mock themes (proposals)">
+                  <option value="paper">paper</option>
+                  <option value="shadcn">shadcn</option>
+                  <option value="terminal">terminal</option>
+                  <option value="soft">soft</option>
+                  <option value="midnight">midnight</option>
+                </optgroup>
               </select>
             </label>
             <label class="preference-row" for="font-size">

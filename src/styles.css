@@ -108,6 +108,166 @@
   --card-bottom: #efeae1;
 }
 
+/*
+ * Mock themes: PROPOSALS awaiting approval, opt-in from settings → theme. They deliberately
+ * depart from DESIGN.md (type, radii, palette); everything stays scoped to :root[data-theme="<id>"].
+ * Approve → it ships; reject → delete its block, its <option> in index.html, its id in
+ * MOCK_THEMES (src/app.js) and in the pre-paint allowlist (index.html).
+ * Text, muted, accent, coral and warning all clear WCAG AA (4.5:1) on --ground and --raised.
+ * Motion is untouched: the still-run rules apply to every theme.
+ */
+
+/* Paper: editorial serif on bright warm paper, ink-black text, letterpress green, near-square corners. */
+:root[data-theme="paper"] {
+  color-scheme: light;
+  --font-serif: "Literata", "Iowan Old Style", Charter, Georgia, ui-serif, serif;
+  --radius-sm: 2px;
+  --radius: 3px;
+  --radius-control: 4px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+  --ground: #fbf8f1;
+  --ground-2: #f3eee3;
+  --raised: #fffefa;
+  --raised-2: rgba(20, 18, 16, 0.06);
+  --text: #141210;
+  --muted: #5e5850;
+  --hairline: rgba(20, 18, 16, 0.12);
+  --hairline-strong: rgba(20, 18, 16, 0.24);
+  --outline: #7a7368;
+  --accent: #1f6b45;
+  --accent-ink: #fffefa;
+  --accent-soft: rgba(31, 107, 69, 0.1);
+  --danger: #a8321c;
+  --danger-soft: rgba(168, 50, 28, 0.12);
+  --warning: #7a4f00;
+  --selection: #e8dfcc;
+  --ghost: #3f4bb0;
+  --shadow-float: none;
+  --card-top: #fffefa;
+  --card-bottom: #fffefa;
+}
+
+/* shadcn: zinc neutrals, system sans, 0.5rem radius, 1px borders, flat white cards, black primary. */
+:root[data-theme="shadcn"] {
+  color-scheme: light;
+  --font-serif: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Geist Mono", monospace;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-control: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --ground: #ffffff;
+  --ground-2: #fafafa;
+  --raised: #ffffff;
+  --raised-2: #f4f4f5;
+  --text: #09090b;
+  --muted: #71717a;
+  --hairline: #f4f4f5;
+  --hairline-strong: #e4e4e7;
+  --outline: #a1a1aa;
+  --accent: #18181b;
+  --accent-ink: #fafafa;
+  --accent-soft: rgba(24, 24, 27, 0.06);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  --warning: #a16207;
+  --selection: #e4e4e7;
+  --ghost: #4f46e5;
+  --shadow-float: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --card-top: #ffffff;
+  --card-bottom: #ffffff;
+}
+:root[data-theme="shadcn"] .run-card { box-shadow: var(--shadow-float); }
+
+/* Terminal: mono-forward dark in the Monkeytype vein; charcoal ground, one yellow, tight corners. */
+:root[data-theme="terminal"] {
+  color-scheme: dark;
+  --font-serif: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, "Geist Mono", monospace;
+  --radius-sm: 3px;
+  --radius: 4px;
+  --radius-control: 6px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --ground: #2c2e31;
+  --ground-2: #313337;
+  --raised: #36393d;
+  --raised-2: rgba(255, 255, 255, 0.07);
+  --text: #e2e1d6;
+  --muted: #a3a5a8;
+  --hairline: rgba(255, 255, 255, 0.06);
+  --hairline-strong: rgba(255, 255, 255, 0.12);
+  --outline: #7b7d80;
+  --accent: #e2b714;
+  --accent-ink: #1d1a08;
+  --accent-soft: rgba(226, 183, 20, 0.13);
+  --danger: #ff6b6b;
+  --danger-soft: rgba(255, 107, 107, 0.16);
+  --warning: #d9a35a;
+  --selection: #45484c;
+  --ghost: #9fb6ff;
+  --shadow-float: none;
+  --card-top: #313337;
+  --card-bottom: #313337;
+}
+
+/* Soft: friendly rounded light; lavender ground, white cards, violet action, generous radii. */
+:root[data-theme="soft"] {
+  color-scheme: light;
+  --font-serif: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius-sm: 10px;
+  --radius: 14px;
+  --radius-control: 999px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+  --ground: #f5f3fb;
+  --ground-2: #eeeaf8;
+  --raised: #ffffff;
+  --raised-2: rgba(91, 75, 214, 0.08);
+  --text: #1e1b2e;
+  --muted: #5b5670;
+  --hairline: rgba(30, 27, 46, 0.08);
+  --hairline-strong: rgba(30, 27, 46, 0.14);
+  --outline: #8a85a0;
+  --accent: #5b4bd6;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(91, 75, 214, 0.12);
+  --danger: #c0392b;
+  --danger-soft: rgba(192, 57, 43, 0.12);
+  --warning: #8a5a00;
+  --selection: #e2ddf7;
+  --ghost: #b0418a;
+  --shadow-float: 0 6px 20px rgba(60, 45, 120, 0.1);
+  --card-top: #ffffff;
+  --card-bottom: #ffffff;
+}
+
+/* Midnight: near-black, dimmed text, amber caret for typing late at night. */
+:root[data-theme="midnight"] {
+  color-scheme: dark;
+  --ground: #08080a;
+  --ground-2: #0c0c0f;
+  --raised: #131317;
+  --raised-2: rgba(255, 240, 220, 0.07);
+  --text: #cfc8bc;
+  --muted: #8a8479;
+  --hairline: rgba(255, 240, 220, 0.06);
+  --hairline-strong: rgba(255, 240, 220, 0.12);
+  --outline: #6a655d;
+  --accent: #e0a54a;
+  --accent-ink: #1a1205;
+  --accent-soft: rgba(224, 165, 74, 0.13);
+  --danger: #f07d63;
+  --danger-soft: rgba(240, 125, 99, 0.15);
+  --warning: #cdbf7a;
+  --selection: #24221e;
+  --ghost: #9aa6e8;
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --card-top: #141417;
+  --card-bottom: #0a0a0c;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root { --motion-scale: 0; }
   *, *::before, *::after {
