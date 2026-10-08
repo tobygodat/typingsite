@@ -1,5 +1,6 @@
 import { DEFAULT_WORD_LIST, wordList } from './words.js';
 import { additionalQuotes, drillWords } from './corpus.js';
+import { isDefaultLayout } from './layouts.js';
 
 export const METRIC_VERSION = 'stilltype-metrics-v1';
 export const EVENT_VERSION = 'stilltype-events-v1';
@@ -306,7 +307,7 @@ export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
 }
 
 export function conditionKey(conditions = {}) {
-  return [
+  const key = [
     conditions.mode,
     conditions.duration || '',
     conditions.count || '',
@@ -319,6 +320,9 @@ export function conditionKey(conditions = {}) {
     conditions.corpus || CORPUS_VERSION,
     conditions.metricVersion || METRIC_VERSION,
   ].join(':');
+  // QWERTY, and every run saved before layouts existed, keeps the original key, so its bests
+  // and retests still match. Any other layout gets its own suffix and never mixes with them.
+  return isDefaultLayout(conditions.layout) ? key : `${key}:layout-${conditions.layout}`;
 }
 
 export function comparable(before, after) {

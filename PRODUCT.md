@@ -38,7 +38,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 
 **Shipped today** (Stilltype, working title):
 - A complete guest loop: timed/word/quote test, observed recommendation or manual target, one-minute drill, unseen comparable retest, and saved local progress.
-- Quote length/difficulty filters, optional punctuation, corrected WPM and input accuracy, first-attempt error retention, keyboard display, text size, live-metric, stop-on-error and focus preferences.
+- Quote length/difficulty filters, optional punctuation, corrected WPM and input accuracy, first-attempt error retention, keyboard display with a layout legend (QWERTY, Dvorak, Colemak, Colemak-DH, Workman) and optional finger map, text size, live-metric, stop-on-error and focus preferences.
 - Private online two-player races with account invitations, guest links, a shared server countdown, live progress and unranked results. A signed-in account hosts; guests can join without an account. Shared-keyboard challenges remain available.
 - Daily passage shared by UTC date, reset at midnight, from a frozen pool of 14 original texts. Fixed continue-on-error rule, saved personal results and labelled repeat attempts. A first attempt on a new day can still be a previously displayed passage; returning texts keep their identity and do not become fresh training evidence. Daily scores stay separate from personal practice bests and trends.
 - Progress with condition/period filters, keyboard-accessible WPM and accuracy charts, weekly medians with sample counts, expandable run/comparison details and actions to practice an old target again.

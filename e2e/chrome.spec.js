@@ -52,7 +52,7 @@ test('settings apply their display preferences', async ({ page }) => {
   await expect(page.locator('body')).toHaveAttribute('data-live-metrics', 'true');
   await page.locator('#keyboard-toggle').check();
   await expect(page.locator('#keyboard')).toBeVisible();
-  await expect(page.locator('#keyboard .key')).toHaveCount(27);
+  await expect(page.locator('#keyboard .key')).toHaveCount(31);
 
   // Escape closes the popover and returns focus to its toggle.
   await page.keyboard.press('Escape');

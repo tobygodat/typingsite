@@ -66,6 +66,16 @@
                 <option value="10k">top 10k</option>
               </select>
             </label>
+            <label class="preference-row" for="layout-select">
+              <span><strong>keyboard layout</strong></span>
+              <select class="input select" id="layout-select">
+                <option value="qwerty" selected>qwerty</option>
+                <option value="dvorak">dvorak</option>
+                <option value="colemak">colemak</option>
+                <option value="colemak-dh">colemak-dh</option>
+                <option value="workman">workman</option>
+              </select>
+            </label>
             <label class="preference-row" for="live-toggle">
               <span><strong>live wpm and accuracy</strong></span>
               <input class="switch" id="live-toggle" type="checkbox">
@@ -73,6 +83,10 @@
             <label class="preference-row" for="keyboard-toggle">
               <span><strong>keyboard</strong></span>
               <input class="switch" id="keyboard-toggle" type="checkbox">
+            </label>
+            <label id="finger-row" class="preference-row preference-sub" for="finger-toggle" hidden>
+              <span><strong>finger map</strong></span>
+              <input class="switch" id="finger-toggle" type="checkbox">
             </label>
             <label class="preference-row" for="stop-on-error-toggle">
               <span><strong>stop on error</strong></span>

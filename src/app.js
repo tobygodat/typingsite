@@ -14,6 +14,7 @@ import {
   summarizePatterns,
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
+import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
@@ -38,9 +39,11 @@ const defaultPreferences = {
   quoteLength: 'medium',
   difficulty: 'any',
   wordList: DEFAULT_WORD_LIST,
+  layout: DEFAULT_LAYOUT,
   fontSize: '28',
   liveMetrics: false,
   keyboard: false,
+  fingerMap: false,
   stopOnError: false,
   focusMode: false,
   theme: 'system',
@@ -70,6 +73,9 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  // Profiles saved before layouts existed have none and were typed as QWERTY.
+  value.layout = normalizeLayout(value.layout);
+  value.fingerMap = value.fingerMap === true;
   return value;
 }
 
@@ -126,6 +132,8 @@ let trainingContext = null;
 let resultBestBefore = null;
 let clearSnapshot = null;
 let clearTimer = null;
+let keyboardBuilt = '';
+let keyboardTarget = null;
 
 let race = {
   passage: null,
@@ -171,6 +179,7 @@ function conditions(inputClass = 'physical-keyboard') {
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
     wordList: prefs.mode === 'quote' ? null : prefs.wordList,
     inputClass,
+    layout: prefs.layout,
     correctionPolicy: prefs.stopOnError ? 'mandatory' : 'relaxed',
     language: 'en',
     corpus: CORPUS_VERSION,
@@ -178,10 +187,16 @@ function conditions(inputClass = 'physical-keyboard') {
   };
 }
 
+// The layout is named only when it isn't QWERTY; runs saved before layouts existed read as QWERTY.
+function inputLabel(value) {
+  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
+  return isDefaultLayout(value.layout) ? input : `${input} · ${layoutLabel(value.layout)}`;
+}
+
 function describeConditions(value = conditions()) {
   const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
   const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
-  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
+  const input = inputLabel(value);
   const correction = value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error';
   const language = value.wordList ? `english ${value.wordList}` : 'english';
   return `${language} · ${length} · ${punctuation} · ${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
@@ -191,7 +206,7 @@ function describeConditions(value = conditions()) {
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
+  return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
 }
 
 function signed(value, unit) {
@@ -278,14 +293,18 @@ function applyPreferences() {
   $('font-size').value = prefs.fontSize;
   $('live-toggle').checked = prefs.liveMetrics;
   $('keyboard-toggle').checked = prefs.keyboard;
+  $('finger-toggle').checked = prefs.fingerMap;
+  $('finger-row').hidden = !prefs.keyboard;
   $('stop-on-error-toggle').checked = prefs.stopOnError;
   $('focus-toggle').checked = prefs.focusMode;
   $('keyboard').hidden = !prefs.keyboard;
+  renderKeyboard();
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  $('layout-select').value = prefs.layout;
   showBest();
 }
 
@@ -710,6 +729,7 @@ function ghostPace() {
 }
 
 function markKeyboardTargets(target) {
+  keyboardTarget = target;
   const letters = new Set((target || '').toLowerCase());
   document.querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
@@ -969,6 +989,8 @@ function restoreConditions(source) {
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
+    // A run without a layout predates layouts and was QWERTY.
+    layout: normalizeLayout(source.layout),
     stopOnError: source.correctionPolicy !== 'relaxed',
   };
   profile.preferences = prefs;
@@ -1226,33 +1248,56 @@ function renderDaily() {
   const completed = profile.runs.filter((r) => r.kind === 'daily' && validRun(r));
   const today = completed.filter((r) => r.challengeDate === daily.day && conditionKey(r.conditions) === conditionKey(dailyConditions()));
   const best = [...today].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
+  const layout = isDefaultLayout(prefs.layout) ? '' : ` in ${layoutLabel(prefs.layout)}`;
   $('daily-status').textContent = best
-    ? `Today’s best: ${best.score.wpm} wpm · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard.${session ? '' : ' Sign in to save future results beyond this tab.'}`
-    : `No completed physical-keyboard attempt today.${session ? ' Your results save to your account.' : ' Results last in this tab; sign in to save future attempts.'}`;
+    ? `Today’s best: ${best.score.wpm} wpm · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard${layout}.${session ? '' : ' Sign in to save future results beyond this tab.'}`
+    : `No completed physical-keyboard attempt${layout} today.${session ? ' Your results save to your account.' : ' Results last in this tab; sign in to save future attempts.'}`;
   $('daily-history-panel').hidden = !completed.length;
   $('daily-history').replaceChildren(...[...completed].reverse().slice(0, 30).map((run) => {
     const row = element('div', '', 'daily-result');
     row.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
-      element('span', `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`));
+      element('span', `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${inputLabel(run.conditions)}`));
     return row;
   }));
 }
 
-function buildKeyboard() {
+// The legend follows the chosen layout; typed characters are never remapped. The optional finger
+// map shades each key by the finger that types it (data-hand, data-finger) and splits the hands.
+function renderKeyboard() {
+  const signature = `${prefs.layout}:${prefs.fingerMap}`;
+  if (signature === keyboardBuilt) return;
+  keyboardBuilt = signature;
+  const keyboard = $('keyboard');
+  keyboard.dataset.layout = prefs.layout;
+  keyboard.dataset.fingers = String(prefs.fingerMap);
   const fragment = document.createDocumentFragment();
-  ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', ' '].forEach((keys) => {
+  for (const keys of keyboardRows(prefs.layout)) {
     const row = document.createElement('div');
     row.className = 'key-row';
-    for (const letter of keys) {
+    for (const { key: letter, hand, finger, column } of keys) {
       const key = document.createElement('span');
       key.className = `key${letter === ' ' ? ' space' : ''}`;
       key.dataset.key = letter;
+      key.dataset.hand = hand;
+      key.dataset.finger = finger;
+      key.dataset.column = String(column);
       key.textContent = letter === ' ' ? 'space' : letter;
       row.append(key);
     }
     fragment.append(row);
-  });
-  $('keyboard').replaceChildren(fragment);
+  }
+  if (prefs.fingerMap) {
+    const legend = document.createElement('p');
+    legend.className = 'finger-legend';
+    legend.append(...FINGERS.map((finger) => {
+      const item = element('span', finger);
+      item.dataset.finger = finger;
+      return item;
+    }), element('span', 'space · thumbs'));
+    fragment.append(legend);
+  }
+  keyboard.replaceChildren(fragment);
+  markKeyboardTargets(keyboardTarget);
 }
 
 function startRace() {
@@ -1739,6 +1784,8 @@ function bindEvents() {
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
+  $('finger-toggle').addEventListener('change', (event) => { prefs.fingerMap = event.target.checked; applyPreferences(); saveProfile(); });
+  $('layout-select').addEventListener('change', (event) => setLayout(event.target.value));
   $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
@@ -1908,6 +1955,24 @@ function setWordList(id) {
   resetSession('practice', { focus: true });
 }
 
+// The layout is a test condition, like the word list, so changing it starts a new practice run.
+function setLayout(id) {
+  prefs.layout = normalizeLayout(id);
+  applyPreferences();
+  saveProfile();
+  resetSession('practice', { focus: true });
+}
+
+// The finger map is drawn on the on-screen keyboard, so turning it on shows the keyboard too.
+function toggleFingerMap() {
+  const show = !(prefs.keyboard && prefs.fingerMap);
+  prefs.fingerMap = show;
+  if (show) prefs.keyboard = true;
+  applyPreferences();
+  saveProfile();
+  if (document.body.dataset.view === 'practice') $('typing-input').focus({ preventScroll: true });
+}
+
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
   const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
@@ -1922,11 +1987,13 @@ function paletteCommands(query) {
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
+    ...layoutIds.map((id) => ({ group: 'test', label: `layout · ${layoutLabel(id)}`, keywords: 'keyboard alternative remap', hint: prefs.layout === id ? 'current' : '', on: prefs.layout === id, run: () => setLayout(id) })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
+    { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(prefs.keyboard && prefs.fingerMap), on: prefs.keyboard && prefs.fingerMap, run: toggleFingerMap },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
     ...(session
       ? [{ group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount }]
@@ -2004,7 +2071,6 @@ new ResizeObserver(() => {
 }).observe($('progress-trend'));
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
-buildKeyboard();
 applyPreferences();
 setModeControls();
 bindEvents();

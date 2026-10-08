@@ -40,6 +40,14 @@ colors:
   ghost-light: "#4f5bc4"
   card-top-light: "#fffdf9"
   card-bottom-light: "#efeae1"
+  finger-index: "rgba(255, 255, 255, 0.2)"
+  finger-middle: "rgba(255, 255, 255, 0.135)"
+  finger-ring: "rgba(255, 255, 255, 0.075)"
+  finger-pinky: "rgba(255, 255, 255, 0.025)"
+  finger-index-light: "rgba(27, 26, 25, 0.2)"
+  finger-middle-light: "rgba(27, 26, 25, 0.135)"
+  finger-ring-light: "rgba(27, 26, 25, 0.075)"
+  finger-pinky-light: "rgba(27, 26, 25, 0.025)"
 typography:
   numeral:
     fontFamily: "Literata, Iowan Old Style, Palatino Linotype, Palatino, Book Antiqua, Georgia, serif"
@@ -325,6 +333,8 @@ Progress keeps the editorial column: condition/period fields, two charts, run ro
 The training memory section sits below the existing drill actions. Pair headings and counts use Literata; each row offers a neutral bordered button to practice the target again. Sample counts, matching conditions, last practice and later fresh observations stay adjacent to the target.
 
 Challenge opens with the daily passage and its one filled-green action, followed by the shared-keyboard section with a neutral Start button. The daily date/reset uses the existing condition label; result history uses hairline-separated rows. First and repeat attempts, previously displayed passages and input classes are written explicitly.
+
+The optional on-screen keyboard shows the thirty main keys with a real row stagger (home a quarter key in, bottom three quarters) and a space bar, labelled for the chosen layout. Its finger map shades each key by the finger that types it with four neutral levels (`--finger-index` strongest to `--finger-pinky` faintest), never hues; the letters move to full text colour, the two hands sit a little apart, and a mono legend names the levels. Colemak-DH follows its ANSI angle mod.
 
 Below 360px, the run-card WPM uses `--text-numeral-narrow` (80px); the existing mobile size is now `--text-numeral-mobile` (112px).
 
