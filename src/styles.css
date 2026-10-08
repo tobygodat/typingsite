@@ -1892,8 +1892,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .challenge-toast { top: calc(var(--space-4) + 2 * (58px + var(--space-2))); }
 }
 
-/* A card taller than the viewport cannot stick without hiding its foot. */
-@media (max-height: 720px) {
+/* A card taller than the viewport cannot stick without hiding its foot. With the secondary facts
+   and a full words list the card runs to about 925px, so it sticks (104px down) only on tall screens. */
+@media (max-height: 1080px) {
   .run-card { position: static; }
 }
 

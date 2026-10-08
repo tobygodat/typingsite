@@ -1056,7 +1056,7 @@ function renderSecondaryStats(completed) {
   const replay = completed.summary;
   const steady = consistency(completed, replay);
   const chars = characterBreakdown(completed, replay);
-  $('result-raw').textContent = rawWpm(replay);
+  $('result-raw').textContent = rawWpm(completed, replay);
   $('result-consistency').textContent = steady ?? '—';
   $('result-chars').textContent = `${chars.correct}/${chars.incorrect}/${chars.extra}/${chars.missed}`;
   $('result-words').replaceChildren(...wordHistory(completed, replay).flatMap((item, i) => {

@@ -369,19 +369,26 @@ export function compareAttempts(before, after) {
 
 // Secondary run-card stats, derived from the event log only. Presentational: they never feed
 // the versioned wpm/accuracy contract, bests, comparisons or pattern memory.
-export function rawWpm(replay) {
-  return replay.elapsedMs > 0 ? Math.round(replay.insertions / 5 / (replay.elapsedMs / 60000)) : 0;
+
+// Every printable key pressed, including keys held back while stop-on-error waits for a fix.
+function keystrokes(attempt) {
+  return (attempt.events || []).filter((event) => (event.type === 'insert' || event.type === 'blocked-insert') && printable(event.text));
+}
+
+export function rawWpm(attempt, replay = replayAttempt(attempt)) {
+  const typed = keystrokes(attempt).reduce((sum, event) => sum + [...event.text].length, 0);
+  return replay.elapsedMs > 0 ? Math.round(typed / 5 / (replay.elapsedMs / 60000)) : 0;
 }
 
 // 100 − coefficient of variation of per-second raw speed, over whole seconds; null under 3 s.
 export function consistency(attempt, replay = replayAttempt(attempt)) {
-  const inserts = (attempt.events || []).filter((event) => event.type === 'insert' && printable(event.text));
-  if (!inserts.length) return null;
-  const start = attempt.startedAt ?? inserts[0].offsetMs;
+  const keys = keystrokes(attempt);
+  if (!keys.length) return null;
+  const start = attempt.startedAt ?? keys[0].offsetMs;
   const seconds = Math.floor(replay.elapsedMs / 1000);
   if (seconds < 3) return null;
   const counts = new Array(seconds).fill(0);
-  for (const event of inserts) {
+  for (const event of keys) {
     const second = Math.floor((event.offsetMs - start) / 1000);
     if (second >= 0 && second < seconds) counts[second] += [...event.text].length;
   }
@@ -391,8 +398,9 @@ export function consistency(attempt, replay = replayAttempt(attempt)) {
   return Math.round(Math.min(100, Math.max(0, 100 - (sd / mean) * 100)));
 }
 
-// correct / incorrect in the kept text; extra = keystrokes past the passage end; missed = letters
-// left untyped inside the last word the run reached.
+// The finished text, letter by letter: correct and incorrect (still wrong at the finish) in the
+// kept text; extra = keystrokes past the passage end; missed = letters left untyped inside the
+// last word the run reached. Slips fixed along the way are first-try errors, not incorrect.
 export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
   const target = attempt.text;
   const { typed } = replay;
@@ -417,11 +425,31 @@ export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
   return { correct, incorrect: typed.length - correct, extra, missed: Math.max(0, reached - typed.length) };
 }
 
+// When each letter still there at the finish was typed, mirroring replayAttempt's kept text.
+function keptTimes(attempt) {
+  const times = [];
+  for (const event of attempt.events || []) {
+    if (event.type === 'delete') {
+      times.splice(Math.max(0, times.length - Math.max(1, event.count || 1)));
+      continue;
+    }
+    if (event.type !== 'insert' || !printable(event.text)) continue;
+    for (const _char of event.text) {
+      const position = Number.isInteger(event.position) ? event.position : times.length;
+      if (position >= attempt.text.length) break;
+      if (event.accepted !== false) times.push(event.offsetMs);
+    }
+  }
+  return times;
+}
+
 // The passage words the run reached, flagged if any first try or kept letter in them missed, with
-// the pace from the previous word's space (or the first keystroke) to the word's last letter.
+// the pace from the previous word's space (or the first keystroke) to the word's last letter,
+// timed by the keystrokes kept at the finish so corrections count against the pace.
 export function wordHistory(attempt, replay = replayAttempt(attempt)) {
   const target = attempt.text;
   const firsts = new Map(replay.firstAttempts.map((item) => [item.position, item]));
+  const times = keptTimes(attempt);
   const words = [];
   const pattern = /\S+/gu;
   let match;
@@ -433,9 +461,7 @@ export function wordHistory(attempt, replay = replayAttempt(attempt)) {
       if (firsts.get(i)?.correct === false || replay.typed[i] !== target[i]) wrong = true;
     }
     const anchor = start > 0 ? start - 1 : start;
-    const from = firsts.get(anchor);
-    const to = firsts.get(end);
-    const durationMs = from && to ? to.offsetMs - from.offsetMs : 0;
+    const durationMs = times[anchor] !== undefined && times[end] !== undefined ? times[end] - times[anchor] : 0;
     words.push({
       word: match[0],
       wrong,

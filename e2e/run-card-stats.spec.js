@@ -1,22 +1,23 @@
 // Run card: raw wpm, consistency, the character breakdown and the static words list.
 import { test, expect, openApp, passageText, typeInto, chooseWords } from './fixtures.js';
 
-const shots = 'docs/screenshots/run-card-stats';
+// Committed screenshots are rewritten only with SCREENSHOTS=1; normal runs keep them in the test output.
+const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/run-card-stats/${name}` : testInfo.outputPath(name));
 
-// A 10-word run typed slowly enough (>3 s) for consistency, with one letter missed and fixed.
+// A 10-word run typed at a realistic pace (>3 s, enough for consistency), one letter missed and fixed.
 async function finishRun(page) {
   await chooseWords(page, 10);
   const text = await passageText(page);
   const at = [...text].findIndex((char, index) => index > 1 && /[a-z]/.test(char));
   const miss = text[at] === 'x' ? 'z' : 'x';
-  await typeInto(page, text.slice(0, at) + miss, '#typing-input', { delay: 70 });
+  await typeInto(page, text.slice(0, at) + miss, '#typing-input', { delay: 75 });
   await page.keyboard.press('Backspace');
-  await page.keyboard.type(text.slice(at), { delay: 70 });
+  await page.keyboard.type(text.slice(at), { delay: 75 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   return { text, at };
 }
 
-test('the run card shows raw wpm, consistency, c/i/e/m and the words typed', async ({ page }) => {
+test('the run card shows raw wpm, consistency, c/i/e/m and the words typed', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
@@ -26,9 +27,15 @@ test('the run card shows raw wpm, consistency, c/i/e/m and the words typed', asy
   const raw = Number(await page.locator('#result-raw').textContent());
   expect(raw).toBeGreaterThanOrEqual(Number(await page.locator('#result-wpm').textContent()));
   await expect(page.locator('#result-consistency')).toHaveText(/^\d+$/);
+  // The breakdown describes the finished text: the fixed slip is a first-try error, not "incorrect".
+  await expect(page.locator('#result-errors')).toHaveText('1');
   await expect(page.locator('#result-chars')).toHaveText(new RegExp(`^${text.length}/0/0/0$`));
-  await expect(page.locator('.run-card-more dt')).toHaveText(['raw wpm', 'consistency', 'c/i/e/m']);
+  await expect(page.locator('.run-card-more dt')).toHaveText(['raw wpm', 'consistency', 'final c/i/e/m']);
   await expect(page.locator('.run-card .metric-note').nth(1)).toContainText('consistency is 100 minus');
+  await expect(page.locator('.run-card .metric-note').nth(1)).toContainText('still wrong');
+  await expect(page.locator('.run-card .metric-note').nth(1)).toContainText('fixed slips are first-try errors');
+  // At 800 px tall the card is taller than the space below the dock, so it scrolls with the page.
+  expect(await page.locator('#run-card').evaluate((node) => getComputedStyle(node).position)).toBe('static');
 
   const words = page.locator('#result-words span');
   await expect(words).toHaveText(text.split(' '));
@@ -49,21 +56,26 @@ test('the run card shows raw wpm, consistency, c/i/e/m and the words typed', asy
   await page.waitForTimeout(600);
   await page.evaluate(() => window.scrollTo(0, 0));
   const clip = await page.locator('#run-card').boundingBox();
-  await page.screenshot({ path: `${shots}/run-card-dark.png`, fullPage: true, clip });
+  await page.screenshot({ path: shot(testInfo, 'run-card-dark.png'), fullPage: true, clip });
   await page.emulateMedia({ colorScheme: 'light' });
-  await page.screenshot({ path: `${shots}/run-card-light.png`, fullPage: true, clip });
+  await page.screenshot({ path: shot(testInfo, 'run-card-light.png'), fullPage: true, clip });
+
+  // On a tall screen the whole card fits below the dock, so it sticks again.
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  expect(await page.locator('#run-card').evaluate((node) => getComputedStyle(node).position)).toBe('sticky');
 });
 
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test('the secondary row and words list fit at 390 px', async ({ page }) => {
+  test('the secondary row and words list fit at 390 px', async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
     await finishRun(page);
     await expect(page.locator('#result-consistency')).toHaveText(/^\d+$/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    // The fixed bottom dock is hidden for the capture only, so it never covers the card's foot.
     await page.waitForTimeout(600);
-    await page.locator('#run-card').screenshot({ path: `${shots}/run-card-mobile.png` });
+    await page.locator('#run-card').screenshot({ path: shot(testInfo, 'run-card-mobile.png'), style: '.dock-zone { visibility: hidden; }' });
   });
 });

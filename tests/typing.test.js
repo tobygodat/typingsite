@@ -26,9 +26,18 @@ function evenRun(text, msPerChar, misses = {}) {
   return attempt;
 }
 
-test('raw wpm counts every typed character, errors included', () => {
-  assert.equal(rawWpm({ insertions: 50, elapsedMs: 60000 }), 10);
-  assert.equal(rawWpm({ insertions: 0, elapsedMs: 0 }), 0);
+test('raw wpm counts every key typed, errors and stop-on-error blocked keys included', () => {
+  const attempt = createAttempt({ id: 'w', text: 'a'.repeat(45), textId: 't', conditions: {} });
+  attempt.events = [
+    ...Array.from({ length: 45 }, (_, i) => ({ type: 'insert', text: 'a', position: i, accepted: true, offsetMs: i * 1000 })),
+    ...Array.from({ length: 5 }, () => ({ type: 'blocked-insert', text: 'b', position: 44, offsetMs: 44500 })),
+  ];
+  attempt.startedAt = 0;
+  attempt.endedAt = 60000;
+  // 50 keys in a minute = 10 wpm; the metric's insertions ignore the 5 blocked keys.
+  assert.equal(replayAttempt(attempt).insertions, 45);
+  assert.equal(rawWpm(attempt), 10);
+  assert.equal(rawWpm(createAttempt({ id: 'e', text: 'a', textId: 't', conditions: {} })), 0);
 });
 
 test('consistency is 100 minus the CV of per-second speed, and empty under three seconds', () => {
@@ -41,6 +50,10 @@ test('consistency is 100 minus the CV of per-second speed, and empty under three
   uneven.startedAt = 0;
   uneven.endedAt = 3000;
   assert.equal(consistency(uneven), 6);
+  // Keys held back by stop-on-error are still typing: a steady hand stays steady.
+  const stalled = evenRun('a'.repeat(41), 100);
+  for (let i = 20; i < 30; i += 1) stalled.events[i].type = 'blocked-insert';
+  assert.equal(consistency(stalled), 100);
 });
 
 test('character breakdown separates correct, incorrect, extra and missed', () => {
@@ -69,10 +82,24 @@ test('word history flags mistyped words and paces each word', () => {
   assert.equal(wordHistory(partial).length, 2);
 });
 
+test('word pace runs to the kept last letter, so a fixed final slip slows the word', () => {
+  const attempt = createAttempt({ id: 'f', text: 'the cat', textId: 't', conditions: {} });
+  attempt.events = [...'the ca'].map((char, i) => ({ type: 'insert', text: char, offsetMs: i * 100 }));
+  attempt.events.push(
+    { type: 'insert', text: 'x', offsetMs: 600 },
+    { type: 'delete', count: 1, offsetMs: 1500 },
+    { type: 'insert', text: 't', offsetMs: 1600 },
+  );
+  const [, cat] = wordHistory(attempt);
+  assert.equal(cat.wrong, true);
+  // Space at 300 ms to the kept "t" at 1600 ms: 3 characters in 1.3 s ≈ 28 wpm, not 120 from the slip.
+  assert.equal(cat.wpm, 28);
+});
+
 test('the new stats leave the versioned metrics untouched', () => {
   const attempt = evenRun('the cat sat', 200, { 5: 'x' });
   const before = JSON.stringify(replayAttempt(attempt).score);
-  rawWpm(replayAttempt(attempt)); consistency(attempt); characterBreakdown(attempt); wordHistory(attempt);
+  rawWpm(attempt); consistency(attempt); characterBreakdown(attempt); wordHistory(attempt);
   assert.equal(JSON.stringify(replayAttempt(attempt).score), before);
 });
 test('speed counts correct characters at five characters per word', () => {
