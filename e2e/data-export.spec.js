@@ -22,9 +22,9 @@ test('exports run history as CSV from settings', async ({ page }) => {
   expect(download.suggestedFilename()).toBe(`stilltype-runs-${today()}.csv`);
   const csv = await fs.readFile(await download.path(), 'utf8');
   const lines = csv.trim().split('\r\n');
-  expect(lines[0]).toBe('date,mode,length,word list,punctuation,correction policy,wpm,accuracy,errors,duration,kind,interrupted');
+  expect(lines[0]).toBe('date,mode,length,word list,punctuation,difficulty,input,correction policy,corpus,metric version,wpm,accuracy,errors,duration,kind,interrupted');
   expect(lines).toHaveLength(2);
-  expect(lines[1]).toMatch(/^\d{4}-\d{2}-\d{2}T.*,words,10 words,/);
+  expect(lines[1]).toMatch(/^\d{4}-\d{2}-\d{2}T.*,words,10 words,.*,physical keyboard,.*,original-en-v\d+,stilltype-metrics-v\d+,/);
 });
 
 test('exports all data as pretty JSON, also from the palette', async ({ page }) => {
@@ -47,13 +47,15 @@ test('exports all data as pretty JSON, also from the palette', async ({ page }) 
 });
 
 for (const scheme of ['dark', 'light']) {
-  test(`screenshot: settings popover with export buttons (${scheme})`, async ({ page }) => {
+  test(`screenshot: settings popover with export buttons (${scheme})`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);
     await openSettings(page);
     await expect(page.locator('#export-csv')).toBeVisible();
     await page.locator('.preferences-popover').evaluate((el) => { el.scrollTop = el.scrollHeight; });
-    await page.screenshot({ path: `docs/screenshots/data-export/settings-export-${scheme}.png` });
+    // Committed docs are only rewritten on purpose (SCREENSHOTS=1); normal runs keep the capture as test output.
+    const name = `settings-export-${scheme}.png`;
+    await page.screenshot({ path: process.env.SCREENSHOTS ? `docs/screenshots/data-export/${name}` : testInfo.outputPath(name) });
   });
 }

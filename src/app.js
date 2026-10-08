@@ -68,6 +68,8 @@ let syncTimer = 0;
 // otherwise a boot-time save (marking the first passage seen) would make a stale cache look newer.
 let cloudChecked = false;
 let unsynced = false;
+// The pending account check; exports wait on it so they never serialise a stale device cache.
+let cloudCheck = Promise.resolve();
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
@@ -1365,12 +1367,16 @@ function downloadFile(name, text, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function exportRunsCsv() {
+// Signed in, the device cache may be older than the account until the first check settles
+// (offline, it settles at once and the device copy is what there is).
+async function exportRunsCsv() {
+  if (session && !cloudChecked) await cloudCheck;
   downloadFile(exportFilename('runs', 'csv'), runsToCsv(profile.runs || []), 'text/csv;charset=utf-8');
   announce('Runs exported as CSV.');
 }
 
-function exportAllJson() {
+async function exportAllJson() {
+  if (session && !cloudChecked) await cloudCheck;
   downloadFile(exportFilename('data', 'json'), JSON.stringify(profile, null, 2), 'application/json');
   announce('All data exported as JSON.');
 }
@@ -1653,7 +1659,7 @@ function bindAccount() {
   });
   addEventListener('online', () => {
     if (!session) return;
-    if (!cloudChecked) syncOnLoad();
+    if (!cloudChecked) cloudCheck = syncOnLoad();
     else if (unsynced) pushProfile();
   });
 }
@@ -2069,7 +2075,7 @@ console.info('stilltype · ↑ ↑ ↓ ↓ ← → ← → b a');
 
 if (!storageAvailable) announce('Storage is unavailable. Results last only in this tab.');
 completeAuthRedirect();
-syncOnLoad();
+cloudCheck = syncOnLoad();
 inbox.refresh();
 // Refresh the day label when a tab returns, and across midnight without reloading.
 setInterval(() => { if (document.body.dataset.view === 'compete') renderDaily(); }, 30000);

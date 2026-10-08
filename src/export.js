@@ -1,6 +1,8 @@
 // Pure serialisers for "Download my data". No DOM here; app.js turns the strings into downloads.
+import { CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 
-export const CSV_COLUMNS = ['date', 'mode', 'length', 'word list', 'punctuation', 'correction policy', 'wpm', 'accuracy', 'errors', 'duration', 'kind', 'interrupted'];
+// Every field conditionKey() compares is a column, so rows from different conditions stay distinguishable.
+export const CSV_COLUMNS = ['date', 'mode', 'length', 'word list', 'punctuation', 'difficulty', 'input', 'correction policy', 'corpus', 'metric version', 'wpm', 'accuracy', 'errors', 'duration', 'kind', 'interrupted'];
 
 export function csvCell(value) {
   if (value === null || value === undefined) return '';
@@ -17,13 +19,19 @@ function runLength(c = {}) {
 
 export function runRow(run) {
   const c = run.conditions || {};
+  // A drill is always one minute of generated, unpunctuated words, whatever its baseline conditions were.
+  const drill = run.kind === 'drill';
   return [
     run.at || '',
-    c.mode || '',
-    runLength(c),
+    drill ? 'time' : c.mode || '',
+    drill ? '60s' : runLength(c),
     c.wordList || '',
-    c.punctuation ? 'yes' : 'no',
+    c.punctuation && !drill ? 'yes' : 'no',
+    drill ? '' : c.difficulty || '',
+    c.inputClass === 'touch' ? 'touch input' : 'physical keyboard',
     c.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error',
+    c.corpus || CORPUS_VERSION,
+    c.metricVersion || METRIC_VERSION,
     run.score?.wpm ?? '',
     run.score?.accuracy ?? '',
     run.errors ?? '',
