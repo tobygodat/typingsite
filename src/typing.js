@@ -465,11 +465,22 @@ export function wordHistory(attempt, replay = replayAttempt(attempt)) {
     for (let i = start; i <= end; i += 1) {
       if (firsts.get(i)?.correct === false || replay.typed[i] !== target[i]) wrong = true;
     }
+    // The space after a word is part of typing it: a first-try miss there marks the word, and a
+    // character still wrong there at the finish shows on the word ("thex"). Pace stays on the letters.
+    const stop = start + match[0].length;
+    const gap = target.slice(stop).search(/\S/u);
+    const kept = replay.typed.slice(stop, gap === -1 ? target.length : stop + gap);
+    let shown = replay.typed.slice(start, end + 1);
+    for (let i = stop; i < stop + kept.length; i += 1) if (firsts.get(i)?.correct === false) wrong = true;
+    if (kept !== target.slice(stop, stop + kept.length)) {
+      wrong = true;
+      shown += kept;
+    }
     const from = start > 0 ? times[start - 1] : firstKey;
     const letters = start > 0 || times[start] > from ? end - start + 1 : end - start;
     const durationMs = from !== undefined && times[end] !== undefined ? times[end] - from : 0;
     words.push({
-      word: replay.typed.slice(start, end + 1),
+      word: shown,
       wrong,
       wpm: durationMs > 0 ? Math.round(letters / 5 / (durationMs / 60000)) : null,
     });

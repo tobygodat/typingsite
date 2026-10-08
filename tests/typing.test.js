@@ -111,6 +111,30 @@ test('a run that stops inside a word lists only the letters typed', () => {
   assert.equal(characterBreakdown(attempt).missed, 2);
 });
 
+test('a mistyped space marks the word before it, and shows when left in', () => {
+  const view = (attempt) => wordHistory(attempt).map(({ word, wrong, wpm }) => ({ word, wrong, wpm }));
+  // Control: clean spaces leave both words clean, each at 120 wpm.
+  const clean = evenRun('the cat', 100);
+  assert.deepEqual(view(clean), [{ word: 'the', wrong: false, wpm: 120 }, { word: 'cat', wrong: false, wpm: 120 }]);
+  assert.deepEqual(characterBreakdown(clean), { correct: 7, incorrect: 0, extra: 0, missed: 0 });
+
+  // Left in under continue on error: "thexcat" shows "thex" in the miss style; "cat" stays clean.
+  const leftIn = evenRun('the cat', 100, { 3: 'x' });
+  assert.deepEqual(view(leftIn), [{ word: 'thex', wrong: true, wpm: 120 }, { word: 'cat', wrong: false, wpm: 120 }]);
+  assert.deepEqual(characterBreakdown(leftIn), { correct: 6, incorrect: 1, extra: 0, missed: 0 });
+
+  // First try wrong, then fixed: "the" is marked but reads as typed; the pace is the control's.
+  const fixed = createAttempt({ id: 's', text: 'the cat', textId: 't', conditions: {} });
+  fixed.events = [
+    ...[...'the'].map((char, i) => ({ type: 'insert', text: char, offsetMs: i * 100 })),
+    { type: 'insert', text: 'x', offsetMs: 300 },
+    { type: 'delete', count: 1, offsetMs: 350 },
+    ...[...' cat'].map((char, i) => ({ type: 'insert', text: char, offsetMs: 400 + i * 100 })),
+  ];
+  assert.deepEqual(view(fixed), [{ word: 'the', wrong: true, wpm: 120 }, { word: 'cat', wrong: false, wpm: 120 }]);
+  assert.deepEqual(characterBreakdown(fixed), { correct: 7, incorrect: 0, extra: 0, missed: 0 });
+});
+
 test('first-word pace starts at the first key, so a fixed first-letter slip slows the word', () => {
   const attempt = createAttempt({ id: 'g', text: 'the cat', textId: 't', conditions: {} });
   attempt.events = [
