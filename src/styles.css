@@ -112,7 +112,8 @@
  * Mock themes: PROPOSALS awaiting approval, opt-in from settings → theme. They deliberately
  * depart from DESIGN.md (type, radii, palette); everything stays scoped to :root[data-theme="<id>"].
  * Approve → it ships; reject → delete its block, its <option> in index.html, its id in
- * MOCK_THEMES (src/app.js) and in the pre-paint allowlist (index.html).
+ * MOCK_THEMES (src/app.js), in the pre-paint allowlist (index.html) and, for a light mock,
+ * in the light ::backdrop selectors (palette and dialogs, below).
  * Text, muted, accent, coral and warning all clear WCAG AA (4.5:1) on --ground and --raised.
  * Motion is untouched: the still-run rules apply to every theme.
  */
@@ -166,7 +167,7 @@
   --muted: #71717a;
   --hairline: #f4f4f5;
   --hairline-strong: #e4e4e7;
-  --outline: #a1a1aa;
+  --outline: #71717a;
   --accent: #18181b;
   --accent-ink: #fafafa;
   --accent-soft: rgba(24, 24, 27, 0.06);
@@ -198,12 +199,12 @@
   --muted: #a3a5a8;
   --hairline: rgba(255, 255, 255, 0.06);
   --hairline-strong: rgba(255, 255, 255, 0.12);
-  --outline: #7b7d80;
+  --outline: #888a8d;
   --accent: #e2b714;
   --accent-ink: #1d1a08;
   --accent-soft: rgba(226, 183, 20, 0.13);
-  --danger: #ff6b6b;
-  --danger-soft: rgba(255, 107, 107, 0.16);
+  --danger: #ff8080;
+  --danger-soft: rgba(255, 128, 128, 0.16);
   --warning: #d9a35a;
   --selection: #45484c;
   --ghost: #9fb6ff;
@@ -320,7 +321,7 @@
   --muted: #555552;
   --hairline: rgba(0, 0, 0, 0.08);
   --hairline-strong: rgba(0, 0, 0, 0.16);
-  --outline: #8a8a86;
+  --outline: #848480;
   --accent: #3a3a3a;
   --accent-ink: #f6f6f2;
   --accent-soft: rgba(0, 0, 0, 0.07);
@@ -357,8 +358,8 @@
   --accent: #88c0d0;
   --accent-ink: #1d2430;
   --accent-soft: rgba(136, 192, 208, 0.15);
-  --danger: #e5848c;
-  --danger-soft: rgba(229, 132, 140, 0.18);
+  --danger: #efa0a7;
+  --danger-soft: rgba(239, 160, 167, 0.18);
   --warning: #ebcb8b;
   --selection: #434c5e;
   --ghost: #b48ead;
@@ -1933,7 +1934,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   animation: fade-in var(--dur-quick) var(--ease-out);
 }
 
-:root[data-theme="light"] .palette::backdrop { background: rgba(40, 32, 20, 0.22); }
+/* Light grounds (shipped light plus the light mock themes) take the warm light tint. */
+:root:is([data-theme="light"], [data-theme="paper"], [data-theme="shadcn"], [data-theme="soft"], [data-theme="swiss"], [data-theme="eink"]) .palette::backdrop { background: rgba(40, 32, 20, 0.22); }
 
 .palette-box {
   border: 1px solid var(--hairline-strong);
@@ -2047,7 +2049,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
 #suggest-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
-:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
+:root:is([data-theme="light"], [data-theme="paper"], [data-theme="shadcn"], [data-theme="soft"], [data-theme="swiss"], [data-theme="eink"]) :is(#clear-dialog, #account-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
 
 .account-fields { display: grid; gap: var(--space-3); }
 .account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
