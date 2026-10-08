@@ -503,7 +503,10 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   ticker = null;
   setRunning(false);
   primaryNotice = '';
+  const kindChanged = sessionKind !== kind;
   sessionKind = kind;
+  // The mode bar marks Custom while a custom session is loaded, so it is redrawn whenever the kind changes.
+  if (kindChanged) setModeControls();
   passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : kind === 'custom' ? customPassage() : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
@@ -901,6 +904,10 @@ function renderResults(completed, saved) {
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
   $('start-drill').disabled = !counted;
   $('skip-to-retest').disabled = !counted || !baselineAttempt;
+  // Custom text is never mined for targets or kept as a baseline, so its results offer no drill or retest:
+  // the recommendation would come from other runs and the retest would measure a different text.
+  const custom = completed.kind === 'custom';
+  for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = custom;
   renderEvidenceList(activeRecommendation.evidence);
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again' : 'Run again';
   renderTraining();

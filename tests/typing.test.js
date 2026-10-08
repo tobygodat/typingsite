@@ -150,13 +150,16 @@ test('reordered custom text is never longer than the validated source', () => {
     let state = seed;
     const random = () => ((state = (state * 16807) % 2147483647) / 2147483647);
     const randomOrder = orderCustomText(source, 'random', random);
-    assert.ok(randomOrder.length > 0 && randomOrder.length <= limit, `seed ${seed}: ${randomOrder.length}`);
-    assert.ok(randomOrder.split(' ').length <= 501);
+    // Within the budget, and filled to it: a word that doesn't fit is skipped, not the end of the passage.
+    assert.ok(randomOrder.length >= limit - 1 && randomOrder.length <= limit, `seed ${seed}: ${randomOrder.length}`);
     if (randomOrder.includes(long)) drewLong += 1;
+    const lopsided = orderCustomText(`${'a'.repeat(2998)} b`, 'random', random);
+    assert.ok(lopsided.length >= 2999 && lopsided.length <= 3000, `seed ${seed}: ${lopsided.length}`);
     const shuffled = orderCustomText(source, 'shuffled', random);
     assert.equal(shuffled.length, source.length);
     assert.deepEqual(shuffled.split(' ').sort(), source.split(' ').sort());
   }
   assert.ok(drewLong > 0, 'the long word is still drawn sometimes');
   assert.equal(orderCustomText(source, 'as-written'), source);
+  assert.equal(orderCustomText('', 'random'), '');
 });

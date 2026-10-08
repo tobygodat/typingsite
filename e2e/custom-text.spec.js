@@ -1,4 +1,4 @@
-import { test, expect, openApp, openSettings, passageText, typeInto } from './fixtures.js';
+import { test, expect, chooseWords, completePassage, openApp, openSettings, passageText, typeInto } from './fixtures.js';
 
 const TEXT = 'the quick brown fox jumps over the lazy dog';
 
@@ -30,6 +30,52 @@ test('custom text runs under its own condition and never becomes a best', async 
   await page.locator('.nav-item[data-nav="practice"]').click();
   await page.locator('#mode-time').click();
   await expect(page.locator('#best')).toHaveText('No best yet');
+});
+
+async function finishCustom(page, text = TEXT) {
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+  await typeInto(page, text);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+}
+
+test('custom results offer no drill or retest, even with a normal baseline retained', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect(page.locator('#start-drill')).toBeVisible();
+  await expect(page.locator('#recommendation-meta')).toContainText('10-word retest');
+
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await finishCustom(page);
+  for (const id of ['#start-drill', '#skip-to-retest', '#recommendation-meta', '#recommendation-title']) {
+    await expect(page.locator(id)).toBeHidden();
+  }
+  await expect(page.locator('#run-again')).toBeVisible();
+});
+
+test('leaving custom for practice restores the test controls', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await finishCustom(page);
+
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await expect(page.locator('#condition-line')).not.toContainText('custom text');
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#mode-words')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#duration-options')).toBeVisible();
+  await expect(page.locator('label[for="punctuation-toggle"]')).toBeVisible();
+
+  // Esc on a custom passage keeps it custom; a mode button leaves it.
+  await finishCustom(page);
+  await page.locator('#run-again').click();
+  await page.locator('#typing-input').press('Escape');
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
+  expect(await passageText(page)).toBe(TEXT);
+  await page.locator('#mode-time').click();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#duration-options')).toBeVisible();
 });
 
 test('smart punctuation is normalised to typeable characters', async ({ page }) => {

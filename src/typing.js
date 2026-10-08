@@ -159,9 +159,11 @@ export function normalizeCustomText(value, max = CUSTOM_MAX) {
 }
 
 // Shuffled order uses every word once, so it is exactly as long as the source. Random order samples with
-// replacement, so it stops before the next word would make the passage longer than the source (or the
-// cap): a long word drawn twice can't push the run past what was validated. The first word always fits.
+// replacement, so it draws only from words that still fit the source length (and the cap) and stops when
+// none do: a long word drawn twice can't push the run past what was validated, and an unlucky draw can't
+// end the passage early.
 export function orderCustomText(text, order = 'as-written', random = Math.random) {
+  if (!text) return text;
   const words = text.split(' ');
   if (order === 'shuffled') {
     for (let i = words.length - 1; i > 0; i -= 1) {
@@ -174,9 +176,16 @@ export function orderCustomText(text, order = 'as-written', random = Math.random
   const limit = Math.min(text.length, CUSTOM_MAX);
   const picked = [];
   let length = -1;
-  while (picked.length < words.length) {
-    const word = words[Math.floor(random() * words.length)];
-    if (length + 1 + word.length > limit) break;
+  let fitting = words;
+  for (;;) {
+    const budget = limit - length - 1;
+    let word = fitting[Math.floor(random() * fitting.length)];
+    // The budget only shrinks, so words are dropped from the pool once and the draw stays uniform over what fits.
+    if (word.length > budget) {
+      fitting = fitting.filter((candidate) => candidate.length <= budget);
+      if (!fitting.length) break;
+      word = fitting[Math.floor(random() * fitting.length)];
+    }
     picked.push(word);
     length += 1 + word.length;
   }
