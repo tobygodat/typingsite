@@ -115,8 +115,9 @@
  * Approve → it ships; reject → delete its block, its <option> in index.html, its id in
  * MOCK_THEMES (src/app.js), in the pre-paint allowlist (index.html) and, for a light mock,
  * in the light ::backdrop selectors (palette and dialogs, below).
- * Text, muted, accent, coral and warning all clear WCAG AA (4.5:1) on --ground and --raised.
- * Placeholders show full-strength --muted (--placeholder-opacity: 1); --ghost clears AA on the palette highlight.
+ * Text, muted, accent, coral and warning clear WCAG AA (4.5:1) on --ground, --raised and the card;
+ * text, muted, accent and --ghost also on the active-row fill (--raised-2 over --raised), and coral on
+ * its own --danger-soft tint. Placeholders show full-strength --muted (--placeholder-opacity: 1).
  * Motion is untouched: the still-run rules apply to every theme.
  */
 
@@ -167,7 +168,7 @@
   --raised: #ffffff;
   --raised-2: #f4f4f5;
   --text: #09090b;
-  --muted: #71717a;
+  --muted: #6e6e77;
   --placeholder-opacity: 1;
   --hairline: #f4f4f5;
   --hairline-strong: #e4e4e7;
@@ -175,8 +176,8 @@
   --accent: #18181b;
   --accent-ink: #fafafa;
   --accent-soft: rgba(24, 24, 27, 0.06);
-  --danger: #dc2626;
-  --danger-soft: rgba(220, 38, 38, 0.1);
+  --danger: #cf2424;
+  --danger-soft: rgba(207, 36, 36, 0.1);
   --warning: #a16207;
   --selection: #e4e4e7;
   --ghost: #4f46e5;
@@ -198,9 +199,9 @@
   --ground: #2c2e31;
   --ground-2: #313337;
   --raised: #36393d;
-  --raised-2: rgba(255, 255, 255, 0.07);
+  --raised-2: rgba(255, 255, 255, 0.04);
   --text: #e2e1d6;
-  --muted: #a3a5a8;
+  --muted: #abadb0;
   --placeholder-opacity: 1;
   --hairline: rgba(255, 255, 255, 0.06);
   --hairline-strong: rgba(255, 255, 255, 0.12);
@@ -208,8 +209,8 @@
   --accent: #e2b714;
   --accent-ink: #1d1a08;
   --accent-soft: rgba(226, 183, 20, 0.13);
-  --danger: #ff8080;
-  --danger-soft: rgba(255, 128, 128, 0.16);
+  --danger: #ff8e8d;
+  --danger-soft: rgba(202, 71, 84, 0.2);
   --warning: #d9a35a;
   --selection: #45484c;
   --ghost: #9fb6ff;
@@ -240,11 +241,11 @@
   --accent: #5b4bd6;
   --accent-ink: #ffffff;
   --accent-soft: rgba(91, 75, 214, 0.12);
-  --danger: #c0392b;
-  --danger-soft: rgba(192, 57, 43, 0.12);
+  --danger: #b43628;
+  --danger-soft: rgba(180, 54, 40, 0.12);
   --warning: #8a5a00;
   --selection: #e2ddf7;
-  --ghost: #b0418a;
+  --ghost: #a73e83;
   --shadow-float: 0 6px 20px rgba(60, 45, 120, 0.1);
   --card-top: #ffffff;
   --card-bottom: #ffffff;
@@ -256,9 +257,9 @@
   --ground: #08080a;
   --ground-2: #0c0c0f;
   --raised: #131317;
-  --raised-2: rgba(255, 240, 220, 0.07);
+  --raised-2: rgba(255, 240, 220, 0.05);
   --text: #cfc8bc;
-  --muted: #8a8479;
+  --muted: #8c867b;
   --placeholder-opacity: 1;
   --hairline: rgba(255, 240, 220, 0.06);
   --hairline-strong: rgba(255, 240, 220, 0.12);
@@ -296,11 +297,11 @@
   --hairline: rgba(0, 0, 0, 0.12);
   --hairline-strong: rgba(0, 0, 0, 0.3);
   --outline: #777777;
-  --accent: #e30613;
+  --accent: #d30612;
   --accent-ink: #ffffff;
-  --accent-soft: rgba(227, 6, 19, 0.08);
-  --danger: #e30613;
-  --danger-soft: rgba(227, 6, 19, 0.12);
+  --accent-soft: rgba(211, 6, 18, 0.08);
+  --danger: #d30612;
+  --danger-soft: rgba(211, 6, 18, 0.1);
   --warning: #8a5a00;
   --selection: #e6e6e6;
   --ghost: #1f3fbf;
@@ -338,7 +339,7 @@
   --danger-soft: rgba(0, 0, 0, 0.13);
   --warning: #4a4a4a;
   --selection: #dcdcd8;
-  --ghost: #686868;
+  --ghost: #5c5c5c;
   --shadow-float: none;
   --card-top: #f6f6f2;
   --card-bottom: #f6f6f2;
@@ -358,18 +359,18 @@
   --ground: #2e3440;
   --ground-2: #323a47;
   --raised: #3b4252;
-  --raised-2: rgba(236, 239, 244, 0.08);
+  --raised-2: rgba(236, 239, 244, 0.05);
   --text: #eceff4;
   --muted: #b3bccb;
   --placeholder-opacity: 1;
   --hairline: rgba(236, 239, 244, 0.08);
   --hairline-strong: rgba(236, 239, 244, 0.16);
   --outline: #8892a4;
-  --accent: #88c0d0;
+  --accent: #8cc4d4;
   --accent-ink: #1d2430;
-  --accent-soft: rgba(136, 192, 208, 0.15);
-  --danger: #efa0a7;
-  --danger-soft: rgba(239, 160, 167, 0.18);
+  --accent-soft: rgba(140, 196, 212, 0.15);
+  --danger: #f7a8ae;
+  --danger-soft: rgba(191, 97, 106, 0.2);
   --warning: #ebcb8b;
   --selection: #434c5e;
   --ghost: #d3bdcf;
