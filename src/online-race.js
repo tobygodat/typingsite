@@ -1,4 +1,4 @@
-import { createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
+import { blocksOnError, createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 import { createTypingFx } from './motion.js';
 import * as multiplayer from './multiplayer.js';
 
@@ -476,7 +476,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       attempt.events.push({ type: 'delete', count: 1, offsetMs });
     } else if (event.inputType === 'insertText' && event.data && [...event.data].length === 1 && !/[\r\n]/u.test(event.data)) {
       if (replay.typed.length >= attempt.text.length) return;
-      const mustCorrect = attempt.conditions.correctionPolicy !== 'relaxed' && replay.typed.length > 0 && replay.typed.at(-1) !== attempt.text[replay.typed.length - 1];
+      const mustCorrect = blocksOnError(attempt.conditions.correctionPolicy) && replay.typed.length > 0 && replay.typed.at(-1) !== attempt.text[replay.typed.length - 1];
       if (mustCorrect) { $('online-help').textContent = 'Correct the mistyped letter before continuing.'; return; }
       attempt.events.push({ type: 'insert', text: event.data, position: replay.typed.length, accepted: true, offsetMs });
     } else return;

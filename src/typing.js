@@ -132,11 +132,12 @@ export function correctionPreference(preferences = {}) {
 export const blocksOnError = (policy) => (policy || 'mandatory') === 'mandatory';
 export const allowsBackspace = (policy) => policy !== 'no-backspace';
 
-// Why inserting `char` at the end of `typed` fails the run, or null.
+// Why inserting `char` at the end of `typed` fails the run, or null. The passage's
+// last letter closes the final word, which has no trailing space.
 export function failureFor(policy, text, typed, char) {
   const position = typed.length;
   if (policy === 'fail-any' && char !== text[position]) return 'wrong key';
-  if (policy === 'fail-word' && char === ' ') {
+  if (policy === 'fail-word' && (char === ' ' || position === text.length - 1)) {
     const start = text.lastIndexOf(' ', position - 1) + 1;
     if (typed.slice(start) + char !== text.slice(start, position + 1)) return 'word error';
   }

@@ -132,6 +132,9 @@ test('correction policies map old preferences, fail on errors and keep separate 
   assert.equal(failureFor('fail-word', 'the cat', 'thx', ' '), 'word error');
   assert.equal(failureFor('fail-word', 'the cat', 'the', ' '), null);
   assert.equal(failureFor('fail-word', 'the cat', 'the cxt', ' '), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the cx', 't'), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the ca', 'x'), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the ca', 't'), null);
   assert.equal(failureFor('relaxed', 'the cat', 'th', 'x'), null);
   const attempt = createAttempt({ id: 'nb', text: 'ab', textId: 'one', conditions: { correctionPolicy: 'no-backspace' } });
   assert.equal(passageComplete(attempt, 'ax'), true);

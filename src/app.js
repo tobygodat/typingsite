@@ -92,7 +92,8 @@ function normalizeProfile(parsed) {
   return {
     ...emptyProfile(),
     ...parsed,
-    preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences }),
+    // Read correction from the stored preferences, not the merged defaults, so an old stopOnError survives.
+    preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences, correction: correctionPreference(parsed.preferences || {}) }),
     attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
     runs: retainRuns(records),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
@@ -656,11 +657,16 @@ function beforeTypingInput(event, type = 'primary') {
     return;
   }
   const change = pushInsert(event.data, type);
+  // Mark a failure before the completion check, so a wrong last key can't finish as a counted run.
+  if (change.failed) {
+    targetAttempt.interrupted = true;
+    targetAttempt.failed = change.failed;
+  }
   refreshAfterInput(type, change.previousLength, change.blocked);
-  if (change.failed && type === 'primary' && attempt?.status === 'running') {
-    attempt.interrupted = true;
-    attempt.failed = change.failed;
-    finishPrimary();
+  const current = type === 'primary' ? attempt : race.attempt;
+  if (change.failed && current?.status === 'running') {
+    if (type === 'primary') finishPrimary();
+    else finishRacePlayer();
   }
 }
 
@@ -1327,6 +1333,7 @@ function finishRacePlayer() {
   const valid = !race.attempt.interrupted && !race.attempt.unsupportedInput;
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
+  if (race.attempt.failed) completed.failed = race.attempt.failed;
   race.attempt = completed;
   inbox?.runChanged();
   race.results.push({ name: race.names[race.player], attempt: completed });
@@ -1364,7 +1371,7 @@ function renderRaceResults() {
     name.textContent = result.name;
     const speed = document.createElement('span');
     speed.className = 'num';
-    speed.textContent = result.attempt.status === 'complete' ? `${score.wpm} wpm` : 'interrupted';
+    speed.textContent = result.attempt.status === 'complete' ? `${score.wpm} wpm` : result.attempt.failed ? `failed · ${result.attempt.failed}` : 'interrupted';
     const accuracy = document.createElement('span');
     accuracy.className = 'num';
     accuracy.textContent = `${score.accuracy}% accuracy`;
