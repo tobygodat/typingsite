@@ -174,7 +174,7 @@
           <label for="custom-text" class="custom-label">your text
             <span id="custom-count" class="custom-count">0 / 10,000</span>
           </label>
-          <textarea id="custom-text" class="input custom-textarea" maxlength="10000" rows="4" spellcheck="false" placeholder="Paste or type any passage"></textarea>
+          <textarea id="custom-text" class="input custom-textarea" maxlength="10000" rows="4" spellcheck="false" placeholder="Paste or type any passage" aria-describedby="custom-count custom-error"></textarea>
           <div class="custom-actions">
             <label for="custom-order">order
               <select id="custom-order" class="input select">
@@ -185,6 +185,7 @@
             </label>
             <button id="custom-use" class="btn btn-primary btn-sm" type="button">Use this text</button>
           </div>
+          <p id="custom-error" class="field-error" role="alert"></p>
         </div>
 
         <form id="typing-form" class="typing-form" autocomplete="off">

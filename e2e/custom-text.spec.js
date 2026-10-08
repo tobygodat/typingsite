@@ -20,6 +20,12 @@ test('custom text runs under its own condition and never becomes a best', async 
   await expect(page.locator('#result-conditions')).toContainText('custom text');
   await expect(page.locator('#result-delta')).toContainText('not counted toward your best');
 
+  // Run again keeps the custom text rather than falling back to a generated passage.
+  await page.locator('#run-again').click();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(TEXT);
+
   // Back on a normal test, nothing was recorded as a personal best.
   await page.locator('.nav-item[data-nav="practice"]').click();
   await page.locator('#mode-time').click();
@@ -45,6 +51,22 @@ test('emoji are dropped and the length cap holds after punctuation expands', asy
   await page.locator('#custom-text').fill('…'.repeat(10000));
   await page.locator('#custom-use').click();
   expect((await passageText(page)).length).toBe(10000);
+});
+
+test('characters typed through an input method are refused with a message', async ({ page }) => {
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill('hello 世界');
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#custom-error')).toContainText('input method');
+  await expect(page.locator('#custom-text')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await expect(page.locator('#condition-line')).not.toContainText('custom text');
+
+  await page.locator('#custom-text').fill('hello world');
+  await expect(page.locator('#custom-error')).toHaveText('');
+  await page.locator('#custom-use').click();
+  expect(await passageText(page)).toBe('hello world');
 });
 
 // Committed screenshots are refreshed only with SCREENSHOTS=1; a normal run writes to the test's output folder.

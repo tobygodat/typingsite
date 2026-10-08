@@ -86,6 +86,10 @@ function customPassage() {
   return { id: null, text: picked.join(' '), fresh: false };
 }
 
+// Scripts typed through an IME (CJK, kana, Hangul, Yi, full-width forms) can't be scored, because composition
+// input is refused while typing, so a passage containing them is rejected before a run starts.
+const IME_SCRIPT = /[\u1100-\u11FF\u2E80-\u2FFF\u3000-\u303F\u3040-\u31FF\u3200-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uA960-\uA97F\uAC00-\uD7FF\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF]/;
+
 const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
 
 function emptyProfile() {
@@ -1775,7 +1779,7 @@ function bindEvents() {
     if (practice) resetSession('practice', { focus: true });
   });
   $('mode-custom').addEventListener('click', () => openCustom(!customOpen));
-  $('custom-text').addEventListener('input', updateCustomCount);
+  $('custom-text').addEventListener('input', () => { updateCustomCount(); setCustomError(); });
   $('custom-use').addEventListener('click', useCustomText);
   document.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => {
     customOpen = false;
@@ -1840,7 +1844,7 @@ function bindEvents() {
     }
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
-  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
+  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(sessionKind === 'custom' ? 'custom' : 'practice', { focus: true }));
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
@@ -1946,12 +1950,18 @@ function updateCustomCount() {
   $('custom-count').textContent = `${$('custom-text').value.length.toLocaleString('en')} / ${CUSTOM_MAX.toLocaleString('en')}`;
 }
 
+function setCustomError(message = '') {
+  $('custom-error').textContent = message;
+  $('custom-text').setAttribute('aria-invalid', String(Boolean(message)));
+}
+
 function openCustom(open = true) {
   customOpen = open;
   if (open) {
     if (!$('custom-text').value) $('custom-text').value = prefs.customText || '';
     $('custom-order').value = prefs.customOrder;
     updateCustomCount();
+    setCustomError();
   }
   setModeControls();
   if (open) $('custom-text').focus();
@@ -1960,8 +1970,11 @@ function openCustom(open = true) {
 // Signed in, the text is kept with the other preferences; a guest's preferences live only in memory.
 function useCustomText() {
   const text = normalizeCustomText($('custom-text').value);
-  if (!text) {
-    announce('Add some text first.');
+  const error = !text ? 'Add some text first.'
+    : IME_SCRIPT.test(text) ? 'Chinese, Japanese and Korean characters need an input method, which isn’t scored. Remove them to continue.'
+      : '';
+  setCustomError(error);
+  if (error) {
     $('custom-text').focus();
     return;
   }

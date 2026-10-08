@@ -787,19 +787,17 @@ kbd {
 
 .quote-options .input { width: 128px; height: 38px; font-size: 14px; }
 
-/* Bring your own text: an opaque raised panel, styled like the settings popover. */
+/* Bring your own text: an open section on a hairline rule, not a box (only floating objects are raised). */
 .custom-options {
   width: min(560px, 100%);
   margin: calc(var(--space-10) * -1) auto var(--space-10);
-  padding: var(--space-3);
+  padding-top: var(--space-3);
   display: grid;
   gap: var(--space-2);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
-  background: var(--raised);
-  box-shadow: var(--shadow-float);
+  border-top: 1px solid var(--hairline);
   animation: fade-in var(--dur-quick) var(--ease-out);
 }
+.custom-options .field-error { margin: 0; }
 .custom-label { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: var(--text-label); }
 .custom-count { font: var(--text-fine)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
 .custom-textarea { width: 100%; min-height: 96px; height: auto; padding: var(--space-2); resize: vertical; font-size: var(--text-label); line-height: 1.5; }
