@@ -73,6 +73,76 @@ test('replay controls wrap inside the dialog at phone width', async ({ page }) =
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
 });
 
+// The mounted letters, the caret's place among them, and whether the caret sits on one of the
+// first two of the three visible lines.
+const replayWindow = (page) => page.locator('#replay-text').evaluate((node) => {
+  const chars = [...node.querySelectorAll('.char')];
+  const caret = chars.find((char) => char.classList.contains('is-caret'));
+  const box = node.getBoundingClientRect();
+  const line = parseFloat(getComputedStyle(node).lineHeight);
+  const at = caret.getBoundingClientRect();
+  return {
+    text: chars.map((char) => char.textContent).join(''),
+    caret: chars.indexOf(caret),
+    lines: Math.round(box.height / line),
+    caretShown: at.top >= box.top && at.bottom <= box.top + line * 2 && box.bottom <= innerHeight,
+  };
+});
+
+test('a long timed run replays in a three-line window that follows the caret', async ({ page }) => {
+  test.setTimeout(60_000); // 640 typed letters take a while
+  await page.clock.install();
+  await openApp(page);
+  await page.locator('#duration-options [data-length="120"]').click();
+  await expect(page.locator('#condition-line')).toContainText('120 s');
+  const text = await passageText(page);
+  expect(text.split(' ')).toHaveLength(1600);
+  // Where the caret is in the passage: the mounted letters occur once in it.
+  const caretAt = (view) => text.indexOf(view.text) + view.caret;
+
+  // Time stands still while typing: 80 letters at each whole second, 640 in all, then the idle
+  // tail to 120 s.
+  await page.clock.pauseAt(Date.now() + 1000);
+  await page.locator('#typing-input').focus();
+  for (let at = 0; at < 640; at += 80) {
+    await page.keyboard.type(text.slice(at, at + 80));
+    await page.clock.fastForward(1000);
+  }
+  await page.clock.fastForward(120_000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+
+  await page.locator('#watch-replay').click();
+  const dialog = page.locator('#replay-dialog');
+  await expect(dialog).toHaveAttribute('data-state', 'playing');
+  // A short stretch is mounted, not the whole passage, and three lines show.
+  expect(await page.locator('#replay-text .char').count()).toBeLessThan(600);
+  let view = await replayWindow(page);
+  expect(view.lines).toBe(3);
+  expect(view.caretShown).toBe(true);
+  expect(caretAt(view)).toBe(80);
+
+  // Several lines in, the window has moved with the caret and still lines up with the passage.
+  await page.clock.fastForward(5500);
+  view = await replayWindow(page);
+  expect(view.caretShown).toBe(true);
+  expect(text.indexOf(view.text)).toBeGreaterThan(0);
+  expect(caretAt(view)).toBe(480);
+  await expect(page.locator('#replay-text .char.correct')).toHaveCount(view.caret);
+
+  await page.clock.fastForward(120_000);
+  await expect(dialog).toHaveAttribute('data-state', 'done');
+  view = await replayWindow(page);
+  expect(view.caretShown).toBe(true);
+  expect(caretAt(view)).toBe(640);
+  await expect(page.locator('#replay-text .char.correct')).toHaveCount(view.caret);
+
+  // Restart goes back to the top of the passage.
+  await page.locator('#replay-restart').click();
+  view = await replayWindow(page);
+  expect(text.startsWith(view.text)).toBe(true);
+  expect(view.caretShown).toBe(true);
+});
+
 // Committed docs images are rewritten only on request (SCREENSHOTS=1); a normal run keeps its
 // capture in the test output folder.
 const shotPath = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/watch-replay/${name}` : testInfo.outputPath(name));

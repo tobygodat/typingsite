@@ -1,9 +1,13 @@
 // Watch replay: plays a finished attempt's event log back in real time inside a dialog.
 // Presentational only. Letter states come from stateAt (the scoring replay), so the last frame
 // matches the scored run exactly. Letter states are instant and the caret jumps (no spring).
+// Like the live passage, only a short stretch is mounted and three lines show: a timed run's
+// 1,600-word passage costs no more to draw than a ten-word one.
 import { replaySpan, stateAt } from './typing.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+// Letters mounted from the top visible line: well over three lines at any dialog width.
+const MOUNTED = 480;
 
 export function createReplayView(dialog) {
   const display = dialog.querySelector('#replay-text');
@@ -12,7 +16,9 @@ export function createReplayView(dialog) {
   const speedButton = dialog.querySelector('#replay-speed');
   let attempt = null;
   let span = { start: 0, end: 0 };
-  let chars = [];
+  let first = 0; // text index of the first mounted letter, always the start of a line
+  let chars = []; // chars[i] shows text index first + i
+  let lines = []; // text index where each mounted line starts
   let position = 0;
   let speed = 1;
   let playing = false;
@@ -22,25 +28,49 @@ export function createReplayView(dialog) {
 
   const length = () => span.end - span.start;
 
-  function build() {
-    display.textContent = '';
-    // One trailing empty span holds the caret once the last letter is typed.
-    chars = [...attempt.text, ''].map((letter) => {
+  function mount(from) {
+    const { text } = attempt;
+    const end = Math.min(text.length, from + MOUNTED);
+    first = from;
+    // At the end of the passage, one trailing empty span holds the caret after the last letter.
+    chars = Array.from({ length: end - from + (end === text.length ? 1 : 0) }, (_, offset) => {
       const node = document.createElement('span');
       node.className = 'char';
-      node.textContent = letter;
-      display.append(node);
+      node.textContent = text[from + offset] ?? '';
       return node;
     });
+    display.replaceChildren(...chars);
     drawn = [];
+    lines = [];
+    let top = -Infinity;
+    chars.forEach((node, offset) => {
+      if (node.offsetTop > top + 1) {
+        lines.push(from + offset);
+        top = node.offsetTop;
+      }
+    });
+  }
+
+  // Keeps the caret on the first or second of the three visible lines by remounting from an
+  // earlier line start. Wrapping is greedy, so text mounted from a line start breaks exactly
+  // as the whole passage would and the lines never reflow.
+  function follow(caret) {
+    if (caret < first) mount(0);
+    let line = lines.findLastIndex((start) => start <= caret);
+    while (line >= 2) {
+      mount(lines[line - 1]);
+      line = lines.findLastIndex((start) => start <= caret);
+    }
   }
 
   function draw() {
     const state = stateAt(attempt, span.start + position);
-    chars.forEach((node, index) => {
+    follow(state.caret);
+    chars.forEach((node, offset) => {
+      const index = first + offset;
       const letter = state.letters[index] || '';
       const name = `char${letter ? ` ${letter}` : ''}${index === state.caret ? ' is-caret' : ''}`;
-      if (drawn[index] !== name) node.className = drawn[index] = name;
+      if (drawn[offset] !== name) node.className = drawn[offset] = name;
     });
     clock.textContent = (position / 1000).toFixed(1);
     toggle.textContent = playing ? 'Pause' : 'Play';
@@ -79,6 +109,12 @@ export function createReplayView(dialog) {
   dialog.querySelector('#replay-restart').addEventListener('click', () => { position = 0; play(); });
   dialog.querySelector('#replay-close').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', pause);
+  // A new width rewraps the lines, so find the line starts again from the top.
+  addEventListener('resize', () => {
+    if (!dialog.open || !attempt) return;
+    mount(0);
+    draw();
+  });
 
   return {
     open(finished) {
@@ -86,8 +122,9 @@ export function createReplayView(dialog) {
       attempt = finished;
       span = replaySpan(finished);
       position = 0;
-      build();
+      // Open first: mounting measures where the lines break.
       dialog.showModal();
+      mount(0);
       // Reduced motion: open on the finished frame, still; Play remains an explicit choice.
       if (reducedMotion.matches) {
         position = length();

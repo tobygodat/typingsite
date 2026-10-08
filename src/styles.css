@@ -1798,11 +1798,18 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 /* Number and unit share one baseline: the seconds in Literata, the unit a small mono label. */
 .replay-clock { display: flex; align-items: baseline; gap: var(--space-1); color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
 .replay-clock-value { color: var(--text); font: var(--text-lead)/1 var(--font-serif); font-variant-numeric: tabular-nums; }
+/* At most three lines, like the live passage; replay-view.js keeps the caret on the first two.
+   The inline padding (offset by the margin) keeps a line-start caret clear of the clip. */
 .replay-text {
+  --replay-line: 1.75em;
+  max-height: calc(var(--replay-line) * 3);
+  margin-inline: calc(var(--space-1) * -1);
+  padding-inline: var(--space-1);
+  overflow: hidden;
   color: var(--muted);
   font-family: var(--font-serif);
   font-size: var(--text-lead);
-  line-height: 1.75;
+  line-height: var(--replay-line);
   white-space: pre-wrap;
   overflow-wrap: break-word;
   font-variant-ligatures: none;
