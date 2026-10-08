@@ -1164,6 +1164,8 @@ function moveGoalFocus(event) {
   const step = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7, Home: -from, End: cells.length - 1 - from }[event.key];
   if (from < 0 || step === undefined) return;
   event.preventDefault();
+  // Columns run Sunday to Saturday from the first cell, so up and down stop at the ends of a week.
+  if ((event.key === 'ArrowUp' && from % 7 === 0) || (event.key === 'ArrowDown' && from % 7 === 6)) return;
   const to = cells[from + step];
   if (!to) return;
   cells[from].tabIndex = -1;
@@ -1176,6 +1178,12 @@ function renderHistory() {
   const hasProgress = eligible.length > 0 || profile.loops.length > 0;
   renderGoal();
   $('progress-empty').hidden = hasProgress;
+  // Drills and daily runs count toward the goal but not the trend, so the empty copy names what is missing.
+  const goalOnly = !hasProgress && !$('practice-goal').hidden;
+  $('progress-empty-title').textContent = goalOnly ? 'No speed trend yet.' : 'No practice runs yet.';
+  $('progress-empty-copy').textContent = goalOnly
+    ? 'Drills and daily runs count toward your daily practice. Finish a practice run to chart speed and accuracy. Daily results are in Challenge.'
+    : 'Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.';
   $('progress-content').hidden = !hasProgress;
   const hasHistory = profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0;
   $('clear-history').hidden = !hasHistory;

@@ -25,6 +25,23 @@ test('daily goal line and practice calendar render on Progress', async ({ page }
   const weekAgo = days.nth((await days.count()) - 8);
   await expect(weekAgo).toBeFocused();
   await expect(weekAgo).toHaveAttribute('aria-label', /^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2}: 0 min$/);
+  // Up and down stay inside the drawn week column, Sunday at the top and Saturday at the bottom.
+  await page.keyboard.press('Home');
+  await expect(days.first()).toBeFocused();
+  await expect(days.first()).toHaveAttribute('aria-label', /^Sunday, /);
+  await page.keyboard.press('ArrowUp');
+  await expect(days.first()).toBeFocused();
+  for (let i = 0; i < 6; i += 1) await page.keyboard.press('ArrowDown');
+  await expect(days.nth(6)).toBeFocused();
+  await expect(days.nth(6)).toHaveAttribute('aria-label', /^Saturday, /);
+  await page.keyboard.press('ArrowDown');
+  await expect(days.nth(6)).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(days.nth(13)).toBeFocused();
+  await expect(days.nth(13)).toHaveAttribute('aria-label', /^Saturday, /);
+  await page.keyboard.press('ArrowDown');
+  await expect(days.nth(13)).toBeFocused();
+  await expect(page.locator('#goal-calendar [tabindex="0"]')).toHaveCount(1);
 });
 
 // Ten weeks of plausible practice for a signed-in profile: 60s timed tests drifting from the low 60s
@@ -77,4 +94,18 @@ test('Progress screenshots with ten weeks of seeded history', async ({ page, sup
     const name = `progress-${theme}.png`;
     await page.screenshot({ path: process.env.SCREENSHOTS ? `docs/screenshots/daily-goal-streak/${name}` : testInfo.outputPath(name) });
   }
+});
+
+test('drills alone count toward daily practice and the empty trend copy agrees', async ({ page, supabase }) => {
+  const user = supabase.addUser('drills@stilltype.test');
+  const runs = seededHistory().slice(-3).map((run) => ({ ...run, kind: 'drill' }));
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: [], runs, loops: [],
+    seenTextIds: [], bests: {}, updatedAt: runs.at(-1).at } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openView(page, 'Progress');
+  await expect(page.locator('#goal-line')).toHaveText(/^Today (<1|\d+) min · 1-day streak$/);
+  await expect(page.locator('#progress-empty')).toBeVisible();
+  await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');
+  await expect(page.locator('#progress-empty-copy')).toContainText('Drills and daily runs count toward your daily practice.');
 });
