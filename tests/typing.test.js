@@ -10,6 +10,11 @@ import {
   makePassage,
   metrics,
   passageComplete,
+  correctionPreference,
+  CORRECTION_POLICIES,
+  allowsBackspace,
+  blocksOnError,
+  failureFor,
   recommendTarget,
   replayAttempt,
 } from '../src/typing.js';
@@ -109,4 +114,27 @@ test('generated passages draw from the selected common-word list', async () => {
   const bank = wordList(DEFAULT_WORD_LIST);
   assert.match(makePassage('words', 10, true, () => (bank.indexOf('i') + 0.5) / bank.length), /\bI\b/);
   assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
+});
+
+test('correction policies map old preferences, fail on errors and keep separate keys', () => {
+  assert.equal(correctionPreference({}), 'relaxed');
+  assert.equal(correctionPreference({ stopOnError: true }), 'mandatory');
+  assert.equal(correctionPreference({ stopOnError: false }), 'relaxed');
+  assert.equal(correctionPreference({ correction: 'fail-any', stopOnError: true }), 'fail-any');
+  assert.equal(correctionPreference({ correction: 'bogus', stopOnError: true }), 'mandatory');
+  assert.equal(allowsBackspace('no-backspace'), false);
+  assert.equal(allowsBackspace('relaxed'), true);
+  assert.equal(blocksOnError('mandatory'), true);
+  assert.equal(blocksOnError('fail-word'), false);
+  assert.equal(failureFor('fail-any', 'the cat', 'th', 'x'), 'wrong key');
+  assert.equal(failureFor('fail-any', 'the cat', 'th', 'e'), null);
+  assert.equal(failureFor('fail-word', 'the cat', 'thx', 'x'), null);
+  assert.equal(failureFor('fail-word', 'the cat', 'thx', ' '), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the', ' '), null);
+  assert.equal(failureFor('fail-word', 'the cat', 'the cxt', ' '), 'word error');
+  assert.equal(failureFor('relaxed', 'the cat', 'th', 'x'), null);
+  const attempt = createAttempt({ id: 'nb', text: 'ab', textId: 'one', conditions: { correctionPolicy: 'no-backspace' } });
+  assert.equal(passageComplete(attempt, 'ax'), true);
+  const keys = new Set(CORRECTION_POLICIES.map((correctionPolicy) => conditionKey({ correctionPolicy })));
+  assert.equal(keys.size, CORRECTION_POLICIES.length);
 });

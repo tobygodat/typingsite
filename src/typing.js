@@ -119,9 +119,33 @@ export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', c
   };
 }
 
+// Correction policies. 'relaxed' (free) and 'mandatory' (stop on error) predate
+// the others; each value is its own comparison key so bests never mix.
+export const CORRECTION_POLICIES = ['relaxed', 'mandatory', 'no-backspace', 'fail-word', 'fail-any'];
+
+// Older profiles stored a boolean stopOnError; map it to free/stop.
+export function correctionPreference(preferences = {}) {
+  if (CORRECTION_POLICIES.includes(preferences.correction)) return preferences.correction;
+  return preferences.stopOnError ? 'mandatory' : 'relaxed';
+}
+
+export const blocksOnError = (policy) => (policy || 'mandatory') === 'mandatory';
+export const allowsBackspace = (policy) => policy !== 'no-backspace';
+
+// Why inserting `char` at the end of `typed` fails the run, or null.
+export function failureFor(policy, text, typed, char) {
+  const position = typed.length;
+  if (policy === 'fail-any' && char !== text[position]) return 'wrong key';
+  if (policy === 'fail-word' && char === ' ') {
+    const start = text.lastIndexOf(' ', position - 1) + 1;
+    if (typed.slice(start) + char !== text.slice(start, position + 1)) return 'word error';
+  }
+  return null;
+}
+
 export function passageComplete(attempt, typed) {
   return typed.length >= attempt.text.length
-    && (attempt.conditions.correctionPolicy === 'relaxed' || typed === attempt.text);
+    && (!blocksOnError(attempt.conditions.correctionPolicy) || typed === attempt.text);
 }
 
 function printable(text) {

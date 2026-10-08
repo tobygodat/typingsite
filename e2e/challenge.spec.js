@@ -4,7 +4,7 @@ test('two players type the same hidden-then-revealed passage', async ({ page }) 
   await openApp(page);
   // Stop on error is captured when the challenge starts, so a wrong last letter must be fixed.
   await page.locator('details.preferences summary').click();
-  await page.locator('#stop-on-error-toggle').check();
+  await page.locator('#correction-select').selectOption('mandatory');
   await openView(page, 'Challenge');
   await page.locator('#challenge-local').click();
 

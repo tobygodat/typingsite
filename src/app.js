@@ -8,6 +8,10 @@ import {
   makeDrill,
   normalizeManualTarget,
   passageComplete,
+  correctionPreference,
+  blocksOnError,
+  allowsBackspace,
+  failureFor,
   recommendTarget,
   replayAttempt,
   selectPassage,
@@ -42,6 +46,7 @@ const defaultPreferences = {
   liveMetrics: false,
   keyboard: false,
   stopOnError: false,
+  correction: 'relaxed',
   focusMode: false,
   theme: 'system',
 };
@@ -70,6 +75,8 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  value.correction = correctionPreference(value);
+  value.stopOnError = value.correction === 'mandatory';
   return value;
 }
 
@@ -171,7 +178,7 @@ function conditions(inputClass = 'physical-keyboard') {
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
     wordList: prefs.mode === 'quote' ? null : prefs.wordList,
     inputClass,
-    correctionPolicy: prefs.stopOnError ? 'mandatory' : 'relaxed',
+    correctionPolicy: prefs.correction,
     language: 'en',
     corpus: CORPUS_VERSION,
     metricVersion: METRIC_VERSION,
@@ -182,7 +189,7 @@ function describeConditions(value = conditions()) {
   const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
   const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
   const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
-  const correction = value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error';
+  const correction = correctionLabel(value.correctionPolicy);
   const language = value.wordList ? `english ${value.wordList}` : 'english';
   return `${language} · ${length} · ${punctuation} · ${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
 }
@@ -191,7 +198,12 @@ function describeConditions(value = conditions()) {
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
+  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
+}
+
+const CORRECTION_LABELS = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
+function correctionLabel(policy) {
+  return CORRECTION_LABELS[policy || 'mandatory'] || 'stop on error';
 }
 
 function signed(value, unit) {
@@ -278,7 +290,7 @@ function applyPreferences() {
   $('font-size').value = prefs.fontSize;
   $('live-toggle').checked = prefs.liveMetrics;
   $('keyboard-toggle').checked = prefs.keyboard;
-  $('stop-on-error-toggle').checked = prefs.stopOnError;
+  $('correction-select').value = prefs.correction;
   $('focus-toggle').checked = prefs.focusMode;
   $('keyboard').hidden = !prefs.keyboard;
   applyTheme();
@@ -582,13 +594,14 @@ function pushInsert(char, type = 'primary') {
   const targetAttempt = type === 'primary' ? attempt : race.attempt;
   startAttempt(targetAttempt, type);
   const replay = replayAttempt(targetAttempt);
-  const unresolved = targetAttempt.conditions.correctionPolicy !== 'relaxed'
+  const unresolved = blocksOnError(targetAttempt.conditions.correctionPolicy)
     && replay.typed.length > 0
     && replay.typed.at(-1) !== targetAttempt.text[replay.typed.length - 1];
   targetAttempt.events.push(unresolved
     ? { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs: offsetFor(type) }
     : { type: 'insert', text: char, position: replay.typed.length, accepted: true, offsetMs: offsetFor(type) });
-  return { previousLength: replay.typed.length, blocked: unresolved };
+  const failed = unresolved ? null : failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char);
+  return { previousLength: replay.typed.length, blocked: unresolved, failed };
 }
 
 function pushDelete(type = 'primary') {
@@ -625,6 +638,7 @@ function beforeTypingInput(event, type = 'primary') {
   }
   if (event.inputType?.startsWith('delete')) {
     event.preventDefault();
+    if (!allowsBackspace(targetAttempt.conditions.correctionPolicy)) return;
     const previousLength = pushDelete(type);
     refreshAfterInput(type, previousLength);
     return;
@@ -643,6 +657,11 @@ function beforeTypingInput(event, type = 'primary') {
   }
   const change = pushInsert(event.data, type);
   refreshAfterInput(type, change.previousLength, change.blocked);
+  if (change.failed && type === 'primary' && attempt?.status === 'running') {
+    attempt.interrupted = true;
+    attempt.failed = change.failed;
+    finishPrimary();
+  }
 }
 
 // Everything the typing surface says, kept short. The focus-lost and composition
@@ -778,12 +797,13 @@ function finishPrimary(forcedElapsed = null) {
   completed.interrupted = attempt.interrupted;
   completed.unsupportedInput = attempt.unsupportedInput;
   completed.fresh = attempt.fresh;
+  if (attempt.failed) completed.failed = attempt.failed;
   attempt = completed;
   $('typing-input').disabled = true;
   primaryFx.finish();
   setRunning(false);
   $('typing-status').className = `badge ${valid ? 'badge-success' : 'badge-warning'}`;
-  $('typing-status').textContent = valid ? 'Complete' : 'Interrupted';
+  $('typing-status').textContent = valid ? 'Complete' : completed.failed ? 'Failed' : 'Interrupted';
   const saved = storeAttempt(completed);
 
   if (sessionKind === 'drill' && baselineAttempt) {
@@ -812,12 +832,13 @@ function renderCard(completed) {
   const kind = completed.kind === 'test' ? 'practice' : completed.kind;
   const at = new Date();
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
-  $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
+  $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}${completed.failed ? ` · failed · ${completed.failed}` : ''}`;
   $('run-card').hidden = false;
   renderSpeedGraph($('speed-graph'), completed, { animate: true });
 }
 
 function resultHeadline(completed) {
+  if (completed.failed) return `failed · ${completed.failed}`;
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
@@ -846,7 +867,7 @@ function renderResults(completed, saved) {
   $('result-delta').textContent = resultHeadline(completed);
   // A retest reports a failed save once, in the comparison caveat.
   $('result-comparison-note').textContent = [
-    counted ? '' : 'Focus or input changed during the run, so it isn’t counted.',
+    counted ? '' : completed.failed ? 'The correction setting ended this run, so it isn’t counted.' : 'Focus or input changed during the run, so it isn’t counted.',
     saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
   ].filter(Boolean).join(' ');
 
@@ -855,7 +876,7 @@ function renderResults(completed, saved) {
     selectedTarget = activeRecommendation.target;
   }
   $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
-  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
+  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : completed.failed ? 'This run failed under the correction setting.' : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
     ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
@@ -969,7 +990,8 @@ function restoreConditions(source) {
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
-    stopOnError: source.correctionPolicy !== 'relaxed',
+    correction: correctionPreference({ correction: source.correctionPolicy, stopOnError: source.correctionPolicy !== 'relaxed' }),
+    stopOnError: source.correctionPolicy === 'mandatory',
   };
   profile.preferences = prefs;
   applyPreferences();
@@ -1739,7 +1761,7 @@ function bindEvents() {
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
-  $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
+  $('correction-select').addEventListener('change', (event) => setCorrection(event.target.value));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
@@ -1893,9 +1915,10 @@ function togglePreference(key) {
   if (document.body.dataset.view === 'practice') $('typing-input').focus({ preventScroll: true });
 }
 
-function setStopOnError(enabled) {
-  if (prefs.stopOnError === enabled) return;
-  prefs.stopOnError = enabled;
+function setCorrection(policy) {
+  if (prefs.correction === policy) return;
+  prefs.correction = correctionPreference({ correction: policy });
+  prefs.stopOnError = prefs.correction === 'mandatory';
   applyPreferences();
   saveProfile();
   if (document.body.dataset.view === 'practice') resetSession('practice');
@@ -1922,7 +1945,7 @@ function paletteCommands(query) {
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
-    { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
+    ...Object.entries(CORRECTION_LABELS).map(([policy, name]) => ({ group: 'test', label: `correction · ${policy === 'relaxed' ? 'free' : name}`, keywords: 'mistakes correction continue stop error backspace fail expert master confidence', hint: prefs.correction === policy ? 'current' : '', on: prefs.correction === policy, run: () => setCorrection(policy) })),
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
