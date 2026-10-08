@@ -47,6 +47,7 @@
 
   --control: 44px;
   --content-max: 1080px;
+  --placeholder-opacity: 0.8;
 
   /* Motion: every duration scales from one place and drops to zero for reduced motion. */
   --motion-scale: 1;
@@ -115,6 +116,7 @@
  * MOCK_THEMES (src/app.js), in the pre-paint allowlist (index.html) and, for a light mock,
  * in the light ::backdrop selectors (palette and dialogs, below).
  * Text, muted, accent, coral and warning all clear WCAG AA (4.5:1) on --ground and --raised.
+ * Placeholders show full-strength --muted (--placeholder-opacity: 1); --ghost clears AA on the palette highlight.
  * Motion is untouched: the still-run rules apply to every theme.
  */
 
@@ -133,6 +135,7 @@
   --raised-2: rgba(20, 18, 16, 0.06);
   --text: #141210;
   --muted: #5e5850;
+  --placeholder-opacity: 1;
   --hairline: rgba(20, 18, 16, 0.12);
   --hairline-strong: rgba(20, 18, 16, 0.24);
   --outline: #7a7368;
@@ -165,6 +168,7 @@
   --raised-2: #f4f4f5;
   --text: #09090b;
   --muted: #71717a;
+  --placeholder-opacity: 1;
   --hairline: #f4f4f5;
   --hairline-strong: #e4e4e7;
   --outline: #71717a;
@@ -197,6 +201,7 @@
   --raised-2: rgba(255, 255, 255, 0.07);
   --text: #e2e1d6;
   --muted: #a3a5a8;
+  --placeholder-opacity: 1;
   --hairline: rgba(255, 255, 255, 0.06);
   --hairline-strong: rgba(255, 255, 255, 0.12);
   --outline: #888a8d;
@@ -228,6 +233,7 @@
   --raised-2: rgba(91, 75, 214, 0.08);
   --text: #1e1b2e;
   --muted: #5b5670;
+  --placeholder-opacity: 1;
   --hairline: rgba(30, 27, 46, 0.08);
   --hairline-strong: rgba(30, 27, 46, 0.14);
   --outline: #8a85a0;
@@ -253,6 +259,7 @@
   --raised-2: rgba(255, 240, 220, 0.07);
   --text: #cfc8bc;
   --muted: #8a8479;
+  --placeholder-opacity: 1;
   --hairline: rgba(255, 240, 220, 0.06);
   --hairline-strong: rgba(255, 240, 220, 0.12);
   --outline: #6a655d;
@@ -285,6 +292,7 @@
   --raised-2: #f0f0f0;
   --text: #000000;
   --muted: #555555;
+  --placeholder-opacity: 1;
   --hairline: rgba(0, 0, 0, 0.12);
   --hairline-strong: rgba(0, 0, 0, 0.3);
   --outline: #777777;
@@ -319,6 +327,7 @@
   --raised-2: rgba(0, 0, 0, 0.05);
   --text: #111111;
   --muted: #555552;
+  --placeholder-opacity: 1;
   --hairline: rgba(0, 0, 0, 0.08);
   --hairline-strong: rgba(0, 0, 0, 0.16);
   --outline: #848480;
@@ -329,7 +338,7 @@
   --danger-soft: rgba(0, 0, 0, 0.13);
   --warning: #4a4a4a;
   --selection: #dcdcd8;
-  --ghost: #6a6a6a;
+  --ghost: #686868;
   --shadow-float: none;
   --card-top: #f6f6f2;
   --card-bottom: #f6f6f2;
@@ -352,6 +361,7 @@
   --raised-2: rgba(236, 239, 244, 0.08);
   --text: #eceff4;
   --muted: #b3bccb;
+  --placeholder-opacity: 1;
   --hairline: rgba(236, 239, 244, 0.08);
   --hairline-strong: rgba(236, 239, 244, 0.16);
   --outline: #8892a4;
@@ -362,7 +372,7 @@
   --danger-soft: rgba(239, 160, 167, 0.18);
   --warning: #ebcb8b;
   --selection: #434c5e;
-  --ghost: #b48ead;
+  --ghost: #d3bdcf;
   --shadow-float: 0 8px 24px rgba(15, 18, 24, 0.35);
   --card-top: #3b4252;
   --card-bottom: #353c4a;
@@ -901,7 +911,7 @@ kbd {
   transition: border-color var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
 }
 
-.input::placeholder { color: var(--muted); opacity: 0.8; }
+.input::placeholder { color: var(--muted); opacity: var(--placeholder-opacity); }
 .input:focus-visible { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .input[aria-invalid="true"] { border-color: var(--danger); }
 .select { padding-right: 8px; cursor: pointer; }
