@@ -143,3 +143,10 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - Screenshots no longer overwrite `docs/screenshots/**` on every e2e run: each spec now writes there only with `SCREENSHOTS=1` (otherwise to Playwright's output dir). Use `SCREENSHOTS=1 npx playwright test <spec>` to regenerate PR images.
 - PR #18: the Caps Lock warning moved to Literata at `--text-small` (15px). 12px is a mono label size.
 - PR #34 screenshots: the settings popover covers the run-card headline in the "after don't show this" shot.
+
+### From the later review rounds
+- **Accessibility floor (on master today):** the shipped light theme's input placeholder measures 3.56:1, because `--muted` `#6b665e` is drawn at 0.8 opacity over `#fbf9f5`. That's below the 4.5:1 floor in PRODUCT.md. Drawing it at full opacity in the light theme gives 5.42:1. PR #24 introduces a `--placeholder-opacity` token that makes this a one-line change. Dark passes at 4.61:1.
+- PR #19: with Tab chosen as the restart key, Tab on "Run again" restarts instead of moving focus (Shift+Tab still moves). Codex also showed that `runActive` is presentational: clicking the active Practice tab clears it mid-run. Guards should read `attempt.status`.
+- PR #28: pasted text can carry invisible Unicode format controls (soft hyphen, LRM, bidi isolates, ZWSP) that become untypable targets. Strip `\p{Cf}` wherever outside text enters the engine. The same applies to book mode and composing.
+- PR #32: a timer expiring mid-word skipped the fail-on-word check. Every completion path (timer, passage end, race end) needs the same failure gate. One `completeAttempt()` choke point would prevent this whole class of bug.
+- PR #34: in-memory session state (the sitting's runs) must be cleared and restored by Clear/Undo like stored history. The same applies to any future in-tab evidence.
