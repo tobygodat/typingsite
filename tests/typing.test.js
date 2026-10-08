@@ -110,3 +110,18 @@ test('generated passages draw from the selected common-word list', async () => {
   assert.match(makePassage('words', 10, true, () => (bank.indexOf('i') + 0.5) / bank.length), /\bI\b/);
   assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
 });
+
+test('every code snippet unindents to a non-empty single line the engine accepts', async () => {
+  const { CODE_LANGUAGES, CODE_SNIPPETS, codePassage, unindent } = await import('../src/code-snippets.js');
+  for (const language of CODE_LANGUAGES) {
+    assert.ok(CODE_SNIPPETS[language].length >= 6, language);
+    for (const snippet of CODE_SNIPPETS[language]) {
+      const text = unindent(snippet);
+      assert.ok(text.length > 0, snippet);
+      assert.match(text, /^[\x20-\x7e]+$/u, text);
+      assert.doesNotMatch(text, /^ | $| {2}/u, text);
+    }
+    assert.equal(codePassage(language).language, language);
+  }
+  assert.notEqual(conditionKey({ mode: 'code', codeLanguage: 'js' }), conditionKey({ mode: 'code', codeLanguage: 'go' }));
+});

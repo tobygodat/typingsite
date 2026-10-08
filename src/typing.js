@@ -307,7 +307,8 @@ export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
 
 export function conditionKey(conditions = {}) {
   return [
-    conditions.mode,
+    // Code runs key by language; other modes keep their existing keys.
+    conditions.mode === 'code' ? `code-${conditions.codeLanguage || 'js'}` : conditions.mode,
     conditions.duration || '',
     conditions.count || '',
     conditions.punctuation ? 'punctuation' : 'plain',

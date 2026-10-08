@@ -14,6 +14,7 @@ import {
   summarizePatterns,
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
+import { CODE_LANGUAGES, DEFAULT_CODE_LANGUAGE, codePassage } from './code-snippets.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
@@ -38,6 +39,7 @@ const defaultPreferences = {
   quoteLength: 'medium',
   difficulty: 'any',
   wordList: DEFAULT_WORD_LIST,
+  codeLanguage: DEFAULT_CODE_LANGUAGE,
   fontSize: '28',
   liveMetrics: false,
   keyboard: false,
@@ -70,6 +72,7 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  if (!CODE_LANGUAGES.includes(value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
   return value;
 }
 
@@ -169,7 +172,8 @@ function conditions(inputClass = 'physical-keyboard') {
     punctuation: prefs.punctuation,
     quoteLength: prefs.mode === 'quote' ? prefs.quoteLength : null,
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
-    wordList: prefs.mode === 'quote' ? null : prefs.wordList,
+    wordList: ['quote', 'code'].includes(prefs.mode) ? null : prefs.wordList,
+    ...(prefs.mode === 'code' ? { codeLanguage: prefs.codeLanguage, punctuation: true } : {}),
     inputClass,
     correctionPolicy: prefs.stopOnError ? 'mandatory' : 'relaxed',
     language: 'en',
@@ -179,6 +183,9 @@ function conditions(inputClass = 'physical-keyboard') {
 }
 
 function describeConditions(value = conditions()) {
+  if (value.mode === 'code') {
+    return `code · ${value.codeLanguage || DEFAULT_CODE_LANGUAGE} · ${value.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'} · not counted toward bests`;
+  }
   const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
   const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
   const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
@@ -227,6 +234,7 @@ function currentBestKey() {
 
 function showBest() {
   const best = profile.bests[currentBestKey()];
+  if (prefs.mode === 'code') { $('best').textContent = 'Code runs aren’t ranked'; return; }
   $('best').textContent = best ? `Best · ${best.wpm} wpm` : 'No best yet';
 }
 
@@ -296,11 +304,27 @@ function setModeControls() {
     button.setAttribute('aria-pressed', String(selected));
   });
   $('quote-options').hidden = prefs.mode !== 'quote';
-  $('punctuation-toggle').disabled = prefs.mode === 'quote';
-  $('word-list').disabled = prefs.mode === 'quote';
+  $('punctuation-toggle').disabled = ['quote', 'code'].includes(prefs.mode);
+  $('word-list').disabled = ['quote', 'code'].includes(prefs.mode);
   $('duration-options').hidden = prefs.mode === 'quote';
-  const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
+  $('duration-options').setAttribute('aria-label', prefs.mode === 'code' ? 'Code language' : 'Test length');
   const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
+  if (prefs.mode === 'code') {
+    $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...CODE_LANGUAGES.map((language) => {
+      const button = document.createElement('button');
+      const selected = language === prefs.codeLanguage;
+      button.type = 'button';
+      button.textContent = language;
+      button.dataset.language = language;
+      button.className = selected ? 'is-active' : '';
+      button.setAttribute('aria-pressed', String(selected));
+      return button;
+    }));
+    showBest();
+    requestAnimationFrame(() => updateGlides());
+    return;
+  }
+  const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
   $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
     const button = document.createElement('button');
     const selected = value === (prefs.mode === 'time' ? prefs.duration : prefs.count);
@@ -425,6 +449,7 @@ function updateCharacterStates(characters, typed, target, start = 0) {
 }
 
 function choosePassage(extraSeen = []) {
+  if (prefs.mode === 'code') return { ...codePassage(prefs.codeLanguage, { seenIds: [...profile.seenTextIds, ...extraSeen] }), corpus: CORPUS_VERSION };
   return selectPassage({
     mode: prefs.mode,
     count: prefs.count,
@@ -755,7 +780,9 @@ function storeAttempt(completed) {
   completed.at = new Date().toISOString();
   const key = conditionKey(completed.conditions);
   const score = completed.summary.score;
-  const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
+  // Code runs are their own condition and never become bests or comparable baselines.
+  const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind)
+    && completed.conditions?.mode !== 'code';
   resultBestBefore = profile.bests[key] || null;
   profile.attempts.push(completed);
   profile.runs.push(runRecord(completed));
@@ -793,7 +820,7 @@ function finishPrimary(forcedElapsed = null) {
     return;
   }
 
-  if ((sessionKind === 'practice' || sessionKind === 'daily') && valid) {
+  if ((sessionKind === 'practice' || sessionKind === 'daily') && valid && completed.conditions?.mode !== 'code') {
     baselineAttempt = completed;
     trainingContext = null;
   }
@@ -820,6 +847,7 @@ function renderCard(completed) {
 function resultHeadline(completed) {
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
+  if (completed.conditions?.mode === 'code') return 'Code run complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
   if (!resultBestBefore) return 'First run at these settings';
   const delta = completed.summary.score.wpm - resultBestBefore.wpm;
@@ -969,6 +997,7 @@ function restoreConditions(source) {
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
+    codeLanguage: source.codeLanguage || prefs.codeLanguage,
     stopOnError: source.correctionPolicy !== 'relaxed',
   };
   profile.preferences = prefs;
@@ -1082,7 +1111,7 @@ function targetButton(target, source) {
 function practiceTarget(target, source) {
   // Use a retained, compatible baseline when possible. Older corpus versions need a new baseline.
   baselineAttempt = [...profile.attempts].reverse().find((a) => a.status === 'complete' && !a.interrupted
-    && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
+    && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false && a.conditions?.mode !== 'code'
     && conditionKey(a.conditions) === conditionKey(source) && source.corpus === CORPUS_VERSION) || null;
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
@@ -1720,6 +1749,14 @@ function bindEvents() {
     resetSession('practice', { focus: true });
   }));
   $('duration-options').addEventListener('click', (event) => {
+    const language = event.target.closest('[data-language]');
+    if (language) {
+      prefs.codeLanguage = language.dataset.language;
+      setModeControls();
+      saveProfile();
+      resetSession('practice', { focus: true });
+      return;
+    }
     const button = event.target.closest('[data-length]');
     if (!button) return;
     if (prefs.mode === 'time') prefs.duration = Number(button.dataset.length);
