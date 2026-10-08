@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView } from './fixtures.js';
 
 test('tab as the restart key resets the passage, and esc still works', async ({ page }) => {
   await openApp(page);
@@ -82,6 +82,24 @@ test('enter restarts from the result card but not mid-run', async ({ page }) => 
 });
 
 // Committed docs are only rewritten on purpose (SCREENSHOTS=1); a normal run keeps its captures in test output.
+test('enter stays inert mid-run after the chrome returns via the practice nav', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await openSettings(page);
+  await page.locator('#restart-key').selectOption('Enter');
+  await page.keyboard.press('Escape');
+
+  await typeInto(page, (await passageText(page)).slice(0, 3));
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+  // Clicking the already-active practice nav shows the chrome but leaves the run going.
+  await openView(page, 'Practice');
+  await expect(page.locator('body')).not.toHaveAttribute('data-running', 'true');
+  await page.locator('#typing-input').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#text-display .char.correct')).toHaveCount(3);
+  await expect(page.locator('#typing-status')).toContainText('In progress');
+});
+
 test('screenshots', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const scheme of ['dark', 'light']) {
