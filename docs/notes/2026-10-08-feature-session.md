@@ -39,7 +39,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 
 ### From the numbers-toggle work (PR #21)
 - `describeConditions` (src/app.js:185) chains template strings; quote difficulty sits in the same slot as punctuation/plain. A structured conditions builder would be easier to extend (numbers, custom text, missed words, pace caret…).
-- `punctuate()` in src/typing.js places capitals and full stops on a fixed 9-word cycle (`i % 9`), so punctuation mode is predictable. Use the seeded random source like numbers does. (Engine change: needs a corpus/metric version bump.)
+- `punctuate()` in src/typing.js places capitals and full stops on a fixed 9-word cycle (`i % 9`), so punctuation mode is predictable. Use the seeded random source like numbers does. (Passage-generation change: version it with the corpus/text-generation version, not the metric version, since scoring and replay don't change.)
 - Dark run card: the "Run again" secondary button's bright outline looks heavier than the filled green primary beside it. Design check.
 - The mode bar now has four pill groups (index.html:147). A third toggle would need grouping the switches into one pill or moving them into settings.
 
@@ -51,7 +51,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - The "first-try errors" label wraps to two lines in the 3-column facts grid, so main-row labels sit at uneven heights.
 
 ### From the missed-words practice work (PR #23)
-- A persistent "words you keep missing" list in Training was not built. It's the natural next step (and only meaningful for signed-in users, since guests aren't stored).
+- A persistent "words you keep missing" list in Training was not built. It's the natural next step. It should work for guests within the tab (in memory, like their runs) and persist only for signed-in users.
 - From a missed-words or drill result with no baseline there's no direct way back to normal practice except the dock nav (src/app.js ~1785, `run-again`).
 - The run card is sticky (src/styles.css:1167, `top: 104px`). At 1280×800 it's taller than the viewport, so the conditions and actions sit below the fold. Shorten the graph or move conditions/actions up.
 - The results page now has up to four nearby buttons (Start drill, Skip to retest, Run again, Practice words). It needs an action-hierarchy pass: one primary, the rest quiet.
@@ -95,7 +95,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - In custom mode, the word-list setting in the settings popover stays enabled but has no effect (src/app.js `setModeControls`). Grey it out as quote mode does.
 - The palette can still mark "quote" as current during a custom run, because the check only reads the saved mode (src/app.js `shape` in `paletteCommands`).
 - No "practise this text again" action on custom results, and the retest/drill copy (src/app.js ~861) doesn't mention custom runs.
-- The mode-bar selection pill slides for 0.4 s; screenshots taken during the slide catch the highlight between two buttons. Specs should wait for the transition to end.
+- The mode-bar selection pill slides for 0.4 s, longer than Afterimage's ≤200 ms chrome-fade rule allows. Fix the transition to use the duration token (scaling to zero under reduced motion) rather than making screenshot specs wait.
 - Custom-text cleanup lives in src/app.js with no unit test. Move it to a pure module with tests if it grows (book mode, EPUB import).
 
 ### From the watch-replay work (PR #30)
@@ -126,7 +126,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - src/typing.js rejects `\r`/`\n` in passages (`printable`, ~line 127), so code snippets are joined into one line and lose their shape. Real line-break/Enter support in the engine would let code mode keep indentation-free lines (needs a metric/event version bump).
 - `recurringTargets` (src/insights.js:55) still counts code runs within their own code key, so a drill after a code run may target symbol pairs. Consider excluding code mode from recurring-target evidence.
 - No palette entries for code mode or its languages yet.
-- The language buttons reuse `#duration-options` and so render in Geist Mono. Confirm that fits "small labels".
+- Required fix: the language buttons reuse `#duration-options` and so render in Geist Mono, but language names are readable text and must be Literata (being fixed on PR #33).
 - In quote and code modes the punctuation switch is shown greyed out. Hiding it would read better.
 
 ### From the break-notice work (PR #34)
@@ -137,3 +137,9 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 
 ### Fix pushed by me after review
 - PR #30: "Watch replay" is now hidden when a run recorded no events (it previously opened nothing). Unit tests 33/33; watch-replay, typing and learning-loop e2e 16/16.
+
+### From the review-fix round (Codex findings)
+- The palette's "restart test" command still double-resets (`navigate('practice')` then `resetSession`), marking an unseen passage as seen and consuming fresh quotes. The same bug was fixed for the quick-restart key in PR #19; the palette path predates it.
+- Screenshots no longer overwrite `docs/screenshots/**` on every e2e run: each spec now writes there only with `SCREENSHOTS=1` (otherwise to Playwright's output dir). Use `SCREENSHOTS=1 npx playwright test <spec>` to regenerate PR images.
+- PR #18: the Caps Lock warning moved to Literata at `--text-small` (15px). 12px is a mono label size.
+- PR #34 screenshots: the settings popover covers the run-card headline in the "after don't show this" shot.
