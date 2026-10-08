@@ -168,7 +168,7 @@ export function createTypingFx(wrap, display, options = {}) {
       ghost.index = -1;
       display.append(ghostCaret, caret);
       ghostCaret.classList.toggle('is-hidden', !ghost.armed);
-      if (ghost.armed) requestAnimationFrame(() => placeGhost(0));
+      if (ghost.armed) requestAnimationFrame(() => { if (ghost.armed) placeGhost(0); });
       setState('idle');
       snapNext = true;
       needsMeasure = true;
