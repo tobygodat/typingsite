@@ -293,7 +293,7 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
-  showPace();
+  armPace();
   showBest();
 }
 
@@ -531,8 +531,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   primaryTextView = renderText($('text-display'), passage.text);
   primaryCharacters = primaryTextView.characters;
   primaryFx.reset(primaryCharacters);
-  primaryFx.ghost.arm(ghostOn() ? ghostPace().cps : 0);
-  showPace();
+  armPace();
   markKeyboardTargets(kind === 'drill' ? selectedTarget : null);
   $('typing-status').className = 'badge badge-info';
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
@@ -742,17 +741,19 @@ function showPace() {
   document.body.dataset.ghost = on ? 'on' : 'off';
 }
 
+// Arms the caret on the current attempt in place: a ready run keeps its passage, and a run in
+// progress joins the caret to its own clock. Called whenever the mode or the history behind it changes.
+function armPace() {
+  const running = attempt?.status === 'running' && startTime !== null;
+  const live = running || attempt?.status === 'ready';
+  primaryFx.ghost.arm(ghostOn() && live ? ghostPace().cps : 0, running ? startTime : 0);
+  showPace();
+}
+
 function setPaceCaret(mode) {
   prefs.paceCaret = mode;
   saveProfile();
-  showPace();
-  if (document.body.dataset.view === 'practice' && sessionKind !== 'retest' && attempt?.status !== 'running') {
-    resetSession(sessionKind, { focus: true });
-    return;
-  }
-  primaryFx.ghost.arm(ghostOn() ? ghostPace().cps : 0);
-  // Enabled mid-run: the first keystroke has passed, so start the caret from the run's own clock.
-  if (attempt?.status === 'running' && startTime !== null) primaryFx.ghost.run(startTime);
+  armPace();
 }
 
 function markKeyboardTargets(target) {
@@ -1437,6 +1438,7 @@ function clearHistory() {
   renderTraining();
   renderDaily();
   showBest();
+  armPace();
 }
 
 function undoClear() {
@@ -1809,8 +1811,7 @@ function bindEvents() {
     if (event.pointerType === 'touch' && attempt?.status === 'ready') {
       attempt.conditions.inputClass = 'touch';
       $('condition-line').textContent = describeRun(attempt);
-      if (ghostOn()) primaryFx.ghost.arm(ghostPace().cps);
-      showPace();
+      armPace();
     }
   });
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
@@ -2026,7 +2027,11 @@ function toggleGhost() {
   setPaceCaret(on ? 'best' : 'off');
 }
 
-listenForSequence(toggleGhost);
+// A focused input takes the sequence's "b" and starts the run; restart the same passage clean.
+listenForSequence(() => {
+  toggleGhost();
+  if (attempt?.status === 'running' && document.body.dataset.view === 'practice') resetSession(sessionKind, { focus: true, selectedPassage: passage });
+});
 
 let resizeFrame = 0;
 addEventListener('resize', () => {
