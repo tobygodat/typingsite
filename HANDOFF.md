@@ -2,6 +2,10 @@
 
 Updated 30 September 2026 (online multiplayer, progress exploration, recurring training, corpus v5 and daily challenge). Read `PRODUCT.md`, `AGENTS.md`, `DESIGN.md` and `docs/decisions/2026-09-22-learning-loop.md` before changing behavior or visuals. `DESIGN.md` describes the shipped build; the tokens at the top of `src/styles.css` and the Brand Commitments in `PRODUCT.md` are the implementation source of truth.
 
+## Open work (8 October 2026)
+
+There are 17 open PRs from the 8 October feature sprint (#18–#34), and none of them is merged yet. This file still describes master. For the merge plan, the conflicts the PRs have with each other and the decisions waiting on you, read `docs/notes/2026-10-08-handoff.md`. The flags and ideas from the sprint are in `docs/notes/2026-10-08-feature-session.md`. Once a PR merges, move its behaviour into the sections below.
+
 ## Current state
 
 The app was redesigned on 22 September 2026, away from the former Ash system (`design/ash/`, now historical reference only), then trimmed after a critique (`.impeccable/critique/2026-09-22T19-57-13Z__index-html.md`). It remains native HTML/CSS/JavaScript with no runtime dependencies; accounts (29 September 2026) and feature suggestions use Supabase over plain `fetch`. Scoring, replay and the learning loop are unchanged in behaviour.
