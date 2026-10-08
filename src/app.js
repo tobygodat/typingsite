@@ -22,7 +22,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { MIN_PATTERN_SAMPLES, dailyPassage, filterRuns, keyAnalysis, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -1124,6 +1124,37 @@ function renderTraining() {
   }));
 }
 
+// Static heatmap: coral steps by first-attempt miss rate; thin evidence stays neutral.
+function renderKeys(runs) {
+  const analysis = keyAnalysis(runs);
+  const pct = (v) => `${(v * 100).toFixed(1)}%`;
+  $('key-note').textContent = `First-try misses per key from ${analysis.runs} saved ${analysis.runs === 1 ? 'run' : 'runs'} at these conditions. Keys with fewer than ${MIN_PATTERN_SAMPLES} samples stay neutral.`;
+  $('key-heatmap').replaceChildren(...['qwertyuiop', 'asdfghjkl', 'zxcvbnm'].map((letters) => {
+    const row = element('div', '', 'key-row');
+    for (const letter of letters) {
+      const stat = analysis.keys[letter];
+      const cell = element('span', letter, 'key');
+      cell.setAttribute('role', 'listitem');
+      const step = !stat?.enough ? 'none' : stat.missRate >= 0.08 ? '3' : stat.missRate >= 0.04 ? '2' : stat.missRate > 0 ? '1' : '0';
+      cell.dataset.heat = step;
+      cell.title = stat?.enough ? `${letter}: ${pct(stat.missRate)} miss · ${stat.samples} samples`
+        : `${letter}: not enough samples (${stat?.samples || 0})`;
+      cell.setAttribute('aria-label', cell.title);
+      row.append(cell);
+    }
+    return row;
+  }));
+  const rows = analysis.pairs.map((p) => {
+    const tr = document.createElement('tr');
+    tr.append(element('td', `“${p.pair}”`), element('td', `${pct(p.missRate)} (${p.errors})`, 'num'),
+      element('td', `${p.slowRuns} of ${p.runs}`, 'num'), element('td', String(p.samples), 'num'));
+    return tr;
+  });
+  $('pairs-table').querySelector('tbody').replaceChildren(...rows);
+  $('pairs-table').hidden = !rows.length;
+  $('pairs-empty').hidden = Boolean(rows.length);
+}
+
 function renderHistory() {
   const eligible = profile.runs.filter(trendRun);
   const hasProgress = eligible.length > 0 || profile.loops.length > 0;
@@ -1144,6 +1175,7 @@ function renderHistory() {
   $('progress-trend-note').textContent = matching.length
     ? `${matching.length} completed practice runs and retests, oldest to newest. Select a point or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs appear only in All saved runs.' : ''}`
     : 'No completed practice runs at these conditions in this period. Try a longer period or different conditions.';
+  renderKeys(source ? filterRuns(profile.runs, key, period) : []);
   $('run-history').replaceChildren(...[...matching].reverse().map((run) => {
     const row = element('details', '', 'run-row');
     row.dataset.runId = run.id;

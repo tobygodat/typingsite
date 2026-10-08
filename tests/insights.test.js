@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+import { dailyPassage, filterRuns, keyAnalysis, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
@@ -81,4 +81,16 @@ test('original quote pool has fresh choices in every length and difficulty bucke
       }
     }
   }
+});
+
+test('key analysis sums first attempts per key and ranks pairs only with enough samples', () => {
+  const runs = [run('a', { patterns: [['th', 12, 2, 10, 140, 20], ['ah', 4, 1, 0, null, null], ['an', 5, 0, 0, null, null]] }),
+    run('b', { patterns: [['th', 8, 0, 4, 120, -5], ['an', 3, 1, 0, null, null]] }),
+    run('c', { interrupted: true, patterns: [['th', 50, 50, 0, null, null]] })];
+  const result = keyAnalysis(runs);
+  assert.equal(result.runs, 2);
+  assert.deepEqual(result.keys.h, { key: 'h', samples: 24, errors: 3, missRate: 3 / 24, enough: true });
+  assert.equal(result.keys.n.enough, false);
+  assert.equal(result.keys.n.samples, 8);
+  assert.deepEqual(result.pairs.map((p) => [p.pair, p.samples, p.errors, p.slowRuns]), [['th', 20, 2, 1]]);
 });

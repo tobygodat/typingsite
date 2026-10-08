@@ -1441,6 +1441,31 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .trend-dot:hover, .trend-dot:focus { fill: var(--accent); stroke: var(--text); }
 .progress-section, .training-memory, .daily-challenge { padding: var(--space-8) 0; border-top: 1px solid var(--hairline); }
 .progress-section h2, .training-memory h2, .daily-challenge h2, .local-challenge-heading { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
+
+/* Keys: static heatmap, coral steps only, no motion. */
+.key-heatmap { justify-content: start; margin: var(--space-4) 0 var(--space-6); }
+.key-heatmap .key-row { justify-content: start; }
+.key-heatmap .key-row:nth-child(2) { padding-left: 20px; }
+.key-heatmap .key-row:nth-child(3) { padding-left: 40px; }
+.key-heatmap .key { transition: none; border-bottom-width: 1px; }
+.key-heatmap .key[data-heat="none"] { border-style: dashed; color: var(--outline); }
+.key-heatmap .key[data-heat="0"] { color: var(--text); }
+.key-heatmap .key[data-heat="1"] { color: var(--text); background: var(--danger-soft); }
+.key-heatmap .key[data-heat="2"] { color: var(--text); background: color-mix(in oklab, var(--danger) 32%, transparent); }
+.key-heatmap .key[data-heat="3"] { color: var(--text); background: color-mix(in oklab, var(--danger) 55%, transparent); border-color: var(--danger); }
+.pairs-heading { margin: 0 0 var(--space-2); font-size: var(--text-lead); font-weight: 400; }
+.pairs-table { border-collapse: collapse; font-size: var(--text-small); }
+.pairs-table th { font: 500 var(--text-mono)/1.4 var(--font-mono); color: var(--muted); text-align: left; padding: var(--space-2) var(--space-6) var(--space-2) 0; border-bottom: 1px solid var(--hairline); }
+.pairs-table td { padding: var(--space-2) var(--space-6) var(--space-2) 0; border-bottom: 1px solid var(--hairline); }
+.pairs-table td.num { font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .key-heatmap { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .key-heatmap .key { flex: 1 1 0; min-width: 0; max-width: 34px; height: 34px; }
+  .key-heatmap .key-row:nth-child(2) { padding-left: 14px; }
+  .key-heatmap .key-row:nth-child(3) { padding-left: 28px; }
+  .pairs-table { width: 100%; }
+  .pairs-table th, .pairs-table td { padding-right: var(--space-2); }
+}
 .training-memory { margin-top: var(--space-8); }
 .training-target, .run-row, .daily-result { padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
 .training-target { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: center; }
@@ -1933,7 +1958,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   body[data-font-size="28"] .typing-wrap { --passage-size: 26px; }
   body[data-font-size="36"] .typing-wrap { --passage-size: 32px; }
   .shortcut-row { display: none; }
-  .keyboard { display: none; }
+  .keyboard:not(.key-heatmap) { display: none; }
   .site-footer { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: var(--space-2); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }

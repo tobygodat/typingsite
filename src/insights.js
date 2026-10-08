@@ -111,3 +111,36 @@ const DAILY_TEXTS = [
   'The letter arrived without an explanation for its long journey. Its corners were soft, and the stamp had almost faded. Inside was a short account of a summer by the sea, written by someone who had thought an ordinary day was worth sharing.',
   'When the power returned, we left the candles burning for a little longer. The room looked familiar again, but conversation had found a different pace. Nobody reached for a screen until the last story was finished and the kettle began to sing.',
 ];
+
+// Stilltype rule: no confident per-key or per-pair claim below this many first attempts.
+export const MIN_PATTERN_SAMPLES = 10;
+
+// Compact pattern memory → per-key and per-pair totals. A pair's first attempt is a try at its
+// second letter, so a key's miss rate is first-attempt errors on that letter over its tries.
+export function keyAnalysis(runs, limit = 8) {
+  const recent = runs.filter((r) => validRun(r) && (r.patterns || []).length).slice(-MAX_PATTERN_RUNS);
+  const keys = new Map();
+  const pairs = new Map();
+  for (const run of recent) {
+    for (const [pair, observations, errors, timingCount, medianMs, slowdownMs] of run.patterns) {
+      const k = keys.get(pair[1]) || { key: pair[1], samples: 0, errors: 0 };
+      k.samples += observations;
+      k.errors += errors;
+      keys.set(pair[1], k);
+      const p = pairs.get(pair) || { pair, samples: 0, errors: 0, slowRuns: 0, runs: 0 };
+      p.samples += observations;
+      p.errors += errors;
+      p.runs += 1;
+      if (timingCount >= MIN_PATTERN_SAMPLES && slowdownMs > 0 && medianMs !== null) p.slowRuns += 1;
+      pairs.set(pair, p);
+    }
+  }
+  const rate = (v) => ({ ...v, missRate: v.samples ? v.errors / v.samples : 0, enough: v.samples >= MIN_PATTERN_SAMPLES });
+  return {
+    runs: recent.length,
+    keys: Object.fromEntries([...keys.values()].map((k) => [k.key, rate(k)])),
+    pairs: [...pairs.values()].map(rate).filter((p) => p.enough && (p.errors > 0 || p.slowRuns > 0))
+      .sort((a, b) => b.missRate - a.missRate || b.slowRuns - a.slowRuns || b.samples - a.samples || a.pair.localeCompare(b.pair))
+      .slice(0, limit),
+  };
+}
