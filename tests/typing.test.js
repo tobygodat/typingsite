@@ -11,6 +11,7 @@ import {
   makePassage,
   metrics,
   normalizeCustomText,
+  orderCustomText,
   passageComplete,
   recommendTarget,
   replayAttempt,
@@ -136,4 +137,26 @@ test('custom text keeps only what an English keyboard types, one unit per letter
   assert.equal(clean('…'.repeat(1001)).length, CUSTOM_MAX);
   assert.equal(normalizeCustomText('…'.repeat(1001), Infinity).length, 3003);
   assert.equal(clean(clean('“a” — b…')), clean('“a” — b…'));
+});
+
+test('reordered custom text is never longer than the validated source', () => {
+  // One 2,000-character word and 500 one-letter words: sampling with replacement could draw the long word twice.
+  const long = 'a'.repeat(2000);
+  const source = [long, ...Array(500).fill('b')].join(' ');
+  assert.equal(source.length, 3000);
+  const limit = Math.min(source.length, CUSTOM_MAX);
+  let drewLong = 0;
+  for (let seed = 1; seed <= 500; seed += 1) {
+    let state = seed;
+    const random = () => ((state = (state * 16807) % 2147483647) / 2147483647);
+    const randomOrder = orderCustomText(source, 'random', random);
+    assert.ok(randomOrder.length > 0 && randomOrder.length <= limit, `seed ${seed}: ${randomOrder.length}`);
+    assert.ok(randomOrder.split(' ').length <= 501);
+    if (randomOrder.includes(long)) drewLong += 1;
+    const shuffled = orderCustomText(source, 'shuffled', random);
+    assert.equal(shuffled.length, source.length);
+    assert.deepEqual(shuffled.split(' ').sort(), source.split(' ').sort());
+  }
+  assert.ok(drewLong > 0, 'the long word is still drawn sometimes');
+  assert.equal(orderCustomText(source, 'as-written'), source);
 });

@@ -158,6 +158,31 @@ export function normalizeCustomText(value, max = CUSTOM_MAX) {
     .trim();
 }
 
+// Shuffled order uses every word once, so it is exactly as long as the source. Random order samples with
+// replacement, so it stops before the next word would make the passage longer than the source (or the
+// cap): a long word drawn twice can't push the run past what was validated. The first word always fits.
+export function orderCustomText(text, order = 'as-written', random = Math.random) {
+  const words = text.split(' ');
+  if (order === 'shuffled') {
+    for (let i = words.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(random() * (i + 1));
+      [words[i], words[j]] = [words[j], words[i]];
+    }
+    return words.join(' ');
+  }
+  if (order !== 'random') return text;
+  const limit = Math.min(text.length, CUSTOM_MAX);
+  const picked = [];
+  let length = -1;
+  while (picked.length < words.length) {
+    const word = words[Math.floor(random() * words.length)];
+    if (length + 1 + word.length > limit) break;
+    picked.push(word);
+    length += 1 + word.length;
+  }
+  return picked.join(' ');
+}
+
 // The first character outside the passage alphabet, or null when every letter can be typed.
 export function untypableCharacter(text) {
   for (const char of text) if (!TYPABLE.test(char)) return char;

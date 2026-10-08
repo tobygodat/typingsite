@@ -9,6 +9,7 @@ import {
   makeDrill,
   normalizeCustomText,
   normalizeManualTarget,
+  orderCustomText,
   passageComplete,
   recommendTarget,
   replayAttempt,
@@ -57,19 +58,7 @@ let customOpen = false;
 function customPassage() {
   const text = normalizeCustomText(prefs.customText);
   if (!text) return null;
-  const words = text.split(' ');
-  const shuffle = (list) => {
-    for (let i = list.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [list[i], list[j]] = [list[j], list[i]];
-    }
-    return list;
-  };
-  const order = prefs.customOrder;
-  const picked = order === 'shuffled' ? shuffle([...words])
-    : order === 'random' ? words.map(() => words[Math.floor(Math.random() * words.length)])
-      : words;
-  return { id: null, text: picked.join(' '), fresh: false };
+  return { id: null, text: orderCustomText(text, prefs.customOrder), fresh: false };
 }
 
 const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
