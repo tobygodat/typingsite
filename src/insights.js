@@ -5,8 +5,7 @@ export const MAX_PATTERN_RUNS = 120;
 
 export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
-  const evidence = summarizePatterns([attempt]);
-  return {
+  const record = {
     id: attempt.id, at, kind: attempt.kind, status: attempt.status,
     conditions: attempt.conditions, textId: attempt.textId, fresh: attempt.fresh,
     interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput),
@@ -14,14 +13,18 @@ export function runRecord(attempt, at = attempt.at || null) {
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
     firstDailyAttempt: attempt.firstDailyAttempt,
-    // Keep counts and each run's measured median, rather than another keystroke log.
-    patterns: evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]),
   };
+  // Pattern counts only feed recurring targets, which never read missed-word practice.
+  if (attempt.kind === 'missed') return record;
+  const evidence = summarizePatterns([attempt]);
+  // Keep counts and each run's measured median, rather than another keystroke log.
+  record.patterns = evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
+  return record;
 }
 
 export function retainRuns(runs) {
   const kept = runs.slice(-MAX_RUN_SUMMARIES);
-  return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS ? { ...run, patterns: [] } : run);
+  return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS && run.patterns ? { ...run, patterns: [] } : run);
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
@@ -112,16 +115,21 @@ const DAILY_TEXTS = [
   'When the power returned, we left the candles burning for a little longer. The room looked familiar again, but conversation had found a different pace. Nobody reached for a screen until the last story was finished and the kettle began to sing.',
 ];
 
-// A word without the punctuation around it, lowercased: "Table," → "table". Punctuation inside
-// stays ("9:30", "don't"), so no merged, made-up tokens.
-const bareWord = (raw) => raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
+// The bare word: a word without the punctuation around it, lowercased ("Table," → "table").
+// Punctuation inside stays ("9:30", "don't"), so no merged, made-up tokens. `same[k]` is true where
+// the bare word keeps the written character at k unchanged (not a dropped comma, not a capital).
+function bareWord(raw) {
+  const lead = raw.search(/[\p{L}\p{N}]/u);
+  const word = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
+  const same = Array.from({ length: raw.length }, (_, k) => lead >= 0 && k >= lead && word[k - lead] === raw[k]);
+  return { word, same };
+}
 
 // The token that practises these misses: the bare word when every miss was on a character it keeps
 // as typed, else the word as written ("table," for a missed comma, "The" for a missed capital).
 function missedToken(raw, misses) {
-  const bare = bareWord(raw);
-  const lead = raw.search(/[\p{L}\p{N}]/u);
-  return bare && misses.every((k) => k >= lead && bare[k - lead] === raw[k]) ? bare : raw;
+  const { word, same } = bareWord(raw);
+  return word && misses.every((k) => same[k]) ? word : raw;
 }
 
 // When each letter kept at the finish was typed, mirroring replayAttempt's kept text: a mistyped
@@ -145,6 +153,13 @@ function keptOffsets(attempt) {
 
 // Missed words had any wrong first try. The slowest are this run's slowest clean words by per-word
 // wpm: one timing each, so they carry their speed and the run's median for comparison, not a verdict.
+//
+// Per-word pace, one rule for every word: each counted character's interval is the time since the
+// previous kept keystroke, and wpm = (counted characters / 5) / (sum of their intervals). A word
+// counts only the characters its bare word keeps as written, so "table," is timed on t-a-b-l-e (the
+// comma's interval is left out) and "The" on h-e, matching what is reported and drilled. The run's
+// first character has no previous keystroke, so it is never counted: a first word is timed from its
+// second letter, and a word left with no counted characters (a one-letter first word) isn't timed.
 export function missedAndSlowWords(attempt, slowLimit = 5) {
   const replay = attempt.summary || replayAttempt(attempt);
   const first = new Map(replay.firstAttempts.map((item) => [item.position, item]));
@@ -154,7 +169,7 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
   let start = 0;
   for (const raw of attempt.text.split(' ')) {
     const end = start + raw.length;
-    const word = bareWord(raw);
+    const { word, same } = bareWord(raw);
     const tries = [];
     for (let i = start; i < end; i += 1) if (first.has(i)) tries.push(first.get(i));
     const misses = tries.filter((item) => !item.correct).map((item) => item.position - start);
@@ -162,10 +177,14 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
       const token = missedToken(raw, misses);
       if (!missed.includes(token)) missed.push(token);
     } else if (word && tries.length === raw.length) {
-      // Time from the kept keystroke before the word (its space) to the word's last kept letter.
-      const from = kept[start > 0 ? start - 1 : start];
-      const ms = kept[end - 1] - from;
-      if (ms > 0) timed.push({ word, wpm: (raw.length / 5) / (ms / 60000) });
+      let count = 0;
+      let ms = 0;
+      for (let k = 0; k < raw.length; k += 1) {
+        if (!same[k] || start + k === 0) continue;
+        count += 1;
+        ms += kept[start + k] - kept[start + k - 1];
+      }
+      if (count && ms > 0) timed.push({ word, wpm: (count / 5) / (ms / 60000) });
     }
     start = end + 1;
   }

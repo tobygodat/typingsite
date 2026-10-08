@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+import { dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 test('missed and slowest words come from first tries and per-word speed', () => {
   const text = 'the cat sat on mat';
@@ -45,8 +45,49 @@ test('a corrected space does not charge its correction to the next word', () => 
   const { missed, slow, timedCount } = missedAndSlowWords({ text, events }, 3);
   assert.deepEqual(missed, []);
   assert.equal(timedCount, 3);
-  // "sat" is timed from the kept space: 3 letters in 240 ms is 150 wpm.
-  assert.deepEqual(slow, [{ word: 'cat', wpm: 120 }, { word: 'sat', wpm: 150 }, { word: 'the', wpm: 180 }]);
+  // "sat" is timed from the kept space: 3 letters in 240 ms is 150 wpm. "the" counts h-e only.
+  assert.deepEqual(Object.fromEntries(slow.map((item) => [item.word, item.wpm])), { the: 120, cat: 120, sat: 150 });
+});
+
+test('per-word pace counts one interval per character, since the previous kept keystroke', () => {
+  const text = 'to table, a cat sat';
+  const at = (char, position, offsetMs) => ({ type: 'insert', text: char, position, offsetMs });
+  // [character, ms since the previous keystroke]; the space before "cat" is mistyped, deleted and
+  // retyped, so "cat" starts from the kept space at 5600 ms.
+  const keys = [['t', 1000], ['o', 100], [' ', 100], ['t', 200], ['a', 200], ['b', 200], ['l', 200], ['e', 200],
+    [',', 1000], [' ', 100], ['a', 300]];
+  const events = [];
+  let t = 0;
+  keys.forEach(([char, gap], position) => events.push(at(char, position, (t += gap))));
+  events.push(at('x', 11, 3700), { type: 'delete', count: 1, offsetMs: 3800 }, at(' ', 11, 5600));
+  t = 5600;
+  [...'cat sat'].forEach((char, i) => events.push(at(char, 12 + i, (t += char === ' ' ? 100 : i < 3 ? 150 : 100))));
+  const result = missedAndSlowWords({ text, events }, 10);
+  const pace = Object.fromEntries(result.slow.map((item) => [item.word, item.wpm]));
+  for (const [word, wpm, why] of [
+    ['to', 120, 'first word: its first key has no interval, so only "o" counts (1 char in 100 ms)'],
+    ['table', 60, 'trailing comma left out: t-a-b-l-e, 5 chars in 1000 ms, not 6 in 2000 ms'],
+    ['a', 40, 'one-letter word mid-run: 1 char in 300 ms since its space'],
+    ['cat', 80, 'after a corrected space: 3 chars in 450 ms from the kept space'],
+    ['sat', 120, 'plain mid word: 3 chars in 300 ms'],
+  ]) assert.equal(pace[word], wpm, why);
+  assert.equal(result.timedCount, 5);
+  assert.equal(result.medianWpm, 80);
+  // A one-letter first word has no interval at all, so it isn't timed.
+  const short = missedAndSlowWords({ text: 'a go', events: [at('a', 0, 0), at(' ', 1, 100), at('g', 2, 200), at('o', 3, 300)] });
+  assert.deepEqual(short.slow, [{ word: 'go', wpm: 120 }]);
+  assert.equal(short.timedCount, 1);
+});
+
+test('missed-word run records leave out pattern counts nothing reads', () => {
+  const typed = { id: 'm', kind: 'missed', status: 'complete', conditions: {}, text: 'the cat', events: [...'the cat'].map((char, i) => ({ type: 'insert', text: char, position: i, offsetMs: i * 100 })) };
+  const record = runRecord(typed);
+  assert.equal('patterns' in record, false);
+  assert.deepEqual(Object.keys(record).sort(), ['at', 'challengeDate', 'conditions', 'elapsedMs', 'errors', 'firstDailyAttempt', 'fresh', 'id', 'interrupted', 'kind', 'score', 'status', 'target', 'textId']);
+  assert.ok(Array.isArray(runRecord({ ...typed, kind: 'test' }).patterns));
+  // Trimming old pattern memory doesn't add the field back.
+  const kept = retainRuns([record, ...Array.from({ length: 120 }, (_, i) => runRecord({ ...typed, id: String(i), kind: 'test' }))]);
+  assert.equal('patterns' in kept[0], false);
 });
 
 // Types `text` at 100 ms a key, with a wrong first try (then fixed) at each position in `misses`.

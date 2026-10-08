@@ -216,6 +216,7 @@ export function summarizePatterns(attempts, limit = 20, compatibleConditions = n
   const recent = attempts.filter((attempt) => attempt.status === 'complete'
     && !attempt.interrupted
     && attempt.kind !== 'drill'
+    && attempt.kind !== 'missed'
     && attempt.kind !== 'race'
     && (attempt.kind !== 'daily' || attempt.fresh !== false)
     && (!key || conditionKey(attempt.conditions) === key)).slice(-limit);
