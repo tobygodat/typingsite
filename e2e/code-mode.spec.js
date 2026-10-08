@@ -18,6 +18,28 @@ test('code mode serves a python snippet and keeps the run out of bests', async (
   await expect(page.locator('#best')).toHaveText('Code runs aren’t ranked');
 });
 
+test('code snippets stay inside the typing area at 320px with large text', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await openApp(page);
+  await page.locator('#font-size').evaluate((select) => { select.value = '36'; select.dispatchEvent(new Event('change')); });
+  await page.locator('#mode-code').click();
+  for (const language of ['js', 'python', 'go', 'rust']) {
+    await page.locator(`#duration-options [data-language="${language}"]`).click();
+    for (let i = 0; i < 6; i += 1) {
+      const clipped = await page.evaluate(() => {
+        const area = document.getElementById('typing-wrap').getBoundingClientRect();
+        // A space may hang past the edge at a line end, as in prose; letters may not.
+        return [...document.querySelectorAll('#text-display .char')].filter((char) => char.textContent !== ' ')
+          .filter((char) => { const box = char.getBoundingClientRect(); return box.left < area.left - 0.5 || box.right > area.right + 0.5; })
+          .map((char) => char.textContent).join('');
+      });
+      expect(clipped, `${language}: ${await passageText(page)}`).toBe('');
+      await page.locator('#typing-input').focus();
+      await page.keyboard.press('Escape');
+    }
+  }
+});
+
 // Docs captures only refresh with SCREENSHOTS=1; normal runs write to the test output folder.
 test('a code run clears the earlier practice baseline', async ({ page }) => {
   await openApp(page);

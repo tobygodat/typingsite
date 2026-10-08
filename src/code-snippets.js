@@ -1,12 +1,14 @@
 // Short original code snippets for code mode. The engine has no line breaks, so each snippet is
-// auto-unindented and its lines are joined with a single space.
+// auto-unindented and its lines are joined with a single space. Tokens stay at MAX_CODE_TOKEN
+// characters or fewer so they rarely have to break mid-token on a narrow screen.
 export const CODE_LANGUAGES = ['js', 'python', 'go', 'rust'];
 export const DEFAULT_CODE_LANGUAGE = 'js';
+export const MAX_CODE_TOKEN = 24;
 
 export const CODE_SNIPPETS = {
   js: [
     `const total = items.reduce((sum, { price, qty }) => sum + price * qty, 0);`,
-    `if (user?.roles.includes('admin')) {
+    `if (!isAdmin(user)) {
       return res.status(403).json({ error: "forbidden" });
     }`,
     `const byId = new Map(rows.map((row) => [row.id, row]));`,
@@ -14,7 +16,8 @@ export const CODE_SNIPPETS = {
       grid[i] = grid[i].filter((cell) => cell !== null);
     }`,
     `export const clamp = (n, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, n));`,
-    `const { data, error } = await fetch(\`/api/runs?limit=\${limit}\`).then((r) => r.json());`,
+    `const res = await fetch(\`/runs?n=\${n}\`);
+    const { data, error } = await res.json();`,
   ],
   python: [
     `def mean(values: list[float]) -> float:
@@ -49,7 +52,7 @@ export const CODE_SNIPPETS = {
     `fn max_of(xs: &[i32]) -> Option<i32> {
         xs.iter().copied().max()
     }`,
-    `let words: Vec<&str> = line.split_whitespace().collect();`,
+    `let rows: Vec<&str> = text.lines().collect();`,
     `match cmd.as_str() {
         "quit" => break,
         _ => println!("unknown: {}", cmd),

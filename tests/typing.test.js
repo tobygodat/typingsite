@@ -112,7 +112,7 @@ test('generated passages draw from the selected common-word list', async () => {
 });
 
 test('every code snippet unindents to a non-empty single line the engine accepts', async () => {
-  const { CODE_LANGUAGES, CODE_SNIPPETS, codePassage, unindent } = await import('../src/code-snippets.js');
+  const { CODE_LANGUAGES, CODE_SNIPPETS, MAX_CODE_TOKEN, codePassage, unindent } = await import('../src/code-snippets.js');
   for (const language of CODE_LANGUAGES) {
     assert.ok(CODE_SNIPPETS[language].length >= 6, language);
     for (const snippet of CODE_SNIPPETS[language]) {
@@ -120,6 +120,7 @@ test('every code snippet unindents to a non-empty single line the engine accepts
       assert.ok(text.length > 0, snippet);
       assert.match(text, /^[\x20-\x7e]+$/u, text);
       assert.doesNotMatch(text, /^ | $| {2}/u, text);
+      for (const token of text.split(' ')) assert.ok(token.length <= MAX_CODE_TOKEN, token);
     }
     assert.equal(codePassage(language).language, language);
     const seenIds = [];
