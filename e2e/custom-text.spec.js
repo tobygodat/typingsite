@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto } from './fixtures.js';
+import { test, expect, openApp, openSettings, passageText, typeInto } from './fixtures.js';
 
 const TEXT = 'the quick brown fox jumps over the lazy dog';
 
@@ -8,7 +8,7 @@ test('custom text runs under its own condition and never becomes a best', async 
   await expect(page.locator('#custom-options')).toBeVisible();
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#custom-text').fill(`  ${TEXT}\n  `);
-  await expect(page.locator('#custom-count')).toContainText('/ 10,000');
+  await expect(page.locator('#custom-count')).toContainText('/ 3,000');
   await page.locator('#custom-use').click();
 
   await expect(page.locator('#custom-options')).toBeHidden();
@@ -40,17 +40,38 @@ test('smart punctuation is normalised to typeable characters', async ({ page }) 
   expect(await passageText(page)).toBe('"It\'s fine" - she said... ok');
 });
 
-test('emoji are dropped and the length cap holds after punctuation expands', async ({ page }) => {
+test('emoji are dropped and the length cap is checked after punctuation expands', async ({ page }) => {
   await openApp(page);
   await page.locator('#mode-custom').click();
   await page.locator('#custom-text').fill('go 🚀 now');
   await page.locator('#custom-use').click();
   expect(await passageText(page)).toBe('go now');
 
+  // 1,001 ellipses become 3,003 characters: refused with the count, not silently cut.
   await page.locator('#mode-custom').click();
-  await page.locator('#custom-text').fill('…'.repeat(10000));
+  await page.locator('#custom-text').fill('…'.repeat(1001));
   await page.locator('#custom-use').click();
-  expect((await passageText(page)).length).toBe(10000);
+  await expect(page.locator('#custom-error')).toContainText('Keep it to 3,000 characters');
+  await expect(page.locator('#custom-error')).toContainText('3,003');
+  await expect(page.locator('#custom-options')).toBeVisible();
+
+  await page.locator('#custom-text').fill('…'.repeat(1000));
+  await page.locator('#custom-use').click();
+  expect((await passageText(page)).length).toBe(3000);
+});
+
+test('changing stop on error keeps the custom passage', async ({ page }) => {
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(TEXT);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('continue on error');
+
+  await openSettings(page);
+  await page.locator('#stop-on-error-toggle').check();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await expect(page.locator('#condition-line')).toContainText('stop on error');
+  expect(await passageText(page)).toBe(TEXT);
 });
 
 test('invisible format characters are stripped', async ({ page }) => {

@@ -48,7 +48,9 @@ const defaultPreferences = {
   customOrder: 'as-written',
 };
 
-const CUSTOM_MAX = 10000;
+// About ten minutes of typing. Each keystroke replays the whole run, so a longer passage makes late keys lag
+// (measured: ~2 ms per key at 3,000 characters, ~9 ms at 9,000).
+const CUSTOM_MAX = 3000;
 const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
 let customOpen = false;
 
@@ -56,8 +58,8 @@ let customOpen = false;
 // Characters outside the BMP (emoji) are dropped: scoring indexes the passage by UTF-16 unit, so each
 // letter must be one unit. Format controls (\p{Cf}: soft hyphen, ZWSP, ZWJ/ZWNJ, bidi marks, BOM) are
 // invisible, so they would be targets nobody can see. The cap applies after expansion so a saved passage
-// is stable across reloads.
-function normalizeCustomText(value) {
+// is stable across reloads; pass max = Infinity to measure the full text before refusing it.
+function normalizeCustomText(value, max = CUSTOM_MAX) {
   return String(value || '').normalize('NFC')
     .replace(/\p{Cf}/gu, '')
     .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
@@ -67,7 +69,7 @@ function normalizeCustomText(value) {
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uFE00-\uFE0F\uD800-\uDFFF]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, CUSTOM_MAX)
+    .slice(0, max)
     .trim();
 }
 
@@ -500,6 +502,9 @@ function choosePassage(extraSeen = []) {
   });
 }
 
+// Restarting or changing a setting keeps a custom passage; every other session restarts as practice.
+const restartKind = () => (sessionKind === 'custom' ? 'custom' : 'practice');
+
 function sessionDurationMs() {
   if (sessionKind === 'daily') return null;
   if (sessionKind === 'drill') return 60000;
@@ -823,7 +828,7 @@ function storeAttempt(completed) {
   const score = completed.summary.score;
   const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
   resultBestBefore = profile.bests[key] || null;
-  // A custom passage can run to 10,000 characters, so only its summary record is kept, not the keystroke trace.
+  // A custom passage can run to thousands of characters, so only its summary record is kept, not the keystroke trace.
   if (completed.kind !== 'custom') profile.attempts.push(completed);
   profile.runs.push(runRecord(completed));
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
@@ -1847,7 +1852,7 @@ function bindEvents() {
     }
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
-  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(sessionKind === 'custom' ? 'custom' : 'practice', { focus: true }));
+  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(restartKind(), { focus: true }));
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
@@ -1960,7 +1965,7 @@ function setCustomError(message = '') {
 
 // The panel never opens or closes beside a live run: like the other mode buttons, it restarts the run first.
 function openCustom(open = true) {
-  if (attempt?.status === 'running') resetSession(sessionKind === 'custom' ? 'custom' : 'practice');
+  if (attempt?.status === 'running') resetSession(restartKind());
   customOpen = open;
   if (open) {
     if (!$('custom-text').value) $('custom-text').value = prefs.customText || '';
@@ -1974,8 +1979,9 @@ function openCustom(open = true) {
 
 // Signed in, the text is kept with the other preferences; a guest's preferences live only in memory.
 function useCustomText() {
-  const text = normalizeCustomText($('custom-text').value);
+  const text = normalizeCustomText($('custom-text').value, Infinity);
   const error = !text ? 'Add some text first.'
+    : text.length > CUSTOM_MAX ? `Keep it to ${CUSTOM_MAX.toLocaleString('en')} characters, about ten minutes of typing. This text has ${text.length.toLocaleString('en')}.`
     : IME_SCRIPT.test(text) ? 'Chinese, Japanese and Korean characters need an input method, which isn’t scored. Remove them to continue.'
       : '';
   setCustomError(error);
@@ -2013,14 +2019,14 @@ function setStopOnError(enabled) {
   prefs.stopOnError = enabled;
   applyPreferences();
   saveProfile();
-  if (document.body.dataset.view === 'practice') resetSession('practice');
+  if (document.body.dataset.view === 'practice') resetSession(restartKind());
 }
 
 function setWordList(id) {
   prefs.wordList = id;
   applyPreferences();
   saveProfile();
-  resetSession('practice', { focus: true });
+  resetSession(restartKind(), { focus: true });
 }
 
 function paletteCommands(query) {
@@ -2036,7 +2042,7 @@ function paletteCommands(query) {
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: sessionKind === 'custom' ? 'current' : '', on: sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
-    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
+    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
