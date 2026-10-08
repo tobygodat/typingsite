@@ -445,8 +445,9 @@ function keptTimes(attempt) {
 
 // The passage words the run reached, flagged if any first try or kept letter in them missed, with
 // the pace from the previous word's space (or the run's first keystroke) to the word's last letter,
-// timed by the keystrokes kept at the finish so corrections count against the pace. A word the run
-// stopped inside shows only the letters typed; the rest are counted as missed, not shown as typed.
+// timed by the keystrokes kept at the finish so corrections count against the pace. The passage sets
+// each word's bounds; the word shown is the letters kept there, slips left in included. A word the
+// run stopped inside shows only the letters typed; the rest are counted as missed, not shown.
 export function wordHistory(attempt, replay = replayAttempt(attempt)) {
   const target = attempt.text;
   const firsts = new Map(replay.firstAttempts.map((item) => [item.position, item]));
@@ -468,7 +469,7 @@ export function wordHistory(attempt, replay = replayAttempt(attempt)) {
     const letters = start > 0 || times[start] > from ? end - start + 1 : end - start;
     const durationMs = from !== undefined && times[end] !== undefined ? times[end] - from : 0;
     words.push({
-      word: target.slice(start, end + 1),
+      word: replay.typed.slice(start, end + 1),
       wrong,
       wpm: durationMs > 0 ? Math.round(letters / 5 / (durationMs / 60000)) : null,
     });

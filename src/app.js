@@ -1058,12 +1058,60 @@ function renderSecondaryStats(completed) {
   const chars = characterBreakdown(completed, replay);
   $('result-raw').textContent = rawWpm(completed, replay);
   $('result-consistency').textContent = steady ?? '—';
-  $('result-chars').textContent = `${chars.correct}/${chars.incorrect}/${chars.extra}/${chars.missed}`;
-  $('result-words').replaceChildren(...wordHistory(completed, replay).flatMap((item, i) => {
+  // A break opportunity after each slash, so a long breakdown wraps instead of widening the card.
+  $('result-chars').replaceChildren(...[chars.correct, chars.incorrect, chars.extra, chars.missed]
+    .flatMap((value, i) => (i ? ['/', document.createElement('wbr'), String(value)] : [String(value)])));
+  renderWords(completed, replay);
+}
+
+// Words reached: one tab stop. Arrow keys, Home and End move between words, and focus or a tap
+// shows that word's pace in the line below, so the numbers never depend on a hover tooltip.
+let wordItems = [];
+let wordIndex = null;
+const wordPace = (item) => (item.wpm === null ? 'no pace' : `${item.wpm} wpm`);
+
+function renderWords(completed, replay) {
+  wordItems = wordHistory(completed, replay);
+  $('result-words').replaceChildren(...wordItems.flatMap((item, i) => {
     const word = element('span', item.word, item.wrong ? 'word-miss' : '');
-    word.title = item.wpm === null ? 'no pace' : `${item.wpm} wpm`;
+    word.setAttribute('role', 'option');
+    word.setAttribute('aria-label', `${item.word}, ${wordPace(item)}${item.wrong ? ', mistyped' : ''}`);
+    word.dataset.index = String(i);
+    word.title = wordPace(item);
     return i ? [' ', word] : [word];
   }));
+  selectWord(null);
+}
+
+// Before any choice the first word is the tab stop and the line names the fastest and slowest words.
+function wordSummary() {
+  const paced = wordItems.filter((item) => item.wpm !== null);
+  if (paced.length < 2) return wordItems.length ? 'select a word for its pace' : '';
+  const fastest = paced.reduce((best, item) => (item.wpm > best.wpm ? item : best));
+  const slowest = paced.reduce((low, item) => (item.wpm < low.wpm ? item : low));
+  return `fastest “${fastest.word}” ${fastest.wpm} wpm · slowest “${slowest.word}” ${slowest.wpm} wpm · select a word for its pace`;
+}
+
+function selectWord(index, { focus = false } = {}) {
+  const words = [...$('result-words').querySelectorAll('[role="option"]')];
+  wordIndex = index === null || !words.length ? null : Math.max(0, Math.min(index, words.length - 1));
+  words.forEach((word, i) => {
+    word.tabIndex = i === (wordIndex ?? 0) ? 0 : -1;
+    word.setAttribute('aria-selected', String(i === wordIndex));
+  });
+  const item = wordItems[wordIndex];
+  $('result-word-detail').textContent = item ? `“${item.word}” · ${wordPace(item)}${item.wrong ? ' · mistyped' : ''}` : wordSummary();
+  if (focus && item) words[wordIndex].focus();
+}
+
+function moveWordFocus(event) {
+  const word = event.target.closest?.('[role="option"]');
+  if (!word) return;
+  const at = Number(word.dataset.index);
+  const next = { ArrowLeft: at - 1, ArrowUp: at - 1, ArrowRight: at + 1, ArrowDown: at + 1, Home: 0, End: wordItems.length - 1 }[event.key];
+  if (next === undefined) return;
+  event.preventDefault();
+  selectWord(next, { focus: true });
 }
 
 function element(tag, text, className = '') {
@@ -1388,6 +1436,8 @@ function clearHistory() {
   activeRecommendation = null;
   for (const id of ['result-wpm', 'result-accuracy', 'result-errors', 'result-time', 'result-raw', 'result-consistency', 'result-chars']) $(id).textContent = '—';
   $('result-words').replaceChildren();
+  wordItems = [];
+  selectWord(null);
   $('result-delta').textContent = 'No run yet.';
   $('result-comparison-note').textContent = '';
   $('run-card-stamp').textContent = 'no run yet';
@@ -1797,6 +1847,16 @@ function bindEvents() {
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
+  $('result-words').addEventListener('keydown', moveWordFocus);
+  $('result-words').addEventListener('focusin', (event) => {
+    const word = event.target.closest('[role="option"]');
+    if (word && Number(word.dataset.index) !== wordIndex) selectWord(Number(word.dataset.index));
+  });
+  // A tap selects the word too, so touch shows the same line as the keyboard.
+  $('result-words').addEventListener('click', (event) => {
+    const word = event.target.closest('[role="option"]');
+    if (word) selectWord(Number(word.dataset.index), { focus: true });
+  });
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);

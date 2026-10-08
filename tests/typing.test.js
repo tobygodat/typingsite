@@ -73,7 +73,8 @@ test('character breakdown separates correct, incorrect, extra and missed', () =>
 
 test('word history flags mistyped words and paces each word', () => {
   const words = wordHistory(evenRun('the cat sat', 200, { 5: 'x' }));
-  assert.deepEqual(words.map((item) => item.word), ['the', 'cat', 'sat']);
+  // A slip left in (continue on error) shows as typed: "cxt", marked, never the target's "cat".
+  assert.deepEqual(words.map((item) => item.word), ['the', 'cxt', 'sat']);
   assert.deepEqual(words.map((item) => item.wrong), [false, true, false]);
   // 4 characters (space + word) in 800 ms = 60 wpm.
   assert.equal(words[2].wpm, 60);
@@ -91,6 +92,8 @@ test('word pace runs to the kept last letter, so a fixed final slip slows the wo
     { type: 'insert', text: 't', offsetMs: 1600 },
   );
   const [, cat] = wordHistory(attempt);
+  // Fixed, so the kept letters read "cat"; the first-try miss still marks it.
+  assert.equal(cat.word, 'cat');
   assert.equal(cat.wrong, true);
   // Space at 300 ms to the kept "t" at 1600 ms: 3 characters in 1.3 s ≈ 28 wpm, not 120 from the slip.
   assert.equal(cat.wpm, 28);
