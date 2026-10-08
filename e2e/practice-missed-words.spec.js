@@ -28,12 +28,16 @@ async function finishWithTwoMisses(page, delay = 0) {
   return [words[first], words[second]];
 }
 
-test('missed and slow words become their own uncounted practice run', async ({ page }) => {
+test('missed and slowest words become their own uncounted practice run', async ({ page }) => {
   const missed = await finishWithTwoMisses(page);
   const best = await page.locator('#best').textContent();
   const button = page.locator('#practice-words');
   await expect(button).toBeVisible();
-  await expect(button).toHaveText(/^Practice 2 missed · [1-5] slow words?$/);
+  await expect(button).toHaveText(/^Practice these [3-7] words$/);
+  // The slowest words are one timing each, so they show their speed and the run's median.
+  const evidence = page.locator('#practice-words-evidence');
+  await expect(evidence).toContainText(`missed first try: ${missed.join(', ')}`);
+  await expect(evidence).toContainText(/slowest in this run: .+ \d+ wpm .*· median \d+ wpm over \d+ clean words/);
 
   await button.click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
@@ -48,6 +52,8 @@ test('missed and slow words become their own uncounted practice run', async ({ p
   await expect(page.locator('#result-delta')).toHaveText('Word practice complete · not counted toward your best');
   await expect(page.locator('#result-conditions')).toContainText('missed words');
   await expect(page.locator('#run-card-stamp')).toContainText('missed');
+  // The retest it offers keeps the 10-word baseline's shape.
+  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 10-word retest.');
   // A fast practice run on short words must not become a personal best.
   await expect(page.locator('#best')).toHaveText(best);
   // Run again stays on the same practice passage.
@@ -56,7 +62,15 @@ test('missed and slow words become their own uncounted practice run', async ({ p
   expect((await passageText(page)).split(' ')).toEqual(practice);
 });
 
-test('screenshots', async ({ page }) => {
+// Committed docs images are only rewritten on request (SCREENSHOTS=1); normal runs still take
+// the shots, into the test's own output folder.
+const shot = (testInfo, name) => process.env.SCREENSHOTS
+  ? `docs/screenshots/practice-missed-words/${name}.png`
+  : testInfo.outputPath(`${name}.png`);
+
+test('screenshots', async ({ page }, testInfo) => {
+  // Two runs typed at a human pace take most of the default 30 s.
+  test.setTimeout(90_000);
   await page.setViewportSize({ width: 1280, height: 1000 });
   for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
@@ -65,12 +79,12 @@ test('screenshots', async ({ page }) => {
     await expect(page.locator('#practice-words')).toBeVisible();
     await page.mouse.move(1270, 990);
     await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: `docs/screenshots/practice-missed-words/run-card-${scheme}.png` });
+    await page.screenshot({ path: shot(testInfo, `run-card-${scheme}`) });
     if (scheme === 'dark') {
       await page.locator('#practice-words').click();
       await expect(page.locator('#session-kicker')).toHaveText('missed words');
       await page.evaluate(() => window.scrollTo(0, 0));
-      await page.screenshot({ path: 'docs/screenshots/practice-missed-words/practice-passage.png' });
+      await page.screenshot({ path: shot(testInfo, 'practice-passage') });
     }
   }
 });

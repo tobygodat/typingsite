@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
 import { dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
 
-test('missed and slow words come from first tries and per-word speed', () => {
+test('missed and slowest words come from first tries and per-word speed', () => {
   const text = 'the cat sat on mat';
   // One keystroke every 100 ms, except "on" is slow and "cat" has a wrong first try.
   const events = [];
@@ -13,16 +13,25 @@ test('missed and slow words come from first tries and per-word speed', () => {
     if (i === 5) events.push({ type: 'insert', text: 'x', position: i, offsetMs: t - 50 }, { type: 'delete', count: 1, offsetMs: t - 25 });
     events.push({ type: 'insert', text: text[i], position: i, offsetMs: t });
   }
-  const { missed, slow } = missedAndSlowWords({ text, events }, 2);
+  const { missed, slow, timedCount, medianWpm } = missedAndSlowWords({ text, events }, 2);
   assert.deepEqual(missed, ['cat']);
-  assert.equal(slow[0], 'on');
+  // "on" took 1200 ms for two letters plus its space: 2 / 5 words in 1.2 s is 20 wpm.
+  assert.deepEqual(slow[0], { word: 'on', wpm: 20 });
   assert.equal(slow.length, 2);
-  assert.ok(!slow.includes('cat'));
+  assert.ok(!slow.some((item) => item.word === 'cat'));
+  // Four clean words were timed; the median sits between the two middle speeds.
+  assert.equal(timedCount, 4);
+  assert.ok(medianWpm > slow[0].wpm);
   const passage = practiceWordsPassage(['cat', 'on'], 40);
   assert.equal(passage, practiceWordsPassage(['cat', 'on'], 40));
   assert.equal(passage.split(' ').length, 40);
   assert.ok(!/\b(\w+) \1\b/.test(passage));
   assert.equal(practiceWordsPassage([]), '');
+  // More words than the passage length: the passage grows so none is dropped.
+  const many = Array.from({ length: 45 }, (_, i) => `w${i}`);
+  const long = practiceWordsPassage(many, 40).split(' ');
+  assert.equal(long.length, 45);
+  assert.deepEqual([...long].sort(), [...many].sort());
 });
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };

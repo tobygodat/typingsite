@@ -114,7 +114,8 @@ const DAILY_TEXTS = [
 
 const cleanWord = (word) => word.toLowerCase().replace(/[^\p{L}\p{N}'-]/gu, '');
 
-// Missed words had any wrong first try; slow words are the slowest clean words by per-word wpm.
+// Missed words had any wrong first try. The slowest are this run's slowest clean words by per-word
+// wpm: one timing each, so they carry their speed and the run's median for comparison, not a verdict.
 export function missedAndSlowWords(attempt, slowLimit = 5) {
   const replay = attempt.summary || replayAttempt(attempt);
   const first = new Map(replay.firstAttempts.map((item) => [item.position, item]));
@@ -138,17 +139,22 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
     }
     start = end + 1;
   }
+  timed.sort((a, b) => a.wpm - b.wpm);
   const slow = [];
-  for (const item of timed.sort((a, b) => a.wpm - b.wpm)) {
+  for (const item of timed) {
     if (slow.length >= slowLimit) break;
-    if (!missed.includes(item.word) && !slow.includes(item.word)) slow.push(item.word);
+    if (!missed.includes(item.word) && !slow.some((s) => s.word === item.word)) slow.push({ word: item.word, wpm: Math.round(item.wpm) });
   }
-  return { missed, slow };
+  const mid = timed.length >> 1;
+  const medianWpm = !timed.length ? null : Math.round(timed.length % 2 ? timed[mid].wpm : (timed[mid - 1].wpm + timed[mid].wpm) / 2);
+  return { missed, slow, timedCount: timed.length, medianWpm };
 }
 
-// Deterministic: the same words always build the same practice passage.
+// Deterministic: the same words always build the same practice passage. It grows past `length`
+// when there are more words, so every word offered is in it.
 export function practiceWordsPassage(words, length = 40) {
   if (!words.length) return '';
+  length = Math.max(length, words.length);
   let seed = 2166136261;
   for (const char of words.join(' ')) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
   const random = () => {

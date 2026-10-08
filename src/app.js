@@ -451,7 +451,7 @@ function configureSessionCopy() {
     practice: ['practice', 'Practice', ''],
     drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
-    missed: ['missed words', 'Practice missed and slow words', 'Doesn’t count toward your best.'],
+    missed: ['missed words', 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
   }[sessionKind];
   $('session-kicker').textContent = copy[0];
@@ -822,15 +822,21 @@ function renderCard(completed) {
   renderPracticeWords(completed);
 }
 
-// Offer the words this run tripped on or crawled through as their own uncounted run.
+// Offer the words this run tripped on or was slowest through as their own uncounted run. The
+// slowest are one timing each, so they show their speed beside the run's median, not a weakness.
 function renderPracticeWords(completed) {
-  const { missed, slow } = completed.status === 'complete' ? missedAndSlowWords(completed) : { missed: [], slow: [] };
-  const words = [...missed, ...slow];
+  const { missed, slow, timedCount, medianWpm } = completed.status === 'complete' ? missedAndSlowWords(completed) : { missed: [], slow: [] };
+  const words = [...missed, ...slow.map((item) => item.word)];
   const button = $('practice-words');
-  button.hidden = !words.length;
+  const evidence = $('practice-words-evidence');
+  button.hidden = evidence.hidden = !words.length;
   if (!words.length) return;
+  evidence.textContent = [
+    missed.length ? `missed first try: ${missed.join(', ')}` : '',
+    slow.length ? `slowest in this run: ${slow.map((item) => `${item.word} ${item.wpm} wpm`).join(', ')} · median ${medianWpm} wpm over ${timedCount} clean words` : '',
+  ].filter(Boolean).join('\n');
   const text = practiceWordsPassage(words);
-  button.textContent = `Practice ${missed.length} missed · ${slow.length} slow word${slow.length === 1 ? '' : 's'}`;
+  button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
   button.onclick = () => {
     wordsPassage = { id: `missed-${textId(text)}`, text, fresh: false, words };
     resetSession('missed', { focus: true });
@@ -878,7 +884,7 @@ function renderResults(completed, saved) {
   $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
   $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
-    ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
+    ? `About 1 min, then a fresh ${retestLength(baselineAttempt.conditions)} retest.`
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
   $('start-drill').disabled = !counted;
   $('skip-to-retest').disabled = !counted || !baselineAttempt;
