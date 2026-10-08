@@ -183,15 +183,15 @@ function conditions(inputClass = 'physical-keyboard') {
 }
 
 function describeConditions(value = conditions()) {
-  if (value.mode === 'code') {
-    return `code · ${value.codeLanguage || DEFAULT_CODE_LANGUAGE} · ${value.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'} · not counted toward bests`;
-  }
-  const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
-  const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
   const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
   const correction = value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error';
+  // Input, correction and versions close every label, so runs that conditionKey separates read differently.
+  const tail = `${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
+  if (value.mode === 'code') return `code · ${value.codeLanguage || DEFAULT_CODE_LANGUAGE} · ${tail} · not counted toward bests`;
+  const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
+  const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
   const language = value.wordList ? `english ${value.wordList}` : 'english';
-  return `${language} · ${length} · ${punctuation} · ${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
+  return `${language} · ${length} · ${punctuation} · ${tail}`;
 }
 
 // A drill is always one minute of generated text, whatever the baseline was.
