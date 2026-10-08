@@ -839,6 +839,7 @@ function renderResults(completed, saved) {
   const replay = completed.summary;
   const counted = completed.status === 'complete';
   const firstErrors = replay.firstAttempts.filter((item) => !item.correct).length;
+  $('watch-replay').hidden = !completed.events?.length;
   $('result-wpm').textContent = replay.score.wpm;
   $('result-accuracy').textContent = replay.score.accuracy;
   $('result-errors').textContent = firstErrors;
