@@ -51,11 +51,16 @@ function punctuate(words) {
   });
 }
 
-export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST) {
+// 1,600 words keeps even a 300 WPM typist supplied for the 120 s preset. A custom time longer than
+// 320 s gets five words a second, which still covers 300 WPM on the shortest list (4.2 letters a word).
+export function timedWordSupply(seconds = 0) {
+  return Math.max(1600, Math.ceil((Number(seconds) || 0) * 5));
+}
+
+export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST, seconds = 0) {
   if (mode === 'quote') return quoteCorpus[Math.floor(random() * quoteCorpus.length)].text;
   const bank = wordList(list);
-  // 1,600 words keeps even a 300 WPM typist supplied for the longest 120 s mode.
-  const words = Array.from({ length: mode === 'time' ? 1600 : count }, () => bank[Math.floor(random() * bank.length)]);
+  const words = Array.from({ length: mode === 'time' ? timedWordSupply(seconds) : count }, () => bank[Math.floor(random() * bank.length)]);
   return (punctuation ? punctuate(words) : words).join(' ');
 }
 
@@ -68,7 +73,7 @@ export function textId(text) {
   return `generated-${(hash >>> 0).toString(36)}`;
 }
 
-export function selectPassage({ mode = 'time', count = 25, punctuation = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
+export function selectPassage({ mode = 'time', count = 25, duration = 0, punctuation = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
   const seen = new Set(seenIds);
   if (mode === 'quote') {
     const candidates = quoteCorpus.filter((item) => {
@@ -91,11 +96,11 @@ export function selectPassage({ mode = 'time', count = 25, punctuation = false, 
   }
 
   for (let i = 0; i < 12; i += 1) {
-    const text = makePassage(mode, count, punctuation, random, list);
+    const text = makePassage(mode, count, punctuation, random, list, duration);
     const id = textId(text);
     if (!seen.has(id)) return { id, textVersion: `${id}@1`, text, corpus: CORPUS_VERSION, difficulty: 'generated', fresh: true, exhausted: false };
   }
-  const text = makePassage(mode, count, punctuation, random, list);
+  const text = makePassage(mode, count, punctuation, random, list, duration);
   const id = textId(text);
   return { id, textVersion: `${id}@1`, text, corpus: CORPUS_VERSION, difficulty: 'generated', fresh: !seen.has(id), exhausted: seen.has(id) };
 }

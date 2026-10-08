@@ -29,7 +29,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 ## Operating Context
 
 - Browser on desktop, physical keyboard, solo practice and private two-player online races. Practice works offline and without an account; signed-in profiles sync through Supabase, and a feature suggestion (text and current view only, never linked to an account) is sent only when the visitor presses Send.
-- A run is short (15–120 s) and repeated many times in a sitting; the practice surface is returned to constantly, so its chrome is seen more often than any other screen.
+- A run is short (15–120 s presets; a custom time or word count allows 5–600 s or 5–500 words) and repeated many times in a sitting; the practice surface is returned to constantly, so its chrome is seen more often than any other screen.
 - Practice is a focused, low-interruption moment. Detailed analytics belong after the run, never during it.
 - History is local. Clearing it is user-initiated and offers an undo in the moment.
 - Typing feel is the product's physical sensation: latency, stability of the text, and how errors read are functional requirements, not polish.
@@ -37,7 +37,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 ## Capabilities and Constraints
 
 **Shipped today** (Stilltype, working title):
-- A complete guest loop: timed/word/quote test, observed recommendation or manual target, one-minute drill, unseen comparable retest, and saved local progress.
+- A complete guest loop: timed/word/quote test (preset or custom length), observed recommendation or manual target, one-minute drill, unseen comparable retest, and saved local progress.
 - Quote length/difficulty filters, optional punctuation, corrected WPM and input accuracy, first-attempt error retention, keyboard display, text size, live-metric, stop-on-error and focus preferences.
 - Private online two-player races with account invitations, guest links, a shared server countdown, live progress and unranked results. A signed-in account hosts; guests can join without an account. Shared-keyboard challenges remain available.
 - Daily passage shared by UTC date, reset at midnight, from a frozen pool of 14 original texts. Fixed continue-on-error rule, saved personal results and labelled repeat attempts. A first attempt on a new day can still be a previously displayed passage; returning texts keep their identity and do not become fresh training evidence. Daily scores stay separate from personal practice bests and trends.

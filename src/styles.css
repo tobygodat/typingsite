@@ -711,6 +711,7 @@ kbd {
 }
 
 .practice-controls {
+  position: relative;
   margin: 0 auto var(--space-14);
   display: flex;
   flex-wrap: wrap;
@@ -730,7 +731,8 @@ kbd {
 
 .segmented .glide-pill { border-radius: var(--radius); }
 
-.segmented button {
+.segmented button,
+.segmented .custom-length-input {
   height: 36px;
   padding: 0 15px;
   border: 0;
@@ -744,11 +746,36 @@ kbd {
 .segmented button:hover,
 .segmented button[aria-pressed="true"] { color: var(--text); }
 
-.segmented.compact button {
+.segmented.compact button,
+.segmented.compact .custom-length-input {
   min-width: 46px;
   padding: 0 8px;
   font: 500 13px/1 var(--font-mono);
 }
+
+/* The custom length: the pill becomes a short field in place, with no box of its own beyond the
+   focus ring. Pill and field share one width ("custom" in mono), so the row never jumps, and the
+   message sits in the gap under the row, so the passage never moves. */
+.custom-length { display: flex; }
+.segmented.compact #custom-length { min-width: calc(6ch + var(--space-4)); }
+.segmented .custom-length-input { width: calc(6ch + var(--space-4)); color: var(--text); text-align: center; }
+.custom-length-input::placeholder { color: var(--muted); opacity: 1; }
+/* A coral rule under the field, paired with the message's words; the placeholder keeps the ground behind it. */
+.custom-length-input[aria-invalid="true"] { box-shadow: inset 0 -2px 0 var(--danger); }
+
+.custom-length-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  min-height: 0;
+  margin: var(--space-1) 0 0;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* Focus mode hides the row; the palette's "custom time…" shows it while the field is open. */
+body[data-focus-mode="true"] .practice-controls[data-editing] { visibility: visible; }
 
 .compact-switch {
   height: 44px;
@@ -1919,8 +1946,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   /* Two rows at most: mode and punctuation, then lengths. */
   .practice-controls { margin-bottom: var(--space-6); gap: var(--space-2); }
   #duration-options { order: 1; }
-  .segmented button { height: 40px; padding: 0 12px; }
-  .segmented.compact button { min-width: 44px; padding: 0 6px; }
+  .segmented button, .segmented .custom-length-input { height: 40px; padding: 0 12px; }
+  .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
   .quote-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
   .quote-options .input { width: 112px; }
@@ -1955,7 +1982,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (pointer: coarse) {
-  .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
+  .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control { min-height: 44px; }
 }
 
 @media (max-width: 760px) {

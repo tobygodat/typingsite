@@ -14,6 +14,7 @@ import {
   summarizePatterns,
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
+import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength } from './lengths.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
@@ -34,6 +35,9 @@ const defaultPreferences = {
   mode: 'time',
   duration: 30,
   count: 25,
+  // The last custom time or word count, offered again when the custom field opens.
+  customDuration: null,
+  customCount: null,
   punctuation: false,
   quoteLength: 'medium',
   difficulty: 'any',
@@ -70,7 +74,7 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
-  return value;
+  return normalizeLengthPreferences(value);
 }
 
 function normalizeProfile(parsed) {
@@ -299,21 +303,157 @@ function setModeControls() {
   $('punctuation-toggle').disabled = prefs.mode === 'quote';
   $('word-list').disabled = prefs.mode === 'quote';
   $('duration-options').hidden = prefs.mode === 'quote';
-  const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
-  const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
-  $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
-    const button = document.createElement('button');
-    const selected = value === (prefs.mode === 'time' ? prefs.duration : prefs.count);
-    button.type = 'button';
-    button.textContent = value;
-    button.dataset.length = String(value);
-    button.className = selected ? 'is-active' : '';
-    button.setAttribute('aria-pressed', String(selected));
-    button.setAttribute('aria-label', `${value} ${prefs.mode === 'time' ? 'seconds' : 'words'}`);
-    return button;
-  }));
+  renderLengthOptions();
   showBest();
   requestAnimationFrame(() => updateGlides());
+}
+
+// The four presets and the custom pill are relabelled in place, never rebuilt, so a click that
+// lands just as the custom field commits on blur still reaches the button under the pointer.
+function renderLengthOptions() {
+  setCustomLengthError('');
+  const spec = LENGTHS[prefs.mode];
+  if (!spec) {
+    closeCustomLength();
+    return;
+  }
+  const current = prefs[spec.key];
+  $('duration-options').querySelectorAll('[data-length]').forEach((button, index) => {
+    const value = spec.presets[index];
+    const selected = value === current;
+    button.textContent = String(value);
+    button.dataset.length = String(value);
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    button.setAttribute('aria-label', `${value} ${spec.unit}`);
+  });
+  const custom = !isPresetLength(prefs.mode, current);
+  const button = $('custom-length');
+  button.textContent = custom ? String(current) : 'custom';
+  button.classList.toggle('is-active', custom);
+  button.setAttribute('aria-pressed', String(custom));
+  button.setAttribute('aria-label', custom ? `custom ${spec.noun}, ${current} ${spec.unit}` : `custom ${spec.noun}`);
+  if ($('custom-length-form').dataset.lengthMode !== prefs.mode) closeCustomLength();
+}
+
+// The custom pill turns into a short field in place. Enter, or leaving the field with a valid
+// number, sets the length; Escape puts the pill back. Guests keep the value for the tab only.
+let dropCustomLength = false;
+
+// Set even when unchanged, so a second bad entry is announced again.
+function setCustomLengthError(message) {
+  const node = $('custom-length-error');
+  if (message || node.textContent) node.textContent = message;
+}
+
+function openCustomLength(mode = prefs.mode) {
+  const spec = LENGTHS[mode];
+  if (!spec) return;
+  // A new length restarts the run anyway; a timed run must not end under the open field.
+  if (attempt?.status === 'running') resetSession('practice');
+  const form = $('custom-length-form');
+  const input = $('custom-length-input');
+  form.dataset.lengthMode = mode;
+  dropCustomLength = false;
+  input.value = prefs[spec.customKey] ? String(prefs[spec.customKey]) : '';
+  input.dataset.offered = input.value;
+  input.placeholder = `${spec.min}–${spec.max}`;
+  input.setAttribute('aria-label', `${mode === 'time' ? 'custom time in seconds' : 'custom number of words'}, ${spec.min} to ${spec.max}`);
+  input.setAttribute('aria-invalid', 'false');
+  setCustomLengthError('');
+  $('custom-length').hidden = true;
+  form.hidden = false;
+  document.querySelector('.practice-controls').dataset.editing = 'true';
+  updateGlide($('duration-options'), { instant: true });
+  input.focus({ preventScroll: true });
+  input.select();
+}
+
+function closeCustomLength({ focus = false } = {}) {
+  const form = $('custom-length-form');
+  if (form.hidden) return;
+  // Hidden before focus moves, so the field's own focusout sees it closed and does nothing.
+  form.hidden = true;
+  $('custom-length').hidden = false;
+  delete document.querySelector('.practice-controls').dataset.editing;
+  $('custom-length-input').setAttribute('aria-invalid', 'false');
+  updateGlide($('duration-options'), { instant: true });
+  if (focus) $('custom-length').focus({ preventScroll: true });
+}
+
+function commitCustomLength({ leaving = false } = {}) {
+  const mode = $('custom-length-form').dataset.lengthMode;
+  const spec = LENGTHS[mode];
+  const input = $('custom-length-input');
+  const raw = input.value.trim();
+  // Leaving an empty or untouched field is not a request to change anything; the remembered value
+  // offered in the field is applied only with Enter.
+  if (leaving && (!raw || raw === input.dataset.offered)) {
+    closeCustomLength();
+    return;
+  }
+  const result = parseCustomLength(mode, raw);
+  if (!result.ok) {
+    if (leaving) closeCustomLength();
+    else {
+      input.setAttribute('aria-invalid', 'true');
+      input.select();
+    }
+    setCustomLengthError(result.message);
+    return;
+  }
+  closeCustomLength();
+  if (prefs.mode === mode && prefs[spec.key] === result.value) {
+    if (!leaving) $('typing-input').focus({ preventScroll: true });
+    return;
+  }
+  prefs.mode = mode;
+  prefs[spec.key] = result.value;
+  if (!isPresetLength(mode, result.value)) prefs[spec.customKey] = result.value;
+  setModeControls();
+  saveProfile();
+  // Focus stays wherever the person went when they left the field.
+  resetSession('practice', { focus: !leaving });
+}
+
+function bindCustomLength() {
+  const form = $('custom-length-form');
+  const input = $('custom-length-input');
+  $('custom-length').addEventListener('click', () => openCustomLength(prefs.mode));
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    commitCustomLength();
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    // Escape belongs to the field here, not to restart or focus mode.
+    event.preventDefault();
+    event.stopPropagation();
+    setCustomLengthError('');
+    closeCustomLength({ focus: true });
+  });
+  // Pressing another length, mode or switch in the row means that control wins; the edit is dropped.
+  const controls = document.querySelector('.practice-controls');
+  controls.addEventListener('pointerdown', (event) => {
+    if (!form.hidden && !form.contains(event.target)) dropCustomLength = true;
+  });
+  controls.addEventListener('pointercancel', () => { dropCustomLength = false; });
+  form.addEventListener('focusout', (event) => {
+    // Switching windows keeps the field open; the browser hands focus back on return.
+    if (form.hidden || form.contains(event.relatedTarget) || !document.hasFocus()) return;
+    if (dropCustomLength) {
+      dropCustomLength = false;
+      closeCustomLength();
+      return;
+    }
+    commitCustomLength({ leaving: true });
+  });
+}
+
+function setCustomLengthFromPalette(mode) {
+  navigate('practice');
+  if (prefs.mode !== mode) setTestShape(mode);
+  openCustomLength(mode);
 }
 
 function renderText(display, text) {
@@ -428,6 +568,7 @@ function choosePassage(extraSeen = []) {
   return selectPassage({
     mode: prefs.mode,
     count: prefs.count,
+    duration: prefs.duration,
     punctuation: prefs.punctuation,
     quoteLength: prefs.quoteLength,
     difficulty: prefs.difficulty,
@@ -465,6 +606,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   ticker = null;
   setRunning(false);
   primaryNotice = '';
+  setCustomLengthError('');
   sessionKind = kind;
   passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
@@ -960,7 +1102,7 @@ function startRetest() {
 }
 
 function restoreConditions(source) {
-  prefs = {
+  prefs = normalizeLengthPreferences({
     ...prefs,
     mode: source.mode,
     duration: source.duration || prefs.duration,
@@ -970,7 +1112,7 @@ function restoreConditions(source) {
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
     stopOnError: source.correctionPolicy !== 'relaxed',
-  };
+  });
   profile.preferences = prefs;
   applyPreferences();
   setModeControls();
@@ -1908,6 +2050,21 @@ function setWordList(id) {
   resetSession('practice', { focus: true });
 }
 
+// "custom time…" / "custom words…": the hint shows the custom value in use, or the one remembered.
+function customLengthCommand(mode) {
+  const spec = LENGTHS[mode];
+  const current = prefs.mode === mode && !isPresetLength(mode, prefs[spec.key]);
+  const value = current ? prefs[spec.key] : prefs[spec.customKey];
+  return {
+    group: 'test',
+    label: `custom ${mode}…`,
+    keywords: `${mode === 'time' ? 'timed seconds duration' : 'count number'} length any ${spec.min} to ${spec.max}`,
+    hint: value ? `${value} ${mode === 'time' ? 's' : 'words'}` : '',
+    on: current,
+    run: () => setCustomLengthFromPalette(mode),
+  };
+}
+
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
   const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
@@ -1917,8 +2074,10 @@ function paletteCommands(query) {
     })),
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
-    ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
-    ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
+    ...LENGTHS.time.presets.map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
+    customLengthCommand('time'),
+    ...LENGTHS.words.presets.map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
+    customLengthCommand('words'),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
@@ -2008,6 +2167,7 @@ buildKeyboard();
 applyPreferences();
 setModeControls();
 bindEvents();
+bindCustomLength();
 bindAccount();
 bindPalette();
 renderAccount();
