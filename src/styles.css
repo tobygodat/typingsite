@@ -1458,6 +1458,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .key-heatmap .key[data-heat="2"] { color: var(--text); background: var(--danger-mid); }
 .key-heatmap .key[data-heat="3"] { color: var(--text); background: var(--danger-strong); border-color: var(--danger); }
 .key-heatmap .key[data-selected="true"] { border-color: var(--text); }
+.key-heatmap[aria-hidden="true"] { pointer-events: none; }
+.key-select-field { margin: 0 0 var(--space-3); }
 .key-detail { margin: 0 0 var(--space-6); font-variant-numeric: tabular-nums lining-nums; }
 .pairs-heading { margin: 0 0 var(--space-2); font-size: var(--text-lead); font-weight: 400; }
 .pairs-table { border-collapse: collapse; font-size: var(--text-small); }

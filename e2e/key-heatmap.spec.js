@@ -29,8 +29,8 @@ const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/ke
 // A summary saved before per-letter counts existed: pairs only.
 const legacy = ({ keys, keysVersion, ...rest }) => rest;
 
-test('Progress shows a per-key miss heatmap and ranked pairs with sample counts', async ({ page, supabase }, testInfo) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
+// Signs in to a profile with two saved runs (one legacy) and opens Progress.
+async function openKeys(page, supabase) {
   await page.clock.install({ time: new Date('2026-09-30T12:00:00Z') });
   const user = supabase.addUser('keys@stilltype.test');
   const traces = [trace('keys-a', '2026-09-28T12:00:00Z'), trace('keys-b', '2026-09-29T12:00:00Z')];
@@ -39,6 +39,12 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
+}
+
+test('Progress shows a per-key miss heatmap and ranked pairs with sample counts', async ({ page, supabase }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openKeys(page, supabase);
+  await expect(page.locator('#key-select-field')).toBeHidden();
 
   const heatmap = page.locator('#key-heatmap');
   const key = (letter) => heatmap.locator('.key').filter({ hasText: new RegExp(`^${letter}$`) });
@@ -100,8 +106,45 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await section.screenshot({ path: shot(testInfo, 'keys-light.png') });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.emulateMedia({ colorScheme: 'dark' });
-  await section.scrollIntoViewIfNeeded();
-  await section.screenshot({ path: shot(testInfo, 'keys-mobile-dark.png') });
+});
+
+// Ten keys cannot each be 44px wide at 320px, so on touch the heatmap is a picture and a native
+// select gives the same numbers. Tall enough that the section screenshot fits the viewport: a
+// capture beyond it briefly drops touch emulation, and the page would re-render for a fine pointer.
+test.describe('coarse pointer at 320px', () => {
+  test.use({ viewport: { width: 320, height: 960 }, hasTouch: true, isMobile: true });
+
+  test('keeps every Keys target at 44px with no sideways scroll', async ({ page, supabase }, testInfo) => {
+    await openKeys(page, supabase);
+    const section = page.locator('section[aria-labelledby="keys-heading"]');
+    const heatmap = page.locator('#key-heatmap');
+    await expect(heatmap.locator('.key')).toHaveCount(26);
+    await expect(heatmap).toHaveAttribute('aria-hidden', 'true');
+    await expect(heatmap).not.toHaveAttribute('role', /.+/);
+    await expect(heatmap.locator('[tabindex], [role]')).toHaveCount(0);
+    await expect(heatmap).toHaveCSS('pointer-events', 'none');
+
+    const select = page.getByRole('combobox', { name: /^Key\b/ });
+    await expect(select).toBeVisible();
+    await select.selectOption('o');
+    await expect(page.locator('#key-detail')).toHaveText('“o”: 42.9% first-try misses (36 of 84 samples).');
+    await expect(heatmap.locator('.key[data-selected="true"]')).toHaveText('o');
+
+    const targets = await section.locator('a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')
+      .evaluateAll((nodes) => nodes.filter((node) => node.offsetParent).map((node) => {
+        const box = node.getBoundingClientRect();
+        return { id: node.id || node.tagName, width: box.width, height: box.height };
+      }));
+    expect(targets.map((t) => t.id)).toEqual(['key-select']);
+    for (const target of targets) {
+      expect(target.width, target.id).toBeGreaterThanOrEqual(44);
+      expect(target.height, target.id).toBeGreaterThanOrEqual(44);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await section.evaluate((node) => node.scrollIntoView({ block: 'start' }));
+    await section.screenshot({ path: shot(testInfo, 'keys-mobile-dark.png') });
+    await expect(select).toBeVisible();
+  });
 });

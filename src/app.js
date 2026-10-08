@@ -1125,33 +1125,50 @@ function renderTraining() {
 }
 
 // Static heatmap: coral steps by first-attempt miss rate; thin evidence stays neutral.
-// One tab stop: arrow keys move between keys as drawn, and focus or a tap shows that key's numbers
-// in the line below, so the values never depend on a hover tooltip.
+// One tab stop: arrow keys move between keys as drawn, and focus or a click shows that key's numbers
+// in the line below, so the values never depend on a hover tooltip. Ten keys in a phone-width row
+// cannot each be a 44px touch target, so on coarse pointers the heatmap is a picture and a native
+// "Key" select drives the same line.
 const HEAT_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+const coarsePointer = window.matchMedia('(pointer: coarse)');
 let heatKey = null;
 let heatDetails = {};
+let heatRuns = [];
 function renderKeys(runs) {
+  heatRuns = runs;
+  const picture = coarsePointer.matches;
   const analysis = keyAnalysis(runs);
   const pct = (v) => `${(v * 100).toFixed(1)}%`;
   const older = analysis.pairDerivedRuns;
   $('key-note').textContent = `First-try misses per key from ${analysis.runs} saved ${analysis.runs === 1 ? 'run' : 'runs'} at these conditions. Keys with fewer than ${MIN_PATTERN_SAMPLES} samples stay neutral.${older
     ? ` ${older} older ${older === 1 ? 'run counts' : 'runs count'} only letters typed after another letter, not the first letter of a word.` : ''}`;
   heatDetails = {};
-  const hadFocus = $('key-heatmap').contains(document.activeElement);
-  $('key-heatmap').replaceChildren(...HEAT_ROWS.map((letters) => {
+  const grid = $('key-heatmap');
+  const hadFocus = grid.contains(document.activeElement);
+  if (picture) {
+    grid.removeAttribute('role');
+    grid.setAttribute('aria-hidden', 'true');
+  } else {
+    grid.setAttribute('role', 'grid');
+    grid.removeAttribute('aria-hidden');
+  }
+  $('key-select-field').hidden = !picture;
+  grid.replaceChildren(...HEAT_ROWS.map((letters) => {
     const row = element('div', '', 'key-row');
-    row.setAttribute('role', 'row');
+    if (!picture) row.setAttribute('role', 'row');
     for (const letter of letters) {
       const stat = analysis.keys[letter];
       const cell = element('span', letter, 'key');
-      cell.setAttribute('role', 'gridcell');
       cell.dataset.letter = letter;
-      cell.tabIndex = -1;
+      if (!picture) {
+        cell.setAttribute('role', 'gridcell');
+        cell.tabIndex = -1;
+      }
       const step = !stat?.enough ? 'none' : stat.missRate >= 0.08 ? '3' : stat.missRate >= 0.04 ? '2' : stat.missRate > 0 ? '1' : '0';
       cell.dataset.heat = step;
       cell.title = stat?.enough ? `${letter}: ${pct(stat.missRate)} miss · ${stat.samples} samples`
         : `${letter}: not enough samples (${stat?.samples || 0})`;
-      cell.setAttribute('aria-label', cell.title);
+      if (!picture) cell.setAttribute('aria-label', cell.title);
       heatDetails[letter] = stat?.enough
         ? `“${letter}”: ${pct(stat.missRate)} first-try misses (${stat.errors} of ${stat.samples} samples).`
         : `“${letter}”: ${stat?.samples || 0} ${stat?.samples === 1 ? 'sample' : 'samples'}, fewer than ${MIN_PATTERN_SAMPLES}, so no miss rate yet.`;
@@ -1159,7 +1176,7 @@ function renderKeys(runs) {
     }
     return row;
   }));
-  selectHeatKey(heatKey, { focus: hadFocus });
+  selectHeatKey(heatKey, { focus: hadFocus && !picture });
   const rows = analysis.pairs.map((p) => {
     const tr = document.createElement('tr');
     // Denominator: runs with at least MIN_PATTERN_SAMPLES clean intervals for this pair.
@@ -1177,19 +1194,23 @@ function renderKeys(runs) {
   $('pairs-empty').hidden = Boolean(rows.length);
 }
 
-// Marks one key as the tab stop and shows its numbers; with no key chosen yet, "q" is the stop.
+// Marks one key as chosen (and, in the grid, the tab stop) and shows its numbers; with no key
+// chosen yet, "q" is the stop.
 function selectHeatKey(letter, { focus = false } = {}) {
-  const cells = [...$('key-heatmap').querySelectorAll('.key')];
+  const grid = $('key-heatmap');
+  const picture = grid.hasAttribute('aria-hidden');
+  const cells = [...grid.querySelectorAll('.key')];
   const target = cells.find((cell) => cell.dataset.letter === letter) || cells[0];
   if (!target) return;
   for (const cell of cells) {
-    cell.tabIndex = cell === target ? 0 : -1;
+    if (!picture) cell.tabIndex = cell === target ? 0 : -1;
     if (cell === target && letter) cell.dataset.selected = 'true';
     else delete cell.dataset.selected;
   }
   heatKey = letter ? target.dataset.letter : null;
+  $('key-select').value = heatKey || '';
   $('key-detail').textContent = heatKey ? heatDetails[heatKey] : 'Select a key to see its miss rate and sample count.';
-  if (focus) target.focus();
+  if (focus && !picture) target.focus();
 }
 
 function moveHeatFocus(event) {
@@ -1873,11 +1894,13 @@ function bindEvents() {
     const cell = event.target.closest('.key');
     if (cell && cell.dataset.letter !== heatKey) selectHeatKey(cell.dataset.letter);
   });
-  // A tap focuses the key too, so touch shows the same line as the keyboard.
   $('key-heatmap').addEventListener('click', (event) => {
     const cell = event.target.closest('.key');
-    if (cell) selectHeatKey(cell.dataset.letter, { focus: true });
+    if (cell && !$('key-heatmap').hasAttribute('aria-hidden')) selectHeatKey(cell.dataset.letter, { focus: true });
   });
+  $('key-select').append(new Option('Choose a key', ''), ...[...'abcdefghijklmnopqrstuvwxyz'].map((letter) => new Option(letter, letter)));
+  $('key-select').addEventListener('change', (event) => selectHeatKey(event.target.value || null));
+  coarsePointer.addEventListener('change', () => renderKeys(heatRuns));
   $('training-conditions').addEventListener('change', renderTraining);
   $('start-daily').addEventListener('click', startDaily);
   $('start-drill').addEventListener('click', startDrill);
