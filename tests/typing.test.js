@@ -10,8 +10,8 @@ import {
   makePassage,
   metrics,
   passageComplete,
+  replayCursor,
   replaySpan,
-  stateAt,
   recommendTarget,
   replayAttempt,
 } from '../src/typing.js';
@@ -113,7 +113,7 @@ test('generated passages draw from the selected common-word list', async () => {
   assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
 });
 
-test('stateAt replays letters as they were and ends on the scored result', () => {
+test('replayCursor replays the typed text as it was and ends on the scored result', () => {
   const attempt = createAttempt({ id: 'r', text: 'the cat' });
   attempt.events.push(
     { type: 'insert', text: 't', offsetMs: 0 },
@@ -127,16 +127,52 @@ test('stateAt replays letters as they were and ends on the scored result', () =>
     { type: 'insert', text: 't', offsetMs: 800 },
   );
   const completed = completeAttempt(attempt, { endedAt: 800 });
-  assert.deepEqual(stateAt(completed, 150).letters.slice(0, 2), ['correct', 'wrong']);
-  assert.equal(stateAt(completed, 250).caret, 1);
-  const end = stateAt(completed, replaySpan(completed).end);
-  assert.equal(end.typed, completed.summary.typed);
-  assert.equal(end.mistakes, completed.summary.mistakes);
-  assert.equal(end.letters.filter((s) => s === 'wrong').length, [...completed.typed].filter((c, i) => c !== completed.text[i]).length);
-  assert.equal(end.done, true);
+  const typedAt = replayCursor(completed);
+  assert.equal(typedAt(150), 'tx');
+  assert.equal(typedAt(250), 't');
+  assert.equal(typedAt(replaySpan(completed).end), completed.summary.typed);
+  // Going back (Restart) starts over.
+  assert.equal(typedAt(0), 't');
+  assert.equal(typedAt(450), 'the');
   assert.deepEqual(replaySpan(completed), { start: 0, end: 800 });
   // A timed run that idles before the timer ends replays to the scored end, not the last key.
   const timed = completeAttempt({ ...attempt, startedAt: 0 }, { endedAt: 15000 });
   assert.deepEqual(replaySpan(timed), { start: 0, end: timed.endedAt });
   assert.equal(replaySpan(timed).end - replaySpan(timed).start, timed.summary.elapsedMs);
+});
+
+test('replayCursor matches replayAttempt at every prefix of the events', () => {
+  let seed = 11;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const pick = (items) => items[Math.floor(random() * items.length)];
+  for (let run = 0; run < 40; run += 1) {
+    const text = makePassage('words', 12, run % 2 === 0, random);
+    const attempt = createAttempt({ id: `p${run}`, text });
+    let offsetMs = 0;
+    let length = 0;
+    for (let i = 0; i < 120; i += 1) {
+      offsetMs += pick([0, 1, 37, 120]);
+      const roll = random();
+      // Every event shape the recorder writes, plus the ones replayAttempt skips or truncates.
+      const event = roll < 0.55 ? { type: 'insert', text: random() < 0.8 ? text[length] || 'z' : 'x', position: length, accepted: true }
+        : roll < 0.62 ? { type: 'insert', text: pick(['ab', 'q', '\n', '', 'é']) }
+        : roll < 0.67 ? { type: 'insert', text: 'k', position: pick([length, text.length, text.length + 3]), accepted: random() < 0.5 }
+        : roll < 0.72 ? { type: 'blocked-insert', text: 'y', position: Math.max(0, length - 1) }
+        : roll < 0.88 ? { type: 'delete', count: pick([1, 1, 2, 5, undefined, 0, -1]) }
+        : { type: pick(['focus-lost', 'composition']) };
+      attempt.events.push({ ...event, offsetMs });
+      length = replayAttempt(attempt).typed.length;
+    }
+    const typedAt = replayCursor(attempt);
+    attempt.events.forEach((event, index) => {
+      // Events sharing an offset come due together, so compare at the last one of each offset.
+      if (attempt.events[index + 1]?.offsetMs === event.offsetMs) return;
+      const expected = replayAttempt({ ...attempt, events: attempt.events.slice(0, index + 1) }).typed;
+      assert.equal(typedAt(event.offsetMs), expected, `run ${run}, event ${index}`);
+    });
+    assert.equal(typedAt(Infinity), replayAttempt(attempt).typed);
+    // Seeking back and forward again lands on the same text.
+    const middle = attempt.events[60].offsetMs;
+    assert.equal(typedAt(middle), replayAttempt({ ...attempt, events: attempt.events.filter((event) => event.offsetMs <= middle) }).typed);
+  }
 });

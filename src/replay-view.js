@@ -1,9 +1,11 @@
 // Watch replay: plays a finished attempt's event log back in real time inside a dialog.
-// Presentational only. Letter states come from stateAt (the scoring replay), so the last frame
-// matches the scored run exactly. Letter states are instant and the caret jumps (no spring).
+// Presentational only. The typed text comes from replayCursor, which applies the events exactly
+// as the scoring replay does, so the last frame matches the scored run. Each frame applies only
+// the events that came due and classifies only the mounted letters. Letter states are instant
+// and the caret jumps (no spring).
 // Like the live passage, only a short stretch is mounted and three lines show: a timed run's
 // 1,600-word passage costs no more to draw than a ten-word one.
-import { replaySpan, stateAt } from './typing.js';
+import { replayCursor, replaySpan } from './typing.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // Letters mounted from the top visible line: well over three lines at any dialog width.
@@ -16,6 +18,7 @@ export function createReplayView(dialog) {
   const speedButton = dialog.querySelector('#replay-speed');
   let attempt = null;
   let span = { start: 0, end: 0 };
+  let typedAt = () => '';
   let first = 0; // text index of the first mounted letter, always the start of a line
   let chars = []; // chars[i] shows text index first + i
   let lines = []; // text index where each mounted line starts
@@ -64,12 +67,13 @@ export function createReplayView(dialog) {
   }
 
   function draw() {
-    const state = stateAt(attempt, span.start + position);
-    follow(state.caret);
+    const typed = typedAt(span.start + position);
+    const caret = typed.length;
+    follow(caret);
     chars.forEach((node, offset) => {
       const index = first + offset;
-      const letter = state.letters[index] || '';
-      const name = `char${letter ? ` ${letter}` : ''}${index === state.caret ? ' is-caret' : ''}`;
+      const letter = index < caret ? (typed[index] === attempt.text[index] ? ' correct' : ' wrong') : '';
+      const name = `char${letter}${index === caret ? ' is-caret' : ''}`;
       if (drawn[offset] !== name) node.className = drawn[offset] = name;
     });
     clock.textContent = (position / 1000).toFixed(1);
@@ -121,6 +125,7 @@ export function createReplayView(dialog) {
       if (!finished?.events?.length) return;
       attempt = finished;
       span = replaySpan(finished);
+      typedAt = replayCursor(finished);
       position = 0;
       // Open first: mounting measures where the lines break.
       dialog.showModal();

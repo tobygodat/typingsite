@@ -22,12 +22,13 @@ test('watch replay plays the run back and ends on the scored letters', async ({ 
   const dialog = page.locator('#replay-dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute('data-state', 'playing');
-  await page.locator('#replay-speed').click();
-  await expect(page.locator('#replay-speed')).toHaveText('2×');
 
-  // The miss shows while it was on screen, then the backspace removes it.
+  // The miss shows while it was on screen (1.5 s), then the backspace removes it. Catch it at 1×:
+  // at 2× it is up for well under a second, too short to poll for reliably.
   await expect(page.locator('#replay-text .char.wrong')).toHaveCount(1);
   await expect(page.locator('#replay-text .char').nth(at)).toHaveClass(/wrong/);
+  await page.locator('#replay-speed').click();
+  await expect(page.locator('#replay-speed')).toHaveText('2×');
 
   await expect(dialog).toHaveAttribute('data-state', 'done', { timeout: 20000 });
   await expect(page.locator('#replay-text .char.wrong')).toHaveCount(0);
