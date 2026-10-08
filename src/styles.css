@@ -1236,6 +1236,22 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .run-card-facts strong { font-weight: inherit; }
 .run-card-facts b { color: var(--muted); font-size: 16px; font-weight: 400; margin-left: 1px; }
 
+/* The secondary row: same labels, smaller numerals, no rule of its own. */
+.run-card-more { padding-top: 0; border-top: 0; }
+.run-card-more dd { font-size: var(--text-lead); }
+.run-card-more b { font-size: var(--text-label); }
+
+/* Words reached, static: plain ink, mistyped words in coral on the error tint; title gives pace. */
+.run-card-words {
+  margin: 0;
+  max-height: calc(var(--text-label) * 1.7 * 4);
+  overflow-y: auto;
+  color: var(--muted);
+  font: var(--text-label)/1.7 var(--font-serif);
+}
+.run-card-words span { color: var(--text); border-radius: var(--radius-sm); }
+.run-card-words .word-miss { color: var(--danger); background: var(--danger-soft); }
+
 .metric-note {
   margin: 0;
   color: var(--muted);

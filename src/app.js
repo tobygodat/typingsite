@@ -12,6 +12,10 @@ import {
   replayAttempt,
   selectPassage,
   summarizePatterns,
+  rawWpm,
+  consistency,
+  characterBreakdown,
+  wordHistory,
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
@@ -842,6 +846,7 @@ function renderResults(completed, saved) {
   $('result-accuracy').textContent = replay.score.accuracy;
   $('result-errors').textContent = firstErrors;
   $('result-time').textContent = `${(replay.elapsedMs / 1000).toFixed(1)} s`;
+  renderSecondaryStats(completed);
   $('result-conditions').textContent = describeRun(completed);
   $('result-delta').textContent = resultHeadline(completed);
   // A retest reports a failed save once, in the comparison caveat.
@@ -1044,6 +1049,21 @@ function conditionOptions(select, sources, fallback = null) {
   if (groups.has(prior)) select.value = prior;
   select.disabled = !groups.size;
   return groups.get(select.value);
+}
+
+// Raw speed, consistency, the character breakdown and the static words list. Display only.
+function renderSecondaryStats(completed) {
+  const replay = completed.summary;
+  const steady = consistency(completed, replay);
+  const chars = characterBreakdown(completed, replay);
+  $('result-raw').textContent = rawWpm(replay);
+  $('result-consistency').textContent = steady ?? '—';
+  $('result-chars').textContent = `${chars.correct}/${chars.incorrect}/${chars.extra}/${chars.missed}`;
+  $('result-words').replaceChildren(...wordHistory(completed, replay).flatMap((item, i) => {
+    const word = element('span', item.word, item.wrong ? 'word-miss' : '');
+    word.title = item.wpm === null ? 'no pace' : `${item.wpm} wpm`;
+    return i ? [' ', word] : [word];
+  }));
 }
 
 function element(tag, text, className = '') {
@@ -1366,7 +1386,8 @@ function clearHistory() {
   trainingContext = null;
   selectedTarget = null;
   activeRecommendation = null;
-  for (const id of ['result-wpm', 'result-accuracy', 'result-errors', 'result-time']) $(id).textContent = '—';
+  for (const id of ['result-wpm', 'result-accuracy', 'result-errors', 'result-time', 'result-raw', 'result-consistency', 'result-chars']) $(id).textContent = '—';
+  $('result-words').replaceChildren();
   $('result-delta').textContent = 'No run yet.';
   $('result-comparison-note').textContent = '';
   $('run-card-stamp').textContent = 'no run yet';

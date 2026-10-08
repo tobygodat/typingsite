@@ -366,3 +366,81 @@ export function compareAttempts(before, after) {
           : 'Held steady on fresh text.',
   };
 }
+
+// Secondary run-card stats, derived from the event log only. Presentational: they never feed
+// the versioned wpm/accuracy contract, bests, comparisons or pattern memory.
+export function rawWpm(replay) {
+  return replay.elapsedMs > 0 ? Math.round(replay.insertions / 5 / (replay.elapsedMs / 60000)) : 0;
+}
+
+// 100 − coefficient of variation of per-second raw speed, over whole seconds; null under 3 s.
+export function consistency(attempt, replay = replayAttempt(attempt)) {
+  const inserts = (attempt.events || []).filter((event) => event.type === 'insert' && printable(event.text));
+  if (!inserts.length) return null;
+  const start = attempt.startedAt ?? inserts[0].offsetMs;
+  const seconds = Math.floor(replay.elapsedMs / 1000);
+  if (seconds < 3) return null;
+  const counts = new Array(seconds).fill(0);
+  for (const event of inserts) {
+    const second = Math.floor((event.offsetMs - start) / 1000);
+    if (second >= 0 && second < seconds) counts[second] += [...event.text].length;
+  }
+  const mean = counts.reduce((sum, value) => sum + value, 0) / seconds;
+  if (!mean) return 0;
+  const sd = Math.sqrt(counts.reduce((sum, value) => sum + (value - mean) ** 2, 0) / seconds);
+  return Math.round(Math.min(100, Math.max(0, 100 - (sd / mean) * 100)));
+}
+
+// correct / incorrect in the kept text; extra = keystrokes past the passage end; missed = letters
+// left untyped inside the last word the run reached.
+export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
+  const target = attempt.text;
+  const { typed } = replay;
+  let correct = 0;
+  for (let i = 0; i < typed.length; i += 1) if (typed[i] === target[i]) correct += 1;
+  let extra = 0;
+  let length = 0;
+  for (const event of attempt.events || []) {
+    if (event.type === 'delete') length = Math.max(0, length - Math.max(1, event.count || 1));
+    if (event.type !== 'insert' || !printable(event.text)) continue;
+    for (let n = [...event.text].length; n > 0; n -= 1) {
+      const position = Number.isInteger(event.position) ? event.position : length;
+      if (position >= target.length) extra += 1;
+      else if (event.accepted !== false) length += 1;
+    }
+  }
+  let reached = typed.length;
+  if (reached > 0 && reached < target.length && target[reached - 1] !== ' ') {
+    const space = target.indexOf(' ', reached);
+    reached = space === -1 ? target.length : space;
+  }
+  return { correct, incorrect: typed.length - correct, extra, missed: Math.max(0, reached - typed.length) };
+}
+
+// The passage words the run reached, flagged if any first try or kept letter in them missed, with
+// the pace from the previous word's space (or the first keystroke) to the word's last letter.
+export function wordHistory(attempt, replay = replayAttempt(attempt)) {
+  const target = attempt.text;
+  const firsts = new Map(replay.firstAttempts.map((item) => [item.position, item]));
+  const words = [];
+  const pattern = /\S+/gu;
+  let match;
+  while ((match = pattern.exec(target)) && match.index < replay.typed.length) {
+    const start = match.index;
+    const end = Math.min(start + match[0].length, replay.typed.length) - 1;
+    let wrong = false;
+    for (let i = start; i <= end; i += 1) {
+      if (firsts.get(i)?.correct === false || replay.typed[i] !== target[i]) wrong = true;
+    }
+    const anchor = start > 0 ? start - 1 : start;
+    const from = firsts.get(anchor);
+    const to = firsts.get(end);
+    const durationMs = from && to ? to.offsetMs - from.offsetMs : 0;
+    words.push({
+      word: match[0],
+      wrong,
+      wpm: durationMs > 0 ? Math.round((end - anchor) / 5 / (durationMs / 60000)) : null,
+    });
+  }
+  return words;
+}

@@ -12,7 +12,69 @@ import {
   passageComplete,
   recommendTarget,
   replayAttempt,
+  rawWpm,
+  consistency,
+  characterBreakdown,
+  wordHistory,
 } from '../src/typing.js';
+
+function evenRun(text, msPerChar, misses = {}) {
+  const attempt = createAttempt({ id: 'r', text, textId: 't', conditions: {} });
+  attempt.events = [...text].map((char, i) => ({ type: 'insert', text: misses[i] ?? char, offsetMs: i * msPerChar }));
+  attempt.startedAt = 0;
+  attempt.endedAt = (text.length - 1) * msPerChar;
+  return attempt;
+}
+
+test('raw wpm counts every typed character, errors included', () => {
+  assert.equal(rawWpm({ insertions: 50, elapsedMs: 60000 }), 10);
+  assert.equal(rawWpm({ insertions: 0, elapsedMs: 0 }), 0);
+});
+
+test('consistency is 100 minus the CV of per-second speed, and empty under three seconds', () => {
+  const steady = evenRun('a'.repeat(41), 100);
+  assert.equal(consistency(steady), 100);
+  assert.equal(consistency(evenRun('abcde', 100)), null);
+  const uneven = createAttempt({ id: 'u', text: 'a'.repeat(8), textId: 't', conditions: {} });
+  // 6 chars in second 0, 0 in second 1, 2 in second 2 → mean 8/3, sd ≈ 2.49, cv ≈ 93.5%.
+  uneven.events = [0, 100, 200, 300, 400, 500, 2100, 2200].map((offsetMs) => ({ type: 'insert', text: 'a', offsetMs }));
+  uneven.startedAt = 0;
+  uneven.endedAt = 3000;
+  assert.equal(consistency(uneven), 6);
+});
+
+test('character breakdown separates correct, incorrect, extra and missed', () => {
+  const attempt = createAttempt({ id: 'b', text: 'the cat', textId: 't', conditions: {} });
+  attempt.events = [
+    { type: 'insert', text: 't', offsetMs: 0 },
+    { type: 'insert', text: 'x', offsetMs: 100 },
+    { type: 'insert', text: 'e', offsetMs: 200 },
+    { type: 'insert', text: ' ', offsetMs: 300 },
+    { type: 'insert', text: 'c', offsetMs: 400 },
+  ];
+  assert.deepEqual(characterBreakdown(attempt), { correct: 4, incorrect: 1, extra: 0, missed: 2 });
+  const over = evenRun('ab', 100);
+  over.events.push({ type: 'insert', text: 'z', offsetMs: 300 });
+  assert.equal(characterBreakdown(over).extra, 1);
+});
+
+test('word history flags mistyped words and paces each word', () => {
+  const words = wordHistory(evenRun('the cat sat', 200, { 5: 'x' }));
+  assert.deepEqual(words.map((item) => item.word), ['the', 'cat', 'sat']);
+  assert.deepEqual(words.map((item) => item.wrong), [false, true, false]);
+  // 4 characters (space + word) in 800 ms = 60 wpm.
+  assert.equal(words[2].wpm, 60);
+  const partial = createAttempt({ id: 'p', text: 'the cat sat', textId: 't', conditions: {} });
+  partial.events = [{ type: 'insert', text: 'the c', offsetMs: 0 }];
+  assert.equal(wordHistory(partial).length, 2);
+});
+
+test('the new stats leave the versioned metrics untouched', () => {
+  const attempt = evenRun('the cat sat', 200, { 5: 'x' });
+  const before = JSON.stringify(replayAttempt(attempt).score);
+  rawWpm(replayAttempt(attempt)); consistency(attempt); characterBreakdown(attempt); wordHistory(attempt);
+  assert.equal(JSON.stringify(replayAttempt(attempt).score), before);
+});
 test('speed counts correct characters at five characters per word', () => {
   assert.deepEqual(metrics('hello world', 'hello worxd', 11, 1, 30000), {wpm:4, accuracy:91});
 });
