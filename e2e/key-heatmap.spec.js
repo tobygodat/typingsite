@@ -65,6 +65,34 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   await expect(pairRow('ro').locator('td').nth(2)).toHaveAttribute('title', 'No run has 10 clean intervals for this pair yet');
   await expect(pairRow('do').locator('td').nth(2)).toHaveText('2 of 2');
 
+  // The heatmap is one tab stop; arrow keys move between keys and the line below shows the numbers.
+  const detail = page.locator('#key-detail');
+  await expect(detail).toHaveText('Select a key to see its miss rate and sample count.');
+  await expect(heatmap.locator('[tabindex="0"]')).toHaveCount(1);
+  await page.locator('#keys-heading').evaluate((heading) => { heading.tabIndex = -1; heading.focus(); });
+  await page.keyboard.press('Tab');
+  await expect(key('q')).toBeFocused();
+  await expect(detail).toHaveText('“q”: 0.0% first-try misses (0 of 12 samples).');
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowLeft');
+  await expect(key('o')).toBeFocused();
+  await expect(detail).toHaveText('“o”: 42.9% first-try misses (36 of 84 samples).');
+  await page.keyboard.press('ArrowDown');
+  await expect(key('l')).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(key('o')).toBeFocused();
+  await expect(heatmap.locator('[tabindex="0"]')).toHaveCount(1);
+  await page.keyboard.press('Tab');
+  expect(await page.evaluate(() => document.activeElement.closest('#key-heatmap'))).toBeNull();
+  await page.keyboard.press('Shift+Tab');
+  await expect(key('o')).toBeFocused();
+  await expect(key('o')).toHaveAttribute('data-selected', 'true');
+  // A tap or click shows the same line.
+  await key('u').click();
+  await expect(key('u')).toBeFocused();
+  await expect(detail).toContainText('“u”: ');
+  await expect(detail).toContainText('first-try misses');
+
   const section = page.locator('section[aria-labelledby="keys-heading"]');
   await section.scrollIntoViewIfNeeded();
   await page.emulateMedia({ colorScheme: 'dark' });

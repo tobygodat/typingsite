@@ -1125,27 +1125,41 @@ function renderTraining() {
 }
 
 // Static heatmap: coral steps by first-attempt miss rate; thin evidence stays neutral.
+// One tab stop: arrow keys move between keys as drawn, and focus or a tap shows that key's numbers
+// in the line below, so the values never depend on a hover tooltip.
+const HEAT_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+let heatKey = null;
+let heatDetails = {};
 function renderKeys(runs) {
   const analysis = keyAnalysis(runs);
   const pct = (v) => `${(v * 100).toFixed(1)}%`;
   const older = analysis.pairDerivedRuns;
   $('key-note').textContent = `First-try misses per key from ${analysis.runs} saved ${analysis.runs === 1 ? 'run' : 'runs'} at these conditions. Keys with fewer than ${MIN_PATTERN_SAMPLES} samples stay neutral.${older
     ? ` ${older} older ${older === 1 ? 'run counts' : 'runs count'} only letters typed after another letter, not the first letter of a word.` : ''}`;
-  $('key-heatmap').replaceChildren(...['qwertyuiop', 'asdfghjkl', 'zxcvbnm'].map((letters) => {
+  heatDetails = {};
+  const hadFocus = $('key-heatmap').contains(document.activeElement);
+  $('key-heatmap').replaceChildren(...HEAT_ROWS.map((letters) => {
     const row = element('div', '', 'key-row');
+    row.setAttribute('role', 'row');
     for (const letter of letters) {
       const stat = analysis.keys[letter];
       const cell = element('span', letter, 'key');
-      cell.setAttribute('role', 'listitem');
+      cell.setAttribute('role', 'gridcell');
+      cell.dataset.letter = letter;
+      cell.tabIndex = -1;
       const step = !stat?.enough ? 'none' : stat.missRate >= 0.08 ? '3' : stat.missRate >= 0.04 ? '2' : stat.missRate > 0 ? '1' : '0';
       cell.dataset.heat = step;
       cell.title = stat?.enough ? `${letter}: ${pct(stat.missRate)} miss · ${stat.samples} samples`
         : `${letter}: not enough samples (${stat?.samples || 0})`;
       cell.setAttribute('aria-label', cell.title);
+      heatDetails[letter] = stat?.enough
+        ? `“${letter}”: ${pct(stat.missRate)} first-try misses (${stat.errors} of ${stat.samples} samples).`
+        : `“${letter}”: ${stat?.samples || 0} ${stat?.samples === 1 ? 'sample' : 'samples'}, fewer than ${MIN_PATTERN_SAMPLES}, so no miss rate yet.`;
       row.append(cell);
     }
     return row;
   }));
+  selectHeatKey(heatKey, { focus: hadFocus });
   const rows = analysis.pairs.map((p) => {
     const tr = document.createElement('tr');
     // Denominator: runs with at least MIN_PATTERN_SAMPLES clean intervals for this pair.
@@ -1161,6 +1175,42 @@ function renderKeys(runs) {
   $('pairs-table').querySelector('tbody').replaceChildren(...rows);
   $('pairs-table').hidden = !rows.length;
   $('pairs-empty').hidden = Boolean(rows.length);
+}
+
+// Marks one key as the tab stop and shows its numbers; with no key chosen yet, "q" is the stop.
+function selectHeatKey(letter, { focus = false } = {}) {
+  const cells = [...$('key-heatmap').querySelectorAll('.key')];
+  const target = cells.find((cell) => cell.dataset.letter === letter) || cells[0];
+  if (!target) return;
+  for (const cell of cells) {
+    cell.tabIndex = cell === target ? 0 : -1;
+    if (cell === target && letter) cell.dataset.selected = 'true';
+    else delete cell.dataset.selected;
+  }
+  heatKey = letter ? target.dataset.letter : null;
+  $('key-detail').textContent = heatKey ? heatDetails[heatKey] : 'Select a key to see its miss rate and sample count.';
+  if (focus) target.focus();
+}
+
+function moveHeatFocus(event) {
+  const cell = event.target.closest?.('.key');
+  if (!cell) return;
+  const row = HEAT_ROWS.findIndex((letters) => letters.includes(cell.dataset.letter));
+  const col = HEAT_ROWS[row].indexOf(cell.dataset.letter);
+  const at = (r, c) => HEAT_ROWS[r][Math.max(0, Math.min(c, HEAT_ROWS[r].length - 1))];
+  const next = {
+    ArrowLeft: () => col > 0 && at(row, col - 1),
+    ArrowRight: () => col < HEAT_ROWS[row].length - 1 && at(row, col + 1),
+    // Up and down keep the column, clamped to the shorter row.
+    ArrowUp: () => row > 0 && at(row - 1, col),
+    ArrowDown: () => row < HEAT_ROWS.length - 1 && at(row + 1, col),
+    Home: () => at(event.ctrlKey ? 0 : row, 0),
+    End: () => event.ctrlKey ? HEAT_ROWS.at(-1).at(-1) : at(row, HEAT_ROWS[row].length - 1),
+  }[event.key];
+  if (!next) return;
+  event.preventDefault();
+  const letter = next();
+  if (letter) selectHeatKey(letter, { focus: true });
 }
 
 function renderHistory() {
@@ -1818,6 +1868,16 @@ function bindEvents() {
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
+  $('key-heatmap').addEventListener('keydown', moveHeatFocus);
+  $('key-heatmap').addEventListener('focusin', (event) => {
+    const cell = event.target.closest('.key');
+    if (cell && cell.dataset.letter !== heatKey) selectHeatKey(cell.dataset.letter);
+  });
+  // A tap focuses the key too, so touch shows the same line as the keyboard.
+  $('key-heatmap').addEventListener('click', (event) => {
+    const cell = event.target.closest('.key');
+    if (cell) selectHeatKey(cell.dataset.letter, { focus: true });
+  });
   $('training-conditions').addEventListener('change', renderTraining);
   $('start-daily').addEventListener('click', startDaily);
   $('start-drill').addEventListener('click', startDrill);
