@@ -26,7 +26,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - Key naming is inconsistent: the restart button tooltip says "Escape" while the hint says "esc" (index.html:212 vs 220).
 
 ### From the data-export work (PR #20)
-- Account deletion still needs a server side: a Supabase edge function (or SECURITY DEFINER RPC with service role) that verifies the caller's JWT, deletes the profiles row and race/friend rows (or relies on ON DELETE CASCADE), then calls auth.admin.deleteUser(uid). The client then signs out and reuses clearHistory.
+- Account deletion still needs a server side. A Supabase edge function should verify the caller's JWT, then call `auth.admin.deleteUser(uid)` as the one authoritative step. A SQL RPC can't call that admin method. The profile, room, player and friend rows already reference `auth.users` with `ON DELETE CASCADE`, so they go with the user. Don't delete data before the user. Only after deletion succeeds should the client sign out and clear local state (reusing clearHistory), so a failed call never leaves a live account with its data gone.
 - `retainRuns` (src/insights.js:22) drops `patterns` beyond the newest 120 runs, so the JSON export carries little pattern data for older runs.
 - CSV `kind` column uses internal values (test/retest/drill/race/daily); daily runs need a `challengeDate` column to be distinguishable.
 - "Clear history" only appears on the Progress heading (index.html:308) while export lives in settings. A "Your data" section in settings should group export, clear history and (later) delete account.
@@ -80,7 +80,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - Many open PRs (#18–#26+) each touch src/app.js, index.html and src/styles.css, as does #17. Expect merge conflicts; merge small ones first (caps lock, restart key, export), then re-run CI on the rest.
 
 ### From reviewing the PR screenshots
-- Run card (PR #22): c/i/e/m reads 51/0/0/0 while first-try errors reads 1 and the word history marks "day" as mistyped. "incorrect" counts the final state, so a corrected mistake disappears from it. Side by side, the two numbers look contradictory. Either define "incorrect" as first-try errors, or label it "left incorrect".
+- Run card (PR #22): c/i/e/m reads 51/0/0/0 while first-try errors reads 1 and the word history marks "day" as mistyped. "incorrect" counts the final state, so a corrected mistake disappears from it. Side by side, the two numbers look contradictory. Keep c/i/e/m a partition of the final character state, and keep first-try errors as separate first-attempt evidence (the metric contract). The fix is the label: call it "left incorrect", or drop the field. Don't redefine "incorrect" as first-try errors, which would count a corrected letter twice.
 - Several e2e screenshots show impossible speeds (420–2,758 wpm over 0.2–1.5 s) because specs type with no delay. Screenshot helpers should type with a realistic delay (~70 ms/key) so the PR images look like real runs.
 - When the results page scrolls, page headings slide under the floating dock and show around it ("First run at these settings" sits clipped behind the dock). Consider a scrim behind the dock, hiding it on scroll-down, or more top padding.
 - The theme mocks (PR #24) started as colour/font swaps on the same layout; layout variations were requested afterwards. Review whether each direction is distinct enough.
@@ -124,7 +124,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 
 ### From the code-mode work (PR #33)
 - src/typing.js rejects `\r`/`\n` in passages (`printable`, ~line 127), so code snippets are joined into one line and lose their shape. Real line-break/Enter support in the engine would let code mode keep indentation-free lines (needs a metric/event version bump).
-- `recurringTargets` (src/insights.js:55) still counts code runs within their own code key, so a drill after a code run may target symbol pairs. Consider excluding code mode from recurring-target evidence.
+- `recurringTargets` (src/insights.js:55) can use code runs as evidence within their own condition key. That's fine. Pattern pairs are filtered to `^[a-z]{2}$` (src/typing.js:229), so a symbol pair can never become a target, and `conditionKey` keeps code evidence apart from ordinary practice. No exclusion is needed. (An earlier version of this note suggested one.)
 - No palette entries for code mode or its languages yet.
 - Required fix: the language buttons reuse `#duration-options` and so render in Geist Mono, but language names are readable text and must be Literata (being fixed on PR #33).
 - In quote and code modes the punctuation switch is shown greyed out. Hiding it would read better.
