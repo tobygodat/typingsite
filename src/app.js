@@ -1782,7 +1782,7 @@ function bindEvents() {
     }
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
-  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
+  $('run-again').addEventListener('click', runAgain);
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
@@ -1928,9 +1928,17 @@ function quickRestart(event) {
   // Enter only restarts from the result card or before a run starts, never mid-run.
   if (key === 'Enter' && (runActive || (view !== 'results' && !onInput))) return false;
   event.preventDefault();
-  if (view !== 'practice') navigate('practice');
-  resetSession(sessionKind, { focus: true });
+  // A held key restarts once; its repeats would otherwise burn through fresh passages.
+  if (event.repeat) return true;
+  // The result card restarts exactly as its run-again button does: one reset, one new passage.
+  if (view === 'results') runAgain();
+  else resetSession(sessionKind, { focus: true });
   return true;
+}
+
+function runAgain() {
+  if (sessionKind === 'daily') startDaily();
+  else resetSession('practice', { focus: true });
 }
 
 function setWordList(id) {

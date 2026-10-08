@@ -31,6 +31,25 @@ test('tab as the restart key resets the passage, and esc still works', async ({ 
   await expect(page.locator('#typing-input')).toBeFocused();
 });
 
+test('holding the restart key restarts once, not on every repeat', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await openSettings(page);
+  await page.locator('#restart-key').selectOption('Tab');
+  await page.keyboard.press('Escape');
+
+  await typeInto(page, (await passageText(page)).slice(0, 3));
+  await page.keyboard.down('Tab');
+  await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
+  await typeInto(page, (await passageText(page)).slice(0, 2));
+  // Further keydowns while Tab is still held arrive as repeats and must leave the run alone.
+  await page.keyboard.down('Tab');
+  await page.keyboard.down('Tab');
+  await page.keyboard.up('Tab');
+  await expect(page.locator('#typing-input')).toBeFocused();
+  await expect(page.locator('#text-display .char.correct')).toHaveCount(2);
+});
+
 test('tab still moves focus inside the settings popover', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
@@ -62,13 +81,15 @@ test('enter restarts from the result card but not mid-run', async ({ page }) => 
   await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
 });
 
-test('screenshots', async ({ page }) => {
+// Committed docs are only rewritten on purpose (SCREENSHOTS=1); a normal run keeps its captures in test output.
+test('screenshots', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);
     await openSettings(page);
     await page.locator('#restart-key').selectOption('Tab');
-    await page.screenshot({ path: `docs/screenshots/quick-restart/settings-${scheme}.png` });
+    const name = `settings-${scheme}.png`;
+    await page.screenshot({ path: process.env.SCREENSHOTS ? `docs/screenshots/quick-restart/${name}` : testInfo.outputPath(name) });
   }
 });
