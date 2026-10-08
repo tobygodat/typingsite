@@ -1,7 +1,7 @@
 // Fatigue-aware sittings: after eight practice tests under one condition set, a quiet line appears
 // only when the last five all fall below the earlier runs' median, once per sitting, and a person
 // can turn it off.
-import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings, openView } from './fixtures.js';
 
 async function run(page, delay) {
   const text = await passageText(page);
@@ -96,4 +96,39 @@ test('a change of exercise starts a fresh comparison, so harder settings never r
     await run(page, 40);
     await expect(page.locator('#fatigue-notice')).toBeHidden();
   }
+});
+
+// Seven runs that would tip into a notice on the eighth slow one, then history is cleared.
+async function clearedSitting(page) {
+  await chooseWords(page, 10);
+  for (let i = 0; i < 7; i += 1) {
+    if (i) await again(page);
+    await run(page, i < 3 ? 0 : 40);
+  }
+  await expect(page.locator('#fatigue-notice')).toBeHidden();
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(page.locator('#history-feedback')).toContainText('History cleared');
+}
+
+test('clearing history clears the sitting, so the next run says nothing', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openApp(page);
+  await clearedSitting(page);
+  await openView(page, 'Practice');
+  await run(page, 40);
+  await expect(page.locator('#fatigue-notice')).toBeHidden();
+});
+
+test('undoing a clear brings the sitting back with the history', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openApp(page);
+  await clearedSitting(page);
+  await page.locator('#undo-clear').click();
+  await expect(page.locator('#history-feedback')).toContainText('History restored');
+  await openView(page, 'Practice');
+  await run(page, 40);
+  await expect(page.locator('#fatigue-notice')).toBeVisible();
 });

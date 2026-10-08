@@ -1374,7 +1374,10 @@ function renderRaceResults() {
 }
 
 function clearHistory() {
-  clearSnapshot = JSON.stringify(profile);
+  // The in-memory sitting goes with the history, so a break notice never rests on runs the page called removed.
+  clearSnapshot = { profile: JSON.stringify(profile), sitting: { runs: [...sitting.runs], noticeShown: sitting.noticeShown } };
+  sitting.runs = [];
+  sitting.noticeShown = false;
   profile.attempts = [];
   profile.runs = [];
   profile.loops = [];
@@ -1413,7 +1416,8 @@ function clearHistory() {
 
 function undoClear() {
   if (!clearSnapshot) return;
-  try { profile = JSON.parse(clearSnapshot); } catch { return; }
+  try { profile = JSON.parse(clearSnapshot.profile); } catch { return; }
+  Object.assign(sitting, clearSnapshot.sitting);
   prefs = profile.preferences;
   saveProfile();
   clearSnapshot = null;
