@@ -53,14 +53,18 @@ const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
 let customOpen = false;
 
 // Pasted text is made typeable: smart punctuation becomes ASCII, control characters go, whitespace collapses.
+// Characters outside the BMP (emoji) are dropped: scoring indexes the passage by UTF-16 unit, so each
+// letter must be one unit. The cap applies after expansion so a saved passage is stable across reloads.
 function normalizeCustomText(value) {
-  return String(value || '').slice(0, CUSTOM_MAX)
+  return String(value || '').normalize('NFC')
     .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
     .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
     .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
     .replace(/\u2026/g, '...')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200D\uFEFF\uFE00-\uFE0F\uD800-\uDFFF]/g, '')
     .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, CUSTOM_MAX)
     .trim();
 }
 
@@ -812,7 +816,8 @@ function storeAttempt(completed) {
   const score = completed.summary.score;
   const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
   resultBestBefore = profile.bests[key] || null;
-  profile.attempts.push(completed);
+  // A custom passage can run to 10,000 characters, so only its summary record is kept, not the keystroke trace.
+  if (completed.kind !== 'custom') profile.attempts.push(completed);
   profile.runs.push(runRecord(completed));
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
     profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };

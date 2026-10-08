@@ -34,7 +34,23 @@ test('smart punctuation is normalised to typeable characters', async ({ page }) 
   expect(await passageText(page)).toBe('"It\'s fine" - she said... ok');
 });
 
-test('screenshots', async ({ page }) => {
+test('emoji are dropped and the length cap holds after punctuation expands', async ({ page }) => {
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill('go 🚀 now');
+  await page.locator('#custom-use').click();
+  expect(await passageText(page)).toBe('go now');
+
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill('…'.repeat(10000));
+  await page.locator('#custom-use').click();
+  expect((await passageText(page)).length).toBe(10000);
+});
+
+// Committed screenshots are refreshed only with SCREENSHOTS=1; a normal run writes to the test's output folder.
+const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/custom-text/${name}.png` : testInfo.outputPath(`${name}.png`));
+
+test('screenshots', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
@@ -42,11 +58,11 @@ test('screenshots', async ({ page }) => {
     await page.locator('#mode-custom').click();
     await page.waitForTimeout(400);
     await page.locator('#custom-text').fill('Paste anything you like to practise on: a paragraph from a book, an email you keep retyping, or a list of tricky words.');
-    await page.screenshot({ path: `docs/screenshots/custom-text/panel-${theme}.png` });
+    await page.screenshot({ path: shot(testInfo, `panel-${theme}`) });
   }
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');
   await page.waitForTimeout(400);
-  await page.screenshot({ path: 'docs/screenshots/custom-text/passage-dark.png' });
+  await page.screenshot({ path: shot(testInfo, 'passage-dark') });
 });
