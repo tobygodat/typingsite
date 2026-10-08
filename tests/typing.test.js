@@ -10,6 +10,8 @@ import {
   makePassage,
   metrics,
   passageComplete,
+  replaySpan,
+  stateAt,
   recommendTarget,
   replayAttempt,
 } from '../src/typing.js';
@@ -109,4 +111,28 @@ test('generated passages draw from the selected common-word list', async () => {
   const bank = wordList(DEFAULT_WORD_LIST);
   assert.match(makePassage('words', 10, true, () => (bank.indexOf('i') + 0.5) / bank.length), /\bI\b/);
   assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
+});
+
+test('stateAt replays letters as they were and ends on the scored result', () => {
+  const attempt = createAttempt({ id: 'r', text: 'the cat' });
+  attempt.events.push(
+    { type: 'insert', text: 't', offsetMs: 0 },
+    { type: 'insert', text: 'x', offsetMs: 100 },
+    { type: 'delete', count: 1, offsetMs: 200 },
+    { type: 'insert', text: 'h', offsetMs: 300 },
+    { type: 'insert', text: 'e', offsetMs: 400 },
+    { type: 'insert', text: ' ', offsetMs: 500 },
+    { type: 'insert', text: 'c', offsetMs: 600 },
+    { type: 'insert', text: 'q', offsetMs: 700 },
+    { type: 'insert', text: 't', offsetMs: 800 },
+  );
+  const completed = completeAttempt(attempt, { endedAt: 800 });
+  assert.deepEqual(stateAt(completed, 150).letters.slice(0, 2), ['correct', 'wrong']);
+  assert.equal(stateAt(completed, 250).caret, 1);
+  const end = stateAt(completed, replaySpan(completed).end);
+  assert.equal(end.typed, completed.summary.typed);
+  assert.equal(end.mistakes, completed.summary.mistakes);
+  assert.equal(end.letters.filter((s) => s === 'wrong').length, [...completed.typed].filter((c, i) => c !== completed.text[i]).length);
+  assert.equal(end.done, true);
+  assert.deepEqual(replaySpan(completed), { start: 0, end: 800 });
 });

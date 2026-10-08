@@ -1742,6 +1742,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 #clear-dialog,
 #account-dialog,
+#replay-dialog,
 #suggest-dialog {
   width: min(460px, calc(100% - 32px));
   padding: 0;
@@ -1754,11 +1755,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 #clear-dialog[open],
 #account-dialog[open],
+#replay-dialog[open],
 #suggest-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
+#replay-dialog::backdrop,
 #suggest-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
-:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
+:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #replay-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
 
 .account-fields { display: grid; gap: var(--space-3); }
 .account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
@@ -1787,6 +1790,31 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 
 #suggest-dialog { width: min(520px, calc(100% - 32px)); }
+
+/* Watch replay: the passage at reading size, instant letter states, a caret that jumps. */
+#replay-dialog { width: min(760px, calc(100% - 32px)); }
+.replay-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); }
+.replay-clock { font-family: var(--font-mono); font-size: var(--text-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.replay-text {
+  color: var(--muted);
+  font-family: var(--font-serif);
+  font-size: var(--text-lead);
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font-variant-ligatures: none;
+}
+.replay-text .char.is-caret::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -1.5px;
+  width: 3px;
+  height: 1.15em;
+  margin-top: -0.55em;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
 .textarea { height: auto; min-height: 132px; padding: var(--space-3) 14px; line-height: 1.5; resize: vertical; }
 .suggest-meta { margin-top: calc(var(--space-4) * -1); display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); }
 .suggest-meta .field-error { margin: 0; }

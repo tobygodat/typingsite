@@ -24,6 +24,7 @@ import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
+import { createReplayView } from './replay-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
@@ -1775,6 +1776,8 @@ function bindEvents() {
     }
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
+  const replayView = createReplayView($('replay-dialog'));
+  $('watch-replay').addEventListener('click', () => replayView.open(attempt));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);

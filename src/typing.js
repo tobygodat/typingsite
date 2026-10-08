@@ -192,6 +192,22 @@ export function replayAttempt(attempt) {
   };
 }
 
+// Replay state at offset t (ms on the attempt clock), derived from the scoring replay itself.
+// Presentational callers (the watch-replay view) read letters; scoring never calls this.
+export function stateAt(attempt, t = Infinity) {
+  const events = (attempt.events || []).filter((event) => !(event.offsetMs > t));
+  const replay = replayAttempt({ ...attempt, events, endedAt: undefined, startedAt: undefined });
+  const letters = [...attempt.text].map((char, index) => (
+    index < replay.typed.length ? (replay.typed[index] === char ? 'correct' : 'wrong') : ''
+  ));
+  return { typed: replay.typed, letters, caret: replay.typed.length, mistakes: replay.mistakes, done: events.length === (attempt.events || []).length };
+}
+
+export function replaySpan(attempt) {
+  const offsets = (attempt.events || []).map((event) => event.offsetMs).filter(Number.isFinite);
+  return offsets.length ? { start: Math.min(...offsets), end: Math.max(...offsets) } : { start: 0, end: 0 };
+}
+
 export function completeAttempt(attempt, { endedAt, status = 'complete' } = {}) {
   const replay = replayAttempt({ ...attempt, endedAt });
   return {
