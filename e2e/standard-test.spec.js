@@ -1,0 +1,269 @@
+import { conditionKey, standardConditions } from '../src/typing.js';
+import { test, expect, openApp, openView, openSettings, completePassage, passageText, typeInto, signInWithEmail } from './fixtures.js';
+
+// Committed docs images are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
+const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/standard-test/${name}` : testInfo.outputPath(name));
+
+const CONDITIONS = 'standard v1 · 60 s · 1k–10k mix · physical keyboard · stop on error · corpus v5 · metric v1';
+const RECIPE = 'standard v1 · 60 s · english 1k–10k mix · punctuation, numbers, one quote';
+const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+// Saved standard runs at realistic speeds, one a day up to yesterday, plus an interrupted one that must not count.
+function seededProfile(speeds) {
+  const conditions = standardConditions();
+  const runs = speeds.map((wpm, i) => ({ id: `standard-${i}`, at: new Date(Date.now() - (speeds.length - i) * 86400000).toISOString(), kind: 'test',
+    status: 'complete', conditions, textId: `standard-v1-seed${i}`, fresh: true, interrupted: false,
+    score: { wpm, accuracy: 96 + (i % 3) }, elapsedMs: 60000, errors: 2 + (i % 4), target: null, challengeDate: null, patterns: [] }));
+  runs.push({ ...runs.at(-1), id: 'standard-interrupted', status: 'interrupted', interrupted: true, score: { wpm: 91, accuracy: 99 } });
+  const best = runs.filter((run) => run.status === 'complete').sort((a, b) => b.score.wpm - a.score.wpm)[0];
+  return { version: 2, preferences: {}, attempts: [], runs, loops: [], seenTextIds: runs.map((run) => run.textId),
+    bests: { [conditionKey(conditions)]: { wpm: best.score.wpm, attemptId: best.id, at: best.at } }, updatedAt: new Date().toISOString() };
+}
+
+// Types the passage at a steady human pace, with one corrected slip, and stops short of the time
+// limit so no stray key lands on the results screen.
+async function typeForAMinute(page, text) {
+  await page.locator('#typing-input').focus();
+  const delay = 95;
+  let at = 0;
+  while (at < text.length) {
+    if (at > 0 && Number(await page.locator('#timer').textContent()) <= 2) break;
+    if (at === 120) {
+      await page.keyboard.type(text[at] === 'q' ? 'w' : 'q', { delay });
+      await page.keyboard.press('Backspace', { delay });
+    }
+    await page.keyboard.type(text.slice(at, at + 6), { delay });
+    at += 6;
+  }
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results', { timeout: 15_000 });
+  // The speed graph draws in after the run; capture it once it has settled.
+  await page.waitForFunction(() => document.getAnimations()
+    .every((animation) => animation.playState !== 'running' || animation.effect?.getTiming().iterations === Infinity));
+}
+
+test('standard mode shows its recipe, locks the settings that would change it, and draws fresh text', async ({ page }) => {
+  await openApp(page);
+  await page.locator('#mode-standard').click();
+  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
+  await expect(page.locator('#standard-recipe')).toHaveText(`${RECIPE} · stop on error`);
+  await expect(page.locator('#standard-options')).toContainText('Word list, punctuation and stop on error are locked.');
+  await expect(page.locator('#duration-options')).toBeHidden();
+  await expect(page.locator('#punctuation-toggle')).toBeDisabled();
+  await expect(page.locator('#punctuation-toggle')).toBeChecked();
+  await expect(page.locator('#timer')).toHaveText('60');
+  const first = await passageText(page);
+  expect(first.split('"')).toHaveLength(3);
+  expect(first).toMatch(/\d/);
+
+  await openSettings(page);
+  await expect(page.locator('#word-list')).toBeDisabled();
+  await expect(page.locator('#word-list')).toHaveValue('standard');
+  await expect(page.locator('#stop-on-error-toggle')).toBeDisabled();
+  await expect(page.locator('#stop-on-error-toggle')).toBeChecked();
+  await expect(page.getByRole('combobox', { name: 'word list fixed for standard' })).toBeDisabled();
+  await expect(page.getByRole('checkbox', { name: 'stop on error fixed for standard' })).toBeChecked();
+  await page.keyboard.press('Escape');
+
+  // Correction is required: a miss blocks the next letter.
+  const miss = first[0] === 'x' ? 'z' : 'x';
+  await typeInto(page, miss + first[1]);
+  await expect(page.locator('#input-help')).toHaveText('Fix the underlined letter.');
+  await expect(page.locator('#typing-input')).toHaveValue(miss);
+
+  // A restart is a fresh seed, not the same text again.
+  await page.keyboard.press('Escape');
+  await expect.poll(() => passageText(page)).not.toBe(first);
+
+  // Leaving the standard test brings the person's own settings back untouched.
+  await page.locator('#mode-time').click();
+  await expect(page.locator('#standard-options')).toBeHidden();
+  await expect(page.locator('#punctuation-toggle')).toBeEnabled();
+  await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
+  await expect(page.locator('#condition-line')).toContainText('english 200 · 30 s · plain · physical keyboard · continue on error');
+  await openSettings(page);
+  await expect(page.locator('#word-list')).toHaveValue('200');
+  await expect(page.locator('#stop-on-error-toggle')).toBeEnabled();
+  await expect(page.locator('#stop-on-error-toggle')).not.toBeChecked();
+  await expect(page.locator('.preference-lock').first()).toBeHidden();
+});
+
+test('a standard run keeps its own best, apart from a time test, and starts the Progress headline', async ({ page }, testInfo) => {
+  await page.clock.install();
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await openApp(page);
+  await page.locator('#mode-standard').click();
+  // 300 correct characters over the full minute: 60 wpm.
+  await typeInto(page, (await passageText(page)).slice(0, 300));
+  await page.clock.fastForward(60_000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-wpm')).toHaveText('60');
+  await expect(page.locator('#result-conditions')).toHaveText(CONDITIONS);
+  // Two lines, like other conditions, so the sticky run card grows no taller.
+  expect((await page.locator('#result-conditions').boundingBox()).height).toBeLessThanOrEqual(36.5);
+  await expect(page.locator('#run-card-stamp')).toContainText('standard');
+  await expect(page.locator('#best')).toHaveText('Best · 60 wpm');
+  await expect(page.locator('#recommendation-meta')).toContainText('fresh standard retest');
+
+  // A time test of the same length, with punctuation and stop on error, is still a different condition.
+  await openView(page, 'Practice');
+  await page.locator('#mode-time').click();
+  await page.locator('#duration-options [data-length="60"]').click();
+  await page.locator('#punctuation-toggle').check();
+  await openSettings(page);
+  await page.locator('#stop-on-error-toggle').check();
+  await expect(page.locator('#best')).toHaveText('No best yet');
+
+  await openView(page, 'Progress');
+  await expect(page.locator('#standard-best')).toHaveText('60');
+  await expect(page.locator('#standard-median')).toHaveText('—');
+  await expect(page.locator('#standard-median + span')).toBeHidden();
+  await expect(page.locator('#standard-median-label')).toHaveText('median');
+  await expect(page.locator('#standard-score-note')).toHaveText('Only 1 standard run so far. The median appears after 3, so a single fast or slow run can’t set your score.');
+  await expect(page.locator('#standard-score-conditions')).toHaveText(`${RECIPE} · physical keyboard · stop on error · corpus v5 · metric v1`);
+  expect((await page.locator('#progress-conditions option').allTextContents()).filter((label) => label.startsWith('standard v1'))).toHaveLength(1);
+  await expect(page.locator('#run-history .run-row').first()).toContainText('standard');
+  await page.screenshot({ path: shot(testInfo, 'progress-first-run-dark.png') });
+});
+
+test('a fresh-text retest of a standard run draws a new standard passage and compares like with like', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await page.locator('#mode-standard').click();
+  const baseline = await passageText(page);
+  await typeInto(page, baseline.slice(0, 300));
+  await page.clock.fastForward(60_000);
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
+  await expect(page.locator('#timer')).toHaveText('60');
+  const retest = await passageText(page);
+  expect(retest).not.toBe(baseline);
+  await typeInto(page, retest.slice(0, 320));
+  await page.clock.fastForward(60_000);
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect(page.locator('#comparison-wpm')).toHaveText('+4 wpm');
+  // The person's own settings were never rewritten by the recipe.
+  await openView(page, 'Practice');
+  await page.locator('#mode-time').click();
+  await expect(page.locator('#condition-line')).toContainText('english 200 · 30 s · plain · physical keyboard · continue on error');
+});
+
+test('standard mode, its run card and its Progress headline fit a 320px screen', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.clock.install();
+  await openApp(page);
+  await page.locator('#mode-standard').click();
+  await expect(page.locator('#standard-options')).toBeVisible();
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+  await typeInto(page, (await passageText(page)).slice(0, 300));
+  await page.clock.fastForward(60_000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+  await openView(page, 'Progress');
+  await expect(page.locator('#standard-best')).toHaveText('60');
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+  for (const id of ['#take-standard', '#standard-score-note', '#standard-score-conditions']) {
+    const box = await page.locator(id).boundingBox();
+    expect(box.x + box.width, id).toBeLessThanOrEqual(320);
+  }
+});
+
+test('Progress shows the standard best and the median of recent runs with its count', async ({ page, supabase }) => {
+  await page.clock.install({ time: new Date('2026-10-08T12:00:00Z') });
+  const user = supabase.addUser('standard@stilltype.test');
+  supabase.profiles.set(user.id, { data: seededProfile([58, 63, 61, 66, 64]) });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openView(page, 'Progress');
+  await expect(page.locator('#standard-best')).toHaveText('66');
+  await expect(page.locator('#standard-median')).toHaveText('63');
+  await expect(page.locator('#standard-median-label')).toHaveText('median of last 5 runs');
+  await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs. Interrupted runs don’t count.');
+
+  await page.locator('#take-standard').click();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#typing-input')).toBeFocused();
+  await expect(page.locator('#best')).toHaveText('Best · 66 wpm');
+});
+
+test('the palette starts the standard test and leaves out the settings it locks', async ({ page }) => {
+  await openApp(page);
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('standard');
+  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('standard test · 60 seconds');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#palette')).toBeHidden();
+  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#typing-input')).toBeFocused();
+
+  await page.keyboard.press('Control+k');
+  const labels = await page.locator('#palette-list .opt-label').allTextContents();
+  expect(labels).toContain('standard test · 60 seconds');
+  expect(labels.filter((label) => /^(punctuation|stop on error|word list)/.test(label))).toEqual([]);
+  await page.keyboard.type('standard');
+  await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).toHaveText('current');
+});
+
+test('the daily challenge keeps its own conditions while standard is selected', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-09-30T12:00:00Z') });
+  await openApp(page);
+  await page.locator('#mode-standard').click();
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-daily').click();
+  await page.locator('#start-daily').click();
+  await expect(page.locator('#condition-line')).not.toContainText('standard');
+  await expect(page.locator('#condition-line')).toContainText('continue on error');
+  await completePassage(page);
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-daily').click();
+  await expect(page.locator('#daily-status')).toContainText('1 attempt');
+});
+
+test('screenshots', async ({ page, supabase }, testInfo) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const user = supabase.addUser('shots@stilltype.test');
+  supabase.profiles.set(user.id, { data: seededProfile([54, 58, 57, 61, 59, 63, 62, 66]) });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+
+  for (const theme of ['dark', 'light']) {
+    await page.emulateMedia({ colorScheme: theme });
+    await openView(page, 'Progress');
+    await expect(page.locator('#standard-median')).toHaveText('60');
+    await page.mouse.move(0, 0);
+    await page.screenshot({ path: shot(testInfo, `progress-${theme}.png`) });
+  }
+
+  for (const theme of ['dark', 'light']) {
+    await page.emulateMedia({ colorScheme: theme });
+    await openView(page, 'Practice');
+    await page.locator('#mode-standard').click();
+    await expect(page.locator('#standard-options')).toBeVisible();
+    await page.mouse.move(0, 0);
+    await page.screenshot({ path: shot(testInfo, `practice-${theme}.png`) });
+  }
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await openSettings(page);
+  await page.screenshot({ path: shot(testInfo, 'settings-locked-dark.png') });
+  await page.keyboard.press('Escape');
+
+  await page.locator('#typing-input').focus();
+  await page.keyboard.press('Escape');
+  await typeForAMinute(page, await passageText(page));
+  const wpm = Number(await page.locator('#result-wpm').textContent());
+  expect(wpm).toBeGreaterThanOrEqual(30);
+  expect(wpm).toBeLessThanOrEqual(110);
+  await page.mouse.move(0, 0);
+  await page.screenshot({ path: shot(testInfo, 'run-card-dark.png') });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openView(page, 'Practice');
+  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
+  await page.mouse.move(0, 0);
+  await page.screenshot({ path: shot(testInfo, 'practice-mobile-dark.png') });
+});

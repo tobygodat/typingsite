@@ -1,6 +1,8 @@
 import {
   CORPUS_VERSION,
   METRIC_VERSION,
+  STANDARD_SECONDS,
+  STANDARD_VERSION,
   compareAttempts,
   completeAttempt,
   conditionKey,
@@ -11,6 +13,7 @@ import {
   recommendTarget,
   replayAttempt,
   selectPassage,
+  standardConditions,
   summarizePatterns,
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
@@ -22,7 +25,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { STANDARD_MIN_RUNS, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -161,7 +164,9 @@ function announce(message) {
   requestAnimationFrame(() => { $('announcement').textContent = message; });
 }
 
-function conditions(inputClass = 'physical-keyboard') {
+// The person's own test settings. The standard test ignores them, but a race or the daily
+// challenge started while standard is selected still uses them (minus the recipe).
+function settingsConditions(inputClass = 'physical-keyboard') {
   return {
     mode: prefs.mode,
     duration: prefs.mode === 'time' ? prefs.duration : null,
@@ -178,20 +183,38 @@ function conditions(inputClass = 'physical-keyboard') {
   };
 }
 
+function conditions(inputClass = 'physical-keyboard') {
+  return prefs.mode === 'standard' ? standardConditions(inputClass) : settingsConditions(inputClass);
+}
+
+function correctionLabel(policy) {
+  return policy === 'relaxed' ? 'continue on error' : 'stop on error';
+}
+
+// "standard v1": the recipe name as people read it, then what the recipe fixes.
+const recipeLabel = (recipe = STANDARD_VERSION) => recipe.replace('-', ' ');
+const recipeSummary = (value = standardConditions()) => `${recipeLabel(value.recipe)} · ${value.duration} s · english 1k–10k mix · punctuation, numbers, one quote`;
+
+// What every condition line ends with: input, correction rule and versions.
+function conditionTail(value) {
+  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
+  return `${input} · ${correctionLabel(value.correctionPolicy)} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
+}
+
 function describeConditions(value = conditions()) {
+  // The recipe name stands for its punctuation, numbers and quote, keeping the run card's line short.
+  if (value.mode === 'standard') return `${recipeLabel(value.recipe)} · ${value.duration} s · 1k–10k mix · ${conditionTail(value)}`;
   const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
   const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
-  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
-  const correction = value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error';
   const language = value.wordList ? `english ${value.wordList}` : 'english';
-  return `${language} · ${length} · ${punctuation} · ${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
+  return `${language} · ${length} · ${punctuation} · ${conditionTail(value)}`;
 }
 
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
+  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
 }
 
 function signed(value, unit) {
@@ -286,7 +309,21 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  syncLockedSettings();
   showBest();
+}
+
+// The standard test fixes word list, punctuation and correction. Their controls show the recipe's
+// values and stay locked while it is selected; the person's own settings are kept for other modes.
+function syncLockedSettings() {
+  const standard = prefs.mode === 'standard';
+  $('punctuation-toggle').disabled = prefs.mode === 'quote' || standard;
+  $('punctuation-toggle').checked = standard || prefs.punctuation;
+  $('word-list').disabled = prefs.mode === 'quote' || standard;
+  $('word-list').value = standard ? 'standard' : prefs.wordList;
+  $('stop-on-error-toggle').disabled = standard;
+  $('stop-on-error-toggle').checked = standard || prefs.stopOnError;
+  document.querySelectorAll('.preference-lock').forEach((note) => { note.hidden = !standard; });
 }
 
 function setModeControls() {
@@ -296,9 +333,10 @@ function setModeControls() {
     button.setAttribute('aria-pressed', String(selected));
   });
   $('quote-options').hidden = prefs.mode !== 'quote';
-  $('punctuation-toggle').disabled = prefs.mode === 'quote';
-  $('word-list').disabled = prefs.mode === 'quote';
-  $('duration-options').hidden = prefs.mode === 'quote';
+  $('standard-options').hidden = prefs.mode !== 'standard';
+  $('standard-recipe').textContent = `${recipeSummary()} · ${correctionLabel(standardConditions().correctionPolicy)}`;
+  syncLockedSettings();
+  $('duration-options').hidden = prefs.mode === 'quote' || prefs.mode === 'standard';
   const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
   const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
   $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
@@ -440,6 +478,7 @@ function sessionDurationMs() {
   if (sessionKind === 'daily') return null;
   if (sessionKind === 'drill') return 60000;
   if (prefs.mode === 'time') return prefs.duration * 1000;
+  if (prefs.mode === 'standard') return STANDARD_SECONDS * 1000;
   return null;
 }
 
@@ -458,6 +497,7 @@ function configureSessionCopy() {
   const setup = document.querySelector('.practice-controls');
   if (setup) setup.hidden = sessionKind !== 'practice';
   $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote';
+  $('standard-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'standard';
 }
 
 function resetSession(kind = sessionKind, { focus = false, selectedPassage = null } = {}) {
@@ -809,7 +849,7 @@ const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', '
 // Draw after the results view is shown so the graph has its size.
 function renderCard(completed) {
   lastCompleted = completed;
-  const kind = completed.kind === 'test' ? 'practice' : completed.kind;
+  const kind = completed.kind !== 'test' ? completed.kind : completed.conditions.mode === 'standard' ? 'standard' : 'practice';
   const at = new Date();
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
@@ -828,6 +868,7 @@ function resultHeadline(completed) {
 }
 
 function retestLength(value) {
+  if (value.mode === 'standard') return 'standard';
   if (value.mode === 'time') return `${value.duration} s`;
   if (value.mode === 'words') return `${value.count}-word`;
   return value.quoteLength && value.quoteLength !== 'any' ? `${value.quoteLength} quote` : 'quote';
@@ -960,7 +1001,9 @@ function startRetest() {
 }
 
 function restoreConditions(source) {
-  prefs = {
+  // The standard recipe carries its own settings; restoring it must not overwrite the person's.
+  if (source.mode === 'standard') prefs = { ...prefs, mode: 'standard' };
+  else prefs = {
     ...prefs,
     mode: source.mode,
     duration: source.duration || prefs.duration,
@@ -1080,10 +1123,11 @@ function targetButton(target, source) {
 }
 
 function practiceTarget(target, source) {
-  // Use a retained, compatible baseline when possible. Older corpus versions need a new baseline.
+  // Use a retained, compatible baseline when possible. Older corpus or standard recipe versions need a new baseline.
   baselineAttempt = [...profile.attempts].reverse().find((a) => a.status === 'complete' && !a.interrupted
     && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
-    && conditionKey(a.conditions) === conditionKey(source) && source.corpus === CORPUS_VERSION) || null;
+    && conditionKey(a.conditions) === conditionKey(source) && source.corpus === CORPUS_VERSION
+    && (source.mode !== 'standard' || source.recipe === STANDARD_VERSION)) || null;
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
   activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
@@ -1124,7 +1168,29 @@ function renderTraining() {
   }));
 }
 
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+// Progress headline: the current standard recipe, at the input class of the latest standard run.
+function renderStandardScore() {
+  const latest = profile.runs.filter((run) => trendRun(run) && run.conditions?.mode === 'standard').at(-1);
+  const source = standardConditions(latest?.conditions.inputClass);
+  const key = conditionKey(source);
+  const score = standardScore(profile.runs, key, profile.bests[key]?.wpm ?? null);
+  setText($('standard-best'), score.best ?? '—');
+  setText($('standard-median'), score.median === null ? '—' : Number(score.median.toFixed(1)));
+  // A dash stands alone: "— wpm" would read as a measurement.
+  $('standard-best').nextElementSibling.hidden = score.best === null;
+  $('standard-median').nextElementSibling.hidden = score.median === null;
+  setText($('standard-median-label'), score.settled ? `median of last ${plural(score.recent, 'run')}` : 'median');
+  setText($('standard-score-conditions'), `${recipeSummary(source)} · ${conditionTail(source)}`);
+  let note = `${plural(score.total, 'completed standard run')}. Interrupted runs don’t count.`;
+  if (!score.total) note = 'No standard runs yet. Every one is fresh text from the same fixed recipe, so the scores stay comparable.';
+  else if (!score.settled) note = `Only ${plural(score.total, 'standard run')} so far. The median appears after ${STANDARD_MIN_RUNS}, so a single fast or slow run can’t set your score.`;
+  setText($('standard-score-note'), note);
+}
+
 function renderHistory() {
+  renderStandardScore();
   const eligible = profile.runs.filter(trendRun);
   const hasProgress = eligible.length > 0 || profile.loops.length > 0;
   $('progress-empty').hidden = hasProgress;
@@ -1149,7 +1215,7 @@ function renderHistory() {
     row.dataset.runId = run.id;
     const summary = element('summary', '', 'run-summary');
     summary.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
-      element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : 'practice'} · view details`));
+      element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : run.conditions?.mode === 'standard' ? 'standard' : 'practice'} · view details`));
     const detail = element('div', '', 'run-detail');
     detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
       element('p', describeConditions(run.conditions)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
@@ -1201,7 +1267,7 @@ function renderHistory() {
 }
 
 function dailyConditions() {
-  return { ...conditions(), mode: 'quote', duration: null, count: null, punctuation: true,
+  return { ...settingsConditions(), mode: 'quote', duration: null, count: null, punctuation: true,
     quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
 }
 
@@ -1258,7 +1324,7 @@ function buildKeyboard() {
 function startRace() {
   race = {
     passage: selectPassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', seenIds: [] }),
-    conditions: { ...conditions(), mode: 'quote', wordList: null, localRace: true },
+    conditions: { ...settingsConditions(), mode: 'quote', wordList: null, localRace: true },
     names: [$('player-one-name').value.trim() || 'Player one', $('player-two-name').value.trim() || 'Player two'],
     player: 0,
     attempt: null,
@@ -1777,6 +1843,7 @@ function bindEvents() {
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
   $('progress-conditions').addEventListener('change', renderHistory);
+  $('take-standard').addEventListener('click', () => setTestShape('standard'));
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
   $('start-daily').addEventListener('click', startDaily);
@@ -1910,7 +1977,9 @@ function setWordList(id) {
 
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
-  const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || mode === 'standard' || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  // The standard recipe fixes these; like quote mode, the palette leaves out what can't change.
+  const fixedText = prefs.mode === 'quote' || prefs.mode === 'standard';
   const commands = [
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
@@ -1920,9 +1989,10 @@ function paletteCommands(query) {
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
-    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
-    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
-    { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
+    { group: 'test', label: 'standard test · 60 seconds', keywords: `standard score real world fixed recipe benchmark ${recipeLabel()}`, hint: shape('standard') ? 'current' : recipeLabel(), on: shape('standard'), run: () => setTestShape('standard') },
+    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: fixedText, run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
+    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: fixedText, run: () => { navigate('practice'); setWordList(id); } })),
+    { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, disabled: prefs.mode === 'standard', run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },

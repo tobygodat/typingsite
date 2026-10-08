@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage, standardConditions } from '../src/typing.js';
+import { dailyPassage, filterRuns, recurringTargets, retainRuns, standardScore, trendRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
@@ -81,4 +81,24 @@ test('original quote pool has fresh choices in every length and difficulty bucke
       }
     }
   }
+});
+
+test('the standard score keeps its best and a median of recent runs, and waits for three runs', () => {
+  const standard = standardConditions();
+  const key = conditionKey(standard);
+  const at = (wpm, overrides = {}) => run(`s${wpm}`, { conditions: standard, score: { wpm, accuracy: 97 }, ...overrides });
+  assert.deepEqual(standardScore([], key), { total: 0, recent: 0, best: null, median: null, settled: false });
+  // Two runs: a best, but no median yet.
+  const two = [at(60), at(70)];
+  assert.deepEqual(standardScore(two, key), { total: 2, recent: 2, best: 70, median: null, settled: false });
+  // Other conditions, drills, daily, interrupted and a different recipe or input never count.
+  const noise = [run('time'), at(99, { kind: 'drill' }), at(98, { kind: 'daily' }), at(97, { interrupted: true }),
+    at(96, { status: 'interrupted' }), at(95, { conditions: { ...standard, recipe: 'standard-v2' } }),
+    at(94, { conditions: standardConditions('touch') }), at(93, { conditions: { ...standard, mode: 'time', recipe: undefined } })];
+  const three = [...two, ...noise, at(64, { kind: 'retest' })];
+  assert.deepEqual(standardScore(three, key), { total: 3, recent: 3, best: 70, median: 64, settled: true });
+  // The median covers only the newest ten; the best is the one passed in (the stored best) when there is one.
+  const twelve = [at(100), at(90), ...Array.from({ length: 10 }, (_, i) => at(50 + i))];
+  assert.deepEqual(standardScore(twelve, key), { total: 12, recent: 10, best: 100, median: 54.5, settled: true });
+  assert.equal(standardScore(twelve, key, 101).best, 101);
 });

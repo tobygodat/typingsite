@@ -383,6 +383,9 @@ kbd {
 .preference-row > span { min-width: 0; display: grid; gap: 2px; }
 .preference-row strong { font-size: 15px; font-weight: 600; }
 .preference-row .select { width: 104px; height: 36px; font-size: 14px; }
+.preference-lock { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
+.preference-row:has(:disabled) { cursor: default; }
+.preference-row:has(:disabled):hover { background: transparent; }
 
 .site-footer {
   padding: var(--space-8) 0 var(--space-6);
@@ -787,6 +790,19 @@ kbd {
 
 .quote-options .input { width: 128px; height: 38px; font-size: 14px; }
 
+/* The standard test's fixed recipe, in the quote options' place: the conditions, then what is locked. */
+.standard-options {
+  margin: calc(var(--space-10) * -1) auto var(--space-10);
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-label);
+  text-align: center;
+}
+
+.standard-options p { margin: 0; }
+
 .typing-form,
 .shortcut-row { width: 100%; }
 
@@ -839,8 +855,10 @@ body[data-session="practice"] .live-stats { justify-content: flex-start; }
 
 body[data-session="drill"] .practice-controls,
 body[data-session="drill"] .quote-options,
+body[data-session="drill"] .standard-options,
 body[data-session="retest"] .practice-controls,
-body[data-session="retest"] .quote-options { display: none; }
+body[data-session="retest"] .quote-options,
+body[data-session="retest"] .standard-options { display: none; }
 
 .live-stats {
   flex: none;
@@ -877,11 +895,12 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 .corner,
 .practice-controls,
 .quote-options,
+.standard-options,
 .shortcut-row,
 .site-footer { transition: opacity var(--dur-base) var(--ease-out); }
 
-body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
-body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
+body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .standard-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
+body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .standard-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
 
 /* ── Typing zone ────────────────────────────────────────────────────────── */
 
@@ -1137,6 +1156,7 @@ body[data-focus-mode="true"] .dock-zone,
 body[data-focus-mode="true"] .corner,
 body[data-focus-mode="true"] .practice-controls,
 body[data-focus-mode="true"] .quote-options,
+body[data-focus-mode="true"] .standard-options,
 body[data-focus-mode="true"] .shortcut-row,
 body[data-focus-mode="true"] .site-footer,
 body[data-focus-mode="true"] .session-intro { visibility: hidden; }
@@ -1423,6 +1443,25 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .history-detail dl, .run-detail dl { display: flex; flex-wrap: wrap; gap: var(--space-6); }
 .history-detail dt, .run-detail dt { font: var(--text-mono)/1.5 var(--font-mono); color: var(--muted); }
 .history-detail dd, .run-detail dd { margin: var(--space-2) 0 0; font-size: var(--text-lead); }
+/* Standard score: the one fixed recipe's best and recent median, above the filtered history. */
+.standard-score {
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-8);
+  border-bottom: 1px solid var(--hairline);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.standard-score-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-4); }
+.standard-score h2 { margin: 0; font-size: var(--text-title); font-weight: 400; }
+.standard-figures { margin: var(--space-2) 0 0; display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-14); }
+.standard-figures dt { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
+.standard-figures dd { margin: var(--space-2) 0 0; display: flex; align-items: baseline; gap: 6px; color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
+/* Longhands, so the shorthand can't reset .num's tabular figures. */
+.standard-figures strong { color: var(--text); font-family: var(--font-serif); font-size: var(--text-display); font-weight: 300; line-height: 1; letter-spacing: -0.035em; }
+.standard-score p { max-width: 64ch; margin: 0; }
+.standard-score .result-note { color: var(--muted); }
+
 .progress-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); }
 .filter-field { min-width: 0; display: grid; gap: var(--space-2); font-size: var(--text-small); }
 .progress-filters .filter-field:first-child { flex: 1; }
@@ -1922,7 +1961,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .segmented button { height: 40px; padding: 0 12px; }
   .segmented.compact button { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
-  .quote-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
+  .quote-options, .standard-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
   .quote-options .input { width: 112px; }
 
   .measure-row { flex-direction: column; align-items: stretch; gap: var(--space-4); }

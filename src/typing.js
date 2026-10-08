@@ -59,6 +59,118 @@ export function makePassage(mode, count, punctuation, random = Math.random, list
   return (punctuation ? punctuate(words) : words).join(' ');
 }
 
+// The standard test: one fixed, versioned recipe, so its scores stay comparable over time. Every
+// attempt gets fresh text from its own seed; the recipe is what stays fixed. Any change to the
+// recipe below (vocabulary weights, numbers, punctuation, the quote, length) is a new version:
+// bump STANDARD_VERSION. Word-list or quote edits already bump CORPUS_VERSION, which is in the key.
+export const STANDARD_VERSION = 'standard-v1';
+export const STANDARD_SECONDS = 60;
+const STANDARD_WORDS = 400;
+const STANDARD_QUOTE_MAX_WORDS = 30;
+
+// mulberry32: a small, fast, well-mixed 32-bit generator. Same seed, same text.
+function seededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+let standardTiers = null;
+// Three disjoint bands: the top 1k, the rest of the top 5k, and the rest of the top 10k.
+function standardVocabulary() {
+  if (!standardTiers) {
+    const common = wordList('1k');
+    const seen = new Set(common);
+    const middle = wordList('5k').filter((word) => !seen.has(word));
+    middle.forEach((word) => seen.add(word));
+    const rare = wordList('10k').filter((word) => !seen.has(word));
+    standardTiers = [[0.6, common], [0.25, middle], [0.15, rare]];
+  }
+  return standardTiers;
+}
+
+function standardWord(random) {
+  const draw = random();
+  let total = 0;
+  for (const [weight, band] of standardVocabulary()) {
+    total += weight;
+    if (draw < total) return band[Math.floor(random() * band.length)];
+  }
+  const band = standardVocabulary().at(-1)[1];
+  return band[Math.floor(random() * band.length)];
+}
+
+function standardNumber(random) {
+  const form = random();
+  if (form < 0.5) return String(2 + Math.floor(random() * 98));
+  if (form < 0.8) return String(1950 + Math.floor(random() * 80));
+  return String(100 + Math.floor(random() * 900));
+}
+
+function standardSentence(random) {
+  const length = 5 + Math.floor(random() * 10);
+  const words = [];
+  for (let i = 0; i < length; i += 1) {
+    // About one word in twenty is a number, never the first word, so every sentence opens with a capital.
+    let word = i > 0 && random() < 0.05 ? standardNumber(random) : standardWord(random);
+    if (word === 'i') word = 'I';
+    if (i === 0) word = word[0].toUpperCase() + word.slice(1);
+    if (i > 1 && i < length - 2 && random() < 0.1) word += ',';
+    words.push(word);
+  }
+  words[length - 1] += random() < 0.1 ? '?' : '.';
+  return words;
+}
+
+// Standard v1: 60 seconds of sentences mixing the 1k (60%), 5k (25%) and 10k (15%) bands, with
+// capitals, commas, full stops, some question marks and numbers, and one short original quote in
+// double quotation marks after the first sentence, so every typist reaches it.
+export function makeStandardText(seed) {
+  const random = seededRandom(seed);
+  const quotes = quoteCorpus.filter((item) => item.text.split(/\s+/).length <= STANDARD_QUOTE_MAX_WORDS && !item.text.includes('"'));
+  const quote = quotes[Math.floor(random() * quotes.length)];
+  const quoted = `"${quote.text}"`.split(' ');
+  const words = [...standardSentence(random), ...quoted];
+  let generated = words.length - quoted.length;
+  while (generated < STANDARD_WORDS) {
+    const sentence = standardSentence(random);
+    words.push(...sentence);
+    generated += sentence.length;
+  }
+  return { text: words.join(' '), quoteId: quote.id };
+}
+
+export function standardPassage(seed) {
+  const value = seed >>> 0;
+  const { text, quoteId } = makeStandardText(value);
+  const id = `${STANDARD_VERSION}-${value.toString(36)}`;
+  return { id, textVersion: `${id}@1`, text, seed: value, quoteId, recipe: STANDARD_VERSION, corpus: CORPUS_VERSION, difficulty: 'standard', fresh: true, exhausted: false };
+}
+
+// The recipe's conditions are fixed: only the input class is observed per run.
+export function standardConditions(inputClass = 'physical-keyboard') {
+  return {
+    mode: 'standard',
+    duration: STANDARD_SECONDS,
+    count: null,
+    punctuation: true,
+    quoteLength: null,
+    difficulty: null,
+    wordList: null,
+    inputClass,
+    correctionPolicy: 'mandatory',
+    language: 'en',
+    corpus: CORPUS_VERSION,
+    metricVersion: METRIC_VERSION,
+    recipe: STANDARD_VERSION,
+  };
+}
+
 export function textId(text) {
   let hash = 2166136261;
   for (const char of text) {
@@ -70,6 +182,12 @@ export function textId(text) {
 
 export function selectPassage({ mode = 'time', count = 25, punctuation = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
   const seen = new Set(seenIds);
+  if (mode === 'standard') {
+    // A fresh seed per attempt; the word-list, punctuation and quote filters never apply.
+    let passage = null;
+    for (let i = 0; i < 12 && (!passage || seen.has(passage.id)); i += 1) passage = standardPassage(Math.floor(random() * 4294967296));
+    return seen.has(passage.id) ? { ...passage, fresh: false, exhausted: true } : passage;
+  }
   if (mode === 'quote') {
     const candidates = quoteCorpus.filter((item) => {
       const wordCount = item.text.split(/\s+/).length;
@@ -305,8 +423,9 @@ export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
   return { id: `drill-${label}-${textId(text)}`, textVersion: `drill-${label}@2`, text, target: safeTarget, corpus: CORPUS_VERSION };
 }
 
+// The standard recipe version is appended only when present, so every other key stays as it was.
 export function conditionKey(conditions = {}) {
-  return [
+  const key = [
     conditions.mode,
     conditions.duration || '',
     conditions.count || '',
@@ -319,6 +438,7 @@ export function conditionKey(conditions = {}) {
     conditions.corpus || CORPUS_VERSION,
     conditions.metricVersion || METRIC_VERSION,
   ].join(':');
+  return conditions.recipe ? `${key}:${conditions.recipe}` : key;
 }
 
 export function comparable(before, after) {

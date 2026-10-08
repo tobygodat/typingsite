@@ -52,6 +52,24 @@ export function weeklyChange(runs, key, date = new Date()) {
   };
 }
 
+export const STANDARD_RECENT_RUNS = 10;
+export const STANDARD_MIN_RUNS = 3;
+
+// The standard score headline: the best at one standard key, plus the median wpm of the most recent
+// completed runs there. Below three runs there is no median, so one run can't stand in for a score.
+export function standardScore(runs, key, best = null) {
+  const eligible = runs.filter((run) => trendRun(run) && conditionKey(run.conditions) === key);
+  const recent = eligible.slice(-STANDARD_RECENT_RUNS);
+  const settled = recent.length >= STANDARD_MIN_RUNS;
+  return {
+    total: eligible.length,
+    recent: recent.length,
+    best: best ?? (eligible.length ? Math.max(...eligible.map((run) => run.score.wpm)) : null),
+    median: settled ? median(recent.map((run) => run.score.wpm)) : null,
+    settled,
+  };
+}
+
 export function recurringTargets(runs, loops, compatibleConditions) {
   const key = conditionKey(compatibleConditions);
   const eligible = runs.filter((r) => validRun(r) && ['test', 'retest', 'daily'].includes(r.kind)

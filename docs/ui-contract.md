@@ -35,7 +35,9 @@ Required IDs: `typing-screen`, `typing-form`, `typing-input`, `typing-wrap`, `te
 
 `#live-stats` is plain text and is not a live region; update it at a restrained cadence. Completion is announced once through `#announcement`.
 
-Practice mode controls are `#mode-time`, `#mode-words`, `#mode-quote`, `#duration-options`, `#punctuation-toggle`, `#quote-options`, `#quote-length`, and `#quote-difficulty`. Generated length buttons belong in `#duration-options` and use `aria-pressed`.
+Practice mode controls are `#mode-time`, `#mode-words`, `#mode-quote`, `#mode-standard`, `#duration-options`, `#punctuation-toggle`, `#quote-options`, `#quote-length`, and `#quote-difficulty`. Generated length buttons belong in `#duration-options` and use `aria-pressed`.
+
+`#mode-standard` selects the standard test: one fixed, versioned recipe (`STANDARD_VERSION` in `src/typing.js`, now `standard-v1`) of 60 s, stop on error, sentences from the 1k/5k/10k word bands with punctuation and numbers, and one short original quote in quotation marks. Each attempt draws fresh text from its own seed (`standardPassage`), recorded in the text ID. Its conditions carry `recipe`, which `conditionKey` appends only when present, so it has its own bests, trends and retests. While it is selected, `#standard-options` (with `#standard-recipe`) replaces the length buttons, and `#punctuation-toggle`, `#word-list` and `#stop-on-error-toggle` are disabled with the recipe's values and a `.preference-lock` note; the person's own settings are kept for the other modes.
 
 `#best` in the footer shows the personal best for the current conditions, or states that there is none. `#suggest-trigger` beside it (and the palette command "suggest a feature…") opens `dialog#suggest-dialog`: `#suggest-text` (max 1000 characters, counted in `#suggest-count`), errors in `#suggest-error`, a hidden honeypot `#suggest-website`, and `#send-suggest`, which inserts `{ body, view }` into the Supabase `feature_suggestions` table through `sendSuggestion` in `src/account.js`, always as the anonymous role (a filled honeypot sends nothing). Success closes the dialog and shows `#suggest-toast`; failure keeps the text. Opening it mid-run marks the run interrupted, like the palette.
 
@@ -84,6 +86,8 @@ The two players type the same original passage sequentially on one keyboard, usi
 ## Progress and local history
 
 Required IDs: `history-list`, `history-row-template`, `progress-empty`, `clear-history`, `clear-dialog`, `confirm-clear-input`, `confirm-clear`, `cancel-clear`, `history-toast`, `undo-clear`, and `history-feedback`.
+
+`#standard-score` heads `#progress-content`: `#standard-best` (the stored best for the current standard recipe), `#standard-median` and `#standard-median-label` (the median wpm of the newest completed standard runs, up to ten, shown only from three runs), `#standard-score-note` (the run count, or why there is no median yet), `#standard-score-conditions`, and `#take-standard`.
 
 `#progress-empty` is visible when no completed loop exists and links back to Practice. History rows state mode, text/corpus conditions, metric version, and sample counts. `#clear-history` opens the typed-confirm dialog. The confirm button stays disabled until the exact word `clear` is entered. After clearing, show `#undo-clear` in `#history-toast` for five seconds.
 
