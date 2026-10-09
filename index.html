@@ -79,12 +79,12 @@
               <input class="switch" id="stop-on-error-toggle" type="checkbox">
             </label>
             <label class="preference-row" for="strict-space-toggle">
-              <span><strong>strict space</strong></span>
-              <input class="switch" id="strict-space-toggle" type="checkbox">
+              <span><strong>strict space</strong><small class="preference-note" id="rules-note" hidden></small></span>
+              <input class="switch" id="strict-space-toggle" type="checkbox" aria-describedby="rules-note">
             </label>
             <label class="preference-row" for="quick-end-toggle">
-              <span><strong>quick end</strong><small class="preference-note" id="quick-end-note" hidden>only for word and quote runs that continue on error</small></span>
-              <input class="switch" id="quick-end-toggle" type="checkbox" checked aria-describedby="quick-end-note">
+              <span><strong>quick end</strong><small class="preference-note" id="quick-end-note" hidden></small></span>
+              <input class="switch" id="quick-end-toggle" type="checkbox" checked aria-describedby="quick-end-note rules-note">
             </label>
             <label class="preference-row" for="focus-toggle">
               <span><strong>focus mode</strong></span>

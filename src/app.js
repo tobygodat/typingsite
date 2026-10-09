@@ -205,11 +205,12 @@ function describeRules(value) {
   return inputRules(value).map((rule) => ` · ${RULE_LABELS[rule]}`).join('');
 }
 
-// A drill is always one minute of generated text, whatever the baseline was, so quick end never applies.
+// A drill is always one minute of generated text, whatever the baseline was. Its conditions record
+// quick end at the default (sessionConditions), so only rules that applied are listed.
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}${describeRules({ ...run.conditions, mode: 'time' })}`;
+  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}${describeRules(run.conditions)}`;
 }
 
 function signed(value, unit) {
@@ -297,8 +298,7 @@ function applyPreferences() {
   $('live-toggle').checked = prefs.liveMetrics;
   $('keyboard-toggle').checked = prefs.keyboard;
   $('stop-on-error-toggle').checked = prefs.stopOnError;
-  $('strict-space-toggle').checked = prefs.strictSpace;
-  syncQuickEnd();
+  syncRules();
   $('focus-toggle').checked = prefs.focusMode;
   $('keyboard').hidden = !prefs.keyboard;
   applyTheme();
@@ -309,17 +309,30 @@ function applyPreferences() {
   showBest();
 }
 
-// Quick end only changes word and quote runs that let a mistake stand. Elsewhere the switch is
-// disabled but keeps its value, like punctuation in a quote test, and a note says where it applies.
-function syncQuickEnd() {
-  const applies = quickEndApplies(conditions());
-  $('quick-end-toggle').disabled = !applies;
+// Why a rule switch can't change the session on hand, shown under it and read as its description.
+const RULE_NOTES = {
+  drill: 'drills end on the clock',
+  timed: 'timed runs end on the clock',
+  stopOnError: 'stop on error waits for every letter',
+  daily: 'the daily keeps its own rules',
+  retest: 'a retest keeps its baseline’s rules',
+};
+
+// Quick end only changes word and quote runs that let a mistake stand. Where the session can't take
+// it the switch is disabled but keeps its value, like punctuation in a quote test; #rules-note says
+// when the session keeps the rules it started with. Synced on every preference and view change.
+function syncRules() {
+  const limits = ruleLimits(ruleSession());
+  $('strict-space-toggle').checked = prefs.strictSpace;
   $('quick-end-toggle').checked = prefs.quickEnd;
-  $('quick-end-note').hidden = applies;
+  $('quick-end-toggle').disabled = Boolean(limits.quickEnd);
+  for (const [id, reason] of [['quick-end-note', limits.quickEnd], ['rules-note', limits.fixed]]) {
+    $(id).textContent = RULE_NOTES[reason] || '';
+    $(id).hidden = !reason;
+  }
 }
 
 function setModeControls() {
-  syncQuickEnd();
   document.querySelectorAll('[data-mode]').forEach((button) => {
     const selected = button.dataset.mode === prefs.mode;
     button.classList.toggle('is-active', selected);
@@ -466,11 +479,46 @@ function choosePassage(extraSeen = []) {
   });
 }
 
-function sessionDurationMs() {
-  if (sessionKind === 'daily') return null;
-  if (sessionKind === 'drill') return 60000;
+function sessionDurationMs(kind = sessionKind) {
+  if (kind === 'daily') return null;
+  if (kind === 'drill') return 60000;
   if (prefs.mode === 'time') return prefs.duration * 1000;
   return null;
+}
+
+// Why strict space and quick end can't change a session's run, read from the session itself (its
+// kind, its timing and the conditions its run was built with), never from the test-shape
+// preferences: a drill started from a words baseline is still a timed minute. quickEnd names why
+// quick end does nothing there ('' when it applies); fixed names a session that keeps the rules it
+// started with (the daily's are set, and a retest has to match its baseline).
+function ruleLimits({ kind, run }) {
+  return {
+    fixed: kind === 'daily' || kind === 'retest' ? kind : '',
+    quickEnd: sessionDurationMs(kind) !== null ? (kind === 'drill' ? 'drill' : 'timed')
+      : run.correctionPolicy === 'relaxed' ? '' : 'stopOnError',
+  };
+}
+
+// The session the rule switches act on: the run waiting or in progress or, once it's over, the next
+// one, which Run again makes the daily again or a practice run.
+function ruleSession() {
+  if (attempt && ['ready', 'running'].includes(attempt.status)) return { kind: sessionKind, run: attempt.conditions };
+  const kind = sessionKind === 'daily' ? 'daily' : 'practice';
+  return { kind, run: sessionConditions(kind) };
+}
+
+// The conditions a new run of this kind is built with. The daily's rules are fixed and a retest
+// takes its baseline's, whatever the switches say now. A rule that can't change the run is recorded
+// at its default, so a drill's conditions and key never carry quick end.
+function sessionConditions(kind) {
+  if (kind === 'daily') return dailyConditions();
+  const run = conditions();
+  if (kind === 'retest' && baselineAttempt) {
+    run.strictSpace = baselineAttempt.conditions.strictSpace === true;
+    run.quickEnd = baselineAttempt.conditions.quickEnd !== false;
+  }
+  if (ruleLimits({ kind, run }).quickEnd) run.quickEnd = true;
+  return run;
 }
 
 function configureSessionCopy() {
@@ -538,7 +586,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: kind === 'daily' ? dailyConditions() : conditions(),
+    conditions: sessionConditions(kind),
   });
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;
@@ -1060,6 +1108,7 @@ function switchView(view) {
     else control.removeAttribute('aria-current');
   });
   setRunning(false);
+  syncRules();
   // Pills in a hidden screen measured zero width; remeasure every group now it is visible.
   updateGlides();
   if (view === 'progress') renderHistory();
@@ -1070,7 +1119,9 @@ function switchView(view) {
 
 function navigate(view) {
   if (view === 'practice') {
-    if (!attempt || sessionKind !== 'practice' || ['complete', 'interrupted'].includes(attempt.status)) resetSession('practice');
+    // A waiting passage is rebuilt if strict space or quick end changed while another screen showed.
+    const staleRules = attempt && inputRules(attempt.conditions).join() !== inputRules(sessionConditions('practice')).join();
+    if (!attempt || sessionKind !== 'practice' || ['complete', 'interrupted'].includes(attempt.status) || staleRules) resetSession('practice');
     switchView('practice');
     return;
   }
@@ -1985,16 +2036,19 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession('practice');
 }
 
-// Strict space and quick end change how a run is scored, so like stop on error they start a fresh
-// passage. The daily keeps its fixed rules, so it stays; a practice passage that hasn't started is
-// rebuilt from any screen, so the run on return matches the switch.
+// Strict space and quick end change how a run is scored, so a change on the practice screen starts
+// the session again as the same kind: a drill stays a drill. A session that can't take it (quick
+// end in a timed run, the daily, a retest) carries on and the preference waits for a run it applies
+// to; the switch's note says why. Other screens stay put, and a practice passage left waiting there
+// is rebuilt when practice is shown again (navigate).
 function setInputRule(key, enabled) {
   if (prefs[key] === enabled) return;
   prefs[key] = enabled;
   applyPreferences();
   saveProfile();
-  if (sessionKind === 'daily') return;
-  if (document.body.dataset.view === 'practice' || (sessionKind === 'practice' && attempt?.status === 'ready')) resetSession('practice');
+  const limits = ruleLimits(ruleSession());
+  if (limits.fixed || (key === 'quickEnd' && limits.quickEnd)) return;
+  if (document.body.dataset.view === 'practice') resetSession(sessionKind);
 }
 
 function setWordList(id) {
@@ -2020,7 +2074,7 @@ function paletteCommands(query) {
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     { group: 'test', label: 'strict space', keywords: 'space bar early skip word mistakes input', hint: onOff(prefs.strictSpace), on: prefs.strictSpace, run: () => setInputRule('strictSpace', !prefs.strictSpace) },
-    { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: !quickEndApplies(conditions()), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
+    { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
