@@ -43,6 +43,7 @@ const defaultPreferences = {
   keyboard: false,
   stopOnError: false,
   focusMode: false,
+  tape: false,
   theme: 'system',
 };
 
@@ -70,6 +71,8 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  // Profiles saved before tape mode have no value; anything but true is the three-line passage.
+  value.tape = value.tape === true;
   return value;
 }
 
@@ -110,7 +113,7 @@ let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
-const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
+const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index), tape: () => prefs.tape });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -271,6 +274,11 @@ function updateGlides(options) {
 
 function applyPreferences() {
   document.body.dataset.fontSize = prefs.fontSize;
+  if (document.body.dataset.tape !== String(prefs.tape)) {
+    // Trimmed words leave a spacer shaped for one layout; put them back before switching.
+    primaryTextView?.restore();
+    document.body.dataset.tape = String(prefs.tape);
+  }
   primaryFx.relayout();
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
   document.body.dataset.keyboard = String(prefs.keyboard);
@@ -280,6 +288,7 @@ function applyPreferences() {
   $('keyboard-toggle').checked = prefs.keyboard;
   $('stop-on-error-toggle').checked = prefs.stopOnError;
   $('focus-toggle').checked = prefs.focusMode;
+  $('tape-toggle').checked = prefs.tape;
   $('keyboard').hidden = !prefs.keyboard;
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
@@ -316,7 +325,8 @@ function setModeControls() {
   requestAnimationFrame(() => updateGlides());
 }
 
-function renderText(display, text) {
+// tape: whether the passage is on one line (tape mode), which changes how passed text is trimmed.
+function renderText(display, text, { tape = () => false } = {}) {
   const words = text.split(' ');
   const characters = [];
   const characterWords = [];
@@ -362,6 +372,35 @@ function renderText(display, text) {
     if (targetWord >= renderedWords) appendWords(Math.max(80, targetWord - renderedWords + 1));
   }
 
+  // Puts trimmed words back in place of their spacer.
+  function remountTrimmed() {
+    if (!firstRenderedWord) return;
+    const fragment = document.createDocumentFragment();
+    for (let index = 0; index < firstRenderedWord; index += 1) fragment.append(...groups[index]);
+    display.querySelector('.passage-spacer')?.remove();
+    display.insertBefore(fragment, display.querySelector('.word'));
+    firstRenderedWord = 0;
+  }
+
+  // Tape mode: words more than two line-widths behind the caret give way to a spacer of the
+  // same width, so nothing in view moves.
+  function trimTape(current) {
+    const keepLeft = (current.closest('.word') || current).offsetLeft - display.clientWidth * 2;
+    if (keepLeft <= 0) return;
+    const firstKept = [...display.querySelectorAll('.word')].find((word) => word.offsetLeft >= keepLeft);
+    if (!firstKept || firstKept === display.querySelector('.word')) return;
+    const spacer = document.createElement('span');
+    spacer.className = 'passage-spacer';
+    spacer.style.width = `${firstKept.offsetLeft}px`;
+    for (const child of [...display.childNodes]) {
+      if (child === firstKept) break;
+      if (child.classList?.contains('caret') || child.classList?.contains('ghost-caret')) continue;
+      child.remove();
+    }
+    display.insertBefore(spacer, firstKept);
+    firstRenderedWord = Number(firstKept.dataset.wordIndex);
+  }
+
   display.replaceChildren();
   appendWords(100);
   characters[0]?.classList.add('current');
@@ -372,21 +411,26 @@ function renderText(display, text) {
       // A separator before the first mounted word maps to that word, but is
       // itself detached. Remount it when backspacing reaches the boundary.
       if (currentWord < firstRenderedWord || (currentWord === firstRenderedWord && !characters[position]?.isConnected)) {
-        const fragment = document.createDocumentFragment();
-        for (let index = 0; index < firstRenderedWord; index += 1) fragment.append(...groups[index]);
-        display.querySelector('.passage-spacer')?.remove();
-        display.insertBefore(fragment, display.querySelector('.word'));
-        firstRenderedWord = 0;
+        remountTrimmed();
         lastTrimPosition = position;
       }
       ensureForward(position);
     },
     ensureForward,
+    // Before switching between three lines and the tape: the spacer only fits the old layout.
+    restore() {
+      remountTrimmed();
+      lastTrimPosition = 0;
+    },
     trimBehind(position) {
       if (position - lastTrimPosition < 160) return;
       lastTrimPosition = position;
       const current = characters[position];
       if (!current?.isConnected) return;
+      if (tape()) {
+        trimTape(current);
+        return;
+      }
       const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 48;
       const currentTop = (current.closest('.word') || current).offsetTop;
       const keepTop = currentTop - lineHeight * 3;
@@ -520,7 +564,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('typing-input').value = '';
   $('typing-input').disabled = false;
   $('accessible-passage').textContent = passage.text;
-  primaryTextView = renderText($('text-display'), passage.text);
+  primaryTextView = renderText($('text-display'), passage.text, { tape: () => prefs.tape });
   primaryCharacters = primaryTextView.characters;
   primaryFx.reset(primaryCharacters);
   primaryFx.ghost.arm(ghostOn ? ghostPace().cps : 0);
@@ -1743,6 +1787,7 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
+  $('tape-toggle').addEventListener('change', (event) => { prefs.tape = event.target.checked; applyPreferences(); saveProfile(); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
     applyPreferences();
@@ -1925,6 +1970,7 @@ function paletteCommands(query) {
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
+    { group: 'display', label: 'one-line tape', keywords: 'tape mode single line passage layout scroll', hint: onOff(prefs.tape), on: prefs.tape, run: () => togglePreference('tape') },
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },

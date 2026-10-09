@@ -1,6 +1,8 @@
-// Typing-surface motion: a spring-driven caret, line scrolling, and an optional
-// ghost pacer. Nothing decorative moves while a run is in progress. Everything
-// here is presentational; scoring never reads from it.
+// Typing-surface motion: a spring-driven caret, line scrolling (or tape steps),
+// and an optional ghost pacer. Nothing decorative moves while a run is in
+// progress. Everything here is presentational; scoring never reads from it.
+
+import { tapeOffset } from './tape.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const IDLE_AFTER_MS = 800;
@@ -61,9 +63,46 @@ export function createTypingFx(wrap, display, options = {}) {
   let needsMeasure = false;
   let snapNext = true;
   let idleTimer = 0;
+  // Tape mode (one line): the scroll, and what the caret was doing at the last measure.
+  let tapeScroll = 0;
+  let tapeWord = null;
+  let measuredPosition = 0;
+  let wasTape = false;
 
   function setState(state) {
     wrap.dataset.caret = state;
+  }
+
+  // A re-layout jumps straight to the new position; only steps and line changes use the
+  // ~150 ms scroll from the stylesheet.
+  function setScroll(transform, instant) {
+    if (display.style.transform === transform) return;
+    if (!instant) {
+      display.style.transform = transform;
+      return;
+    }
+    display.style.transition = 'none';
+    display.style.transform = transform;
+    display.getBoundingClientRect();
+    display.style.transition = '';
+  }
+
+  // One line: the caret travels right, and the tape steps by whole words near the right edge.
+  function measureTape(x, current, lineHeight, realign) {
+    const forward = position > measuredPosition;
+    measuredPosition = position;
+    const word = current?.parentElement?.classList.contains('word') ? current.parentElement : null;
+    const entered = word && (realign || (forward && word !== tapeWord));
+    if (word) tapeWord = word;
+    let span = null;
+    if (entered) {
+      const { left } = offsetIn(word, display);
+      span = { left, right: left + word.offsetWidth };
+    }
+    tapeScroll = tapeOffset({ offset: tapeScroll, caret: x, word: span, width: display.clientWidth, margin: lineHeight * 0.6, realign });
+    const scrolled = String(tapeScroll > 0);
+    if (wrap.dataset.tapeScrolled !== scrolled) wrap.dataset.tapeScrolled = scrolled;
+    setScroll(tapeScroll ? `translateX(-${tapeScroll}px)` : '', realign);
   }
 
   function measure() {
@@ -78,21 +117,32 @@ export function createTypingFx(wrap, display, options = {}) {
       ({ left: x, top } = offsetIn(last, display));
       x += last.offsetWidth;
     }
-    const spacer = display.querySelector('.passage-spacer');
-    const spacerHeight = spacer?.offsetHeight || 0;
-    const logicalTop = top - spacerHeight;
-    const nextLine = Math.floor((logicalTop + lineHeight * 0.25) / lineHeight);
     caretX.target = x;
     // Keep the caret in the display's real content coordinates; the display
     // transform below removes the spacer from its visible position. Snap to
     // the row: a space's inline box sits lower than the letters around it.
     caretY.target = Math.floor((top + lineHeight * 0.25) / lineHeight) * lineHeight;
 
-    if (nextLine !== line) {
-      line = nextLine;
+    const tape = Boolean(options.tape?.());
+    if (tape !== wasTape) {
+      // Switching layouts starts the tape from the beginning of the line; realign places it.
+      wasTape = tape;
+      tapeScroll = 0;
+      tapeWord = null;
+      wrap.dataset.tapeScrolled = 'false';
     }
-    const scrollY = spacerHeight + Math.max(0, line - 1) * lineHeight;
-    display.style.transform = scrollY ? `translateY(-${scrollY}px)` : '';
+    if (tape) measureTape(x, current, lineHeight, snapNext);
+    else {
+      const spacer = display.querySelector('.passage-spacer');
+      const spacerHeight = spacer?.offsetHeight || 0;
+      const logicalTop = top - spacerHeight;
+      const nextLine = Math.floor((logicalTop + lineHeight * 0.25) / lineHeight);
+      if (nextLine !== line) {
+        line = nextLine;
+      }
+      const scrollY = spacerHeight + Math.max(0, line - 1) * lineHeight;
+      setScroll(scrollY ? `translateY(-${scrollY}px)` : '', snapNext);
+    }
     if (snapNext || reducedMotion.matches) {
       springs.forEach((s) => snap(s, s.target));
       snapNext = false;
@@ -161,8 +211,11 @@ export function createTypingFx(wrap, display, options = {}) {
       characters = nextCharacters;
       position = 0;
       line = 0;
+      tapeScroll = 0;
+      tapeWord = null;
+      measuredPosition = 0;
       clearTimeout(idleTimer);
-      display.style.transform = '';
+      setScroll('', true);
       wrap.dataset.blocked = 'false';
       stopGhost();
       ghost.index = -1;
