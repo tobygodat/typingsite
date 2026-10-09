@@ -18,6 +18,7 @@ export class FakeSupabase {
     this.tokens = new Map();
     this.refreshTokens = new Map();
     this.profiles = new Map();
+    this.suggestions = [];
     this.requests = [];
     this.errors = [];
     this.googleEnabled = false;
@@ -128,6 +129,11 @@ export class FakeSupabase {
 
       case 'POST /auth/v1/logout':
         return reply(204);
+
+      // Insert-only, like the real table.
+      case 'POST /rest/v1/feature_suggestions':
+        this.suggestions.push(body);
+        return reply(201);
 
       case 'GET /rest/v1/profiles': {
         if (!caller) return reply(401, { message: 'JWT expired' });

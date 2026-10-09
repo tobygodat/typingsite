@@ -232,7 +232,8 @@ export function takeLegacyProfile() {
 // Feature suggestions: sent as the anonymous role even when signed in, so a suggestion is never tied
 // to an account. The table accepts inserts only; nothing can be read back through the API.
 export const MAX_SUGGESTION = 1000;
-const SUGGESTION_VIEWS = new Set(['practice', 'results', 'progress', 'compete']);
+// Every value body[data-view] takes; the table's feature_suggestions_view_check holds the same list.
+const SUGGESTION_VIEWS = new Set(['practice', 'results', 'progress', 'compete', 'learn']);
 
 // The row to store, or the sentence to show instead.
 export function suggestionRow(text, view) {

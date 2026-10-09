@@ -232,6 +232,16 @@ test('guests keep lesson progress for the tab only, and clearing history clears 
   await expect(page.locator('#lesson-list .lesson-row').first()).toHaveAttribute('data-state', 'next');
 });
 
+test('a suggestion sent from the learn screen records the learn view', async ({ page, supabase }) => {
+  await openApp(page);
+  await openLessons(page);
+  await page.locator('#suggest-trigger').click();
+  await page.locator('#suggest-text').fill('A lesson for the number row');
+  await page.locator('#send-suggest').click();
+  await expect(page.locator('#suggest-toast')).toBeVisible();
+  expect(supabase.suggestions).toEqual([{ body: 'A lesson for the number row', view: 'learn' }]);
+});
+
 test('a signed-in learner’s lesson progress syncs to the account, outside runs and bests', async ({ page, supabase }) => {
   const user = supabase.addUser('learner@stilltype.test');
   await openApp(page);
