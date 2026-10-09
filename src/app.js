@@ -24,6 +24,8 @@ import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
+import { normalizeCompositions, promptText, retainCompositions } from './compose.js';
+import { createCompose } from './compose-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
@@ -56,6 +58,8 @@ function emptyProfile() {
     loops: [],
     seenTextIds: [],
     bests: {},
+    // Composing practice keeps summary numbers only, never the text (src/compose.js).
+    compositions: [],
   };
 }
 
@@ -91,6 +95,7 @@ function normalizeProfile(parsed) {
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
     bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
+    compositions: normalizeCompositions(parsed.compositions),
   };
 }
 
@@ -126,6 +131,9 @@ let trainingContext = null;
 let resultBestBefore = null;
 let clearSnapshot = null;
 let clearTimer = null;
+// Composing practice takes the passage's place on the practice screen; see openCompose.
+let composeOpen = false;
+let compose = null;
 
 let race = {
   passage: null,
@@ -145,6 +153,7 @@ function saveProfile() {
   profile.preferences = { ...prefs };
   profile.attempts = profile.attempts.slice(-MAX_STORED_ATTEMPTS);
   profile.runs = retainRuns(profile.runs);
+  profile.compositions = retainCompositions(profile.compositions || []);
   if (!session) return true;
   unsynced = true;
   if (cloudChecked) {
@@ -291,14 +300,17 @@ function applyPreferences() {
 
 function setModeControls() {
   document.querySelectorAll('[data-mode]').forEach((button) => {
-    const selected = button.dataset.mode === prefs.mode;
+    const selected = !composeOpen && button.dataset.mode === prefs.mode;
     button.classList.toggle('is-active', selected);
     button.setAttribute('aria-pressed', String(selected));
   });
-  $('quote-options').hidden = prefs.mode !== 'quote';
+  $('mode-compose').classList.toggle('is-active', composeOpen);
+  $('mode-compose').setAttribute('aria-pressed', String(composeOpen));
+  $('quote-options').hidden = prefs.mode !== 'quote' || composeOpen;
   $('punctuation-toggle').disabled = prefs.mode === 'quote';
+  $('punctuation-switch').hidden = composeOpen;
   $('word-list').disabled = prefs.mode === 'quote';
-  $('duration-options').hidden = prefs.mode === 'quote';
+  $('duration-options').hidden = prefs.mode === 'quote' || composeOpen;
   const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
   const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
   $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
@@ -457,10 +469,20 @@ function configureSessionCopy() {
   document.body.dataset.session = sessionKind;
   const setup = document.querySelector('.practice-controls');
   if (setup) setup.hidden = sessionKind !== 'practice';
-  $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote';
+  $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote' || composeOpen;
 }
 
-function resetSession(kind = sessionKind, { focus = false, selectedPassage = null } = {}) {
+function resetSession(kind = sessionKind, { focus = false, selectedPassage = null, leaveCompose = false } = {}) {
+  // While composing, a refresh of the practice passage (a setting, sync, the dock) waits until
+  // composing ends, so no hidden passage is marked seen. Choosing a test, drill, retest or daily ends it.
+  if (composeOpen) {
+    if (kind === 'practice' && !leaveCompose) {
+      switchView('practice');
+      if (focus) compose.focus();
+      return false;
+    }
+    closeCompose();
+  }
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
@@ -547,6 +569,46 @@ function showUnavailableRetest(reason) {
   $('comparison-sample').textContent = 'no matching fresh text';
   $('comparison-caveat').textContent = reason;
   announce(reason);
+}
+
+// Composing has no passage: the practice screen swaps its typing form for the composing form.
+// A run in progress is dropped, as a restart would drop it; it was never stored.
+function openCompose() {
+  if (!composeOpen) {
+    clearInterval(ticker);
+    ticker = null;
+    if (attempt?.status === 'running') {
+      primaryFx.finish();
+      attempt = null;
+    }
+    sessionKind = 'practice';
+    composeOpen = true;
+    document.body.dataset.compose = 'true';
+    $('typing-form').hidden = true;
+    $('compose-form').hidden = false;
+    configureSessionCopy();
+    setModeControls();
+    switchView('practice');
+    compose.open({ focus: true });
+    return;
+  }
+  switchView('practice');
+  compose.focus();
+}
+
+// Leaving drops anything typed. The caller then resets the practice passage.
+function closeCompose() {
+  composeOpen = false;
+  compose.close();
+  document.body.dataset.compose = 'false';
+  $('typing-form').hidden = false;
+  $('compose-form').hidden = true;
+  setModeControls();
+}
+
+function focusPractice() {
+  if (composeOpen) compose.focus();
+  else $('typing-input').focus({ preventScroll: true });
 }
 
 function startAttempt(targetAttempt, type = 'primary') {
@@ -657,6 +719,10 @@ const NOTICES = {
   leftSurface: 'You left mid-run, so it won’t count.',
   paletteOpened: 'Commands opened mid-run, so it won’t count.',
   suggestOpened: 'Suggestions opened mid-run, so it won’t count.',
+  composeFocusLost: 'Focus lost, so this one won’t be saved. Esc to start over.',
+  composeLeft: 'You left mid-way, so this one wasn’t saved.',
+  composePalette: 'Commands opened mid-way, so this one won’t be saved.',
+  composeSuggest: 'Suggestions opened mid-way, so this one won’t be saved.',
   raceFocusLost: 'Focus lost. Esc to restart this turn.',
 };
 
@@ -1004,6 +1070,7 @@ function navigate(view) {
     markInterrupted(NOTICES.leftSurface);
     finishPrimary();
   }
+  if (compose.isRunning()) compose.interrupt(NOTICES.composeLeft, { end: true });
   if (race.attempt?.status === 'running' && view !== 'compete') markRaceInterrupted();
   switchView(view);
 }
@@ -1129,7 +1196,7 @@ function renderHistory() {
   const hasProgress = eligible.length > 0 || profile.loops.length > 0;
   $('progress-empty').hidden = hasProgress;
   $('progress-content').hidden = !hasProgress;
-  const hasHistory = profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0;
+  const hasHistory = hasAnyHistory();
   $('clear-history').hidden = !hasHistory;
   $('clear-history').disabled = !hasHistory;
   const source = conditionOptions($('progress-conditions'), [...eligible, ...profile.loops]);
@@ -1198,6 +1265,31 @@ function renderHistory() {
     return row;
   });
   $('history-list').replaceChildren(...rows);
+  renderComposeHistory();
+}
+
+function hasAnyHistory() {
+  return profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0 || profile.compositions.length > 0;
+}
+
+// Composing numbers get their own list: no chart, no trend, no best, nothing shared with copy tests.
+function renderComposeHistory() {
+  const list = profile.compositions;
+  $('compose-history').hidden = !list.length;
+  if (!list.length) return;
+  const shown = [...list].reverse().slice(0, 10);
+  $('compose-history-note').textContent = 'Free-typing wpm is characters in your text ÷ 5 per minute of active typing, gaps over 2 s left out. '
+    + `Kept apart from copy-test charts and never a best. ${list.length} ${list.length === 1 ? 'session' : 'sessions'} saved`
+    + `${list.length > shown.length ? `; the newest ${shown.length} are shown` : ''}. Only these numbers are kept, never your words.`;
+  $('compose-history-list').replaceChildren(...shown.map((item) => {
+    const row = element('article', '', 'compose-row');
+    const main = element('div', '', 'compose-row-main');
+    main.append(element('strong', `${item.wpm} wpm`, 'num'), element('span', `${item.backspaceRate}% backspace rate`, 'num'));
+    const prompt = promptText(item.promptId);
+    row.append(main, element('p', prompt ? `“${prompt}”` : 'A prompt no longer offered'),
+      element('p', `${dateCopy(item.at)} · ${item.characters} characters · ${item.backspaces} ${item.backspaces === 1 ? 'backspace' : 'backspaces'} in ${item.keystrokes} keys · ${(item.activeMs / 1000).toFixed(1)} s active of ${Math.round(item.elapsedMs / 1000)} s · ${item.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`, 'condition-copy'));
+    return row;
+  }));
 }
 
 function dailyConditions() {
@@ -1362,6 +1454,7 @@ function clearHistory() {
   profile.loops = [];
   profile.seenTextIds = [];
   profile.bests = {};
+  profile.compositions = [];
   baselineAttempt = null;
   trainingContext = null;
   selectedTarget = null;
@@ -1654,6 +1747,7 @@ let suggestToastTimer;
 function openSuggest() {
   document.querySelector('.preferences')?.removeAttribute('open');
   markInterrupted(NOTICES.suggestOpened);
+  compose.interrupt(NOTICES.composeSuggest);
   markRaceInterrupted();
   $('suggest-error').textContent = '';
   updateSuggestCount();
@@ -1699,6 +1793,11 @@ function bindEvents() {
     const skip = event.target.closest('.skip-link');
     if (skip) {
       event.preventDefault();
+      if (composeOpen) {
+        switchView('practice');
+        compose.focus();
+        return;
+      }
       if (!attempt || attempt.status === 'complete' || $('typing-input').disabled) resetSession('practice');
       else switchView('practice');
       $('typing-input').focus({ preventScroll: false });
@@ -1711,13 +1810,14 @@ function bindEvents() {
       return;
     }
     const practice = event.target.closest('[data-action="go-practice"]');
-    if (practice) resetSession('practice', { focus: true });
+    if (practice) resetSession('practice', { focus: true, leaveCompose: true });
   });
+  $('mode-compose').addEventListener('click', openCompose);
   document.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => {
     prefs.mode = button.dataset.mode;
     setModeControls();
     saveProfile();
-    resetSession('practice', { focus: true });
+    resetSession('practice', { focus: true, leaveCompose: true });
   }));
   $('duration-options').addEventListener('click', (event) => {
     const button = event.target.closest('[data-length]');
@@ -1747,7 +1847,7 @@ function bindEvents() {
     prefs.focusMode = false;
     applyPreferences();
     saveProfile();
-    $('typing-input').focus({ preventScroll: true });
+    focusPractice();
   });
 
   $('typing-input').addEventListener('beforeinput', (event) => beforeTypingInput(event));
@@ -1775,7 +1875,7 @@ function bindEvents() {
     }
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
-  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
+  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true, leaveCompose: true }));
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
@@ -1848,7 +1948,10 @@ function bindEvents() {
       prefs.focusMode = false;
       applyPreferences();
       saveProfile();
-      $('typing-input').focus({ preventScroll: true });
+      focusPractice();
+    } else if (event.key === 'Escape' && document.activeElement === $('compose-input')) {
+      event.preventDefault();
+      compose.restart();
     } else if (event.key === 'Escape' && document.activeElement === $('typing-input')) {
       event.preventDefault();
       resetSession(sessionKind, { focus: true });
@@ -1862,6 +1965,7 @@ function bindEvents() {
   window.addEventListener('blur', () => {
     document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active'));
     markInterrupted(NOTICES.focusLost);
+    compose.interrupt(NOTICES.composeFocusLost);
     markRaceInterrupted();
   });
   document.addEventListener('pointerdown', (event) => {
@@ -1883,14 +1987,14 @@ function setTestShape(mode, length) {
   if (mode === 'words' && length) prefs.count = length;
   setModeControls();
   saveProfile();
-  resetSession('practice', { focus: true });
+  resetSession('practice', { focus: true, leaveCompose: true });
 }
 
 function togglePreference(key) {
   prefs[key] = !prefs[key];
   applyPreferences();
   saveProfile();
-  if (document.body.dataset.view === 'practice') $('typing-input').focus({ preventScroll: true });
+  if (document.body.dataset.view === 'practice') focusPractice();
 }
 
 function setStopOnError(enabled) {
@@ -1910,16 +2014,22 @@ function setWordList(id) {
 
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
-  const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  const shape = (mode, length) => !composeOpen && prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
   const commands = [
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => {
+      navigate('practice');
+      if (composeOpen) compose.restart();
+      else resetSession(sessionKind, { focus: true });
+    } },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
+    { group: 'test', label: 'composing practice', keywords: 'compose write writing free typing prompt own words', hint: composeOpen ? 'current' : '', on: composeOpen, run: openCompose },
+    { group: 'test', label: 'another prompt', keywords: 'compose composing writing new different prompt skip', disabled: !composeOpen, run: () => { switchView('practice'); compose.another(); } },
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
@@ -1936,7 +2046,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
-    { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.runs.length === 0 && profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
+    { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: !hasAnyHistory(), run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
   // Only an exact word finds this one.
   if (query === 'ghost') commands.unshift({ group: 'secret', secret: true, label: 'ghost pacer', hint: onOff(ghostOn), on: ghostOn, run: toggleGhost });
@@ -1956,6 +2066,7 @@ function bindPalette() {
       document.querySelector('.preferences')?.removeAttribute('open');
       closeAccountMenu();
       markInterrupted(NOTICES.paletteOpened);
+      compose.interrupt(NOTICES.composePalette);
       markRaceInterrupted();
     },
   });
@@ -2004,6 +2115,14 @@ new ResizeObserver(() => {
 }).observe($('progress-trend'));
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
+compose = createCompose({
+  setRunning, announce, uid,
+  signedIn: () => Boolean(session),
+  save(record) {
+    profile.compositions.push(record);
+    return saveProfile();
+  },
+});
 buildKeyboard();
 applyPreferences();
 setModeControls();

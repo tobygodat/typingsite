@@ -219,6 +219,7 @@ export function mergeProfiles(base, extra) {
     loops: byId([...extra.loops, ...base.loops]),
     seenTextIds: [...new Set([...extra.seenTextIds, ...base.seenTextIds])],
     bests,
+    compositions: byId([...(extra.compositions || []), ...(base.compositions || [])]),
   };
 }
 
