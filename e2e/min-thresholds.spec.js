@@ -1,6 +1,6 @@
 // Minimum accuracy and speed to continue: practice-only settings, judged on the timing tick after a
 // grace period, ending a run as interrupted with its reason and keeping it out of bests.
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView } from './fixtures.js';
 
 const shot = (page, testInfo, name) => page.screenshot({
   path: process.env.SCREENSHOTS ? `docs/screenshots/min-thresholds/${name}.png` : testInfo.outputPath(`${name}.png`),
@@ -213,10 +213,90 @@ test('a retest carries its baseline’s minimums, and the daily challenge has no
   await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: speed fell below 20 wpm, so it isn’t counted.');
   await expect(page.locator('#comparison-status')).toHaveText('Retest complete.');
   await expect(page.locator('#comparison-caveat')).toHaveText('The retest fell under the baseline’s minimums, so no comparison is made.');
+  // None of the stopped run's numbers reach the panel, keystroke counts included.
+  for (const id of ['#comparison-accuracy', '#comparison-wpm', '#comparison-timing']) await expect(page.locator(id)).toHaveText('—');
+  await expect(page.locator('#comparison-sample')).toHaveText('timing not compared');
 
   await runCommand(page, 'daily challenge');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   await expect(page.locator('#condition-line')).not.toContainText('min');
+});
+
+// However a run ends under its minimum (its last character or its timer), the keys already on their
+// way can't discard the result: Space and Enter on Run again wait until the typist pauses.
+for (const end of ['last character', 'timer']) {
+  test(`a run that ends under the minimum on its ${end} holds Run again until the typist pauses`, async ({ page }) => {
+    await page.clock.install();
+    await openApp(page);
+    if (end === 'timer') await page.locator('#duration-options [data-length="15"]').click();
+    else await chooseWords(page, 10);
+    await openSettings(page);
+    await page.locator('#min-accuracy').selectOption('98');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#condition-line')).toContainText(end === 'timer' ? '15 s' : '10 words');
+
+    // About 83% accuracy at 60 wpm. A 98% minimum waits for 100 characters on the tick, which
+    // neither run reaches, so only the end of the run can judge it.
+    const text = await passageText(page);
+    await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
+    if (end === 'timer') {
+      // Seventy-five keys fill the 15 s; the typist keeps going for five more, then Enter.
+      await typeAtPace(page, withMisses(text.slice(0, 80)));
+    } else {
+      await typeAtPace(page, withMisses(text));
+      await page.keyboard.press(' ');
+    }
+    await page.keyboard.press('Enter');
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+    await expect(page.locator('#result-delta')).toHaveText('Under your minimum · not counted');
+    await expect(page.locator('#result-comparison-note')).toHaveText('Finished under your 98% minimum accuracy, so it isn’t counted.');
+    await expect(page.locator('#run-again')).toBeFocused();
+    if (end === 'timer') await expect(page.locator('#result-time')).toHaveText('15.0 s');
+
+    // Once the typist has paused, Enter starts the next run.
+    await page.clock.runFor(700);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#typing-status')).toHaveText('Ready');
+    await page.clock.resume();
+  });
+}
+
+test('a retest stopped under its baseline’s minimum shows no timing for the drilled pair', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await chooseWords(page, 10);
+  await openSettings(page);
+  await page.locator('#min-wpm').selectOption('20');
+  await page.keyboard.press('Escape');
+  await completePassage(page);
+  await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
+
+  await page.locator('#manual-heading').click();
+  await page.locator('#manual-target-input').fill('th');
+  await page.locator('#apply-manual-target').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await typeInto(page, (await passageText(page)).slice(0, 12));
+  await page.clock.fastForward(60_000);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await expect(page.locator('#condition-line')).toContainText('min 20 wpm');
+
+  // 21 keys a second apart: about 12 wpm, under the baseline's 20 once the grace is over.
+  const slow = await passageText(page);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
+  await typeAtPace(page, slow.slice(0, 21), 1000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await page.clock.resume();
+  await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: speed fell below 20 wpm, so it isn’t counted.');
+  await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', 'unavailable');
+  for (const id of ['#comparison-accuracy', '#comparison-wpm', '#comparison-timing']) await expect(page.locator(id)).toHaveText('—');
+  await expect(page.locator('#comparison-sample')).toHaveText('th · timing not compared');
+  await expect(page.locator('#comparison-caveat')).toHaveText('The retest fell under the baseline’s minimums, so no comparison is made.');
+
+  // Progress keeps the baseline and records no drill-and-retest comparison.
+  await openView(page, 'Progress');
+  await expect(page.locator('.run-row')).toHaveCount(1);
+  await expect(page.locator('#history-list')).toBeHidden();
+  await expect(page.locator('#history-empty')).toBeVisible();
 });
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {

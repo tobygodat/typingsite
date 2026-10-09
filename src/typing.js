@@ -360,6 +360,8 @@ export function comparable(before, after) {
 }
 
 export function compareAttempts(before, after) {
+  // A retest stopped under its baseline's minimums is stored as interrupted; say why it isn't compared.
+  if (after?.stopped) return { comparable: false, state: 'not-comparable', reason: 'The retest fell under the baseline’s minimums, so no comparison is made.' };
   if (!comparable(before, after)) return { comparable: false, state: 'not-comparable', reason: 'Different conditions or repeated text, so no comparison is made.' };
   const beforeScore = before.summary?.score || replayAttempt(before).score;
   const afterScore = after.summary?.score || replayAttempt(after).score;

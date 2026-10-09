@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage } from '../src/typing.js';
+import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, summarizePatterns } from '../src/typing.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
@@ -103,4 +103,27 @@ test('a run stopped by a minimum is interrupted everywhere; a completed run keep
   assert.equal(conditionKey(kept.conditions), conditionKey(conditions));
   assert.equal('stopped' in kept, false);
   assert.equal('minimums' in runRecord(completeAttempt({ ...attempt, minimums: undefined }, { endedAt: 6000 })), false);
+});
+
+test('a retest stopped by its baseline\'s minimum is never compared, and its pairs feed no evidence', () => {
+  const typed = (id, text, keys) => {
+    const attempt = createAttempt({ id, text, textId: id, kind: id === 'before' ? 'test' : 'retest', conditions });
+    attempt.events = [...keys].map((key, i) => ({ type: 'insert', text: key, offsetMs: i * 150 }));
+    attempt.startedAt = 0;
+    attempt.minimums = { wpm: 20 };
+    return completeAttempt(attempt, { endedAt: keys.length * 150 });
+  };
+  const text = 'the other three think that the';
+  const before = typed('before', text, text);
+  // As the app stores it: interrupted, with the stop that ended it.
+  const after = { ...typed('after', text, 'thx other three think that the'), status: 'interrupted', stopped: { metric: 'wpm', minimum: 20, value: 12 } };
+  const comparison = compareAttempts(before, after);
+  assert.equal(comparison.comparable, false);
+  assert.equal(comparison.reason, 'The retest fell under the baseline’s minimums, so no comparison is made.');
+  assert.equal('wpmDelta' in comparison, false);
+  assert.equal(summarizePatterns([after]).attemptCount, 0);
+  assert.equal(summarizePatterns([before, after]).pairs.find((p) => p.pair === 'th').observations, summarizePatterns([before]).pairs.find((p) => p.pair === 'th').observations);
+  assert.equal(recommendTarget([after]).evidence.attemptCount, 0);
+  assert.deepEqual(runRecord(after, '2026-10-08T12:00:00Z').patterns, []);
+  assert.deepEqual(recurringTargets([runRecord(after, '2026-10-08T12:00:00Z'), runRecord({ ...after, id: 'again' }, '2026-10-08T12:01:00Z')], [], conditions), []);
 });

@@ -857,7 +857,9 @@ function finishPrimary(forcedElapsed = null, stop = null) {
   switchView('results');
   renderCard(completed);
   $('run-again').focus({ preventScroll: true });
-  stopHold = stop ? now() : null;
+  // Every run a minimum ends gets the hold, wherever it was caught: the tick, the last character or
+  // the timer.
+  stopHold = completed.stopped ? now() : null;
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -963,10 +965,19 @@ function renderComparison(before, after, saved) {
   $('comparison-wpm').textContent = comparison.comparable ? signed(comparison.wpmDelta, 'wpm') : '—';
 
   const trainedTarget = trainingContext?.target || selectedTarget;
-  const beforePattern = before ? summarizePatterns([before]).pairs.find((item) => item.pair === trainedTarget) : null;
+  // No comparison means no timing comparison either: a retest that isn't compared (stopped under a
+  // minimum, interrupted, other conditions or repeated text) puts none of its numbers on this panel.
+  if (!comparison.comparable) {
+    $('comparison-timing').textContent = '—';
+    $('comparison-sample').textContent = trainedTarget ? `${trainedTarget} · timing not compared` : 'timing not compared';
+    $('comparison-caveat').textContent = `${comparison.reason}${saved ? '' : ' Couldn’t save on this device.'}`;
+    renderHistory();
+    return;
+  }
+  const beforePattern = summarizePatterns([before]).pairs.find((item) => item.pair === trainedTarget);
   const afterPattern = summarizePatterns([after]).pairs.find((item) => item.pair === trainedTarget);
   const enoughTiming = beforePattern?.timings.length >= 10 && afterPattern?.timings.length >= 10;
-  let timingSummary = { target: trainedTarget, beforeCount: beforePattern?.timings.length || 0, afterCount: afterPattern?.timings.length || 0, deltaMs: null };
+  const timingSummary = { target: trainedTarget, beforeCount: beforePattern?.timings.length || 0, afterCount: afterPattern?.timings.length || 0, deltaMs: null };
   if (enoughTiming) {
     const delta = afterPattern.medianMs - beforePattern.medianMs;
     timingSummary.deltaMs = delta;
@@ -976,10 +987,10 @@ function renderComparison(before, after, saved) {
     $('comparison-timing').textContent = '—';
     $('comparison-sample').textContent = trainedTarget
       ? `${trainedTarget} · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
-      : `keystrokes · ${before?.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
+      : `keystrokes · ${before.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
   }
   let comparisonSaved = saved;
-  if (comparison.comparable && saved) {
+  if (saved) {
     profile.loops.push({
       id: uid(),
       at: new Date().toISOString(),
@@ -995,8 +1006,7 @@ function renderComparison(before, after, saved) {
     });
     comparisonSaved = saveProfile();
   }
-  const reason = after.stopped ? 'The retest fell under the baseline’s minimums, so no comparison is made.' : comparison.reason;
-  $('comparison-caveat').textContent = `${reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
+  $('comparison-caveat').textContent = `${comparison.reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
   renderHistory();
 }
 
@@ -1835,8 +1845,9 @@ function bindEvents() {
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
-  // A minimum stops a run mid-word, and focus lands here. Until the typist pauses, Space and Enter
-  // do nothing, so the keys already on their way can't discard the result and start a new run.
+  // When a minimum ends a run (on the tick, its last character or its timer), the typist is mid-stride
+  // and focus lands here. Until they pause, Space and Enter do nothing, so the keys already on their
+  // way can't discard the result and start a new run.
   $('run-again').addEventListener('keydown', (event) => {
     if (stopHold === null) return;
     const stamp = now();
