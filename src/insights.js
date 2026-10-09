@@ -25,7 +25,18 @@ export function retainRuns(runs) {
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
-export const trendRun = (run) => validRun(run) && ['test', 'retest'].includes(run.kind);
+// Completed practice runs and retests, listed in Progress whatever their text.
+export const practiceRun = (run) => validRun(run) && ['test', 'retest'].includes(run.kind);
+// Only fresh text counts toward bests, trends and weekly medians: repeated text (fresh: false) flatters a score.
+export const trendRun = (run) => practiceRun(run) && run.fresh !== false;
+
+// The best earlier completed run on this exact passage and conditions: the score a repeat chases.
+// It is derived from saved summaries and never becomes a personal best.
+export function passageBest(runs, run) {
+  const key = conditionKey(run.conditions);
+  return runs.filter((r) => r.id !== run.id && r.textId === run.textId && practiceRun(r) && conditionKey(r.conditions) === key)
+    .reduce((best, r) => (!best || r.score.wpm > best.score.wpm ? r : best), null);
+}
 
 export function filterRuns(runs, key, days = 'all', date = new Date()) {
   const cutoff = days === 'all' ? null : date.getTime() - Number(days) * 86400000;
@@ -54,8 +65,9 @@ export function weeklyChange(runs, key, date = new Date()) {
 
 export function recurringTargets(runs, loops, compatibleConditions) {
   const key = conditionKey(compatibleConditions);
+  // Repeating one passage would count its pairs again and again, so repeated text never adds evidence.
   const eligible = runs.filter((r) => validRun(r) && ['test', 'retest', 'daily'].includes(r.kind)
-    && (r.kind !== 'daily' || r.fresh !== false)
+    && r.fresh !== false
     && conditionKey(r.conditions) === key).slice(-MAX_PATTERN_RUNS);
   const pairs = new Map();
   for (const run of eligible) {
