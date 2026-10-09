@@ -252,6 +252,43 @@ test('opening the board in an older tab leaves another tab’s newer result alon
   expect(supabase.board.summaries.get(ada.id).daily.wpm).toBe(wpm);
 });
 
+test('a tab that never saw another tab’s runs adds its own without erasing them', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  // A second tab of the same account finishes a practice run and today's daily; the first never loads them.
+  const second = await page.context().newPage();
+  await supabase.attach(second);
+  await openApp(second);
+  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await chooseWords(second, 10);
+  await completePassage(second);
+  await openView(second, 'Challenge');
+  await second.locator('#challenge-daily').click();
+  await second.locator('#start-daily').click();
+  await expect(second.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
+  await typeInto(second, await passageText(second), '#typing-input', { delay: 60 });
+  await expect(second.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect.poll(() => supabase.board.summaries.get(ada.id)?.daily?.wpm).toBeGreaterThan(0);
+  const before = supabase.board.summaries.get(ada.id);
+  expect(before.week.runs).toBe(2);
+
+  // The first tab, on its older copy, finishes one practice run. It sends only what it knows...
+  const sent = supabase.board.published.length;
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect.poll(() => supabase.board.published.length).toBe(sent + 1);
+  const mine = supabase.board.published.at(-1);
+  expect(mine).toMatchObject({ action: 'publish', daily: null, week: { start: mondayOf(), runs: 1 } });
+  // ...and the board keeps the other tab's daily result and the larger week.
+  expect(supabase.board.summaries.get(ada.id)).toEqual({ daily: before.daily,
+    week: { start: mondayOf(), seconds: Math.max(before.week.seconds, mine.week.seconds), runs: 2 } });
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect(page.locator('#board-daily')).toContainText(`You ${before.daily.wpm} wpm`);
+  await expect(page.locator('#board-week')).toContainText('2 runs');
+});
+
 test('a board left open reads the new day after 00:00 UTC, and the new week on Monday', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');
@@ -362,11 +399,12 @@ test('nothing is sent mid-run, and an undone clear ends on the restored summary'
   expect(supabase.board.summaries.get(ada.id).week.runs).toBe(2);
   expect(supabase.board.published.at(-1).week.runs).toBe(2);
 
-  // A clear that stays cleared reaches the board too.
+  // A clear that stays cleared reaches the board too: it replaces the summary, so the numbers go down.
   await page.locator('#clear-history').click();
   await page.locator('#confirm-clear-input').fill('clear');
   await page.locator('#confirm-clear').click();
   await expect.poll(() => supabase.board.summaries.get(ada.id).week.runs).toBe(0);
+  expect(supabase.board.published.at(-1).action).toBe('replace');
 });
 
 test.describe('phone', () => {

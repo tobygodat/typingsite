@@ -93,11 +93,14 @@ test('the board sends only the signed-in summary, as that account', async () => 
     const summary = boardSummary([dailyRun('daily', 80, 96)], dailyKey, now);
     await publishSummary(session, summary);
     await readBoard(session);
+    await publishSummary(session, boardSummary([], dailyKey, now), { replace: true });
     assert.match(calls[0].url, /\/rest\/v1\/rpc\/friends_board$/);
     assert.equal(calls[0].headers.Authorization, 'Bearer account-token');
     assert.deepEqual(calls[0].data, { p_action: 'publish', p_data: summary });
     assert.deepEqual(Object.keys(calls[0].data.p_data.daily).sort(), ['accuracy', 'attempts', 'date', 'version', 'wpm']);
     assert.deepEqual(calls[1].data, { p_action: 'board', p_data: {} });
+    // A history clear or undo replaces the stored summary instead of being folded into it.
+    assert.deepEqual(calls[2].data, { p_action: 'replace', p_data: { daily: null, week: { start: '2026-10-05', seconds: 0, runs: 0 } } });
   } finally { globalThis.fetch = original; }
 });
 

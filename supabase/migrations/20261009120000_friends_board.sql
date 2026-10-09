@@ -70,6 +70,7 @@ returns jsonb language sql set search_path = '' as $$
 $$;
 revoke all on function race_private.board_snapshot(uuid) from public, anon, authenticated;
 
+-- 'publish' folds a summary into the caller's row; 'replace' (after a history clear or its undo) overwrites it.
 create function race_private.board(p_action text, p_data jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
@@ -80,13 +81,16 @@ declare
   v_practice jsonb;
   v_date date;
   v_start date;
+  v_new race_private.summaries;
+  v_old race_private.summaries;
+  v_same boolean;
 begin
   if v_uid is null or not exists(select 1 from auth.users where id = v_uid) then raise exception 'Sign in to see your friends board.'; end if;
   if p_data is null or jsonb_typeof(p_data) <> 'object' then raise exception 'Invalid board request.'; end if;
   v_week := v_today - (extract(isodow from v_today)::integer - 1);
 
-  if p_action = 'publish' then
-    -- Only the caller's own row is ever written. A missing or null daily clears it.
+  if p_action in ('publish', 'replace') then
+    -- Only the caller's own row is ever written. A missing or null daily means none in this browser.
     v_daily := case when jsonb_typeof(p_data->'daily') = 'null' then null else p_data->'daily' end;
     v_practice := p_data->'week';
     if v_daily is not null then
@@ -106,15 +110,51 @@ begin
     v_start := (v_practice->>'start')::date;
     if extract(isodow from v_start) <> 1 or abs(v_start - v_week) > 7 or (v_practice->>'seconds')::integer > 604800
       or (v_practice->>'runs')::integer > 10000 then raise exception 'That practice time is outside the board limits.'; end if;
-    insert into race_private.summaries(user_id, daily_date, daily_version, daily_wpm, daily_accuracy, daily_attempts,
-        week_start, week_seconds, week_runs, updated_at)
-      values (v_uid, v_date, v_daily->>'version', (v_daily->>'wpm')::integer, (v_daily->>'accuracy')::integer, (v_daily->>'attempts')::integer,
-        v_start, (v_practice->>'seconds')::integer, (v_practice->>'runs')::integer, clock_timestamp())
-      on conflict (user_id) do update set daily_date = excluded.daily_date, daily_version = excluded.daily_version,
-        daily_wpm = excluded.daily_wpm,
-        daily_accuracy = excluded.daily_accuracy, daily_attempts = excluded.daily_attempts,
-        week_start = excluded.week_start, week_seconds = excluded.week_seconds, week_runs = excluded.week_runs,
-        updated_at = excluded.updated_at;
+    v_new.user_id := v_uid;
+    v_new.daily_date := v_date;
+    v_new.daily_version := v_daily->>'version';
+    v_new.daily_wpm := (v_daily->>'wpm')::integer;
+    v_new.daily_accuracy := (v_daily->>'accuracy')::integer;
+    v_new.daily_attempts := (v_daily->>'attempts')::integer;
+    v_new.week_start := v_start;
+    v_new.week_seconds := (v_practice->>'seconds')::integer;
+    v_new.week_runs := (v_practice->>'runs')::integer;
+    v_new.updated_at := clock_timestamp();
+    -- The first summary creates the row. Later ones lock it, so two tabs publishing at once take turns.
+    insert into race_private.summaries select (v_new).* on conflict (user_id) do nothing;
+    if not found then
+      select * into v_old from race_private.summaries where user_id = v_uid for update;
+      if p_action = 'publish' then
+        -- A browser's summary is a lower bound: another tab or device of the same account may hold runs
+        -- this one never saw. So the stored daily stays unless this one is for a later day (today's
+        -- before any other) or is a better result on the same daily, and within one week the larger
+        -- practice time and run count stay. A daily from another build replaces the stored one.
+        v_same := coalesce(v_old.daily_date = v_new.daily_date and v_old.daily_version = v_new.daily_version, false);
+        if v_same then v_new.daily_attempts := greatest(v_old.daily_attempts, v_new.daily_attempts); end if;
+        if v_old.daily_date is not null and (v_new.daily_date is null
+            or (v_old.daily_date = v_today, v_old.daily_date) > (v_new.daily_date = v_today, v_new.daily_date)
+            or (v_same and (v_old.daily_wpm, v_old.daily_accuracy) > (v_new.daily_wpm, v_new.daily_accuracy))) then
+          v_new.daily_date := v_old.daily_date;
+          v_new.daily_version := v_old.daily_version;
+          v_new.daily_wpm := v_old.daily_wpm;
+          v_new.daily_accuracy := v_old.daily_accuracy;
+          if not v_same then v_new.daily_attempts := v_old.daily_attempts; end if;
+        end if;
+        if v_old.week_start = v_new.week_start then
+          v_new.week_seconds := greatest(v_old.week_seconds, v_new.week_seconds);
+          v_new.week_runs := greatest(v_old.week_runs, v_new.week_runs);
+        elsif (v_old.week_start = v_week, v_old.week_start) > (v_new.week_start = v_week, v_new.week_start) then
+          v_new.week_start := v_old.week_start;
+          v_new.week_seconds := v_old.week_seconds;
+          v_new.week_runs := v_old.week_runs;
+        end if;
+      end if;
+      update race_private.summaries set daily_date = v_new.daily_date, daily_version = v_new.daily_version,
+          daily_wpm = v_new.daily_wpm, daily_accuracy = v_new.daily_accuracy, daily_attempts = v_new.daily_attempts,
+          week_start = v_new.week_start, week_seconds = v_new.week_seconds, week_runs = v_new.week_runs,
+          updated_at = v_new.updated_at
+        where user_id = v_uid;
+    end if;
   elsif p_action <> 'board' then
     raise exception 'Unknown board action.';
   end if;

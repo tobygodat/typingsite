@@ -21,6 +21,7 @@ declare
   friends jsonb;
   lin_row text;
   bad jsonb;
+  act text;
   denied boolean;
 begin
   insert into auth.users (id,email,email_confirmed_at) values
@@ -54,7 +55,8 @@ begin
     raise exception 'Own summary was not stored: %', board;
   end if;
 
-  -- Impossible or stale summaries are refused, and the stored row is left as it was.
+  -- Impossible or stale summaries are refused, published or replacing, and the stored row is left as it was.
+  foreach act in array array['publish','replace'] loop
   foreach bad in array array[
     jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',401,'accuracy',97,'attempts',1),'week',week),
     jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',101,'attempts',1),'week',week),
@@ -75,15 +77,57 @@ begin
     jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',60))
   ] loop
     denied := false;
-    begin perform public.friends_board('publish',bad);
+    begin perform public.friends_board(act,bad);
     exception when others then denied := true; end;
-    if not denied then raise exception 'Accepted an impossible summary: %', bad; end if;
+    if not denied then raise exception 'Accepted an impossible summary (%): %', act, bad; end if;
+  end loop;
   end loop;
   denied := false;
   begin perform public.friends_board('rank','{}');
   exception when others then denied := true; end;
   if not denied then raise exception 'Unknown board action was accepted.'; end if;
   if (select daily_wpm from race_private.summaries where user_id = ada) <> 84 then raise exception 'A refused summary changed the row.'; end if;
+
+  -- Another tab or device of the same account that never saw those runs publishes less: a slower daily,
+  -- no daily, less practice, yesterday's result or last week's practice. The stored numbers stay, and
+  -- the larger attempt count is kept.
+  foreach bad in array array[
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',70,'accuracy',99,'attempts',3),
+      'week',jsonb_build_object('start',monday,'seconds',600,'runs',5)),
+    jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',60,'runs',1)),
+    jsonb_build_object('daily',jsonb_build_object('date',today - 1,'version',v,'wpm',99,'accuracy',99,'attempts',1),
+      'week',jsonb_build_object('start',monday - 7,'seconds',9000,'runs',90))
+  ] loop
+    board := public.friends_board('publish',bad);
+    if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',97,'attempts',3)
+      or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) then
+      raise exception 'A stale summary lowered the stored one: % gave %', bad, board;
+    end if;
+  end loop;
+  -- The same speed more accurately is better, and practice time and runs each keep the larger.
+  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',99,'attempts',1),
+    'week',jsonb_build_object('start',monday,'seconds',1900,'runs',40)));
+  if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',99,'attempts',3)
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1900,'runs',41) then
+    raise exception 'A better result or more practice was not kept: %', board;
+  end if;
+  -- A daily from another build is never compared, so it takes the stored one's place.
+  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v || '+next','wpm',61,'accuracy',95,'attempts',1),
+    'week',jsonb_build_object('start',monday,'seconds',10,'runs',1)));
+  if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v || '+next','wpm',61,'accuracy',95,'attempts',1)
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1900,'runs',41) then
+    raise exception 'A daily from another build did not replace the stored one: %', board;
+  end if;
+  -- A history clear and its undo replace the row, so the numbers can go down and a daily can go.
+  board := public.friends_board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0)));
+  if jsonb_typeof(board->'rows'->0->'daily') <> 'null' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) then
+    raise exception 'A clear did not replace the stored summary: %', board;
+  end if;
+  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week));
+  if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',97,'attempts',2)
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) then
+    raise exception 'An undo did not restore the summary: %', board;
+  end if;
 
   -- Lin has Ada on her list, but Ada has not chosen Lin: neither sees the other.
   perform set_config('request.jwt.claim.sub',lin::text,true);
@@ -135,7 +179,7 @@ begin
   -- Yesterday's daily and last week's practice read as nothing yet, whatever the session time zone.
   perform set_config('TimeZone','Pacific/Kiritimati',true);
   perform set_config('request.jwt.claim.sub',lin::text,true);
-  perform public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today - 1,'version',v,'wpm',75,'accuracy',95,'attempts',1),
+  perform public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today - 1,'version',v,'wpm',75,'accuracy',95,'attempts',1),
     'week',jsonb_build_object('start',monday,'seconds',800,'runs',13)));
   perform set_config('request.jwt.claim.sub',ada::text,true);
   board := public.friends_board('board','{}');
@@ -145,8 +189,25 @@ begin
   update race_private.summaries set week_start = monday - 7 where user_id = lin;
   if jsonb_typeof(public.friends_board('board','{}')->'rows'->1->'week') <> 'null' then raise exception 'Last week''s practice showed as this week''s.'; end if;
 
+  -- Today's result and this week's practice take the place of yesterday's and last week's, even when
+  -- lower. Today's also wins over a later day sent from a clock running ahead.
+  perform set_config('request.jwt.claim.sub',lin::text,true);
+  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',60,'accuracy',94,'attempts',1),
+    'week',jsonb_build_object('start',monday,'seconds',30,'runs',1)));
+  if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',60,'accuracy',94,'attempts',1)
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',30,'runs',1) then
+    raise exception 'A new day or week did not replace the old one: %', board;
+  end if;
+  update race_private.summaries set daily_date = today + 1, daily_wpm = 99 where user_id = lin;
+  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',58,'accuracy',94,'attempts',1),
+    'week',jsonb_build_object('start',monday,'seconds',30,'runs',1)));
+  if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',58,'accuracy',94,'attempts',1) then
+    raise exception 'A later day kept today''s result off the board: %', board;
+  end if;
+  perform set_config('request.jwt.claim.sub',ada::text,true);
+
   -- Clearing a daily result clears it for friends too.
-  perform public.friends_board('publish',jsonb_build_object('daily',null,'week',week));
+  perform public.friends_board('replace',jsonb_build_object('daily',null,'week',week));
   perform set_config('request.jwt.claim.sub',lin::text,true);
   board := public.friends_board('board','{}');
   if jsonb_typeof(board->'rows'->1->'daily') <> 'null' or board->'rows'->1->'week'->>'seconds' <> '1830' then raise exception 'A cleared daily still showed.'; end if;
@@ -157,6 +218,6 @@ begin
   perform set_config('request.jwt.claim.sub',ada::text,true);
   board := public.friends_board('board','{}');
   if jsonb_array_length(board->'rows') <> 2 or board->'rows'->1->>'name' <> 'Sam from the race' then raise exception 'Ada still sees someone who removed her: %', board; end if;
-  raise notice 'Friends board privacy, mutual lists, limits and dates checks passed.';
+  raise notice 'Friends board privacy, mutual lists, limits, dates and merge checks passed.';
 end $smoke$;
 rollback;

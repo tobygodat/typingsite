@@ -32,6 +32,31 @@ export class FakeBoard {
     return accounts;
   }
 
+  // 'publish' folds a summary into the stored one, as race_private.board does: the stored daily stays
+  // unless the new one is for a later day (today's first) or better on the same daily, and within a week
+  // the larger practice time and run count stay. 'replace' (a history clear or undo) overwrites it.
+  store(caller, data, replace) {
+    const now = this.now();
+    const today = utcDay(now);
+    const thisWeek = mondayOf(now);
+    const next = { daily: data.daily || null, week: { ...data.week } };
+    const old = this.summaries.get(caller);
+    // Today's (or this week's) first, then the later date.
+    const ahead = (a, b, current) => (a === current) !== (b === current) ? a === current : a > b;
+    if (old && !replace) {
+      const same = Boolean(old.daily && next.daily && old.daily.date === next.daily.date && old.daily.version === next.daily.version);
+      if (same) next.daily = { ...next.daily, attempts: Math.max(old.daily.attempts, next.daily.attempts) };
+      const better = same && (old.daily.wpm - next.daily.wpm || old.daily.accuracy - next.daily.accuracy) > 0;
+      if (old.daily && (!next.daily || ahead(old.daily.date, next.daily.date, today) || better)) {
+        next.daily = { ...old.daily, attempts: same ? next.daily.attempts : old.daily.attempts };
+      }
+      if (old.week.start === next.week.start) {
+        next.week = { start: old.week.start, seconds: Math.max(old.week.seconds, next.week.seconds), runs: Math.max(old.week.runs, next.week.runs) };
+      } else if (ahead(old.week.start, next.week.start, thisWeek)) next.week = { ...old.week };
+    }
+    this.summaries.set(caller, next);
+  }
+
   board(viewer) {
     const now = this.now();
     const date = utcDay(now);
@@ -54,9 +79,9 @@ export class FakeBoard {
   handle(caller, { p_action: action, p_data: data = {} }, reply) {
     if (this.missing) return reply(404, { message: 'Could not find the function public.friends_board(p_action, p_data) in the schema cache' });
     if (!caller) return reply(401, { message: 'permission denied for function friends_board' });
-    if (action === 'publish') {
-      this.published.push({ caller, ...data });
-      this.summaries.set(caller, { daily: data.daily || null, week: data.week });
+    if (action === 'publish' || action === 'replace') {
+      this.published.push({ caller, action, ...data });
+      this.store(caller, data, action === 'replace');
     } else if (action !== 'board') return reply(400, { message: 'Unknown board action.' });
     return reply(200, this.board(caller));
   }

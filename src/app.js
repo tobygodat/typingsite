@@ -1395,7 +1395,8 @@ function clearHistory() {
   renderTraining();
   renderDaily();
   showBest();
-  friendsBoard?.schedulePublish();
+  // A clear lowers the published numbers, which an ordinary publish never does.
+  friendsBoard?.schedulePublish({ replace: true });
 }
 
 function undoClear() {
@@ -1412,7 +1413,7 @@ function undoClear() {
   renderHistory();
   renderTraining();
   renderDaily();
-  friendsBoard?.schedulePublish();
+  friendsBoard?.schedulePublish({ replace: true });
   setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 

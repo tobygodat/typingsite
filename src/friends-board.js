@@ -81,7 +81,9 @@ async function call(session, action, data = {}) {
   }
 }
 export const readBoard = (session) => call(session, 'board');
-export const publishSummary = (session, summary) => call(session, 'publish', summary);
+// Publishing folds the summary into the stored one, keeping whatever another tab or device of the
+// account sent that this one lacks. Replacing (after a history clear or its undo) can lower it.
+export const publishSummary = (session, summary, { replace = false } = {}) => call(session, replace ? 'replace' : 'publish', summary);
 
 export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isRunning, signIn, openOnline }) {
   let visible = false;
@@ -94,6 +96,8 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   // A run, clear or undo in this tab that the service has not accepted yet. Only such a change is
   // published: this tab's copy of the profile can be older than another tab's or device's.
   let pending = false;
+  // That change includes a history clear or undo, so it replaces the stored summary instead of adding to it.
+  let replacing = false;
   // The UTC day, by this browser's clock, of the last read. A new week always begins with a new day.
   let readDay = '';
   const summary = () => boardSummary(runs(), dailyKey());
@@ -102,14 +106,17 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   async function publishChange(session) {
     const value = summary();
     const key = JSON.stringify(value);
+    const replace = replacing;
     pending = false;
+    replacing = false;
     if (key === published) return null;
     try {
-      const result = await publishSummary(session, value);
+      const result = await publishSummary(session, value, { replace });
       published = key;
       return result;
     } catch (error) {
       pending = true;
+      replacing ||= replace;
       throw error;
     }
   }
@@ -192,22 +199,23 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     }
   }
 
-  // After a run, a clear or an undo. Nothing is sent mid-run. A change sent before the account check,
-  // or one that failed, stays pending until resume() (the check, or the browser coming back online).
-  function schedulePublish(delay = 1500) {
+  // After a run, or a clear or an undo (replace). Nothing is sent mid-run. A change sent before the account
+  // check, or one that failed, stays pending until resume() (the check, or the browser coming back online).
+  function schedulePublish({ replace = false } = {}) {
     pending = true;
+    if (replace) replacing = true;
     clearTimeout(publishTimer);
     publishTimer = setTimeout(async () => {
       const session = getSession();
       if (!session || !canPublish()) return;
-      if (isRunning()) { schedulePublish(delay); return; }
+      if (isRunning()) { schedulePublish(); return; }
       try {
         const result = await publishChange(session);
         if (!result) return;
         board = result;
         if (visible) render();
       } catch {}
-    }, delay);
+    }, 1500);
   }
 
   $('refresh-friends-board').addEventListener('click', () => { if (!loading) refresh({ manual: true }); });
