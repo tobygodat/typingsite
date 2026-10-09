@@ -290,8 +290,12 @@ const stampsOf = (side) => (side.preferencesAt && typeof side.preferencesAt === 
 // changed and is stamped on every change, so a font size changed on one device survives a test shape
 // picked later on another. A setting only one side has stamped comes from that side: the other has
 // recorded no change to it since stamps began. A setting neither side has stamped (profiles saved
-// before stamps) comes from the newer profile by updatedAt, as whole-profile sync chose. A tie keeps
-// this device's, and a setting one side lacks (an older build) comes from the side that has it.
+// before stamps) comes from the newer profile by updatedAt, as whole-profile sync chose, and keeps this
+// device's when neither is newer. Equal stamps (edits in the same millisecond, or clocks that each
+// stepped just past the same stamp from a clock running ahead, see stampAfter) go to the value that
+// sorts first, so every copy picks the same one and copies settle. A setting one side lacks (an older
+// build) comes from the side that has it.
+const valueOrder = (value) => JSON.stringify(value) ?? '';
 export function mergePreferences(local, cloud) {
   const mine = local.preferences || {};
   const theirs = cloud.preferences || {};
@@ -303,7 +307,7 @@ export function mergePreferences(local, cloud) {
   for (const key of new Set([...Object.keys(mine), ...Object.keys(theirs)])) {
     const a = myStamps[key] || '';
     const b = theirStamps[key] || '';
-    const fromCloud = a || b ? b > a : cloudNewer;
+    const fromCloud = a || b ? b > a || (b === a && valueOrder(theirs[key]) < valueOrder(mine[key])) : cloudNewer;
     preferences[key] = (fromCloud ? theirs[key] : mine[key]) ?? (fromCloud ? mine[key] : theirs[key]);
     if (a || b) preferencesAt[key] = a > b ? a : b;
   }

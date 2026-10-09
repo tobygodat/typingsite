@@ -115,10 +115,26 @@ test('each setting comes from the side that changed it last', () => {
   assert.deepEqual(mergeSynced(profile({ preferences: light }), profile({ preferences: large })).preferences, light);
   const older = profile({ preferences: { theme: 'dark' } });
   assert.equal(mergeSynced(older, profile({ preferences: { theme: 'light', wordList: '1k' }, updatedAt: minute(1) })).preferences.wordList, '1k');
-  // A tie keeps this device's.
-  const tie = { theme: minute(5) };
-  const mine = profile({ preferences: { theme: 'dark' }, preferencesAt: tie });
-  assert.equal(mergeSynced(mine, profile({ preferences: { theme: 'light' }, preferencesAt: tie })).preferences.theme, 'dark');
+});
+
+test('equal setting stamps settle on the same value on every copy', () => {
+  // A clock running ahead stamped the theme; two devices behind it each step just past that stamp, so
+  // their different picks carry the same stamp.
+  const ahead = new Date(Date.now() + 3600000).toISOString();
+  const phone = profile({ preferences: { theme: 'dark', fontSize: '28' }, preferencesAt: { theme: stampAfter(ahead) } });
+  const laptop = profile({ preferences: { theme: 'light', fontSize: '28' }, preferencesAt: { theme: stampAfter(ahead) } });
+  assert.equal(phone.preferencesAt.theme, laptop.preferencesAt.theme);
+  const onPhone = mergeSynced(phone, laptop);
+  const onLaptop = mergeSynced(laptop, phone);
+  assert.equal(onPhone.preferences.theme, onLaptop.preferences.theme);
+  assert.deepEqual(onPhone.preferencesAt, onLaptop.preferencesAt);
+  // Merging again changes nothing, so neither copy rewrites the row.
+  assert.ok(sameProfile(mergeSynced(onPhone, laptop), onPhone));
+  assert.ok(sameProfile(mergeSynced(onLaptop, phone), onLaptop));
+  // A side an older build wrote, lacking the setting, still gets the other side's value.
+  const older = profile({ preferences: { fontSize: '28' }, preferencesAt: { theme: phone.preferencesAt.theme } });
+  assert.equal(mergeSynced(older, phone).preferences.theme, 'dark');
+  assert.equal(mergeSynced(phone, older).preferences.theme, 'dark');
 });
 
 test('a clear drops what the other side held from before it, without losing later work', () => {

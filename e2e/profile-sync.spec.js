@@ -234,6 +234,11 @@ test('signing out in one tab first sends a run another tab saved but could not s
   const errors = [];
   await openApp(page);
   await signInWithEmail(page, EMAIL);
+  // Already at the other tab's shape, so its pick prepares no new passage here, and no save of this
+  // tab's own can carry the run up before the sign-out does.
+  await chooseWords(page, 10);
+  await expect.poll(() => cloud(supabase)?.preferences.count).toBe(10);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
   const other = await extraPage(context, supabase, errors);
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
@@ -502,3 +507,65 @@ for (const when of ['prepared', 'running']) {
     expect(errors).toEqual([]);
   });
 }
+
+test('a run another tab saved but could not send goes up with this tab’s next pull', async ({ page, context, supabase }) => {
+  supabase.addUser(EMAIL);
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  // The shape the other tab's run uses is already this tab's, so nothing it saves prepares a new passage here.
+  await chooseWords(page, 10);
+  await expect.poll(() => cloud(supabase)?.preferences.count).toBe(10);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  // The other tab's pushes fail, and it closes before the connection returns.
+  await other.route(/\/rest\/v1\/profiles/, (route) => route.abort());
+  await finishRun(other);
+  await openView(page, 'Progress');
+  await expect(page.locator('#run-history .run-row')).toHaveCount(1);
+  await other.close();
+  expect(runIds(cloud(supabase))).toEqual([]);
+
+  // This tab saved nothing itself, but holds a run the account lacks: its next pull sends it.
+  await page.evaluate(() => dispatchEvent(new Event('online')));
+  await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  expect(errors).toEqual([]);
+});
+
+test('a tab puts back a run that another tab’s write from an older read left out of the device cache', async ({ page, context, supabase }) => {
+  supabase.addUser(EMAIL);
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  // Offline: the device cache is the only copy of a run until the connection returns.
+  for (const tab of [page, other]) await tab.route(/\/rest\/v1\/profiles/, (route) => route.abort());
+  const key = (await storageKeys(page)).find((name) => name.startsWith('stilltype-profile-v2:'));
+  const before = await cachedProfile(page);
+  await finishRun(page);
+  await expect.poll(async () => (await cachedProfile(other)).runs.length).toBe(1);
+
+  // Two saves at the same moment: the other tab picked a text size from the copy it read before this
+  // tab's run landed, so its write leaves the run out.
+  const now = new Date().toISOString();
+  const stale = { ...before, preferences: { ...before.preferences, fontSize: '36' },
+    preferencesAt: { ...before.preferencesAt, fontSize: now }, updatedAt: now };
+  await other.evaluate(([name, text]) => localStorage.setItem(name, text), [key, JSON.stringify(stale)]);
+  await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
+  await expect.poll(async () => (await cachedProfile(other)).runs.length).toBe(1);
+  expect((await cachedProfile(other)).preferences.fontSize).toBe('36');
+
+  // Closed before the connection returns, the first tab has left the run on the device.
+  await page.close();
+  await other.unroute(/\/rest\/v1\/profiles/);
+  await other.reload();
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
+  await expect(other.locator('body')).toHaveAttribute('data-font-size', '36');
+  expect(errors).toEqual([]);
+});

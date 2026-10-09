@@ -1603,16 +1603,21 @@ function showMerged() {
   if (view === 'compete') renderDaily();
 }
 
-// Merges the device cache if another tab has written it since this tab last read it. Never writes.
-// Only the data: returns whether it changed, and the caller shows it (showMerged).
+// Merges the device cache if another tab has written it since this tab last read it. Only the data:
+// returns whether it changed, and the caller shows it (showMerged). Writes only to put back what the
+// cache lacks: tabs read and write it separately, so two saves at the same moment can each write a copy
+// read before the other's, leaving out a run that may exist nowhere else yet. A tab holding nothing
+// more than the cache writes nothing, so tabs settle instead of echoing each other.
 function absorbCache() {
   cacheWaiting = false;
   if (!session || !signedInAs(session.user.id)) return false;
   const text = account.loadCachedProfileText(session.user.id);
   if (!text || text === cacheText) return false;
   try {
-    const changed = absorb(JSON.parse(text));
+    const data = JSON.parse(text);
+    const changed = absorb(data);
     cacheText = text;
+    if (data?.version === 2 && !account.sameProfile(profile, normalizeProfile(data))) storeLocally();
     return changed;
   } catch {
     return false;
@@ -1734,7 +1739,12 @@ async function pullProfile({ force = false } = {}) {
       showMerged();
     }
     noteCloudAt(cloud.updated_at);
-    if (!unsynced) setSyncState('synced');
+    // A tab can hold what the row lacks without saving anything itself: another tab's save taken in from
+    // the device cache, whose own push failed or never ran. It goes up from here, as on load.
+    if (unsynced || !account.sameProfile(profile, normalizeProfile(cloud.data))) {
+      unsynced = true;
+      await pushProfile({ cloud });
+    } else setSyncState('synced');
   } catch {
     setSyncState(account.loadSession() ? 'offline' : 'expired');
   }
@@ -1939,8 +1949,8 @@ function bindAccount() {
     else pullProfile({ force: true });
   });
   // Another tab signed in to this account saved: merge its copy. A removed key (sign-out, or a switch
-  // of account) is ignored, and nothing is written back, so tabs never echo each other. Mid-run the
-  // merge waits; the save at the end of the run reads the cache and merges it then.
+  // of account) is ignored, and only what the copy lacks is written back (absorbCache), so tabs settle
+  // rather than echo each other. Mid-run the merge waits; the save at the end of the run merges it then.
   addEventListener('storage', (event) => {
     if (!session || event.key !== account.profileKey(session.user.id) || event.newValue === null) return;
     if (runInProgress()) cacheWaiting = true;
