@@ -3,7 +3,7 @@
 // stores and scores (supabase/migrations/20261009100000_ghost_challenges.sql). The ghost is
 // presentational; a challenge run is its own kind and never a best, a trend or training evidence.
 import { request, freshSession, loadSession, AuthError } from './account.js';
-import { replayAttempt } from './typing.js';
+import { quoteCorpus, replayAttempt, textId } from './typing.js';
 
 export const TRACE_VERSION = 1;
 export const MAX_TRACE_KEYS = 6000;
@@ -18,27 +18,44 @@ const TIMED = [15, 30, 60, 120];
 // A timed challenge keeps enough text for someone typing 400 wpm for the whole clock.
 const CHARS_PER_SECOND = 400 * 5 / 60;
 
+// A character outside printable ASCII never matches a challenge passage, so it is sent as an ASCII
+// stand-in that differs from the letter expected there: the replay keeps the same length and errors.
+const standIn = (expected) => (expected === '~' ? '^' : '~');
+// An emoji or other astral character fills two places in the replay, which one key can't stand for.
+const ASTRAL = /[\u{10000}-\u{10FFFF}]/u;
+
 // {v, k, t, e}: k is one printable character per insertion and U+0008 per deletion, t the whole
 // milliseconds since the previous key, e the end of the run. The clock starts at the first key.
 // Blocked keys change nothing, so they are left out. A run that lost focus or used IME is not sent.
 export function encodeTrace(attempt) {
   if (!attempt || attempt.interrupted || attempt.unsupportedInput) return null;
   const origin = attempt.startedAt ?? 0;
+  const text = attempt.text || '';
   let keys = '';
   const steps = [];
   let last = 0;
+  let typed = 0;
   for (const event of attempt.events || []) {
     if (event.type === 'focus-lost' || event.type === 'composition') return null;
     let chars;
     if (event.type === 'delete') chars = DELETE.repeat(Math.max(1, event.count || 1));
     else if (event.type === 'insert') {
       // The compact form has no way to say "counted but not kept", so such a run is not encoded.
-      if (event.accepted === false || typeof event.text !== 'string' || !/^[ -~]+$/.test(event.text)) return null;
+      if (event.accepted === false || typeof event.text !== 'string' || !event.text || /[\r\n]/.test(event.text) || ASTRAL.test(event.text)) return null;
       chars = event.text;
     } else continue;
     const at = Math.max(last, Math.round(event.offsetMs - origin));
     for (const char of chars) {
-      keys += char;
+      let key = char;
+      if (event.type === 'delete') typed = Math.max(0, typed - 1);
+      else {
+        if (!/^[ -~]$/.test(char)) {
+          if (char === text[typed]) return null;
+          key = standIn(text[typed]);
+        }
+        if (typed < text.length) typed += 1;
+      }
+      keys += key;
       steps.push(at - last);
       last = at;
     }
@@ -47,6 +64,10 @@ export function encodeTrace(attempt) {
   const trace = { v: TRACE_VERSION, k: keys, t: steps, e: Math.max(last, Math.round((attempt.endedAt ?? last) - origin)) };
   return traceBytes(trace) <= MAX_TRACE_BYTES ? trace : null;
 }
+
+// Why a finished, uninterrupted run has no trace: a character it can't stand in for, or its size.
+export const traceTrouble = (attempt) => ((attempt?.events || []).some((event) => event.type === 'insert' && ASTRAL.test(event.text || ''))
+  ? 'character' : 'length');
 
 export function traceBytes(trace) {
   return JSON.stringify(trace).length + trace.t.length + 8;
@@ -147,11 +168,35 @@ export function describeShape(conditions = {}, duration = null) {
   return 'quote';
 }
 
-// Who led: a timed race by the correct characters kept on the same clock, a passage by its finish.
-export function challengeOutcome({ duration, sender, result }) {
+// The id the recipient files the passage under, worked out from the text itself. The sender's own
+// id is never trusted, so a ghost race can't mark other text as seen or file a quote under a new id.
+export function challengeTextId(passage, conditions = {}) {
+  const quote = quoteCorpus.find((item) => item.text === passage);
+  if (quote) return quote.id;
+  return conditions?.sourceKind === 'daily' ? `daily-${textId(passage)}` : textId(passage);
+}
+
+// Who led: more correct characters kept per minute. On a timed race both clocks match, so that is the
+// text kept; under stop on error both runs end on the exact text, so it is the earlier finish; under
+// continue on error a quick finish full of mistakes doesn't beat a clean one.
+export function challengeOutcome({ sender, result }) {
   if (!sender || !result) return null;
-  const lead = duration ? result.correct - sender.correct : sender.elapsedMs - result.elapsedMs;
+  const pace = (score) => (score.elapsedMs > 0 ? score.correct / score.elapsedMs : 0);
+  const lead = pace(result) - pace(sender);
   return lead > 0 ? 'recipient' : lead < 0 ? 'sender' : 'tie';
+}
+
+// How the leader led, in words true of this race: a passage leader who also ended sooner finished
+// first; one who ended later kept more correct text per minute.
+export function leadVerb({ duration, sender, result }, leader) {
+  if (duration) return 'typed further';
+  const [lead, other] = leader === 'recipient' ? [result, sender] : [sender, result];
+  return lead.elapsedMs < other.elapsedMs ? 'finished first' : 'typed faster';
+}
+
+export function outcomeRule({ duration, conditions }) {
+  if (duration) return `Same ${duration} s clock: more correct text kept leads.`;
+  return conditions?.correctionPolicy === 'relaxed' ? 'More correct characters per minute leads.' : 'The earlier finish leads.';
 }
 
 export function offerText(challenge) {
@@ -167,7 +212,7 @@ export function resultText(challenge) {
   const them = challenge.name;
   const mine = self === 'recipient' ? challenge.result.wpm : challenge.sender.wpm;
   const theirs = self === 'recipient' ? challenge.sender.wpm : challenge.result.wpm;
-  const verb = challenge.duration ? 'typed further' : 'finished first';
+  const verb = leader === 'tie' ? '' : leadVerb(challenge, leader);
   const who = leader === 'tie' ? 'a tie' : leader === self ? `you ${verb}` : `${them} ${verb}`;
   const subject = self === 'recipient' ? `${them}’s ${shape} run` : `${them} raced your ${shape} run`;
   return `${subject}: ${who} · you ${mine} wpm, ${them} ${theirs} wpm.`;

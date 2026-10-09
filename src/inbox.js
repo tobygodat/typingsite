@@ -119,6 +119,9 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     if (forgotten) return;
     const known = entries.find((value) => value.id === entry.id);
     if (known) {
+      // A poll that repeats what is shown leaves the list alone, so focus on a row's button stays put.
+      const changed = Object.keys(entry).some((key) => key !== 'at' && key !== 'read' && JSON.stringify(known[key]) !== JSON.stringify(entry[key]));
+      if (!changed) { toasted.add(entry.id); return; }
       Object.assign(known, { ...entry, read: known.read, at: known.at });
     } else if (userId()) {
       // An entry may carry when it happened (a ghost race sent or answered while this device was away).

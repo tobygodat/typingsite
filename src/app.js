@@ -12,7 +12,6 @@ import {
   replayAttempt,
   selectPassage,
   summarizePatterns,
-  textId,
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
@@ -23,8 +22,8 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listFriends, listRaceInvites } from './multiplayer.js';
-import { CHALLENGE_DAYS, challengeOutcome, challengePayload, encodeTrace, finishChallenge, getChallenge, ghostPoints,
-  listChallenges, resultText, scoreTrace, sendChallenge, validTrace } from './ghost-race.js';
+import { CHALLENGE_DAYS, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
+  ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
@@ -818,7 +817,8 @@ function finishPrimary(forcedElapsed = null) {
     const sameInput = inputOf(completed.conditions) === inputOf(ghostRace.conditions);
     ghostRace.run = completed;
     ghostRace.trace = valid && sameInput ? encodeTrace(completed) : null;
-    ghostRace.state = !valid ? 'interrupted' : !sameInput ? 'other-input' : ghostRace.trace ? 'sending' : 'unsendable';
+    ghostRace.state = !valid ? 'interrupted' : !sameInput ? 'other-input' : ghostRace.trace ? 'sending'
+      : traceTrouble(completed) === 'character' ? 'unreplayable' : 'unsendable';
     renderGhostResult();
     if (ghostRace.trace) submitGhostRun();
     else announce(`${$('ghost-result-heading').textContent} ${$('ghost-result-status').textContent}`);
@@ -1273,6 +1273,8 @@ const GHOST_CONDITION_KEYS = ['mode', 'duration', 'count', 'punctuation', 'quote
   'correctionPolicy', 'language', 'corpus', 'metricVersion'];
 
 const inputOf = (value = {}) => value.inputClass === 'touch' ? 'touch' : 'physical-keyboard';
+// A run that wasn't sent for these reasons can be raced again; a failed send is retried as is.
+const RACE_AGAIN = ['interrupted', 'unsendable', 'unreplayable', 'other-input'];
 const inputLabel = (value) => inputOf(value) === 'touch' ? 'touch input' : 'a physical keyboard';
 
 // The sender's test conditions, so the same finish rule applies; the input class is this device's.
@@ -1282,11 +1284,10 @@ function ghostConditions() {
     inputClass: 'physical-keyboard' };
 }
 
-// A word, quote or daily passage keeps its text id, so a seen quote can't later count as fresh.
-// A timed run's text was cut from a generated passage, so it gets an id of its own.
+// A quote or daily passage keeps its own text id, worked out from the text, so a quote raced here
+// can't later count as fresh. Word and timed text gets the id of exactly that text.
 function ghostPassage() {
-  const named = ghostRace.conditions?.textId;
-  const id = !ghostRace.duration && typeof named === 'string' && /^[\w@.-]{1,80}$/.test(named) ? named : textId(ghostRace.passage);
+  const id = challengeTextId(ghostRace.passage, ghostRace.conditions);
   return { id, text: ghostRace.passage, fresh: !profile.seenTextIds.includes(id) };
 }
 
@@ -1307,6 +1308,10 @@ async function startGhostRace(id) {
   if (race.attempt?.status === 'running') markRaceInterrupted();
   ghostRace = { id, name: view.name, passage: view.passage, conditions: view.conditions || {}, duration: view.duration || null,
     points: ghostPoints(view.trace, view.passage.length), sender: view.sender, result: null, run: null, state: 'ready' };
+  // As with the daily: someone else's text ends any drill-and-retest cycle in progress.
+  baselineAttempt = null;
+  trainingContext = null;
+  activeRecommendation = null;
   inbox?.settle(`challenge:${id}`);
   resetSession('challenge', { focus: true });
 }
@@ -1318,10 +1323,12 @@ function renderGhostResult() {
   if (!ghost?.run) return;
   // Until the service replies, the result is the same replay of the same trace, done here.
   const mine = ghost.result || (ghost.trace ? scoreTrace(ghost.trace, ghost.passage, { relaxed: ghost.run.conditions.correctionPolicy === 'relaxed' }) : null);
-  const leader = mine ? challengeOutcome({ duration: ghost.duration, sender: ghost.sender, result: mine }) : null;
-  const verb = ghost.duration ? 'typed further' : 'finished first';
+  const match = { duration: ghost.duration, sender: ghost.sender, result: mine };
+  const leader = mine ? challengeOutcome(match) : null;
   $('ghost-result-heading').textContent = ghost.state === 'interrupted' ? 'Interrupted, so not sent.'
-    : ghost.state === 'other-input' ? 'A different kind of input, so not sent.' : !mine ? 'Too long to send.' : leader === 'tie' ? 'A tie.' : leader === 'recipient' ? `You ${verb}.` : `${ghost.name} ${verb}.`;
+    : ghost.state === 'other-input' ? 'A different kind of input, so not sent.'
+      : ghost.state === 'unreplayable' ? 'A character a ghost race can’t replay, so not sent.' : !mine ? 'Too long to send.'
+        : leader === 'tie' ? 'A tie.' : `${leader === 'recipient' ? 'You' : ghost.name} ${leadVerb(match, leader)}.`;
   const rows = [...(mine ? [{ name: 'You', score: mine }] : []), { name: ghost.name, score: ghost.sender }];
   if (leader === 'sender') rows.reverse();
   $('ghost-result-rows').replaceChildren(...rows.map(({ name, score }) => {
@@ -1330,9 +1337,7 @@ function renderGhostResult() {
     for (const value of [`${score.wpm} wpm`, `${score.accuracy}% accuracy`, `${(score.elapsedMs / 1000).toFixed(1)} s`]) row.append(element('span', value, 'num'));
     return row;
   }));
-  $('ghost-result-rule').textContent = ghost.duration
-    ? `Same ${ghost.duration} s clock: more correct text kept leads. wpm counts correct characters kept.`
-    : 'The earlier finish leads. wpm counts correct characters kept.';
+  $('ghost-result-rule').textContent = `${outcomeRule(ghost)} wpm counts correct characters kept.`;
   const retry = ghost.state === 'failed' && (!ghost.error?.status || ghost.error.status >= 500);
   $('ghost-result-status').textContent = {
     sending: `Sending your run to ${ghost.name}…`,
@@ -1340,9 +1345,10 @@ function renderGhostResult() {
     failed: `Not sent. ${ghost.error?.message || ''}`,
     interrupted: 'Focus or input changed during the run. Race again to send a finished run.',
     unsendable: 'A run of more than 6,000 keys can’t be sent. Race again with fewer corrections.',
+    unreplayable: 'This run included an emoji or a similar character, which a ghost race can’t replay. Race again to send a run.',
     'other-input': `${ghost.name} typed on ${inputLabel(ghost.conditions)} and this run used ${inputLabel(ghost.run.conditions)}; the two are never compared. Race again on ${inputLabel(ghost.conditions)} to send a run.`,
   }[ghost.state] || '';
-  const again = ['interrupted', 'unsendable', 'other-input'].includes(ghost.state);
+  const again = RACE_AGAIN.includes(ghost.state);
   const action = $('ghost-result-action');
   action.hidden = !(again || retry);
   action.textContent = again ? 'Race again' : 'Send again';
@@ -2001,7 +2007,7 @@ function bindEvents() {
   $('ghost-offer-friends').addEventListener('click', () => onlineRace?.open());
   $('ghost-result-action').addEventListener('click', () => {
     if (ghostRace?.state === 'failed') submitGhostRun();
-    else if (['interrupted', 'unsendable', 'other-input'].includes(ghostRace?.state)) { ghostRace.run = null; resetSession('challenge', { focus: true }); }
+    else if (RACE_AGAIN.includes(ghostRace?.state)) { ghostRace.run = null; resetSession('challenge', { focus: true }); }
   });
 
   $('compete-setup').addEventListener('submit', (event) => { event.preventDefault(); startRace(); });

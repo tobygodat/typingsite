@@ -1,6 +1,6 @@
 -- Ghost challenge checks. Runs inside a transaction and rolls everything back.
--- The expected scores (78 wpm, 98% for the sample run) are pinned in tests/ghost-race.test.js too,
--- so the database replay and the browser replay are held to the same numbers.
+-- The expected scores (78 wpm, 98% for the sample run, and the half-way rounding cases) are pinned in
+-- tests/ghost-race.test.js too, so the database replay and the browser replay are held to the same numbers.
 begin;
 do $smoke$
 declare
@@ -72,6 +72,17 @@ begin
   if race_private.trace_score('abcdefghij', '{"v":1,"k":"abcdefghijk","t":[0,1,1,1,1,1,1,1,1,1,1],"e":10}', null, false)->>'accuracy' <> '100' then
     raise exception 'A key past the passage counted.';
   end if;
+  -- Half-way values round as the browser does (pinned in tests/ghost-race.test.js too): 101 characters
+  -- in 24 s and 105 in 20.16 s are just under .5 in double precision, as is 23 right of 40.
+  view := race_private.trace_score(repeat('a', 101), jsonb_build_object('v', 1, 'k', repeat('a', 101),
+    't', (select jsonb_agg(case when i = 1 then 0 else 200 end) from generate_series(1, 101) i), 'e', 24000), null, false);
+  if view->>'wpm' <> '50' then raise exception 'Half-way wpm rounds unlike the browser: %', view; end if;
+  view := race_private.trace_score(repeat('a', 105), jsonb_build_object('v', 1, 'k', repeat('a', 105),
+    't', (select jsonb_agg(case when i = 1 then 0 else 190 end) from generate_series(1, 105) i), 'e', 20160), null, false);
+  if view->>'wpm' <> '62' then raise exception 'Half-way wpm rounds unlike the browser: %', view; end if;
+  view := race_private.trace_score(repeat('a', 40), jsonb_build_object('v', 1, 'k', repeat('a', 23) || repeat('b', 17),
+    't', (select jsonb_agg(100) from generate_series(1, 40)), 'e', 4000), null, true);
+  if view->>'accuracy' <> '57' or view->>'wpm' <> '69' then raise exception 'Half-way accuracy rounds unlike the browser: %', view; end if;
 
   -- Guests cannot send, list or race.
   perform set_config('request.jwt.claim.sub', '', true);

@@ -106,6 +106,9 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
     await typeInto(linPage, text.slice(0, half), '#typing-input', { delay: 170 });
     await expect.poll(() => ghostX(linPage)).toBeGreaterThan(40);
     await shot(linPage, testInfo, 'racing-dark');
+    await scheme(linPage, 'light');
+    await shot(linPage, testInfo, 'racing-light');
+    await scheme(linPage, 'dark');
     await linPage.keyboard.type(text.slice(half), { delay: 110 });
     await expect(linPage.locator('body')).toHaveAttribute('data-view', 'results');
     await expect(linPage.locator('#run-again')).toBeFocused();
@@ -210,6 +213,57 @@ test('an interrupted or touch ghost race is not sent and can be raced again; the
   await page.locator('#inbox-trigger').click();
   await expect(page.locator('#inbox-list [data-inbox-action="challenge"]')).toHaveCount(0);
   await expect(page.locator('#inbox-list [data-kind="challenge-result"]')).toContainText(/^Ada’s 8-word run: /);
+});
+
+test('at 320 px a long sender name wraps, a corrected slip onto ö is still sent, inbox polls keep focus and the race ends a retest cycle', async ({ page, supabase }) => {
+  const name = 'christopher.montgomery12';
+  const sender = supabase.addUser(`${name}@stilltype.test`);
+  const lin = supabase.addUser('lin@stilltype.test');
+  const passage = 'river light patient words carry the quiet home';
+  const challenge = supabase.challenges.seed(sender.id, lin.id, { name, label: 'Lin', passage,
+    conditions: { mode: 'words', count: 8, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' },
+    trace: steadyTrace(passage, 140) });
+  await page.setViewportSize({ width: 320, height: 720 });
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await expect(page.locator('#challenge-toast')).toBeVisible({ timeout: 12000 });
+  await page.locator('#challenge-toast-close').click();
+  // A practice run first: the ghost race ends its drill-and-retest cycle, as the daily does.
+  await chooseWords(page, 10);
+  await typeInto(page, await passageText(page), '#typing-input', { delay: 20 });
+  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  // The inbox is polled every 10 s; a poll with nothing new leaves keyboard focus where it was.
+  await page.locator('#inbox-trigger').click();
+  const raceButton = page.locator('#inbox-list [data-inbox-action="challenge"]');
+  await raceButton.focus();
+  await page.waitForTimeout(11000);
+  await expect(raceButton).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
+  await expect(page.locator('#session-title')).toHaveText(`Race ${name}’s run`);
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  const fits = (id) => page.locator(id).evaluate((node) => node.scrollWidth <= node.clientWidth);
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  expect(await fits('#session-title')).toBe(true);
+  // The ghost is the opponent here, so it is drawn at full strength.
+  await expect(page.locator('#text-display .ghost-caret')).toHaveCSS('opacity', '1');
+
+  await typeInto(page, passage.slice(0, 3), '#typing-input', { delay: 160 });
+  await page.keyboard.insertText('ö');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type(passage.slice(3), { delay: 160 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#ghost-result-heading')).toHaveText(`${name} finished first.`);
+  await expect(page.locator('#ghost-result-status')).toHaveText(`Sent. ${name} sees this result in their inbox too.`);
+  expect(challenge.result.correct).toBe(passage.length);
+  expect(challenge.result.accuracy).toBeLessThan(100);
+  await expect(page.locator('#skip-to-retest')).toBeDisabled();
+  await expect(page.locator('#recommendation-meta')).toHaveText(/^A standalone drill\./);
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 760 });
+    await expect.poll(overflow, { message: `no overflow at ${width}` }).toBeLessThanOrEqual(0);
+    expect(await fits('#ghost-result-heading'), `heading fits at ${width}`).toBe(true);
+  }
 });
 
 test('a timed ghost race runs on the sender’s clock and is led by the text kept', async ({ page, supabase }) => {

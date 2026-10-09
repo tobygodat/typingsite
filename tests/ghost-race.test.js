@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { challengeOutcome, challengePayload, challengeText, encodeTrace, ghostPoints, offerText, resultText,
-  scoreTrace, sendChallenge, traceAttempt, traceBytes, validTrace, MAX_TRACE_KEYS } from '../src/ghost-race.js';
-import { comparable, conditionKey, createAttempt, replayAttempt, summarizePatterns } from '../src/typing.js';
+import { challengeOutcome, challengePayload, challengeText, challengeTextId, encodeTrace, ghostPoints, offerText, outcomeRule,
+  resultText, scoreTrace, sendChallenge, traceAttempt, traceBytes, traceTrouble, validTrace, MAX_TRACE_KEYS } from '../src/ghost-race.js';
+import { comparable, conditionKey, createAttempt, quoteCorpus, replayAttempt, summarizePatterns, textId } from '../src/typing.js';
 import { runRecord, trendRun } from '../src/insights.js';
 
 const passage = 'The quick brown fox jumps over the lazy dog.';
@@ -30,6 +30,15 @@ test('the sample run scores the same numbers the database test pins (78 wpm, 98%
   assert.equal(scoreTrace(reply, passage).wpm, 102);
 });
 
+test('half-way scores round as the browser does, the same numbers the database test pins', () => {
+  const even = (keys, step, e) => ({ v: 1, k: keys, t: [...keys].map((_, i) => (i ? step : 0)), e });
+  assert.equal(scoreTrace(even('a'.repeat(101), 200, 24000), 'a'.repeat(101)).wpm, 50);
+  assert.equal(scoreTrace(even('a'.repeat(105), 190, 20160), 'a'.repeat(105)).wpm, 62);
+  const slips = scoreTrace(even('a'.repeat(23) + 'b'.repeat(17), 100, 4000), 'a'.repeat(40), { relaxed: true });
+  assert.equal(slips.accuracy, 57);
+  assert.equal(slips.wpm, 69);
+});
+
 test('a recorded run encodes to whole milliseconds and replays to the same text, errors and score', () => {
   const attempt = run('The quick bx\brown fox jumps over the lazy dog.');
   attempt.events.splice(5, 0, { type: 'blocked-insert', text: 'z', position: 4, offsetMs: 700 });
@@ -45,6 +54,31 @@ test('a recorded run encodes to whole milliseconds and replays to the same text,
   assert.equal(decoded.mistakes, original.mistakes);
   assert.deepEqual(decoded.score, original.score);
   assert.deepEqual(decoded.firstAttempts.map((f) => [f.position, f.correct]), original.firstAttempts.map((f) => [f.position, f.correct]));
+});
+
+test('a slip onto a key the passage can\u2019t contain is sent as a stand-in that replays to the same score', () => {
+  const text = 'hello world again';
+  for (const slip of ['ö', '\u00a0', 'é']) {
+    const attempt = run(`he${slip}\bllo world again`, { text });
+    const trace = encodeTrace(attempt);
+    assert.ok(trace && validTrace(trace), slip);
+    assert.equal(trace.k, 'he~\bllo world again');
+    const original = replayAttempt(attempt);
+    const decoded = replayAttempt(traceAttempt(trace, text));
+    assert.equal(decoded.typed, original.typed);
+    assert.deepEqual(decoded.score, original.score);
+    assert.equal(scoreTrace(trace, text).finished, true);
+  }
+  // Left in under continue on error, it still never matches, even where the passage has a tilde.
+  const tilde = 'a~b c d e f';
+  const kept = encodeTrace(run('aöb c d e f', { text: tilde, conditions: { mode: 'words', count: 5, correctionPolicy: 'relaxed' } }));
+  assert.equal(kept.k, 'a^b c d e f');
+  assert.equal(scoreTrace(kept, tilde, { relaxed: true }).correct, 10);
+  // An emoji fills two places in the replay, so that run is not encoded, and says why.
+  const emoji = run('he\u{1F600}\bllo world again', { text });
+  assert.equal(encodeTrace(emoji), null);
+  assert.equal(traceTrouble(emoji), 'character');
+  assert.equal(traceTrouble(run(text, { text })), 'length');
 });
 
 test('interrupted, IME and oversized runs are not encoded', () => {
@@ -102,13 +136,35 @@ test('a passage race is led by the earlier finish, a timed race by the text kept
   const received = { ...sent, role: 'received', name: 'Ada' };
   assert.equal(resultText(received), 'Ada’s 25-word run: you finished first · you 65 wpm, Ada 72 wpm.');
   assert.equal(offerText(received), 'Ada challenged you to beat their 25-word run.');
-  const timed = { ...received, duration: 30, conditions: { mode: 'time', duration: 30 } };
+  const timed = { ...received, duration: 30, conditions: { mode: 'time', duration: 30 },
+    sender: { ...received.sender, elapsedMs: 30000 }, result: { ...received.result, elapsedMs: 30000 } };
   assert.equal(challengeOutcome(timed), 'sender');
   assert.equal(resultText(timed), 'Ada’s 30-second run: Ada typed further · you 65 wpm, Ada 72 wpm.');
-  const tie = { ...received, result: { ...received.result, elapsedMs: 44000 } };
+  assert.equal(outcomeRule(timed), 'Same 30 s clock: more correct text kept leads.');
+  const tie = { ...received, result: { ...received.result, correct: 130, elapsedMs: 44000 } };
   assert.match(resultText(tie), /: a tie ·/);
+  assert.equal(outcomeRule({ ...received, conditions: { mode: 'words', correctionPolicy: 'mandatory' } }), 'The earlier finish leads.');
   assert.equal(offerText({ ...received, conditions: { mode: 'quote', sourceKind: 'daily' } }), 'Ada challenged you to beat their daily run.');
   assert.equal(challengeOutcome({ ...sent, result: null }), null);
+});
+
+test('under continue on error, a quick finish full of mistakes doesn\u2019t beat a clean run', () => {
+  const daily = { role: 'received', name: 'Ada', duration: null, conditions: { mode: 'quote', sourceKind: 'daily', correctionPolicy: 'relaxed' },
+    sender: { wpm: 88, accuracy: 100, elapsedMs: 6300, correct: 46 }, result: { wpm: 0, accuracy: 0, elapsedMs: 2859, correct: 0 } };
+  assert.equal(challengeOutcome(daily), 'sender');
+  assert.equal(resultText(daily), 'Ada’s daily run: Ada typed faster · you 0 wpm, Ada 88 wpm.');
+  assert.equal(outcomeRule(daily), 'More correct characters per minute leads.');
+  // A clean run that also ends sooner finished first; a run with no time at all never leads.
+  const clean = { ...daily, result: { wpm: 95, accuracy: 100, elapsedMs: 5800, correct: 46 } };
+  assert.equal(resultText(clean), 'Ada’s daily run: you finished first · you 95 wpm, Ada 88 wpm.');
+  assert.equal(challengeOutcome({ ...daily, result: { wpm: 0, accuracy: 100, elapsedMs: 0, correct: 46 } }), 'sender');
+});
+
+test('a ghost race files its passage under an id worked out from the text, never the sender\u2019s', () => {
+  const quote = quoteCorpus.find((item) => /^[ -~]+$/.test(item.text));
+  assert.equal(challengeTextId(quote.text, { textId: 'generated-forged', sourceKind: 'test' }), quote.id);
+  assert.equal(challengeTextId('river light patient words', { textId: quote.id }), textId('river light patient words'));
+  assert.equal(challengeTextId('river light patient words', { sourceKind: 'daily' }), `daily-${textId('river light patient words')}`);
 });
 
 test('challenge runs are their own kind: no patterns, no trend, and the default condition key is unchanged', () => {

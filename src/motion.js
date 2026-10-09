@@ -214,6 +214,7 @@ export function createTypingFx(wrap, display, options = {}) {
         ghost.points = null;
         ghost.cursor = 0;
         ghost.index = -1;
+        ghostCaret.removeAttribute('data-replay');
         ghostCaret.classList.toggle('is-hidden', !ghost.armed);
         if (ghost.armed) placeGhost(0);
         else stopGhost();
@@ -226,6 +227,7 @@ export function createTypingFx(wrap, display, options = {}) {
         ghost.cps = 0;
         ghost.cursor = 0;
         ghost.index = -1;
+        ghostCaret.toggleAttribute('data-replay', ghost.armed);
         ghostCaret.classList.toggle('is-hidden', !ghost.armed);
         if (ghost.armed) placeGhost(0);
       },

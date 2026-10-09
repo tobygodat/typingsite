@@ -54,7 +54,9 @@ grant select (id, sender_name, passage, conditions, duration, sender_trace, send
 
 -- Metric v1 replay of a compact trace, mirroring replayAttempt and metrics in src/typing.js: corrected
 -- wpm counts the matching characters kept at the end over the elapsed time; accuracy counts every
--- insertion, corrected or not; a key past the end of the passage is ignored.
+-- insertion, corrected or not; a key past the end of the passage is ignored. Both numbers are worked
+-- in double precision in the browser's order and rounded half up, as Math.round does, so a value the
+-- browser sees as 50.49999999999999 is 50 here too (exact numeric division would make it 51).
 create function race_private.trace_score(p_passage text, p_trace jsonb, p_duration integer, p_relaxed boolean)
 returns jsonb language plpgsql immutable set search_path = '' as $$
 declare
@@ -105,8 +107,10 @@ begin
   select count(*) into v_correct from generate_series(1, char_length(v_typed)) n
     where substr(v_typed, n, 1) = substr(p_passage, n, 1);
   return jsonb_build_object(
-    'wpm', case when v_end > 0 then round(v_correct::numeric / 5 / (v_end::numeric / 60000)) else 0 end,
-    'accuracy', case when v_insertions > 0 then round(v_right::numeric / v_insertions * 100) else 100 end,
+    'wpm', case when v_end > 0
+      then floor((v_correct::float8 / 5::float8) / (v_end::float8 / 60000::float8) + 0.5::float8)::integer else 0 end,
+    'accuracy', case when v_insertions > 0
+      then floor((v_right::float8 / v_insertions::float8) * 100::float8 + 0.5::float8)::integer else 100 end,
     'elapsedMs', v_end,
     'correct', v_correct,
     -- The passage's finish line, under the run's correction rule.
