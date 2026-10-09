@@ -30,6 +30,20 @@ export const practiceRun = (run) => validRun(run) && ['test', 'retest'].includes
 // Only fresh text counts toward bests, trends and weekly medians: repeated text (fresh: false) flatters a score.
 export const trendRun = (run) => practiceRun(run) && run.fresh !== false;
 
+// Before repeat quotes, a run on an exhausted quote pool (fresh: false) could set a best. Such a best falls
+// back to the best saved fresh run at its conditions, or goes; every other best is kept as stored.
+export function freshBests(bests, runs) {
+  const repeated = new Set(runs.filter((r) => r.fresh === false).map((r) => r.id));
+  const kept = {};
+  for (const [key, best] of Object.entries(bests)) {
+    if (!repeated.has(best?.attemptId)) { kept[key] = best; continue; }
+    const top = runs.filter((r) => trendRun(r) && conditionKey(r.conditions) === key)
+      .reduce((a, r) => (!a || r.score.wpm > a.score.wpm ? r : a), null);
+    if (top) kept[key] = { wpm: top.score.wpm, attemptId: top.id, at: top.at };
+  }
+  return kept;
+}
+
 // The best earlier completed run on this exact passage and conditions: the score a repeat chases.
 // It is derived from saved summaries and never becomes a personal best.
 export function passageBest(runs, run) {

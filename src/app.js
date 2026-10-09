@@ -22,7 +22,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, passageBest, practiceRun, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { dailyPassage, filterRuns, freshBests, passageBest, practiceRun, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -85,15 +85,17 @@ function normalizeProfile(parsed) {
     const best = Object.values(parsed.bests || {}).find((b) => b.attemptId === trace.id);
     return runRecord(trace, trace.at || loop?.at || best?.at || null);
   });
+  const runs = retainRuns(records);
   return {
     ...emptyProfile(),
     ...parsed,
     preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences }),
     attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
-    runs: retainRuns(records),
+    runs,
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
-    bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
+    // Repeated text never holds a best, including one an exhausted quote pool set before repeat quotes.
+    bests: parsed.bests && typeof parsed.bests === 'object' ? freshBests(parsed.bests, runs) : {},
   };
 }
 
@@ -303,6 +305,7 @@ function setModeControls() {
   $('quote-options').hidden = prefs.mode !== 'quote';
   $('punctuation-toggle').disabled = prefs.mode === 'quote';
   $('word-list').disabled = prefs.mode === 'quote';
+  $('repeat-quotes-toggle').disabled = prefs.mode !== 'quote';
   $('duration-options').hidden = prefs.mode === 'quote';
   const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
   const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
@@ -450,6 +453,14 @@ function repeatedTextNotice() {
     : 'Repeated text · doesn’t count toward your best.';
 }
 
+// The passage's own notice. Its hidden twin holds the footer at the notice's height, so a shorter hint
+// that replaces it mid-run (a blocked letter) never moves restart or the passage.
+function setPassageNotice(text) {
+  primaryNotice = text;
+  $('input-help').textContent = text;
+  $('input-help-reserve').textContent = text;
+}
+
 function sessionDurationMs() {
   if (sessionKind === 'daily') return null;
   if (sessionKind === 'drill') return 60000;
@@ -478,7 +489,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
-  primaryNotice = '';
+  setPassageNotice('');
   sessionKind = kind;
   passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList)
     : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : [], { allowRepeats: kind === 'practice' && prefs.repeatQuotes }));
@@ -543,8 +554,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('typing-status').className = 'badge badge-info';
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
   // Open practice hides the condition line, so a repeated passage says so in the footer, before and during the run.
-  primaryNotice = repeatedTextNotice();
-  $('input-help').textContent = primaryNotice;
+  setPassageNotice(repeatedTextNotice());
   $('condition-line').textContent = describeRun(attempt);
   configureSessionCopy();
   updateLive(true);
@@ -846,7 +856,7 @@ function resultHeadline(completed) {
     if (!resultPassageBefore) return 'Repeated text · not counted toward your best';
     const before = resultPassageBefore.score.wpm;
     const change = completed.summary.score.wpm - before;
-    return change === 0 ? `Repeated text · matched your ${before} on this passage` : `Repeated text · ${change > 0 ? '+' : '−'}${Math.abs(change)} vs your ${before} on this passage`;
+    return change === 0 ? `Repeated text · matched your best of ${before} on this passage` : `Repeated text · ${change > 0 ? '+' : '−'}${Math.abs(change)} vs your best of ${before} on this passage`;
   }
   if (!resultBestBefore) return 'First run at these settings';
   const delta = completed.summary.score.wpm - resultBestBefore.wpm;
@@ -875,7 +885,6 @@ function renderResults(completed, saved) {
   const repeated = counted && completed.kind === 'test' && completed.fresh === false;
   $('result-comparison-note').textContent = [
     counted ? '' : 'Focus or input changed during the run, so it isn’t counted.',
-    repeated ? 'You’d seen this passage before, so it stays out of your best, trends and retests.' : '',
     saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
   ].filter(Boolean).join(' ');
 
@@ -888,7 +897,7 @@ function renderResults(completed, saved) {
   $('recommendation-meta').textContent = baselineAttempt
     ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
     : repeated
-      ? 'A standalone drill. Repeated text can’t be a retest baseline; finish a run on fresh text for a comparable retest.'
+      ? 'A standalone drill. Repeated text stays out of your best, trends and retests; finish a run on fresh text for a comparable retest.'
       : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
   $('start-drill').disabled = !counted;
   $('skip-to-retest').disabled = !counted || !baselineAttempt;
@@ -1027,7 +1036,7 @@ function switchView(view) {
 
 function navigate(view) {
   if (view === 'practice') {
-    if (!attempt || sessionKind !== 'practice' || ['complete', 'interrupted'].includes(attempt.status)) resetSession('practice');
+    if (!attempt || sessionKind !== 'practice' || ['complete', 'interrupted'].includes(attempt.status) || staleRepeat()) resetSession('practice');
     switchView('practice');
     return;
   }
@@ -1736,7 +1745,7 @@ function bindEvents() {
     const skip = event.target.closest('.skip-link');
     if (skip) {
       event.preventDefault();
-      if (!attempt || attempt.status === 'complete' || $('typing-input').disabled) resetSession('practice');
+      if (!attempt || attempt.status === 'complete' || $('typing-input').disabled || staleRepeat()) resetSession('practice');
       else switchView('practice');
       $('typing-input').focus({ preventScroll: false });
       return;
@@ -1945,9 +1954,15 @@ function setRepeatQuotes(enabled) {
   applyPreferences();
   saveProfile();
   if (sessionKind !== 'practice' || passage?.fresh !== false || attempt?.status !== 'ready') return;
-  // A repeated passage that hasn't been started: off swaps it for unseen text if any remains; on rewords its notice.
-  if (!enabled) resetSession('practice');
-  else $('input-help').textContent = primaryNotice = repeatedTextNotice();
+  // A repeated passage that hasn't been started. Off swaps it for unseen text if any remains: here on Practice,
+  // otherwise when Practice next opens (staleRepeat), so the setting never changes the view. Else reword its notice.
+  if (staleRepeat() && document.body.dataset.view === 'practice') resetSession('practice');
+  else setPassageNotice(repeatedTextNotice());
+}
+
+// An unstarted repeated passage that repeats-off would have replaced with unseen text.
+function staleRepeat() {
+  return !prefs.repeatQuotes && sessionKind === 'practice' && attempt?.status === 'ready' && passage?.fresh === false && !passage.exhausted;
 }
 
 function setWordList(id) {
@@ -1972,7 +1987,7 @@ function paletteCommands(query) {
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
-    { group: 'test', label: 'repeat quotes', keywords: 'seen again same quote passage score chase replay', hint: onOff(prefs.repeatQuotes), on: prefs.repeatQuotes, run: () => setRepeatQuotes(!prefs.repeatQuotes) },
+    { group: 'test', label: 'repeat quotes', keywords: 'seen again same quote passage score chase replay', hint: onOff(prefs.repeatQuotes), on: prefs.repeatQuotes, disabled: prefs.mode !== 'quote', run: () => setRepeatQuotes(!prefs.repeatQuotes) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },

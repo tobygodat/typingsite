@@ -1083,6 +1083,7 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 }
 
 #input-help,
+#input-help-reserve,
 #race-help {
   margin: 0;
   color: var(--muted);
@@ -1092,6 +1093,11 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   align-items: center;
   gap: var(--space-2);
 }
+
+/* A mid-run hint shares the passage notice's cell; the hidden reserve keeps the notice's height. */
+.input-help-slot { display: grid; }
+.input-help-slot > * { grid-area: 1 / 1; }
+#input-help-reserve { visibility: hidden; }
 
 .shortcut-row {
   margin-top: var(--space-6);

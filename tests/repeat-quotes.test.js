@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, summarizePatterns } from '../src/typing.js';
-import { filterRuns, passageBest, practiceRun, recurringTargets, trendRun, weeklyChange } from '../src/insights.js';
+import { filterRuns, freshBests, passageBest, practiceRun, recurringTargets, trendRun, weeklyChange } from '../src/insights.js';
 
 const bucket = quoteCorpus.filter((q) => q.difficulty === 'gentle' && q.text.split(/\s+/).length <= 30).map((q) => q.id);
 const quote = (overrides) => selectPassage({ mode: 'quote', quoteLength: 'short', difficulty: 'gentle', ...overrides });
@@ -50,6 +50,9 @@ test('repeated text is never either side of a comparable retest', () => {
   assert.equal(compareAttempts(run('a', 'test', true, 60), run('b', 'retest', true, 62)).comparable, true);
   assert.equal(compareAttempts(run('a', 'test', false, 80), run('b', 'retest', true, 62)).comparable, false, 'a familiar baseline would flatter it');
   assert.equal(compareAttempts(run('a', 'test', true, 60), run('b', 'retest', false, 70)).comparable, false);
+  // A daily repeat attempt, or a first attempt on a returning daily passage, is repeated text too.
+  assert.equal(compareAttempts(run('a', 'daily', true, 60), run('b', 'retest', true, 62)).comparable, true);
+  assert.equal(compareAttempts(run('a', 'daily', false, 80), run('b', 'retest', true, 62)).comparable, false);
 });
 
 function trace(id, fresh) {
@@ -104,4 +107,17 @@ test('a repeat chases the best earlier run on the same passage and conditions', 
     current,
   ];
   assert.equal(passageBest(runs, current).id, 'second');
+});
+
+test('a best that an exhausted quote pool set before repeat quotes falls back to the best saved fresh run', () => {
+  const key = conditionKey(conditions);
+  const older = summary('older', { score: { wpm: 64, accuracy: 97 } });
+  const fresh = summary('fresh', { score: { wpm: 70, accuracy: 98 } });
+  const exhausted = summary('exhausted', { fresh: false, score: { wpm: 95, accuracy: 100 } });
+  const elsewhere = { wpm: 80, attemptId: 'not-retained', at: '2026-01-01T00:00:00Z' };
+  const legacy = { [key]: { wpm: 95, attemptId: 'exhausted', at: '2026-10-08T12:00:00Z' }, other: elsewhere };
+  assert.deepEqual(freshBests(legacy, [older, fresh, exhausted]), { [key]: { wpm: 70, attemptId: 'fresh', at: fresh.at }, other: elsewhere });
+  assert.deepEqual(freshBests(legacy, [exhausted]), { other: elsewhere }, 'with no fresh run saved, the best goes');
+  const honest = { [key]: { wpm: 70, attemptId: 'fresh', at: fresh.at } };
+  assert.deepEqual(freshBests(honest, [fresh, exhausted]), honest, 'a best set by fresh text is kept as stored');
 });
