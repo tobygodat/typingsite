@@ -658,8 +658,8 @@
       },
       {
         "name": "progress-line",
-        "value": "140ms linear",
-        "purpose": "Progress bar scaleX."
+        "value": "none",
+        "purpose": "Progress bar scaleX steps with each tick or keystroke; no glide during a run."
       }
     ],
     "breakpoints": [

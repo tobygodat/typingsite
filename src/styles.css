@@ -1047,6 +1047,8 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 #online-input:focus-visible { outline: 0; }
 
 /* ── Progress line ──────────────────────────────────────────────────────── */
+/* Still run: the line steps with each tick or keystroke and never glides, even after a
+   pointer nudge brings the chrome back mid-run. */
 
 .progress-line {
   height: 2px;
@@ -1061,7 +1063,7 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   background: var(--accent);
   transform: scaleX(var(--progress, 0));
   transform-origin: left center;
-  transition: transform calc(140ms * var(--motion-scale)) linear;
+  transition: none;
 }
 
 /* ── Practice footer, keyboard, focus ───────────────────────────────────── */
@@ -1490,7 +1492,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .online-player-row { min-width: 0; display: grid; grid-template-columns: 1fr; gap: var(--space-2); }
 .online-player-row strong { font-weight: 400; overflow-wrap: anywhere; }
 .online-player-row > span { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.online-player-row .progress-track > span { transition: none; }
 .online-countdown { min-height: var(--space-10); margin: var(--space-6) 0 var(--space-2); font-size: var(--text-title); color: var(--accent); }
 .online-typing-wrap { margin-top: var(--space-6); }
 #online-connection:not(:empty) { color: var(--warning); }
@@ -1550,6 +1551,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   letter-spacing: -0.015em;
 }
 
+/* Challenge lines (one keyboard and online) step like the practice line. */
 .progress-track {
   width: 100%;
   height: 2px;
@@ -1564,7 +1566,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   background: var(--accent);
   transform: scaleX(var(--progress, 0));
   transform-origin: left center;
-  transition: transform calc(140ms * var(--motion-scale)) linear;
+  transition: none;
 }
 
 .race-typing-wrap { margin-top: var(--space-6); }
