@@ -17,7 +17,7 @@ Product behaviour:
 
 - Spacious, borderless typing with centered mode/length controls, a stable three-line passage, a solid caret and tinted errors.
 - Time and word-count tests draw from a chosen common-word list — top 200 (default, Monkeytype's default "english" list), 1k, 5k or 10k — set in settings or the palette (`src/words.js`; current corpus version v5). The word list is part of the test conditions, so bests and retests never mix lists. Original quote tests; quote length and descriptive difficulty filters; explicit empty-filter recovery.
-- Saved theme, text size, word highlight (off, current or next word; display only, never in the conditions), word list, keyboard, live metrics, stop-on-error and focus preferences. Focus mode has an exit and Escape support.
+- Saved theme, text size, word highlight (off, this word or next word; display only, never in the conditions), word list, keyboard, live metrics, stop-on-error and focus preferences. Focus mode has an exit and Escape support.
 - Per-user sessions. Everyone starts in guest mode: default settings, and nothing is written to storage. The person button (top right; `#account`) offers Create account, Sign in with Google and Sign in with email. Signed-in profiles are cached per user on the device (`stilltype-profile-v2:<user id>`) and synced to Supabase; the newer copy wins on load. Saves only stamp the profile once that first comparison has succeeded (retried when the browser comes back online), so a stale cache can never look newer than the account. Signing out clears that user's device cache unless edits failed to sync. The pre-accounts `stilltype-profile-v2` history is merged into the first account confirmed to have no saved profile; it stays in place if that check fails.
 - Versioned deterministic replay, retained first-attempt mistakes, condition-filtered recommendations, sample thresholds and clean pair timing.
 - A real one-minute drill stage, automatic or manually selected. Manual drills work without a baseline; a baseline enables the fresh comparable retest.
@@ -61,6 +61,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 
 - `index.html`: markup — dock, settings, command palette, application screens, dialogs and toasts; the pre-paint theme script.
 - `src/styles.css`: design tokens at the top (dark and light), then shell and screens. There are no separate token files.
+- `src/word-highlight.js`: word-highlight modes, normalisation and the caret-to-word mapping (presentational; never scored).
 - `src/words.js`: the 200 (Monkeytype's default english, verbatim apart from "I" stored as "i") / 1k / 5k / 10k common-word lists for generated passages and drills. The 5k and 10k lists are cleaned web-frequency lists (see the file header); keep them filtered.
 - `src/typing.js`: corpus, metric/event versions, replay, comparison and transparent pattern baseline (engine; unchanged in behaviour by the redesign).
 - `src/corpus.js`: additional original quotes and real-word drill vocabulary (corpus v5).

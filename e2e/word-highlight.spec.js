@@ -7,9 +7,9 @@ const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/wo
 
 const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 const background = (locator) => locator.evaluate((node) => getComputedStyle(node).backgroundColor);
-// Indexes of the words that actually paint a tint.
+// Indexes of the words that actually paint a tint (it sits on their letters, skipping a miss).
 const tinted = (page, display = '#text-display') => page.locator(`${display} .word`).evaluateAll((nodes) => nodes
-  .filter((node) => getComputedStyle(node).backgroundColor !== 'rgba(0, 0, 0, 0)')
+  .filter((node) => [...node.children].some((char) => !char.classList.contains('wrong') && getComputedStyle(char).backgroundColor !== 'rgba(0, 0, 0, 0)'))
   .map((node) => Number(node.dataset.wordIndex)));
 
 async function pickHighlight(page, mode) {
@@ -39,6 +39,8 @@ test('off by default: nothing is tinted and the setting reads off', async ({ pag
   await openSettings(page);
   await expect(page.locator('#word-highlight')).toHaveValue('off');
   await expect(page.locator('label[for="word-highlight"]')).toContainText('word highlight');
+  // No mode is named "current", the palette's hint for the active choice.
+  expect(await page.locator('#word-highlight option').allTextContents()).toEqual(['off', 'this word', 'next word']);
   expect(await tinted(page)).toEqual([]);
 });
 
@@ -53,7 +55,7 @@ test('current tints the word being typed until its space, instantly and without 
   await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
   expect(await tinted(page)).toEqual([0]);
   // A letter state: no transition, before or during the run.
-  const current = page.locator('#text-display .word.word-current');
+  const current = page.locator('#text-display .word.word-current > .char').first();
   expect(await current.evaluate((node) => getComputedStyle(node).transitionDuration)).toBe('0s');
   expect(await background(current)).not.toBe(TRANSPARENT);
 
@@ -67,7 +69,7 @@ test('current tints the word being typed until its space, instantly and without 
   expect(await tinted(page)).toEqual([0]);
 });
 
-test('a miss inside the highlighted word keeps its coral tint over the plain ground', async ({ page }) => {
+test('a miss inside the highlighted word keeps exactly its own coral tint', async ({ page }) => {
   await openApp(page);
   await pickHighlight(page, 'current');
   const text = await passageText(page);
@@ -75,26 +77,32 @@ test('a miss inside the highlighted word keeps its coral tint over the plain gro
   await typeInto(page, wrongKey);
   const miss = page.locator('#text-display .word.word-current > .char.wrong');
   await expect(miss).toHaveCount(1);
-  // The danger-soft tint is layered over --ground, so the word tint never thins it.
-  expect(await miss.evaluate((node) => getComputedStyle(node).backgroundImage)).toMatch(/^linear-gradient/);
+  // The word tint skips the miss, so it shows the plain danger-soft tint over whatever the passage
+  // sits on (a theme may put it on a card), while the word's other letters keep the word tint.
   const colors = await miss.evaluate((node) => {
     const root = getComputedStyle(document.documentElement);
     const probe = document.createElement('span');
     document.body.append(probe);
     probe.style.color = root.getPropertyValue('--danger');
     const danger = getComputedStyle(probe).color;
-    probe.style.color = root.getPropertyValue('--ground');
-    const ground = getComputedStyle(probe).color;
+    probe.style.color = root.getPropertyValue('--danger-soft');
+    const soft = getComputedStyle(probe).color;
     probe.remove();
-    return { color: getComputedStyle(node).color, danger, fill: getComputedStyle(node).backgroundColor, ground };
+    const others = [...node.parentElement.children].filter((char) => char !== node);
+    return {
+      color: getComputedStyle(node).color, danger, fill: getComputedStyle(node).backgroundColor, image: getComputedStyle(node).backgroundImage, soft,
+      othersTinted: others.every((char) => getComputedStyle(char).backgroundColor !== 'rgba(0, 0, 0, 0)'),
+    };
   });
   expect(colors.color).toBe(colors.danger);
-  expect(colors.fill).toBe(colors.ground);
+  expect(colors.fill).toBe(colors.soft);
+  expect(colors.image).toBe('none');
+  expect(colors.othersTinted).toBe(true);
 });
 
 test('next tints the word after the current one, and the palette switches modes', async ({ page }) => {
   await openApp(page);
-  await runPalette(page, 'word highlight · next');
+  await runPalette(page, 'word highlight · next word');
   await expect(page.locator('body')).toHaveAttribute('data-word-highlight', 'next');
   expect(await tinted(page)).toEqual([1]);
 
@@ -106,7 +114,7 @@ test('next tints the word after the current one, and the palette switches modes'
   await page.mouse.move(5, 5);
   await page.mouse.move(40, 40);
   await page.locator('#palette-trigger').click();
-  await page.keyboard.type('word highlight · next');
+  await page.keyboard.type('word highlight · next word');
   await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).toHaveText('current');
   await page.keyboard.press('Escape');
   await runPalette(page, 'word highlight · off');
@@ -214,6 +222,17 @@ test.describe('phone', () => {
     const clipped = await row.evaluate((node) => [node.querySelector(':scope > span'), node.querySelector('select')]
       .some((child) => child.scrollWidth > child.clientWidth + 1 || child.getBoundingClientRect().right > node.getBoundingClientRect().right + 0.5));
     expect(clipped).toBe(false);
+    // A select doesn't report a clipped option in scrollWidth, so size each option on its own.
+    const tooWide = await row.locator('select').evaluate((select) => [...select.options].filter((option) => {
+      const probe = select.cloneNode(false);
+      probe.append(option.cloneNode(true));
+      probe.style.width = 'auto';
+      select.after(probe);
+      const width = probe.offsetWidth;
+      probe.remove();
+      return width > select.offsetWidth;
+    }).map((option) => option.textContent));
+    expect(tooWide).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
   });
 
@@ -244,6 +263,6 @@ test('turning it off and on mid-run applies at once', async ({ page }) => {
   await runPalette(page, 'word highlight · off');
   expect(await tinted(page)).toEqual([]);
   // The word markers keep following the caret, so turning it back on is instant.
-  await runPalette(page, 'word highlight · current');
+  await runPalette(page, 'word highlight · this word');
   expect(await tinted(page)).toEqual([0]);
 });

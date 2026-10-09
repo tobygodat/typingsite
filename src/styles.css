@@ -385,7 +385,8 @@ kbd {
 .preference-row:hover { background: var(--raised-2); }
 .preference-row > span { min-width: 0; display: grid; gap: 2px; }
 .preference-row strong { font-size: 15px; font-weight: 600; }
-.preference-row .select { width: 104px; height: 36px; font-size: 14px; }
+/* Wide enough for the longest option ("next word") without clipping. */
+.preference-row .select { width: 116px; height: 36px; font-size: 14px; }
 
 .site-footer {
   padding: var(--space-8) 0 var(--space-6);
@@ -951,24 +952,25 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 
 /* Word highlight (settings): a quiet tint on the current or next word. It is a letter state like
    the ones above: it changes instantly and never transitions, so it stays still while running.
-   It is neutral, so it never reads as the green current-state accent or the coral miss. */
-body[data-word-highlight="current"] .word.word-current,
-body[data-word-highlight="next"] .word.word-next {
-  border-radius: var(--radius-sm);
+   It is neutral, so it never reads as the green current-state accent or the coral miss. The tint
+   sits on the word's letters, not the word, and skips a miss, so a miss keeps exactly its own
+   coral tint over whatever the passage sits on. */
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:not(.wrong) {
   background: var(--word-highlight);
   transition: none;
 }
-
-/* A miss inside the highlighted word keeps its own tint on the plain ground, so the highlight
-   never thins the coral cue or its contrast. */
-body[data-word-highlight="current"] .word.word-current > .char.wrong {
-  background: linear-gradient(var(--danger-soft), var(--danger-soft)), var(--ground);
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:first-child {
+  border-start-start-radius: var(--radius-sm);
+  border-end-start-radius: var(--radius-sm);
+}
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:last-child {
+  border-start-end-radius: var(--radius-sm);
+  border-end-end-radius: var(--radius-sm);
 }
 
 /* Forced colours strip the tint, so keep the mark as a system highlight. */
 @media (forced-colors: active) {
   .char.wrong,
-  body[data-word-highlight="current"] .word.word-current > .char.wrong,
   :is(#text-display, #race-text-display, #online-text-display) > .char.wrong::before {
     forced-color-adjust: none;
     color: MarkText;
