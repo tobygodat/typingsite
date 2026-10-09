@@ -219,6 +219,54 @@ test('paste, key repeat and too-short writing are handled honestly', async ({ pa
   await expect(page.locator('#clear-history')).toBeHidden();
 });
 
+test('cut, line deletes and keys over a selection change nothing and count nothing', async ({ page }) => {
+  await startPausedClock(page);
+  await openCompose(page);
+  const input = page.locator('#compose-input');
+  const text = 'The kettle clicked off and I poured the tea';
+  await typePaced(page, [...text], 220);
+  const selection = () => input.evaluate((node) => [node.selectionStart, node.selectionEnd]);
+
+  // A cut, from either cut key, would remove the whole selection as one counted delete.
+  await input.evaluate((node) => node.setSelectionRange(4, 34));
+  await page.keyboard.press('ControlOrMeta+x');
+  await expect(input).toHaveValue(text);
+  await expect(page.locator('#compose-help')).toHaveText('Only typed keys count, so cut, drop and undo are off.');
+  await page.keyboard.press('Shift+Delete');
+  await expect(input).toHaveValue(text);
+  const cut = await input.evaluate((node) => node.dispatchEvent(new InputEvent('beforeinput', { inputType: 'deleteByCut', bubbles: true, cancelable: true })));
+  expect(cut, 'a dispatched cut is cancelled').toBe(false);
+
+  // Typing or deleting over the selection would silently replace it.
+  await page.keyboard.type('x');
+  await expect(input).toHaveValue(text);
+  await expect(page.locator('#compose-help')).toHaveText('Edit at the caret. Typing or deleting over a selection is off.');
+  await page.keyboard.press('Backspace');
+  await expect(input).toHaveValue(text);
+  expect(await selection()).toEqual([4, 34]);
+
+  // At the caret, a line delete is refused, and a word delete is one deleting key.
+  await page.keyboard.press('End');
+  expect(await selection()).toEqual([text.length, text.length]);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Backspace' : 'Control+Shift+Backspace');
+  await expect(input).toHaveValue(text);
+  await expect(page.locator('#compose-help')).toHaveText('Delete a letter or a word at a time.');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Alt+Backspace' : 'Control+Backspace');
+  await page.clock.runFor(220);
+  const kept = 'The kettle clicked off and I poured the ';
+  await expect(input).toHaveValue(kept);
+
+  // Only the typed letters and the one word delete count.
+  await page.keyboard.press('Control+Enter');
+  const keystrokes = text.length + 1;
+  const activeMs = text.length * 220;
+  await expect(page.locator('#compose-definition')).toContainText(`1 of ${keystrokes} keystrokes were backspace or delete`);
+  await expect(page.locator('#compose-backspace')).toHaveText(String(Math.round((1 / keystrokes) * 100)));
+  await expect(page.locator('#compose-characters')).toHaveText(String(kept.length));
+  await expect(page.locator('#compose-active')).toHaveText((activeMs / 1000).toFixed(1));
+  await expect(page.locator('#compose-wpm')).toHaveText(String(Math.round(kept.length / 5 / (activeMs / 60_000))));
+});
+
 test('opening commands or leaving mid-way means it is not saved', async ({ page }) => {
   await startPausedClock(page);
   // The palette opens composing too.
@@ -305,7 +353,7 @@ test('keyless input, focus loss and an emptied field are never saved, and settin
   await typePaced(page, [...'abc'], 200);
   await page.keyboard.press('Control+z');
   await expect(page.locator('#compose-input')).toHaveValue('abc');
-  await expect(page.locator('#compose-help')).toHaveText('Only typed keys count, so drop and undo are off.');
+  await expect(page.locator('#compose-help')).toHaveText('Only typed keys count, so cut, drop and undo are off.');
   await page.keyboard.press('Escape');
 
   // IME text is never keyed, so no rate is shown for it.

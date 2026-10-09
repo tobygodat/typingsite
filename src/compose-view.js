@@ -6,8 +6,10 @@ import {
   COMPOSE_MIN_ACTIVE_MS,
   composeSummary,
   compositionRecord,
+  keyedEdit,
   promptDeck,
   promptText,
+  refusedEdit,
 } from './compose.js';
 
 const $ = (id) => document.getElementById(id);
@@ -16,15 +18,13 @@ const LIMIT_S = COMPOSE_LIMIT_MS / 1000;
 
 export const COMPOSE_NOTICES = {
   paste: 'Paste is off. Type your answer.',
-  edit: 'Only typed keys count, so drop and undo are off.',
+  edit: 'Only typed keys count, so cut, drop and undo are off.',
+  lineDelete: 'Delete a letter or a word at a time.',
+  selection: 'Edit at the caret. Typing or deleting over a selection is off.',
   multiCharacter: 'One key at a time.',
   repeat: 'Key repeat ignored.',
   composition: 'IME input isn’t measured. Esc to start over.',
 };
-
-// Typing and deleting are measured; anything that changes the text without a key is refused.
-const DELETE = /^delete(?!ByDrag)/;
-const KEYED_INSERTS = new Set(['insertText', 'insertLineBreak', 'insertParagraph']);
 
 export function createCompose({ setRunning, announce, save, signedIn, uid }) {
   const input = $('compose-input');
@@ -210,19 +210,11 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     }
     const type = event.inputType || '';
     if (type.includes('Composition') || event.isComposing) return;
-    if (type === 'insertFromPaste' || type === 'insertFromPasteAsQuotation') {
+    // Typing and deleting at the caret are measured; anything else that changes the text is refused.
+    const refused = refusedEdit({ inputType: type, data: event.data, selectionStart: input.selectionStart, selectionEnd: input.selectionEnd });
+    if (refused) {
       event.preventDefault();
-      showNotice(COMPOSE_NOTICES.paste);
-      return;
-    }
-    if (type === 'insertText' && event.data && [...event.data].length !== 1) {
-      event.preventDefault();
-      showNotice(COMPOSE_NOTICES.multiCharacter);
-      return;
-    }
-    if (!KEYED_INSERTS.has(type) && !DELETE.test(type)) {
-      event.preventDefault();
-      showNotice(COMPOSE_NOTICES.edit);
+      showNotice(COMPOSE_NOTICES[refused]);
     }
   });
 
@@ -231,9 +223,9 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     if (state === 'complete' || state === 'interrupted') return;
     const type = event.inputType || '';
     if (state === 'ready') start();
+    const keyed = keyedEdit(type);
     if (type.includes('Composition') || event.isComposing) markUnsupported();
-    else if (DELETE.test(type)) keys.push({ type: 'delete', at: now() - startedAt });
-    else if (KEYED_INSERTS.has(type)) keys.push({ type: 'insert', at: now() - startedAt });
+    else if (keyed) keys.push({ type: keyed, at: now() - startedAt });
     done.disabled = false;
     if (!notice) setText($('compose-help'), '');
     setRunning(true);

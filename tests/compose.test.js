@@ -11,9 +11,11 @@ import {
   compositionRecord,
   countCharacters,
   countWords,
+  keyedEdit,
   normalizeCompositions,
   promptDeck,
   promptText,
+  refusedEdit,
 } from '../src/compose.js';
 import { conditionKey } from '../src/typing.js';
 
@@ -87,6 +89,49 @@ test('backspace rate counts deleting keys against every key, and deleted text is
   assert.equal(summary.characters, 30);
   assert.equal(summary.activeMs, 39 * 250);
   assert.equal(summary.wpm, Math.round(30 / 5 / ((39 * 250) / 60_000)));
+});
+
+test('only single keys at the caret are counted; cut, line deletes and other edits are refused', () => {
+  const at = (inputType, extra = {}) => refusedEdit({ inputType, selectionStart: 7, selectionEnd: 7, ...extra });
+  // Backspace and Delete, by letter or by word, are one deleting key each.
+  for (const type of ['deleteContentBackward', 'deleteContentForward', 'deleteWordBackward', 'deleteWordForward']) {
+    assert.equal(keyedEdit(type), 'delete', type);
+    assert.equal(at(type), null, type);
+  }
+  for (const type of ['insertText', 'insertLineBreak', 'insertParagraph']) {
+    assert.equal(keyedEdit(type), 'insert', type);
+    assert.equal(at(type, { data: type === 'insertText' ? 'a' : null }), null, type);
+  }
+  assert.equal(at('insertText', { data: 'é' }), null, 'one accented character is one key');
+  assert.equal(at('insertText', { data: '👍' }), null, 'one emoji is one key');
+
+  // A cut can remove any selection with one key, so it is refused and counts nothing.
+  assert.equal(at('deleteByCut'), 'edit');
+  assert.equal(keyedEdit('deleteByCut'), null);
+  for (const type of ['deleteSoftLineBackward', 'deleteSoftLineForward', 'deleteHardLineBackward', 'deleteHardLineForward', 'deleteEntireSoftLine']) {
+    assert.equal(at(type), 'lineDelete', type);
+    assert.equal(keyedEdit(type), null, type);
+  }
+  for (const type of ['insertFromPaste', 'insertFromPasteAsQuotation']) assert.equal(at(type), 'paste', type);
+  for (const type of ['deleteByDrag', 'deleteContent', 'insertFromDrop', 'insertReplacementText', 'insertTranspose',
+    'insertFromYank', 'historyUndo', 'historyRedo', 'formatBold', 'insertLink', '']) {
+    assert.equal(at(type), 'edit', type || '(none)');
+    assert.equal(keyedEdit(type), null, type || '(none)');
+  }
+  assert.equal(at('insertText', { data: 'two words' }), 'multiCharacter');
+  assert.equal(at('insertText', { data: 'ab' }), 'multiCharacter');
+});
+
+test('a key typed or deleted over a selection is refused, so a selection never vanishes uncounted', () => {
+  const over = (inputType, data = null) => refusedEdit({ inputType, data, selectionStart: 2, selectionEnd: 30 });
+  assert.equal(over('insertText', 'x'), 'selection');
+  assert.equal(over('insertLineBreak'), 'selection');
+  assert.equal(over('deleteContentBackward'), 'selection');
+  assert.equal(over('deleteContentForward'), 'selection');
+  assert.equal(over('deleteWordBackward'), 'selection');
+  assert.equal(refusedEdit({ inputType: 'insertText', data: 'x', selectionStart: 4, selectionEnd: 5 }), 'selection', 'even one selected character');
+  assert.equal(over('deleteByCut'), 'edit', 'a cut is refused whatever is selected');
+  assert.equal(refusedEdit({ inputType: 'insertText', data: 'x' }), null, 'no selection given means a caret');
 });
 
 test('too little active typing gives no speed', () => {

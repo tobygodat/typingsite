@@ -54,6 +54,30 @@ export function countWords(text) {
   return String(text).replace(FORMAT, '').trim().split(/\s+/u).filter(Boolean).length;
 }
 
+// The edits one key makes at the caret, and so the only ones counted: a character, Enter,
+// Backspace and Delete, and Ctrl/⌥+Backspace or Delete for a word, which counts as one deleting key.
+const KEYED_INSERTS = new Set(['insertText', 'insertLineBreak', 'insertParagraph']);
+const KEYED_DELETES = new Set(['deleteContentBackward', 'deleteContentForward', 'deleteWordBackward', 'deleteWordForward']);
+// Line deletes (⌘+Backspace, Ctrl+Shift+Backspace) are keys too, but one can clear the whole field.
+const LINE_DELETE = /^delete(?:(?:Soft|Hard)Line(?:Backward|Forward)|EntireSoftLine)$/;
+
+export function keyedEdit(inputType) {
+  if (KEYED_INSERTS.has(inputType)) return 'insert';
+  return KEYED_DELETES.has(inputType) ? 'delete' : null;
+}
+
+// Why an edit is refused before it lands, or null to let it through. Anything that could change
+// more than one character without a counted key is refused: paste, cut, drop, undo and redo,
+// transpose, autocorrect and spellcheck replacement, line deletes, multi-character inserts, and
+// any key typed or deleted over a selection (it would silently replace the whole selection).
+export function refusedEdit({ inputType = '', data = null, selectionStart = 0, selectionEnd = 0 } = {}) {
+  if (inputType === 'insertFromPaste' || inputType === 'insertFromPasteAsQuotation') return 'paste';
+  if (LINE_DELETE.test(inputType)) return 'lineDelete';
+  if (!keyedEdit(inputType)) return 'edit';
+  if (inputType === 'insertText' && data && [...data].length !== 1) return 'multiCharacter';
+  return selectionStart === selectionEnd ? null : 'selection';
+}
+
 // Active time is the sum of the gaps between consecutive keys, where a gap longer than the pause
 // cut-off (thinking, not typing) counts as the average of the shorter gaps. Dropping long gaps
 // outright would leave the key after each pause with no time of its own and overstate the speed
@@ -76,8 +100,8 @@ export function activeTime(times, pauseMs = COMPOSE_PAUSE_MS) {
 // keys: [{ type: 'insert' | 'delete', at }], one entry per key that changed the text.
 // - characters: what is in the text when it ends (what you kept), not every key pressed.
 // - wpm: characters ÷ 5 per minute of active time, or null when there is too little typing to say.
-// - backspaceRate: backspace and delete keystrokes (each auto-repeat of a held key included) as a
-//   share of all keystrokes, in whole percent.
+// - backspaceRate: backspace and delete keystrokes (each auto-repeat of a held key included, and a
+//   word deleted with Ctrl/⌥ counted once) as a share of all keystrokes, in whole percent.
 export function composeSummary({ keys = [], text = '', elapsedMs = 0 } = {}) {
   const inserts = keys.filter((key) => key.type === 'insert').length;
   const backspaces = keys.filter((key) => key.type === 'delete').length;
