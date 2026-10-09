@@ -4,7 +4,7 @@ Updated 30 September 2026 (online multiplayer, progress exploration, recurring t
 
 ## Open work (8 October 2026)
 
-The 8 October feature sprint opened feature PRs #18–#28 and #30–#34. PR #29 carries the notes and handoff linked here, so it can merge first without changing the app. When this was written, none of the feature PRs had merged, so check `git log` and the open PR list for what has landed since. This file still describes master until each feature merges. For the merge plan, the conflicts between PRs and the decisions waiting on you, read `docs/notes/2026-10-08-handoff.md`. The flags and ideas from the sprint are in `docs/notes/2026-10-08-feature-session.md`. Once a PR merges, move its behaviour into the sections below.
+The 8 October feature sprint opened feature PRs #18–#28 and #30–#34. Later PRs from the same session (two master fixes and the round-2 features) are listed by branch in the handoff. PR #29 carries the notes and handoff linked here, so it can merge first without changing the app. When this was written, none of the feature PRs had merged, so check `git log` and the open PR list for what has landed since. This file still describes master until each feature merges. For the merge plan, the conflicts between PRs and the decisions waiting on you, read `docs/notes/2026-10-08-handoff.md`. The flags and ideas from the sprint are in `docs/notes/2026-10-08-feature-session.md`. Once a PR merges, move its behaviour into the sections below.
 
 ## Current state
 
