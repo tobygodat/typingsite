@@ -99,7 +99,8 @@ export function createTypingFx(wrap, display, options = {}) {
       const { left } = offsetIn(word, display);
       span = { left, right: left + word.offsetWidth };
     }
-    tapeScroll = tapeOffset({ offset: tapeScroll, caret: x, word: span, width: display.clientWidth, margin: lineHeight * 0.6, realign });
+    const fade = parseFloat(getComputedStyle(wrap).getPropertyValue('--tape-fade')) || 0;
+    tapeScroll = tapeOffset({ offset: tapeScroll, caret: x, word: span, width: display.clientWidth, margin: lineHeight * 0.6, fade, realign });
     const scrolled = String(tapeScroll > 0);
     if (wrap.dataset.tapeScrolled !== scrolled) wrap.dataset.tapeScrolled = scrolled;
     setScroll(tapeScroll ? `translateX(-${tapeScroll}px)` : '', realign);

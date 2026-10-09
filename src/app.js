@@ -273,12 +273,12 @@ function updateGlides(options) {
 }
 
 function applyPreferences() {
-  document.body.dataset.fontSize = prefs.fontSize;
-  if (document.body.dataset.tape !== String(prefs.tape)) {
-    // Trimmed words leave a spacer shaped for one layout; put them back before switching.
+  if (document.body.dataset.tape !== String(prefs.tape) || document.body.dataset.fontSize !== String(prefs.fontSize)) {
+    // Trimmed words leave a spacer shaped for one layout and text size; put them back first.
     primaryTextView?.restore();
-    document.body.dataset.tape = String(prefs.tape);
   }
+  document.body.dataset.fontSize = prefs.fontSize;
+  document.body.dataset.tape = String(prefs.tape);
   primaryFx.relayout();
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
   document.body.dataset.keyboard = String(prefs.keyboard);
@@ -334,6 +334,7 @@ function renderText(display, text, { tape = () => false } = {}) {
   let renderedWords = 0;
   let firstRenderedWord = 0;
   let lastTrimPosition = 0;
+  let lastPosition = 0;
 
   words.forEach((word, wordIndex) => {
     const group = document.createElement('span');
@@ -391,7 +392,8 @@ function renderText(display, text, { tape = () => false } = {}) {
     if (!firstKept || firstKept === display.querySelector('.word')) return;
     const spacer = document.createElement('span');
     spacer.className = 'passage-spacer';
-    spacer.style.width = `${firstKept.offsetLeft}px`;
+    // The word's exact x, not the rounded offsetLeft; the shared transform cancels out.
+    spacer.style.width = `${firstKept.getBoundingClientRect().left - display.getBoundingClientRect().left}px`;
     for (const child of [...display.childNodes]) {
       if (child === firstKept) break;
       if (child.classList?.contains('caret') || child.classList?.contains('ghost-caret')) continue;
@@ -401,6 +403,14 @@ function renderText(display, text, { tape = () => false } = {}) {
     firstRenderedWord = Number(firstKept.dataset.wordIndex);
   }
 
+  // Tape mode, backspacing: a step back can show up to a line-width behind the caret, so the
+  // trimmed words come back before the spacer could show as a blank stretch.
+  function nearTapeSpacer(position) {
+    const spacer = display.querySelector('.passage-spacer');
+    const at = characters[Math.min(position, characters.length - 1)];
+    return Boolean(spacer && at?.isConnected) && at.offsetLeft - spacer.offsetWidth < display.clientWidth;
+  }
+
   display.replaceChildren();
   appendWords(100);
   characters[0]?.classList.add('current');
@@ -408,9 +418,12 @@ function renderText(display, text, { tape = () => false } = {}) {
     characters,
     ensureAhead(position) {
       const currentWord = characterWords[Math.min(position, characters.length - 1)] || 0;
+      const back = position < lastPosition;
+      lastPosition = position;
       // A separator before the first mounted word maps to that word, but is
       // itself detached. Remount it when backspacing reaches the boundary.
-      if (currentWord < firstRenderedWord || (currentWord === firstRenderedWord && !characters[position]?.isConnected)) {
+      if (currentWord < firstRenderedWord || (currentWord === firstRenderedWord && !characters[position]?.isConnected)
+        || (back && firstRenderedWord && tape() && nearTapeSpacer(position))) {
         remountTrimmed();
         lastTrimPosition = position;
       }
@@ -2027,6 +2040,8 @@ listenForSequence(toggleGhost);
 
 let resizeFrame = 0;
 addEventListener('resize', () => {
+  // On one line, crossing the 760px breakpoint changes the text size, which the trim spacer cannot follow.
+  if (prefs.tape) primaryTextView?.restore();
   primaryFx.relayout();
   raceFx.relayout();
   cancelAnimationFrame(resizeFrame);

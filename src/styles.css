@@ -927,6 +927,8 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
    line-scroll transition as above, never letter by letter (src/tape.js). Edges fade sideways;
    the left fade appears once typed text has moved past it. */
 body[data-tape="true"] .typing-wrap {
+  /* The left fade; src/motion.js reads it so letters being corrected stay clear of it. */
+  --tape-fade: var(--space-3);
   /* The unwrapped line must not widen the column around it. */
   contain: inline-size;
   height: var(--typing-line);
@@ -935,8 +937,8 @@ body[data-tape="true"] .typing-wrap {
 }
 
 body[data-tape="true"] .typing-wrap[data-tape-scrolled="true"] {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--space-3), #000 calc(100% - var(--space-4)), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 var(--space-3), #000 calc(100% - var(--space-4)), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--tape-fade), #000 calc(100% - var(--space-4)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--tape-fade), #000 calc(100% - var(--space-4)), transparent 100%);
 }
 
 body[data-tape="true"] #text-display { white-space: pre; overflow-wrap: normal; }

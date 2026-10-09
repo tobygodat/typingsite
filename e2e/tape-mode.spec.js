@@ -39,6 +39,20 @@ const tapeState = (page) => page.evaluate(() => new Promise((resolve) => request
   });
 }))));
 
+// Every mounted word's x along the line (untransformed), the scroll, and where the trim spacer ends.
+const lineState = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+  const display = document.getElementById('text-display');
+  const origin = display.getBoundingClientRect().left;
+  const match = /translateX\((-?[\d.]+)px\)/.exec(display.style.transform);
+  const words = {};
+  for (const word of display.querySelectorAll('.word')) words[word.dataset.wordIndex] = word.getBoundingClientRect().left - origin;
+  const spacer = display.querySelector('.passage-spacer');
+  resolve({ typed: document.getElementById('typing-input').value.length, offset: match ? -Number(match[1]) : 0, spacerEnd: spacer ? spacer.getBoundingClientRect().right - origin : null, words });
+}))));
+
+// The largest move of any word mounted in both states.
+const drift = (a, b) => Math.max(0, ...Object.keys(b.words).filter((key) => key in a.words).map((key) => Math.abs(b.words[key] - a.words[key])));
+
 // Types one key at a time and records every position of the tape.
 async function trace(page, text) {
   await page.locator('#typing-input').focus();
@@ -145,6 +159,37 @@ test('the tape steps by whole words near the right edge, never per letter', asyn
   }
 });
 
+test('trimming and remounting passed words moves nothing on the line', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openApp(page);
+  await setTape(page, true);
+  await chooseWords(page, 100);
+  const text = await passageText(page);
+  // Across each trim (every 160 characters), every word that stays keeps its exact x.
+  let previous;
+  for (const [from, to] of [[150, 170], [310, 330]]) {
+    await typeInto(page, text.slice(previous?.typed ?? 0, from));
+    previous = await lineState(page);
+    for (const char of text.slice(from, to)) {
+      await page.keyboard.type(char);
+      const state = await lineState(page);
+      expect(drift(previous, state), `typed ${state.typed}`).toBeLessThan(0.05);
+      previous = state;
+    }
+  }
+  expect(previous.spacerEnd).toBeGreaterThan(0);
+  // Backspacing a long way: no blank stretch where the spacer would show, and the words come
+  // back exactly where they were.
+  while (previous.spacerEnd !== null && previous.typed > 0) {
+    await page.keyboard.press('Backspace');
+    const state = await lineState(page);
+    expect(drift(previous, state), `typed ${state.typed}`).toBeLessThan(0.05);
+    if (state.spacerEnd !== null) expect(state.spacerEnd - state.offset, `typed ${state.typed}`).toBeLessThanOrEqual(12);
+    previous = state;
+  }
+  expect(previous.typed).toBeGreaterThan(0);
+});
+
 test.describe('narrow phone with large text', () => {
   test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
 
@@ -176,6 +221,30 @@ test.describe('narrow phone with large text', () => {
     expect(steps.length).toBeLessThan(states.length / 4);
     expect(await overflow(page)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: shotPath(testInfo, 'tape-320-large') });
+  });
+
+  test('backspacing keeps the letter before the caret clear of the left fade', async ({ page }) => {
+    await openApp(page);
+    await openSettings(page);
+    await page.locator('#font-size').selectOption('36');
+    await page.locator('#tape-toggle').check();
+    await page.keyboard.press('Escape');
+    await chooseWords(page, 50);
+    const text = await passageText(page);
+    await typeInto(page, text.slice(0, 120));
+    for (let index = 0; index < 100; index += 1) {
+      await page.keyboard.press('Backspace');
+      // The letter Backspace would delete next, in px from the visible left edge.
+      const left = await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+        const display = document.getElementById('text-display');
+        const match = /translateX\((-?[\d.]+)px\)/.exec(display.style.transform);
+        const offset = match ? -Number(match[1]) : 0;
+        const letters = [...display.querySelectorAll('.char')];
+        const before = letters[letters.indexOf(display.querySelector('.char.current')) - 1];
+        resolve(before ? before.getBoundingClientRect().left - display.getBoundingClientRect().left - offset : null);
+      }))));
+      if (left !== null) expect(left, `after ${index + 1} backspaces`).toBeGreaterThanOrEqual(11.5);
+    }
   });
 });
 
@@ -231,11 +300,28 @@ test('switching layouts mid-run keeps the run going and the caret in view', asyn
   expect(state.caret).toBeGreaterThanOrEqual(0);
   expect(state.caret).toBeLessThanOrEqual(state.width);
 
+  // A new text size, or a resize across the 760px breakpoint, reshapes the line, so the trimmed
+  // words come back instead of leaving a spacer of the old width.
+  await expect(page.locator('#text-display > .passage-spacer')).toHaveCount(1);
+  await page.mouse.move(5, 5);
+  await page.mouse.move(60, 60);
+  await openSettings(page);
+  await page.locator('#font-size').selectOption('22');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#text-display > .passage-spacer')).toHaveCount(0);
+  await page.locator('#typing-input').focus();
+  await page.keyboard.type(text[440]);
+  await expect(page.locator('#text-display > .passage-spacer')).toHaveCount(1);
+  await page.setViewportSize({ width: 700, height: 800 });
+  await expect(page.locator('#text-display > .passage-spacer')).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.locator('#typing-status')).toHaveText('In progress');
+
   await page.mouse.move(5, 5);
   await page.mouse.move(60, 60);
   await setTape(page, false);
   await page.locator('#typing-input').focus();
-  await page.keyboard.type(text.slice(440, 450));
+  await page.keyboard.type(text.slice(441, 450));
   const wrap = await page.locator('#typing-wrap').boundingBox();
   await expect.poll(async () => {
     const caret = await page.locator('#text-display .caret').boundingBox();
