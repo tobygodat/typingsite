@@ -86,32 +86,68 @@ test('gain rises with volume, is zero at 0 and full at 100', () => {
   assert.deepEqual([...levels].sort((a, b) => a - b), levels);
 });
 
-test('the audio context waits for the first audible key and is made once', () => {
+// Stands in for "after the key has painted": queued callbacks run only when the test flushes them.
+function deferQueue() {
+  const queue = [];
+  return { defer: (callback) => queue.push(callback), flush: () => queue.splice(0).forEach((callback) => callback()), get size() { return queue.length; } };
+}
+
+test('the first audible key never builds the context itself; it is built after that key, once', () => {
   const { log, FakeContext } = fakeAudio();
+  const later = deferQueue();
   const settings = { mode: 'off', volume: 50 };
-  const sounds = createSounds({ settings: () => settings, AudioContextClass: FakeContext });
+  const sounds = createSounds({ settings: () => settings, AudioContextClass: FakeContext, defer: later.defer });
   assert.equal(sounds.play('correct'), null);
-  assert.equal(log.created, 0, 'off makes no context');
+  assert.equal(later.size, 0, 'off asks for no context');
   settings.mode = 'clicks';
-  assert.equal(log.created, 0, 'choosing a sound alone makes no context');
   settings.volume = 0;
   assert.equal(sounds.play('correct'), null);
-  assert.equal(log.created, 0, 'volume 0 makes no context');
+  assert.equal(later.size, 0, 'volume 0 asks for no context');
   settings.volume = 50;
+  // The first audible key and any key before the build stay silent and construct nothing.
+  assert.equal(sounds.play('correct'), null);
+  assert.equal(sounds.play('wrong'), null);
+  assert.equal(log.created, 0, 'nothing is constructed inside input handling');
+  assert.equal(later.size, 1, 'one build is queued, however many keys arrive first');
+  later.flush();
+  assert.equal(log.created, 1);
+  assert.deepEqual(log.options, [{ latencyHint: 'interactive' }]);
   assert.equal(sounds.play('correct'), 'click');
   assert.equal(sounds.play('wrong'), 'click');
   settings.mode = 'clicks-errors';
   assert.equal(sounds.play('wrong'), 'tick');
   assert.equal(sounds.play('delete'), 'click');
+  assert.equal(sounds.play('blocked'), 'click');
+  assert.equal(later.size, 0);
   assert.equal(log.created, 1);
-  assert.deepEqual(log.options, [{ latencyHint: 'interactive' }]);
-  assert.deepEqual(log.started, ['click', 'click', 'tick', 'click']);
+  assert.deepEqual(log.started, ['click', 'click', 'tick', 'click', 'click']);
+});
+
+test('turning sound off before the build cancels it', () => {
+  const { log, FakeContext } = fakeAudio();
+  const later = deferQueue();
+  const settings = { mode: 'clicks', volume: 50 };
+  const sounds = createSounds({ settings: () => settings, AudioContextClass: FakeContext, defer: later.defer });
+  sounds.play('correct');
+  settings.mode = 'off';
+  sounds.release();
+  later.flush();
+  assert.equal(log.created, 0);
+  // Volume dropping to 0 before the build also leaves nothing behind.
+  settings.mode = 'clicks';
+  sounds.play('correct');
+  settings.volume = 0;
+  later.flush();
+  assert.equal(log.created, 0);
 });
 
 test('louder settings start louder; volume 0 after a sound adds nothing', () => {
   const { log, FakeContext } = fakeAudio();
+  const later = deferQueue();
   const settings = { mode: 'clicks', volume: 100 };
-  const sounds = createSounds({ settings: () => settings, AudioContextClass: FakeContext });
+  const sounds = createSounds({ settings: () => settings, AudioContextClass: FakeContext, defer: later.defer });
+  sounds.play('correct');
+  later.flush();
   sounds.play('correct');
   const loud = log.gains.at(-1);
   settings.volume = 25;
@@ -124,42 +160,68 @@ test('louder settings start louder; volume 0 after a sound adds nothing', () => 
   assert.equal(log.started.length, before);
 });
 
-test('release closes the context, and the next audible key makes a new one', () => {
+test('release closes the context, and the next audible key asks for a new one', () => {
   const { log, FakeContext } = fakeAudio();
+  const later = deferQueue();
   const settings = { mode: 'clicks', volume: 50 };
-  const sounds = createSounds({ settings: () => settings, AudioContextClass: FakeContext });
+  const sounds = createSounds({ settings: () => settings, AudioContextClass: FakeContext, defer: later.defer });
   sounds.release();
   assert.equal(log.closed, 0, 'nothing to close before the first key');
   sounds.play('correct');
+  later.flush();
   assert.equal(sounds.hasContext(), true);
   sounds.release();
   assert.equal(log.closed, 1);
   assert.equal(sounds.hasContext(), false);
-  sounds.play('correct');
+  assert.equal(sounds.play('correct'), null);
+  later.flush();
   assert.equal(log.created, 2);
+  assert.equal(sounds.play('correct'), 'click');
 });
 
 test('a suspended context is resumed without waiting, and a closed one is replaced', () => {
   const { log, FakeContext } = fakeAudio({ state: 'suspended' });
-  const sounds = createSounds({ settings: () => ({ mode: 'clicks', volume: 50 }), AudioContextClass: FakeContext });
+  const later = deferQueue();
+  const sounds = createSounds({ settings: () => ({ mode: 'clicks', volume: 50 }), AudioContextClass: FakeContext, defer: later.defer });
+  sounds.play('correct');
+  later.flush();
+  assert.equal(log.resumed, 1, 'resumed as soon as it is built');
+  log.contexts[0].state = 'suspended';
   assert.equal(sounds.play('correct'), 'click');
-  assert.equal(log.resumed, 1);
+  assert.equal(log.resumed, 2);
   assert.equal(sounds.play('correct'), 'click');
-  assert.equal(log.resumed, 1, 'a running context is left alone');
+  assert.equal(log.resumed, 2, 'a running context is left alone');
   assert.deepEqual(log.started, ['click', 'click']);
 
   // The browser closing the context behind the app's back.
   log.contexts[0].state = 'closed';
-  assert.equal(sounds.play('correct'), 'click');
+  assert.equal(sounds.play('correct'), null);
+  later.flush();
   assert.equal(log.created, 2);
+  assert.equal(sounds.play('correct'), 'click');
 });
 
 test('missing or failing audio never throws into input handling', () => {
   const settings = () => ({ mode: 'clicks-errors', volume: 50 });
-  assert.equal(createSounds({ settings, AudioContextClass: undefined }).play('correct'), null);
-  assert.equal(createSounds({ settings, AudioContextClass: fakeAudio({ failOn: 'construct' }).FakeContext }).play('correct'), null);
-  const failing = createSounds({ settings, AudioContextClass: fakeAudio({ failOn: 'play' }).FakeContext });
+  const later = deferQueue();
+  assert.equal(createSounds({ settings, AudioContextClass: undefined, defer: later.defer }).play('correct'), null);
+  assert.equal(later.size, 0, 'no Web Audio: nothing is queued');
+
+  const refused = fakeAudio({ failOn: 'construct' });
+  const silent = createSounds({ settings, AudioContextClass: refused.FakeContext, defer: later.defer });
+  assert.equal(silent.play('correct'), null);
+  assert.doesNotThrow(() => later.flush());
+  assert.equal(silent.play('correct'), null);
+  assert.equal(later.size, 0, 'a refused context is not retried on every key');
+  silent.release();
+  silent.play('correct');
+  assert.equal(later.size, 1, 'turning sound off and on tries again');
+  later.flush();
+
+  const failing = createSounds({ settings, AudioContextClass: fakeAudio({ failOn: 'play' }).FakeContext, defer: later.defer });
+  failing.play('correct');
+  later.flush();
   assert.doesNotThrow(() => failing.play('correct'));
   assert.equal(failing.play('correct'), null);
-  assert.doesNotThrow(() => createSounds({ settings: () => { throw new Error('bad'); } }).play('correct'));
+  assert.doesNotThrow(() => createSounds({ settings: () => { throw new Error('bad'); }, defer: later.defer }).play('correct'));
 });

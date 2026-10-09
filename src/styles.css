@@ -387,15 +387,43 @@ kbd {
 .preference-row > .preference-range { display: flex; align-items: center; gap: var(--space-3); }
 .preference-value { min-width: 4ch; color: var(--muted); font: 500 var(--text-mono)/1 var(--font-mono); text-align: right; }
 
-/* Native track and thumb, in the accent. */
+/* The track is an outline rule (3:1 on raised in both themes); the filled part and thumb are the
+   accent. app.js keeps --fill at the value for WebKit, which has no progress part. */
 .range {
+  --fill: 50%;
+  appearance: none;
   width: 104px;
   height: 36px;
   margin: 0;
   border-radius: var(--radius-sm);
-  accent-color: var(--accent);
+  background: transparent;
   cursor: pointer;
 }
+
+.range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(to right, var(--accent) var(--fill), var(--outline) var(--fill));
+}
+
+.range::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+
+.range::-moz-range-track { height: 4px; border-radius: var(--radius-full); background: var(--outline); }
+.range::-moz-range-progress { height: 4px; border-radius: var(--radius-full); background: var(--accent); }
+.range::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: var(--radius-full); background: var(--accent); }
+
+/* While sound is off the volume stays in place, dimmed, so the popover never changes height. */
+.preference-range:has(> .range:disabled) { opacity: 0.38; }
+.range:disabled { cursor: not-allowed; }
+.preference-row:has(.range:disabled) { cursor: default; background: transparent; }
 
 .site-footer {
   padding: var(--space-8) 0 var(--space-6);
@@ -1914,7 +1942,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .dock-settings { width: var(--control); padding: 0; justify-content: center; }
   .dock-settings .dock-label { display: none; }
 
-  .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, 100%); max-height: calc(100svh - 62px - var(--space-10)); }
+  /* It grows up from the dock, so its height also leaves room for the account corner at the top. */
+  .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, 100%); max-height: calc(100svh - 62px - var(--space-10) - var(--control) - var(--space-3) - env(safe-area-inset-bottom)); }
 
   /* The dock moves to the bottom; the corner stays top right and scrolls with the page. */
   .app-shell { padding-top: var(--space-10); }

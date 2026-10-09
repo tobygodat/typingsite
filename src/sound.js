@@ -84,22 +84,62 @@ export function playTick(context, gain) {
   tone.stop(at + 0.1);
 }
 
-// settings() returns { mode, volume } at the moment of each key. The AudioContext is created on the
-// first key that should make a sound, never before, and closed again by release().
-export function createSounds({ settings, AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext } = {}) {
+// After the key's letter has painted: building an AudioContext can hold the main thread for tens of
+// milliseconds, so it never happens inside input handling.
+function afterPaint(callback) {
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(callback, 0));
+  else setTimeout(callback, 0);
+}
+
+// settings() returns { mode, volume } at the moment of each key. The first key that should make a
+// sound asks for an AudioContext and stays silent itself; the context is built after that key has
+// painted, and later keys play through it. release() closes it.
+export function createSounds({ settings, AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext, defer = afterPaint } = {}) {
   let context = null;
   let noise = null;
+  let pending = false;
+  let failed = false;
+  let generation = 0;
 
-  function ensureContext() {
-    // A context the browser closed is replaced; a suspended or interrupted one is resumed without waiting.
-    if (context?.state === 'closed') context = null;
-    if (!context) {
-      if (typeof AudioContextClass !== 'function') return null;
+  const audible = () => {
+    const { mode, volume } = settings();
+    return soundFor(mode, volume, 'correct') !== null;
+  };
+
+  function build() {
+    try {
+      if (context || failed || !audible()) return;
       context = new AudioContextClass({ latencyHint: 'interactive' });
+      noise = noiseBuffer(context);
+      if (context.state !== 'running') Promise.resolve(context.resume?.()).catch(() => {});
+    } catch {
+      // No audio device, or the browser refused: stay silent until sound is turned off and on again.
+      const broken = context;
+      context = null;
       noise = null;
+      failed = true;
+      try { Promise.resolve(broken?.close?.()).catch(() => {}); } catch {}
     }
-    if (context.state !== 'running') Promise.resolve(context.resume?.()).catch(() => {});
-    return context;
+  }
+
+  // The running context, or null while one is still to be built.
+  function ready() {
+    if (context?.state === 'closed') { context = null; noise = null; }
+    if (context) {
+      // A suspended or interrupted context is resumed without waiting.
+      if (context.state !== 'running') Promise.resolve(context.resume?.()).catch(() => {});
+      return context;
+    }
+    if (!pending && !failed && typeof AudioContextClass === 'function') {
+      pending = true;
+      const ticket = generation;
+      defer(() => {
+        if (ticket !== generation) return;
+        pending = false;
+        build();
+      });
+    }
+    return null;
   }
 
   // Never throws: a sound that can't play must not disturb input handling.
@@ -108,13 +148,10 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
       const { mode, volume } = settings();
       const kind = soundFor(mode, volume, outcome);
       if (!kind) return null;
-      const audio = ensureContext();
+      const audio = ready();
       if (!audio) return null;
       if (kind === 'tick') playTick(audio, gainFor(volume));
-      else {
-        noise ||= noiseBuffer(audio);
-        playClick(audio, gainFor(volume), noise);
-      }
+      else playClick(audio, gainFor(volume), noise);
       return kind;
     } catch {
       return null;
@@ -123,6 +160,9 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
 
   function release() {
     const closing = context;
+    generation += 1;
+    pending = false;
+    failed = false;
     context = null;
     noise = null;
     if (!closing) return;

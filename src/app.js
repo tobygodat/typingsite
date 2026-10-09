@@ -297,14 +297,16 @@ function applyPreferences() {
   showBest();
 }
 
-// The volume row only shows once a sound is chosen. Turning sound off closes the AudioContext;
-// the next audible key makes a new one.
+// The volume row is always there (so the popover never grows under a finger) and is disabled while
+// sound is off. Turning sound off closes the AudioContext; the next audible key asks for a new one.
 function applySoundPreferences() {
+  const volume = $('sound-volume');
   $('sound-select').value = prefs.sound;
-  $('sound-volume').value = String(prefs.soundVolume);
-  $('sound-volume').setAttribute('aria-valuetext', `${prefs.soundVolume}%`);
+  volume.value = String(prefs.soundVolume);
+  volume.disabled = prefs.sound === 'off';
+  volume.setAttribute('aria-valuetext', `${prefs.soundVolume}%`);
+  volume.style.setProperty('--fill', `${prefs.soundVolume}%`);
   $('sound-volume-value').textContent = `${prefs.soundVolume}%`;
-  $('sound-volume-row').hidden = prefs.sound === 'off';
   if (prefs.sound === 'off') sounds.release();
 }
 
