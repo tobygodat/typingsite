@@ -74,7 +74,16 @@ export function weekOrder(rows) {
   return [...rows].sort((a, b) => (b.week?.seconds ?? -1) - (a.week?.seconds ?? -1) || byName(a, b));
 }
 
-const newId = () => crypto.randomUUID();
+// Ids for history clears: random UUIDs (the service checks the shape). randomUUID needs a secure
+// context, which plain http on a LAN address is not, so getRandomValues stands in for it there.
+export function newId(source = globalThis.crypto) {
+  if (typeof source?.randomUUID === 'function') return source.randomUUID();
+  const bytes = source.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 // Whether the account shares is the service's to say: its row is the only record, and every board reply
 // says. This device keeps what it last read (or last chose) only to show the switch and to know when to
 // publish before the next read: true, false, or null when it has never read the board for this account.
@@ -92,44 +101,41 @@ function rememberSharing(session, value) {
     else localStorage.setItem(sharingKey(session), value ? '1' : '0');
   } catch {}
 }
-
-// Each tab holds a lock named after it for as long as it is open, so another tab of the browser can wait
-// for it to close and then take over what it left unconfirmed: a clear, an undo or an opt-out. Where the
-// browser has no Web Locks the other tab takes over at once; the service answers a repeat as done.
-const locks = globalThis.navigator?.locks;
-const tabLock = (id) => `stilltype-board-tab:${id}`;
-function whenClosed(owner, then) {
-  if (!locks) { then(); return; }
-  locks.request(tabLock(owner), () => { then(); }).catch(() => {});
-}
-
-// An opt-out the service hasn't confirmed yet, kept on this device across reloads until it has. It names
-// the tab that carries it.
+// An opt-out the service hasn't confirmed yet, kept on this device across reloads until it has. Any tab
+// of the device sends it; the service answers a repeat as done.
 const optOutKey = (session) => `stilltype-board-optout:${session.user.id}`;
 function optOutPending(session) {
-  try { return localStorage.getItem(optOutKey(session)); } catch { return null; }
+  try { return localStorage.getItem(optOutKey(session)) !== null; } catch { return false; }
 }
-function rememberOptOut(session, owner) {
+function rememberOptOut(session, pending) {
   try {
-    if (owner) localStorage.setItem(optOutKey(session), owner);
+    if (pending) localStorage.setItem(optOutKey(session), '1');
     else localStorage.removeItem(optOutKey(session));
   } catch {}
 }
 // Clears and undos the service hasn't confirmed yet, kept on this device across reloads until it has: one
-// record per clear (its undo shares its id), naming the tab that carries it, so no tab ever writes over
-// another's.
+// record per clear (its undo shares its id). Only the tab that made a clear writes its record; any tab
+// may send any record, since the service answers a repeat as done, and the tab that gets the service's
+// answer removes it.
 const replacePrefix = (session) => `stilltype-board-replace:${session.user.id}:`;
-function storedReplace(key) {
-  try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
-}
-function storedReplaceKeys(session) {
-  try { return Object.keys(localStorage).filter((key) => key.startsWith(replacePrefix(session))); } catch { return []; }
+function storedReplaces(session) {
+  try {
+    return Object.keys(localStorage).filter((key) => key.startsWith(replacePrefix(session))).map((key) => {
+      const text = localStorage.getItem(key);
+      try { return { key, text, record: JSON.parse(text) }; } catch { return null; }
+    }).filter((entry) => entry?.record?.replacing && entry.record.mine?.id);
+  } catch { return []; }
 }
 function rememberReplace(key, record) {
   try {
     if (record) localStorage.setItem(key, JSON.stringify(record));
     else localStorage.removeItem(key);
   } catch {}
+}
+// Removes a record the service has answered, unless its tab has moved on since it was read (from a clear
+// to its undo), which is then still to be sent.
+function settleReplace(key, text) {
+  try { if (localStorage.getItem(key) === text) localStorage.removeItem(key); } catch {}
 }
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
@@ -160,9 +166,6 @@ export const shareSummary = (session, summary) => call(session, 'share', summary
 export const stopSharing = (session) => call(session, 'unshare');
 
 export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isRunning, signIn, openOnline, onUndoRefused = () => {} }) {
-  // This tab, for as long as it is open (see whenClosed).
-  const tab = newId();
-  locks?.request(tabLock(tab), () => new Promise(() => {})).catch(() => {});
   let visible = false;
   // Whether this account shares, as this device last knew it (see knownSharing); null until it knows.
   let sharing = getSession() ? knownSharing(getSession()) : null;
@@ -197,10 +200,9 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   // This tab's own latest clear, { id, at } with `at` by this device's clock, while the service may still
   // hold it (an undo names it), and the clear before it, whose runs an undo sends again: the latest this
   // tab knew when it cleared, then the one the service names while this tab's clear is the latest.
+  // Another tab's clear never takes their place.
   let mine = null;
   let before = null;
-  // That clear or undo was taken over from a closed tab, so a refused undo says nothing here.
-  let adopted = false;
   // A quiet line for the board when sharing was turned off on another device.
   let note = '';
   // Bumped by each switch of the sharing setting here, so a reply that crossed one doesn't count.
@@ -227,63 +229,26 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     if (mine && result?.clear?.id === mine.id && 'undo' in result) before = result.undo;
     return result;
   }
-  // The record of this tab's clear or undo still to be sent: written while there is one, removed once it
-  // is settled. Only ever this tab's own; then it takes over one a closed tab left, if there is one.
+  // A board the service sent, and the day it is for.
+  function took(result) {
+    board = result;
+    if (result?.date) readDay = result.date;
+  }
+  // The record of this tab's own clear or undo still to be sent: written while there is one, removed once
+  // it is settled.
   let keptKey = null;
   function keep() {
     const session = getSession();
     if (!session) return;
     const key = replacing && mine ? replacePrefix(session) + mine.id : null;
     if (keptKey && keptKey !== key) rememberReplace(keptKey, null);
-    if (key) rememberReplace(key, { replacing, mine, before, tab });
+    if (key) rememberReplace(key, { replacing, mine, before });
     keptKey = key;
-    if (!key) { adopted = false; adoptNext(); }
   }
-
-  // Records other tabs left behind once they closed, by key, with the tab each was left by.
-  const orphans = new Map();
-  // The tab each record seen here is waiting on, so it is waited on once.
-  const waiting = new Map();
-  function watch(key) {
-    const record = storedReplace(key);
-    if (!record?.mine || record.tab === tab || waiting.get(key) === record.tab) return;
-    waiting.set(key, record.tab);
-    whenClosed(record.tab, () => {
-      if (waiting.get(key) === record.tab) waiting.delete(key);
-      const now = storedReplace(key);
-      if (!now?.mine || now.tab === tab) return;
-      // Another tab took it over first: it now waits on that one.
-      if (now.tab !== record.tab) { watch(key); return; }
-      orphans.set(key, record.tab);
-      adoptNext();
-    });
-  }
-  // Takes over the oldest clear or undo a closed tab left, once this tab has none of its own, and sends it
-  // as its own. Several left go in the order they were made.
-  function adoptNext() {
-    const session = getSession();
-    if (!session || closed || (replacing && mine)) return;
-    const left = [...orphans].map(([key, owner]) => [key, storedReplace(key), owner])
-      .filter(([key, record, owner]) => {
-        if (record?.mine && record.replacing && record.tab === owner) return true;
-        orphans.delete(key);
-        return false;
-      })
-      .sort(([, a], [, b]) => Date.parse(a.mine.at) - Date.parse(b.mine.at));
-    if (!left.length) return;
-    const [key, record] = left[0];
-    orphans.delete(key);
-    ({ replacing, mine, before } = record);
-    adopted = true;
-    pending = true;
-    keep();
-    schedulePublish();
-  }
-  // A newer clear made here supersedes any a closed tab left.
-  function dropOrphans() {
-    for (const key of orphans.keys()) rememberReplace(key, null);
-    orphans.clear();
-  }
+  // Records kept on this device that aren't this tab's own clear (another tab's, or one an earlier load
+  // left), oldest first.
+  const othersPending = (session) => storedReplaces(session).filter(({ key }) => key !== keptKey)
+    .sort((a, b) => Date.parse(a.record.mine.at) - Date.parse(b.record.mine.at));
 
   // Writes go one at a time, in order. One asked for while another is in flight waits for it to settle,
   // then sends the summary as it is by then; an unchanged publish is skipped, so queued changes collapse
@@ -296,10 +261,10 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     return write;
   }
   const publishChange = (session) => enqueue(() => sendChange(session));
-  // Only after the account check (before it, resume() sends the summary), never while an opt-out is
-  // unconfirmed, and only while sharing, or with a clear or undo to send.
-  const publishIfDue = (session) => (canPublish() && !optingOut(session) && (isSharing() || (replacing && mine))
-    ? publishChange(session).catch(() => null) : null);
+  // Something for the service: an opt-out to send, this tab's summary while sharing, a clear or undo.
+  const due = (session) => unsharing || isSharing() || Boolean(replacing && mine) || othersPending(session).length > 0;
+  // Only after the account check (before it, resume() sends the summary).
+  const publishIfDue = (session) => (canPublish() && due(session) ? publishChange(session).catch(() => null) : null);
 
   // Stops publishing at once and forgets what was still to be sent.
   function forget() {
@@ -316,21 +281,35 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     published = '';
     pending = Boolean(replacing && mine);
   }
-  // The row's removal waits behind any write already on its way. Once the service confirms it, the
-  // opt-out is settled here too, unless the switch has moved again since, and with the row a marker any
-  // clear or undo still kept is moot.
-  async function removeRow(session) {
-    const seq = toggles;
-    const result = seen(await enqueue(() => stopSharing(session)));
+  // The account doesn't share (any more): nothing kept on this device for the board is due. A tab that
+  // thought it shared says so in one line; one that didn't know just knows now.
+  function notSharing() {
+    if (sharing) note = 'Sharing was turned off on another device.';
+    setSharing(false);
+    forget();
+    const session = getSession();
+    if (session) for (const { key } of storedReplaces(session)) rememberReplace(key, null);
+  }
+
+  // The opt-out, sent now: from the queue (removeRow), or first thing in a write. Once the service
+  // confirms it, it is settled on this device, unless the switch here has moved since it was asked for.
+  async function unshareNow(session, seq = toggles) {
+    const result = seen(await stopSharing(session));
     if (seq === toggles) {
       unsharing = false;
-      rememberOptOut(session, null);
-      setSharing(false);
-      forget();
+      rememberOptOut(session, false);
+      // With the row a marker, every clear or undo kept is moot.
+      notSharing();
+      note = '';
+      took(result);
     }
     return result;
   }
-
+  // The row's removal waits behind any write already on its way.
+  function removeRow(session) {
+    const seq = toggles;
+    return enqueue(() => unshareNow(session, seq));
+  }
   // Sharing was turned off on this device and the service hasn't confirmed it: no more publishing here.
   function optedOut() {
     unsharing = true;
@@ -339,29 +318,14 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     pause();
     board = null;
   }
-  // The opt-out another tab carries, re-read before anything is published or sent here: this tab stops
-  // too, and if that tab closes first, sends the opt-out itself. True while one is unconfirmed.
-  let watchingOptOut = null;
+  // An opt-out made in another tab, re-read before anything is published or sent here: this tab stops
+  // too, and sends it with its next board request. True while one is unconfirmed.
   function optingOut(session) {
-    const owner = optOutPending(session);
-    if (owner && !unsharing) {
+    if (!unsharing && optOutPending(session)) {
       optedOut();
       if (visible) render();
     }
-    if (owner) watchOptOut(owner);
     return unsharing;
-  }
-  function watchOptOut(owner) {
-    if (owner === tab || owner === watchingOptOut) return;
-    watchingOptOut = owner;
-    whenClosed(owner, () => {
-      if (watchingOptOut === owner) watchingOptOut = null;
-      const session = getSession();
-      if (!session || closed || optOutPending(session) !== owner) return;
-      rememberOptOut(session, tab);
-      if (!unsharing) optedOut();
-      removeRow(session).then(() => { if (visible) refresh({ quiet: true }); }, () => {});
-    });
   }
 
   // Every reply says whether this account shares, and that is what this tab goes by: another device may
@@ -372,40 +336,67 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   // sharing on in this tab, whose summary is then due (now, or after the check).
   function learn(result, seq) {
     if (typeof result?.sharing !== 'boolean' || seq !== toggles || unsharing || held !== null) return false;
-    if (!result.sharing) {
-      if (sharing !== false || replacing) notSharing();
-      return false;
-    }
+    if (!result.sharing) { notSharing(); return false; }
     if (sharing) return false;
     setSharing(true);
     note = '';
     pending = true;
     return true;
   }
-  // The account doesn't share (any more): nothing kept for the board is due. A tab that thought it shared
-  // says so in one line; one that didn't know just knows now.
-  function notSharing() {
-    if (sharing) note = 'Sharing was turned off on another device.';
-    setSharing(false);
-    forget();
+
+  // The clears and undos kept by other tabs or an earlier load, sent before this tab's own writes, oldest
+  // first and each as this tab would send its own: a clear with the runs since it happened, an undo with
+  // the runs since the clear before it. A failure leaves them kept. False when a reply said the account
+  // doesn't share, which settles everything.
+  async function sendOthers(session, seq) {
+    for (const { key, text, record } of othersPending(session)) {
+      const { id, at } = record.mine;
+      let base = record.before;
+      let result = null;
+      if (record.replacing !== 'undo') {
+        result = seen(await publishSummary(session, { ...boardSummary(runsSince(runs(), at), dailyKey()),
+          clear: { id, at, sent: new Date().toISOString() } }, { replace: true }));
+        if (result?.clear?.id === id && 'undo' in result) base = result.undo;
+      }
+      if (record.replacing !== 'clear' && !(result?.refused && !result.sharing)) {
+        // Counted from another clear before it than the service holds, it goes again from that one.
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          result = seen(await publishSummary(session, { ...summary(base ? base.from : null), undo: id, before: base?.id ?? null }, { replace: true }));
+          if (!result?.refused || !result.sharing || result.clear?.id !== id) break;
+          base = result.undo;
+        }
+      }
+      settleReplace(key, text);
+      if (result?.refused && !result.sharing) { notSharing(); return false; }
+      if (!sharing && result?.sharing && seq === toggles && !unsharing && held === null) {
+        setSharing(true);
+        note = '';
+      }
+    }
+    return true;
   }
 
-  // The service's reply, or null when nothing went out. A replace is always sent: another tab or device
-  // may have raised the stored summary since this one last sent the same numbers, and a clear or undo
-  // must still set it to exactly this tab's. A clear sends the runs since it happened here, however late
-  // it goes out; an undo names that clear and the clear before it, and sends the restored runs since
-  // that one. A clear or undo goes out even while this tab doesn't know the account shares: the service
-  // refuses it, changing nothing, if it doesn't, and taken, it says the account does. A failure leaves
-  // the change pending. Refused, the tab has learned what it missed: sharing off, so it stops; or a newer
-  // clear elsewhere (which an undo can't reverse, and then says so where it was made), so it sends what is
-  // due now, once: its runs since that clear, or a clear of its own queued meanwhile; or another clear
-  // before its own than it counted from, so its undo goes again from that one.
+  // The service's reply, or null when nothing of this tab's went out. An opt-out on this device goes
+  // first, and nothing else until it lands; then what other tabs left. A replace is always sent: another
+  // tab or device may have raised the stored summary since this one last sent the same numbers, and a
+  // clear or undo must still set it to exactly this tab's. A clear sends the runs since it happened
+  // here, however late it goes out; an undo names that clear and the clear before it, and sends the
+  // restored runs since that one. A clear or undo goes out even while this tab doesn't know the account
+  // shares: the service refuses it, changing nothing, if it doesn't, and taken, it says the account does.
+  // A failure leaves the change pending. Refused, the tab has learned what it missed: sharing off, so it
+  // stops; or a newer clear elsewhere (which an undo can't reverse, and then says so where it was made),
+  // so it sends what is due now, once: its runs since that clear, or a clear of its own queued meanwhile;
+  // or another clear before its own than it counted from, so its undo goes again from that one.
   async function sendChange(session, retried = false) {
-    if (optingOut(session)) return null;
+    if (optingOut(session)) {
+      await unshareNow(session);
+      return null;
+    }
+    const seq = toggles;
+    if (!(await sendOthers(session, seq))) return null;
     // A clear or undo always has its clear; without one there is nothing to replace, only to publish.
     if (replacing && !mine) replacing = false;
     if (!isSharing() && !replacing) { forget(); return null; }
-    const seq = toggles;
     const mode = replacing;
     // The clear this write is about. A newer clear made while it is on its way is not this write's to settle.
     const sent = mode ? mine : null;
@@ -441,7 +432,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
         return sendChange(session, true);
       }
       if (ours) mine = null;
-      if (mode === 'undo' && result.clear?.id !== sent.id && !adopted) onUndoRefused();
+      if (mode === 'undo' && result.clear?.id !== sent.id) onUndoRefused();
       keep();
       if (!retried) return sendChange(session, true);
       return result;
@@ -456,6 +447,9 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     if (mode === 'clear+undo' && ours && !replacing) { replacing = 'undo'; keep(); return sendChange(session, retried); }
     keep();
     published = key;
+    // A clear the service already had (its reply was lost on the way back) and that a newer clear has
+    // overtaken since: answered as done, so the runs since the newer one go out now.
+    if (mode === 'clear' && result?.clear?.id !== sent.id && !retried) return sendChange(session, true);
     return result;
   }
 
@@ -545,8 +539,8 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
       // Sharing was turned on elsewhere: this tab's history goes out too.
       if (learn(result, seq)) result = (await publishIfDue(session)) || result;
       if (current !== generation || seq !== toggles) return;
-      board = result;
-      readDay = result?.date || serviceDay();
+      took(result);
+      readDay ||= serviceDay();
       render(manual ? 'Updated.' : '');
     } catch (failure) {
       if (current !== generation || seq !== toggles || quiet) return;
@@ -558,21 +552,19 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
 
   // After a run, or a clear or an undo (replace). Nothing is sent mid-run. A change sent before the account
   // check, or one that failed, stays pending until resume() (the check, or the browser coming back online).
-  // A run sends nothing while sharing is off; a clear or undo is kept whatever this tab believes, and the
-  // service settles it.
+  // A run sends nothing while sharing is off (an opt-out still unconfirmed goes instead); a clear or undo
+  // is kept whatever this tab believes, and the service settles it.
   function schedulePublish({ replace } = {}) {
     const session = getSession();
     if (!session || closed) return;
     optingOut(session);
-    if (!replace && !(replacing && mine) && (!isSharing() || unsharing)) return;
+    if (!replace && !due(session)) return;
     pending = true;
     if (replace === 'clear') {
       // The clear's identity: an id, and the time it happened here, kept however late it goes out.
       if (replacing !== 'clear' && replacing !== 'clear+undo') before = known;
       mine = { id: newId(), at: new Date().toISOString() };
       replacing = 'clear';
-      adopted = false;
-      dropOrphans();
     } else if (replace === 'undo') {
       // A clear not yet confirmed goes first and its undo after (a clear repeated is answered as done).
       // A clear the board no longer holds (a newer one overtook it) can't be undone there.
@@ -584,14 +576,14 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     clearTimeout(publishTimer);
     publishTimer = setTimeout(async () => {
       const session = getSession();
-      if (!session || !canPublish() || (!isSharing() && !(replacing && mine))) return;
+      if (!session || !canPublish() || !due(session)) return;
       if (isRunning()) { schedulePublish(); return; }
       const seq = toggles;
       try {
         const result = await publishChange(session);
         if (!result || seq !== toggles) return;
         learn(result, seq);
-        board = result;
+        took(result);
         if (visible) render();
       } catch {}
     }, 1500);
@@ -601,7 +593,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   // sharing on sends this tab's summary and takes effect once the service has it, followed by a clear or
   // undo kept meanwhile; before the account check it waits for the check (resume), so it sends the
   // checked summary. Turning it off stops publishing at once and removes your row, retrying (resume, the
-  // next board read, or the next load) if that fails. Focus stays where it was.
+  // next board request in any tab, or the next load) if that fails. Focus stays where it was.
   async function setShare(on, { force = false } = {}) {
     const session = getSession();
     if (!session) { render(); return; }
@@ -617,7 +609,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     if (on) {
       turningOn = true;
       unsharing = false;
-      rememberOptOut(session, null);
+      rememberOptOut(session, false);
       note = '';
       render('Turning sharing on…');
       try {
@@ -631,8 +623,8 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
           }
           pending = false;
           if (reply?.refused) return { reply, taken: false };
-          // A clear or undo made while sharing was off here goes now, so the row is the cleared one.
-          if (replacing && mine) {
+          // Clears and undos kept while sharing was off here go now, so the row is the cleared one.
+          if ((replacing && mine) || othersPending(session).length) {
             pending = true;
             try { reply = (await sendChange(session)) || reply; } catch {}
           }
@@ -642,7 +634,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
         turningOn = false;
         if (!result.taken) { render('Sharing couldn’t be turned on. Try again.'); return; }
         setSharing(true);
-        board = result.reply;
+        took(result.reply);
         render();
       } catch (failure) {
         if (seq !== toggles) return;
@@ -654,9 +646,8 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     stopHere(session);
     render();
     try {
-      const result = await removeRow(session);
+      await removeRow(session);
       if (seq !== toggles) return;
-      board = result;
       render('Your row is off the board.');
     } catch (failure) {
       if (seq !== toggles) return;
@@ -666,15 +657,16 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   }
 
   // Turning sharing off here: nothing more is published, and the opt-out is kept until the service
-  // confirms it, carried by this tab.
+  // confirms it.
   function stopHere(session) {
-    rememberOptOut(session, tab);
+    rememberOptOut(session, true);
     setSharing(false);
     optedOut();
   }
 
   // Another tab of this browser changed what this device keeps: an opt-out (made, or settled), whether the
   // account shares, or a clear or undo still to be sent.
+  let pickUp = 0;
   function onStorage(event) {
     const session = getSession();
     if (!session || closed || !event.key) return;
@@ -692,9 +684,19 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
       sharing = value;
       note = '';
       if (!value) pause();
+      else if (visible) {
+        // Turned on there: this board reads again, so it shows the rows.
+        board = null;
+        refresh({ quiet: true });
+        return;
+      }
     } else if (event.key.startsWith(replacePrefix(session))) {
-      if (event.newValue) watch(event.key);
-      else orphans.delete(event.key);
+      // Another tab's clear or undo: if it is still kept a little later (that tab may have closed), it
+      // goes from here too.
+      if (event.newValue) {
+        clearTimeout(pickUp);
+        pickUp = setTimeout(() => { if (canPublish() && othersPending(session).length) publishChange(session).catch(() => {}); }, 5000);
+      }
       return;
     } else return;
     if (visible) render();
@@ -705,33 +707,27 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   $('friends-board-signin').addEventListener('click', signIn);
   $('friends-board-online').addEventListener('click', openOnline);
   addEventListener('storage', onStorage);
-  // What other tabs of this browser left unconfirmed: an opt-out, and clears or undos, each taken over
-  // once the tab carrying it has closed (at once after a reload).
-  if (getSession()) {
-    const session = getSession();
-    const owner = optOutPending(session);
-    if (owner) watchOptOut(owner);
-    for (const key of storedReplaceKeys(session)) watch(key);
-  }
   render();
 
   return {
     schedulePublish,
     setShare,
     // After the account check (and when the browser is back online): sharing turned on before the check
-    // now goes out with the checked summary, and an unconfirmed opt-out goes out first. A device that
-    // has never read the board for this account reads it once, quietly, to learn whether it shares (and
-    // so publish what it has); one that knows learns of changes elsewhere from its next board request.
+    // now goes out with the checked summary, and an unconfirmed opt-out goes out first, then any clear or
+    // undo this device kept. A device that has never read the board for this account reads it once,
+    // quietly, to learn whether it shares (and so publish what it has); one that knows learns of changes
+    // elsewhere from its next board request.
     resume() {
       const session = getSession();
-      if (held !== null && session) {
+      if (!session) return;
+      if (held !== null) {
         const on = held;
         held = null;
         if (on) setShare(true, { force: true });
       }
-      if (session && optingOut(session)) removeRow(session).then(() => { if (visible) refresh({ quiet: true }); }, () => {});
-      else if (session && sharing === null && !turningOn && !loading) refresh({ quiet: true });
-      if (pending) schedulePublish();
+      if (optingOut(session)) removeRow(session).then(() => { if (visible) refresh({ quiet: true }); }, () => {});
+      else if (sharing === null && !turningOn && !loading) refresh({ quiet: true });
+      if (pending || othersPending(session).length) schedulePublish();
     },
     // What the switch shows: true or false, or null while this device doesn't know yet.
     get sharing() {

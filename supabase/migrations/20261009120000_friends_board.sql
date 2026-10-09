@@ -28,9 +28,11 @@ create table race_private.summaries (
   -- The clear before it, which an undo of the latest one puts back.
   undo_id uuid,
   undo_from timestamptz,
-  -- The clear the last undo took back, so that undo, or the clear itself, repeated after a lost reply is
-  -- answered as done.
+  -- The clear the last undo took back, so that undo repeated after a lost reply is answered as done.
   undone_id uuid,
+  -- The last twenty clears applied, newest first, so a clear repeated after a lost reply is answered as
+  -- done however many clears (or undos) have come since.
+  seen_clears uuid[] not null default '{}' check (cardinality(seen_clears) <= 20),
   -- Today's best completed physical-keyboard daily attempt, and how many completed attempts there were.
   daily_date date,
   -- Which daily it was (conditions with corpus and metric version, and the passage), so a reader
@@ -112,7 +114,8 @@ revoke all on function race_private.board_snapshot(uuid) from public, anon, auth
 -- runs from). Clears take effect in the order they arrive, whatever the devices' clocks say; an undo of
 -- a clear that is no longer the latest is refused, so a newer clear wins, and so is one that counted
 -- from another clear than the one it would put back (the reply names that one). A clear or undo repeated
--- after a lost reply is answered as done, and its numbers, the runs since that clear, are folded in.
+-- after a lost reply is answered as done: one still the latest (or an undo taken) folds its numbers in,
+-- the runs since the clear it leaves in place; one overtaken since changes nothing at all.
 -- 'unshare' empties the row down to the marker.
 create function race_private.board(p_action text, p_data jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
@@ -203,6 +206,7 @@ begin
     v_new.week_seconds := (v_practice->>'seconds')::integer;
     v_new.week_runs := (v_practice->>'runs')::integer;
     v_new.updated_at := clock_timestamp();
+    v_new.seen_clears := '{}';
     -- Only sharing creates the row, as sent. Writes lock it, so two tabs writing at once take turns.
     if p_action = 'share' then
       insert into race_private.summaries select (v_new).* on conflict (user_id) do nothing;
@@ -213,10 +217,15 @@ begin
     if not found or (not v_old.sharing and p_action <> 'share') then
       return race_private.board_snapshot(v_uid) || jsonb_build_object('refused', true);
     end if;
-    -- A clear or undo repeated after a lost reply is answered as done: the clear is still the latest, or
-    -- an undo already took it back; or the undo already did. Its numbers are the runs since the clear it
-    -- leaves in place, so they are folded in like a publish.
-    v_repeat := coalesce(v_clear_id in (v_old.clear_id, v_old.undone_id), false) or coalesce(v_undo = v_old.undone_id, false);
+    -- A clear applied before and overtaken since (by a newer clear, or by its undo), repeated after a lost
+    -- reply, is answered as done and changes nothing: its numbers count from before the clear that
+    -- overtook it, so they would bring back runs that one removed.
+    if v_clear_id is not null and v_clear_id is distinct from v_old.clear_id and v_clear_id = any(v_old.seen_clears) then
+      return race_private.board_snapshot(v_uid);
+    end if;
+    -- A clear still the latest, or an undo already taken, repeated after a lost reply, is answered as done.
+    -- Its numbers are the runs since the clear it leaves in place, so they are folded in like a publish.
+    v_repeat := coalesce(v_clear_id = v_old.clear_id, false) or coalesce(v_undo = v_old.undone_id, false);
     -- Refused, changing nothing: a share or publish that missed the latest clear; an undo of a clear
     -- that isn't the latest, or one that counted its runs from another clear than the one before it.
     if not v_repeat and ((p_action <> 'replace' and v_known is distinct from v_old.clear_id)
@@ -229,6 +238,7 @@ begin
     v_new.undo_id := v_old.undo_id;
     v_new.undo_from := v_old.undo_from;
     v_new.undone_id := v_old.undone_id;
+    v_new.seen_clears := v_old.seen_clears;
     if v_repeat or (p_action <> 'replace' and v_old.sharing) then
       -- A browser's summary is a lower bound: another tab or device of the same account may hold runs
       -- this one never saw. So the stored daily stays unless this one is for a later day (today's
@@ -258,6 +268,7 @@ begin
       v_new.undo_id := v_old.clear_id;
       v_new.undo_from := v_old.clear_from;
       v_new.clear_id := v_clear_id;
+      v_new.seen_clears := (array[v_clear_id] || v_old.seen_clears)[1:20];
       -- A clear that arrives after a later one (sent late) can't move the time back past it.
       v_new.clear_from := greatest(v_old.clear_from, v_clear_from);
     elsif p_action = 'replace' then
@@ -268,8 +279,8 @@ begin
       v_new.undone_id := v_undo;
     end if;
     update race_private.summaries set sharing = true, clear_id = v_new.clear_id, clear_from = v_new.clear_from,
-        undo_id = v_new.undo_id, undo_from = v_new.undo_from, undone_id = v_new.undone_id, daily_date = v_new.daily_date,
-        daily_version = v_new.daily_version, daily_wpm = v_new.daily_wpm, daily_accuracy = v_new.daily_accuracy,
+        undo_id = v_new.undo_id, undo_from = v_new.undo_from, undone_id = v_new.undone_id, seen_clears = v_new.seen_clears,
+        daily_date = v_new.daily_date, daily_version = v_new.daily_version, daily_wpm = v_new.daily_wpm, daily_accuracy = v_new.daily_accuracy,
         daily_attempts = v_new.daily_attempts, week_start = v_new.week_start, week_seconds = v_new.week_seconds,
         week_runs = v_new.week_runs, updated_at = v_new.updated_at
       where user_id = v_uid;

@@ -30,6 +30,8 @@ export class FakeBoard {
     // Set to a promise to hold the next write: it is stored and answered only once that settles, while
     // later requests go through, as a slow request can on the real service.
     this.holdNext = null;
+    // Set to lose the reply to the next write: the service takes it, and the browser gets an error.
+    this.dropNextReply = false;
   }
 
   emailOf(id) { return [...this.auth.users.values()].find((user) => user.id === id)?.email.toLowerCase(); }
@@ -54,8 +56,9 @@ export class FakeBoard {
   // clears take effect in the order they arrive, each keeping its id and the time it happened, turned
   // into the service's time by the gap between when it happened and when it was sent (never later than
   // now, nor earlier than the clear it follows), and an undo puts back the clear before. A clear or undo
-  // repeated after a lost reply (a clear also after its undo) is answered as done, its numbers folded in
-  // as a publish's are. True when the write was taken (or already was).
+  // repeated after a lost reply is answered as done: one still the latest (or an undo taken) folds its
+  // numbers in as a publish's are; one overtaken since changes nothing. True when the write was taken (or
+  // already was).
   store(caller, action, data) {
     const now = this.now();
     const today = utcDay(now);
@@ -67,14 +70,15 @@ export class FakeBoard {
     if (action !== 'replace' && (data.clear ?? null) !== (current?.id ?? null)) return false;
     if (!old) {
       if (action !== 'share') return false;
-      this.summaries.set(caller, { sharing: true, clear: null, undo: null, daily: data.daily || null, week: { ...data.week } });
+      this.summaries.set(caller, { sharing: true, clear: null, undo: null, seen: [], daily: data.daily || null, week: { ...data.week } });
       return true;
     }
     if (!shares(old) && action !== 'share') return false;
-    const repeat = Boolean(clear && (clear.id === current?.id || clear.id === old.undone))
-      || (action === 'replace' && !clear && data.undo === old.undone);
+    // A clear applied before and overtaken since (by a newer clear, or its undo) changes nothing.
+    if (clear && clear.id !== current?.id && (old.seen ?? []).includes(clear.id)) return true;
+    const repeat = Boolean(clear && clear.id === current?.id) || (action === 'replace' && !clear && data.undo === old.undone);
     if (!repeat && action === 'replace' && !clear && (data.undo !== current?.id || (data.before ?? null) !== (old.undo?.id ?? null))) return false;
-    const next = { sharing: true, clear: current, undo: old.undo ?? null, undone: old.undone ?? null, daily: data.daily || null, week: { ...data.week } };
+    const next = { sharing: true, clear: current, undo: old.undo ?? null, undone: old.undone ?? null, seen: old.seen ?? [], daily: data.daily || null, week: { ...data.week } };
     if (repeat || (action !== 'replace' && shares(old))) {
       // Today's (or this week's) first, then the later date.
       const ahead = (a, b, latest) => (a === latest) !== (b === latest) ? a === latest : a > b;
@@ -89,7 +93,7 @@ export class FakeBoard {
       } else if (ahead(old.week.start, next.week.start, thisWeek)) next.week = { ...old.week };
     } else if (clear) {
       if (current && Date.parse(current.from) > Date.parse(clear.from)) clear.from = current.from;
-      Object.assign(next, { clear, undo: current, undone: null });
+      Object.assign(next, { clear, undo: current, undone: null, seen: [clear.id, ...next.seen].slice(0, 20) });
     }
     else if (action === 'replace') Object.assign(next, { clear: old.undo ?? null, undo: null, undone: data.undo });
     this.summaries.set(caller, next);
@@ -100,7 +104,8 @@ export class FakeBoard {
   clearElsewhere(user) {
     const old = this.summaries.get(user);
     const clear = { id: randomUUID(), from: this.now().toISOString() };
-    this.summaries.set(user, { ...old, clear, undo: old?.clear ?? null, daily: null, week: { start: mondayOf(this.now()), seconds: 0, runs: 0 } });
+    this.summaries.set(user, { ...old, clear, undo: old?.clear ?? null, seen: [clear.id, ...(old?.seen ?? [])].slice(0, 20), daily: null,
+      week: { start: mondayOf(this.now()), seconds: 0, runs: 0 } });
     return clear;
   }
 
@@ -142,10 +147,14 @@ export class FakeBoard {
         return reply(200, { ...this.board(caller), refused: true });
       }
       this.published.push({ caller, action, ...data });
+      if (this.dropNextReply) {
+        this.dropNextReply = false;
+        return reply(502, { message: 'The reply was lost.' });
+      }
     } else if (action === 'unshare') {
       this.published.push({ caller, action });
       const old = this.summaries.get(caller);
-      this.summaries.set(caller, { sharing: false, clear: old?.clear ?? null, undo: old?.undo ?? null, daily: null, week: null });
+      this.summaries.set(caller, { ...old, sharing: false, daily: null, week: null });
     } else if (action !== 'board') return reply(400, { message: 'Unknown board action.' });
     return reply(200, this.board(caller));
   }

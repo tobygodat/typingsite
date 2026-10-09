@@ -74,6 +74,8 @@ declare
   g4 uuid := gen_random_uuid();
   g5 uuid := gen_random_uuid();
   g6 uuid := gen_random_uuid();
+  g7 uuid := gen_random_uuid();
+  g8 uuid := gen_random_uuid();
   t text;
   t2 text;
   denied boolean;
@@ -321,8 +323,22 @@ begin
     exception when others then denied := true; end;
     if not denied then raise exception 'A malformed undo was accepted: %', bad; end if;
   end loop;
-  -- Ada's daily and week, published again since g5, for the friends below.
-  board := pg_temp.board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'clear',g5));
+  -- A clear whose reply was lost (g7) is overtaken by another device's clear (g8) before it goes again.
+  -- Sent again with the runs made since it, which g8 removed, it is answered as done and changes
+  -- nothing: g8 stays the latest, with its time, and those runs stay off the board.
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+    'clear',pg_temp.clearing(g7,clock_timestamp(),clock_timestamp())));
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+    'clear',pg_temp.clearing(g8,clock_timestamp(),clock_timestamp())));
+  t := board->'clear'->>'from';
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',1800,'runs',12),
+    'clear',pg_temp.clearing(g7,clock_timestamp() - interval '40 minutes',clock_timestamp())));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g8::text or board->'clear'->>'from' is distinct from t
+    or board->'undo'->>'id' is distinct from g7::text or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) then
+    raise exception 'A clear sent again after a newer one became the latest again: %', board;
+  end if;
+  -- Ada's daily and week, published again since g8, for the friends below.
+  board := pg_temp.board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'clear',g8));
   if board ? 'refused' then raise exception 'A publish naming the latest clear was refused: %', board; end if;
 
   -- Lin has Ada on her list, but Ada has not chosen Lin: neither sees the other.

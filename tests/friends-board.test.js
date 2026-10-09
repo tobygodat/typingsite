@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
-import { boardSummary, dailyOrder, dailyVersion, practiceTime, publishSummary, readBoard, runsSince, shareSummary, stopSharing, weekOrder, weekStart } from '../src/friends-board.js';
+import { boardSummary, dailyOrder, dailyVersion, newId, practiceTime, publishSummary, readBoard, runsSince, shareSummary, stopSharing, weekOrder, weekStart } from '../src/friends-board.js';
 import { dailyPassage } from '../src/insights.js';
 
 const daily = { mode: 'quote', duration: null, count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any',
@@ -128,4 +128,14 @@ test('a service without the board migration says it is being set up', async () =
   try {
     await assert.rejects(readBoard(session), /being set up/);
   } finally { globalThis.fetch = original; }
+});
+
+test('clear ids are UUIDs even where crypto.randomUUID is missing (plain http on a LAN address)', () => {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  // An insecure context has getRandomValues but no randomUUID.
+  const insecure = { getRandomValues: (bytes) => globalThis.crypto.getRandomValues(bytes) };
+  const ids = Array.from({ length: 50 }, () => newId(insecure));
+  for (const id of ids) assert.match(id, uuid);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.match(newId(), uuid);
 });
