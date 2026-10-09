@@ -383,7 +383,7 @@ kbd {
 .preference-row > span { min-width: 0; display: grid; gap: 2px; }
 .preference-row strong { font-size: 15px; font-weight: 600; }
 .preference-row .select { width: 104px; height: 36px; font-size: 14px; }
-.preference-lock { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
+.preference-lock { color: var(--muted); font: italic var(--text-label)/1.4 var(--font-serif); }
 .preference-row:has(:disabled) { cursor: default; }
 .preference-row:has(:disabled):hover { background: transparent; }
 
@@ -790,7 +790,7 @@ kbd {
 
 .quote-options .input { width: 128px; height: 38px; font-size: 14px; }
 
-/* The standard test's fixed recipe, in the quote options' place: the conditions, then what is locked. */
+/* The standard test's fixed recipe, in the quote options' place. The lock notes live in settings. */
 .standard-options {
   margin: calc(var(--space-10) * -1) auto var(--space-10);
   display: grid;
@@ -1988,6 +1988,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (max-width: 360px) {
+  /* Four modes fit the 288px column. */
+  .segmented button { padding: 0 var(--space-2); }
   .nav-item { padding: 0 2px; font-size: 13px; }
   .nav-label-full { display: none; }
   .nav-label-short { display: inline; }

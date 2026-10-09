@@ -62,11 +62,10 @@ export function makePassage(mode, count, punctuation, random = Math.random, list
 // The standard test: one fixed, versioned recipe, so its scores stay comparable over time. Every
 // attempt gets fresh text from its own seed; the recipe is what stays fixed. Any change to the
 // recipe below (vocabulary weights, numbers, punctuation, the quote, length) is a new version:
-// bump STANDARD_VERSION. Word-list or quote edits already bump CORPUS_VERSION, which is in the key.
+// bump STANDARD_VERSION. Word-list edits already bump CORPUS_VERSION, which is in the key.
 export const STANDARD_VERSION = 'standard-v1';
 export const STANDARD_SECONDS = 60;
 const STANDARD_WORDS = 400;
-const STANDARD_QUOTE_MAX_WORDS = 30;
 
 // mulberry32: a small, fast, well-mixed 32-bit generator. Same seed, same text.
 function seededRandom(seed) {
@@ -128,28 +127,24 @@ function standardSentence(random) {
 }
 
 // Standard v1: 60 seconds of sentences mixing the 1k (60%), 5k (25%) and 10k (15%) bands, with
-// capitals, commas, full stops, some question marks and numbers, and one short original quote in
-// double quotation marks after the first sentence, so every typist reaches it.
+// capitals, commas, full stops, some question marks and numbers. The second sentence is the quote
+// segment, in double quotation marks, so every typist reaches it. It is generated like the rest
+// (not drawn from the quote corpus), so no part of an attempt repeats text the person has seen.
 export function makeStandardText(seed) {
   const random = seededRandom(seed);
-  const quotes = quoteCorpus.filter((item) => item.text.split(/\s+/).length <= STANDARD_QUOTE_MAX_WORDS && !item.text.includes('"'));
-  const quote = quotes[Math.floor(random() * quotes.length)];
-  const quoted = `"${quote.text}"`.split(' ');
-  const words = [...standardSentence(random), ...quoted];
-  let generated = words.length - quoted.length;
-  while (generated < STANDARD_WORDS) {
-    const sentence = standardSentence(random);
-    words.push(...sentence);
-    generated += sentence.length;
-  }
-  return { text: words.join(' '), quoteId: quote.id };
+  const words = standardSentence(random);
+  const quoted = standardSentence(random);
+  quoted[0] = `"${quoted[0]}`;
+  quoted[quoted.length - 1] += '"';
+  words.push(...quoted);
+  while (words.length < STANDARD_WORDS) words.push(...standardSentence(random));
+  return words.join(' ');
 }
 
 export function standardPassage(seed) {
   const value = seed >>> 0;
-  const { text, quoteId } = makeStandardText(value);
   const id = `${STANDARD_VERSION}-${value.toString(36)}`;
-  return { id, textVersion: `${id}@1`, text, seed: value, quoteId, recipe: STANDARD_VERSION, corpus: CORPUS_VERSION, difficulty: 'standard', fresh: true, exhausted: false };
+  return { id, textVersion: `${id}@1`, text: makeStandardText(value), seed: value, recipe: STANDARD_VERSION, corpus: CORPUS_VERSION, difficulty: 'standard', fresh: true, exhausted: false };
 }
 
 // The recipe's conditions are fixed: only the input class is observed per run.

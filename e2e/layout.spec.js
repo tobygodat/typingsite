@@ -10,6 +10,12 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
     test('fits without sideways scroll and keeps 44px targets', async ({ page }) => {
       await openApp(page);
       expect(await overflow(page)).toBeLessThanOrEqual(0);
+      // The practice column itself never widens past its gutters (the document can't show that).
+      for (const mode of ['time', 'standard']) {
+        await page.locator(`#mode-${mode}`).click();
+        expect(await page.locator('#typing-screen').evaluate((node) => node.scrollWidth - node.clientWidth), mode).toBeLessThanOrEqual(0);
+      }
+      await page.locator('#mode-time').click();
 
       // The dock moves to the bottom and spans the viewport.
       const dock = await page.locator('nav.dock').boundingBox();

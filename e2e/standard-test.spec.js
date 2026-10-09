@@ -7,6 +7,7 @@ const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/st
 const CONDITIONS = 'standard v1 · 60 s · 1k–10k mix · physical keyboard · stop on error · corpus v5 · metric v1';
 const RECIPE = 'standard v1 · 60 s · english 1k–10k mix · punctuation, numbers, one quote';
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+const screenOverflow = (page) => page.locator('#typing-screen').evaluate((node) => node.scrollWidth - node.clientWidth);
 
 // Saved standard runs at realistic speeds, one a day up to yesterday, plus an interrupted one that must not count.
 function seededProfile(speeds) {
@@ -47,7 +48,8 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
   await expect(page.locator('#standard-recipe')).toHaveText(`${RECIPE} · stop on error`);
-  await expect(page.locator('#standard-options')).toContainText('Word list, punctuation and stop on error are locked.');
+  // One line: the lock notes live in settings, beside the locked controls.
+  await expect(page.locator('#standard-options p')).toHaveCount(1);
   await expect(page.locator('#duration-options')).toBeHidden();
   await expect(page.locator('#punctuation-toggle')).toBeDisabled();
   await expect(page.locator('#punctuation-toggle')).toBeChecked();
@@ -86,6 +88,12 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   await expect(page.locator('#stop-on-error-toggle')).toBeEnabled();
   await expect(page.locator('#stop-on-error-toggle')).not.toBeChecked();
   await expect(page.locator('.preference-lock').first()).toBeHidden();
+  // The recipe's word-list value leaves with it, so type-ahead can't pick it in another mode.
+  await expect(page.locator('#word-list option[value="standard"]')).toHaveCount(0);
+  await page.locator('#word-list').focus();
+  await page.keyboard.press('1');
+  await expect(page.locator('#word-list')).toHaveValue('200');
+  await expect(page.locator('#condition-line')).toContainText('english 200 · 30 s');
 });
 
 test('a standard run keeps its own best, apart from a time test, and starts the Progress headline', async ({ page }, testInfo) => {
@@ -153,9 +161,14 @@ test('standard mode, its run card and its Progress headline fit a 320px screen',
   await page.setViewportSize({ width: 320, height: 640 });
   await page.clock.install();
   await openApp(page);
+  expect(await screenOverflow(page)).toBeLessThanOrEqual(0);
   await page.locator('#mode-standard').click();
   await expect(page.locator('#standard-options')).toBeVisible();
   expect(await overflow(page)).toBeLessThanOrEqual(0);
+  // The four mode buttons fit the column, so the passage keeps both 16px gutters.
+  expect(await screenOverflow(page)).toBeLessThanOrEqual(0);
+  const passage = await page.locator('#text-display').boundingBox();
+  expect(passage.x + passage.width).toBeLessThanOrEqual(304);
   await typeInto(page, (await passageText(page)).slice(0, 300));
   await page.clock.fastForward(60_000);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
@@ -172,7 +185,10 @@ test('standard mode, its run card and its Progress headline fit a 320px screen',
 test('Progress shows the standard best and the median of recent runs with its count', async ({ page, supabase }) => {
   await page.clock.install({ time: new Date('2026-10-08T12:00:00Z') });
   const user = supabase.addUser('standard@stilltype.test');
-  supabase.profiles.set(user.id, { data: seededProfile([58, 63, 61, 66, 64]) });
+  // The newest completed run was on touch input: one touch run doesn't take over the keyboard score.
+  const data = seededProfile([58, 63, 61, 66, 64]);
+  data.runs.push({ ...data.runs[0], id: 'standard-touch', at: new Date().toISOString(), conditions: standardConditions('touch'), score: { wpm: 41, accuracy: 95 } });
+  supabase.profiles.set(user.id, { data });
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
@@ -180,6 +196,7 @@ test('Progress shows the standard best and the median of recent runs with its co
   await expect(page.locator('#standard-median')).toHaveText('63');
   await expect(page.locator('#standard-median-label')).toHaveText('median of last 5 runs');
   await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs. Interrupted runs don’t count.');
+  await expect(page.locator('#standard-score-conditions')).toContainText('physical keyboard');
 
   await page.locator('#take-standard').click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');

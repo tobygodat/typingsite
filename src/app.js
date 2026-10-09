@@ -320,6 +320,10 @@ function syncLockedSettings() {
   $('punctuation-toggle').disabled = prefs.mode === 'quote' || standard;
   $('punctuation-toggle').checked = standard || prefs.punctuation;
   $('word-list').disabled = prefs.mode === 'quote' || standard;
+  // The recipe's value exists only while standard is selected, so type-ahead can never pick it.
+  const recipeOption = $('word-list').querySelector('option[value="standard"]');
+  if (standard && !recipeOption) $('word-list').append(new Option('1k–10k', 'standard'));
+  if (!standard) recipeOption?.remove();
   $('word-list').value = standard ? 'standard' : prefs.wordList;
   $('stop-on-error-toggle').disabled = standard;
   $('stop-on-error-toggle').checked = standard || prefs.stopOnError;
@@ -1170,12 +1174,18 @@ function renderTraining() {
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
-// Progress headline: the current standard recipe, at the input class of the latest standard run.
+// Progress headline: the current standard recipe, at the input class with more completed runs
+// (physical keyboard on a tie), so one touch run can't replace a settled keyboard score.
 function renderStandardScore() {
-  const latest = profile.runs.filter((run) => trendRun(run) && run.conditions?.mode === 'standard').at(-1);
-  const source = standardConditions(latest?.conditions.inputClass);
-  const key = conditionKey(source);
-  const score = standardScore(profile.runs, key, profile.bests[key]?.wpm ?? null);
+  const scoreFor = (inputClass) => {
+    const key = conditionKey(standardConditions(inputClass));
+    return standardScore(profile.runs, key, profile.bests[key]?.wpm ?? null);
+  };
+  const keyboard = scoreFor('physical-keyboard');
+  const touch = scoreFor('touch');
+  const onTouch = touch.total > keyboard.total;
+  const source = standardConditions(onTouch ? 'touch' : 'physical-keyboard');
+  const score = onTouch ? touch : keyboard;
   setText($('standard-best'), score.best ?? '—');
   setText($('standard-median'), score.median === null ? '—' : Number(score.median.toFixed(1)));
   // A dash stands alone: "— wpm" would read as a measurement.
@@ -1969,6 +1979,7 @@ function setStopOnError(enabled) {
 }
 
 function setWordList(id) {
+  if (!wordListIds.includes(id)) return;
   prefs.wordList = id;
   applyPreferences();
   saveProfile();
