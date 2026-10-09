@@ -489,12 +489,16 @@ function configureSessionCopy() {
   $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote';
 }
 
-function resetSession(kind = sessionKind, { focus = false, selectedPassage = null } = {}) {
+// `show: false` replaces the session without leaving the current view.
+function resetSession(kind = sessionKind, { focus = false, selectedPassage = null, show = true } = {}) {
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
   primaryNotice = '';
   sessionKind = kind;
+  // Every lesson restart (Esc, the palette, a settings change) lands here: a lesson that is locked again,
+  // after history was cleared, gives way to the next open lesson.
+  if (kind === 'lesson' && !lessonUnlocked(profile.lessons, lessonIndex)) lessonIndex = nextLessonIndex(profile.lessons);
   passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList)
     : kind === 'lesson' ? lessonPassage(lessonIndex) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
@@ -564,7 +568,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('condition-line').textContent = describeRun(attempt);
   configureSessionCopy();
   updateLive(true);
-  switchView('practice');
+  if (show) switchView('practice');
   if (focus) $('typing-input').focus({ preventScroll: true });
   return true;
 }
@@ -1334,18 +1338,23 @@ function startTrainingLoop() {
 
 function finishLesson(completed, valid) {
   const { score, elapsedMs, firstAttempts } = completed.summary;
+  const touch = completed.conditions.inputClass === 'touch';
   let outcome = null;
   let firstPass = false;
+  let recorded = false;
   let saved = true;
   if (valid) {
-    const recorded = recordLessonRun(profile.lessons, lessonIndex, score);
-    profile.lessons = recorded.progress;
-    // A lesson that was locked when it finished (it can't be started locked) still shows its numbers.
-    outcome = recorded.outcome || lessonOutcome(lessonIndex, score);
-    firstPass = recorded.firstPass;
-    saved = saveProfile();
+    const run = recordLessonRun(profile.lessons, lessonIndex, score, new Date().toISOString(), completed.conditions.inputClass);
+    // A lesson that was locked when it finished saves nothing, but still shows its numbers.
+    outcome = run.outcome || lessonOutcome(lessonIndex, score);
+    firstPass = run.firstPass;
+    recorded = run.recorded;
+    if (recorded) {
+      profile.lessons = run.progress;
+      saved = saveProfile();
+    }
   }
-  lessonResult = { index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, saved, valid };
+  lessonResult = { index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, recorded, touch, saved, valid };
   switchView('learn');
   announce(`${lessonHeadline(lessonResult)} ${score.accuracy}% accuracy, ${score.wpm} wpm.`);
   // Show the result from the top of the page, or from the result itself when the page is too short.
@@ -1357,6 +1366,8 @@ function finishLesson(completed, valid) {
 function lessonHeadline(result) {
   const n = result.index + 1;
   if (!result.valid) return `Lesson ${n} interrupted · not counted`;
+  if (!result.recorded) return `Lesson ${n} is locked · not counted`;
+  if (result.touch) return `Lesson ${n} on touch input · doesn’t unlock`;
   const next = nextLessonIndex(profile.lessons);
   if (result.outcome?.passed) {
     if (!result.firstPass) return `Lesson ${n} passed again.`;
@@ -1413,6 +1424,16 @@ function renderLessons() {
       status = ['interrupted', 'badge-warning'];
       copy = 'Focus or input changed during the run, so it doesn’t count toward unlocking.';
       primary = [`Try lesson ${n} again`, () => startLesson(result.index)];
+    } else if (!result.recorded) {
+      status = ['not counted', 'badge-neutral'];
+      copy = 'This lesson was locked when the run finished, so nothing was saved.';
+      primary = complete ? ['Take a practice run', startTrainingLoop] : [`Start lesson ${next + 1}`, () => startLesson(next)];
+    } else if (result.touch) {
+      status = ['touch input', 'badge-neutral'];
+      copy = 'Lessons teach finger positions on a physical keyboard, so only a physical-keyboard run unlocks the next keys. This run is kept as a touch try.';
+      primary = [`Try lesson ${n} again`, () => startLesson(result.index)];
+      if (complete) secondary = ['Take a practice run', startTrainingLoop];
+      else if (next !== result.index) secondary = [`Start lesson ${next + 1}`, () => startLesson(next)];
     } else if (result.outcome?.passed) {
       status = ['passed', 'badge-success'];
       copy = complete ? HANDOFF_COPY : lessonCopy(next);
@@ -1477,7 +1498,7 @@ function renderLessons() {
     dot.setAttribute('aria-hidden', 'true');
     state.append(dot, passed ? 'passed' : open ? 'next' : 'locked');
     const numbers = passed ? `${entry.passed.wpm} wpm · ${entry.passed.accuracy}%`
-      : entry?.last ? `${entry.tries} ${entry.tries === 1 ? 'try' : 'tries'} · last ${entry.last.wpm} wpm · ${entry.last.accuracy}%` : '';
+      : entry?.last ? `${entry.tries} ${entry.tries === 1 ? 'try' : 'tries'} · last ${entry.last.wpm} wpm · ${entry.last.accuracy}%${entry.last.inputClass === 'touch' ? ' · touch input' : ''}` : '';
     const detail = element('div', '', 'lesson-row-detail');
     detail.append(state, element('span', numbers, 'lesson-row-numbers num'));
     row.append(element('span', String(index + 1), 'lesson-number num'), main, detail);
@@ -1694,6 +1715,8 @@ function clearHistory() {
   $('comparison-panel').hidden = true;
   $('start-drill').disabled = true;
   $('skip-to-retest').disabled = true;
+  // A lesson waiting on the practice screen that clearing just locked is replaced by the first lesson.
+  if (sessionKind === 'lesson' && !lessonUnlocked(profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
   const saved = saveProfile();
   $('clear-dialog').close();
   $('history-toast').hidden = false;

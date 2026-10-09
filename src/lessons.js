@@ -1,8 +1,10 @@
 // The beginner path: guided lessons that add a few keys at a time, then hand off to the training loop.
 // Lessons are their own kind of run. They never become bests, trends, retests or pattern evidence;
-// their progress lives in profile.lessons, keyed by lesson id. Passages are real words from the
-// common-word lists in src/words.js, made only of keys already learned. Where too few such words
-// exist (the first home-row lessons), the passage is topped up with key pairs, which the UI labels.
+// their progress lives in profile.lessons, keyed by lesson id. They teach finger positions on a physical
+// keyboard, so only a physical-keyboard run can pass one; a touch run is kept as a labelled try.
+// Passages are real words from the common-word lists in src/words.js, made only of keys already
+// learned. Where too few such words exist (the first home-row lessons), the passage is topped up with
+// key pairs, which the UI labels.
 import { wordList, wordListIds } from './words.js';
 import { CORPUS_VERSION, textId } from './typing.js';
 
@@ -174,10 +176,15 @@ export const lessonsComplete = (progress) => nextLessonIndex(progress) >= LESSON
 export const lessonsStarted = (progress = {}) => Object.keys(progress).length > 0;
 export const lessonUnlocked = (progress, index) => index >= 0 && index < LESSONS.length && index <= nextLessonIndex(progress);
 
+const PHYSICAL = 'physical-keyboard';
+
+// Records from before input classes were stored are physical-keyboard runs.
 function scoreRecord(value) {
   if (!value || typeof value !== 'object' || !Number.isFinite(value.wpm) || !Number.isFinite(value.accuracy)) return null;
-  return { wpm: value.wpm, accuracy: value.accuracy, at: typeof value.at === 'string' ? value.at : null };
+  return { wpm: value.wpm, accuracy: value.accuracy, at: typeof value.at === 'string' ? value.at : null, inputClass: value.inputClass === 'touch' ? 'touch' : PHYSICAL };
 }
+
+const physicalOnly = (record) => (record?.inputClass === PHYSICAL ? record : null);
 
 // Old profiles have no lesson field; anything unrecognised is dropped rather than trusted.
 export function normalizeLessonProgress(value) {
@@ -189,19 +196,22 @@ export function normalizeLessonProgress(value) {
     progress[lesson.id] = {
       tries: Number.isInteger(entry.tries) && entry.tries > 0 ? entry.tries : 0,
       last: scoreRecord(entry.last),
-      passed: scoreRecord(entry.passed),
+      passed: physicalOnly(scoreRecord(entry.passed)),
     };
   }
   return progress;
 }
 
-// Records one completed, uninterrupted lesson run. The run that first passes is kept as the pass.
-export function recordLessonRun(progress, index, score, at = new Date().toISOString()) {
-  if (!lessonUnlocked(progress, index)) return { progress, outcome: null, firstPass: false };
+// Records one completed, uninterrupted run of an unlocked lesson; a locked one is not recorded. The first
+// physical-keyboard run that passes is kept as the pass. A touch run counts as a try, labelled, and never
+// passes or unlocks, whatever its numbers.
+export function recordLessonRun(progress, index, score, at = new Date().toISOString(), inputClass = PHYSICAL) {
+  if (!lessonUnlocked(progress, index)) return { progress, outcome: null, firstPass: false, recorded: false };
   const lesson = LESSONS[index];
   const outcome = lessonOutcome(index, score);
   const previous = progress[lesson.id] || { tries: 0, last: null, passed: null };
-  const record = { wpm: score.wpm, accuracy: score.accuracy, at };
-  const entry = { tries: previous.tries + 1, last: record, passed: previous.passed || (outcome.passed ? record : null) };
-  return { progress: { ...progress, [lesson.id]: entry }, outcome, firstPass: outcome.passed && !previous.passed };
+  const record = { wpm: score.wpm, accuracy: score.accuracy, at, inputClass: inputClass === 'touch' ? 'touch' : PHYSICAL };
+  const passes = outcome.passed && record.inputClass === PHYSICAL;
+  const entry = { tries: previous.tries + 1, last: record, passed: previous.passed || (passes ? record : null) };
+  return { progress: { ...progress, [lesson.id]: entry }, outcome, firstPass: passes && !previous.passed, recorded: true };
 }

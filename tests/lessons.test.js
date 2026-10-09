@@ -106,21 +106,43 @@ test('one run at 95% accuracy and the speed target unlocks the next lesson', () 
   let result = recordLessonRun(progress, 0, { wpm: 30, accuracy: 90 }, 'a');
   progress = result.progress;
   assert.equal(result.outcome.passed, false);
-  assert.deepEqual(progress.fj, { tries: 1, last: { wpm: 30, accuracy: 90, at: 'a' }, passed: null });
+  assert.deepEqual(progress.fj, { tries: 1, last: { wpm: 30, accuracy: 90, at: 'a', inputClass: 'physical-keyboard' }, passed: null });
   assert.equal(nextLessonIndex(progress), 0);
 
   result = recordLessonRun(progress, 0, { wpm: 12, accuracy: 96 }, 'b');
   progress = result.progress;
   assert.equal(result.firstPass, true);
-  assert.deepEqual(progress.fj.passed, { wpm: 12, accuracy: 96, at: 'b' });
+  assert.deepEqual(progress.fj.passed, { wpm: 12, accuracy: 96, at: 'b', inputClass: 'physical-keyboard' });
   assert.equal(nextLessonIndex(progress), 1);
   assert.equal(lessonUnlocked(progress, 1), true);
 
   // Repeating a passed lesson badly keeps the pass.
   result = recordLessonRun(progress, 0, { wpm: 5, accuracy: 70 }, 'c');
   assert.equal(result.firstPass, false);
-  assert.deepEqual(result.progress.fj.passed, { wpm: 12, accuracy: 96, at: 'b' });
+  assert.deepEqual(result.progress.fj.passed, { wpm: 12, accuracy: 96, at: 'b', inputClass: 'physical-keyboard' });
   assert.equal(result.progress.fj.tries, 3);
+});
+
+test('a touch run is a labelled try that never passes or unlocks a lesson', () => {
+  // Numbers that pass on a physical keyboard.
+  let result = recordLessonRun({}, 0, { wpm: 30, accuracy: 100 }, 'a', 'touch');
+  assert.equal(result.recorded, true);
+  assert.equal(result.outcome.passed, true);
+  assert.equal(result.firstPass, false);
+  assert.deepEqual(result.progress.fj, { tries: 1, last: { wpm: 30, accuracy: 100, at: 'a', inputClass: 'touch' }, passed: null });
+  assert.equal(nextLessonIndex(result.progress), 0);
+  assert.equal(lessonUnlocked(result.progress, 1), false);
+
+  // The same numbers on a physical keyboard pass; a later touch try is labelled and leaves the pass alone.
+  result = recordLessonRun(result.progress, 0, { wpm: 30, accuracy: 100 }, 'b');
+  assert.equal(result.firstPass, true);
+  assert.equal(nextLessonIndex(result.progress), 1);
+  result = recordLessonRun(result.progress, 0, { wpm: 40, accuracy: 100 }, 'c', 'touch');
+  assert.deepEqual(result.progress.fj, {
+    tries: 3, last: { wpm: 40, accuracy: 100, at: 'c', inputClass: 'touch' }, passed: { wpm: 30, accuracy: 100, at: 'b', inputClass: 'physical-keyboard' },
+  });
+  // Touch never reaches past the physical progress either.
+  assert.equal(recordLessonRun(result.progress, 2, { wpm: 40, accuracy: 100 }, 'd', 'touch').recorded, false);
 });
 
 test('progress is complete once every lesson is passed, and old or damaged profiles normalise safely', () => {
@@ -130,7 +152,15 @@ test('progress is complete once every lesson is passed, and old or damaged profi
   assert.deepEqual(normalizeLessonProgress(undefined), {});
   assert.deepEqual(normalizeLessonProgress('junk'), {});
   assert.deepEqual(normalizeLessonProgress({ fj: { tries: -2, last: { wpm: 'fast' }, passed: { wpm: 11, accuracy: 97 } }, nope: { tries: 3 } }),
-    { fj: { tries: 0, last: null, passed: { wpm: 11, accuracy: 97, at: null } } });
+    { fj: { tries: 0, last: null, passed: { wpm: 11, accuracy: 97, at: null, inputClass: 'physical-keyboard' } } });
+  // Records saved before input classes were stored are physical-keyboard runs; a touch pass is never trusted.
+  assert.deepEqual(normalizeLessonProgress({
+    fj: { tries: 2, last: { wpm: 14, accuracy: 98, at: 'x' }, passed: { wpm: 12, accuracy: 96, at: 'w' } },
+    dk: { tries: 1, last: { wpm: 20, accuracy: 99, at: 'y', inputClass: 'touch' }, passed: { wpm: 20, accuracy: 99, at: 'y', inputClass: 'touch' } },
+  }), {
+    fj: { tries: 2, last: { wpm: 14, accuracy: 98, at: 'x', inputClass: 'physical-keyboard' }, passed: { wpm: 12, accuracy: 96, at: 'w', inputClass: 'physical-keyboard' } },
+    dk: { tries: 1, last: { wpm: 20, accuracy: 99, at: 'y', inputClass: 'touch' }, passed: null },
+  });
 });
 
 test('lesson runs never become pattern evidence, comparisons, trends or recurring targets', () => {

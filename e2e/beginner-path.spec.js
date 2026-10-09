@@ -232,6 +232,55 @@ test('guests keep lesson progress for the tab only, and clearing history clears 
   await expect(page.locator('#lesson-list .lesson-row').first()).toHaveAttribute('data-state', 'next');
 });
 
+test.describe('on a touch screen', () => {
+  test.use({ hasTouch: true });
+
+  test('a touch run is a labelled try that doesn’t unlock the next lesson; a physical run does', async ({ page }) => {
+    await openApp(page);
+    await openLessons(page);
+    await startLesson(page, 1);
+    await page.locator('#typing-input').tap();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await typeLesson(page);
+    await expect(page.locator('#lesson-status')).toHaveText('touch input');
+    await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 1 on touch input · doesn’t unlock');
+    const rows = page.locator('#lesson-list .lesson-row');
+    await expect(rows.first()).toHaveAttribute('data-state', 'next');
+    await expect(rows.first().locator('.lesson-row-numbers')).toHaveText(/^1 try · last \d+ wpm · 100% · touch input$/);
+    await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
+
+    // The same lesson on a physical keyboard passes and unlocks d and k.
+    await page.locator('#lesson-primary').click();
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    await typeLesson(page);
+    await expect(page.locator('#lesson-status')).toHaveText('passed');
+    await expect(rows.nth(1)).toHaveAttribute('data-state', 'next');
+  });
+});
+
+test('clearing history replaces a lesson it locks, and a restart never starts a locked lesson', async ({ page }) => {
+  await openApp(page);
+  await openLessons(page);
+  await startLesson(page, 1);
+  await typeLesson(page);
+  await startLesson(page, 2);
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(body(page)).toHaveAttribute('data-view', 'progress');
+  await expect(page.locator('#session-title')).toHaveText('Lesson 1 · f and j');
+
+  await page.keyboard.press('Control+k');
+  await page.locator('#palette-input').fill('restart test');
+  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('restart test');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+  await expect(page.locator('#session-title')).toHaveText('Lesson 1 · f and j');
+  await typeLesson(page);
+  await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 1 passed. d and k are next.');
+});
+
 test('opening learn to type mid-drill ends the drill without drawing a retest passage', async ({ page, supabase }) => {
   const user = supabase.addUser('drill@stilltype.test');
   await openApp(page);
