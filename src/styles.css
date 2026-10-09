@@ -1066,6 +1066,10 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
   transition: transform calc(140ms * var(--motion-scale)) linear;
 }
 
+/* The composing clock ticks every 100 ms, so its line steps with the clock instead of gliding under
+   the writing. Never transitioned: a pointer nudge clears data-running while the minute runs on. */
+#compose-progress-bar { transition: none; }
+
 /* ── Practice footer, keyboard, focus ───────────────────────────────────── */
 
 .typing-footer {

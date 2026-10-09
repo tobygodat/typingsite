@@ -251,7 +251,10 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     event.preventDefault();
     if (state === 'ready' || state === 'running') showNotice(COMPOSE_NOTICES.paste);
   });
-  input.addEventListener('drop', (event) => event.preventDefault());
+  input.addEventListener('drop', (event) => {
+    event.preventDefault();
+    if (state === 'ready' || state === 'running') showNotice(COMPOSE_NOTICES.edit);
+  });
 
   // Only a touch on the writing field before the first key marks the session as touch input, as on
   // the practice field; a tap on a button (Another prompt, Write another) types nothing.

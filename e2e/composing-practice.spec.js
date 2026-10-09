@@ -189,6 +189,19 @@ test('paste, key repeat and too-short writing are handled honestly', async ({ pa
   await expect(page.locator('#compose-help')).toHaveText('Paste is off. Type your answer.');
   await expect(page.locator('#compose-done')).toBeDisabled();
 
+  // A drop is refused and said so, like paste; dragging over the field, with or without data, throws nothing.
+  await page.locator('#compose-input').evaluate((input) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', 'a whole dropped paragraph');
+    for (const type of ['dragenter', 'dragover', 'drop']) {
+      input.dispatchEvent(new DragEvent(type, { dataTransfer: data, bubbles: true, cancelable: true }));
+    }
+    input.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }));
+  });
+  await expect(page.locator('#compose-input')).toHaveValue('');
+  await expect(page.locator('#compose-help')).toHaveText('Only typed keys count, so cut, drop and undo are off.');
+  await expect(page.locator('#compose-done')).toBeDisabled();
+
   // Escape starts over with the same prompt.
   const prompt = await page.locator('#compose-prompt').textContent();
   await page.keyboard.type('abc');
@@ -306,6 +319,15 @@ test('Tab reaches Done first, the finished field leaves the tab order and the cl
 
   // 49 keys and one 2.6 s pause: 13.87 s from the first key to Done.
   await typePaced(page, [...'First line of my answer, and then a little more.'], 230, { 20: 2600 });
+  // The progress line steps with the clock, also when a pointer nudge brings the chrome back mid-way.
+  const bar = page.locator('#compose-progress-bar');
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+  await expect(bar).toHaveCSS('transition-duration', '0s');
+  await page.mouse.move(5, 5);
+  await page.mouse.move(40, 40);
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'false');
+  await expect(bar).toHaveCSS('transition-duration', '0s');
+  expect(await bar.evaluate((node) => node.getAnimations().length)).toBe(0);
   await page.keyboard.press('Tab');
   await expect(page.locator('#compose-done')).toBeFocused();
   await page.keyboard.press('Space');
