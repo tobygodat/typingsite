@@ -78,6 +78,8 @@
   --danger-soft: rgba(255, 138, 107, 0.16);
   --warning: #e0b565;
   --selection: #34322e;
+  /* The word highlight: a faint wash of the text colour, light enough that untyped (muted) letters keep 4.5:1. */
+  --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
   --ghost: #b9c3ff;
   --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
   --card-top: #1f1e1c;
@@ -102,6 +104,7 @@
   --danger-soft: rgba(180, 67, 44, 0.12);
   --warning: #8a5a00;
   --selection: #e3dccf;
+  --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
   --ghost: #4f5bc4;
   --shadow-float: 0 8px 24px rgba(70, 56, 30, 0.12);
   --card-top: #fffdf9;
@@ -946,14 +949,35 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   background: var(--danger-soft);
 }
 
+/* Word highlight (settings): a quiet tint on the current or next word. It is a letter state like
+   the ones above: it changes instantly and never transitions, so it stays still while running.
+   It is neutral, so it never reads as the green current-state accent or the coral miss. */
+body[data-word-highlight="current"] .word.word-current,
+body[data-word-highlight="next"] .word.word-next {
+  border-radius: var(--radius-sm);
+  background: var(--word-highlight);
+  transition: none;
+}
+
+/* A miss inside the highlighted word keeps its own tint on the plain ground, so the highlight
+   never thins the coral cue or its contrast. */
+body[data-word-highlight="current"] .word.word-current > .char.wrong {
+  background: linear-gradient(var(--danger-soft), var(--danger-soft)), var(--ground);
+}
+
 /* Forced colours strip the tint, so keep the mark as a system highlight. */
 @media (forced-colors: active) {
   .char.wrong,
+  body[data-word-highlight="current"] .word.word-current > .char.wrong,
   :is(#text-display, #race-text-display, #online-text-display) > .char.wrong::before {
     forced-color-adjust: none;
     color: MarkText;
     background: Mark;
   }
+
+  /* The word tint is stripped too; a system-colour outline marks the word instead. */
+  body[data-word-highlight="current"] .word.word-current,
+  body[data-word-highlight="next"] .word.word-next { outline: 1px solid CanvasText; }
 }
 
 .caret {

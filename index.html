@@ -17,7 +17,7 @@
   </script>
   <link rel="stylesheet" href="/src/styles.css">
 </head>
-<body data-view="practice" data-session="practice" data-font-size="28" data-live-metrics="false" data-keyboard="false" data-focus-mode="false" data-ghost="off">
+<body data-view="practice" data-session="practice" data-font-size="28" data-word-highlight="off" data-live-metrics="false" data-keyboard="false" data-focus-mode="false" data-ghost="off">
   <a class="skip-link" href="#typing-input">Skip to typing</a>
 
   <div class="app-shell">
@@ -55,6 +55,14 @@
                 <option value="22">small</option>
                 <option value="28" selected>medium</option>
                 <option value="36">large</option>
+              </select>
+            </label>
+            <label class="preference-row" for="word-highlight">
+              <span><strong>word highlight</strong></span>
+              <select class="input select" id="word-highlight">
+                <option value="off" selected>off</option>
+                <option value="current">current</option>
+                <option value="next">next</option>
               </select>
             </label>
             <label class="preference-row" for="word-list">

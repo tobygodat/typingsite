@@ -14,6 +14,7 @@ import {
   summarizePatterns,
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
+import { DEFAULT_WORD_HIGHLIGHT, WORD_HIGHLIGHT_MODES, normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
@@ -39,6 +40,7 @@ const defaultPreferences = {
   difficulty: 'any',
   wordList: DEFAULT_WORD_LIST,
   fontSize: '28',
+  wordHighlight: DEFAULT_WORD_HIGHLIGHT,
   liveMetrics: false,
   keyboard: false,
   stopOnError: false,
@@ -70,6 +72,7 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  value.wordHighlight = normalizeWordHighlight(value.wordHighlight);
   return value;
 }
 
@@ -271,11 +274,13 @@ function updateGlides(options) {
 
 function applyPreferences() {
   document.body.dataset.fontSize = prefs.fontSize;
+  document.body.dataset.wordHighlight = prefs.wordHighlight;
   primaryFx.relayout();
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
   document.body.dataset.keyboard = String(prefs.keyboard);
   document.body.dataset.focusMode = String(prefs.focusMode);
   $('font-size').value = prefs.fontSize;
+  $('word-highlight').value = prefs.wordHighlight;
   $('live-toggle').checked = prefs.liveMetrics;
   $('keyboard-toggle').checked = prefs.keyboard;
   $('stop-on-error-toggle').checked = prefs.stopOnError;
@@ -314,6 +319,27 @@ function setModeControls() {
   }));
   showBest();
   requestAnimationFrame(() => updateGlides());
+}
+
+// Word groups per rendered passage, so the word highlight can follow the caret. Every view marks
+// its current and next word; body[data-word-highlight] picks which one (if any) is tinted, so the
+// setting applies at once to every passage on screen. Presentational: scoring never reads it.
+const passageWords = new WeakMap();
+
+function markWords(characters, position) {
+  const words = passageWords.get(characters);
+  if (!words) return;
+  const { current, next } = wordsAt(words.indexes, words.elements.length, position);
+  if (current !== words.current) {
+    words.elements[words.current]?.classList.remove('word-current');
+    words.elements[current]?.classList.add('word-current');
+    words.current = current;
+  }
+  if (next !== words.next) {
+    words.elements[words.next]?.classList.remove('word-next');
+    words.elements[next]?.classList.add('word-next');
+    words.next = next;
+  }
 }
 
 function renderText(display, text) {
@@ -365,6 +391,8 @@ function renderText(display, text) {
   display.replaceChildren();
   appendWords(100);
   characters[0]?.classList.add('current');
+  passageWords.set(characters, { indexes: wordIndexes(text), elements: groups.map(([group]) => group), current: -1, next: -1 });
+  markWords(characters, 0);
   return {
     characters,
     ensureAhead(position) {
@@ -422,6 +450,7 @@ function updateCharacterStates(characters, typed, target, start = 0) {
     // Only touch changed characters so settled letters keep their finished animation.
     if (characters[index].className !== state) characters[index].className = state;
   }
+  markWords(characters, typed.length);
 }
 
 function choosePassage(extraSeen = []) {
@@ -1737,6 +1766,7 @@ function bindEvents() {
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
+  $('word-highlight').addEventListener('change', (event) => setWordHighlight(event.target.value));
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
   $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
@@ -1901,6 +1931,13 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession('practice');
 }
 
+// A display preference like text size: it never restarts the run or enters the test conditions.
+function setWordHighlight(mode) {
+  prefs.wordHighlight = normalizeWordHighlight(mode);
+  applyPreferences();
+  saveProfile();
+}
+
 function setWordList(id) {
   prefs.wordList = id;
   applyPreferences();
@@ -1925,6 +1962,7 @@ function paletteCommands(query) {
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
+    ...WORD_HIGHLIGHT_MODES.map((mode) => ({ group: 'display', label: `word highlight · ${mode}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
