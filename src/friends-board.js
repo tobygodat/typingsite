@@ -94,6 +94,8 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   // A run, clear or undo in this tab that the service has not accepted yet. Only such a change is
   // published: this tab's copy of the profile can be older than another tab's or device's.
   let pending = false;
+  // The UTC day, by this browser's clock, of the last read. A new week always begins with a new day.
+  let readDay = '';
   const summary = () => boardSummary(runs(), dailyKey());
 
   // The service's reply, or null when the summary is unchanged. A failure leaves the change pending.
@@ -169,6 +171,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   async function refresh({ manual = false } = {}) {
     const session = getSession();
     if (!session) { render(); return; }
+    readDay = utcDay();
     const current = ++generation;
     loading = true;
     $('refresh-friends-board').setAttribute('aria-disabled', 'true');
@@ -218,5 +221,9 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     // Switching to the board and arriving on the screen can both ask at once; one request answers both.
     show() { if (visible && loading) return; visible = true; refresh(); },
     hide() { visible = false; },
+    // A board left open across 00:00 UTC (and so into Monday's new week) reads again once per new day,
+    // from the app's periodic check or when the tab comes back; a hidden tab waits for its return.
+    // Quietly: no "Updated.", and focus stays put. It sends only what opening the board would.
+    rollover() { if (visible && !loading && !document.hidden && getSession() && readDay !== utcDay()) refresh(); },
   };
 }

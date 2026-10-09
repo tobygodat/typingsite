@@ -252,6 +252,71 @@ test('opening the board in an older tab leaves another tab’s newer result alon
   expect(supabase.board.summaries.get(ada.id).daily.wpm).toBe(wpm);
 });
 
+test('a board left open reads the new day after 00:00 UTC, and the new week on Monday', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  const mara = supabase.addUser('mara@stilltype.test');
+  for (const [friend, name] of [[lin, 'Lin'], [mara, 'Mara']]) {
+    befriend(supabase, ada, friend, name);
+    befriend(supabase, friend, ada, 'Ada');
+  }
+  const result = (day, wpm) => ({ date: day, version: dailyVersion(conditionKey(DAILY), new Date(`${day}T00:00:00Z`)), wpm, accuracy: 97, attempts: 1 });
+  const lastWeek = (seconds, runs) => ({ start: '2026-09-28', seconds, runs });
+  supabase.board.summaries.set(lin.id, { daily: result('2026-10-03', 78), week: lastWeek(2460, 37) });
+  supabase.board.summaries.set(mara.id, { daily: null, week: lastWeek(1210, 20) });
+  // Saturday, ten minutes before midnight UTC, on the page and the service alike.
+  let now = '2026-10-03T23:50:00Z';
+  supabase.board.now = () => new Date(now);
+  await page.clock.install({ time: new Date(now) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  expect(await rowTexts(page, 'board-daily')).toEqual(['Lin 78 wpm 97% accuracy · 1 attempt', 'You — no completed attempt yet', 'Mara — no completed attempt yet']);
+  const reads = () => supabase.requests.filter((request) => request === 'POST /rest/v1/rpc/friends_board').length;
+  const sent = supabase.board.published.length;
+
+  // Past midnight, Mara plays Sunday's daily. The open board reads again without a Refresh, quietly.
+  now = '2026-10-04T00:00:30Z';
+  supabase.board.summaries.set(mara.id, { daily: result('2026-10-04', 91), week: lastWeek(1250, 21) });
+  await page.clock.fastForward('10:30');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04 · best completed attempt · physical keyboard');
+  expect(await rowTexts(page, 'board-daily')).toEqual(['Mara 91 wpm 97% accuracy · 1 attempt', 'You — no completed attempt yet', 'Lin — no completed attempt yet']);
+  await expect(page.locator('#board-week-meta')).toHaveText('since monday 2026-09-28, 00:00 utc · completed runs');
+  expect((await rowTexts(page, 'board-week')).slice(0, 2)).toEqual(['Lin 41 min 37 runs', 'Mara 20 min 21 runs']);
+  await expect(page.locator('#friends-board-status')).toHaveText('');
+  // Same week, nothing new in this tab: the rollover only read.
+  expect(supabase.board.published.length).toBe(sent);
+
+  // A tab hidden across Sunday night waits, then reads Monday's new week when it comes back.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  now = '2026-10-05T00:00:30Z';
+  const before = reads();
+  await page.clock.fastForward('24:00:00');
+  await page.waitForTimeout(500);
+  expect(reads()).toBe(before);
+  await expect(page.locator('#board-week-meta')).toHaveText('since monday 2026-09-28, 00:00 utc · completed runs');
+  await page.evaluate(() => {
+    delete document.hidden;
+    delete document.visibilityState;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(page.locator('#board-week-meta')).toHaveText('since monday 2026-10-05, 00:00 utc · completed runs');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-05 · best completed attempt · physical keyboard');
+  expect(await rowTexts(page, 'board-daily')).toEqual(['You — no completed attempt yet', 'Lin — no completed attempt yet', 'Mara — no completed attempt yet']);
+  const week = await rowTexts(page, 'board-week');
+  expect(week.slice(1)).toEqual(['Lin — nothing yet this week', 'Mara — nothing yet this week']);
+  // Nobody had published this week, so Ada's row is filled in from this tab, as opening the board would.
+  expect(week[0]).toBe('You 0 min 0 runs');
+  expect(supabase.board.published.at(-1).week).toEqual({ start: '2026-10-05', seconds: 0, runs: 0 });
+  await expect(page.locator('#friends-board-status')).toHaveText('');
+});
+
 test('a run finished offline reaches the board once the browser is back online', async ({ page, context, supabase }) => {
   supabase.addUser('ada@stilltype.test');
   await openApp(page);

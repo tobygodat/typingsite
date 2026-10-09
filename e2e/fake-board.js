@@ -15,6 +15,8 @@ export class FakeBoard {
     this.published = [];
     // Set to stand in for a project where the migration has not been applied yet.
     this.missing = false;
+    // The service's clock; a test that moves the page's clock moves this one with it.
+    this.now = () => new Date();
   }
 
   emailOf(id) { return [...this.auth.users.values()].find((user) => user.id === id)?.email.toLowerCase(); }
@@ -31,7 +33,7 @@ export class FakeBoard {
   }
 
   board(viewer) {
-    const now = new Date();
+    const now = this.now();
     const date = utcDay(now);
     const weekStart = mondayOf(now);
     const email = this.emailOf(viewer);

@@ -2069,8 +2069,8 @@ if (!storageAvailable) announce('Storage is unavailable. Results last only in th
 completeAuthRedirect();
 syncOnLoad();
 inbox.refresh();
-// Refresh the day label when a tab returns, and across midnight without reloading.
-setInterval(() => { if (document.body.dataset.view === 'compete') renderDaily(); }, 30000);
+// Refresh the day label and an open friends board when a tab returns, and across midnight without reloading.
+setInterval(() => { if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); } }, 30000);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) renderDaily();
+  if (!document.hidden) { renderDaily(); friendsBoard.rollover(); }
 });
