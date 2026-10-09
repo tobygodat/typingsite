@@ -6,7 +6,8 @@ import { CORS_HEADERS, MESSAGES, handleDeleteAccount } from '../supabase/functio
 
 const USERS = { 'token-ada': 'user-ada' };
 
-function fakeAuth({ deleteError = null, lookupThrows = false, deleteThrows = false } = {}) {
+// commitsThenFails: deleteUser removes the user and then 'throws' or 'errors', as when its reply is lost.
+function fakeAuth({ deleteError = null, lookupThrows = false, deleteThrows = false, commitsThenFails = null, recheckThrows = false } = {}) {
   const deleted = [];
   return {
     deleted,
@@ -17,9 +18,20 @@ function fakeAuth({ deleteError = null, lookupThrows = false, deleteThrows = fal
     },
     admin: {
       async deleteUser(id, shouldSoftDelete) {
+        if (commitsThenFails) {
+          deleted.push({ id, shouldSoftDelete });
+          if (commitsThenFails === 'throws') throw new Error('connection reset');
+          return { data: { user: null }, error: { status: 504, message: 'upstream timeout' } };
+        }
         if (deleteThrows) throw new Error('auth unreachable');
         if (!deleteError) deleted.push({ id, shouldSoftDelete });
         return { data: { user: null }, error: deleteError };
+      },
+      async getUserById(id) {
+        if (recheckThrows) throw new Error('auth unreachable');
+        return deleted.some((entry) => entry.id === id)
+          ? { data: { user: null }, error: { status: 404, code: 'user_not_found', message: 'User not found' } }
+          : { data: { user: { id } }, error: null };
       },
     },
   };
@@ -61,6 +73,19 @@ test('a failed or unreachable Auth server is a 500 that says nothing was removed
     assert.deepEqual(await response.json(), { error: MESSAGES.failed });
     assert.deepEqual(auth.deleted, []);
   }
+});
+
+test('a delete that committed before failing on the way back is reported as done', async () => {
+  for (const commitsThenFails of ['throws', 'errors']) {
+    const auth = fakeAuth({ commitsThenFails });
+    const response = await call(auth, { authorization: 'Bearer token-ada' });
+    assert.equal(response.status, 200, commitsThenFails);
+    assert.deepEqual(await response.json(), { deleted: true });
+  }
+  // If the second look fails too, the function can't tell, and says it failed.
+  const response = await call(fakeAuth({ commitsThenFails: 'throws', recheckThrows: true }), { authorization: 'Bearer token-ada' });
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: MESSAGES.failed });
 });
 
 test('browsers get CORS headers on every reply, including the preflight and errors', async () => {

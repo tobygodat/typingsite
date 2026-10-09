@@ -9,10 +9,14 @@ export const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// The two calls this function makes on supabase-js's auth client, created with the service key.
+// The calls this function makes on supabase-js's auth client, created with the service key.
+type UserReply = Promise<{ data: { user: { id: string } | null } | null; error: unknown }>;
 export interface AccountAuth {
-  getUser(jwt: string): Promise<{ data: { user: { id: string } | null } | null; error: unknown }>;
-  admin: { deleteUser(id: string, shouldSoftDelete?: boolean): Promise<{ error: unknown }> };
+  getUser(jwt: string): UserReply;
+  admin: {
+    deleteUser(id: string, shouldSoftDelete?: boolean): Promise<{ error: unknown }>;
+    getUserById(id: string): UserReply;
+  };
 }
 
 export const MESSAGES = {
@@ -24,6 +28,18 @@ export const MESSAGES = {
 
 function reply(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
+}
+
+// deleteUser can commit and still fail on the way back (a dropped connection, a timeout), so a failed
+// delete asks once more: only a user the Auth server reports as not found counts as gone.
+async function userGone(auth: AccountAuth, userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await auth.admin.getUserById(userId);
+    const { status, code } = (error ?? {}) as { status?: number; code?: string };
+    return !data?.user && (code === 'user_not_found' || status === 404);
+  } catch {
+    return false;
+  }
 }
 
 export async function handleDeleteAccount(request: Request, auth: AccountAuth | null): Promise<Response> {
@@ -47,9 +63,10 @@ export async function handleDeleteAccount(request: Request, auth: AccountAuth | 
   // A hard delete: a soft delete keeps the auth.users row, so none of the cascades would run.
   try {
     const { error } = await auth.admin.deleteUser(userId, false);
-    if (error) return reply(500, { error: MESSAGES.failed });
+    if (!error) return reply(200, { deleted: true });
   } catch {
-    return reply(500, { error: MESSAGES.failed });
+    // Settled below.
   }
-  return reply(200, { deleted: true });
+  if (await userGone(auth, userId)) return reply(200, { deleted: true });
+  return reply(500, { error: MESSAGES.failed });
 }

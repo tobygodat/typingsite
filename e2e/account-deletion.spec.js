@@ -294,6 +294,26 @@ test('a lost reply still finishes the deletion, and another open tab follows it'
   await other.close();
 });
 
+test('a server error after the account was deleted still finishes the deletion', async ({ page, supabase }) => {
+  supabase.addUser(ADA);
+  await openApp(page);
+  await signInWithEmail(page, ADA);
+  await finishRun(page, supabase);
+
+  // deleteUser committed but the function answered 500; the Auth server no longer knows the account.
+  supabase.deleteAccount = 'deleted-then-500';
+  await openDeleteDialog(page);
+  await page.keyboard.type('delete', { delay: 60 });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+  await expect(page.locator('#account-feedback')).toHaveText(DELETED_TOAST);
+  expect(await storageKeys(page)).toEqual([]);
+  expect(supabase.deletedUsers).toEqual([ADA]);
+  expect(supabase.requests.slice(supabase.requests.indexOf(FUNCTION_CALL))).toContain('GET /auth/v1/user');
+  await openView(page, 'Progress');
+  await expect(page.locator('#progress-empty')).toBeVisible();
+});
+
 test('opening deletion mid-run interrupts the run, and nothing typed in the dialog reaches it', async ({ page, supabase }) => {
   supabase.addUser(ADA);
   await openApp(page);

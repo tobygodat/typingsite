@@ -235,21 +235,27 @@ async function deleteBefore(session, signal) {
     throw new AuthError(ended ? DELETE_COPY.session : error.status ? DELETE_COPY.failed : DELETE_COPY.offline);
   }
   if (!current) throw new AuthError(DELETE_COPY.session);
-  let refused = false;
+  let status = 0;
   try {
     await request(DELETE_ACCOUNT_PATH, { method: 'POST', token: current.access_token, body: {}, signal });
     return;
   } catch (error) {
-    if (error.status === 404) throw new AuthError(DELETE_COPY.missing);
-    if (error.status && error.status !== 401 && error.status !== 403) throw new AuthError(DELETE_COPY.failed);
-    refused = Boolean(error.status);
+    status = error.status || 0;
   }
-  // A refused token or no reply (a function that isn't deployed can fail this way in a browser, when
-  // the platform's not-found reply has no CORS headers). Either way the account may already be gone:
-  // deleted by this request when its reply was lost, or from another device. The Auth server settles it.
+  if (status === 404) throw new AuthError(DELETE_COPY.missing);
+  const refused = status === 401 || status === 403;
+  // Any 5xx is ambiguous: the function's 500 when deleteUser committed but its reply was lost, or a
+  // gateway's 502, 503 or 504 after the function finished. Other answers are clear refusals.
+  const serverError = status >= 500;
+  if (status && !refused && !serverError) throw new AuthError(DELETE_COPY.failed);
+  // A refused token, a server error or no reply (a function that isn't deployed can fail this way in
+  // a browser, when the platform's not-found reply has no CORS headers). Each time the account may
+  // already be gone: deleted by this request when its reply was lost, or from another device. The
+  // Auth server settles it, within what is left of the deadline.
   const gone = await accountGone(current, signal);
   if (gone) return;
   if (refused) throw new AuthError(DELETE_COPY.session);
+  if (serverError) throw new AuthError(DELETE_COPY.failed);
   // Say nothing was deleted only if the account is confirmed to still exist.
   throw new AuthError(gone === false ? DELETE_COPY.unavailable : DELETE_COPY.offline);
 }

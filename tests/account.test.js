@@ -164,6 +164,33 @@ test('an account the Auth server no longer knows counts as deleted, whatever the
   });
 });
 
+test('a server error is settled by the Auth server, since the account may already be gone', async () => {
+  const gone = () => reply(403, { code: 403, error_code: 'user_not_found', msg: 'User from sub claim in JWT does not exist' });
+  // Any 5xx: the function's own 500 (deleteUser may have committed before its reply was lost), a
+  // gateway's 502, 503 or 504, or the platform's 546.
+  for (const status of [500, 502, 503, 504, 546]) {
+    const failing = (check) => (path) => (path === DELETE_ACCOUNT_PATH ? reply(status, { error: 'raw platform text' }) : check());
+    await withAccountService(failing(gone), async (calls) => {
+      await deleteAccount(liveSession());
+      assert.deepEqual(calls.map((call) => call.path), [DELETE_ACCOUNT_PATH, '/auth/v1/user'], String(status));
+    });
+    await withAccountService(failing(() => reply(200, { id: 'u1' })), async () => {
+      await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.failed });
+    });
+    // A check that can't say is never a deletion.
+    await withAccountService(failing(() => { throw new TypeError('Failed to fetch'); }), async () => {
+      await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.failed });
+    });
+  }
+  // Clear refusals that aren't about the token are answered as they are, without asking Auth.
+  for (const [status, message] of [[404, DELETE_COPY.missing], [400, DELETE_COPY.failed], [405, DELETE_COPY.failed], [429, DELETE_COPY.failed]]) {
+    await withAccountService((path) => (path === DELETE_ACCOUNT_PATH ? reply(status, {}) : gone()), async (calls) => {
+      await assert.rejects(deleteAccount(liveSession()), { message });
+      assert.deepEqual(calls.map((call) => call.path), [DELETE_ACCOUNT_PATH], String(status));
+    });
+  }
+});
+
 test('an ended session is reported before anything reaches the function', async () => {
   const expired = { ...liveSession(), expires_at: 1 };
   await withAccountService(() => reply(400, { error_description: 'Invalid Refresh Token' }), async (calls) => {
@@ -263,6 +290,20 @@ test('a check that runs out of time is never taken for a deletion', async (t) =>
   await advance(1);
   assert.equal(outcome.settled, true);
   assert.equal(outcome.error?.message, DELETE_COPY.offline);
+  assert.deepEqual(calls, [DELETE_ACCOUNT_PATH, '/auth/v1/user']);
+  unchanged();
+});
+
+test('a server error whose check runs out of time is never taken for a deletion', async (t) => {
+  const serverError = (path, init) => (path === DELETE_ACCOUNT_PATH
+    ? answerAfter(init, 5000, () => reply(500, { error: 'raw platform text' }))
+    : answerAfter(init));
+  const { outcome, calls, advance, unchanged } = await timedDeletion(t, serverError, liveAt);
+  await advance(29999);
+  assert.equal(outcome.settled, false);
+  await advance(1);
+  assert.equal(outcome.settled, true);
+  assert.equal(outcome.error?.message, DELETE_COPY.failed);
   assert.deepEqual(calls, [DELETE_ACCOUNT_PATH, '/auth/v1/user']);
   unchanged();
 });
