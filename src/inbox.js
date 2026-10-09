@@ -17,7 +17,9 @@ function ago(at, now = Date.now()) {
 }
 
 // `describe` can word an entry from its saved fields (a race result in the current speed unit).
-export function createInbox({ getSession, listInvites, actions, announce, isRunning, describe = (entry) => entry.text }) {
+// `normalize` brings an entry saved by an older build up to the current shape as it is loaded; it
+// must keep what was saved (the text above all) and return a current entry unchanged.
+export function createInbox({ getSession, listInvites, actions, announce, isRunning, describe = (entry) => entry.text, normalize = (entry) => entry }) {
   let entries = [];
   let invites = [];
   let polling = false;
@@ -40,7 +42,7 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     if (!userId()) return;
     try {
       const saved = JSON.parse(localStorage.getItem(STORE + userId()));
-      if (Array.isArray(saved)) entries = saved.filter((entry) => entry?.id && entry.text).slice(0, MAX_ENTRIES);
+      if (Array.isArray(saved)) entries = saved.filter((entry) => entry?.id && entry.text).slice(0, MAX_ENTRIES).map(normalize);
     } catch {}
   }
   function save() {

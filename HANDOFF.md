@@ -75,6 +75,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `src/palette.js`: the ⌘K / Ctrl-K command palette.
 - `src/online-race.js`: online lobby, friend list, invitations, synchronized race surface, transient results and Race again.
 - `src/inbox.js`: the envelope inbox, invitation polling and the challenge toast.
+- `src/race-result.js`: an inbox race result's wording. Results keep both scores in wpm and read in the chosen unit; a result saved before the speed unit setting (its wpm sentence alone) is read back on load only when the sentence matches exactly, and otherwise shown as saved. The saved text is never rewritten.
 - `src/multiplayer.js`: race RPC transport, link handling and tab-scoped reconnect credentials.
 - `src/account.js`: Supabase Auth (email/password, Google via PKCE), session refresh and the `profiles` row, over `fetch`.
 - `supabase/migrations/`: the `profiles` table and its owner-only row-level security, as applied to the `typingsite` project.

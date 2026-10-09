@@ -309,6 +309,48 @@ test('an online race’s results and its inbox entry read in the chosen unit', a
   }
 });
 
+test('a race result saved before the setting reads in cpm, and what was saved is kept', async ({ page, supabase }) => {
+  const user = supabase.addUser('ada@stilltype.test');
+  const key = `stilltype-inbox-v1:${user.id}`;
+  // Exactly what the inbox saved before the speed unit setting: a result was its sentence alone, in wpm.
+  const saved = [
+    { id: 'result:old-room', kind: 'result', roomId: 'old-room', until: '2026-09-30T12:00:00.000Z', conditions: { mode: 'quote' },
+      text: 'You beat Lin: 72 wpm to 65.', at: '2026-09-29T12:00:00.000Z', read: false },
+    // Not a sentence the app wrote, so it can't be read back: it is shown as saved.
+    { id: 'result:odd-room', kind: 'result', roomId: 'odd-room', until: '2026-09-30T12:00:00.000Z',
+      text: 'You beat Lin: 72.5 wpm to 65.', at: '2026-09-29T11:00:00.000Z', read: false },
+    { id: 'joined:old-room', kind: 'joined', roomId: 'old-room', text: 'Lin joined your race.', at: '2026-09-29T10:00:00.000Z', read: true },
+  ];
+  await openApp(page);
+  await page.evaluate(([name, entries]) => localStorage.setItem(name, JSON.stringify(entries)), [key, saved]);
+  await signInWithEmail(page, user.email);
+
+  const rows = page.locator('#inbox-list .inbox-entry p');
+  await page.locator('#inbox-trigger').click();
+  await expect(rows).toHaveText(['You beat Lin: 72 wpm to 65.', 'You beat Lin: 72.5 wpm to 65.', 'Lin joined your race.']);
+  await page.locator('#inbox-trigger').click();
+
+  await command(page, 'speed unit · cpm');
+  await page.locator('#inbox-trigger').click();
+  await expect(rows).toHaveText(['You beat Lin: 360 cpm to 325.', 'You beat Lin: 72.5 wpm to 65.', 'Lin joined your race.']);
+  await page.locator('#inbox-trigger').click();
+
+  // Saving (the entries were marked read) keeps every saved field and sentence; the read-back
+  // result gains its scores in wpm.
+  const stored = await page.evaluate((name) => JSON.parse(localStorage.getItem(name)), key);
+  expect(stored).toEqual([
+    { ...saved[0], read: true, race: { lead: 'You beat', opponent: 'Lin', wpm: [72, 65] } },
+    { ...saved[1], read: true },
+    saved[2],
+  ]);
+
+  // Loading it again reads the same.
+  await page.reload();
+  await page.locator('#inbox-trigger').click();
+  await expect(rows).toHaveText(['You beat Lin: 360 cpm to 325.', 'You beat Lin: 72.5 wpm to 65.', 'Lin joined your race.']);
+  expect(await page.evaluate((name) => JSON.parse(localStorage.getItem(name)), key)).toEqual(stored);
+});
+
 for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow phone', { width: 320, height: 640 }]]) {
   test.describe(`${name} ${viewport.width}px`, () => {
     test.use({ viewport, hasTouch: true, isMobile: true });

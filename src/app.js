@@ -20,7 +20,8 @@ import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
-import { createOnlineRace, raceResultText } from './online-race.js';
+import { createOnlineRace } from './online-race.js';
+import { normalizeInboxEntry, raceResultOf, raceResultText } from './race-result.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
@@ -2103,7 +2104,13 @@ inbox = createInbox({
   getSession: () => session,
   listInvites: listRaceInvites,
   announce,
-  describe: (entry) => (entry.kind === 'result' && Array.isArray(entry.race?.wpm) ? raceResultText(entry.race, prefs.speedUnit) : entry.text),
+  // A race result reads in the chosen unit, including one saved before the setting existed whose
+  // sentence reads back exactly (src/race-result.js); any other entry shows its text as saved.
+  normalize: normalizeInboxEntry,
+  describe: (entry) => {
+    const race = raceResultOf(entry);
+    return race ? raceResultText(race, prefs.speedUnit) : entry.text;
+  },
   actions: {
     invite: { label: 'Join', run: (entry) => onlineRace.joinInvite(entry.roomId) },
     joined: { label: 'Open', available: (entry) => onlineRace?.liveRoomId === entry.roomId, run: () => onlineRace.open() },

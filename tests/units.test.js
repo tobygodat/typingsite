@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CHARS_PER_WORD, CORPUS_VERSION, METRIC_VERSION, conditionKey, metrics } from '../src/typing.js';
 import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, speedDefinition, speedValue } from '../src/units.js';
 import { describeSeries } from '../src/graph.js';
+import { raceResultText } from '../src/race-result.js';
 
 test('speed unit defaults to wpm and rejects anything else', () => {
   assert.equal(DEFAULT_SPEED_UNIT, 'wpm');
@@ -50,10 +51,7 @@ test('the graph summary reads its points in the chosen unit', () => {
   assert.equal(describeSeries(series, 50, 'cpm'), 'Speed over time: average 250 cpm, peak 300 cpm, lowest 200 cpm. 1 mistake marked.');
 });
 
-test('an online race result is worded in the unit chosen when it is shown', async () => {
-  // online-race.js pulls in the caret module, which reads the reduced-motion query on load.
-  globalThis.matchMedia ??= () => ({ matches: false, addEventListener() {} });
-  const { raceResultText } = await import('../src/online-race.js');
+test('an online race result is worded in the unit chosen when it is shown', () => {
   const race = { lead: 'You beat', opponent: 'Lin', wpm: [70, 60] };
   assert.equal(raceResultText(race, 'wpm'), 'You beat Lin: 70 wpm to 60.');
   assert.equal(raceResultText(race, 'cpm'), 'You beat Lin: 350 cpm to 300.');

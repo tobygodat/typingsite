@@ -1,7 +1,8 @@
 import { createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 import { createTypingFx } from './motion.js';
 import * as multiplayer from './multiplayer.js';
-import { formatSpeed, speedValue } from './units.js';
+import { formatSpeed } from './units.js';
+import { raceResultText } from './race-result.js';
 
 const $ = (id) => document.getElementById(id);
 const stamp = (value) => typeof value === 'number' ? value : Date.parse(value);
@@ -21,11 +22,6 @@ function pendingInvite() {
 }
 
 function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE); } catch {} }
-
-// An inbox result keeps both wpm scores, so it reads in whichever speed unit is chosen when shown.
-export function raceResultText({ lead, opponent, wpm }, unit) {
-  return `${lead} ${opponent}: ${formatSpeed(wpm[0], unit)} to ${speedValue(wpm[1], unit)}.`;
-}
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
@@ -321,9 +317,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       const lead = ahead === 0 ? 'You tied with' : ahead > 0 ? 'You beat' : 'You raced';
       // Finished rooms are deleted a day after they expire, so Race again lapses a little before.
       const until = new Date(Date.parse(room.expiresAt || new Date().toISOString()) + RESULT_RETAINED_MS).toISOString();
+      // Saved in wpm, like every speed; the inbox words it in the unit chosen when it is shown.
       const race = { lead, opponent: opponent.name, wpm: [me.wpm || 0, opponent.wpm || 0] };
       inbox.notify({ id: `result:${room.id}`, kind: 'result', roomId: room.id, until,
-        conditions: room.conditions, race, text: raceResultText(race, speedUnit()) }, { toast: justFinished && away() });
+        conditions: room.conditions, race, text: raceResultText(race, 'wpm') }, { toast: justFinished && away() });
     }
   }
   function renderAfter() {
