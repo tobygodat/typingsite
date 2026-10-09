@@ -23,7 +23,7 @@ import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
-  ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
+  ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
@@ -132,6 +132,8 @@ let clearTimer = null;
 let ghostRace = null;
 let offerRun = null;
 let offerSentTo = new Set();
+// One request id per friend for the offered run, repeated on a retry so the service stores it once.
+let offerRequests = new Map();
 // The offered run whose send is in flight. Only that request may release the Send button.
 let offerSending = null;
 const offerBusy = () => Boolean(offerRun) && offerSending === offerRun;
@@ -1345,6 +1347,7 @@ function renderGhostResult() {
   $('ghost-result-status').textContent = {
     sending: `Sending your run to ${ghost.name}…`,
     sent: `Sent. ${ghost.name} sees this result in their inbox too.`,
+    kept: `Your first finish was already sent and stands, so this run wasn’t. ${ghost.name} sees the result shown here.`,
     failed: `Not sent. ${ghost.error?.message || ''}`,
     interrupted: 'Focus or input changed during the run. Race again to send a finished run.',
     unsendable: 'A run of more than 6,000 keys can’t be sent. Race again with fewer corrections.',
@@ -1364,9 +1367,12 @@ async function submitGhostRun() {
   renderGhostResult();
   try {
     const view = await finishChallenge(session, ghost.id, ghost.trace);
+    // The service's stored result is the one that counts. A retry after a lost reply gets this run's
+    // back; a finish already sent from another try or device stands instead of this one.
+    const local = scoreTrace(ghost.trace, ghost.passage, { relaxed: ghost.run.conditions.correctionPolicy === 'relaxed' });
     ghost.result = view.result;
     ghost.sender = view.sender || ghost.sender;
-    ghost.state = 'sent';
+    ghost.state = sameScore(view.result, local) ? 'sent' : 'kept';
     const id = `challenge:${ghost.id}`;
     inbox?.notify({ id, kind: 'challenge-result', challengeId: ghost.id, closed: false, until: null, completedAt: view.completedAt, text: resultText(view) });
     inbox?.deliver(id);
@@ -1388,6 +1394,7 @@ function renderGhostOffer(completed = offerRun) {
   if (completed !== offerRun) {
     offerRun = completed;
     offerSentTo = new Set();
+    offerRequests = new Map();
     $('ghost-offer').open = false;
     $('ghost-offer-status').textContent = '';
     $('ghost-offer-error').textContent = '';
@@ -1424,11 +1431,13 @@ async function sendGhost(event) {
   if (!name) { $('ghost-offer-error').textContent = 'Enter the name your friend will see.'; $('ghost-name').focus(); return; }
   if (offerSentTo.has(friend.id)) { $('ghost-offer-status').textContent = `Already sent to ${friend.name}.`; return; }
   const run = offerRun;
+  if (!offerRequests.has(friend.id)) offerRequests.set(friend.id, crypto.randomUUID());
+  const requestId = offerRequests.get(friend.id);
   offerSending = run;
   $('send-ghost').disabled = true;
   $('ghost-offer-status').textContent = `Sending to ${friend.name}…`;
   try {
-    await sendChallenge(session, { friendId: friend.id, displayName: name, payload });
+    await sendChallenge(session, { friendId: friend.id, displayName: name, payload, requestId });
     if (run !== offerRun) return;
     offerSentTo.add(friend.id);
     // As with race invitations, the reply never says whether a saved email has an account.

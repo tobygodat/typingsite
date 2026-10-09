@@ -238,7 +238,12 @@ async function call(session, action, id = null, data = {}) {
 export const listChallenges = (session) => session ? call(session, 'list') : Promise.resolve([]);
 export const getChallenge = (session, id) => call(session, 'get', id);
 export const finishChallenge = (session, id, trace) => call(session, 'finish', id, { trace });
-export function sendChallenge(session, { friendId, displayName, payload }) {
-  return call(session, 'send', null, { friendId, displayName: displayName.trim(), passage: payload.passage,
+// `requestId` is made once per run and friend and repeated on a retry, so a send whose reply was
+// lost is stored once; finishing again likewise returns the result already stored.
+export function sendChallenge(session, { friendId, displayName, payload, requestId }) {
+  return call(session, 'send', null, { requestId, friendId, displayName: displayName.trim(), passage: payload.passage,
     duration: payload.duration, conditions: payload.conditions, trace: payload.trace });
 }
+
+// Whether two scores of a ghost race are the same run's.
+export const sameScore = (a, b) => Boolean(a && b) && ['wpm', 'accuracy', 'elapsedMs', 'correct'].every((key) => a[key] === b[key]);

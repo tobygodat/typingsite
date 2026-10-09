@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { challengeOutcome, challengePayload, challengeText, challengeTextId, encodeTrace, ghostPoints, offerText, outcomeRule,
-  resultText, scoreTrace, sendChallenge, traceAttempt, traceBytes, traceTrouble, validTrace, MAX_TRACE_KEYS } from '../src/ghost-race.js';
+  resultText, sameScore, scoreTrace, sendChallenge, traceAttempt, traceBytes, traceTrouble, validTrace, MAX_TRACE_KEYS } from '../src/ghost-race.js';
 import { comparable, conditionKey, createAttempt, quoteCorpus, replayAttempt, summarizePatterns, textId } from '../src/typing.js';
 import { runRecord, trendRun } from '../src/insights.js';
 
@@ -180,7 +180,7 @@ test('challenge runs are their own kind: no patterns, no trend, and the default 
     'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
 });
 
-test('sending posts only the friend, the name and the run', async () => {
+test('sending posts only the request id, the friend, the name and the run', async () => {
   const original = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, options) => {
@@ -190,11 +190,20 @@ test('sending posts only the friend, the name and the run', async () => {
   try {
     const session = { user: { id: 'ada' }, access_token: 'token', refresh_token: 'r', expires_at: 9999999999 };
     const payload = challengePayload(run(passage));
-    await sendChallenge(session, { friendId: 'f1', displayName: ' Ada ', payload });
+    const requestId = '6f1c2a3e-8a7b-4c3d-9e2f-0a1b2c3d4e5f';
+    await sendChallenge(session, { friendId: 'f1', displayName: ' Ada ', payload, requestId });
     assert.match(calls[0].url, /\/rest\/v1\/rpc\/challenge_action$/);
     assert.equal(calls[0].headers.Authorization, 'Bearer token');
-    assert.deepEqual(Object.keys(calls[0].data.p_data).sort(), ['conditions', 'displayName', 'duration', 'friendId', 'passage', 'trace']);
+    assert.deepEqual(Object.keys(calls[0].data.p_data).sort(), ['conditions', 'displayName', 'duration', 'friendId', 'passage', 'requestId', 'trace']);
+    assert.equal(calls[0].data.p_data.requestId, requestId);
     assert.equal(calls[0].data.p_action, 'send');
     assert.equal(calls[0].data.p_data.displayName, 'Ada');
   } finally { globalThis.fetch = original; }
+});
+
+test('a stored result is told apart from this run by its numbers', () => {
+  const score = { wpm: 72, accuracy: 98, elapsedMs: 6750, correct: 44 };
+  assert.equal(sameScore(score, { ...score }), true);
+  assert.equal(sameScore(score, { ...score, elapsedMs: 6760 }), false);
+  assert.equal(sameScore(score, null), false);
 });

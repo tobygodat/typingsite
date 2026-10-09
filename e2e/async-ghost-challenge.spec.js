@@ -369,6 +369,75 @@ test('a slow send for an earlier run never re-enables Send while a newer run is 
   expect(supabase.challenges.rows.size).toBe(2);
 });
 
+test('a send whose reply was lost after it was stored is stored once when sent again', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  befriend(supabase, ada, supabase.addUser('lin@stilltype.test'), 'Lin');
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await chooseWords(page, 10);
+  await typeInto(page, await passageText(page), '#typing-input', { delay: 90 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await page.locator('#ghost-offer summary').click();
+  await page.locator('#ghost-name').fill('Ada');
+  supabase.challenges.lost.add('send');
+  await page.locator('#send-ghost').click();
+  await expect(page.locator('#ghost-offer-error')).toHaveText('Can’t reach the account service. Check your connection.');
+  expect(supabase.challenges.rows.size).toBe(1);
+  await expect(page.locator('#send-ghost')).toBeEnabled();
+  await page.locator('#send-ghost').click();
+  await expect(page.locator('#ghost-offer-status')).toHaveText('Sent to Lin. They have 7 days to race it, and the result arrives in your inbox.');
+  await expect(page.locator('#ghost-offer-error')).toHaveText('');
+  expect(supabase.challenges.rows.size).toBe(1);
+});
+
+test('a finish whose reply was lost after it was stored gets the stored result back on Send again', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  const passage = 'river light patient words carry the quiet home';
+  const challenge = supabase.challenges.seed(ada.id, lin.id, { name: 'Ada', label: 'Lin', passage,
+    conditions: { mode: 'words', count: 8, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' },
+    trace: steadyTrace(passage, 140) });
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await page.locator('#challenge-toast').getByRole('button', { name: 'Race' }).click({ timeout: 12000 });
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
+  supabase.challenges.lost.add('finish');
+  await typeInto(page, passage, '#typing-input', { delay: 110 });
+  await expect(page.locator('#ghost-result-status')).toHaveText('Not sent. Can’t reach the account service. Check your connection.');
+  const stored = { ...challenge.result };
+  expect(stored.correct).toBe(passage.length);
+  const action = page.locator('#ghost-result-action');
+  await expect(action).toHaveText('Send again');
+  await action.click();
+  await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Ada sees this result in their inbox too.');
+  await expect(action).toBeHidden();
+  await expect(page.locator('#ghost-result-rows')).toContainText(`${stored.wpm} wpm`);
+  expect(challenge.result).toEqual(stored);
+  await page.locator('#inbox-trigger').click();
+  await expect(page.locator('#inbox-list [data-kind="challenge-result"]')).toContainText(`you ${stored.wpm} wpm`);
+});
+
+test('a second try at an answered race shows the first stored finish, which stands', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  const passage = 'river light patient words carry the quiet home';
+  const challenge = supabase.challenges.seed(ada.id, lin.id, { name: 'Ada', label: 'Lin', passage,
+    conditions: { mode: 'words', count: 8, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' },
+    trace: steadyTrace(passage, 140) });
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await page.locator('#challenge-toast').getByRole('button', { name: 'Race' }).click({ timeout: 12000 });
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
+  // Lin's other device finished first, at a pace this run doesn't match.
+  const first = { wpm: 41, accuracy: 100, elapsedMs: 13000, correct: passage.length };
+  Object.assign(challenge, { result: first, completedAt: new Date().toISOString() });
+  await typeInto(page, passage, '#typing-input', { delay: 110 });
+  await expect(page.locator('#ghost-result-status')).toHaveText('Your first finish was already sent and stands, so this run wasn’t. Ada sees the result shown here.');
+  await expect(page.locator('#ghost-result-rows')).toContainText('41 wpm');
+  await expect(page.locator('#ghost-result-action')).toBeHidden();
+  expect(challenge.result).toEqual(first);
+});
+
 test('every open ghost race and every result from the last week stays in a crowded inbox, which scrolls at 320 px', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');

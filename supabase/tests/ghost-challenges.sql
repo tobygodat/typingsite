@@ -26,6 +26,7 @@ declare
   listed jsonb;
   challenge uuid;
   viewer uuid;
+  request uuid := gen_random_uuid();
   denied boolean;
   n integer;
 begin
@@ -97,7 +98,7 @@ begin
   perform set_config('request.jwt.claim.sub', ada::text, true);
   -- Only someone on the sender's own friend list.
   denied := false;
-  begin perform public.challenge_action('send', null, jsonb_build_object('friendId', outsider_friend, 'displayName', 'Ada',
+  begin perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', outsider_friend, 'displayName', 'Ada',
     'passage', passage, 'trace', trace));
   exception when others then denied := true; end;
   if not denied then raise exception 'Sent with another account''s friend.'; end if;
@@ -111,25 +112,36 @@ begin
     jsonb_build_object('v', 2, 'k', keys, 't', trace->'t', 'e', 6750)
   ] loop
     denied := false;
-    begin perform public.challenge_action('send', null, jsonb_build_object('friendId', friend_lin, 'displayName', 'Ada',
+    begin perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada',
       'passage', passage, 'trace', view));
     exception when others then denied := true; end;
     if not denied then raise exception 'Sent an invalid run: %', left(view::text, 120); end if;
   end loop;
   denied := false;
-  begin perform public.challenge_action('send', null, jsonb_build_object('friendId', friend_lin, 'displayName', 'Ada',
+  begin perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada',
     'passage', long_passage, 'duration', 15, 'trace', jsonb_build_object('v', 1, 'k', 'the', 't', '[0,200,200]'::jsonb, 'e', 14000)));
   exception when others then denied := true; end;
   if not denied then raise exception 'A timed run off its clock was sent.'; end if;
   denied := false;
-  begin perform public.challenge_action('send', null, jsonb_build_object('friendId', friend_lin, 'displayName', 'Ada',
+  begin perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada',
     'passage', passage, 'trace', trace || jsonb_build_object('pad', repeat('x', 70000))));
   exception when others then denied := true; end;
   if not denied then raise exception 'An oversized trace was sent.'; end if;
 
-  sent := public.challenge_action('send', null, jsonb_build_object('friendId', friend_lin, 'displayName', 'Ada',
+  sent := public.challenge_action('send', null, jsonb_build_object('requestId', request, 'friendId', friend_lin, 'displayName', 'Ada',
     'passage', passage, 'conditions', '{"mode":"words","count":10,"correctionPolicy":"mandatory"}'::jsonb, 'trace', trace));
   challenge := (sent->>'id')::uuid;
+  -- A retry with the same request id (after a lost reply) gets the same challenge back: one row.
+  view := public.challenge_action('send', null, jsonb_build_object('requestId', request, 'friendId', friend_lin, 'displayName', 'Ada',
+    'passage', passage, 'conditions', '{"mode":"words","count":10,"correctionPolicy":"mandatory"}'::jsonb, 'trace', trace));
+  if view <> sent or (select count(*) from race_private.challenges where sender_id = ada) <> 1 then
+    raise exception 'A repeated send was stored twice: %', view;
+  end if;
+  denied := false;
+  begin perform public.challenge_action('send', null, jsonb_build_object('requestId', 'not-a-uuid', 'friendId', friend_lin, 'displayName', 'Ada',
+    'passage', passage, 'trace', trace));
+  exception when others then denied := true; end;
+  if not denied then raise exception 'A send without a request id was accepted.'; end if;
   if sent->>'role' <> 'sent' or sent->>'name' <> 'Lin from work' or sent->>'status' <> 'open' or sent->'sender'->>'wpm' <> '78'
     or sent ? 'passage' or sent ? 'trace' or sent::text like '%' || lin || '%' or sent::text like '%' || ada || '%' then
     raise exception 'Sent challenge view is wrong or exposes identities: %', sent;
@@ -197,25 +209,41 @@ begin
     or view->'result'->>'elapsedMs' <> '5160' or view->'sender'->>'elapsedMs' <> '6750' then
     raise exception 'Reply was not scored from its trace: %', view;
   end if;
-  denied := false;
-  begin perform public.challenge_action('finish', challenge, jsonb_build_object('trace', trace)); exception when others then denied := true; end;
-  if not denied then raise exception 'A challenge was answered twice.'; end if;
+  -- A repeat finish (a retry after a lost reply) gets the stored result back, even with another trace
+  -- or after expiry; the first finish stands and nobody else can finish it.
+  sent := view;
+  view := public.challenge_action('finish', challenge, jsonb_build_object('trace', trace));
+  if view <> sent then raise exception 'A repeat finish did not return the stored result: %', view; end if;
+  update race_private.challenges set expires_at = now() - interval '1 minute' where id = challenge;
+  view := public.challenge_action('finish', challenge, jsonb_build_object('trace', trace));
+  if view - 'expiresAt' <> sent - 'expiresAt' then raise exception 'A repeat finish after expiry did not return the stored result: %', view; end if;
+  update race_private.challenges set expires_at = created_at + interval '7 days' where id = challenge;
+  if (select (recipient_wpm, recipient_accuracy, recipient_elapsed_ms, recipient_correct) from race_private.challenges where id = challenge)
+    is distinct from (102, 100, 5160, 44) then
+    raise exception 'A repeat finish changed the stored result.';
+  end if;
+  foreach viewer in array array[outsider, ada] loop
+    perform set_config('request.jwt.claim.sub', viewer::text, true);
+    denied := false;
+    begin perform public.challenge_action('finish', challenge, jsonb_build_object('trace', trace)); exception when others then denied := true; end;
+    if not denied then raise exception 'Someone other than the recipient finished an answered challenge.'; end if;
+  end loop;
   perform set_config('request.jwt.claim.sub', ada::text, true);
   listed := public.challenge_action('list', null, '{}');
   if listed->0->>'status' <> 'done' or listed->0->'result'->>'wpm' <> '102' then raise exception 'Sender did not see the result: %', listed; end if;
 
   -- A friend saved by email reaches their account; one without an account is accepted and goes nowhere.
-  sent := public.challenge_action('send', null, jsonb_build_object('friendId', friend_kim, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
+  sent := public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_kim, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
   perform set_config('request.jwt.claim.sub', kim::text, true);
   if public.challenge_action('list', null, '{}')->0->>'id' <> sent->>'id' then raise exception 'Email friend did not receive the challenge.'; end if;
   perform set_config('request.jwt.claim.sub', ada::text, true);
-  sent := public.challenge_action('send', null, jsonb_build_object('friendId', friend_nobody, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
+  sent := public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_nobody, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
   if sent->>'status' <> 'open' or (select recipient_id from race_private.challenges where id = (sent->>'id')::uuid) is not null then
     raise exception 'An unknown email was not handled like a typed invitation.';
   end if;
 
   -- Timed runs keep their clock: the finish line is the time, not the passage.
-  sent := public.challenge_action('send', null, jsonb_build_object('friendId', friend_lin, 'displayName', 'Ada', 'passage', long_passage,
+  sent := public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada', 'passage', long_passage,
     'duration', 15, 'conditions', '{"mode":"time","duration":15,"correctionPolicy":"relaxed"}'::jsonb,
     'trace', jsonb_build_object('v', 1, 'k', 'the quick', 't', (select jsonb_agg(200) from generate_series(1, 9)), 'e', 15000)));
   if sent->>'duration' <> '15' or sent->'sender'->>'wpm' <> '7' then raise exception 'Timed challenge misread: %', sent; end if;
@@ -226,7 +254,7 @@ begin
 
   -- An expired challenge cannot be answered and lists as expired.
   perform set_config('request.jwt.claim.sub', ada::text, true);
-  sent := public.challenge_action('send', null, jsonb_build_object('friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
+  sent := public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
   update race_private.challenges set expires_at = now() - interval '1 minute' where id = (sent->>'id')::uuid;
   perform set_config('request.jwt.claim.sub', lin::text, true);
   denied := false;
@@ -239,30 +267,36 @@ begin
   -- Old results are cleaned up when anyone sends; quotas hold per sender.
   update race_private.challenges set expires_at = now() - interval '31 days' where id = (sent->>'id')::uuid;
   perform set_config('request.jwt.claim.sub', ada::text, true);
-  perform public.challenge_action('send', null, jsonb_build_object('friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
+  perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
   if exists(select 1 from race_private.challenges where id = (sent->>'id')::uuid) then raise exception 'A month-old challenge was not cleaned up.'; end if;
   n := (select count(*) from race_private.challenges where sender_id = ada and created_at > now() - interval '1 hour');
   for i in n + 1 .. 20 loop
-    perform public.challenge_action('send', null, jsonb_build_object('friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
+    perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
   end loop;
   denied := false;
-  begin perform public.challenge_action('send', null, jsonb_build_object('friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
+  begin perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
   exception when others then denied := true; end;
   if not denied then raise exception 'Hourly challenge quota did not hold.'; end if;
+  -- Repeating a stored request is not a new send: with the quota full it still gets its challenge back.
+  select id, request_id into challenge, request from race_private.challenges where sender_id = ada order by created_at desc limit 1;
+  view := public.challenge_action('send', null, jsonb_build_object('requestId', request, 'friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
+  if view->>'id' <> challenge::text or (select count(*) from race_private.challenges where sender_id = ada and created_at > now() - interval '1 hour') <> 20 then
+    raise exception 'A repeated send used the quota: %', view;
+  end if;
   update race_private.challenges set created_at = now() - interval '2 hours' where sender_id = ada;
   n := (select count(*) from race_private.challenges where sender_id = ada and completed_at is null and expires_at > now());
   for i in n + 1 .. 30 loop
-    perform public.challenge_action('send', null, jsonb_build_object('friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
+    perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
   end loop;
   denied := false;
-  begin perform public.challenge_action('send', null, jsonb_build_object('friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
+  begin perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
   exception when others then denied := true; end;
   if not denied then raise exception 'Open challenge cap did not hold.'; end if;
 
   -- Removing a friend stops new challenges to them.
   perform public.race_action('unfriend', null, jsonb_build_object('friendId', friend_kim), null);
   denied := false;
-  begin perform public.challenge_action('send', null, jsonb_build_object('friendId', friend_kim, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
+  begin perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_kim, 'displayName', 'Ada', 'passage', passage, 'trace', trace));
   exception when others then denied := true; end;
   if not denied then raise exception 'Challenged a removed friend.'; end if;
 
@@ -273,18 +307,18 @@ begin
     (mia, 'ghost-mia-' || mia || '@example.invalid', now()), (noa, 'ghost-noa-' || noa || '@example.invalid', now());
   insert into race_private.friends (owner_id, friend_id, name) values (mia, noa, 'Noa') returning id into friend_noa;
   perform set_config('request.jwt.claim.sub', mia::text, true);
-  sent := public.challenge_action('send', null, jsonb_build_object('friendId', friend_noa, 'displayName', 'Mia', 'passage', passage, 'trace', trace));
+  sent := public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_noa, 'displayName', 'Mia', 'passage', passage, 'trace', trace));
   update race_private.challenges set created_at = now() - interval '3 days', expires_at = now() + interval '4 days' where id = (sent->>'id')::uuid;
-  insert into race_private.challenges (sender_id, recipient_id, sender_name, recipient_name, passage, sender_trace, sender_wpm,
+  insert into race_private.challenges (sender_id, request_id, recipient_id, sender_name, recipient_name, passage, sender_trace, sender_wpm,
       sender_accuracy, sender_elapsed_ms, sender_correct, recipient_wpm, recipient_accuracy, recipient_elapsed_ms, recipient_correct,
       completed_at, created_at, expires_at)
-    select mia, noa, 'Mia', 'Noa', passage, trace, 78, 98, 6750, 44, 80, 100, 6600, 44,
+    select mia, gen_random_uuid(), noa, 'Mia', 'Noa', passage, trace, 78, 98, 6750, 44, 80, 100, 6600, 44,
       now() - interval '2 days' + i * interval '1 minute' + interval '1 hour', now() - interval '2 days' + i * interval '1 minute',
       now() + interval '5 days' + i * interval '1 minute'
     from generate_series(1, 55) i;
-  insert into race_private.challenges (sender_id, recipient_id, sender_name, recipient_name, passage, sender_trace, sender_wpm,
+  insert into race_private.challenges (sender_id, request_id, recipient_id, sender_name, recipient_name, passage, sender_trace, sender_wpm,
       sender_accuracy, sender_elapsed_ms, sender_correct, created_at, expires_at)
-    select mia, noa, 'Old ' || i, 'Old ' || i, passage, trace, 78, 98, 6750, 44,
+    select mia, gen_random_uuid(), noa, 'Old ' || i, 'Old ' || i, passage, trace, 78, 98, 6750, 44,
       now() - interval '20 days' + i * interval '1 minute', now() - interval '13 days' + i * interval '1 minute'
     from generate_series(1, 60) i;
   foreach viewer in array array[noa, mia] loop
@@ -301,6 +335,6 @@ begin
     end if;
   end loop;
 
-  raise notice 'Ghost challenge privacy, RLS, trace scoring, timed runs, expiry, cleanup, quota and inbox list checks passed.';
+  raise notice 'Ghost challenge privacy, RLS, trace scoring, timed runs, expiry, cleanup, quota, retry and inbox list checks passed.';
 end $smoke$;
 rollback;

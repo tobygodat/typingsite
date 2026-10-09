@@ -86,7 +86,7 @@ export class FakeSupabase {
       case 'POST /rest/v1/rpc/race_action':
         return this.races.handle(caller, body, reply);
       case 'POST /rest/v1/rpc/challenge_action':
-        return this.challenges.handle(caller, body, reply);
+        return this.challenges.handle(caller, body, reply, () => route.abort('connectionreset'));
       case 'GET /auth/v1/settings':
         return reply(200, { external: { google: this.googleEnabled, email: true } });
 

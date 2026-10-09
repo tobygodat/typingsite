@@ -10,6 +10,8 @@
 create table race_private.challenges (
   id uuid primary key default gen_random_uuid(),
   sender_id uuid not null references auth.users(id) on delete cascade,
+  -- Made by the browser once per run and friend, and repeated on a retry: a send is stored once.
+  request_id uuid not null,
   -- Null when a friend saved by email has no confirmed account. Sending still succeeds, exactly like
   -- a typed race invitation, so the reply never reveals whether an email belongs to an account.
   recipient_id uuid references auth.users(id) on delete cascade,
@@ -35,7 +37,8 @@ create table race_private.challenges (
   expires_at timestamptz not null default now() + interval '7 days',
   check (sender_id is distinct from recipient_id),
   check (completed_at is null or recipient_id is not null),
-  check (num_nulls(completed_at, recipient_wpm, recipient_accuracy, recipient_elapsed_ms, recipient_correct) in (0, 5))
+  check (num_nulls(completed_at, recipient_wpm, recipient_accuracy, recipient_elapsed_ms, recipient_correct) in (0, 5)),
+  unique (sender_id, request_id)
 );
 create index challenges_sender on race_private.challenges (sender_id, created_at desc);
 create index challenges_recipient on race_private.challenges (recipient_id, created_at desc) where recipient_id is not null;
@@ -152,11 +155,20 @@ declare
   v_conditions jsonb;
   v_duration integer;
   v_score jsonb;
+  v_request uuid;
 begin
   if v_uid is null or not exists(select 1 from auth.users where id = v_uid) then raise exception 'Sign in to send or race a ghost challenge.'; end if;
   if p_data is null or jsonb_typeof(p_data) <> 'object' then raise exception 'Invalid challenge request.'; end if;
 
   if p_action = 'send' then
+    -- A retry after a lost reply repeats its request id and gets the challenge already stored, without
+    -- a second row or another use of the quotas below.
+    if coalesce(p_data->>'requestId', '') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then raise exception 'Invalid challenge request.'; end if;
+    v_request := (p_data->>'requestId')::uuid;
+    -- Serialize per sender so concurrent sends cannot pass the quotas together or store one request twice.
+    perform pg_advisory_xact_lock(hashtextextended('challenges:' || v_uid::text, 0));
+    select * into v_row from race_private.challenges where sender_id = v_uid and request_id = v_request;
+    if found then return race_private.challenge_view(v_row, v_uid); end if;
     -- The recipient must be on the sender's own friend list.
     if coalesce(p_data->>'friendId', '') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then raise exception 'That friend is no longer on your list.'; end if;
     select * into v_friend from race_private.friends where id = (p_data->>'friendId')::uuid and owner_id = v_uid;
@@ -180,8 +192,6 @@ begin
     end if;
     v_score := race_private.trace_score(v_passage, p_data->'trace', v_duration, v_conditions->>'correctionPolicy' is not distinct from 'relaxed');
     if v_duration is null and not (v_score->>'finished')::boolean then raise exception 'Finish the run before sending it.'; end if;
-    -- Serialize per sender so concurrent sends cannot pass the quotas together.
-    perform pg_advisory_xact_lock(hashtextextended('challenges:' || v_uid::text, 0));
     -- Results stay a month past expiry for both inboxes, then go when anyone sends a challenge.
     delete from race_private.challenges where expires_at < v_now - interval '30 days';
     if (select count(*) from race_private.challenges where sender_id = v_uid and created_at > v_now - interval '1 hour') >= 20 then
@@ -190,9 +200,9 @@ begin
     if (select count(*) from race_private.challenges where sender_id = v_uid and completed_at is null and expires_at > v_now) >= 30 then
       raise exception 'You have 30 challenges waiting. Wait for some to be raced or to expire.';
     end if;
-    insert into race_private.challenges(sender_id, recipient_id, sender_name, recipient_name, passage, conditions, duration,
+    insert into race_private.challenges(sender_id, request_id, recipient_id, sender_name, recipient_name, passage, conditions, duration,
         sender_trace, sender_wpm, sender_accuracy, sender_elapsed_ms, sender_correct, created_at, expires_at)
-      values (v_uid, v_recipient, v_name, v_friend.name, v_passage, v_conditions, v_duration, p_data->'trace',
+      values (v_uid, v_request, v_recipient, v_name, v_friend.name, v_passage, v_conditions, v_duration, p_data->'trace',
         (v_score->>'wpm')::integer, (v_score->>'accuracy')::integer, (v_score->>'elapsedMs')::integer,
         (v_score->>'correct')::integer, v_now, v_now + interval '7 days')
       returning * into v_row;
@@ -224,7 +234,8 @@ begin
   if p_action = 'finish' then
     select * into v_row from race_private.challenges where id = p_id and recipient_id = v_uid for update;
     if not found then raise exception 'That ghost race is unavailable.'; end if;
-    if v_row.completed_at is not null then raise exception 'You have already raced this run.'; end if;
+    -- The first finish stands. A repeat (a retry after a lost reply) gets that stored result back.
+    if v_row.completed_at is not null then return race_private.challenge_view(v_row, v_uid); end if;
     if v_row.expires_at <= v_now then raise exception 'This ghost race expired before your run arrived.'; end if;
     v_score := race_private.trace_score(v_row.passage, p_data->'trace', v_row.duration, v_row.conditions->>'correctionPolicy' is not distinct from 'relaxed');
     if v_row.duration is null and not (v_score->>'finished')::boolean then raise exception 'Finish the run before sending it.'; end if;
