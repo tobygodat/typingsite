@@ -1964,6 +1964,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 @media (pointer: coarse) {
   .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
+  /* An inline text button grows its hit area into the lines around it (22.5px line + 2 × 12px);
+     the matching negative margin keeps the sentence's line height, so the copy reads the same. */
+  .fatigue-dismiss { padding-block: var(--space-3); margin-block: calc(var(--space-3) * -1); }
 }
 
 @media (max-width: 760px) {

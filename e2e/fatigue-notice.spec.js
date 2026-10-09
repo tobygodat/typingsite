@@ -146,3 +146,33 @@ test('turning break suggestions off in settings takes a showing notice down', as
   await expect(notice).toBeHidden();
   await expect(page.locator('#run-card')).toHaveCSS('position', 'sticky');
 });
+
+test.describe('on a touch screen', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('the dismiss link and the settings row each give a finger 44px', async ({ page }) => {
+    test.setTimeout(120_000);
+    await openApp(page);
+    await slowSitting(page);
+    const notice = page.locator('#fatigue-notice');
+    const dismiss = page.locator('#fatigue-dismiss');
+    await expect(dismiss).toBeVisible();
+    // The link still sits inside the sentence: its line is no taller than the notice's own lines.
+    const lineHeight = await notice.evaluate((node) => parseFloat(getComputedStyle(node).lineHeight));
+    const lines = (await notice.boundingBox()).height / lineHeight;
+    expect(Math.abs(lines - Math.round(lines))).toBeLessThan(0.05);
+    await dismiss.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+    const box = await dismiss.boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    // The grown area is the button's own right up to its top edge, and a tap there lands.
+    const x = box.x + box.width / 2;
+    expect(await page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.id, [x, box.y + 1])).toBe('fatigue-dismiss');
+    await page.touchscreen.tap(x, box.y + 1);
+    await expect(notice).toBeHidden();
+    await openSettings(page);
+    await expect(page.locator('#fatigue-toggle')).not.toBeChecked();
+    // The whole row is the switch's label, so it is the target.
+    expect((await page.locator('label[for="fatigue-toggle"]').boundingBox()).height).toBeGreaterThanOrEqual(44);
+  });
+});
