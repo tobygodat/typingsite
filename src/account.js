@@ -202,6 +202,10 @@ export function cacheProfile(userId, data) {
   return writeJson(profileKey(userId), data);
 }
 
+// Every per-profile history collection. Any one of them makes a profile in use; a new collection belongs
+// here too. Seen passages and bests are left out: a passage is marked seen on display, a best needs a run.
+const HISTORY = ['attempts', 'runs', 'loops', 'compositions'];
+
 // Folds a one-off import (the pre-accounts profile) into a profile: runs and loops by id, the higher best.
 // The base keeps its preferences unless it has no history of its own yet.
 export function mergeProfiles(base, extra) {
@@ -210,7 +214,7 @@ export function mergeProfiles(base, extra) {
   for (const [key, best] of Object.entries(base.bests)) {
     if (!bests[key] || best.wpm >= bests[key].wpm) bests[key] = best;
   }
-  const baseIsNew = base.attempts.length === 0 && base.loops.length === 0 && !base.runs?.length;
+  const baseIsNew = HISTORY.every((key) => !base[key]?.length);
   return {
     ...base,
     preferences: baseIsNew ? extra.preferences : base.preferences,
