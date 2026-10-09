@@ -207,7 +207,7 @@ Density is low and deliberate. The practice screen centres the passage with the 
 A warm, low-chroma neutral ramp with one green and one coral. The palette is defined twice, once for dark (`:root`, `[data-theme="dark"]`) and once for light (`[data-theme="light"]`), with identical token names. Frontmatter keys ending in `-light` are the light-theme values of the same token. Both themes hold a contrast floor against what is behind it, translucent washes and mistyped-letter tints included (`tests/contrast.test.js`): text at least 4.5:1, and the caret, the ghost caret, the text-coloured focus ring, the accent border of a focused input and input outlines at least 3:1. Disabled controls, the blurred challenge-handoff veil and the dimmed idle and unfocused caret are deliberate exceptions.
 
 ### Primary
-- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. A focused input's border turns accent, with a decorative soft glow (accent-soft) beside it. Text on a green fill uses accent-ink.
+- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. A focused input's border turns accent and gains a soft accent-soft ring; the accent border is the focus cue that carries the contrast. Text on a green fill uses accent-ink.
 
 ### Secondary
 - **Ember Coral** (danger): mistyped letters, the blocked caret, regressions, destructive actions and field errors. It is always paired with a second cue (a tint or a word) and never used alone.
@@ -309,7 +309,7 @@ Mode and length pickers are a 14px frame with a hairline border, holding 36px Li
 
 ### Inputs / Fields
 - **Style:** raised fill, 1px outline border, 12px corners, 44px tall, 16px text.
-- **Focus:** the border turns accent (the focus cue), with a decorative 3px accent-soft glow around it.
+- **Focus:** the border turns accent and gains a 3px accent-soft ring. The accent border is the focus cue and holds 3:1; the accent-soft ring is a supplementary tint (about 1.15:1) and is not relied on for contrast.
 - **Error:** a coral border (`aria-invalid`) and a 14px coral message below.
 - **Switch:** a 38×22 track (hairline-strong, accent when on) with a text-coloured knob that slides 16px.
 
