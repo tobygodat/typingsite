@@ -90,7 +90,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   let loading = false;
   let board = null;
   let generation = 0;
-  // The last summary the service accepted in this tab, so an unchanged one is not sent again.
+  // The last summary the service accepted in this tab, so an unchanged publish is not sent again.
   let published = '';
   let publishTimer = 0;
   // A run, clear or undo in this tab that the service has not accepted yet. Only such a change is
@@ -103,8 +103,8 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   const summary = () => boardSummary(runs(), dailyKey());
 
   // Writes go one at a time, in order. One asked for while another is in flight waits for it to settle,
-  // then sends the summary as it is by then; an unchanged one is skipped, so queued changes collapse into
-  // one write, and a clear or undo among them makes it a replace. So an earlier publish from this tab
+  // then sends the summary as it is by then; an unchanged publish is skipped, so queued changes collapse
+  // into one write, and a clear or undo among them makes it a replace. So an earlier publish from this tab
   // can never reach the service after its clear or undo and bring the cleared numbers back.
   let writes = Promise.resolve();
   function publishChange(session) {
@@ -113,14 +113,16 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     return write;
   }
 
-  // The service's reply, or null when the summary is unchanged. A failure leaves the change pending.
+  // The service's reply, or null when a publish is unchanged. A replace is always sent: another tab or
+  // device may have raised the stored summary since this one last sent the same numbers, and a clear or
+  // undo must still set it to exactly this tab's. A failure leaves the change pending.
   async function sendChange(session) {
     const value = summary();
     const key = JSON.stringify(value);
     const replace = replacing;
     pending = false;
     replacing = false;
-    if (key === published) return null;
+    if (key === published && !replace) return null;
     try {
       const result = await publishSummary(session, value, { replace });
       published = key;

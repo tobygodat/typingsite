@@ -434,6 +434,33 @@ test('a clear made while a publish is still on its way is not undone when that p
   expect(supabase.board.summaries.get(ada.id)).toEqual({ daily: null, week: { start: mondayOf(), seconds: 0, runs: 0 } });
 });
 
+test('a clear reaches the board even when this tab’s own summary does not change', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  // Only practice from before this week: something to clear, and nothing in this week's summary.
+  const lastWeek = new Date(Date.parse(`${mondayOf()}T00:00:00Z`) - 3 * 86400000).toISOString();
+  seedProfile(supabase, ada, [{ ...practiceThisWeek(1)[0], id: 'last-week', at: lastWeek }]);
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  // Nobody had published this week, so opening the board sends this tab's empty week.
+  await expect.poll(() => supabase.board.published.length).toBe(1);
+  expect(supabase.board.published[0]).toMatchObject({ action: 'publish', daily: null, week: { runs: 0 } });
+  // Another device then records today's daily and some practice.
+  supabase.board.summaries.set(ada.id, { daily: { date: utcDay(), version: VERSION, wpm: 88, accuracy: 97, attempts: 1 },
+    week: { start: mondayOf(), seconds: 1500, runs: 9 } });
+
+  // Clearing here leaves this tab's summary as it was, yet the clear still replaces the board's.
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(page.locator('#history-feedback')).toHaveText('History cleared.');
+  await expect.poll(() => supabase.board.published.length).toBe(2);
+  expect(supabase.board.published[1]).toMatchObject({ action: 'replace', daily: null, week: { start: mondayOf(), seconds: 0, runs: 0 } });
+  expect(supabase.board.summaries.get(ada.id)).toEqual({ daily: null, week: { start: mondayOf(), seconds: 0, runs: 0 } });
+});
+
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
