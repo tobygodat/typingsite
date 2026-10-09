@@ -35,7 +35,9 @@ Required IDs: `typing-screen`, `typing-form`, `typing-input`, `typing-wrap`, `te
 
 `#live-stats` is plain text and is not a live region; update it at a restrained cadence. Completion is announced once through `#announcement`.
 
-Practice mode controls are `#mode-time`, `#mode-words`, `#mode-quote`, `#duration-options`, `#punctuation-toggle`, `#quote-options`, `#quote-length`, and `#quote-difficulty`. Generated length buttons belong in `#duration-options` and use `aria-pressed`.
+Practice mode controls are `#mode-time`, `#mode-words`, `#mode-quote`, `#mode-book`, `#duration-options`, `#punctuation-toggle`, `#quote-options`, `#quote-length`, and `#quote-difficulty`. Generated length buttons belong in `#duration-options` and use `aria-pressed`.
+
+Book mode (`data-session="book"`) shares the typing surface. `#book-options` holds `#book-select`, `#book-restart` (shown only once every included page is done) and `#book-credit` ("Text from Project Gutenberg; public domain in the US"). `#session-title` names the book and `#session-description` the chapter and page. The text lives in `src/book-texts.js` and is imported only when book mode opens; until it arrives `#text-display` says the book is opening.
 
 `#best` in the footer shows the personal best for the current conditions, or states that there is none. `#suggest-trigger` beside it (and the palette command "suggest a feature…") opens `dialog#suggest-dialog`: `#suggest-text` (max 1000 characters, counted in `#suggest-count`), errors in `#suggest-error`, a hidden honeypot `#suggest-website`, and `#send-suggest`, which inserts `{ body, view }` into the Supabase `feature_suggestions` table through `sendSuggestion` in `src/account.js`, always as the anonymous role (a filled honeypot sends nothing). Success closes the dialog and shows `#suggest-toast`; failure keeps the text. Opening it mid-run marks the run interrupted, like the palette.
 
@@ -46,6 +48,8 @@ Practice mode controls are `#mode-time`, `#mode-words`, `#mode-quote`, `#duratio
 The run card is `#run-card`: `#run-card-stamp` (date, time and session kind), `#speed-graph` (an SVG speed-over-time graph drawn by `src/graph.js` from the attempt's keystrokes, mistakes in coral; `role="img"` with a text summary in its `aria-label`; presentational only) and its legend, `#result-wpm`, `#result-accuracy`, `#result-errors`, `#result-time`, a one-line metric definition, and `#result-conditions`. The card is a static print: numbers are set directly, with no tilt, reels or count-up.
 
 Recommendation IDs are `recommendation-title`, `recommendation-evidence`, `recommendation-list`, `recommendation-meta`, `start-drill`, `skip-to-retest`, and `run-again`.
+
+After a book page the recommendation panel (`data-kind="book"`) hides everything but `#run-again`, which becomes the filled primary action ("Next page", "Try this page again" or "Start again from page 1"). `#book-panel` follows it: `#book-panel-title`, `#book-panel-byline` (author and the Gutenberg credit), a chapter table whose rows go in `#book-chapter-rows` (pages typed and the median of the latest completed run on each page, at the page's exact conditions), and `#book-panel-note`.
 
 `#recommendation-evidence` must name observed evidence (error count and/or timing against the user's own median). When evidence is insufficient, say so directly and offer a general drill. `#recommendation-meta` states approximate drill time and that the retest uses a fresh comparable passage. Never render a confident weak-pattern claim without recorded observations.
 

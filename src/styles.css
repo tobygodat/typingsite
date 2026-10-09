@@ -787,6 +787,21 @@ kbd {
 
 .quote-options .input { width: 128px; height: 38px; font-size: 14px; }
 
+/* Book mode shares the quote row (and so its fade and focus-mode rules): the book, a way back to
+   page 1 once it is finished, and the source credit as a quiet aside. */
+.book-options { align-items: center; }
+.quote-options.book-options .input { width: auto; min-width: 128px; max-width: 100%; }
+/* Books bring their own punctuation, so the switch steps aside and leaves room for the heading. */
+body[data-session="book"] .practice-controls .compact-switch { display: none; }
+.book-credit {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-label);
+  font-style: italic;
+  text-align: center;
+}
+
 .typing-form,
 .shortcut-row { width: 100%; }
 
@@ -1325,6 +1340,45 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+
+/* After a book page the panel holds only "Next page", right under the heading. */
+.recommendation-panel[data-kind="book"] { padding-top: 0; border-top: 0; }
+.recommendation-panel[data-kind="book"] .recommendation-actions { margin-top: 0; }
+
+/* Book progress: per-chapter speed on hairline rows, numbers right-aligned in Literata. */
+.book-panel {
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--hairline);
+}
+
+.book-panel h2 {
+  margin: 0;
+  font-size: var(--text-title);
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+.book-byline { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--text-small); }
+
+.book-chapters {
+  width: 100%;
+  margin: var(--space-6) 0 var(--space-3);
+  border-collapse: collapse;
+}
+
+.book-chapters :is(th, td) {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--hairline);
+  text-align: left;
+  vertical-align: baseline;
+  font-weight: 400;
+}
+
+.book-chapters :is(th, td):not(:first-child) { padding-left: var(--space-4); text-align: right; }
+.book-chapters td { white-space: nowrap; }
+.book-chapters thead th { padding-top: 0; color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.03em; vertical-align: bottom; }
+/* Muted, not green: light-theme green on paper is under 4.5:1 at 12px. */
+.book-chapter-current { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.02em; }
 
 /* "Drill something else": a quiet disclosure, the form below it. */
 .manual-panel {
@@ -1937,6 +1991,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .site-footer { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: var(--space-2); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
+  /* A book title runs long; at title size the passage still starts above the dock. */
+  body[data-session="book"] #session-title { font-size: var(--text-title); line-height: 1.2; }
   #result-wpm { font-size: var(--text-numeral-mobile); }
   .comparison-rows { grid-template-columns: 1fr; gap: var(--space-3); }
   .history-summary { grid-template-columns: 1fr 1fr; gap: var(--space-3) var(--space-4); }

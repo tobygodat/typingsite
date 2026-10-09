@@ -24,6 +24,7 @@ import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
+import { BOOKS, BOOK_CREDIT, BOOK_VERSION, DEFAULT_BOOK, bookIds, bookPlace, chapterName, chapterSpeeds, loadBookTexts, openBook } from './books.js';
 
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
@@ -44,6 +45,7 @@ const defaultPreferences = {
   stopOnError: false,
   focusMode: false,
   theme: 'system',
+  book: DEFAULT_BOOK,
 };
 
 function emptyProfile() {
@@ -56,6 +58,8 @@ function emptyProfile() {
     loops: [],
     seenTextIds: [],
     bests: {},
+    // The next page to type in each book: { [bookId]: { page } }.
+    books: {},
   };
 }
 
@@ -70,6 +74,7 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  if (!bookIds.includes(value.book)) value.book = DEFAULT_BOOK;
   return value;
 }
 
@@ -91,6 +96,7 @@ function normalizeProfile(parsed) {
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
     bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
+    books: parsed.books && typeof parsed.books === 'object' ? parsed.books : {},
   };
 }
 
@@ -162,6 +168,7 @@ function announce(message) {
 }
 
 function conditions(inputClass = 'physical-keyboard') {
+  if (prefs.mode === 'book') return bookConditions(inputClass);
   return {
     mode: prefs.mode,
     duration: prefs.mode === 'time' ? prefs.duration : null,
@@ -178,20 +185,46 @@ function conditions(inputClass = 'physical-keyboard') {
   };
 }
 
+// A book page is its own condition: the Gutenberg text version stands in for the corpus, so its
+// key never matches a practice best, a retest baseline or a trend. The book itself is recorded on
+// the page (attempt.book); the key is the same for every book.
+function bookConditions(inputClass = 'physical-keyboard') {
+  return { mode: 'book', duration: null, count: null, punctuation: true, quoteLength: null, difficulty: null, wordList: null,
+    book: prefs.book, inputClass, correctionPolicy: prefs.stopOnError ? 'mandatory' : 'relaxed', language: 'en', corpus: BOOK_VERSION, metricVersion: METRIC_VERSION };
+}
+
+const correctionLabel = (policy) => (policy === 'relaxed' ? 'continue on error' : 'stop on error');
+const inputLabel = (inputClass) => (inputClass === 'touch' ? 'touch input' : 'physical keyboard');
+
 function describeConditions(value = conditions()) {
+  const input = inputLabel(value.inputClass);
+  const correction = correctionLabel(value.correctionPolicy);
+  if (value.mode === 'book') return `english · book · ${input} · ${correction} · gutenberg ${(value.corpus || BOOK_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
   const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
   const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
-  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
-  const correction = value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error';
   const language = value.wordList ? `english ${value.wordList}` : 'english';
   return `${language} · ${length} · ${punctuation} · ${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
+}
+
+// Where a book page sits: "alice in wonderland · chapter i · page 3 of 39".
+function bookLocation(ref) {
+  const book = ref && openBook(ref.id);
+  const page = book?.pages[ref.page];
+  if (!page) return 'book';
+  return `${book.short.toLowerCase()} · ${book.chapters[page.chapter].label.toLowerCase()} · page ${page.pageInChapter + 1} of ${page.pagesInChapter}`;
 }
 
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
+  if (run.kind === 'book') return `${bookLocation(run.book)} · ${describeConditions(run.conditions)}`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
+  return `drill · 60 s · english · ${inputLabel(run.conditions.inputClass)} · ${correctionLabel(run.conditions.correctionPolicy)}`;
+}
+
+// The line under the session title. A book page's heading already names the book and the page.
+function conditionLine(value) {
+  return value.kind === 'book' ? describeConditions(value.conditions) : describeRun(value);
 }
 
 function signed(value, unit) {
@@ -227,7 +260,7 @@ function currentBestKey() {
 
 function showBest() {
   const best = profile.bests[currentBestKey()];
-  $('best').textContent = best ? `Best · ${best.wpm} wpm` : 'No best yet';
+  $('best').textContent = prefs.mode === 'book' ? 'Book pages keep no best' : best ? `Best · ${best.wpm} wpm` : 'No best yet';
 }
 
 function resolvedTheme() {
@@ -286,8 +319,12 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  $('book-select').value = prefs.book;
   showBest();
 }
+
+// Quotes and books bring their own words, length and punctuation.
+const ownText = () => prefs.mode === 'quote' || prefs.mode === 'book';
 
 function setModeControls() {
   document.querySelectorAll('[data-mode]').forEach((button) => {
@@ -296,9 +333,10 @@ function setModeControls() {
     button.setAttribute('aria-pressed', String(selected));
   });
   $('quote-options').hidden = prefs.mode !== 'quote';
-  $('punctuation-toggle').disabled = prefs.mode === 'quote';
-  $('word-list').disabled = prefs.mode === 'quote';
-  $('duration-options').hidden = prefs.mode === 'quote';
+  $('book-options').hidden = prefs.mode !== 'book';
+  $('punctuation-toggle').disabled = ownText();
+  $('word-list').disabled = ownText();
+  $('duration-options').hidden = ownText();
   const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
   const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
   $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
@@ -449,6 +487,7 @@ function configureSessionCopy() {
     drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
+    book: ['book', BOOKS.find((book) => book.id === prefs.book)?.title || 'Book', bookPageCopy(passage)],
   }[sessionKind];
   $('session-kicker').textContent = copy[0];
   $('session-title').textContent = copy[1];
@@ -456,43 +495,37 @@ function configureSessionCopy() {
   $('typing-screen').dataset.session = sessionKind;
   document.body.dataset.session = sessionKind;
   const setup = document.querySelector('.practice-controls');
-  if (setup) setup.hidden = sessionKind !== 'practice';
+  if (setup) setup.hidden = sessionKind !== 'practice' && sessionKind !== 'book';
   $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote';
+  $('book-options').hidden = sessionKind !== 'book';
+  const book = openBook(prefs.book);
+  $('book-restart').hidden = !book || bookPlace(profile.books, book.id, book.pages.length) < book.pages.length;
+}
+
+// "Chapter I · Down the Rabbit-Hole · page 3 of 39"
+function bookPageCopy(page) {
+  const book = page?.book && openBook(page.book);
+  if (!book) return '';
+  return `${chapterName(book.chapters[page.chapter])} · page ${page.pageInChapter + 1} of ${page.pagesInChapter}`;
 }
 
 function resetSession(kind = sessionKind, { focus = false, selectedPassage = null } = {}) {
+  // Practice in book mode is a book page; leaving book mode returns to ordinary practice.
+  if (kind === 'practice' && prefs.mode === 'book') kind = 'book';
+  else if (kind === 'book' && prefs.mode !== 'book') kind = 'practice';
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
   primaryNotice = '';
   sessionKind = kind;
-  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
+  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : kind === 'book' ? bookPassage() : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
   }
   if (!passage) {
     if (kind === 'retest') showUnavailableRetest('No passage matches the original conditions. Change the quote filters, then run a new baseline.');
-    else {
-      attempt = null;
-      startTime = null;
-      $('typing-input').value = '';
-      $('typing-input').disabled = true;
-      $('text-display').style.transform = '';
-      primaryCharacters = [];
-      primaryTextView = null;
-      $('text-display').textContent = 'No passage matches these filters.';
-      $('accessible-passage').textContent = 'No passage matches these filters.';
-      $('typing-status').textContent = 'No matching text';
-      $('typing-status').className = 'badge badge-warning';
-      $('condition-line').textContent = describeConditions();
-      $('input-help').textContent = 'Try another quote length or difficulty.';
-      for (const id of ['live-wpm', 'live-accuracy', 'timer']) $(id).textContent = '—';
-      $('progress-bar').style.setProperty('--progress', '0');
-      $('progress-track').setAttribute('aria-valuenow', '0');
-      configureSessionCopy();
-      switchView('practice');
-    }
+    else showNoPassage(kind === 'book' ? bookEmptyState(focus) : { text: 'No passage matches these filters.', status: 'No matching text', tone: 'badge-warning', help: 'Try another quote length or difficulty.' });
     return false;
   }
   if (kind !== 'drill' && passage.id && !profile.seenTextIds.includes(passage.id)) {
@@ -515,6 +548,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     attempt.firstDailyAttempt = passage.firstDailyAttempt;
   }
   if (kind === 'drill') attempt.target = selectedTarget;
+  if (kind === 'book') attempt.book = { id: passage.book, chapter: passage.chapter, page: passage.page };
   attempt.fresh = passage.fresh !== false;
   startTime = null;
   $('typing-input').value = '';
@@ -528,13 +562,77 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('typing-status').className = 'badge badge-info';
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
   $('input-help').textContent = '';
-  $('condition-line').textContent = describeRun(attempt);
+  $('condition-line').textContent = conditionLine(attempt);
   configureSessionCopy();
   updateLive(true);
   switchView('practice');
   if (focus) $('typing-input').focus({ preventScroll: true });
   return true;
 }
+
+// The practice surface without a passage: no filter match, a book still loading, or a finished book.
+function showNoPassage({ text, status, tone, help }, { show = true } = {}) {
+  attempt = null;
+  startTime = null;
+  $('typing-input').value = '';
+  $('typing-input').disabled = true;
+  $('text-display').style.transform = '';
+  primaryCharacters = [];
+  primaryTextView = null;
+  $('text-display').textContent = text;
+  $('accessible-passage').textContent = text;
+  $('typing-status').textContent = status;
+  $('typing-status').className = `badge ${tone}`;
+  $('condition-line').textContent = describeConditions();
+  $('input-help').textContent = help;
+  for (const id of ['live-wpm', 'live-accuracy', 'timer']) $(id).textContent = '—';
+  $('progress-bar').style.setProperty('--progress', '0');
+  $('progress-track').setAttribute('aria-valuenow', '0');
+  configureSessionCopy();
+  if (show) switchView('practice');
+}
+
+// The page at the remembered place in the chosen book, or null while the text loads or once
+// every included page is done. A page is fresh until it has been displayed once.
+function bookPassage() {
+  const book = openBook(prefs.book);
+  const page = book?.pages[bookPlace(profile.books, book.id, book.pages.length)];
+  if (!page) return null;
+  return { ...page, textVersion: `${page.id}@1`, corpus: BOOK_VERSION, difficulty: 'book', fresh: !profile.seenTextIds.includes(page.id) };
+}
+
+function bookEmptyState(focus) {
+  const book = openBook(prefs.book);
+  if (book) return { text: `You’ve typed every included page of ${book.title}.`, status: 'Book finished', tone: 'badge-neutral', help: 'Start it again from page 1, or pick another book.' };
+  // The text loads on first use. Fill the page in once it arrives, unless the person has moved on.
+  loadBookTexts().then(() => {
+    if (sessionKind === 'book' && !attempt && document.body.dataset.view === 'practice') resetSession('book', { focus });
+  }, () => {
+    if (sessionKind === 'book' && !attempt) showNoPassage({ text: 'The book couldn’t load.', status: 'Not loaded', tone: 'badge-warning', help: 'Check your connection, then restart.' }, { show: false });
+  });
+  return { text: 'Opening the book…', status: 'Opening the book', tone: 'badge-info', help: '' };
+}
+
+function setBook(id) {
+  prefs.book = id;
+  prefs.mode = 'book';
+  applyPreferences();
+  setModeControls();
+  saveProfile();
+  resetSession('practice', { focus: true });
+}
+
+// Back to page 1. Earlier page results stay in history; only the place moves.
+function restartBook() {
+  profile.books[prefs.book] = { page: 0 };
+  saveProfile();
+  resetSession('practice', { focus: true });
+}
+
+const bookFinished = () => {
+  const book = openBook(prefs.book);
+  return Boolean(book) && bookPlace(profile.books, book.id, book.pages.length) >= book.pages.length;
+};
 
 function showUnavailableRetest(reason) {
   switchView('results');
@@ -784,6 +882,14 @@ function finishPrimary(forcedElapsed = null) {
   setRunning(false);
   $('typing-status').className = `badge ${valid ? 'badge-success' : 'badge-warning'}`;
   $('typing-status').textContent = valid ? 'Complete' : 'Interrupted';
+  if (sessionKind === 'book') {
+    // Only a counted page moves the place on; storeAttempt saves it with the run.
+    if (valid) profile.books[completed.book.id] = { page: completed.book.page + 1 };
+    // A book page is never a retest baseline, so no earlier baseline lingers behind it either.
+    baselineAttempt = null;
+    trainingContext = null;
+    activeRecommendation = null;
+  }
   const saved = storeAttempt(completed);
 
   if (sessionKind === 'drill' && baselineAttempt) {
@@ -821,6 +927,11 @@ function resultHeadline(completed) {
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
+  if (completed.kind === 'book') {
+    const book = openBook(completed.book.id);
+    const page = book?.pages[completed.book.page];
+    return page ? `Page ${page.pageInChapter + 1} of ${page.pagesInChapter} · ${book.chapters[page.chapter].label}` : 'Page complete';
+  }
   if (!resultBestBefore) return 'First run at these settings';
   const delta = completed.summary.score.wpm - resultBestBefore.wpm;
   if (delta === 0) return `Matched your best of ${resultBestBefore.wpm}`;
@@ -845,8 +956,10 @@ function renderResults(completed, saved) {
   $('result-conditions').textContent = describeRun(completed);
   $('result-delta').textContent = resultHeadline(completed);
   // A retest reports a failed save once, in the comparison caveat.
+  const isBook = completed.kind === 'book';
   $('result-comparison-note').textContent = [
     counted ? '' : 'Focus or input changed during the run, so it isn’t counted.',
+    counted && isBook ? 'Book pages don’t count toward your best, retests or training patterns.' : '',
     saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
   ].filter(Boolean).join(' ');
 
@@ -862,13 +975,46 @@ function renderResults(completed, saved) {
   $('start-drill').disabled = !counted;
   $('skip-to-retest').disabled = !counted || !baselineAttempt;
   renderEvidenceList(activeRecommendation.evidence);
-  $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again' : 'Run again';
+  setResultsKind(isBook);
+  $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again'
+    : isBook ? (!counted ? 'Try this page again' : bookFinished() ? 'Start again from page 1' : 'Next page')
+      : 'Run again';
+  renderBookPanel(isBook ? completed : null);
   renderTraining();
   renderDaily();
   $('comparison-panel').hidden = true;
   announce(saved
     ? `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy.`
     : `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+}
+
+// After a book page the next page replaces the drill offer, and becomes the one green action:
+// a book page's keystrokes are not training evidence, so there is nothing to recommend from it.
+function setResultsKind(isBook) {
+  for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = isBook;
+  $('run-again').className = `btn ${isBook ? 'btn-primary' : 'btn-ghost'}`;
+  document.querySelector('.recommendation-panel').dataset.kind = isBook ? 'book' : 'run';
+}
+
+// Per-chapter speed for the book a page came from, at that page's exact conditions.
+function renderBookPanel(completed) {
+  const book = completed && openBook(completed.book.id);
+  $('book-panel').hidden = !book;
+  if (!book) return;
+  $('book-panel-title').textContent = book.title;
+  $('book-panel-byline').textContent = `${book.author} · ${BOOK_CREDIT}`;
+  const place = bookPlace(profile.books, book.id, book.pages.length);
+  $('book-chapter-rows').replaceChildren(...chapterSpeeds(profile.runs, book, completed.conditions).map((chapter) => {
+    const row = document.createElement('tr');
+    const name = element('th', chapterName(chapter));
+    name.scope = 'row';
+    const current = place >= chapter.firstPage && place < chapter.firstPage + chapter.pageCount;
+    if (current) name.append(element('span', ' · next page', 'book-chapter-current'));
+    row.append(name, element('td', `${chapter.pagesTyped} / ${chapter.pageCount}`, 'num'),
+      element('td', chapter.medianWpm === null ? '—' : String(chapter.medianWpm), 'num'));
+    return row;
+  }));
+  $('book-panel-note').textContent = `Median of your latest completed run on each page, ${inputLabel(completed.conditions.inputClass)} · ${correctionLabel(completed.conditions.correctionPolicy)}.`;
 }
 
 function renderEvidenceList(evidence) {
@@ -996,7 +1142,7 @@ function switchView(view) {
 
 function navigate(view) {
   if (view === 'practice') {
-    if (!attempt || sessionKind !== 'practice' || ['complete', 'interrupted'].includes(attempt.status)) resetSession('practice');
+    if (!attempt || !['practice', 'book'].includes(sessionKind) || ['complete', 'interrupted'].includes(attempt.status)) resetSession('practice');
     switchView('practice');
     return;
   }
@@ -1108,7 +1254,7 @@ function trainingRecommendation(source) {
 
 function renderTraining() {
   const source = conditionOptions($('training-conditions'), profile.runs.filter((r) => validRun(r)
-    && ['test', 'retest', 'daily'].includes(r.kind)), conditions());
+    && ['test', 'retest', 'daily'].includes(r.kind)), prefs.mode === 'book' ? null : conditions());
   const targets = recurringTargets(profile.runs, profile.loops, source);
   $('training-memory-note').textContent = targets.length
     ? 'Counts come from up to 120 recent matching runs. Revisit checks use fresh text; one retest does not establish lasting improvement.'
@@ -1362,6 +1508,7 @@ function clearHistory() {
   profile.loops = [];
   profile.seenTextIds = [];
   profile.bests = {};
+  profile.books = {};
   baselineAttempt = null;
   trainingContext = null;
   selectedTarget = null;
@@ -1379,6 +1526,9 @@ function clearHistory() {
   $('comparison-panel').hidden = true;
   $('start-drill').disabled = true;
   $('skip-to-retest').disabled = true;
+  setResultsKind(false);
+  renderBookPanel(null);
+  $('run-again').textContent = 'Run again';
   const saved = saveProfile();
   $('clear-dialog').close();
   $('history-toast').hidden = false;
@@ -1462,7 +1612,7 @@ function adoptProfile(data) {
   applyPreferences();
   setModeControls();
   renderHistory();
-  if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice');
+  if ((sessionKind === 'practice' || sessionKind === 'book') && attempt?.status !== 'running') resetSession('practice');
 }
 
 // The newer of the device cache and the account row wins; the other side is brought up to date.
@@ -1760,7 +1910,7 @@ function bindEvents() {
   $('typing-input').addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'touch' && attempt?.status === 'ready') {
       attempt.conditions.inputClass = 'touch';
-      $('condition-line').textContent = describeRun(attempt);
+      $('condition-line').textContent = conditionLine(attempt);
       if (ghostOn) primaryFx.ghost.arm(ghostPace().cps);
     }
   });
@@ -1775,7 +1925,13 @@ function bindEvents() {
     }
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
-  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
+  $('run-again').addEventListener('click', () => {
+    if (sessionKind === 'daily') startDaily();
+    else if (sessionKind === 'book' && lastCompleted?.kind === 'book' && lastCompleted.status === 'complete' && bookFinished()) restartBook();
+    else resetSession('practice', { focus: true });
+  });
+  $('book-select').addEventListener('change', (event) => setBook(event.target.value));
+  $('book-restart').addEventListener('click', restartBook);
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
@@ -1910,7 +2066,7 @@ function setWordList(id) {
 
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
-  const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || mode === 'book' || (mode === 'time' ? prefs.duration : prefs.count) === length);
   const commands = [
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
@@ -1920,8 +2076,11 @@ function paletteCommands(query) {
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
-    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
-    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
+    ...BOOKS.map((book) => ({ group: 'test', label: `book · ${book.short.toLowerCase()}`, keywords: `book mode page chapter read novel gutenberg ${book.title} ${book.author}`,
+      // setBook resets once and shows practice itself; navigating first would display (and mark seen) a page in between.
+      hint: shape('book') && prefs.book === book.id ? 'current' : '', on: shape('book') && prefs.book === book.id, run: () => setBook(book.id) })),
+    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: ownText(), run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
+    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: ownText(), run: () => { navigate('practice'); setWordList(id); } })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
@@ -2004,6 +2163,8 @@ new ResizeObserver(() => {
 }).observe($('progress-trend'));
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
+$('book-select').replaceChildren(...BOOKS.map((book) => Object.assign(document.createElement('option'), { value: book.id, textContent: book.short })));
+$('book-credit').textContent = BOOK_CREDIT;
 buildKeyboard();
 applyPreferences();
 setModeControls();

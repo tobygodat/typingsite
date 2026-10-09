@@ -137,6 +137,7 @@
             <button id="mode-time" type="button" data-mode="time" aria-pressed="true" class="is-active">time</button>
             <button id="mode-words" type="button" data-mode="words" aria-pressed="false">words</button>
             <button id="mode-quote" type="button" data-mode="quote" aria-pressed="false">quote</button>
+            <button id="mode-book" type="button" data-mode="book" aria-pressed="false">book</button>
           </div>
           <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
             <button type="button" aria-pressed="false" aria-label="15 seconds">15</button>
@@ -167,6 +168,14 @@
               <option value="precise">precise</option>
             </select>
           </label>
+        </div>
+
+        <div id="book-options" class="quote-options book-options" hidden>
+          <label for="book-select">book
+            <select id="book-select" class="input select"></select>
+          </label>
+          <button id="book-restart" class="btn btn-ghost btn-sm" type="button" hidden>Start from page 1</button>
+          <p id="book-credit" class="book-credit"></p>
         </div>
 
         <form id="typing-form" class="typing-form" autocomplete="off">
@@ -277,6 +286,17 @@
               </div>
             </article>
 
+            <section id="book-panel" class="book-panel" aria-labelledby="book-panel-title" hidden>
+              <h2 id="book-panel-title">Book</h2>
+              <p id="book-panel-byline" class="book-byline"></p>
+              <table class="book-chapters">
+                <caption class="sr-only">Speed by chapter</caption>
+                <thead><tr><th scope="col">chapter</th><th scope="col">pages typed</th><th scope="col">median wpm</th></tr></thead>
+                <tbody id="book-chapter-rows"></tbody>
+              </table>
+              <p id="book-panel-note" class="result-note"></p>
+            </section>
+
             <details class="manual-panel">
               <summary id="manual-heading">Drill something else</summary>
               <form id="manual-target" novalidate>
@@ -310,7 +330,7 @@
 
         <div id="progress-empty" class="empty-state">
           <h2>No practice runs yet.</h2>
-          <p>Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.</p>
+          <p>Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge; book pages show their chapter speeds after each page.</p>
           <button class="btn btn-primary" type="button" data-action="go-practice">Start practicing</button>
         </div>
 
@@ -536,7 +556,7 @@
     <form method="dialog" class="dialog-content">
       <div>
         <h2 id="clear-dialog-title">Clear your practice history?</h2>
-        <p>Runs, drills and comparisons will be removed.</p>
+        <p>Runs, drills, comparisons and your places in books will be removed.</p>
       </div>
       <label for="confirm-clear-input">Type <strong>clear</strong> to confirm
         <input id="confirm-clear-input" class="input" type="text" autocomplete="off">

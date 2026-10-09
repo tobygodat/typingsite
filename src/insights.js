@@ -14,6 +14,8 @@ export function runRecord(attempt, at = attempt.at || null) {
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
     firstDailyAttempt: attempt.firstDailyAttempt,
+    // A book page keeps where it was in the book ({ id, chapter, page }) for per-chapter speed.
+    ...(attempt.book ? { book: attempt.book } : {}),
     // Keep counts and each run's measured median, rather than another keystroke log.
     patterns: evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]),
   };

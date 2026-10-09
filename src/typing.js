@@ -213,10 +213,12 @@ function median(values) {
 
 export function summarizePatterns(attempts, limit = 20, compatibleConditions = null) {
   const key = compatibleConditions ? conditionKey(compatibleConditions) : null;
+  // Kinds that can never be compared (drills, races, book pages) never become evidence either.
   const recent = attempts.filter((attempt) => attempt.status === 'complete'
     && !attempt.interrupted
     && attempt.kind !== 'drill'
     && attempt.kind !== 'race'
+    && attempt.kind !== 'book'
     && (attempt.kind !== 'daily' || attempt.fresh !== false)
     && (!key || conditionKey(attempt.conditions) === key)).slice(-limit);
   const pairs = new Map();
@@ -329,8 +331,8 @@ export function comparable(before, after) {
     && before.metricVersion === after.metricVersion
     && before.textId !== after.textId
     && after.fresh !== false
-    && before.kind !== 'drill'
-    && after.kind !== 'drill'
+    && !['drill', 'book'].includes(before.kind)
+    && !['drill', 'book'].includes(after.kind)
     && !before.interrupted
     && !after.interrupted;
 }
