@@ -53,11 +53,11 @@ export class FakeBoard {
   // 'publish' (and 'share' while sharing) folds the summary in: the stored daily stays unless the new one
   // is for a later day (today's first) or better on the same daily, and within a week the larger
   // practice time and run count stay. 'share' while not sharing starts afresh. 'replace' overwrites it:
-  // clears take effect in the order they arrive, each keeping its id and the time it happened, turned
-  // into the service's time by the gap between when it happened and when it was sent (never later than
-  // now, nor earlier than the clear it follows), and an undo puts back the clear before. A clear or undo
-  // repeated after a lost reply is answered as done: one still the latest (or an undo taken) folds its
-  // numbers in as a publish's are; one overtaken since changes nothing. True when the write was taken (or
+  // a clear takes effect when it happened after the latest one, keeping its id and the time it happened,
+  // turned into the service's time by the gap between when it happened and when it was sent (never later
+  // than now), and an undo puts back the clear before. A clear or undo repeated after a lost reply is
+  // answered as done: one still the latest (or an undo taken) folds its numbers in as a publish's are;
+  // one overtaken since, or a clear that happened before the latest, changes nothing. True when the write was taken (or
   // already was).
   store(caller, action, data) {
     const now = this.now();
@@ -75,7 +75,7 @@ export class FakeBoard {
     }
     if (!shares(old) && action !== 'share') return false;
     // A clear applied before and overtaken since (by a newer clear, or its undo) changes nothing.
-    if (clear && clear.id !== current?.id && (old.seen ?? []).includes(clear.id)) return true;
+    if (clear && clear.id !== current?.id && ((old.seen ?? []).includes(clear.id) || (current && Date.parse(clear.from) < Date.parse(current.from)))) return true;
     const repeat = Boolean(clear && clear.id === current?.id) || (action === 'replace' && !clear && data.undo === old.undone);
     if (!repeat && action === 'replace' && !clear && (data.undo !== current?.id || (data.before ?? null) !== (old.undo?.id ?? null))) return false;
     const next = { sharing: true, clear: current, undo: old.undo ?? null, undone: old.undone ?? null, seen: old.seen ?? [], daily: data.daily || null, week: { ...data.week } };
@@ -92,7 +92,6 @@ export class FakeBoard {
         next.week = { start: old.week.start, seconds: Math.max(old.week.seconds, next.week.seconds), runs: Math.max(old.week.runs, next.week.runs) };
       } else if (ahead(old.week.start, next.week.start, thisWeek)) next.week = { ...old.week };
     } else if (clear) {
-      if (current && Date.parse(current.from) > Date.parse(clear.from)) clear.from = current.from;
       Object.assign(next, { clear, undo: current, undone: null, seen: [clear.id, ...next.seen].slice(0, 20) });
     }
     else if (action === 'replace') Object.assign(next, { clear: old.undo ?? null, undo: null, undone: data.undo });

@@ -1369,6 +1369,146 @@ test('a clear made while an opt-out is unconfirmed goes out after sharing is tur
   await expect(page.locator('#share-board')).toBeChecked();
 });
 
+test('a tab’s own clear goes before a newer one another tab left, so the newer one stays the latest', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await sharing(page, supabase, ada, { runs: practiceThisWeek(3) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  const second = await page.context().newPage();
+  await supabase.attach(second);
+  await openApp(second);
+  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  // The board can't be reached. The first tab clears, then finishes a run; then the second tab, still
+  // holding the old history, clears too, which removes that run as well.
+  supabase.board.missing = true;
+  await clearHistory(page);
+  const [older] = await keptReplaces(page);
+  await openView(page, 'Practice');
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await clearHistory(second);
+  const newer = (await keptReplaces(second)).find((entry) => entry.mine.id !== older.mine.id);
+  await second.waitForTimeout(2000);
+  await second.close();
+  supabase.board.missing = false;
+  // The first tab opens the board: its own clear goes first, then the newer one, so the run stays off.
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect.poll(() => supabase.board.summaries.get(ada.id).clear?.id).toBe(newer.mine.id);
+  await expect(page.locator('#refresh-friends-board')).not.toHaveAttribute('aria-disabled', 'true');
+  expect(supabase.board.summaries.get(ada.id).week.runs).toBe(0);
+  const order = supabase.board.published.filter((entry) => entry.clear?.id).map((entry) => entry.clear.id);
+  expect(order.indexOf(older.mine.id)).toBeLessThan(order.lastIndexOf(newer.mine.id));
+});
+
+test('a clear another tab left is sent from a tab mid-run only once the run is over', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await sharing(page, supabase, ada, { runs: practiceThisWeek(3) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  const second = await page.context().newPage();
+  await supabase.attach(second);
+  await openApp(second);
+  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  // The second tab is in a run when the first clears while the board can't be reached; the second
+  // would pick that clear up five seconds later.
+  const fromSecond = boardActions(second);
+  await chooseWords(second, 10);
+  const text = await passageText(second);
+  await typeInto(second, text.slice(0, 3));
+  supabase.board.missing = true;
+  await clearHistory(page);
+  const [left] = await keptReplaces(page);
+  await page.waitForTimeout(2500);
+  supabase.board.missing = false;
+  await second.waitForTimeout(5000);
+  expect(fromSecond).toEqual([]);
+  expect(supabase.board.summaries.get(ada.id).clear).toBeFalsy();
+  // Once the run is over, it goes.
+  await second.keyboard.type(text.slice(3));
+  await expect(second.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect.poll(() => supabase.board.summaries.get(ada.id).clear?.id).toBe(left.mine.id);
+  expect(fromSecond[0]).toBe('replace');
+});
+
+test('a tab that hears sharing was turned on elsewhere shows it at once and only reads the board', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  befriend(supabase, ada, lin, 'Lin');
+  befriend(supabase, lin, ada, 'Ada');
+  publish(supabase, lin, { wpm: 78, accuracy: 96, attempts: 2 }, 2460, 37);
+  seedProfile(supabase, ada, practiceThisWeek(3));
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  const second = await page.context().newPage();
+  await supabase.attach(second);
+  await openApp(second);
+  await openView(second, 'Challenge');
+  await second.locator('#challenge-friends').click();
+  await expect(second.locator('#friends-board-off')).toBeVisible();
+  // The first tab clears its history while not sharing (the board refuses the clear), then turns sharing
+  // on from the emptied history.
+  await clearHistory(page);
+  await expect.poll(() => supabase.board.refused.at(-1)?.action).toBe('replace');
+  let open;
+  const gate = new Promise((resolve) => { open = resolve; });
+  await second.route(/\/rest\/v1\/rpc\/friends_board$/, async (route) => { await gate; await route.fallback(); });
+  const fromSecond = boardActions(second);
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await page.locator('#share-board').check();
+  await expect(page.locator('#board-week')).toContainText('Lin');
+  // The second tab's switch follows at once, before its read of the board gets through.
+  await expect(second.locator('#share-board')).toBeChecked();
+  await expect(second.locator('#friends-board-off')).toBeHidden();
+  open();
+  await expect(second.locator('#board-week')).toContainText('Lin');
+  // It only read: its older history (three runs) was not published.
+  expect(fromSecond).toContain('board');
+  expect(writes(fromSecond)).toEqual([]);
+  expect(supabase.board.summaries.get(ada.id).week.runs).toBe(0);
+});
+
+test('an opt-out another tab settled while this tab’s own try failed leaves sharing free to turn on again', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  const second = await page.context().newPage();
+  await supabase.attach(second);
+  await openApp(second);
+  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  // The first tab turns sharing off, and its opt-out is held on its way.
+  let land;
+  supabase.board.holdNext = new Promise((resolve) => { land = resolve; });
+  await page.locator('#share-board').uncheck();
+  await expect.poll(() => supabase.board.holdNext === null).toBe(true);
+  // The second tab sends the opt-out too, with a run, and it lands; then the first tab's own try fails.
+  await chooseWords(second, 10);
+  await completePassage(second);
+  await expect.poll(() => supabase.board.summaries.get(ada.id).sharing).toBe(false);
+  supabase.board.missing = true;
+  land();
+  await expect(page.locator('#friends-board-status')).toHaveText('Your row is off the board.');
+  supabase.board.missing = false;
+  // Sharing is turned on again in the second tab. The first tab's next run publishes, and sends no
+  // opt-out that would undo that choice.
+  await openView(second, 'Challenge');
+  await second.locator('#challenge-friends').click();
+  await second.locator('#share-board').check();
+  await expect.poll(() => supabase.board.summaries.get(ada.id).sharing).toBe(true);
+  const fromPage = boardActions(page);
+  await openView(page, 'Practice');
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect.poll(() => fromPage).toContain('publish');
+  expect(fromPage).not.toContain('unshare');
+  expect(supabase.board.summaries.get(ada.id).sharing).toBe(true);
+});
+
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 

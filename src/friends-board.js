@@ -344,13 +344,15 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     return true;
   }
 
-  // The clears and undos kept by other tabs or an earlier load, sent before this tab's own writes, oldest
-  // first and each as this tab would send its own: a clear with the runs since it happened, an undo with
-  // the runs since the clear before it. A failure leaves them kept. False when a reply said the account
-  // doesn't share, which settles everything.
-  async function sendOthers(session, seq) {
+  // The clears and undos kept by other tabs or an earlier load, oldest first and each as this tab would
+  // send its own: a clear with the runs since it happened, an undo with the runs since the clear before it.
+  // With `until`, only those made before it (this tab's own clear, which goes next). A failure leaves them
+  // kept. The last reply; false when one said the account doesn't share, which settles everything.
+  async function sendOthers(session, seq, until = null) {
+    let last;
     for (const { key, text, record } of othersPending(session)) {
       const { id, at } = record.mine;
+      if (until && Date.parse(at) > Date.parse(until)) break;
       let base = record.before;
       let result = null;
       if (record.replacing !== 'undo') {
@@ -372,12 +374,15 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
         setSharing(true);
         note = '';
       }
+      last = result;
     }
-    return true;
+    return last;
   }
 
   // The service's reply, or null when nothing of this tab's went out. An opt-out on this device goes
-  // first, and nothing else until it lands; then what other tabs left. A replace is always sent: another
+  // first, and nothing else until it lands. Clears and undos kept on this device go in the order they
+  // were made: other tabs' older than this tab's own, then its own, then the newer ones; so an older
+  // clear never lands after a newer one with runs the newer one removed. A replace is always sent: another
   // tab or device may have raised the stored summary since this one last sent the same numbers, and a
   // clear or undo must still set it to exactly this tab's. A clear sends the runs since it happened
   // here, however late it goes out; an undo names that clear and the clear before it, and sends the
@@ -393,7 +398,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
       return null;
     }
     const seq = toggles;
-    if (!(await sendOthers(session, seq))) return null;
+    if ((await sendOthers(session, seq, replacing && mine ? mine.at : null)) === false) return null;
     // A clear or undo always has its clear; without one there is nothing to replace, only to publish.
     if (replacing && !mine) replacing = false;
     if (!isSharing() && !replacing) { forget(); return null; }
@@ -447,9 +452,15 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     if (mode === 'clear+undo' && ours && !replacing) { replacing = 'undo'; keep(); return sendChange(session, retried); }
     keep();
     published = key;
-    // A clear the service already had (its reply was lost on the way back) and that a newer clear has
-    // overtaken since: answered as done, so the runs since the newer one go out now.
+    // A clear the service already had (its reply was lost on the way back), or one that happened before
+    // the latest: answered as done, so the runs since the latest go out now.
     if (mode === 'clear' && result?.clear?.id !== sent.id && !retried) return sendChange(session, true);
+    // Clears kept by other tabs and made after this tab's own go now.
+    if (mode) {
+      const later = await sendOthers(session, seq);
+      if (later === false) return null;
+      return later ?? result;
+    }
     return result;
   }
 
@@ -524,7 +535,8 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   // A quiet read (the day check, or one this tab makes by itself) shows no loading line and leaves the
   // status alone if it fails: only opening the board or Refresh reports that.
   // aria-disabled, not disabled, while loading: a disabled button would drop keyboard focus.
-  async function refresh({ manual = false, quiet = false } = {}) {
+  // With `publish: false` it only reads.
+  async function refresh({ manual = false, quiet = false, publish = true } = {}) {
     const session = getSession();
     if (!session) { render(); return; }
     if (!canPublish() && isSharing()) pending = true;
@@ -535,9 +547,9 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     if (!quiet) render(board ? '' : 'Loading the board…');
     try {
       if (optingOut(session)) await removeRow(session);
-      let result = (await publishIfDue(session)) || seen(await readBoard(session));
+      let result = (publish && await publishIfDue(session)) || seen(await readBoard(session));
       // Sharing was turned on elsewhere: this tab's history goes out too.
-      if (learn(result, seq)) result = (await publishIfDue(session)) || result;
+      if (learn(result, seq) && publish) result = (await publishIfDue(session)) || result;
       if (current !== generation || seq !== toggles) return;
       took(result);
       readDay ||= serviceDay();
@@ -651,8 +663,9 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
       render('Your row is off the board.');
     } catch (failure) {
       if (seq !== toggles) return;
-      unsharing = true;
-      render(`${failure.message || 'The board is unavailable.'} Your row comes off once the board can be reached.`);
+      // Another tab may have sent it meanwhile, and settled it.
+      unsharing = optOutPending(session);
+      render(unsharing ? `${failure.message || 'The board is unavailable.'} Your row comes off once the board can be reached.` : 'Your row is off the board.');
     }
   }
 
@@ -685,9 +698,11 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
       note = '';
       if (!value) pause();
       else if (visible) {
-        // Turned on there: this board reads again, so it shows the rows.
+        // Turned on there: the switch shows it at once, and the board reads again (only reads: this tab's
+        // summary goes out with its own next run or Refresh), so it shows the rows.
         board = null;
-        refresh({ quiet: true });
+        render();
+        refresh({ quiet: true, publish: false });
         return;
       }
     } else if (event.key.startsWith(replacePrefix(session))) {
@@ -695,7 +710,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
       // goes from here too.
       if (event.newValue) {
         clearTimeout(pickUp);
-        pickUp = setTimeout(() => { if (canPublish() && othersPending(session).length) publishChange(session).catch(() => {}); }, 5000);
+        pickUp = setTimeout(() => { if (othersPending(session).length) schedulePublish(); }, 5000);
       }
       return;
     } else return;

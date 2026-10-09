@@ -241,23 +241,24 @@ begin
     or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
     raise exception 'An undo overtook a newer clear: %', board;
   end if;
-  -- Clears take effect in the order they arrive: one made half an hour ago and sent only now (it waited
-  -- offline) becomes the latest, but runs still count from the newer clear's time, so nothing it
-  -- removed comes back.
-  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+  -- A clear that happened half an hour ago and is sent only now (it waited offline, or another tab's went
+  -- first) happened before the latest one: it is answered as done and changes nothing, so the runs it
+  -- counts, from before the latest clear, don't come back.
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',600,'runs',10),
     'clear',pg_temp.clearing(g4,clock_timestamp() - interval '30 minutes',clock_timestamp())));
-  if board ? 'refused' or board->'clear'->>'id' is distinct from g4::text or board->'clear'->>'from' is distinct from t2 then
-    raise exception 'A clear sent late moved the time runs count from back: %', board;
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text or board->'clear'->>'from' is distinct from t2
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) then
+    raise exception 'A clear that happened before the latest one changed the row: %', board;
   end if;
   -- The reply names the clear before the latest one, which an undo of it puts back.
-  if board->'undo'->>'id' is distinct from g2::text or board->'undo'->>'from' is distinct from t2 then
+  if board->'undo'->>'id' is distinct from g1::text or board->'undo'->>'from' is distinct from t then
     raise exception 'The reply did not name the clear before the latest: %', board;
   end if;
   -- An undo of the latest clear puts back the numbers it sends and the clear before it, with its time;
   -- repeated after a lost reply, it is answered as done and the same numbers change nothing.
   foreach act in array array['first','repeat'] loop
-    board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g4,'before',g2));
-    if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text or board->'clear'->>'from' is distinct from t2
+    board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g2,'before',g1));
+    if board ? 'refused' or board->'clear'->>'id' is distinct from g1::text or board->'clear'->>'from' is distinct from t
       or board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',97,'attempts',2)
       or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) then
       raise exception 'The % undo did not leave the summary and the clear before it: %', act, board;
@@ -269,8 +270,8 @@ begin
   if board->'clear'->>'id' is distinct from g3::text or (board->'clear'->>'from')::timestamptz > clock_timestamp() then
     raise exception 'A clear was placed in the future: %', board;
   end if;
-  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g3,'before',g2));
-  if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text then raise exception 'Undoing the clear from ahead failed: %', board; end if;
+  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g3,'before',g1));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g1::text then raise exception 'Undoing the clear from ahead failed: %', board; end if;
   -- Another device clears (g5) after this browser last heard from the board, and this browser then clears
   -- (g6) still taking g2 for the clear before. The reply to its clear names g5. An undo that counted its
   -- runs from another clear than g5 (g2, or none) is refused, changing nothing, and the reply names g5

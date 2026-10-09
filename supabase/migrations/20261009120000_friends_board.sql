@@ -15,12 +15,13 @@ create table race_private.summaries (
   user_id uuid primary key references auth.users(id) on delete cascade,
   -- False after turning sharing off: the row is then only a marker, with no numbers.
   sharing boolean not null,
-  -- The latest history clear on any device, in the order clears arrive: an id the clearing browser made,
+  -- The latest history clear on any device, by when it happened: an id the clearing browser made,
   -- and the time runs count from, in the service's time. That is when it cleared, however late the
   -- request arrived: the browser sends when it cleared and when it sent the request, both by its own
   -- clock, and the gap between them is laid back from the service's clock at arrival, so the browser's
-  -- clock being off doesn't matter (only network delay does). Never later than now, nor earlier than the
-  -- clear it follows, so a clear can't bring back runs an earlier one removed. A browser must name it to
+  -- clock being off doesn't matter (only network delay does). Never later than now. A clear that happened
+  -- before the stored one, arriving later, changes nothing, so it can't bring back runs the stored one
+  -- removed. A browser must name it to
   -- share or publish, and counts only runs from then on (converted to the service's time by its own
   -- clock's offset), so a browser that missed a clear can't bring the cleared numbers back.
   clear_id uuid,
@@ -111,7 +112,8 @@ revoke all on function race_private.board_snapshot(uuid) from public, anon, auth
 -- refused while not sharing; the reply ("refused") says what the browser missed. 'replace' overwrites
 -- the numbers while sharing, and is either a history clear ('clear': its id and when it happened) or the
 -- undo of one ('undo': the id it undoes, and 'before': the clear before it that the browser counted its
--- runs from). Clears take effect in the order they arrive, whatever the devices' clocks say; an undo of
+-- runs from). A clear takes effect when it happened after the latest one (whatever the devices' clocks
+-- say), and one that happened before it is answered as done, changing nothing; an undo of
 -- a clear that is no longer the latest is refused, so a newer clear wins, and so is one that counted
 -- from another clear than the one it would put back (the reply names that one). A clear or undo repeated
 -- after a lost reply is answered as done: one still the latest (or an undo taken) folds its numbers in,
@@ -218,9 +220,11 @@ begin
       return race_private.board_snapshot(v_uid) || jsonb_build_object('refused', true);
     end if;
     -- A clear applied before and overtaken since (by a newer clear, or by its undo), repeated after a lost
-    -- reply, is answered as done and changes nothing: its numbers count from before the clear that
-    -- overtook it, so they would bring back runs that one removed.
-    if v_clear_id is not null and v_clear_id is distinct from v_old.clear_id and v_clear_id = any(v_old.seen_clears) then
+    -- reply, or one that happened before the latest clear (it waited offline, or another tab's went
+    -- first), is answered as done and changes nothing: its numbers count from before the latest clear,
+    -- so they would bring back runs that one removed.
+    if v_clear_id is not null and v_clear_id is distinct from v_old.clear_id
+        and (v_clear_id = any(v_old.seen_clears) or coalesce(v_clear_from < v_old.clear_from, false)) then
       return race_private.board_snapshot(v_uid);
     end if;
     -- A clear still the latest, or an undo already taken, repeated after a lost reply, is answered as done.
@@ -269,8 +273,7 @@ begin
       v_new.undo_from := v_old.clear_from;
       v_new.clear_id := v_clear_id;
       v_new.seen_clears := (array[v_clear_id] || v_old.seen_clears)[1:20];
-      -- A clear that arrives after a later one (sent late) can't move the time back past it.
-      v_new.clear_from := greatest(v_old.clear_from, v_clear_from);
+      v_new.clear_from := v_clear_from;
     elsif p_action = 'replace' then
       v_new.clear_id := v_old.undo_id;
       v_new.clear_from := v_old.undo_from;
