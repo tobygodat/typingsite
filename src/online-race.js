@@ -607,6 +607,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     // The race this tab is seated in and still waiting or racing, if any.
     get liveRoomId() { return room && !terminal(room) ? room.id : null; },
     open() { navigate('compete'); setMode('online'); },
+    relayout: () => fx.relayout(),
     onViewChange(view) {
       if (view === 'compete') { renderHome(); if (mode === 'online') { refreshInvites(); loadFriends(); fx.relayout(); } }
       else setRunning(false);

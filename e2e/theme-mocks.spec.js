@@ -52,6 +52,40 @@ test('light mock themes dim the palette with the light backdrop tint, dark mocks
   for (const theme of ['terminal', 'midnight', 'nord']) expect(await backdrop(theme), theme).toBe(dark);
 });
 
+// Every gliding pill should sit exactly under its active control; returns the worst left/width gap in px.
+const pillGap = (page) => page.evaluate(() => Math.max(...[...document.querySelectorAll('.glide')].map((group) => {
+  const target = group.querySelector(group.dataset.glide === 'current' ? ':scope > [aria-current="page"]' : ':scope > [aria-pressed="true"]');
+  if (!target?.offsetWidth) return 0;
+  const pill = group.querySelector(':scope > .glide-pill').getBoundingClientRect();
+  const box = target.getBoundingClientRect();
+  return Math.max(Math.abs(pill.left - box.left), Math.abs(pill.width - box.width));
+})));
+
+// How far the caret is from the left edge of the current letter, and whether it is on that letter's line.
+const caretGap = (page) => page.evaluate(() => {
+  const caret = document.querySelector('#text-display .caret').getBoundingClientRect();
+  const letter = document.querySelector('#text-display .char.current').getBoundingClientRect();
+  const middle = letter.top + letter.height / 2;
+  return { x: Math.abs(caret.left - letter.left), onLine: middle > caret.top && middle < caret.bottom };
+});
+
+test('switching to a theme with other fonts remeasures the pills and the caret mid-run', async ({ page }) => {
+  await openApp(page);
+  await pickTheme(page, 'dark');
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 9));
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+  expect(await pillGap(page)).toBeLessThanOrEqual(1);
+  for (const theme of ['terminal', 'swiss']) {
+    // The settings select's own change handler, without the Escape that would restart the run.
+    await page.locator('#theme-select').evaluate((select, value) => { select.value = value; select.dispatchEvent(new Event('change')); }, theme);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await expect.poll(() => pillGap(page), { message: `${theme} pills` }).toBeLessThanOrEqual(1);
+    await expect.poll(async () => { const gap = await caretGap(page); return gap.onLine && gap.x <= 1; }, { message: `${theme} caret` }).toBe(true);
+  }
+});
+
 test('an unknown stored theme falls back to the system theme', async ({ page }) => {
   await openApp(page);
   await page.locator('#theme-select').evaluate((select) => { select.value = 'neon'; select.dispatchEvent(new Event('change')); });

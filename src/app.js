@@ -240,11 +240,33 @@ function resolvedTheme() {
   return prefersLight.matches ? 'light' : 'dark';
 }
 
+// Every theme change (settings, palette, system scheme, a loaded or adopted profile) comes through here.
 function applyTheme() {
   const theme = resolvedTheme();
+  const changed = document.documentElement.dataset.theme !== theme;
   document.documentElement.dataset.theme = theme;
   document.querySelector('meta[name="theme-color"]').content = THEME_COLOR[theme];
   $('theme-select').value = prefs.theme;
+  if (changed) remeasureWhenFontsLoad();
+}
+
+// Carets, line scroll and gliding pills are all measured from glyph widths.
+function remeasure() {
+  primaryFx.relayout();
+  raceFx.relayout();
+  onlineRace?.relayout();
+  updateGlides({ instant: true });
+}
+
+// A theme can swap the type. Measure now, then again once that theme's faces have loaded, so
+// nothing keeps the old or fallback font's metrics.
+function remeasureWhenFontsLoad() {
+  remeasure();
+  if (!document.fonts) return;
+  const root = getComputedStyle(document.documentElement);
+  const faces = ['--font-serif', '--font-mono'].map((name) => root.getPropertyValue(name).trim()).filter(Boolean)
+    .flatMap((family) => ['400', '500'].map((weight) => document.fonts.load(`${weight} 16px ${family}`).catch(() => [])));
+  Promise.all(faces).then(() => document.fonts.ready).then(remeasure);
 }
 
 // Slides a group's pill under its selected control; used by the dock and the segmented controls.
@@ -2045,7 +2067,7 @@ onlineRace = createOnlineRace({
 });
 updateGlides({ instant: true });
 // Literata arrives after first paint; remeasure everything that depends on glyph widths.
-document.fonts?.ready.then(() => { primaryFx.relayout(); updateGlides({ instant: true }); });
+document.fonts?.ready.then(remeasure);
 console.info('stilltype · ↑ ↑ ↓ ↓ ← → ← → b a');
 
 if (!storageAvailable) announce('Storage is unavailable. Results last only in this tab.');
