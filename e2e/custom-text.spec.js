@@ -78,6 +78,45 @@ test('leaving custom for practice restores the test controls', async ({ page }) 
   await expect(page.locator('#duration-options')).toBeVisible();
 });
 
+async function paletteRun(page, label) {
+  await page.locator('#palette-trigger').click();
+  await page.keyboard.type(label);
+  await page.locator('#palette-list [role="option"]').filter({ hasText: label }).first().click();
+  await expect(page.locator('#palette')).toBeHidden();
+}
+
+test('a word list change keeps a custom passage, from settings or the palette', async ({ page }) => {
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(TEXT);
+  await page.locator('#custom-use').click();
+
+  await openSettings(page);
+  await page.locator('#word-list').selectOption('1k');
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(TEXT);
+  await page.keyboard.press('Escape');
+
+  await paletteRun(page, 'word list · top 5k');
+  await expect(page.locator('#word-list')).toHaveValue('5k');
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(TEXT);
+
+  // From the results of a finished custom run too, and restart test does the same.
+  await typeInto(page, TEXT);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await paletteRun(page, 'word list · top 200');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
+  expect(await passageText(page)).toBe(TEXT);
+  await typeInto(page, TEXT);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await paletteRun(page, 'restart test');
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(TEXT);
+});
+
 test('text too short to time is refused, and a short phrase is accepted', async ({ page }) => {
   await openApp(page);
   await page.locator('#mode-custom').click();

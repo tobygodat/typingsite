@@ -28,7 +28,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { comparableKind, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -757,11 +757,11 @@ function markKeyboardTargets(target) {
   document.querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
 
-// The live readout shows no rate until a second has passed: before that it is noise. Custom text can be short
-// enough to finish inside that second, so its run card follows the same floor. Built-in passages take far
-// longer than a second to type, so their card is unchanged.
+// The live readout shows no rate until a second has passed: before that it is noise. Custom text (any
+// non-comparable kind) can be short enough to finish inside that second, so its run card follows the same
+// floor. Built-in passages take far longer than a second to type, so their card is unchanged.
 const RATE_FLOOR_MS = 1000;
-const rateShown = (completed) => completed.kind !== 'custom' || completed.summary.elapsedMs >= RATE_FLOOR_MS;
+const rateShown = (completed) => comparableKind(completed.kind) || completed.summary.elapsedMs >= RATE_FLOOR_MS;
 
 function updateLive(reset = false) {
   if (!attempt) return;
@@ -806,8 +806,9 @@ function storeAttempt(completed) {
   const score = completed.summary.score;
   const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
   resultBestBefore = profile.bests[key] || null;
-  // A custom passage can run to thousands of characters, so only its summary record is kept, not the keystroke trace.
-  if (completed.kind !== 'custom') profile.attempts.push(completed);
+  // Traces serve baselines and patterns. A custom passage is neither and can run to thousands of characters,
+  // so only its summary record is kept.
+  if (comparableKind(completed.kind)) profile.attempts.push(completed);
   profile.runs.push(runRecord(completed));
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
     profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
@@ -917,8 +918,8 @@ function renderResults(completed, saved) {
   $('skip-to-retest').disabled = !counted || !baselineAttempt;
   // Custom text is never mined for targets or kept as a baseline, so its results offer no drill or retest:
   // the recommendation would come from other runs and the retest would measure a different text.
-  const custom = completed.kind === 'custom';
-  for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = custom;
+  const compared = comparableKind(completed.kind);
+  for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = !compared;
   renderEvidenceList(activeRecommendation.evidence);
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again' : 'Run again';
   renderTraining();
@@ -1054,7 +1055,9 @@ function switchView(view) {
 
 function navigate(view) {
   if (view === 'practice') {
-    if (!attempt || sessionKind !== 'practice' || ['complete', 'interrupted'].includes(attempt.status)) resetSession('practice');
+    // A custom passage that is ready or under way is practice too, so going to Practice keeps it.
+    const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom') && !['complete', 'interrupted'].includes(attempt.status);
+    if (!current) resetSession('practice');
     switchView('practice');
     return;
   }
@@ -2020,11 +2023,19 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession(restartKind());
 }
 
-function setWordList(id) {
+function setWordList(id, kind = restartKind()) {
   prefs.wordList = id;
   applyPreferences();
   saveProfile();
-  resetSession(restartKind(), { focus: true });
+  resetSession(kind, { focus: true });
+}
+
+// A palette command that changes a practice setting restarts the session the user was in, as the settings
+// popover does, even when going to Practice first has ended a finished custom run.
+function inPractice(change) {
+  const kind = restartKind();
+  navigate('practice');
+  change(kind);
 }
 
 function paletteCommands(query) {
@@ -2034,14 +2045,14 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => inPractice((kind) => resetSession(kind, { focus: true })) },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: sessionKind === 'custom' ? 'current' : '', on: sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
-    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
+    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => inPractice((kind) => setWordList(id, kind)) })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
