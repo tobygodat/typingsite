@@ -44,22 +44,30 @@ test('the run card offers a race of your best; the race is labelled, never count
   const original = await completePassage(page);
   const bestCopy = await page.locator('#best').textContent();
   await expect(page.locator('#race-best')).toBeVisible();
+  // The best's passage is often not the one just typed, so the name never says "the same passage".
+  await expect(page.locator('#race-best')).toHaveAttribute('aria-label', /^Race your best, \d+ wpm, on its own passage$/);
 
   await page.locator('#race-best').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
   await expect(page.locator('#session-title')).toHaveText('Race your best');
-  await expect(page.locator('#session-description')).toContainText('The ghost caret replays your');
-  await expect(page.locator('#session-description')).toContainText('Not counted');
-  await expect(page.locator('#condition-line')).toContainText('race your best · repeated text · not counted · english 200 · 10 words');
+  // The caveat is said once on this screen, in the description; the condition line names the text.
+  await expect(page.locator('#session-description')).toHaveText(/^A ghost caret replays your \d+ wpm best from \w+ \d+, keystroke by keystroke\. Not counted\.$/);
+  await expect(page.locator('#condition-line')).toContainText('race your best · repeated text · english 200 · 10 words');
+  await expect(page.locator('#condition-line')).not.toContainText('not counted');
   await expect(page.locator('.practice-controls')).toBeHidden();
   expect(await passageText(page)).toBe(original);
-  await expect(page.locator('#text-display .ghost-caret')).not.toHaveClass(/is-hidden/);
+  const ghost = page.locator('#text-display .ghost-caret');
+  await expect(ghost).not.toHaveClass(/is-hidden/);
+  // Solid, not the pacer's 70%: the light periwinkle at 70% is under 3:1 on paper.
+  await expect(ghost).toHaveCSS('opacity', '1');
 
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText(/^Finished (\d+\.\d s (ahead of|behind)|level with) your best$/);
   await expect(page.locator('#result-comparison-note')).toContainText(/\d+ vs \d+ wpm · \d+% vs \d+% accuracy, same passage and conditions\. Not counted/);
-  await expect(page.locator('#run-card-stamp')).toContainText('race your best · not counted');
-  await expect(page.locator('#result-conditions')).toContainText('not counted');
+  // Said once on results too, in the note beside the headline.
+  await expect(page.locator('#run-card-stamp')).toHaveText(/ · race your best$/);
+  await expect(page.locator('#result-conditions')).toContainText('race your best · repeated text · english 200 · 10 words');
+  await expect(page.locator('#result-conditions')).not.toContainText('not counted');
   await expect(page.locator('#race-best')).toBeHidden();
   await expect(page.locator('#run-again')).toHaveText('Race again');
   await expect(page.locator('#run-again')).toBeFocused();
@@ -81,11 +89,82 @@ test('the run card offers a race of your best; the race is labelled, never count
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
   await expect(page.locator('#typing-input')).toHaveValue('');
   expect(await passageText(page)).toBe(original);
+  // The palette's restart (hint esc) restarts the same race too, rather than dropping to practice.
+  await typeInto(page, original.slice(0, 3));
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('restart test');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
+  await expect(page.locator('#typing-input')).toHaveValue('');
+  await expect(page.locator('#typing-input')).toBeFocused();
+  expect(await passageText(page)).toBe(original);
 
   // Back in practice the race's ghost is gone (a disarmed ghost must not reappear at the start).
   await openView(page, 'Practice');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
   await expect(page.locator('#text-display .ghost-caret')).toHaveClass(/is-hidden/);
+});
+
+test('the palette restart elsewhere goes to practice once, without marking a second passage seen', async ({ page, supabase }) => {
+  const user = supabase.addUser('restart@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  const seen = (await cachedProfile(page, user.id)).seenTextIds.length;
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('restart test');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
+  await expect(page.locator('#typing-input')).toBeFocused();
+  await expect.poll(async () => (await cachedProfile(page, user.id)).seenTextIds.length).toBe(seen + 1);
+});
+
+test('a race at other conditions leaves the drill and retest on the baseline’s conditions', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  // The 25-word run becomes the baseline for the drill and retest.
+  await page.locator('#run-again').click();
+  await chooseWords(page, 25);
+  await completePassage(page);
+  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 25-word retest.');
+
+  await openView(page, 'Progress');
+  const key = await page.locator('#progress-conditions option').evaluateAll((options) => options.find((o) => o.textContent.includes('10 words')).value);
+  await page.locator('#progress-conditions').selectOption(key);
+  await page.locator('#progress-race-start').click();
+  await expect(page.locator('#condition-line')).toContainText('10 words');
+  await completePassage(page);
+  await expect(page.locator('#result-delta')).toHaveText(/your best$/);
+  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 25-word retest.');
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await expect(page.locator('#condition-line')).toContainText('25 words');
+});
+
+test('an unavailable notice stacks above the history Undo instead of covering it', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(page.locator('#undo-clear')).toBeFocused();
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('race your best');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#race-toast')).toBeVisible();
+  await expect(page.locator('#history-toast')).toBeVisible();
+  const covered = await page.locator('#undo-clear').evaluate((button) => {
+    const box = button.getBoundingClientRect();
+    return !button.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+  });
+  expect(covered).toBe(false);
+  const [race, history] = await Promise.all([page.locator('#race-toast').boundingBox(), page.locator('#history-toast').boundingBox()]);
+  expect(race.y + race.height).toBeLessThanOrEqual(history.y);
 });
 
 test('the ghost replays the recorded best keystroke by keystroke and only a summary is kept', async ({ page, supabase }) => {
@@ -203,6 +282,26 @@ test('an interrupted race is not compared with the best', async ({ page }) => {
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
   await expect(page.locator('#result-comparison-note')).not.toContainText(' vs ');
+});
+
+test.describe('touch phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('a race started by a tap is touch input, so a touch best is compared', async ({ page }) => {
+    await openApp(page);
+    await chooseWords(page, 10);
+    await page.locator('#typing-input').tap();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await typeInto(page, await passageText(page));
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+    await expect(page.locator('#result-conditions')).toContainText('touch input');
+    await page.locator('#race-best').tap();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await typeInto(page, await passageText(page));
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+    await expect(page.locator('#result-delta')).toHaveText(/^Finished .*your best$/);
+  });
 });
 
 test.describe('narrow phone', () => {

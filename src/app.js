@@ -192,7 +192,7 @@ function describeConditions(value = conditions()) {
 
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
-  if (run.kind === GHOST_RACE) return `race your best · repeated text · not counted · ${describeConditions(run.conditions)}`;
+  if (run.kind === GHOST_RACE) return `race your best · repeated text · ${describeConditions(run.conditions)}`;
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
   return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
@@ -827,7 +827,7 @@ const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', '
 // Draw after the results view is shown so the graph has its size.
 function renderCard(completed) {
   lastCompleted = completed;
-  const kind = { test: 'practice', [GHOST_RACE]: 'race your best · not counted' }[completed.kind] || completed.kind;
+  const kind = { test: 'practice', [GHOST_RACE]: 'race your best' }[completed.kind] || completed.kind;
   const at = new Date();
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
@@ -872,15 +872,17 @@ function renderResults(completed, saved) {
     saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
   ].filter(Boolean).join(' ');
 
-  // A race adds no evidence (repeated text), so its recommendation is the one from your real runs.
+  // A race adds no evidence (repeated text) and leaves the training loop as it was: the drill and
+  // retest stay on the baseline's conditions, whichever best was raced.
+  const trainingSource = sessionKind === GHOST_RACE && baselineAttempt ? baselineAttempt.conditions : completed.conditions;
   if (sessionKind === 'practice' || sessionKind === 'daily' || sessionKind === GHOST_RACE) {
-    activeRecommendation = trainingRecommendation(completed.conditions);
+    activeRecommendation = trainingRecommendation(trainingSource);
     selectedTarget = activeRecommendation.target;
   }
   $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
   $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
-    ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
+    ? `About 1 min, then a fresh ${retestLength(trainingSource)} retest.`
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
   $('start-drill').disabled = !counted;
   $('skip-to-retest').disabled = !counted || !baselineAttempt;
@@ -1274,19 +1276,22 @@ function racePassage() {
     corpus: trace.conditions.corpus, fresh: false, exhausted: false };
 }
 
-// The best's conditions, with the input class detected afresh (touch is never compared with keys).
+// The best's conditions, with the input class of the tap or click that started the race (touch is
+// never compared with keys). A tap on the passage still marks a ready race as touch.
 function raceConditions() {
-  return { ...raceTarget.trace.conditions, inputClass: 'physical-keyboard' };
+  return { ...raceTarget.trace.conditions, inputClass: raceTarget.inputClass };
 }
+
+const startedBy = (event) => (event?.pointerType === 'touch' ? 'touch' : 'physical-keyboard');
 
 function raceDescription() {
   if (!raceTarget) return '';
   const { best } = raceTarget;
   const when = best.at ? ` from ${new Date(best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '';
   const ghost = reducedMotion.matches
-    ? `Your ${best.wpm} wpm best${when}, on the same passage. Reduced motion is on, so its ghost stays hidden; the finish is still compared.`
-    : `The ghost caret replays your ${best.wpm} wpm best${when} on the same passage, keystroke by keystroke.`;
-  return `${ghost} Not counted: you’ve typed this text before.`;
+    ? `Your ${best.wpm} wpm best${when}. Reduced motion is on, so its ghost stays hidden; the finish is still compared.`
+    : `A ghost caret replays your ${best.wpm} wpm best${when}, keystroke by keystroke.`;
+  return `${ghost} Not counted.`;
 }
 
 function raceUnavailableReason(option) {
@@ -1303,13 +1308,15 @@ function raceUnavailableCopy(option) {
 
 function showRaceNotice(message) {
   $('race-feedback').textContent = message;
+  // Stack above the history Undo or account toast instead of covering it.
+  $('race-toast').classList.toggle('is-raised', !$('history-toast').hidden || !$('account-toast').hidden);
   $('race-toast').hidden = false;
   clearTimeout(showRaceNotice.timer);
   showRaceNotice.timer = setTimeout(() => { $('race-toast').hidden = true; }, 6000);
   announce(message);
 }
 
-function startRaceBest(key) {
+function startRaceBest(key, inputClass = 'physical-keyboard') {
   const option = raceableBest(profile, key);
   if (!option.available) {
     showRaceNotice(raceUnavailableCopy(option));
@@ -1318,7 +1325,7 @@ function startRaceBest(key) {
   if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { advance: false }); }
   if (race.attempt?.status === 'running') markRaceInterrupted();
   $('race-toast').hidden = true;
-  raceTarget = { key, best: option.best, trace: option.trace, track: ghostTrack(option.trace) };
+  raceTarget = { key, best: option.best, trace: option.trace, track: ghostTrack(option.trace), inputClass };
   restoreConditions(option.trace.conditions);
   return resetSession(GHOST_RACE, { focus: true });
 }
@@ -1328,7 +1335,7 @@ function startRaceBest(key) {
 function renderRaceOffer(completed) {
   const option = ['test', 'retest'].includes(completed?.kind) ? raceableBest(profile, conditionKey(completed.conditions)) : null;
   $('race-best').hidden = !option?.available;
-  if (option?.available) $('race-best').setAttribute('aria-label', `Race your best, ${option.best.wpm} wpm, on the same passage`);
+  if (option?.available) $('race-best').setAttribute('aria-label', `Race your best, ${option.best.wpm} wpm, on its own passage`);
 }
 
 function renderProgressRace(key) {
@@ -1888,13 +1895,13 @@ function bindEvents() {
     }
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
-  $('run-again').addEventListener('click', () => {
+  $('run-again').addEventListener('click', (event) => {
     if (sessionKind === 'daily') startDaily();
-    else if (sessionKind === GHOST_RACE) startRaceBest(raceTarget?.key);
+    else if (sessionKind === GHOST_RACE) startRaceBest(raceTarget?.key, startedBy(event));
     else resetSession('practice', { focus: true });
   });
-  $('race-best').addEventListener('click', () => startRaceBest(lastCompleted ? conditionKey(lastCompleted.conditions) : null));
-  $('progress-race-start').addEventListener('click', () => startRaceBest($('progress-conditions').value));
+  $('race-best').addEventListener('click', (event) => startRaceBest(lastCompleted ? conditionKey(lastCompleted.conditions) : null, startedBy(event)));
+  $('progress-race-start').addEventListener('click', (event) => startRaceBest($('progress-conditions').value, startedBy(event)));
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
@@ -2036,7 +2043,12 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
+    // On the typing screen this restarts in place, as Esc does (a drill or race restarts as itself).
+    // Elsewhere it goes to practice, which resets only when it must, so no passage is marked seen twice.
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => {
+      if (document.body.dataset.view === 'practice') resetSession(sessionKind, { focus: true });
+      else { navigate('practice'); $('typing-input').focus({ preventScroll: true }); }
+    } },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     { group: 'test', label: 'race your best', keywords: 'ghost replay recorded personal best beat same passage', hint: raceable.available ? `${raceable.best.wpm} wpm` : 'unavailable', run: () => startRaceBest(raceKey) },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),

@@ -19,9 +19,17 @@ export function runRecord(attempt, at = attempt.at || null) {
   };
 }
 
+// Pattern counts stay on the newest MAX_PATTERN_RUNS summaries that carry any, so drills, races of
+// your best and interrupted runs (which carry none) never push real evidence out of that window.
 export function retainRuns(runs) {
   const kept = runs.slice(-MAX_RUN_SUMMARIES);
-  return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS ? { ...run, patterns: [] } : run);
+  let withPatterns = 0;
+  for (let i = kept.length - 1; i >= 0; i -= 1) {
+    if (!kept[i].patterns?.length) continue;
+    withPatterns += 1;
+    if (withPatterns > MAX_PATTERN_RUNS) kept[i] = { ...kept[i], patterns: [] };
+  }
+  return kept;
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;

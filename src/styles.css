@@ -1021,6 +1021,8 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   background: var(--ghost);
 }
 
+/* A raced best is the race's main indicator, so it is drawn solid: 70% periwinkle is under 3:1 on paper. */
+.ghost-caret.is-recorded { opacity: 1; }
 .ghost-caret.is-hidden { opacity: 0; }
 
 #typing-input,
@@ -1833,6 +1835,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .egg-toast { padding-right: 20px; bottom: calc(var(--space-6) + 64px); }
 .race-toast { width: max-content; max-width: min(560px, calc(100% - 32px)); padding-right: 20px; }
 .race-toast .status-dot { color: var(--muted); }
+/* Above the history Undo or account toast when one is showing, as the pacer's toast stacks. */
+.race-toast.is-raised { bottom: calc(var(--space-6) + 64px); }
 
 /* A race challenge drops in under the corner buttons, then leaves after TOAST_MS in src/inbox.js. */
 .challenge-toast {
@@ -1955,7 +1959,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .input-action { flex-direction: column; }
   .toast { bottom: 90px; }
   .toast.challenge-toast { top: calc(var(--space-3) + var(--control) + var(--space-2)); right: var(--space-4); bottom: auto; left: var(--space-4); max-width: none; }
-  .egg-toast, .egg-toast.is-solo { bottom: 150px; }
+  .egg-toast, .egg-toast.is-solo, .race-toast.is-raised { bottom: 150px; }
   .handoff-veil { font-size: 26px; }
 }
 

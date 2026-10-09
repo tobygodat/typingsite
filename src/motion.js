@@ -203,18 +203,21 @@ export function createTypingFx(wrap, display, options = {}) {
         ghost.cps = cps;
         ghost.track = null;
         ghost.index = -1;
+        ghostCaret.classList.remove('is-recorded');
         ghostCaret.classList.toggle('is-hidden', !ghost.armed);
         if (ghost.armed) placeGhost(0);
         else stopGhost();
       },
       // A recorded ghost: track.at(ms) is its caret position that long after the first keystroke.
-      // It steps letter to letter with no easing. Like the pacer it stays still under reduced
-      // motion, so there it is hidden rather than left standing at the start.
+      // It steps letter to letter with no easing and is drawn at full opacity (3:1 on both grounds).
+      // Under reduced motion it couldn't move, so it is hidden there (the pacer instead stands still
+      // at the start).
       follow(track) {
         ghost.armed = Boolean(track) && !reducedMotion.matches;
         ghost.cps = 0;
         ghost.track = ghost.armed ? track : null;
         ghost.index = -1;
+        ghostCaret.classList.toggle('is-recorded', ghost.armed);
         ghostCaret.classList.toggle('is-hidden', !ghost.armed);
         if (ghost.armed) placeGhost(0);
         else stopGhost();

@@ -52,6 +52,16 @@ test('run summaries outlive trace retention, while pattern memory stays bounded'
   assert.equal(kept[0].score.wpm, 60);
 });
 
+test('runs without pattern counts (drills, races of your best) never push real evidence out', () => {
+  const real = [run('a'), run('b'), run('c')];
+  const races = Array.from({ length: 119 }, (_, i) => run(`race-${i}`, { kind: 'ghost-race', fresh: false, patterns: [] }));
+  const kept = retainRuns([...real, ...races]);
+  assert.deepEqual(kept.slice(0, 3).map((r) => r.patterns.length), [1, 1, 1]);
+  assert.equal(recurringTargets(kept, [], conditions)[0].runs, 3);
+  // The window still holds at most 120 runs with counts.
+  assert.equal(retainRuns([...real, ...Array.from({ length: 120 }, (_, i) => run(`n-${i}`))]).filter((r) => r.patterns.length).length, 120);
+});
+
 test('daily passage is stable within a UTC day, changes at midnight, and states its reset', () => {
   const morning = dailyPassage(new Date('2026-09-30T00:00:00Z'));
   const night = dailyPassage(new Date('2026-09-30T23:59:59Z'));

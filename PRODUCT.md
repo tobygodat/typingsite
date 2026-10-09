@@ -47,7 +47,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 - Condition-aware personal bests, guarded history deletion with immediate undo, explicit insufficient-evidence and interrupted states.
 - Race your best: the best for a set of conditions, on its exact text, with a ghost caret replaying its recorded keystrokes while its trace is still kept (otherwise the app says why). Repeated text, so it is labelled not counted and never becomes a best, a trend point, a fresh comparison or pattern evidence. The result states the gap to the best beside both wpm and accuracy.
 - Native HTML/CSS/JS modules with no runtime dependencies. `npm run dev` serves on :5173; `npm test` runs the engine checks. Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono are self-hosted in `src/fonts/`.
-- Signed-in retention: newest 24 full attempt traces, 1,000 compact run summaries and pattern counts on the newest 120 summaries; comparison summaries remain until cleared. Clear/Undo includes daily history. Guests retain everything only in memory for the tab. Older records keep unknown dates and missing score snapshots explicit.
+- Signed-in retention: newest 24 full attempt traces, 1,000 compact run summaries and pattern counts on the newest 120 summaries that carry any; comparison summaries remain until cleared. Clear/Undo includes daily history. Guests retain everything only in memory for the tab. Older records keep unknown dates and missing score snapshots explicit.
 - `src/typing.js` owns corpus selection, scoring, replay and pattern evidence; `src/app.js` owns UI orchestration and local persistence.
 
 **Metric contract** (versioned before any data collection):
