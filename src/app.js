@@ -130,6 +130,7 @@ let selectedTarget = null;
 let trainingContext = null;
 let resultBestBefore = null;
 let resultPassageBefore = null;
+let displayedIds = null;
 let clearSnapshot = null;
 let clearTimer = null;
 
@@ -521,14 +522,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     }
     return false;
   }
-  if (kind !== 'drill' && passage.id && !profile.seenTextIds.includes(passage.id)) {
-    profile.seenTextIds.push(passage.id);
-    saveProfile();
-  }
-  if (kind === 'daily' && !profile.seenTextIds.includes(passage.challengeId)) {
-    profile.seenTextIds.push(passage.challengeId);
-    saveProfile();
-  }
+  if (kind !== 'drill') recordSeenOnDisplay([passage.id, kind === 'daily' ? passage.challengeId : null]);
   attempt = createAttempt({
     id: uid(),
     text: passage.text,
@@ -561,6 +555,22 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   switchView('practice');
   if (focus) $('typing-input').focus({ preventScroll: true });
   return true;
+}
+
+// Seen IDs are recorded when a passage is displayed: once the task that rendered it ends, before any
+// paint or keystroke. A reset replaced by another in the same task (navigate's own, then a command's)
+// never reaches the screen, so it can't use up an unseen quote; only the passage left showing counts.
+function recordSeenOnDisplay(ids) {
+  if (!displayedIds) {
+    queueMicrotask(() => {
+      const unseen = displayedIds.filter((id) => id && !profile.seenTextIds.includes(id));
+      displayedIds = null;
+      if (!unseen.length) return;
+      profile.seenTextIds.push(...unseen);
+      saveProfile();
+    });
+  }
+  displayedIds = ids;
 }
 
 function showUnavailableRetest(reason) {

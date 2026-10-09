@@ -144,6 +144,37 @@ test('on: a seen quote can return to chase its score, but never sets a best, a b
   expect(await passageText(page)).not.toBe(quote);
 });
 
+// The palette's restart navigates to Practice (which swaps the stale repeat) and then restarts. Only the
+// passage left showing is recorded as seen, so the swap in between doesn't use up an unseen quote.
+test('off from another view, the palette restart swaps a queued repeat for fresh text and uses up one quote', async ({ page }) => {
+  await openApp(page);
+  const quote = await shortGentleQuotes(page);
+  await setRepeats(page, true);
+  await page.keyboard.press('Escape');
+  await page.locator('#restart-button').click();
+  expect(await passageText(page)).toBe(quote);
+  await expect(page.locator('#input-help')).toHaveText('Repeated text · doesn’t count toward your best.');
+
+  await openView(page, 'Progress');
+  await setRepeats(page, false);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('restart test');
+  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('restart test');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#input-help')).toHaveText('');
+  const swapped = await passageText(page);
+  expect(swapped).not.toBe(quote);
+
+  // Two of the three short gentle quotes are used, so exactly one unseen quote is left before the pool runs out.
+  await page.locator('#restart-button').click();
+  await expect(page.locator('#input-help')).toHaveText('');
+  expect([quote, swapped]).not.toContain(await passageText(page));
+  await page.locator('#restart-button').click();
+  await expect(page.locator('#input-help')).toHaveText('You’ve seen every matching quote. Repeated text doesn’t count toward your best.');
+});
+
 test('a daily repeat attempt is repeated text too, so it is never a retest baseline', async ({ page }) => {
   await openApp(page);
   await openView(page, 'Challenge');
