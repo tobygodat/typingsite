@@ -2130,7 +2130,11 @@ function bindEvents() {
       showInputNotice('primary', NOTICES.composition, { sticky: true });
     }
   });
-  $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
+  // Restarting focuses the input, so a tap here opens the soft keyboard: a lesson takes the tap's input class.
+  $('restart-button').addEventListener('click', (event) => {
+    if (sessionKind === 'lesson') lessonInputClass = startedBy(event);
+    resetSession(sessionKind, { focus: true });
+  });
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
@@ -2324,7 +2328,8 @@ function bindPalette() {
 }
 
 // ↑ ↑ ↓ ↓ ← → ← → b a, or "ghost" in the palette: a pacer caret at your best pace for these conditions.
-function toggleGhost() {
+// `event` is the palette's tap or key; the typed sequence passes none and a lesson keeps its input class.
+function toggleGhost(event) {
   ghostOn = !ghostOn;
   document.body.dataset.ghost = ghostOn ? 'on' : 'off';
   const pace = ghostPace();
@@ -2335,8 +2340,10 @@ function toggleGhost() {
   clearTimeout(toggleGhost.timer);
   toggleGhost.timer = setTimeout(() => { $('egg-toast').hidden = true; }, 3000);
   announce(message);
-  if (document.body.dataset.view === 'practice' && sessionKind !== 'retest') resetSession(sessionKind, { focus: true });
-  else primaryFx.ghost.arm(ghostOn ? pace.cps : 0);
+  if (document.body.dataset.view === 'practice' && sessionKind !== 'retest') {
+    if (event && sessionKind === 'lesson') lessonInputClass = startedBy(event);
+    resetSession(sessionKind, { focus: true });
+  } else primaryFx.ghost.arm(ghostOn ? pace.cps : 0);
 }
 
 listenForSequence(toggleGhost);

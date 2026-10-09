@@ -278,6 +278,21 @@ test.describe('on a touch screen', () => {
     await rows.first().getByRole('button').tap();
     await expect(page.locator('#condition-line')).toContainText('touch input');
   });
+
+  test('a tap on restart turns a keyboard-started lesson into touch input', async ({ page }) => {
+    await openApp(page);
+    await openLessons(page);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    await page.locator('#restart-button').tap();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await typeLesson(page);
+    await expect(page.locator('#lesson-status')).toHaveText('touch input');
+    const rows = page.locator('#lesson-list .lesson-row');
+    await expect(rows.first().locator('.lesson-row-numbers')).toContainText('touch input');
+    await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
+  });
 });
 
 test('clearing history replaces a lesson it locks, and a restart never starts a locked lesson', async ({ page }) => {
