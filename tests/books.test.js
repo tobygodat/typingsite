@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { stat } from 'node:fs/promises';
-import { BOOKS, BOOK_CREDIT, BOOK_VERSION, PAGE_WORDS, bookPlace, chapterSpeeds, loadBookTexts, openBook, paginate } from '../src/books.js';
+import { BOOKS, BOOK_CREDIT, BOOK_VERSION, PAGE_WORDS, bookPlace, chapterName, chapterSpeeds, loadBookTexts, openBook, paginate, placeAt } from '../src/books.js';
 import { CORPUS_VERSION, METRIC_VERSION, comparable, conditionKey, recommendTarget, summarizePatterns } from '../src/typing.js';
-import { recurringTargets, runRecord, trendRun } from '../src/insights.js';
+import { MAX_PATTERN_RUNS, recurringTargets, retainRuns, runRecord, trendRun } from '../src/insights.js';
 import { normalise } from '../scripts/build-book-texts.mjs';
 
 const texts = await loadBookTexts();
@@ -54,14 +54,23 @@ test('pagination is deterministic and prefers paragraph and sentence ends', () =
   assert.ok(bennet[0].endsWith('said Mr. Bennet.'));
 });
 
-test('the place in a book is clamped, and starts at page 1 for anything unknown', () => {
+test('the place in a book is clamped, and starts at page 1 for anything unknown or from another text version', () => {
+  assert.deepEqual(placeAt(3), { page: 3, version: BOOK_VERSION });
   assert.equal(bookPlace({}, 'alice', 10), 0);
-  assert.equal(bookPlace({ alice: { page: 3 } }, 'alice', 10), 3);
-  assert.equal(bookPlace({ alice: { page: 30 } }, 'alice', 10), 10);
-  assert.equal(bookPlace({ alice: { page: -2 } }, 'alice', 10), 0);
-  assert.equal(bookPlace({ alice: { page: 1.5 } }, 'alice', 10), 0);
-  assert.equal(bookPlace({ alice: { page: '4' } }, 'alice', 10), 0);
+  assert.equal(bookPlace({ alice: placeAt(3) }, 'alice', 10), 3);
+  assert.equal(bookPlace({ alice: placeAt(30) }, 'alice', 10), 10);
+  assert.equal(bookPlace({ alice: placeAt(-2) }, 'alice', 10), 0);
+  assert.equal(bookPlace({ alice: placeAt(1.5) }, 'alice', 10), 0);
+  assert.equal(bookPlace({ alice: placeAt('4') }, 'alice', 10), 0);
   assert.equal(bookPlace(undefined, 'alice', 10), 0);
+  // A re-paginated text would put the same index in a different passage.
+  assert.equal(bookPlace({ alice: { page: 3 } }, 'alice', 10), 0);
+  assert.equal(bookPlace({ alice: { page: 3, version: 'gutenberg-en-v0' } }, 'alice', 10), 0);
+});
+
+test('page and chapter labels only break after a separator', () => {
+  assert.equal(chapterName({ label: 'Chapter I', title: 'Down the Rabbit-Hole' }), 'Chapter I\u00a0· Down the Rabbit-Hole');
+  assert.equal(chapterName({ label: 'Letter 1', title: '' }), 'Letter 1');
 });
 
 test('chapter speed is the median of the latest counted run on each page, at one exact condition', () => {
@@ -109,6 +118,27 @@ test('a book page is its own condition: never a best key, a trend, a comparison 
   assert.equal(records.some(trendRun), false);
   assert.deepEqual(recurringTargets(records, [], bookConditions), []);
   assert.equal('book' in runRecord(attempt('t', 'test', 'a')), false);
+});
+
+test('a long read never pushes practice evidence out of the bounded pattern memory', () => {
+  const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
+    inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+  const test = (i) => ({ id: `t${i}`, at: `2026-10-01T12:${String(i).padStart(2, '0')}:00Z`, kind: 'test', status: 'complete', interrupted: false,
+    conditions: practice, score: { wpm: 60, accuracy: 97 }, patterns: [['th', 8, 1, 10, 140, 20]] });
+  const page = (i) => ({ id: `b${i}`, at: '2026-10-02T12:00:00Z', kind: 'book', status: 'complete', interrupted: false,
+    conditions: bookConditions, book: { id: 'alice', chapter: 0, page: i }, score: { wpm: 70, accuracy: 98 }, patterns: [] });
+  let runs = [];
+  for (let i = 0; i < 10; i += 1) runs = retainRuns([...runs, test(i)]);
+  const before = recurringTargets(runs, [], practice);
+  assert.equal(before[0].pair, 'th');
+  // Every page saves through retainRuns, as saveProfile does.
+  for (let i = 0; i < MAX_PATTERN_RUNS + 30; i += 1) runs = retainRuns([...runs, page(i)]);
+  assert.equal(runs.filter((run) => run.kind === 'test' && run.patterns.length).length, 10);
+  assert.deepEqual(recurringTargets(runs, [], practice), before);
+  // Practice runs still share the window with each other: the oldest beyond it lose their counts.
+  for (let i = 10; i < MAX_PATTERN_RUNS + 5; i += 1) runs = retainRuns([...runs, test(i)]);
+  assert.equal(runs.filter((run) => run.kind === 'test' && run.patterns.length).length, MAX_PATTERN_RUNS);
+  assert.deepEqual(runs.filter((run) => run.kind === 'test' && !run.patterns.length).map((run) => run.id), ['t0', 't1', 't2', 't3', 't4']);
 });
 
 test('normalising Gutenberg text keeps the words and makes them typable', () => {

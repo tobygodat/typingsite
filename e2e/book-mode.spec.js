@@ -4,6 +4,9 @@ import { mkdirSync } from 'node:fs';
 import { test, expect, openApp, passageText, typeInto, completePassage, openView, signInWithEmail, storageKeys } from './fixtures.js';
 
 const description = (page) => page.locator('#session-description');
+// Page labels hold non-breaking spaces (a phone line breaks only after a "·"), and a regex sees
+// them as \s, not as ' '.
+const label = (source) => new RegExp(source.replaceAll(' ', '\\s'));
 
 async function openBookMode(page) {
   await page.locator('#mode-book').click();
@@ -26,7 +29,7 @@ test('book mode loads its text on demand and types page by page, keeping the pla
 
   await openBookMode(page);
   expect(textRequests).toHaveLength(1);
-  await expect(description(page)).toHaveText(/^Chapter I · Down the Rabbit-Hole · page 1 of \d+$/);
+  await expect(description(page)).toHaveText(label('^Chapter I · Down the Rabbit-Hole · page 1 of \\d+$'));
   await expect(page.locator('#book-credit')).toHaveText('Text from Project Gutenberg; public domain in the US');
   await expect(page.locator('#condition-line')).toHaveText('english · book · physical keyboard · continue on error · gutenberg v1 · metric v1');
   await expect(page.locator('#duration-options')).toBeHidden();
@@ -37,7 +40,7 @@ test('book mode loads its text on demand and types page by page, keeping the pla
   expect(first).toMatch(/^[\x20-\x7e]+$/);
 
   await completePassage(page);
-  await expect(page.locator('#result-delta')).toHaveText(/^Page 1 of \d+ · Chapter I$/);
+  await expect(page.locator('#result-delta')).toHaveText(label('^Page 1 of \\d+ · Chapter I$'));
   await expect(page.locator('#result-comparison-note')).toHaveText('Book pages don’t count toward your best, retests or training patterns.');
   await expect(page.locator('#run-card-stamp')).toContainText('· book');
   await expect(page.locator('#result-conditions')).toContainText('alice in wonderland · chapter i · page 1 of');
@@ -45,6 +48,8 @@ test('book mode loads its text on demand and types page by page, keeping the pla
   await expect(page.locator('#run-again')).toHaveText('Next page');
   await expect(page.locator('#start-drill')).toBeHidden();
   await expect(page.locator('#skip-to-retest')).toBeHidden();
+  // A drill from here would carry the book's conditions; Next page is the one action.
+  await expect(page.locator('.manual-panel')).toBeHidden();
   await expect(page.locator('#results-screen .btn-primary:visible')).toHaveCount(1);
   await expect(page.locator('#book-panel-title')).toHaveText('Alice’s Adventures in Wonderland');
   await expect(page.locator('#book-panel-byline')).toHaveText('Lewis Carroll · Text from Project Gutenberg; public domain in the US');
@@ -57,7 +62,7 @@ test('book mode loads its text on demand and types page by page, keeping the pla
   await expect(rows.nth(1).locator('td').nth(1)).toHaveText('—');
 
   await page.keyboard.press('Enter');
-  await expect(description(page)).toHaveText(/page 2 of/);
+  await expect(description(page)).toHaveText(label('page 2 of'));
   const second = await passageText(page);
   expect(second).not.toBe(first);
   expect(first.endsWith('conversations?"') && second.startsWith('So she was considering')).toBe(true);
@@ -65,15 +70,15 @@ test('book mode loads its text on demand and types page by page, keeping the pla
   // Esc restarts the same page; nothing moves on until a page is finished.
   await typeInto(page, second.slice(0, 5));
   await page.keyboard.press('Escape');
-  await expect(description(page)).toHaveText(/page 2 of/);
+  await expect(description(page)).toHaveText(label('page 2 of'));
   await expect(page.locator('#typing-input')).toHaveValue('');
 
   // Each book has its own place.
   await page.locator('#book-select').selectOption('pride');
   await expect(page.locator('#session-title')).toHaveText('Pride and Prejudice');
-  await expect(description(page)).toHaveText(/^Chapter I · page 1 of \d+$/);
+  await expect(description(page)).toHaveText(label('^Chapter I · page 1 of \\d+$'));
   await page.locator('#book-select').selectOption('alice');
-  await expect(description(page)).toHaveText(/page 2 of/);
+  await expect(description(page)).toHaveText(label('page 2 of'));
 
   // Book pages are not practice runs.
   await openView(page, 'Progress');
@@ -102,14 +107,14 @@ test('an interrupted page is not counted and is offered again', async ({ page })
   await expect(page.locator('#run-again')).toHaveText('Try this page again');
   await expect(page.locator('#book-chapter-rows tr').nth(0).locator('td').nth(0)).toHaveText(/^0 \//);
   await page.locator('#run-again').click();
-  await expect(description(page)).toHaveText(/page 1 of/);
+  await expect(description(page)).toHaveText(label('page 1 of'));
   expect(await passageText(page)).toBe(text);
 });
 
 test('the palette opens a book, and a signed-in place survives reloads to the end of the book', async ({ page, supabase }) => {
   const user = supabase.addUser('reader@stilltype.test');
   // Two pages from the end of Pride and Prejudice's two included chapters.
-  supabase.profiles.set(user.id, { data: { version: 2, preferences: { mode: 'time' }, books: { pride: { page: 28 } }, updatedAt: '2026-10-01T00:00:00.000Z' }, updated_at: '2026-10-01T00:00:00.000Z' });
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { mode: 'time' }, books: { pride: { page: 28, version: 'gutenberg-en-v1' } }, updatedAt: '2026-10-01T00:00:00.000Z' }, updated_at: '2026-10-01T00:00:00.000Z' });
   await openApp(page);
   await signInWithEmail(page, 'reader@stilltype.test');
 
@@ -137,8 +142,65 @@ test('the palette opens a book, and a signed-in place survives reloads to the en
   await expect(page.locator('#text-display')).toHaveText('You’ve typed every included page of Pride and Prejudice.');
   await expect(page.locator('#typing-input')).toBeDisabled();
   await page.locator('#book-restart').click();
-  await expect(description(page)).toHaveText(/^Chapter I · page 1 of 15$/);
+  await expect(description(page)).toHaveText(label('^Chapter I · page 1 of 15$'));
   await expect(page.locator('#typing-input')).toBeFocused();
+});
+
+test('Next page stays with its book after the mode or the book changes', async ({ page }) => {
+  await openApp(page);
+  await openBookMode(page);
+  await completePassage(page);
+  await expect(page.locator('#run-again')).toHaveText('Next page');
+  await openView(page, 'Practice');
+  await page.locator('#mode-time').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
+  await openView(page, 'Train');
+  await expect(page.locator('#run-again')).toHaveText('Next page');
+  await page.locator('#run-again').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'book');
+  await expect(page.locator('#mode-book')).toHaveAttribute('aria-pressed', 'true');
+  await expect(description(page)).toHaveText(label('^Chapter I · Down the Rabbit-Hole · page 2 of \\d+$'));
+
+  // Choosing another book in between doesn't move Next page under Alice's table to that book.
+  await completePassage(page);
+  await openView(page, 'Practice');
+  await page.locator('#book-select').selectOption('pride');
+  await expect(page.locator('#session-title')).toHaveText('Pride and Prejudice');
+  await openView(page, 'Train');
+  await expect(page.locator('#book-panel-title')).toHaveText('Alice’s Adventures in Wonderland');
+  await page.locator('#run-again').click();
+  await expect(page.locator('#session-title')).toHaveText('Alice’s Adventures in Wonderland');
+  await expect(description(page)).toHaveText(label('page 3 of'));
+  await expect(page.locator('#book-select')).toHaveValue('alice');
+});
+
+test('a book that fails to load opens on restart once the connection is back', async ({ page, browserErrors }) => {
+  const requests = [];
+  let offline = true;
+  await page.route((url) => url.pathname === '/src/book-texts.js', (route) => {
+    requests.push(route.request().url());
+    return offline ? route.abort() : route.continue();
+  });
+  await openApp(page);
+  await page.locator('#mode-book').click();
+  await expect(page.locator('#text-display')).toHaveText('The book couldn’t load.');
+  await expect(page.locator('#typing-status')).toHaveText('Not loaded');
+  await expect(page.locator('#typing-status')).toHaveClass(/badge-neutral/);
+  await expect(page.locator('#input-help')).toHaveText('Check your connection, then restart.');
+  await expect(page.locator('#timer')).toHaveText('—');
+  await expect(page.locator('#timer-unit')).toHaveText('');
+
+  offline = false;
+  await page.locator('#restart-button').click();
+  await expect(page.locator('#text-display .char').first()).toBeVisible();
+  await expect(description(page)).toHaveText(label('^Chapter I · Down the Rabbit-Hole · page 1 of \\d+$'));
+  await expect(page.locator('#typing-input')).toBeFocused();
+  // The browser keeps a failed module fetch for its URL, so the retry asks under a new one.
+  expect(requests).toHaveLength(2);
+  expect(new URL(requests[1]).search).toBe('?retry=1');
+  // The aborted request is the only console error.
+  const unexpected = browserErrors.filter((message) => !/ERR_FAILED|book-texts\.js/.test(message));
+  browserErrors.splice(0, browserErrors.length, ...unexpected);
 });
 
 test('screenshots: a book page and its chapter speeds, dark and light', async ({ page }, testInfo) => {
@@ -166,7 +228,7 @@ test('screenshots: a book page and its chapter speeds, dark and light', async ({
   await page.waitForTimeout(700);
   await shot(page, testInfo, 'results-light');
   await page.locator('#run-again').click();
-  await expect(description(page)).toHaveText(/page 2 of/);
+  await expect(description(page)).toHaveText(label('page 2 of'));
   await page.mouse.move(640, 700);
   await shot(page, testInfo, 'practice-light');
 });
@@ -193,6 +255,25 @@ test.describe('phone', () => {
     await page.locator('#results-heading').evaluate((node) => node.scrollIntoView({ block: 'start' }));
     await shot(page, testInfo, 'results-mobile');
   });
+});
+
+test('on short phones a page starts above the dock', async ({ page }) => {
+  for (const [width, height] of [[320, 568], [375, 667]]) {
+    await page.setViewportSize({ width, height });
+    await openApp(page);
+    await page.locator('#mode-book').click();
+    for (const book of ['alice', 'pride', 'sherlock', 'frankenstein']) {
+      await page.locator('#book-select').selectOption(book);
+      await expect(page.locator('#text-display .char').first()).toBeVisible();
+      const fit = await page.evaluate(() => ({
+        line: document.querySelector('#text-display .char').getBoundingClientRect().bottom,
+        dock: document.querySelector('.dock').getBoundingClientRect().top,
+      }));
+      expect(fit.line, `${book} at ${width}×${height}`).toBeLessThanOrEqual(fit.dock);
+    }
+    // The title and conditions step aside visually but still name the screen.
+    await expect(page.getByRole('heading', { level: 1, name: 'Frankenstein' })).toBeAttached();
+  }
 });
 
 test('a 320px screen keeps the book controls and chapter table inside the page', async ({ page }) => {

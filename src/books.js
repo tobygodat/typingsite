@@ -5,8 +5,8 @@
 import { conditionKey, textId } from './typing.js';
 import { median, validRun } from './insights.js';
 
-// Part of every book page's conditions. Bump it if the text or the pagination changes, so
-// remembered places and chapter speeds never mix two different sets of pages.
+// Part of every book page's conditions and stored with every remembered place. Bump it if the
+// text or the pagination changes, so places and chapter speeds never mix two different sets of pages.
 export const BOOK_VERSION = 'gutenberg-en-v1';
 export const BOOK_CREDIT = 'Text from Project Gutenberg; public domain in the US';
 export const DEFAULT_BOOK = 'alice';
@@ -22,11 +22,14 @@ export const findBook = (id) => BOOKS.find((book) => book.id === id) || null;
 
 let texts = null;
 let loading = null;
+let failures = 0;
 
-// The text is about 90 KB, so it only loads when someone opens book mode.
+// The text is about 90 KB, so it only loads when someone opens book mode. A failed module fetch
+// stays failed for that URL for the life of the page, so each retry asks under a new one.
 export function loadBookTexts() {
-  loading ||= import('./book-texts.js').then((module) => { texts = module.BOOK_TEXTS; return texts; })
-    .catch((error) => { loading = null; throw error; });
+  loading ||= import(failures ? `./book-texts.js?retry=${failures}` : './book-texts.js')
+    .then((module) => { texts = module.BOOK_TEXTS; return texts; })
+    .catch((error) => { loading = null; failures += 1; throw error; });
   return loading;
 }
 
@@ -111,14 +114,20 @@ export function openBook(id) {
   return result;
 }
 
+// A remembered place: the next page to type, in this version's pagination.
+export const placeAt = (page) => ({ page, version: BOOK_VERSION });
+
 // The next page to type: a stored index, clamped. Equal to pages.length once every page is done.
+// A place saved under another text version points at different pages, so it starts again at page 1.
 export function bookPlace(places, id, total) {
-  const page = places?.[id]?.page;
-  return Number.isInteger(page) && page > 0 ? Math.min(page, total) : 0;
+  const place = places?.[id];
+  if (place?.version !== BOOK_VERSION) return 0;
+  return Number.isInteger(place.page) && place.page > 0 ? Math.min(place.page, total) : 0;
 }
 
+// "Chapter I · Down the Rabbit-Hole": a line may break after the "·", never before it.
 export function chapterName(chapter) {
-  return chapter.title ? `${chapter.label} · ${chapter.title}` : chapter.label;
+  return chapter.title ? `${chapter.label}\u00a0· ${chapter.title}` : chapter.label;
 }
 
 // Per chapter: the median wpm of the latest completed run on each page, at one exact condition

@@ -24,7 +24,7 @@ import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
-import { BOOKS, BOOK_CREDIT, BOOK_VERSION, DEFAULT_BOOK, bookIds, bookPlace, chapterName, chapterSpeeds, loadBookTexts, openBook } from './books.js';
+import { BOOKS, BOOK_CREDIT, BOOK_VERSION, DEFAULT_BOOK, bookIds, bookPlace, chapterName, chapterSpeeds, loadBookTexts, openBook, placeAt } from './books.js';
 
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
@@ -58,7 +58,7 @@ function emptyProfile() {
     loops: [],
     seenTextIds: [],
     bests: {},
-    // The next page to type in each book: { [bookId]: { page } }.
+    // The next page to type in each book: { [bookId]: { page, version } }.
     books: {},
   };
 }
@@ -502,11 +502,14 @@ function configureSessionCopy() {
   $('book-restart').hidden = !book || bookPlace(profile.books, book.id, book.pages.length) < book.pages.length;
 }
 
-// "Chapter I · Down the Rabbit-Hole · page 3 of 39"
+// "Page 3 of 39", kept on one line.
+const pageOf = (page, label = 'page') => `${label}\u00a0${page.pageInChapter + 1}\u00a0of\u00a0${page.pagesInChapter}`;
+
+// "Chapter I · Down the Rabbit-Hole · page 3 of 39". A line may break after a "·", never before it.
 function bookPageCopy(page) {
   const book = page?.book && openBook(page.book);
   if (!book) return '';
-  return `${chapterName(book.chapters[page.chapter])} · page ${page.pageInChapter + 1} of ${page.pagesInChapter}`;
+  return `${chapterName(book.chapters[page.chapter])}\u00a0· ${pageOf(page)}`;
 }
 
 function resetSession(kind = sessionKind, { focus = false, selectedPassage = null } = {}) {
@@ -586,6 +589,8 @@ function showNoPassage({ text, status, tone, help }, { show = true } = {}) {
   $('condition-line').textContent = describeConditions();
   $('input-help').textContent = help;
   for (const id of ['live-wpm', 'live-accuracy', 'timer']) $(id).textContent = '—';
+  // No passage, so no length to count against: no "s" or "/57" behind the dash.
+  for (const id of ['timer-unit', 'timer-label']) $(id).textContent = '';
   $('progress-bar').style.setProperty('--progress', '0');
   $('progress-track').setAttribute('aria-valuenow', '0');
   configureSessionCopy();
@@ -608,7 +613,7 @@ function bookEmptyState(focus) {
   loadBookTexts().then(() => {
     if (sessionKind === 'book' && !attempt && document.body.dataset.view === 'practice') resetSession('book', { focus });
   }, () => {
-    if (sessionKind === 'book' && !attempt) showNoPassage({ text: 'The book couldn’t load.', status: 'Not loaded', tone: 'badge-warning', help: 'Check your connection, then restart.' }, { show: false });
+    if (sessionKind === 'book' && !attempt) showNoPassage({ text: 'The book couldn’t load.', status: 'Not loaded', tone: 'badge-neutral', help: 'Check your connection, then restart.' }, { show: false });
   });
   return { text: 'Opening the book…', status: 'Opening the book', tone: 'badge-info', help: '' };
 }
@@ -624,9 +629,23 @@ function setBook(id) {
 
 // Back to page 1. Earlier page results stay in history; only the place moves.
 function restartBook() {
-  profile.books[prefs.book] = { page: 0 };
+  profile.books[prefs.book] = placeAt(0);
   saveProfile();
   resetSession('practice', { focus: true });
+}
+
+// The action under a book page's results: that book's next page, the same page again after an
+// interrupted one, or page 1 once it is finished, even if the mode or book changed since.
+function continueBook(id) {
+  prefs.mode = 'book';
+  prefs.book = id;
+  applyPreferences();
+  setModeControls();
+  if (bookFinished()) restartBook();
+  else {
+    saveProfile();
+    resetSession('practice', { focus: true });
+  }
 }
 
 const bookFinished = () => {
@@ -855,7 +874,9 @@ function storeAttempt(completed) {
   const score = completed.summary.score;
   const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
   resultBestBefore = profile.bests[key] || null;
-  profile.attempts.push(completed);
+  // A book page's keystrokes are never evidence or a baseline, so its trace would only push the
+  // newest practice traces out of the bounded store. Its run summary keeps the chapter speeds.
+  if (completed.kind !== 'book') profile.attempts.push(completed);
   profile.runs.push(runRecord(completed));
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
     profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
@@ -884,7 +905,7 @@ function finishPrimary(forcedElapsed = null) {
   $('typing-status').textContent = valid ? 'Complete' : 'Interrupted';
   if (sessionKind === 'book') {
     // Only a counted page moves the place on; storeAttempt saves it with the run.
-    if (valid) profile.books[completed.book.id] = { page: completed.book.page + 1 };
+    if (valid) profile.books[completed.book.id] = placeAt(completed.book.page + 1);
     // A book page is never a retest baseline, so no earlier baseline lingers behind it either.
     baselineAttempt = null;
     trainingContext = null;
@@ -930,7 +951,7 @@ function resultHeadline(completed) {
   if (completed.kind === 'book') {
     const book = openBook(completed.book.id);
     const page = book?.pages[completed.book.page];
-    return page ? `Page ${page.pageInChapter + 1} of ${page.pagesInChapter} · ${book.chapters[page.chapter].label}` : 'Page complete';
+    return page ? `${pageOf(page, 'Page')}\u00a0· ${book.chapters[page.chapter].label}` : 'Page complete';
   }
   if (!resultBestBefore) return 'First run at these settings';
   const delta = completed.summary.score.wpm - resultBestBefore.wpm;
@@ -992,6 +1013,8 @@ function renderResults(completed, saved) {
 // a book page's keystrokes are not training evidence, so there is nothing to recommend from it.
 function setResultsKind(isBook) {
   for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = isBook;
+  // A drill started here would take the book's conditions, which match no practice target.
+  document.querySelector('.manual-panel').hidden = isBook;
   $('run-again').className = `btn ${isBook ? 'btn-primary' : 'btn-ghost'}`;
   document.querySelector('.recommendation-panel').dataset.kind = isBook ? 'book' : 'run';
 }
@@ -1009,12 +1032,12 @@ function renderBookPanel(completed) {
     const name = element('th', chapterName(chapter));
     name.scope = 'row';
     const current = place >= chapter.firstPage && place < chapter.firstPage + chapter.pageCount;
-    if (current) name.append(element('span', ' · next page', 'book-chapter-current'));
+    if (current) name.append(element('span', '\u00a0· next page', 'book-chapter-current'));
     row.append(name, element('td', `${chapter.pagesTyped} / ${chapter.pageCount}`, 'num'),
       element('td', chapter.medianWpm === null ? '—' : String(chapter.medianWpm), 'num'));
     return row;
   }));
-  $('book-panel-note').textContent = `Median of your latest completed run on each page, ${inputLabel(completed.conditions.inputClass)} · ${correctionLabel(completed.conditions.correctionPolicy)}.`;
+  $('book-panel-note').textContent = `Pages typed with ${inputLabel(completed.conditions.inputClass)} · ${correctionLabel(completed.conditions.correctionPolicy)}, and the median of your latest completed run on each.`;
 }
 
 function renderEvidenceList(evidence) {
@@ -1927,7 +1950,7 @@ function bindEvents() {
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   $('run-again').addEventListener('click', () => {
     if (sessionKind === 'daily') startDaily();
-    else if (sessionKind === 'book' && lastCompleted?.kind === 'book' && lastCompleted.status === 'complete' && bookFinished()) restartBook();
+    else if (lastCompleted?.kind === 'book' && document.querySelector('.recommendation-panel').dataset.kind === 'book') continueBook(lastCompleted.book.id);
     else resetSession('practice', { focus: true });
   });
   $('book-select').addEventListener('change', (event) => setBook(event.target.value));

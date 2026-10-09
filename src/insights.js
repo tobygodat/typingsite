@@ -21,9 +21,14 @@ export function runRecord(attempt, at = attempt.at || null) {
   };
 }
 
+// Pattern counts stay on the newest MAX_PATTERN_RUNS runs. Book pages never carry any, so they
+// don't take a slot either: a long read can't wipe the practice evidence behind it.
 export function retainRuns(runs) {
   const kept = runs.slice(-MAX_RUN_SUMMARIES);
-  return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS ? { ...run, patterns: [] } : run);
+  // The oldest run that keeps its counts: the MAX_PATTERN_RUNS-th newest that isn't a book page.
+  let cutoff = kept.length;
+  for (let seen = 0; cutoff > 0 && seen < MAX_PATTERN_RUNS;) if (kept[--cutoff].kind !== 'book') seen += 1;
+  return kept.map((run, i) => i < cutoff && run.kind !== 'book' ? { ...run, patterns: [] } : run);
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
