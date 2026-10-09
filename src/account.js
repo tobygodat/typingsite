@@ -81,8 +81,10 @@ function storeSession(data) {
   return session;
 }
 
-export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false } = {}) {
+// timeout (ms) gives up on a request that gets no reply; the error then has no status.
+export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false, timeout = 0 } = {}) {
   let response;
+  let text;
   try {
     response = await fetch(`${SUPABASE_URL}${path}`, {
       method,
@@ -94,17 +96,19 @@ export async function request(path, { method = 'GET', body, token, headers = {},
         ...headers,
       },
       body: body ? JSON.stringify(body) : undefined,
+      ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
     });
+    text = await response.text();
   } catch {
     throw new AuthError('Can’t reach the account service. Check your connection.');
   }
-  const text = await response.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch {}
   if (!response.ok) {
     const message = data?.msg || data?.error_description || data?.message || data?.error || `Request failed (${response.status}).`;
     const error = new AuthError(message);
     error.status = response.status;
+    if (data?.error_code) error.code = data.error_code;
     throw error;
   }
   return data;
@@ -192,6 +196,19 @@ export const DELETE_COPY = {
   offline: 'Can’t reach the account service. Check your connection and try again.',
 };
 
+// Long enough for a slow cold start; past it the dialog unlocks with an error instead of waiting on.
+const DELETE_TIMEOUT_MS = 30000;
+
+// Asks the Auth server whether the account still exists: true once it reports the user gone, false
+// while it still knows them, null if it can't say.
+async function accountGone(current) {
+  try {
+    return (await request('/auth/v1/user', { token: current.access_token, timeout: DELETE_TIMEOUT_MS }))?.id === current.user.id ? false : null;
+  } catch (error) {
+    return error.code === 'user_not_found' ? true : null;
+  }
+}
+
 // Resolves once the account is gone; otherwise throws an AuthError whose message says what happened.
 // Signing out and clearing this device are left to the caller, for after success only.
 export async function deleteAccount(session) {
@@ -204,19 +221,23 @@ export async function deleteAccount(session) {
     throw new AuthError(ended ? DELETE_COPY.session : error.status ? DELETE_COPY.failed : DELETE_COPY.offline);
   }
   if (!current) throw new AuthError(DELETE_COPY.session);
+  let refused = false;
   try {
-    await request(DELETE_ACCOUNT_PATH, { method: 'POST', token: current.access_token, body: {} });
+    await request(DELETE_ACCOUNT_PATH, { method: 'POST', token: current.access_token, body: {}, timeout: DELETE_TIMEOUT_MS });
     return;
   } catch (error) {
-    if (error.status === 401 || error.status === 403) throw new AuthError(DELETE_COPY.session);
     if (error.status === 404) throw new AuthError(DELETE_COPY.missing);
-    if (error.status) throw new AuthError(DELETE_COPY.failed);
+    if (error.status && error.status !== 401 && error.status !== 403) throw new AuthError(DELETE_COPY.failed);
+    refused = Boolean(error.status);
   }
-  // No reply at all. A function that isn't deployed can fail this way in a browser, when the platform's
-  // not-found reply has no CORS headers. Say nothing was deleted only if the account still exists.
-  let stillThere = false;
-  try { stillThere = (await request('/auth/v1/user', { token: current.access_token }))?.id === current.user.id; } catch {}
-  throw new AuthError(stillThere ? DELETE_COPY.unavailable : DELETE_COPY.offline);
+  // A refused token or no reply (a function that isn't deployed can fail this way in a browser, when
+  // the platform's not-found reply has no CORS headers). Either way the account may already be gone:
+  // deleted by this request when its reply was lost, or from another device. The Auth server settles it.
+  const gone = await accountGone(current);
+  if (gone) return;
+  if (refused) throw new AuthError(DELETE_COPY.session);
+  // Say nothing was deleted only if the account is confirmed to still exist.
+  throw new AuthError(gone === false ? DELETE_COPY.unavailable : DELETE_COPY.offline);
 }
 
 // After a confirmed deletion: the session and this account's device cache go, nothing is sent.

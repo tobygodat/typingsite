@@ -28,7 +28,7 @@ export class FakeSupabase {
     this.races = new FakeRaces(this);
     // How POST /functions/v1/delete-account answers: 'ok' deletes like the real function; 'missing'
     // is the platform's reply for a function that isn't deployed and 'blocked' the same reply without
-    // CORS headers; 'fail' is deleteUser failing.
+    // CORS headers; 'fail' is deleteUser failing; 'lost' deletes and then loses the reply.
     this.deleteAccount = 'ok';
     this.deletedUsers = [];
   }
@@ -164,6 +164,10 @@ export class FakeSupabase {
         if (this.deleteAccount === 'blocked') return route.abort('failed');
         if (!caller) return reply(401, { error: 'Your session has ended. Sign in again, then delete your account.' });
         if (this.deleteAccount === 'fail') return reply(500, { error: 'Your account couldn’t be deleted just now. Nothing was removed. Try again in a moment.' });
+        if (this.deleteAccount === 'lost') {
+          this.deleteUser(caller);
+          return route.abort('failed');
+        }
         this.deleteUser(caller);
         return reply(200, { deleted: true });
       }

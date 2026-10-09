@@ -86,7 +86,7 @@ async function withAccountService(handler, run) {
   globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
   globalThis.fetch = async (url, init = {}) => {
     const path = new URL(url).pathname;
-    calls.push({ path, method: init.method || 'GET', authorization: init.headers?.Authorization });
+    calls.push({ path, method: init.method || 'GET', authorization: init.headers?.Authorization, signal: init.signal });
     return handler(path, init);
   };
   try {
@@ -103,7 +103,9 @@ const reply = (status, body) => new Response(body === undefined ? null : JSON.st
 test('deleting an account is one authenticated call to the delete-account function', async () => {
   await withAccountService(() => reply(200, { deleted: true }), async (calls) => {
     await deleteAccount(liveSession());
-    assert.deepEqual(calls, [{ path: DELETE_ACCOUNT_PATH, method: 'POST', authorization: 'Bearer token' }]);
+    assert.deepEqual(calls.map(({ signal, ...call }) => call), [{ path: DELETE_ACCOUNT_PATH, method: 'POST', authorization: 'Bearer token' }]);
+    // A stalled request gives up, so the dialog always unlocks.
+    assert.ok(calls[0].signal instanceof AbortSignal);
   });
 });
 
@@ -128,9 +130,37 @@ test('with no reply, deletion says nothing was deleted only once the account is 
   await withAccountService(blocked(() => { throw new TypeError('Failed to fetch'); }), async () => {
     await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.offline });
   });
-  // The account may already be gone (a lost reply), so no claim either way.
-  await withAccountService(blocked(() => reply(403, { error_code: 'user_not_found' })), async () => {
-    await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.offline });
+  // A timed-out request is no reply too.
+  const timedOut = (path) => {
+    if (path === DELETE_ACCOUNT_PATH) throw new DOMException('The operation timed out.', 'TimeoutError');
+    return reply(200, { id: 'u1' });
+  };
+  await withAccountService(timedOut, async () => {
+    await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.unavailable });
+  });
+});
+
+test('an account the Auth server no longer knows counts as deleted, whatever the function answered', async () => {
+  const gone = () => reply(403, { code: 403, error_code: 'user_not_found', msg: 'User from sub claim in JWT does not exist' });
+  // Deleted by this request, then the reply was lost.
+  const lost = (path) => {
+    if (path === DELETE_ACCOUNT_PATH) throw new TypeError('Failed to fetch');
+    return gone();
+  };
+  await withAccountService(lost, async (calls) => {
+    await deleteAccount(liveSession());
+    assert.deepEqual(calls.map((call) => call.path), [DELETE_ACCOUNT_PATH, '/auth/v1/user']);
+  });
+  // Deleted earlier (another device, or a retry after a lost reply): the function refuses the token.
+  const refused = (path) => (path === DELETE_ACCOUNT_PATH ? reply(401, { error: 'Your session has ended.' }) : gone());
+  await withAccountService(refused, async (calls) => {
+    await deleteAccount(liveSession());
+    assert.deepEqual(calls.map((call) => call.path), [DELETE_ACCOUNT_PATH, '/auth/v1/user']);
+  });
+  // A refused token for an account that still exists is an ended session, and nothing was deleted.
+  const stillThere = (path) => (path === DELETE_ACCOUNT_PATH ? reply(401, { error: 'Your session has ended.' }) : reply(200, { id: 'u1' }));
+  await withAccountService(stillThere, async () => {
+    await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.session });
   });
 });
 

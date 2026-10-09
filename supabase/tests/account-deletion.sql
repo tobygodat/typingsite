@@ -1,6 +1,7 @@
 -- Account deletion (supabase/functions/delete-account). auth.admin.deleteUser removes the auth.users
 -- row; every row keyed to that user must go with it through ON DELETE CASCADE, so no foreign key can
--- block the delete or leave the account's data behind. Runs inside a transaction and rolls back.
+-- block the delete or leave the account's data behind, and the forget_race_opener trigger clears the
+-- one id kept as text (rooms.opened_by). Runs inside a transaction and rolls back.
 begin;
 do $deletion$
 declare
@@ -15,6 +16,7 @@ declare
   ada_room uuid;
   bob_room uuid;
   cy_room uuid;
+  rematch_room uuid;
   loose text;
 begin
   -- Every foreign key into auth.users from the app's schemas cascades. (The auth and storage schemas
@@ -51,6 +53,12 @@ begin
   cy_room := (public.race_action('create',null,jsonb_build_object('displayName','Cy','passage',passage,'inviteEmail',ada_email),null)->>'roomId')::uuid;
   if (select count(*) from race_private.players where user_id = ada) <> 2 then raise exception 'Setup did not seat Ada twice.'; end if;
 
+  -- Bob's race finishes and Ada asks for a rematch: a room hosted by Bob, opened under Ada's key.
+  update race_private.rooms set status = 'finished' where id = bob_room;
+  perform set_config('request.jwt.claim.sub',ada::text,true);
+  rematch_room := (public.race_action('rematch',bob_room,jsonb_build_object('passage',passage),null)->>'roomId')::uuid;
+  if (select opened_by from race_private.rooms where id = rematch_room) <> 'user:' || ada::text then raise exception 'Setup did not charge Ada for the rematch.'; end if;
+
   -- What auth.admin.deleteUser(ada) does to these tables.
   delete from auth.users where id = ada;
 
@@ -63,10 +71,16 @@ begin
   if exists(select 1 from race_private.friends where owner_id = ada or friend_id = ada) then
     raise exception 'A friend row owned by or pointing at the deleted account survived.';
   end if;
-  -- Bob's own race stays, with only his seat.
-  if (select count(*) from race_private.players where room_id = bob_room) <> 1
-    or not exists(select 1 from race_private.players where room_id = bob_room and user_id = bob) then
+  -- Bob's own race and the rematch in it stay, with only his seat, and nothing names Ada.
+  if (select count(*) from race_private.players where room_id in (bob_room, rematch_room)) <> 2
+    or (select count(*) from race_private.players where room_id in (bob_room, rematch_room) and user_id = bob) <> 2 then
     raise exception 'Another account''s race lost its own seat.';
+  end if;
+  if exists(select 1 from race_private.rooms where opened_by = 'user:' || ada::text) then
+    raise exception 'A room still carries the deleted account''s quota key.';
+  end if;
+  if not exists(select 1 from race_private.rooms where opened_by = 'user:' || bob::text) then
+    raise exception 'Another account''s quota key was replaced.';
   end if;
   -- An email Bob typed is Bob's own contact entry. It stays and no longer matches any account.
   if not exists(select 1 from race_private.friends where owner_id = bob and email = ada_email) then

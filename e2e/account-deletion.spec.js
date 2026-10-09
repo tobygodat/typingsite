@@ -7,7 +7,7 @@ import { test, expect, openApp, chooseWords, passageText, typeInto, openView, si
 const ADA = 'ada@stilltype.test';
 const BOB = 'bob@stilltype.test';
 const FUNCTION_CALL = 'POST /functions/v1/delete-account';
-const DELETED_TOAST = 'Account deleted, with everything saved to it. You’re in guest mode.';
+const DELETED_TOAST = 'Account deleted. You’re in guest mode.';
 
 async function shot(page, testInfo, name) {
   const path = process.env.SCREENSHOTS ? `docs/screenshots/account-deletion/${name}.png` : testInfo.outputPath(`${name}.png`);
@@ -68,12 +68,15 @@ test('deleting an account takes it and everything keyed to it, then this device 
   await page.locator('#account-delete').click();
   await expect(page.locator('#delete-account-dialog')).toBeVisible();
 
-  // Escape and Cancel close it without asking the server for anything.
+  // Escape and Cancel close it without asking the server for anything, and focus goes back to the
+  // account button, since the menu item that opened it is hidden.
   await page.keyboard.press('Escape');
   await expect(page.locator('#delete-account-dialog')).toBeHidden();
+  await expect(page.locator('#account-trigger')).toBeFocused();
   await openDeleteDialog(page);
   await page.locator('#cancel-delete-account').click();
   await expect(page.locator('#delete-account-dialog')).toBeHidden();
+  await expect(page.locator('#account-trigger')).toBeFocused();
   expect(supabase.requests).not.toContain(FUNCTION_CALL);
 
   // Only the exact word arms the button, and the input starts empty each time.
@@ -141,6 +144,26 @@ test('a failed deletion says why and changes nothing on this device', async ({ p
   await shot(page, testInfo, 'confirm-light');
   const confirm = page.locator('#confirm-delete-account');
   const error = page.locator('#delete-account-error');
+
+  // While the request is out, focus stays in the dialog, the form is busy, screen readers hear it,
+  // and Escape can't close it.
+  let held = null;
+  await page.route('**/functions/v1/delete-account', (route) => (route.request().method() === 'POST' ? (held = route) : route.fallback()));
+  supabase.deleteAccount = 'missing';
+  await confirm.click();
+  await expect.poll(() => Boolean(held)).toBe(true);
+  await expect(confirm).toHaveText('Deleting…');
+  await expect(page.locator('#delete-account-form')).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('#delete-account-status')).toHaveText('Deleting your account…');
+  await expect(page.locator('#confirm-delete-input')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#delete-account-dialog')).toBeVisible();
+  await page.unroute('**/functions/v1/delete-account');
+  await held.fallback();
+  await expect(error).toHaveText('Account deletion isn’t switched on yet, so nothing was deleted. Try again later.');
+  await expect(page.locator('#delete-account-form')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('#delete-account-status')).toHaveText('');
+
   const attempts = [
     ['missing', 'Account deletion isn’t switched on yet, so nothing was deleted. Try again later.'],
     ['fail', 'Your account couldn’t be deleted just now, so nothing changed. Try again in a moment.'],
@@ -214,9 +237,80 @@ test('the palette offers deletion to members only, and the dialog fits a phone',
     expect(button.x + button.width).toBeLessThanOrEqual(box.x + box.width);
   }
 
+  // At 320px the actions wrap inside the dialog's padding instead of scrolling it sideways.
+  await page.setViewportSize({ width: 320, height: 640 });
+  const fit = await page.evaluate(() => {
+    const dialog = document.querySelector('#delete-account-dialog');
+    const form = document.querySelector('#delete-account-form');
+    const edge = (side) => form.getBoundingClientRect()[side] + (side === 'left' ? 1 : -1) * parseFloat(getComputedStyle(form)[side === 'left' ? 'paddingLeft' : 'paddingRight']);
+    return {
+      scroll: dialog.scrollWidth, client: dialog.clientWidth, left: edge('left'), right: edge('right'),
+      boxes: [...form.querySelectorAll('h2, p, input, .btn')].map((node) => node.getBoundingClientRect()).map(({ left, right }) => ({ left, right })),
+    };
+  });
+  expect(fit.scroll).toBeLessThanOrEqual(fit.client);
+  for (const { left, right } of fit.boxes) {
+    expect(left).toBeGreaterThanOrEqual(fit.left - 0.5);
+    expect(right).toBeLessThanOrEqual(fit.right + 0.5);
+  }
+  await shot(page, testInfo, 'confirm-320');
+  await page.setViewportSize({ width: 390, height: 844 });
+
   await page.locator('#cancel-delete-account').click();
   await page.locator('#account-trigger').click();
   await expect(page.locator('#account-delete')).toBeVisible();
   await shot(page, testInfo, 'account-menu-mobile');
+  expect(supabase.requests).not.toContain(FUNCTION_CALL);
+});
+
+test('a lost reply still finishes the deletion, and another open tab follows it', async ({ page, supabase }, testInfo) => {
+  supabase.addUser(ADA);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await openApp(page);
+  await signInWithEmail(page, ADA);
+  const other = await page.context().newPage();
+  await supabase.attach(other);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'member');
+
+  // The function deletes the account but the reply never arrives; the Auth server no longer knows
+  // the account, so this is a finished deletion, not a network error.
+  supabase.deleteAccount = 'lost';
+  await openDeleteDialog(page);
+  await page.keyboard.type('delete', { delay: 60 });
+  await Promise.all([page.waitForEvent('load'), other.waitForEvent('load'), page.keyboard.press('Enter')]);
+  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+  await expect(page.locator('#account-feedback')).toHaveText(DELETED_TOAST);
+  await shot(page, testInfo, 'deleted-mobile');
+  expect(supabase.users.has(ADA)).toBe(false);
+
+  // The other tab is a guest now, so a run there saves nothing for the deleted account.
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+  await chooseWords(other, 10);
+  await typeInto(other, await passageText(other), '#typing-input', { delay: 150 });
+  await expect(other.locator('body')).toHaveAttribute('data-view', 'results');
+  expect(await storageKeys(other)).toEqual([]);
+  await other.close();
+});
+
+test('opening deletion mid-run interrupts the run, and nothing typed in the dialog reaches it', async ({ page, supabase }) => {
+  supabase.addUser(ADA);
+  await openApp(page);
+  await signInWithEmail(page, ADA);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 6), '#typing-input', { delay: 150 });
+  await openDeleteDialog(page);
+  await expect(page.locator('#typing-status')).toHaveText('Interrupted');
+  await expect(page.locator('#input-help')).toHaveText('Account deletion opened mid-run, so it won’t count.');
+  await page.keyboard.type('delete', { delay: 60 });
+  await page.locator('#cancel-delete-account').click();
+  await expect(page.locator('#typing-input')).not.toHaveValue(/delete/);
+
+  await typeInto(page, text.slice(6), '#typing-input', { delay: 150 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
+  await expect(page.locator('#best')).toHaveText('No best yet');
   expect(supabase.requests).not.toContain(FUNCTION_CALL);
 });

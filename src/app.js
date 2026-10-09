@@ -1546,6 +1546,8 @@ let deletingAccount = false;
 
 function openDeleteAccount() {
   if (!session) return;
+  // The dialog gives focus back to whatever had it, and the menu's own button is about to be hidden.
+  if ($('account').contains(document.activeElement)) $('account-trigger').focus();
   closeAccountMenu();
   // Typing the confirmation word must never land in, or time, a run.
   markInterrupted(NOTICES.deleteOpened);
@@ -1559,6 +1561,10 @@ function openDeleteAccount() {
 
 function setDeleting(pending) {
   deletingAccount = pending;
+  // Focus waits on the read-only input, so disabling the button doesn't drop it to the page.
+  if (pending) $('confirm-delete-input').focus();
+  $('delete-account-form').setAttribute('aria-busy', String(pending));
+  $('delete-account-status').textContent = pending ? 'Deleting your account…' : '';
   $('confirm-delete-account').textContent = pending ? 'Deleting…' : 'Delete account';
   $('confirm-delete-account').disabled = pending || $('confirm-delete-input').value !== DELETE_WORD;
   $('confirm-delete-input').readOnly = pending;
@@ -1600,7 +1606,18 @@ function noticeDeletedAccount() {
     deleted = sessionStorage.getItem(DELETED_NOTICE) === '1';
     sessionStorage.removeItem(DELETED_NOTICE);
   } catch {}
-  if (deleted && !session) showAccountToast('Account deleted, with everything saved to it. You’re in guest mode.', 'done');
+  if (deleted && !session) showAccountToast('Account deleted. You’re in guest mode.', 'done');
+}
+
+// Another tab signed out, deleted the account or lost the session. This tab's copy of it is over: it
+// saves and sends nothing more for that account and starts again as the device now is.
+function followSessionElsewhere(event) {
+  if (!session || (event.key !== null && event.key !== account.SESSION_KEY)) return;
+  if (account.loadSession()?.user?.id === session.user.id) return;
+  clearTimeout(syncTimer);
+  syncTimer = 0;
+  session = null;
+  location.reload();
 }
 
 let accountMode = 'create';
@@ -1691,6 +1708,7 @@ function bindAccount() {
   $('cancel-delete-account').addEventListener('click', () => $('delete-account-dialog').close());
   // While the request is out, the dialog stays: its answer decides what happens next.
   $('delete-account-dialog').addEventListener('cancel', (event) => { if (deletingAccount) event.preventDefault(); });
+  addEventListener('storage', followSessionElsewhere);
   $('account-form').addEventListener('submit', submitAccount);
   $('account-switch').addEventListener('click', () => openAccountDialog(accountMode === 'create' ? 'signin' : 'create'));
   $('account-cancel').addEventListener('click', () => $('account-dialog').close());

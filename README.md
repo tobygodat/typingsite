@@ -43,7 +43,7 @@ A guest link admits one opponent. After joining, a separate tab-scoped credentia
 
 The backend migration is in `supabase/migrations/20260930085227_online_races.sql`; deploy it to the Supabase project configured in `src/account.js` before serving the updated frontend. It provides one `race_action` RPC over protected private tables, so static hosting needs no WebSocket server or new runtime dependency. See [online race implementation and verification](docs/online-races.md).
 
-Account deletion runs in the Edge Function `supabase/functions/delete-account/`. Deploy it with `supabase functions deploy delete-account`, keeping the default JWT verification. It needs no migration: every foreign key to `auth.users` already cascades, which `supabase/tests/account-deletion.sql` checks. Until it is deployed, Delete my account reports that deletion isn't switched on yet and deletes nothing.
+Account deletion runs in the Edge Function `supabase/functions/delete-account/`. Deploy it with `supabase functions deploy delete-account`, keeping the default JWT verification. Apply `supabase/migrations/20261009120000_forget_deleted_race_opener.sql` with it (`supabase db push`): every foreign key to `auth.users` already cascades, and that migration clears the one user id kept as text, the quota key on rooms. `supabase/tests/account-deletion.sql` checks both. Until it is deployed, Delete my account reports that deletion isn't switched on yet and deletes nothing.
 
 GitHub Actions runs unit tests, the static build and Chromium browser checks on pull requests and pushes to `master`. Browser failure traces are retained for seven days.
 

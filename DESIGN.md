@@ -34,7 +34,7 @@ colors:
   accent-ink-light: "#fbf9f5"
   accent-soft-light: "rgba(46, 125, 79, 0.11)"
   danger-light: "#b4432c"
-  danger-soft-light: "rgba(180, 67, 44, 0.12)"
+  danger-soft-light: "rgba(180, 67, 44, 0.1)"
   warning-light: "#8a5a00"
   selection-light: "#e3dccf"
   ghost-light: "#4f5bc4"

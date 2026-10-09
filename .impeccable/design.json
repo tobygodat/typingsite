@@ -442,7 +442,7 @@
       "danger-soft-light": {
         "role": "secondary",
         "displayName": "Coral Tint (light theme)",
-        "canonical": "rgba(180, 67, 44, 0.12)"
+        "canonical": "rgba(180, 67, 44, 0.1)"
       },
       "warning-light": {
         "role": "secondary",
