@@ -65,7 +65,7 @@ test('the layout relabels the keyboard and joins the test conditions; bests stay
   await expect(page.locator('#progress-conditions option')).toHaveText(['english 200 · 10 words · plain · physical keyboard · dvorak · continue on error · corpus v5 · metric v1']);
 });
 
-test('the finger map shades each key by finger, splits the hands and follows the layout', async ({ page }) => {
+test('the finger map names each key’s finger, bands alternate fingers, splits the hands and follows the layout', async ({ page }) => {
   await openApp(page);
   await expect(page.locator('#keyboard')).toBeHidden();
   await runCommand(page, 'finger map');
@@ -79,13 +79,15 @@ test('the finger map shades each key by finger, splits the hands and follows the
   await expect(key('j')).toHaveAttribute('data-hand', 'right');
   await expect(key('a')).toHaveAttribute('data-finger', 'pinky');
   await expect(key(' ')).toHaveAttribute('data-finger', 'thumb');
+  // Each key carries its finger's initial as text, so the map reads without telling shades apart.
+  const mark = (letter) => key(letter).evaluate((node) => getComputedStyle(node, '::after').content);
+  expect(await Promise.all(['f', 'd', 's', 'a', 'j', 'l'].map(mark))).toEqual(['"i" / ""', '"m" / ""', '"r" / ""', '"p" / ""', '"i" / ""', '"r" / ""']);
+  expect(await mark(' ')).toBe('none');
+  // A band sits behind alternate fingers, so neighbouring fingers always differ.
   const background = (letter) => key(letter).evaluate((node) => getComputedStyle(node).backgroundColor);
-  const shades = new Set(await Promise.all(['f', 'd', 's', 'a'].map(background)));
-  expect(shades.size).toBe(4);
+  const [f, d, s, a] = await Promise.all(['f', 'd', 's', 'a'].map(background));
+  expect([f !== d, d !== s, s !== a, f === s, d === a]).toEqual([true, true, true, true, true]);
   expect(await background('f')).toBe(await background('j'));
-  // Key letters move up to full text contrast on the shaded keys.
-  const colors = await key('a').evaluate((node) => [getComputedStyle(node).color, getComputedStyle(document.body).color]);
-  expect(colors[0]).toBe(colors[1]);
   // The right hand starts a little apart from the left.
   const gap = await page.evaluate(() => {
     const [g, h] = ['g', 'h'].map((k) => document.querySelector(`#keyboard .key[data-key="${k}"]`).getBoundingClientRect());
@@ -100,6 +102,10 @@ test('the finger map shades each key by finger, splits the hands and follows the
   expect(await legend(page, 3)).toBe('xcdvzkh,./');
   await expect(key('x')).toHaveAttribute('data-finger', 'ring');
   await expect(key('z')).toHaveAttribute('data-finger', 'index');
+  // Choosing the current layout again changes nothing, so the prepared passage isn't thrown away.
+  const before = await passageText(page);
+  await runCommand(page, 'layout · colemak-dh');
+  expect(await passageText(page)).toBe(before);
 
   // The palette shows current state; the settings row mirrors it.
   await page.locator('#palette-trigger').click();
@@ -126,9 +132,20 @@ test('a drill keeps its target keys marked on the new legend', async ({ page }) 
   await expect(page.locator('#session-title')).toHaveText('Practice “th”');
   await expect(page.locator('#condition-line')).toContainText('drill · 60 s · english · physical keyboard · workman');
   await expect(page.locator('#keyboard .key.target')).toHaveText(['h', 't']);
+  // With the finger map on, a target still looks different from an untargeted key on the same finger.
+  const look = (letter) => page.locator(`#keyboard .key[data-key="${letter}"]`).evaluate((node) => {
+    const style = getComputedStyle(node);
+    return { finger: node.dataset.finger, color: style.color, background: style.backgroundColor };
+  });
+  for (const [target, other] of [['t', 'g'], ['h', 'r']]) {
+    const [a, b] = await Promise.all([look(target), look(other)]);
+    expect(a.finger).toBe(b.finger);
+    expect(a.background).toBe(b.background);
+    expect(a.color).not.toBe(b.color);
+  }
 });
 
-test('a retest restores the baseline’s layout', async ({ page }) => {
+test('a retest keeps the chosen layout and refuses a baseline typed on another', async ({ page }) => {
   await openApp(page);
   await runCommand(page, 'layout · dvorak');
   await chooseWords(page, 10);
@@ -137,10 +154,37 @@ test('a retest restores the baseline’s layout', async ({ page }) => {
   await expect(page.locator('#condition-line')).not.toContainText('dvorak');
   await openView(page, 'Train');
   await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#comparison-status')).toHaveText('No fair retest available.');
+  await expect(page.locator('#comparison-sample')).toHaveText('different keyboard layout');
+  await expect(page.locator('#comparison-caveat')).toHaveText('The baseline was typed on dvorak. Switch the keyboard layout back to dvorak to retest it.');
+  await openSettings(page);
+  await expect(page.locator('#layout-select')).toHaveValue('qwerty');
+  await page.keyboard.press('Escape');
+
+  // A drill from that baseline stands alone, on the layout in use.
+  await openView(page, 'Train');
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#condition-line')).not.toContainText('dvorak');
+  await expect(page.locator('#session-description')).toHaveText('Standalone drill. The baseline was typed on dvorak. Switch the keyboard layout back to dvorak to retest it.');
+
+  // Back on Dvorak, a new baseline retests on Dvorak.
+  await runCommand(page, 'layout · dvorak');
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await openView(page, 'Train');
+  await page.locator('#skip-to-retest').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
   await expect(page.locator('#condition-line')).toContainText('10 words · plain · physical keyboard · dvorak');
-  await openSettings(page);
-  await expect(page.locator('#layout-select')).toHaveValue('dvorak');
+});
+
+test('touch input keeps the default key: the layout setting describes a physical keyboard', async ({ page }) => {
+  await openApp(page);
+  await runCommand(page, 'layout · dvorak');
+  await expect(page.locator('#condition-line')).toContainText('physical keyboard · dvorak');
+  await page.locator('#typing-input').dispatchEvent('pointerdown', { pointerType: 'touch' });
+  await expect(page.locator('#condition-line')).toContainText('touch input · continue on error');
+  await expect(page.locator('#condition-line')).not.toContainText('dvorak');
 });
 
 test('a saved profile from before layouts reads as QWERTY and keeps its best', async ({ page, supabase }) => {
@@ -194,22 +238,34 @@ test('screenshot: settings on a phone', async ({ page }, testInfo) => {
   await page.locator('#layout-select').selectOption('colemak');
   await expect(page.locator('#condition-line')).toContainText('physical keyboard · colemak');
   await openSettings(page);
-  await page.locator('#keyboard-toggle').check();
-  await expect(page.locator('#finger-row')).toBeVisible();
+  // The on-screen keyboard is hidden on phones, so its rows are too.
+  await expect(page.locator('label[for="keyboard-toggle"]')).toBeHidden();
+  await expect(page.locator('#finger-row')).toBeHidden();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
   await page.mouse.move(380, 250);
   await page.screenshot({ path: shot(testInfo, 'settings-mobile') });
 
-  // At 320px the new rows still fit inside the popover without clipping or page overflow.
+  // At 320px the layout row still fits inside the popover without clipping or page overflow,
+  // and the select is wide enough for its longest option beside the native arrow.
   await page.setViewportSize({ width: 320, height: 700 });
+  await page.locator('#layout-select').selectOption('colemak-dh');
+  await openSettings(page);
   const fit = await page.evaluate(() => {
     const popover = document.querySelector('.preferences-popover').getBoundingClientRect();
-    const rows = ['layout-select', 'finger-toggle'].map((id) => document.getElementById(id).getBoundingClientRect());
+    const select = document.getElementById('layout-select');
+    const rect = select.getBoundingClientRect();
     const label = [...document.querySelectorAll('.preference-row strong')].find((node) => node.textContent === 'keyboard layout');
-    return { inside: rows.every((rect) => rect.left >= popover.left && rect.right <= popover.right),
+    const style = getComputedStyle(select);
+    const context = document.createElement('canvas').getContext('2d');
+    context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const arrow = 20;
+    const needed = Math.max(...[...select.options].map((option) => context.measureText(option.text).width))
+      + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth) + arrow;
+    return { inside: rect.left >= popover.left && rect.right <= popover.right,
       clipped: label.scrollWidth > label.clientWidth,
+      optionFits: needed <= select.offsetWidth,
       overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
   });
-  expect(fit).toEqual({ inside: true, clipped: false, overflow: 0 });
+  expect(fit).toEqual({ inside: true, clipped: false, optionFits: true, overflow: 0 });
 });

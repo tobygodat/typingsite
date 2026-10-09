@@ -555,7 +555,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   return true;
 }
 
-function showUnavailableRetest(reason) {
+function showUnavailableRetest(reason, sample = 'no matching fresh text') {
   switchView('results');
   $('comparison-panel').hidden = false;
   $('comparison-panel').dataset.outcome = 'unavailable';
@@ -563,7 +563,7 @@ function showUnavailableRetest(reason) {
   $('comparison-accuracy').textContent = '—';
   $('comparison-timing').textContent = '—';
   $('comparison-wpm').textContent = '—';
-  $('comparison-sample').textContent = 'no matching fresh text';
+  $('comparison-sample').textContent = sample;
   $('comparison-caveat').textContent = reason;
   announce(reason);
 }
@@ -965,18 +965,35 @@ function renderComparison(before, after, saved) {
 
 function startDrill() {
   selectedTarget = activeRecommendation?.target || null;
+  // A baseline typed on another layout can't be retested, so the drill stands alone.
+  const mismatch = baselineAttempt ? layoutMismatch(baselineAttempt.conditions) : '';
+  if (mismatch) baselineAttempt = null;
   const source = baselineAttempt?.conditions;
   if (source) restoreConditions(source);
   trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false };
   trainingContext.drill = { target: selectedTarget, duration: 60, wordList: prefs.wordList, textVersion: makeDrill(selectedTarget, prefs.wordList).textVersion };
   resetSession('drill', { focus: true });
+  if (mismatch) $('session-description').textContent = `Standalone drill. ${mismatch}`;
 }
 
 function startRetest() {
   if (!baselineAttempt || baselineAttempt.status !== 'complete') return;
   const source = baselineAttempt.conditions;
+  const mismatch = layoutMismatch(source);
+  if (mismatch) {
+    showUnavailableRetest(mismatch, 'different keyboard layout');
+    return;
+  }
   restoreConditions(source);
   resetSession('retest', { focus: true });
+}
+
+// The layout is set in the operating system, not here, so restoring conditions never switches it.
+// A baseline typed on another layout (a missing layout means QWERTY) can't be retested on this one.
+function layoutMismatch(source) {
+  const layout = normalizeLayout(source?.layout);
+  if (layout === prefs.layout) return '';
+  return `The baseline was typed on ${layoutLabel(layout)}. Switch the keyboard layout back to ${layoutLabel(layout)} to retest it.`;
 }
 
 function restoreConditions(source) {
@@ -989,8 +1006,6 @@ function restoreConditions(source) {
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
-    // A run without a layout predates layouts and was QWERTY.
-    layout: normalizeLayout(source.layout),
     stopOnError: source.correctionPolicy !== 'relaxed',
   };
   profile.preferences = prefs;
@@ -1103,9 +1118,11 @@ function targetButton(target, source) {
 
 function practiceTarget(target, source) {
   // Use a retained, compatible baseline when possible. Older corpus versions need a new baseline.
+  // The layout stays the one in use now, so the baseline must have been typed on it too.
+  const current = { ...source, layout: prefs.layout };
   baselineAttempt = [...profile.attempts].reverse().find((a) => a.status === 'complete' && !a.interrupted
     && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
-    && conditionKey(a.conditions) === conditionKey(source) && source.corpus === CORPUS_VERSION) || null;
+    && conditionKey(a.conditions) === conditionKey(current) && source.corpus === CORPUS_VERSION) || null;
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
   activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
@@ -1807,6 +1824,8 @@ function bindEvents() {
   $('typing-input').addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'touch' && attempt?.status === 'ready') {
       attempt.conditions.inputClass = 'touch';
+      // The layout setting describes a physical keyboard; touch runs keep the default key.
+      attempt.conditions.layout = DEFAULT_LAYOUT;
       $('condition-line').textContent = describeRun(attempt);
       if (ghostOn) primaryFx.ghost.arm(ghostPace().cps);
     }
@@ -1957,7 +1976,9 @@ function setWordList(id) {
 
 // The layout is a test condition, like the word list, so changing it starts a new practice run.
 function setLayout(id) {
-  prefs.layout = normalizeLayout(id);
+  const next = normalizeLayout(id);
+  if (prefs.layout === next) return;
+  prefs.layout = next;
   applyPreferences();
   saveProfile();
   resetSession('practice', { focus: true });

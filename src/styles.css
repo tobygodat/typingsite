@@ -82,11 +82,8 @@
   --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
   --card-top: #1f1e1c;
   --card-bottom: #121211;
-  /* Finger map: four neutral shading levels, strongest at the index fingers. Not colours. */
-  --finger-index: rgba(255, 255, 255, 0.2);
-  --finger-middle: rgba(255, 255, 255, 0.135);
-  --finger-ring: rgba(255, 255, 255, 0.075);
-  --finger-pinky: rgba(255, 255, 255, 0.025);
+  /* Finger map: one neutral band behind alternate fingers (index, ring). Not a colour. */
+  --finger-band: rgba(255, 255, 255, 0.1);
 }
 
 :root[data-theme="light"] {
@@ -111,10 +108,7 @@
   --shadow-float: 0 8px 24px rgba(70, 56, 30, 0.12);
   --card-top: #fffdf9;
   --card-bottom: #efeae1;
-  --finger-index: rgba(27, 26, 25, 0.2);
-  --finger-middle: rgba(27, 26, 25, 0.135);
-  --finger-ring: rgba(27, 26, 25, 0.075);
-  --finger-pinky: rgba(27, 26, 25, 0.025);
+  --finger-band: rgba(27, 26, 25, 0.05);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -392,6 +386,8 @@ kbd {
 .preference-row > span { min-width: 0; display: grid; gap: 2px; }
 .preference-row strong { font-size: 15px; font-weight: 600; }
 .preference-row .select { width: 104px; height: 36px; font-size: 14px; }
+/* Wide enough for its longest option, colemak-dh, beside the native arrow. */
+.preference-row #layout-select { width: 128px; }
 /* A sub-setting of the row above it (finger map under keyboard): indented and a little shorter. */
 .preference-sub { min-height: var(--control); padding-inline-start: var(--space-6); }
 .preference-sub strong { font-weight: 500; color: var(--muted); }
@@ -1152,13 +1148,24 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 .key.target { color: var(--text); border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
 .key.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); transform: translateY(2px); }
 
-/* Finger map: each key is shaded by the finger that types it and the two hands sit apart.
-   :where() keeps these below .key.target and .key.active. */
-:where(.keyboard[data-fingers="true"]) [data-finger="index"] { --finger-shade: var(--finger-index); }
-:where(.keyboard[data-fingers="true"]) [data-finger="middle"] { --finger-shade: var(--finger-middle); }
-:where(.keyboard[data-fingers="true"]) [data-finger="ring"] { --finger-shade: var(--finger-ring); }
-:where(.keyboard[data-fingers="true"]) [data-finger="pinky"] { --finger-shade: var(--finger-pinky); }
-:where(.keyboard[data-fingers="true"]) .key { color: var(--text); background-color: var(--finger-shade, transparent); }
+/* Finger map: each key carries a small mono initial for the finger that types it (i, m, r, p), so it
+   reads without shading, in forced colours too. A faint band behind alternate fingers (index, ring)
+   keeps neighbouring fingers apart, and the two hands sit apart. Letters keep their colours, so drill
+   targets still stand out. :where() keeps these below .key.target and .key.active. */
+:where(.keyboard[data-fingers="true"]) [data-finger="index"] { --finger-mark: "i"; --finger-shade: var(--finger-band); }
+:where(.keyboard[data-fingers="true"]) [data-finger="middle"] { --finger-mark: "m"; }
+:where(.keyboard[data-fingers="true"]) [data-finger="ring"] { --finger-mark: "r"; --finger-shade: var(--finger-band); }
+:where(.keyboard[data-fingers="true"]) [data-finger="pinky"] { --finger-mark: "p"; }
+:where(.keyboard[data-fingers="true"]) .key { position: relative; background-color: var(--finger-shade, transparent); }
+:where(.keyboard[data-fingers="true"]) .key::after {
+  content: var(--finger-mark) / "";
+  position: absolute;
+  right: var(--space-1);
+  bottom: 1px;
+  color: var(--muted);
+  font: 400 var(--text-fine)/1 var(--font-mono);
+}
+.key.active::after { color: inherit; }
 :where(.keyboard[data-fingers="true"]) .key[data-column="5"] { margin-inline-start: var(--space-3); }
 
 .finger-legend {
@@ -1174,12 +1181,14 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 
 .finger-legend span { display: inline-flex; align-items: center; gap: var(--space-2); }
 .finger-legend [data-finger]::before {
-  content: "";
-  width: var(--space-4);
-  height: var(--space-4);
+  content: var(--finger-mark) / "";
+  width: var(--space-6);
+  height: var(--space-6);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-sm);
-  background: var(--finger-shade);
+  display: grid;
+  place-items: center;
+  background: var(--finger-shade, transparent);
 }
 
 body[data-focus-mode="true"] .dock-zone,
@@ -1983,6 +1992,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   body[data-font-size="36"] .typing-wrap { --passage-size: 32px; }
   .shortcut-row { display: none; }
   .keyboard { display: none; }
+  /* The on-screen keyboard is hidden here, so its settings rows would do nothing. */
+  label[for="keyboard-toggle"], #finger-row { display: none; }
   .site-footer { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: var(--space-2); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
