@@ -1,14 +1,18 @@
 import {
   CORPUS_VERSION,
   METRIC_VERSION,
+  awaitingSubmit,
   compareAttempts,
   completeAttempt,
   conditionKey,
   createAttempt,
+  inputRules,
   makeDrill,
   normalizeManualTarget,
   passageComplete,
+  quickEndApplies,
   recommendTarget,
+  refusesSpace,
   replayAttempt,
   selectPassage,
   summarizePatterns,
@@ -42,6 +46,8 @@ const defaultPreferences = {
   liveMetrics: false,
   keyboard: false,
   stopOnError: false,
+  strictSpace: false,
+  quickEnd: true,
   focusMode: false,
   theme: 'system',
 };
@@ -70,6 +76,9 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  // Profiles from before these settings have neither, so they keep the old behaviour.
+  value.strictSpace = value.strictSpace === true;
+  value.quickEnd = value.quickEnd !== false;
   return value;
 }
 
@@ -172,6 +181,8 @@ function conditions(inputClass = 'physical-keyboard') {
     wordList: prefs.mode === 'quote' ? null : prefs.wordList,
     inputClass,
     correctionPolicy: prefs.stopOnError ? 'mandatory' : 'relaxed',
+    strictSpace: prefs.strictSpace,
+    quickEnd: prefs.quickEnd,
     language: 'en',
     corpus: CORPUS_VERSION,
     metricVersion: METRIC_VERSION,
@@ -184,14 +195,20 @@ function describeConditions(value = conditions()) {
   const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
   const correction = value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error';
   const language = value.wordList ? `english ${value.wordList}` : 'english';
-  return `${language} · ${length} · ${punctuation} · ${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
+  return `${language} · ${length} · ${punctuation} · ${input} · ${correction}${describeRules(value)} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
 }
 
-// A drill is always one minute of generated text, whatever the baseline was.
+// Strict space and quick end appear only when they differ from the defaults, as in conditionKey.
+const RULE_LABELS = { 'strict-space': 'strict space', 'quick-end-off': 'quick end off' };
+function describeRules(value) {
+  return inputRules(value).map((rule) => ` · ${RULE_LABELS[rule]}`).join('');
+}
+
+// A drill is always one minute of generated text, whatever the baseline was, so quick end never applies.
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
+  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}${describeRules({ ...run.conditions, mode: 'time' })}`;
 }
 
 function signed(value, unit) {
@@ -279,6 +296,8 @@ function applyPreferences() {
   $('live-toggle').checked = prefs.liveMetrics;
   $('keyboard-toggle').checked = prefs.keyboard;
   $('stop-on-error-toggle').checked = prefs.stopOnError;
+  $('strict-space-toggle').checked = prefs.strictSpace;
+  syncQuickEnd();
   $('focus-toggle').checked = prefs.focusMode;
   $('keyboard').hidden = !prefs.keyboard;
   applyTheme();
@@ -289,7 +308,16 @@ function applyPreferences() {
   showBest();
 }
 
+// Quick end only changes word and quote runs that let a mistake stand. Elsewhere the switch is
+// disabled and shows off: a timed run ends on the clock, and stop on error waits for every letter.
+function syncQuickEnd() {
+  const applies = quickEndApplies(conditions());
+  $('quick-end-toggle').disabled = !applies;
+  $('quick-end-toggle').checked = applies && prefs.quickEnd;
+}
+
 function setModeControls() {
+  syncQuickEnd();
   document.querySelectorAll('[data-mode]').forEach((button) => {
     const selected = button.dataset.mode === prefs.mode;
     button.classList.toggle('is-active', selected);
@@ -578,17 +606,33 @@ function currentReplay(type = 'primary') {
   return replayAttempt(type === 'primary' ? attempt : race.attempt);
 }
 
+// blocked is false, or why the key didn't move the caret: 'unresolved' (stop on error),
+// 'space' (strict space; scored as a wrong key) or 'submit' (quick end off, waiting for space).
 function pushInsert(char, type = 'primary') {
   const targetAttempt = type === 'primary' ? attempt : race.attempt;
   startAttempt(targetAttempt, type);
   const replay = replayAttempt(targetAttempt);
+  const position = replay.typed.length;
   const unresolved = targetAttempt.conditions.correctionPolicy !== 'relaxed'
     && replay.typed.length > 0
     && replay.typed.at(-1) !== targetAttempt.text[replay.typed.length - 1];
-  targetAttempt.events.push(unresolved
-    ? { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs: offsetFor(type) }
-    : { type: 'insert', text: char, position: replay.typed.length, accepted: true, offsetMs: offsetFor(type) });
-  return { previousLength: replay.typed.length, blocked: unresolved };
+  if (unresolved) {
+    targetAttempt.events.push({ type: 'blocked-insert', text: char, position: position - 1, offsetMs: offsetFor(type) });
+    return { previousLength: position, blocked: 'unresolved' };
+  }
+  // The passage is typed but its last word has a mistake: space finishes the run as it stands.
+  // Other keys have no position left to land on, so they are not recorded.
+  if (awaitingSubmit(targetAttempt, replay.typed)) {
+    if (char !== ' ') return { previousLength: position, blocked: 'submit' };
+    targetAttempt.events.push({ type: 'submit', offsetMs: offsetFor(type) });
+    return { previousLength: position, blocked: false, submit: true };
+  }
+  if (refusesSpace(targetAttempt.conditions, targetAttempt.text, position, char)) {
+    targetAttempt.events.push({ type: 'insert', text: char, position, accepted: false, offsetMs: offsetFor(type) });
+    return { previousLength: position, blocked: 'space' };
+  }
+  targetAttempt.events.push({ type: 'insert', text: char, position, accepted: true, offsetMs: offsetFor(type) });
+  return { previousLength: position, blocked: false };
 }
 
 function pushDelete(type = 'primary') {
@@ -642,6 +686,11 @@ function beforeTypingInput(event, type = 'primary') {
     return;
   }
   const change = pushInsert(event.data, type);
+  if (change.submit) {
+    if (type === 'primary') finishPrimary();
+    else finishRacePlayer();
+    return;
+  }
   refreshAfterInput(type, change.previousLength, change.blocked);
 }
 
@@ -649,6 +698,8 @@ function beforeTypingInput(event, type = 'primary') {
 // notices stay until restart because the run no longer counts.
 const NOTICES = {
   blocked: 'Fix the underlined letter.',
+  strictSpace: 'Strict space is on. Type the next letter.',
+  submit: 'The last word has a mistake. Fix it, or press space to finish.',
   paste: 'Paste is off. Type the passage.',
   composition: 'IME input isn’t scored. Esc to restart.',
   multiCharacter: 'One key at a time. Esc to restart.',
@@ -688,14 +739,22 @@ function refreshAfterInput(type, previousLength, blocked = false) {
   let outcome = 'delete';
   if (blocked) outcome = 'blocked';
   else if (length > previousLength) outcome = lastCorrect ? 'correct' : 'wrong';
-  (isPrimary ? primaryFx : raceFx).update(length, outcome, length > 0 && !lastCorrect);
+  // A refused space leaves the caret on the letter it skipped, marked like any other miss.
+  (isPrimary ? primaryFx : raceFx).update(length, outcome, (length > 0 && !lastCorrect) || blocked === 'space');
   textView.trimBehind(length);
+  const waiting = awaitingSubmit(targetAttempt, replay.typed);
+  const rule = blocked === 'space' ? NOTICES.strictSpace : waiting ? NOTICES.submit : '';
+  // Said once when the space is refused or the run starts waiting, and again if a key is ignored.
+  if (blocked === 'space' || (waiting && (length > previousLength || blocked === 'submit'))) announce(rule);
   if (isPrimary) {
     setRunning(true);
-    $('input-help').textContent = blocked ? NOTICES.blocked : primaryNotice;
+    $('input-help').textContent = rule || (blocked ? NOTICES.blocked : primaryNotice);
     updateLive();
     if (sessionDurationMs() === null && passageComplete(targetAttempt, replay.typed)) finishPrimary();
   } else {
+    const help = $('race-help');
+    if (rule) help.textContent = rule;
+    else if ([NOTICES.strictSpace, NOTICES.submit].includes(help.textContent)) help.textContent = 'Esc restarts.';
     updateRaceProgress(replay);
     if (passageComplete(targetAttempt, replay.typed)) finishRacePlayer();
   }
@@ -970,6 +1029,8 @@ function restoreConditions(source) {
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
     stopOnError: source.correctionPolicy !== 'relaxed',
+    strictSpace: source.strictSpace === true,
+    quickEnd: source.quickEnd !== false,
   };
   profile.preferences = prefs;
   applyPreferences();
@@ -1200,9 +1261,10 @@ function renderHistory() {
   $('history-list').replaceChildren(...rows);
 }
 
+// Everyone types the daily passage under the same rules, whatever their practice settings.
 function dailyConditions() {
   return { ...conditions(), mode: 'quote', duration: null, count: null, punctuation: true,
-    quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
+    quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', strictSpace: false, quickEnd: true, corpus: CORPUS_VERSION };
 }
 
 function todayPassage() {
@@ -1740,6 +1802,8 @@ function bindEvents() {
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
   $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
+  $('strict-space-toggle').addEventListener('change', (event) => setInputRule('strictSpace', event.target.checked));
+  $('quick-end-toggle').addEventListener('change', (event) => setInputRule('quickEnd', event.target.checked));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
@@ -1901,6 +1965,15 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession('practice');
 }
 
+// Strict space and quick end change how a run is scored, so like stop on error they start a fresh passage.
+function setInputRule(key, enabled) {
+  if (prefs[key] === enabled) return;
+  prefs[key] = enabled;
+  applyPreferences();
+  saveProfile();
+  if (document.body.dataset.view === 'practice') resetSession('practice');
+}
+
 function setWordList(id) {
   prefs.wordList = id;
   applyPreferences();
@@ -1923,6 +1996,8 @@ function paletteCommands(query) {
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
+    { group: 'test', label: 'strict space', keywords: 'space bar early skip word mistakes input', hint: onOff(prefs.strictSpace), on: prefs.strictSpace, run: () => setInputRule('strictSpace', !prefs.strictSpace) },
+    { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: !quickEndApplies(conditions()), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },

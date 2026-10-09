@@ -119,9 +119,47 @@ export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', c
   };
 }
 
+// Quick end decides how a word or quote run ends when its last word has a mistake. It only
+// matters where a mistake can stand: stop on error already needs every letter right, and a timed
+// run ends on the clock.
+export function quickEndApplies(conditions = {}) {
+  return conditions.mode !== 'time' && conditions.correctionPolicy === 'relaxed';
+}
+
+function lastWordCorrect(text, typed) {
+  const start = text.lastIndexOf(' ') + 1;
+  return typed.slice(start, text.length) === text.slice(start);
+}
+
+// Quick end (the default, and the only rule before the setting existed) finishes on the last
+// letter, right or wrong. With it off, a mistake in the last word holds the run for a fix or a
+// space (see awaitingSubmit).
 export function passageComplete(attempt, typed) {
-  return typed.length >= attempt.text.length
-    && (attempt.conditions.correctionPolicy === 'relaxed' || typed === attempt.text);
+  if (typed.length < attempt.text.length) return false;
+  if (typed === attempt.text) return true;
+  if (attempt.conditions.correctionPolicy !== 'relaxed') return false;
+  return attempt.conditions.quickEnd !== false || !quickEndApplies(attempt.conditions) || lastWordCorrect(attempt.text, typed);
+}
+
+// Quick end off, the whole passage typed and a mistake in the last word: space submits it as it stands.
+export function awaitingSubmit(attempt, typed) {
+  return typed.length >= attempt.text.length && quickEndApplies(attempt.conditions) && !passageComplete(attempt, typed);
+}
+
+// Strict space: a space is taken only where the passage has one. Anywhere else it is recorded
+// as a wrong key at that position (an insert with accepted: false, which replay has always
+// scored without moving the caret), so the rest of the word stays in place.
+export function refusesSpace(conditions = {}, text, position, char) {
+  return conditions.strictSpace === true && char === ' ' && position < text.length && text[position] !== ' ';
+}
+
+// Input rules away from the defaults, in the order conditionKey appends them. Defaults add
+// nothing, so runs saved before these settings existed keep their keys.
+export function inputRules(conditions = {}) {
+  const rules = [];
+  if (conditions.strictSpace === true) rules.push('strict-space');
+  if (conditions.quickEnd === false && quickEndApplies(conditions)) rules.push('quick-end-off');
+  return rules;
 }
 
 function printable(text) {
@@ -318,6 +356,7 @@ export function conditionKey(conditions = {}) {
     conditions.correctionPolicy || 'mandatory',
     conditions.corpus || CORPUS_VERSION,
     conditions.metricVersion || METRIC_VERSION,
+    ...inputRules(conditions),
   ].join(':');
 }
 
