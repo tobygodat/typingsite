@@ -10,6 +10,7 @@ import {
   makePassage,
   metrics,
   accuracyGraceCharacters,
+  atRunEnd,
   MINIMUM_GRACE_CHARACTERS,
   MINIMUM_GRACE_MS,
   minimumMissed,
@@ -188,6 +189,12 @@ test('the duration is the end of a timed run: a miss there is an end-of-run fail
   // 66 keys read 57 wpm at 14 s: a live stop, before the end.
   const short = typed(66);
   assert.deepEqual(minimumStop(minimums, short(14000), { elapsedMs: 14000, durationMs: 15000 }), { metric: 'wpm', minimum: 60, value: 57 });
+
+  // The end is the duration or a finished passage, whichever comes first.
+  assert.equal(atRunEnd({ elapsedMs: 14999, durationMs: 15000 }), false);
+  assert.equal(atRunEnd({ elapsedMs: 15000, durationMs: 15000 }), true);
+  assert.equal(atRunEnd({ elapsedMs: 60000, durationMs: null }), false);
+  assert.equal(atRunEnd({ elapsedMs: 3000, durationMs: null, finished: true }), true);
 
   // An untimed run ends with its passage: judged on the final score, with no grace.
   const quick = typed(12)(2500);

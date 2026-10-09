@@ -295,6 +295,39 @@ for (const [keys, ending] of [[74, 'at the buzzer'], [66, 'a second before it']]
   });
 }
 
+test('a last key that misses just past a whole second finishes the run under its minimum', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await chooseWords(page, 10);
+  await openSettings(page);
+  await page.locator('#min-accuracy').selectOption('90');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#condition-line')).toContainText('continue on error');
+  const text = await passageText(page);
+  // Every sixth key and the last one miss. Everything but the last key lands inside the first five
+  // seconds, where no tick judges the run, so only the last key's check sees it under 90%.
+  const keys = `${withMisses(text.slice(0, -1))}${text.at(-1) === 'x' ? 'z' : 'x'}`;
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
+  await page.clock.runFor(1);
+  const pace = Math.floor(4900 / (keys.length - 1));
+  await typeAtPace(page, keys.slice(0, -1), pace);
+  await page.clock.runFor(4950 - (keys.length - 1) * pace);
+  await expect(page.locator('#typing-status')).toHaveText('In progress');
+  // The tick due at 5 s is late, as on a busy main thread: the last key lands at 5.005 s, before it.
+  await page.evaluate(() => {
+    const clockNow = performance.now.bind(performance);
+    performance.now = () => clockNow() + 55;
+  });
+  await page.keyboard.type(keys.at(-1));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await page.clock.resume();
+  await expect(page.locator('#result-time')).toHaveText('5.0 s');
+  expect(Number(await page.locator('#result-accuracy').textContent())).toBeLessThan(90);
+  await expect(page.locator('#result-delta')).toHaveText('Under your minimum · not counted');
+  await expect(page.locator('#result-comparison-note')).toHaveText('Finished under your 90% minimum accuracy, so it isn’t counted.');
+  await expect(page.locator('#best')).toHaveText('No best yet');
+});
+
 test('a retest stopped under its baseline’s minimum shows no timing for the drilled pair', async ({ page }) => {
   await page.clock.install();
   await openApp(page);

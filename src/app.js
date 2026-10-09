@@ -1,6 +1,7 @@
 import {
   CORPUS_VERSION,
   METRIC_VERSION,
+  atRunEnd,
   compareAttempts,
   completeAttempt,
   conditionKey,
@@ -754,6 +755,12 @@ function markKeyboardTargets(target) {
   document.querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
 
+// Where the primary run stands: worked out from the run itself on every call (its duration, and
+// whether its passage is finished), so no caller states the end conditions by hand.
+function runPosition(replay, elapsedMs) {
+  return { elapsedMs, durationMs: sessionDurationMs(), finished: passageComplete(attempt, replay.typed) };
+}
+
 function updateLive(reset = false) {
   if (!attempt) return;
   const replay = replayAttempt(attempt);
@@ -770,11 +777,11 @@ function updateLive(reset = false) {
     setText($('live-wpm'), score ? score.wpm : '—');
     setText($('live-accuracy'), score ? score.accuracy : '—');
     // Minimums are judged on this once-a-second tick, after the grace period, never per keystroke.
-    // The duration comes first: a tick at or past it is the end of the run, so the end-of-run check
-    // judges it (in finishPrimary, below), never this live one.
-    const ended = duration && elapsed >= duration;
-    if (!reset && !ended && live && attempt.minimums && attempt.status === 'running' && !attempt.interrupted && !attempt.unsupportedInput) {
-      const stop = minimumStop(attempt.minimums, live, { elapsedMs: boundedElapsed, durationMs: duration });
+    // At the run's end (its duration, or its last character) this live check stands aside: the
+    // end-of-run check in finishPrimary judges it.
+    if (!reset && live && attempt.minimums && attempt.status === 'running' && !attempt.interrupted && !attempt.unsupportedInput) {
+      const position = runPosition(live, boundedElapsed);
+      const stop = atRunEnd(position) ? null : minimumStop(attempt.minimums, live, position);
       if (stop) {
         finishPrimary(boundedElapsed, stop);
         return;
@@ -829,8 +836,7 @@ function finishPrimary(forcedElapsed = null, stop = null) {
   const final = completeAttempt(attempt, { endedAt });
   // A run that reaches its end (its duration or its passage) under a minimum isn't counted either,
   // so every counted run met them. The tick passes a live stop from the same judgement.
-  const end = { elapsedMs: endedAt, durationMs: sessionDurationMs(), finished: passageComplete(attempt, final.summary.typed) };
-  const stopped = clean ? stop || minimumStop(attempt.minimums, final.summary, end) : null;
+  const stopped = clean ? stop || minimumStop(attempt.minimums, final.summary, runPosition(final.summary, endedAt)) : null;
   const valid = clean && !stopped;
   const completed = { ...final, status: valid ? 'complete' : 'interrupted' };
   if (stopped) completed.stopped = stopped;

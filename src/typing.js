@@ -143,11 +143,16 @@ export function minimumMissed(minimums, score, running = null) {
   return null;
 }
 
-// The one judgement behind both checks, so they can't drift apart. A run at or past its end (its
-// duration reached, or its passage finished) is judged on its final score with no grace, and a miss
-// there is an end-of-run failure (atEnd). Before the end it is the live check, with the grace.
-export function minimumStop(minimums, replay, { elapsedMs, durationMs = null, finished = false }) {
-  const atEnd = finished || (durationMs !== null && elapsedMs >= durationMs);
+// A run is at its end once its duration is reached or its passage is finished.
+export function atRunEnd({ elapsedMs, durationMs = null, finished = false }) {
+  return finished || (durationMs !== null && elapsedMs >= durationMs);
+}
+
+// The one judgement behind both checks, so they can't drift apart. A run at its end is judged on its
+// final score with no grace, and a miss there is an end-of-run failure (atEnd). Before the end it is
+// the live check, with the grace.
+export function minimumStop(minimums, replay, position) {
+  const atEnd = atRunEnd(position);
   const missed = minimumMissed(minimums, replay.score, atEnd ? null : replay);
   return missed && atEnd ? { ...missed, atEnd: true } : missed;
 }
