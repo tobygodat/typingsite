@@ -1441,6 +1441,8 @@ function undoClear() {
   renderHistory();
   renderTraining();
   renderDaily();
+  // The snapshot holds the preferences too, so the unit may have changed back.
+  renderSpeeds();
   setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
@@ -1945,6 +1947,19 @@ function setSpeedUnit(unit) {
   renderSpeeds();
 }
 
+// Progress rebuilt with the same rows: open rows stay open and keyboard focus stays where it was.
+function rerenderHistory() {
+  const root = $('progress-content');
+  const open = [...root.querySelectorAll('details')].map((node) => node.open);
+  const path = [];
+  for (let node = document.activeElement; root.contains(node) && node !== root; node = node.parentElement) {
+    path.unshift([...node.parentElement.children].indexOf(node));
+  }
+  renderHistory();
+  root.querySelectorAll('details').forEach((node, index) => { node.open = Boolean(open[index]); });
+  if (path.length) path.reduce((node, index) => node?.children[index], root)?.focus({ preventScroll: true });
+}
+
 // Redraws every speed figure already on screen in the current unit.
 function renderSpeeds() {
   if (attempt?.status === 'running') {
@@ -1955,7 +1970,8 @@ function renderSpeeds() {
   // A hidden graph is only cleared here; the resize observer redraws it when results are shown.
   if (lastCompleted) renderSpeedGraph($('speed-graph'), lastCompleted, { animate: false, unit: prefs.speedUnit });
   if (shownComparison?.comparable) $('comparison-wpm').textContent = signedSpeed(shownComparison.wpmDelta);
-  if (document.body.dataset.view === 'progress') renderHistory();
+  if (document.body.dataset.view === 'progress') rerenderHistory();
+  if (ghostOn) $('egg-feedback').textContent = ghostMessage();
   renderDaily();
   if (!$('race-leaderboard').hidden && race.results.length === 2) renderRaceResults();
   onlineRace?.refreshSpeed();
@@ -2023,12 +2039,16 @@ function bindPalette() {
   });
 }
 
+function ghostMessage(pace = ghostPace()) {
+  return ghostOn ? `Ghost pacer · ${speed(pace.wpm)}${pace.fromBest ? ' (your best)' : ''}` : 'Ghost off';
+}
+
 // ↑ ↑ ↓ ↓ ← → ← → b a, or "ghost" in the palette: a pacer caret at your best pace for these conditions.
 function toggleGhost() {
   ghostOn = !ghostOn;
   document.body.dataset.ghost = ghostOn ? 'on' : 'off';
   const pace = ghostPace();
-  const message = ghostOn ? `Ghost pacer · ${speed(pace.wpm)}${pace.fromBest ? ' (your best)' : ''}` : 'Ghost off';
+  const message = ghostMessage(pace);
   $('egg-feedback').textContent = message;
   $('egg-toast').hidden = false;
   $('egg-toast').classList.toggle('is-solo', $('history-toast').hidden);

@@ -144,6 +144,10 @@ test('live speed and the ghost pacer read in the chosen unit', async ({ page }) 
   // The ghost's pace is 60 wpm without a best: 300 cpm.
   await command(page, 'ghost');
   await expect(page.locator('#egg-feedback')).toHaveText('Ghost pacer · 300 cpm');
+  // A toast already showing is reworded with the unit.
+  await command(page, 'speed unit · wpm');
+  await expect(page.locator('#egg-feedback')).toHaveText('Ghost pacer · 60 wpm');
+  await command(page, 'speed unit · cpm');
   await command(page, 'ghost');
 
   await expect(page.locator('#live-wpm + span')).toHaveText('cpm');
@@ -176,6 +180,15 @@ test('a retest comparison and the drills and retests list read in cpm', async ({
   await page.locator('.history-summary').click();
   await expect(page.locator('.history-detail')).toContainText(/before\d+ cpm · \d+%/);
   await expect(page.locator('.history-detail')).toContainText(/after\d+ cpm · \d+%/);
+
+  // Switching back from the palette keeps open rows open and keyboard focus where it was.
+  await page.locator('#run-history .run-summary').first().click();
+  await page.locator('.history-summary').focus();
+  await command(page, 'speed unit · wpm');
+  await expect(page.locator('.history-timing')).toHaveText(`${sign}${delta} wpm`);
+  await expect(page.locator('.history-row')).toHaveAttribute('open', '');
+  await expect(page.locator('#run-history .run-row').first()).toHaveAttribute('open', '');
+  await expect(page.locator('.history-summary')).toBeFocused();
 });
 
 test('the daily challenge and a one-keyboard race read in cpm', async ({ page }) => {
@@ -330,3 +343,44 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
     });
   });
 }
+
+test.describe('narrow phone 320px, a two-minute run', () => {
+  test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+
+  test('a three-digit live cpm beside a three-digit timer fits mid-run', async ({ page }) => {
+    await openApp(page);
+    await page.locator('#mode-time').click();
+    await page.locator('#duration-options [data-length="120"]').click();
+    await expect(page.locator('#condition-line')).toContainText('120 s');
+    await command(page, 'speed unit · cpm');
+    await openSettings(page);
+    await page.locator('#live-toggle').check();
+    await page.keyboard.press('Escape');
+    await page.locator('#typing-input').focus();
+    await typeHumanly(page, (await passageText(page)).slice(0, 30), { seed: 5, slip: false });
+    await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+    await expect(page.locator('#live-wpm')).toHaveText(/^\d{3}$/);
+    expect(Number(await page.locator('#timer').textContent())).toBeGreaterThanOrEqual(100);
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+  });
+});
+
+test.describe('short phone 375×553', () => {
+  test.use({ viewport: { width: 375, height: 553 }, hasTouch: true, isMobile: true });
+
+  test('settings, with the speed unit row, end below the account button and need no scrolling', async ({ page }) => {
+    await openApp(page);
+    await openSettings(page);
+    // A tap on the theme select's chevron reaches the select, not the account button above it.
+    const hit = await page.locator('#theme-select').evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      return document.elementFromPoint(box.right - 4, box.top + 4)?.id;
+    });
+    expect(hit).toBe('theme-select');
+    const popover = page.locator('.preferences-popover');
+    expect(await popover.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeLessThanOrEqual(0);
+    for (const height of await popover.locator('.preference-row').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height))) {
+      expect(height).toBeGreaterThanOrEqual(44);
+    }
+  });
+});

@@ -57,6 +57,8 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
   }
 
   function render() {
+    // A toast on screen is reworded too (a result in a newly chosen speed unit).
+    if (toastEntry) $('challenge-toast-text').textContent = describe(toastEntry);
     const signedIn = Boolean(userId());
     $('inbox').hidden = !signedIn;
     if (!signedIn) return;
