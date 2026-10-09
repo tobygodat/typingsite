@@ -72,6 +72,8 @@ declare
   g2 uuid := gen_random_uuid();
   g3 uuid := gen_random_uuid();
   g4 uuid := gen_random_uuid();
+  g5 uuid := gen_random_uuid();
+  g6 uuid := gen_random_uuid();
   t text;
   t2 text;
   denied boolean;
@@ -196,12 +198,13 @@ begin
     or jsonb_typeof(board->'rows'->0->'daily') <> 'null' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) then
     raise exception 'A delayed clear lost the time it happened: %', board;
   end if;
-  -- Sent again after a lost reply, the same clear is answered as done and changes nothing.
-  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,
+  -- Sent again after a lost reply, the same clear is answered as done and keeps its time. What it sends
+  -- is the runs since the clear (by then one more), so that is folded in.
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',60,'runs',1),
     'clear',pg_temp.clearing(g1,clock_timestamp() - interval '10 minutes',clock_timestamp())));
   if board ? 'refused' or board->'clear'->>'id' is distinct from g1::text or board->'clear'->>'from' is distinct from t
-    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) then
-    raise exception 'A repeated clear changed the row: %', board;
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',60,'runs',1) then
+    raise exception 'A repeated clear was not answered as done with its runs folded in: %', board;
   end if;
   -- A browser that missed the clear (it knows none, or another) is refused, changing nothing, however
   -- it writes, and the reply names the clear it missed.
@@ -213,7 +216,7 @@ begin
     foreach act in array array['publish','share'] loop
       board := pg_temp.board(act,bad);
       if not coalesce((board->>'refused')::boolean, false) or board->'clear'->>'id' is distinct from g1::text or not (board->>'sharing')::boolean
-        or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
+        or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',60,'runs',1) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
         raise exception 'A % that missed the clear was taken: % gave %', act, bad, board;
       end if;
     end loop;
@@ -231,7 +234,7 @@ begin
     raise exception 'A clear from a clock an hour behind was placed an hour early: %', board;
   end if;
   -- That newer clear wins: an undo of the first one is refused, changing nothing.
-  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g1));
+  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g1,'before',null));
   if not coalesce((board->>'refused')::boolean, false) or board->'clear'->>'id' is distinct from g2::text
     or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
     raise exception 'An undo overtook a newer clear: %', board;
@@ -244,10 +247,14 @@ begin
   if board ? 'refused' or board->'clear'->>'id' is distinct from g4::text or board->'clear'->>'from' is distinct from t2 then
     raise exception 'A clear sent late moved the time runs count from back: %', board;
   end if;
+  -- The reply names the clear before the latest one, which an undo of it puts back.
+  if board->'undo'->>'id' is distinct from g2::text or board->'undo'->>'from' is distinct from t2 then
+    raise exception 'The reply did not name the clear before the latest: %', board;
+  end if;
   -- An undo of the latest clear puts back the numbers it sends and the clear before it, with its time;
-  -- repeated after a lost reply, it is answered as done and changes nothing.
+  -- repeated after a lost reply, it is answered as done and the same numbers change nothing.
   foreach act in array array['first','repeat'] loop
-    board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g4));
+    board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g4,'before',g2));
     if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text or board->'clear'->>'from' is distinct from t2
       or board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',97,'attempts',2)
       or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) then
@@ -260,8 +267,63 @@ begin
   if board->'clear'->>'id' is distinct from g3::text or (board->'clear'->>'from')::timestamptz > clock_timestamp() then
     raise exception 'A clear was placed in the future: %', board;
   end if;
-  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g3));
+  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g3,'before',g2));
   if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text then raise exception 'Undoing the clear from ahead failed: %', board; end if;
+  -- Another device clears (g5) after this browser last heard from the board, and this browser then clears
+  -- (g6) still taking g2 for the clear before. The reply to its clear names g5. An undo that counted its
+  -- runs from another clear than g5 (g2, or none) is refused, changing nothing, and the reply names g5
+  -- again; so the runs g5 removed can't come back with g5 put back as the latest.
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+    'clear',pg_temp.clearing(g5,clock_timestamp(),clock_timestamp())));
+  t := board->'clear'->>'from';
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+    'clear',pg_temp.clearing(g6,clock_timestamp(),clock_timestamp())));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g6::text or board->'undo'->>'id' is distinct from g5::text
+    or board->'undo'->>'from' is distinct from t then
+    raise exception 'The reply to a clear did not name the clear before it: %', board;
+  end if;
+  foreach bad in array array[to_jsonb(g2), 'null'::jsonb] loop
+    board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),
+      'week',week,'undo',g6,'before',bad));
+    if not coalesce((board->>'refused')::boolean, false) or board->'clear'->>'id' is distinct from g6::text or board->'undo'->>'id' is distinct from g5::text
+      or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
+      raise exception 'An undo that counted from % was taken: %', bad, board;
+    end if;
+  end loop;
+  -- Counted from g5, it is taken: g5 is the latest again, with the runs since it.
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',60,'runs',1),'undo',g6,'before',g5));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g5::text or board->'clear'->>'from' is distinct from t
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',60,'runs',1) then
+    raise exception 'An undo that counted from the clear before was refused: %', board;
+  end if;
+  -- Repeated after a lost reply, with a run more since g5, it is answered as done and the run is folded in.
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',120,'runs',2),'undo',g6,'before',g5));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g5::text
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',120,'runs',2) then
+    raise exception 'A repeated undo was not answered as done with its runs folded in: %', board;
+  end if;
+  -- And the clear it undid, sent again by a tab that never heard of the undo, is answered as done: g5
+  -- stays the latest and nothing is lowered.
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+    'clear',pg_temp.clearing(g6,clock_timestamp(),clock_timestamp())));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g5::text
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',120,'runs',2) then
+    raise exception 'A clear repeated after its undo brought it back: %', board;
+  end if;
+  -- An undo that names no clear before it, or a malformed one, is not a request at all.
+  foreach bad in array array[
+    jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),'undo',g5),
+    jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),'undo',g5,'before','nope'),
+    jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),'undo',g5,'before',1)
+  ] loop
+    denied := false;
+    begin perform pg_temp.board('replace',bad);
+    exception when others then denied := true; end;
+    if not denied then raise exception 'A malformed undo was accepted: %', bad; end if;
+  end loop;
+  -- Ada's daily and week, published again since g5, for the friends below.
+  board := pg_temp.board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'clear',g5));
+  if board ? 'refused' then raise exception 'A publish naming the latest clear was refused: %', board; end if;
 
   -- Lin has Ada on her list, but Ada has not chosen Lin: neither sees the other.
   perform set_config('request.jwt.claim.sub',lin::text,true);
