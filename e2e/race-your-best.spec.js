@@ -84,6 +84,7 @@ test('the run card offers a race of your best; the race is labelled, never count
   await expect(page.locator('#palette-list [role="option"]').first()).toContainText('race your best');
   await page.keyboard.press('Enter');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
+  await expect(page.locator('#condition-line')).toContainText('physical keyboard');
   await typeInto(page, original.slice(0, 3));
   await page.keyboard.press('Escape');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
@@ -270,6 +271,41 @@ test('under reduced motion the ghost stays hidden and the finish is still compar
   await expect(page.locator('#text-display .ghost-caret')).toHaveClass(/is-hidden/);
 });
 
+test('reduced motion turned on hides the ghost at once, and turned off brings it back where the best has reached', async ({ page, supabase }) => {
+  await page.clock.install({ time: new Date('2026-10-02T12:00:00Z') });
+  const user = seedBest(supabase, 'motion@stilltype.test', bestTrace('motion'));
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openView(page, 'Progress');
+  await page.locator('#progress-race-start').click();
+  const ghost = page.locator('#text-display .ghost-caret');
+  const char = (index) => page.locator('#text-display .char').nth(index);
+  await expect(ghost).not.toHaveClass(/is-hidden/);
+  // Before the first key it hides rather than standing at the start, and the description follows.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(ghost).toHaveClass(/is-hidden/);
+  await expect(page.locator('#session-description')).toContainText('Reduced motion is on, so its ghost stays hidden');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await expect(ghost).not.toHaveClass(/is-hidden/);
+  await expect(page.locator('#session-description')).toContainText('A ghost caret replays');
+
+  await pauseClock(page);
+  await typeInto(page, 't');
+  await page.clock.runFor(1100);
+  expect(Math.abs(await left(ghost) - await left(char(6)))).toBeLessThan(1);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(ghost).toHaveClass(/is-hidden/);
+  await page.clock.runFor(1000);
+  await expect(ghost).toHaveClass(/is-hidden/);
+  // 2.25 s after the first key the best stood after twelve characters. The description changes on
+  // the same media change, so the clock only moves on once the ghost has been told.
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await expect(page.locator('#session-description')).toContainText('A ghost caret replays');
+  await page.clock.runFor(150);
+  await expect(ghost).not.toHaveClass(/is-hidden/);
+  expect(Math.abs(await left(ghost) - await left(char(12)))).toBeLessThan(1);
+});
+
 test('an interrupted race is not compared with the best', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
@@ -300,6 +336,21 @@ test.describe('touch phone', () => {
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await typeInto(page, await passageText(page));
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+    await expect(page.locator('#result-delta')).toHaveText(/^Finished .*your best$/);
+  });
+
+  test('a race started by a tap on the palette row is touch input too', async ({ page }) => {
+    await openApp(page);
+    await chooseWords(page, 10);
+    await page.locator('#typing-input').tap();
+    await typeInto(page, await passageText(page));
+    await expect(page.locator('#result-conditions')).toContainText('touch input');
+    await page.locator('#palette-trigger').tap();
+    await page.keyboard.type('race your best');
+    await page.locator('#palette-list [role="option"]').first().tap();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await typeInto(page, await passageText(page));
     await expect(page.locator('#result-delta')).toHaveText(/^Finished .*your best$/);
   });
 });

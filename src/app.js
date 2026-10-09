@@ -1862,6 +1862,8 @@ function bindEvents() {
   $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
+  // A race's ghost follows reduced motion live (src/motion.js), so its description does too.
+  reducedMotion.addEventListener('change', () => { if (sessionKind === GHOST_RACE) $('session-description').textContent = raceDescription(); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
@@ -2050,7 +2052,7 @@ function paletteCommands(query) {
       else { navigate('practice'); $('typing-input').focus({ preventScroll: true }); }
     } },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
-    { group: 'test', label: 'race your best', keywords: 'ghost replay recorded personal best beat same passage', hint: raceable.available ? `${raceable.best.wpm} wpm` : 'unavailable', run: () => startRaceBest(raceKey) },
+    { group: 'test', label: 'race your best', keywords: 'ghost replay recorded personal best beat same passage', hint: raceable.available ? `${raceable.best.wpm} wpm` : 'unavailable', run: (event) => startRaceBest(raceKey, startedBy(event)) },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },

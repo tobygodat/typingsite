@@ -125,6 +125,12 @@ export function createTypingFx(wrap, display, options = {}) {
 
   function placeGhost(index) {
     if (!characters.length) return;
+    // A recorded ghost could only jump under reduced motion, so it is hidden there (the pacer
+    // instead stands still).
+    if (ghost.track && reducedMotion.matches) {
+      ghostCaret.classList.add('is-hidden');
+      return;
+    }
     const target = characters[Math.min(index, characters.length - 1)];
     const hidden = ghostCaret.classList.contains('is-hidden');
     if (index === ghost.index && (target?.isConnected ? !hidden : hidden)) return;
@@ -157,6 +163,19 @@ export function createTypingFx(wrap, display, options = {}) {
     ghost.frame = 0;
     ghost.start = 0;
   }
+
+  // Reduced motion can change during a run. Turned on, the ghost stops at once and a recorded one
+  // hides; turned off, it comes back where its run has reached (at the start before the first key).
+  reducedMotion.addEventListener('change', () => {
+    if (!ghost.armed || wrap.dataset.caret === 'done') return;
+    if (reducedMotion.matches) {
+      cancelAnimationFrame(ghost.frame);
+      ghost.frame = 0;
+      if (ghost.track) ghostCaret.classList.add('is-hidden');
+    } else if (ghost.start) {
+      if (!ghost.frame) ghost.frame = requestAnimationFrame(ghostTick);
+    } else placeGhost(0);
+  });
 
   return {
     reset(nextCharacters) {
@@ -210,22 +229,23 @@ export function createTypingFx(wrap, display, options = {}) {
       },
       // A recorded ghost: track.at(ms) is its caret position that long after the first keystroke.
       // It steps letter to letter with no easing and is drawn at full opacity (3:1 on both grounds).
-      // Under reduced motion it couldn't move, so it is hidden there (the pacer instead stands still
-      // at the start).
+      // Under reduced motion it couldn't move, so it is hidden there, also when the setting changes
+      // mid-race (the pacer instead stands still at the start).
       follow(track) {
-        ghost.armed = Boolean(track) && !reducedMotion.matches;
+        ghost.armed = Boolean(track);
         ghost.cps = 0;
-        ghost.track = ghost.armed ? track : null;
+        ghost.track = track || null;
         ghost.index = -1;
         ghostCaret.classList.toggle('is-recorded', ghost.armed);
         ghostCaret.classList.toggle('is-hidden', !ghost.armed);
         if (ghost.armed) placeGhost(0);
         else stopGhost();
       },
+      // The clock starts under reduced motion too, so the ghost can rejoin its run if that is turned off.
       run(startTime) {
-        if (!ghost.armed || reducedMotion.matches) return;
+        if (!ghost.armed) return;
         ghost.start = startTime;
-        if (!ghost.frame) ghost.frame = requestAnimationFrame(ghostTick);
+        if (!ghost.frame && !reducedMotion.matches) ghost.frame = requestAnimationFrame(ghostTick);
       },
       disarm() {
         ghost.armed = false;
