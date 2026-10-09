@@ -314,3 +314,53 @@ test('opening deletion mid-run interrupts the run, and nothing typed in the dial
   await expect(page.locator('#best')).toHaveText('No best yet');
   expect(supabase.requests).not.toContain(FUNCTION_CALL);
 });
+
+test('a deletion that gets no answer gives up within 30 seconds in all and changes nothing', async ({ page, supabase }) => {
+  supabase.addUser(ADA);
+  await page.clock.install();
+  await openApp(page);
+  await signInWithEmail(page, ADA);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  const form = page.locator('#delete-account-form');
+  const dialog = page.locator('#delete-account-dialog');
+  const confirm = page.locator('#confirm-delete-account');
+
+  // The page clock keeps flowing while the test acts, so "still busy" is checked with room to spare
+  // and "done" just past 30 s, where separate per-request timeouts would still be waiting.
+  const givesUpWithin30s = async (call) => {
+    const saved = await localState(page);
+    await openDeleteDialog(page);
+    await page.keyboard.type('delete', { delay: 60 });
+    const before = supabase.requests.length;
+    await confirm.click();
+    await expect.poll(() => supabase.requests.slice(before)).toContain(call);
+    await expect(form).toHaveAttribute('aria-busy', 'true');
+    await page.clock.fastForward(25_000);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeVisible();
+    await expect(form).toHaveAttribute('aria-busy', 'true');
+    await page.clock.fastForward(5_500);
+    await expect(page.locator('#delete-account-error')).toHaveText('Can’t reach the account service. Check your connection and try again.');
+    await expect(form).toHaveAttribute('aria-busy', 'false');
+    await expect(page.locator('#delete-account-status')).toHaveText('');
+    await expect(confirm).toHaveText('Delete account');
+    await expect(confirm).toBeEnabled();
+    await expect(page.locator('#cancel-delete-account')).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    // Unconfirmed is not deleted: same session and cache, still signed in, account intact.
+    expect(await localState(page)).toEqual(saved);
+    await expect(page.locator('#account')).toHaveAttribute('data-state', 'member');
+    expect(supabase.users.has(ADA)).toBe(true);
+  };
+
+  // The function call and the check after it both hang.
+  supabase.blackholed.add(FUNCTION_CALL).add('GET /auth/v1/user');
+  await givesUpWithin30s(FUNCTION_CALL);
+
+  // An hour on, the token needs refreshing first, and the refresh hangs as well.
+  supabase.blackholed.add('POST /auth/v1/token');
+  await page.clock.setSystemTime(Date.now() + 3_600_000);
+  await givesUpWithin30s('POST /auth/v1/token?grant_type=refresh_token');
+  expect(supabase.deletedUsers).toEqual([]);
+});

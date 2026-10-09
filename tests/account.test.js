@@ -176,6 +176,107 @@ test('an ended session is reported before anything reaches the function', async 
   });
 });
 
+// A reply that comes after `ms` (or a request that never answers, with no ms), unless the request's
+// signal gives up first, as fetch does. Time here is the mocked clock's.
+function answerAfter(init, ms, answer) {
+  return new Promise((resolve, reject) => {
+    const { signal } = init;
+    if (signal?.aborted) return reject(signal.reason);
+    signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    if (ms !== undefined) setTimeout(() => { try { resolve(answer()); } catch (error) { reject(error); } }, ms);
+  });
+}
+
+// Starts a deletion on a mocked clock and reports whether it has settled after each advance.
+async function timedDeletion(t, handler, session) {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+  const flush = async () => { for (let turn = 0; turn < 5; turn += 1) await new Promise((resolve) => setImmediate(resolve)); };
+  const outcome = { settled: false, error: null };
+  const calls = [];
+  const store = new Map();
+  const originalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  globalThis.fetch = (url, init = {}) => {
+    const path = new URL(url).pathname;
+    calls.push(path);
+    return handler(path, init);
+  };
+  t.after(() => {
+    globalThis.localStorage = originalStorage;
+    globalThis.fetch = originalFetch;
+  });
+  const current = session(Date.now());
+  store.set('stilltype-session-v1', JSON.stringify(current));
+  const before = [...store.entries()];
+  deleteAccount(current).then(() => { outcome.settled = true; }, (error) => { outcome.settled = true; outcome.error = error; });
+  await flush();
+  // Advances in one-second steps, so a step that ends partway through starts the next one in time.
+  const advance = async (ms) => {
+    for (let left = ms; left > 0; left -= 1000) {
+      t.mock.timers.tick(Math.min(1000, left));
+      await flush();
+    }
+  };
+  return { outcome, calls, advance, unchanged: () => assert.deepEqual([...store.entries()], before) };
+}
+
+const hangs = (path, init) => answerAfter(init);
+const expiredAt = (now) => ({ ...liveSession(), expires_at: Math.floor(now / 1000) - 120 });
+const liveAt = (now) => ({ ...liveSession(), expires_at: Math.floor(now / 1000) + 3600 });
+
+test('a deletion where every request hangs gives up 30 seconds after it began, not later', async (t) => {
+  // An expired token, so the refresh hangs first and nothing reaches the function.
+  const { outcome, calls, advance, unchanged } = await timedDeletion(t, hangs, expiredAt);
+  await advance(29999);
+  assert.equal(outcome.settled, false, 'still waiting before the deadline');
+  await advance(1);
+  assert.equal(outcome.settled, true, 'settled at the deadline');
+  assert.equal(outcome.error?.message, DELETE_COPY.offline);
+  assert.deepEqual(calls, ['/auth/v1/token']);
+  unchanged();
+});
+
+test('the refresh, the function call and the check after it share one 30-second deadline', async (t) => {
+  // A slow refresh (10 s), then a function call that never answers: the check gets what is left.
+  const slowRefresh = (path, init) => (path === '/auth/v1/token'
+    ? answerAfter(init, 10000, () => reply(200, { access_token: 'new', refresh_token: 'next', expires_in: 3600, user: { id: 'u1', email: 'ada@stilltype.test' } }))
+    : answerAfter(init));
+  const { outcome, calls, advance } = await timedDeletion(t, slowRefresh, expiredAt);
+  await advance(29999);
+  assert.equal(outcome.settled, false);
+  await advance(1);
+  assert.equal(outcome.settled, true);
+  assert.equal(outcome.error?.message, DELETE_COPY.offline);
+  assert.deepEqual(calls.slice(0, 2), ['/auth/v1/token', DELETE_ACCOUNT_PATH]);
+});
+
+test('a check that runs out of time is never taken for a deletion', async (t) => {
+  // The function's connection drops after 20 s (it may have deleted the account or not) and the
+  // check hangs: past the deadline the account is unconfirmed, so this is a failure, not a success.
+  const dropped = (path, init) => (path === DELETE_ACCOUNT_PATH
+    ? answerAfter(init, 20000, () => { throw new TypeError('Failed to fetch'); })
+    : answerAfter(init));
+  const { outcome, calls, advance, unchanged } = await timedDeletion(t, dropped, liveAt);
+  await advance(29999);
+  assert.equal(outcome.settled, false);
+  await advance(1);
+  assert.equal(outcome.settled, true);
+  assert.equal(outcome.error?.message, DELETE_COPY.offline);
+  assert.deepEqual(calls, [DELETE_ACCOUNT_PATH, '/auth/v1/user']);
+  unchanged();
+});
+
+test('a check that answers before the deadline still confirms a deletion whose reply was lost', async (t) => {
+  const lostThenGone = (path, init) => (path === DELETE_ACCOUNT_PATH
+    ? answerAfter(init, 20000, () => { throw new TypeError('Failed to fetch'); })
+    : answerAfter(init, 5000, () => reply(403, { code: 403, error_code: 'user_not_found', msg: 'User from sub claim in JWT does not exist' })));
+  const { outcome, advance } = await timedDeletion(t, lostThenGone, liveAt);
+  await advance(25000);
+  assert.equal(outcome.settled, true);
+  assert.equal(outcome.error, null);
+});
+
 test('forgetting a deleted account removes its session and device cache, sends nothing and keeps other accounts', async () => {
   await withAccountService(() => reply(200), async (calls, store) => {
     store.set('stilltype-session-v1', '{}');

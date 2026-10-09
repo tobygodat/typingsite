@@ -31,6 +31,9 @@ export class FakeSupabase {
     // CORS headers; 'fail' is deleteUser failing; 'lost' deletes and then loses the reply.
     this.deleteAccount = 'ok';
     this.deletedUsers = [];
+    // Endpoints ('METHOD /path') that take a request and never answer, like a blackholed connection:
+    // only the page's own deadline ends them.
+    this.blackholed = new Set();
   }
 
   addUser(email, password = 'correct horse battery') {
@@ -94,6 +97,7 @@ export class FakeSupabase {
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS });
     this.requests.push(`${method} ${url.pathname}${url.search}`);
     if (this.offline) return route.abort('internetdisconnected');
+    if (this.blackholed.has(`${method} ${url.pathname}`)) return undefined;
     const reply = (status, json) => route.fulfill({
       status,
       headers: { ...CORS, 'content-type': 'application/json' },

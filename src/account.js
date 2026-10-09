@@ -81,8 +81,8 @@ function storeSession(data) {
   return session;
 }
 
-// timeout (ms) gives up on a request that gets no reply; the error then has no status.
-export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false, timeout = 0 } = {}) {
+// signal (an AbortSignal) gives up on a request still waiting for its reply; the error then has no status.
+export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false, signal } = {}) {
   let response;
   let text;
   try {
@@ -96,7 +96,7 @@ export async function request(path, { method = 'GET', body, token, headers = {},
         ...headers,
       },
       body: body ? JSON.stringify(body) : undefined,
-      ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
+      signal,
     });
     text = await response.text();
   } catch {
@@ -158,8 +158,9 @@ export async function completeRedirect(href) {
   return storeSession({ ...redirect, user });
 }
 
-// Returns a session with a usable access token, refreshing it if it is about to expire.
-export async function freshSession(session = loadSession()) {
+// Returns a session with a usable access token, refreshing it if it is about to expire. signal lets
+// a caller with a deadline give up on the refresh.
+export async function freshSession(session = loadSession(), { signal } = {}) {
   if (!session) return null;
   // Background polls (race, inbox) may already have rotated this user's refresh token; a stale
   // copy would be rejected and end the session, so the newest stored one wins. Two refreshes in
@@ -168,7 +169,7 @@ export async function freshSession(session = loadSession()) {
   if (stored?.user?.id === session.user?.id && stored.expires_at >= session.expires_at) session = stored;
   if (session.expires_at - 60 > Date.now() / 1000) return session;
   try {
-    const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token } });
+    const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token }, signal });
     return storeSession(data);
   } catch (error) {
     // A rejected refresh token means the session is over; a network failure keeps it for later.
@@ -196,14 +197,16 @@ export const DELETE_COPY = {
   offline: 'Can’t reach the account service. Check your connection and try again.',
 };
 
-// Long enough for a slow cold start; past it the dialog unlocks with an error instead of waiting on.
+// One deadline for the whole deletion, long enough for a slow cold start. The session refresh, the
+// function call and the check after it all share it, so past it the dialog unlocks with an error
+// instead of waiting on, however the steps add up.
 const DELETE_TIMEOUT_MS = 30000;
 
 // Asks the Auth server whether the account still exists: true once it reports the user gone, false
-// while it still knows them, null if it can't say.
-async function accountGone(current) {
+// while it still knows them, null if it can't say (including when the deadline runs out first).
+async function accountGone(current, signal) {
   try {
-    return (await request('/auth/v1/user', { token: current.access_token, timeout: DELETE_TIMEOUT_MS }))?.id === current.user.id ? false : null;
+    return (await request('/auth/v1/user', { token: current.access_token, signal }))?.id === current.user.id ? false : null;
   } catch (error) {
     return error.code === 'user_not_found' ? true : null;
   }
@@ -212,9 +215,20 @@ async function accountGone(current) {
 // Resolves once the account is gone; otherwise throws an AuthError whose message says what happened.
 // Signing out and clearing this device are left to the caller, for after success only.
 export async function deleteAccount(session) {
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), DELETE_TIMEOUT_MS);
+  try {
+    return await deleteBefore(session, deadline.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Each step gets whatever time is left before the deadline; a step it cuts off counts as no reply.
+async function deleteBefore(session, signal) {
   let current;
   try {
-    current = await freshSession(session);
+    current = await freshSession(session, { signal });
   } catch (error) {
     // A rejected refresh token means the session is over; anything else is the service or the network.
     const ended = error.status >= 400 && error.status < 500;
@@ -223,7 +237,7 @@ export async function deleteAccount(session) {
   if (!current) throw new AuthError(DELETE_COPY.session);
   let refused = false;
   try {
-    await request(DELETE_ACCOUNT_PATH, { method: 'POST', token: current.access_token, body: {}, timeout: DELETE_TIMEOUT_MS });
+    await request(DELETE_ACCOUNT_PATH, { method: 'POST', token: current.access_token, body: {}, signal });
     return;
   } catch (error) {
     if (error.status === 404) throw new AuthError(DELETE_COPY.missing);
@@ -233,7 +247,7 @@ export async function deleteAccount(session) {
   // A refused token or no reply (a function that isn't deployed can fail this way in a browser, when
   // the platform's not-found reply has no CORS headers). Either way the account may already be gone:
   // deleted by this request when its reply was lost, or from another device. The Auth server settles it.
-  const gone = await accountGone(current);
+  const gone = await accountGone(current, signal);
   if (gone) return;
   if (refused) throw new AuthError(DELETE_COPY.session);
   // Say nothing was deleted only if the account is confirmed to still exist.
