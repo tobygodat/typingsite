@@ -2,6 +2,7 @@ import { conditionKey, printable, replayAttempt, summarizePatterns, textId } fro
 
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
+export const MAX_MISSED_WORDS = 12;
 
 export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
@@ -19,16 +20,29 @@ export function runRecord(attempt, at = attempt.at || null) {
   const evidence = summarizePatterns([attempt]);
   // Keep counts and each run's measured median, rather than another keystroke log.
   record.patterns = evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
+  // The words missed on the first try, for "words you keep missing": only from runs pattern memory
+  // reads, so a run without the field (older, trimmed or not eligible) is no evidence either way.
+  if (patternRun(record)) record.missedWords = missedAndSlowWords(attempt, 0).missed.slice(0, MAX_MISSED_WORDS);
   return record;
 }
 
+// Pattern counts and missed words stay only on the newest 120 summaries, so the profile stays small.
 export function retainRuns(runs) {
   const kept = runs.slice(-MAX_RUN_SUMMARIES);
-  return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS && run.patterns ? { ...run, patterns: [] } : run);
+  return kept.map((run, i) => {
+    if (i >= kept.length - MAX_PATTERN_RUNS || (!run.patterns && !run.missedWords)) return run;
+    // Drop the field rather than empty it: an empty list would read as a run with no misses.
+    const { missedWords, ...older } = run;
+    return run.patterns ? { ...older, patterns: [] } : older;
+  });
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
 export const trendRun = (run) => validRun(run) && ['test', 'retest'].includes(run.kind);
+// The runs pattern memory reads: complete tests, retests and daily runs, never a daily passage
+// shown before. Drills, word practice, races and interrupted runs are left out.
+export const patternRun = (run) => validRun(run) && ['test', 'retest', 'daily'].includes(run.kind)
+  && (run.kind !== 'daily' || run.fresh !== false);
 
 export function filterRuns(runs, key, days = 'all', date = new Date()) {
   const cutoff = days === 'all' ? null : date.getTime() - Number(days) * 86400000;
@@ -57,9 +71,7 @@ export function weeklyChange(runs, key, date = new Date()) {
 
 export function recurringTargets(runs, loops, compatibleConditions) {
   const key = conditionKey(compatibleConditions);
-  const eligible = runs.filter((r) => validRun(r) && ['test', 'retest', 'daily'].includes(r.kind)
-    && (r.kind !== 'daily' || r.fresh !== false)
-    && conditionKey(r.conditions) === key).slice(-MAX_PATTERN_RUNS);
+  const eligible = runs.filter((r) => patternRun(r) && conditionKey(r.conditions) === key).slice(-MAX_PATTERN_RUNS);
   const pairs = new Map();
   for (const run of eligible) {
     for (const [pair, observations, errors, timingCount, medianMs, slowdownMs] of run.patterns || []) {
@@ -87,6 +99,26 @@ export function recurringTargets(runs, loops, compatibleConditions) {
     })
     .sort((a, b) => Number(b.review) - Number(a.review) || b.errors / b.observations - a.errors / a.observations
       || b.slowRuns - a.slowRuns || a.pair.localeCompare(b.pair));
+}
+
+// Words missed on the first try in at least two of the newest 120 runs that recorded missed words,
+// across all test conditions. `runs` is how many runs were counted, so a row can say "missed in 3
+// of the last 41 runs". Ranked by the number of runs missed in, then the most recent miss (by run
+// order, since older summaries can lack a date).
+export function recurringMissedWords(runs, limit = 8) {
+  const counted = runs.filter((run) => patternRun(run) && Array.isArray(run.missedWords)).slice(-MAX_PATTERN_RUNS);
+  const words = new Map();
+  counted.forEach((run, index) => {
+    for (const word of new Set(run.missedWords)) {
+      const item = words.get(word) || { word, runs: 0, lastIndex: -1 };
+      item.runs += 1;
+      item.lastIndex = index;
+      words.set(word, item);
+    }
+  });
+  const recurring = [...words.values()].filter((item) => item.runs >= 2)
+    .sort((a, b) => b.runs - a.runs || b.lastIndex - a.lastIndex || a.word.localeCompare(b.word));
+  return { runs: counted.length, recurring: recurring.length, words: recurring.slice(0, limit) };
 }
 
 // Stable UTC selection from a frozen text pool: preferences and seen history never change it.

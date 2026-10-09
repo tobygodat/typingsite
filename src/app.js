@@ -23,7 +23,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -452,7 +452,7 @@ function configureSessionCopy() {
     practice: ['practice', 'Practice', ''],
     drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
-    missed: ['missed words', 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
+    missed: ['missed words', wordsPassage?.recurring ? 'Practice words you keep missing' : 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
   }[sessionKind];
   $('session-kicker').textContent = copy[0];
@@ -833,16 +833,34 @@ function renderPracticeWords(completed) {
   button.hidden = evidence.hidden = !words.length;
   if (!words.length) return;
   evidence.textContent = [
-    // Quote a token that carries punctuation, so "table," reads as the word typed.
-    missed.length ? `missed first try: ${missed.map((word) => /[^\p{L}\p{N}]/u.test(word) ? `“${word}”` : word).join(', ')}` : '',
+    missed.length ? `missed first try: ${missed.map(wordCopy).join(', ')}` : '',
     slow.length ? `slowest in this run: ${slow.map((item) => `${item.word} ${item.wpm} wpm`).join(', ')} · median ${medianWpm} wpm over ${timedCount} clean words` : '',
   ].filter(Boolean).join('\n');
-  const text = practiceWordsPassage(words);
   button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
-  button.onclick = () => {
-    wordsPassage = { id: `missed-${textId(text)}`, text, fresh: false, words };
-    resetSession('missed', { focus: true });
-  };
+  button.onclick = () => startWordPractice(words);
+}
+
+// Quote a token that carries punctuation, so "table," reads as the word typed.
+function wordCopy(word) {
+  return /[^\p{L}\p{N}]/u.test(word) ? `“${word}”` : word;
+}
+
+// An uncounted `missed` run of these words. It is not a drill, so a drill's context from earlier
+// doesn't carry over into the next retest's record.
+function startWordPractice(words, { recurring = false } = {}) {
+  const text = practiceWordsPassage(words);
+  wordsPassage = { id: `missed-${textId(text)}`, text, fresh: false, words, recurring };
+  trainingContext = null;
+  resetSession('missed', { focus: true });
+}
+
+// The words you keep missing across runs. Without a baseline in this tab, the newest retained
+// counted run becomes one (as for a recurring pattern), so a fresh-text retest can follow.
+function practiseRecurringWords() {
+  const { words } = recurringMissedWords(profile.runs);
+  if (words.length < 2) return;
+  baselineAttempt ||= retainedBaseline();
+  startWordPractice(words.map((item) => item.word), { recurring: true });
 }
 
 function resultHeadline(completed) {
@@ -1108,11 +1126,17 @@ function targetButton(target, source) {
   return button;
 }
 
-function practiceTarget(target, source) {
-  // Use a retained, compatible baseline when possible. Older corpus versions need a new baseline.
-  baselineAttempt = [...profile.attempts].reverse().find((a) => a.status === 'complete' && !a.interrupted
+// The newest retained run that can anchor a fresh-text retest, at `source` conditions when given.
+// Older corpus versions need a new baseline.
+function retainedBaseline(source = null) {
+  return [...profile.attempts].reverse().find((a) => a.status === 'complete' && !a.interrupted
     && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
-    && conditionKey(a.conditions) === conditionKey(source) && source.corpus === CORPUS_VERSION) || null;
+    && (!source || conditionKey(a.conditions) === conditionKey(source)) && (source || a.conditions).corpus === CORPUS_VERSION) || null;
+}
+
+function practiceTarget(target, source) {
+  // Use a retained, compatible baseline when possible.
+  baselineAttempt = retainedBaseline(source);
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
   activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
@@ -1151,6 +1175,26 @@ function renderTraining() {
     row.append(copy, targetButton(target.pair, source));
     return row;
   }));
+  renderMissedWords();
+}
+
+// Words missed on the first try in two or more recent counted runs, with what was counted.
+function renderMissedWords() {
+  const { runs, recurring, words } = recurringMissedWords(profile.runs);
+  const enough = words.length >= 2;
+  $('missed-words-note').textContent = enough
+    ? `First-try misses in your last ${runs} complete tests, retests and daily runs, all test conditions together. Word practice and drills aren’t counted.`
+    : runs < 2
+      ? `Not enough evidence yet: ${runs ? 'one run' : 'no runs'} counted so far. A word shows here once you miss it on the first try in two complete tests, retests or daily runs.`
+      : `Not enough evidence yet: ${recurring ? `only ${wordCopy(words[0].word)} was missed on the first try in more than one of your last ${runs} runs (in ${words[0].runs})` : `no word was missed on the first try in more than one of your last ${runs} runs`}. The list starts at two such words.`;
+  $('missed-words-list').replaceChildren(...(enough ? words : []).map((item) => {
+    const row = element('li', '', 'missed-word');
+    row.append(element('span', wordCopy(item.word), 'missed-word-text'), element('span', `missed in ${item.runs} of the last ${runs} runs`, 'num'));
+    return row;
+  }));
+  $('missed-words-list').hidden = !enough;
+  $('practice-missed-list').hidden = !enough;
+  $('practice-missed-list').textContent = `Practice these ${words.length} words`;
 }
 
 function renderHistory() {
@@ -1808,6 +1852,7 @@ function bindEvents() {
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
+  $('practice-missed-list').addEventListener('click', practiseRecurringWords);
   $('start-daily').addEventListener('click', startDaily);
   $('start-drill').addEventListener('click', startDrill);
   $('skip-to-retest').addEventListener('click', startRetest);
@@ -1939,6 +1984,7 @@ function setWordList(id) {
 
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
+  const missedWords = recurringMissedWords(profile.runs).words.length;
   const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
   const commands = [
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
@@ -1946,6 +1992,7 @@ function paletteCommands(query) {
     })),
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
+    { group: 'test', label: 'practice words you keep missing', keywords: 'missed words mistakes errors practise recurring list', hint: `${missedWords} words`, disabled: missedWords < 2, run: practiseRecurringWords },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },

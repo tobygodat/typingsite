@@ -49,6 +49,8 @@ Recommendation IDs are `recommendation-title`, `recommendation-evidence`, `recom
 
 `#recommendation-evidence` must name observed evidence (error count and/or timing against the user's own median). When evidence is insufficient, say so directly and offer a general drill. `#recommendation-meta` states approximate drill time and that the retest uses a fresh comparable passage. Never render a confident weak-pattern claim without recorded observations.
 
+Below the recurring patterns, `section.missed-words` lists the words you keep missing: `#missed-words-note` names what was counted (the newest counted runs that recorded missed words, up to 120: complete tests, retests and daily runs, the runs pattern memory reads, so never word practice, drills, interrupted runs or a daily passage shown before), or says plainly that there isn't enough evidence yet and how much there is. With two or more words missed on the first try in at least two of those runs, `ol#missed-words-list` shows up to 8 (`li.missed-word`: the word, then "missed in N of the last M runs") and `#practice-missed-list` (also the palette command "practice words you keep missing") starts the same uncounted `missed` run with those words.
+
 The manual target lives in `details.manual-panel` (summary `#manual-heading`): `#manual-target` form, `#manual-target-input`, and `#apply-manual-target`. It accepts a short letter pair or word. Validation appears in `#manual-target-error`; invalid state uses `aria-invalid="true"` and visible recovery copy.
 
 ## Drill and retest

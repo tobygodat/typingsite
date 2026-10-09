@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
+import { MAX_MISSED_WORDS, dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 test('missed and slowest words come from first tries and per-word speed', () => {
   const text = 'the cat sat on mat';
@@ -200,4 +200,110 @@ test('original quote pool has fresh choices in every length and difficulty bucke
       }
     }
   }
+});
+
+// A run summary built from real keystrokes, with a wrong first try (then fixed) at each of `misses`.
+const typedRun = (id, text, misses, overrides = {}) => runRecord({ id, kind: 'test', status: 'complete', conditions,
+  textId: id, fresh: true, ...typedWithMisses(text, misses), ...overrides }, '2026-10-01T12:00:00Z');
+
+test('a counted run records its first-try missed words as practice uses them, capped per run', () => {
+  // "the" twice (one miss), the comma after "table", and the capital of "Still".
+  const text = 'the table, the Still cat';
+  const record = typedRun('a', text, [1, 9, 11, 15]);
+  assert.deepEqual(record.missedWords, ['the', 'table,', 'Still']);
+  // Nothing else in the summary changes: the same keys as before, plus the list.
+  assert.deepEqual(Object.keys(record).sort(), ['at', 'challengeDate', 'conditions', 'elapsedMs', 'errors', 'firstDailyAttempt', 'fresh', 'id', 'interrupted', 'kind', 'missedWords', 'patterns', 'score', 'status', 'target', 'textId']);
+  assert.equal(record.errors, 4);
+  // A clean counted run records an empty list: evidence that nothing was missed.
+  assert.deepEqual(typedRun('clean', text, []).missedWords, []);
+  // Daily runs on fresh text and retests count too.
+  assert.deepEqual(typedRun('d', text, [1], { kind: 'daily' }).missedWords, ['the']);
+  assert.deepEqual(typedRun('r', text, [1], { kind: 'retest' }).missedWords, ['the']);
+  // At most 12 words per run, in the order they were typed.
+  const many = Array.from({ length: 15 }, (_, i) => `w${String.fromCharCode(97 + i)}`).join(' ');
+  const capped = typedRun('many', many, Array.from({ length: 15 }, (_, i) => i * 3 + 1));
+  assert.equal(MAX_MISSED_WORDS, 12);
+  assert.deepEqual(capped.missedWords, many.split(' ').slice(0, MAX_MISSED_WORDS));
+});
+
+test('runs pattern memory leaves out record no missed words', () => {
+  const text = 'the cat sat';
+  const missing = (overrides) => assert.equal('missedWords' in typedRun('x', text, [1], overrides), false, JSON.stringify(overrides));
+  missing({ kind: 'missed' }); // missed-word practice itself
+  missing({ kind: 'drill', target: 'th' });
+  missing({ kind: 'race' });
+  missing({ status: 'interrupted' });
+  missing({ interrupted: true });
+  missing({ unsupportedInput: true });
+  missing({ kind: 'daily', fresh: false }); // a daily passage shown before
+});
+
+test('missed words stay only on the newest 120 summaries, and trimmed ones are no evidence', () => {
+  const runs = Array.from({ length: 130 }, (_, i) => run(String(i), { missedWords: ['the'] }));
+  const practice = run('practice', { kind: 'missed' });
+  delete practice.patterns;
+  const kept = retainRuns([...runs, practice]);
+  assert.equal(kept.filter((r) => 'missedWords' in r).length, 119);
+  // Dropped, not emptied: an empty list would read as a clean run.
+  assert.equal('missedWords' in kept[0], false);
+  assert.deepEqual(kept[0].patterns, []);
+  assert.equal('patterns' in kept.at(-1), false);
+  assert.deepEqual(kept.at(-2).missedWords, ['the']);
+  assert.deepEqual(retainRuns(kept), kept);
+});
+
+const missedRun = (id, missedWords, overrides = {}) => run(id, { missedWords, ...overrides });
+
+test('words you keep missing need two runs and rank by runs missed in, then the latest miss', () => {
+  // Legacy summaries without the field normalise to no evidence: not counted at all.
+  const legacy = run('legacy');
+  assert.deepEqual(recurringMissedWords([legacy, legacy]), { runs: 0, recurring: 0, words: [] });
+  // One run is never enough, however often the word was missed in it.
+  assert.deepEqual(recurringMissedWords([legacy, missedRun('a', ['the', 'the', 'and'])]), { runs: 1, recurring: 0, words: [] });
+
+  const runs = [
+    missedRun('a', ['they', 'there']),
+    missedRun('b', ['there', 'which']),
+    missedRun('c', ['their', 'they']),
+    missedRun('d', ['which', 'about']),
+    missedRun('e', ['about', 'their', 'there']),
+    missedRun('f', []),
+    legacy,
+  ];
+  const result = recurringMissedWords(runs);
+  assert.equal(result.runs, 6);
+  // "there" (3 runs) first; then the words in 2 runs, latest miss first: about and their (run e,
+  // so alphabetical between them), which (d), they (c).
+  assert.deepEqual(result.words.map((w) => [w.word, w.runs]), [['there', 3], ['about', 2], ['their', 2], ['which', 2], ['they', 2]]);
+  assert.equal(result.recurring, 5);
+  assert.deepEqual(recurringMissedWords(runs, 2).words.map((w) => w.word), ['there', 'about']);
+  assert.equal(recurringMissedWords(runs, 2).recurring, 5);
+  // A missed capital or comma stays its own word, as practice types it.
+  assert.deepEqual(recurringMissedWords([missedRun('x', ['The', 'the']), missedRun('y', ['the', 'the,'])]).words.map((w) => w.word), ['the']);
+});
+
+test('word practice, drills, interruptions and repeat daily text never feed the list', () => {
+  const both = (id, overrides = {}) => missedRun(id, ['the', 'and'], overrides);
+  const excluded = [both('m', { kind: 'missed' }), both('d', { kind: 'drill' }), both('i', { interrupted: true }),
+    both('s', { status: 'interrupted' }), both('r', { kind: 'race' }), both('p', { kind: 'daily', fresh: false })];
+  assert.deepEqual(recurringMissedWords([...excluded, both('only')]), { runs: 1, recurring: 0, words: [] });
+  const counted = recurringMissedWords([both('fresh-daily', { kind: 'daily' }), both('retest', { kind: 'retest' })]);
+  assert.deepEqual(counted.words.map((w) => [w.word, w.runs]), [['and', 2], ['the', 2]]);
+});
+
+test('the list counts only the newest 120 counted runs, across all test conditions', () => {
+  const quote = { ...conditions, mode: 'quote', count: null, wordList: null, correctionPolicy: 'relaxed' };
+  const runs = [
+    missedRun('old-1', ['gone']), missedRun('old-2', ['gone']),
+    ...Array.from({ length: 120 }, (_, i) => missedRun(`new-${i}`, [i % 2 ? 'odd' : 'even'], { conditions: i % 3 ? conditions : quote })),
+    // Uncounted runs after them don't push counted runs out of the window.
+    ...Array.from({ length: 5 }, (_, i) => missedRun(`drill-${i}`, ['gone'], { kind: 'drill' })),
+  ];
+  const result = recurringMissedWords(runs);
+  assert.equal(result.runs, 120);
+  assert.deepEqual(result.words.map((w) => [w.word, w.runs]), [['odd', 60], ['even', 60]]);
+  // At most eight rows by default; `recurring` still says how many qualified.
+  const wide = [missedRun('w1', [...'abcdefghij']), missedRun('w2', [...'abcdefghij'])];
+  assert.equal(recurringMissedWords(wide).words.length, 8);
+  assert.equal(recurringMissedWords(wide).recurring, 10);
 });
