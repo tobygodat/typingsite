@@ -1,17 +1,22 @@
-// The friends board on the Challenge screen: today's daily result and this week's practice time for
-// you and the people you chose. Sharing is opt-in and off by default: only an account that shares sees
-// the board, and it sees only mutual friends (each on the other's list) who share too. The service never
-// returns an account id or email; rows carry the name on your own list. Each browser publishes its own
-// owner's summary, so the numbers are friendly and unverified. Guests publish nothing.
+// The friends board on the Challenge screen: today's daily result, this week's practice time and each
+// person's best on each test shape, for you and the people you chose. Sharing is opt-in and off by
+// default: only an account that shares sees the board, and it sees only mutual friends (each on the
+// other's list) who share too. The service never returns an account id or email; rows carry the name on
+// your own list. Each browser publishes its own owner's summary, so the numbers are friendly and
+// unverified. Guests publish nothing.
 import { request, freshSession, loadSession, AuthError } from './account.js';
-import { conditionKey } from './typing.js';
-import { dailyPassage, validRun } from './insights.js';
+import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from './typing.js';
+import { dailyPassage, trendRun, validRun } from './insights.js';
 
 const DAY_MS = 86400000;
 // The service refuses anything outside these, so they never travel.
 const MAX_WPM = 400;
 const MAX_ATTEMPTS = 1000;
 const MAX_RUNS = 10000;
+export const MAX_SHAPES = 16;
+const KEY_PATTERN = /^[A-Za-z0-9:._-]{1,200}$/;
+// The app's own test shapes: timed, word-count and quote tests.
+const SHAPE_MODES = ['time', 'words', 'quote'];
 const $ = (id) => document.getElementById(id);
 
 export const utcDay = (date = new Date()) => date.toISOString().slice(0, 10);
@@ -26,10 +31,47 @@ export function weekStart(date = new Date()) {
 // A reader compares only results whose version matches its own, so two builds never share one ranking.
 export const dailyVersion = (dailyKey, date = new Date()) => `${dailyKey}|${dailyPassage(date).textVersion}`;
 
+// Whether a run can stand as a best on the board: exactly the runs that can set a personal best in the
+// app (a completed, uninterrupted practice test or retest; never a drill, daily, race or anything
+// interrupted), on one of its own test shapes, dated, and within the service's limits.
+export function shareableBest(run) {
+  return trendRun(run) && SHAPE_MODES.includes(run.conditions?.mode) && Boolean(run.at) && !Number.isNaN(Date.parse(run.at))
+    && Number.isInteger(run.score?.wpm) && run.score.wpm >= 0 && run.score.wpm <= MAX_WPM
+    && Number.isInteger(run.score?.accuracy) && run.score.accuracy >= 0 && run.score.accuracy <= 100
+    && KEY_PATTERN.test(conditionKey(run.conditions));
+}
+
+// Each test shape's best among `runs`, keyed by its condition key (the shape, corpus and metric
+// version): the fastest, then the more accurate, then the earlier. Dated by the UTC day it was set on
+// the service's clock (`offset` is the service's clock minus this device's). At most 16 shapes: the ones
+// with the most runs, then the most recently run.
+export function shapeBests(runs, offset = 0) {
+  const shapes = new Map();
+  for (const run of runs) {
+    if (!shareableBest(run)) continue;
+    const key = conditionKey(run.conditions);
+    const at = Date.parse(run.at);
+    const { wpm, accuracy } = run.score;
+    const entry = shapes.get(key) || { runs: 0, last: 0, best: null };
+    entry.runs += 1;
+    entry.last = Math.max(entry.last, at);
+    const best = entry.best;
+    if (!best || wpm > best.wpm || (wpm === best.wpm && (accuracy > best.accuracy || (accuracy === best.accuracy && at < best.at)))) {
+      entry.best = { wpm, accuracy, at };
+    }
+    shapes.set(key, entry);
+  }
+  return Object.fromEntries([...shapes]
+    .sort(([keyA, a], [keyB, b]) => b.runs - a.runs || b.last - a.last || (keyA < keyB ? -1 : 1))
+    .slice(0, MAX_SHAPES)
+    .map(([key, { best }]) => [key, { wpm: best.wpm, accuracy: best.accuracy, date: utcDay(new Date(best.at + offset)) }]));
+}
+
 // What an account publishes about itself. The daily result is today's best completed attempt at the
 // daily conditions on a physical keyboard, as the Daily panel counts it, with the number of completed
-// attempts beside it. Practice time is every completed, uninterrupted run since Monday 00:00 UTC.
-export function boardSummary(runs, dailyKey, date = new Date()) {
+// attempts beside it. Practice time is every completed, uninterrupted run since Monday 00:00 UTC. Bests
+// are each test shape's best among the runs given (the caller passes only those since the board's clear).
+export function boardSummary(runs, dailyKey, date = new Date(), offset = 0) {
   const day = utcDay(date);
   const start = weekStart(date);
   const from = Date.parse(`${start}T00:00:00Z`);
@@ -41,7 +83,68 @@ export function boardSummary(runs, dailyKey, date = new Date()) {
   return {
     daily: best ? { date: day, version: dailyVersion(dailyKey, date), wpm: best.score.wpm, accuracy: best.score.accuracy, attempts: Math.min(daily.length, MAX_ATTEMPTS) } : null,
     week: { start, seconds: Math.min(Math.round(ms / 1000), 7 * DAY_MS / 1000), runs: Math.min(week.length, MAX_RUNS) },
+    bests: shapeBests(runs, offset),
   };
+}
+
+// The test shape a condition key names, as conditions, when this build writes that key the same way:
+// one of its own test modes, its corpus and metric version, and the key read back exactly. Otherwise
+// null: a key from another build, which the board never compares.
+export function shapeOf(key) {
+  const parts = typeof key === 'string' ? key.split(':') : [];
+  if (parts.length !== 11) return null;
+  const [mode, duration, count, punctuation, quoteLength, difficulty, wordList, inputClass, correctionPolicy, corpus, metricVersion] = parts;
+  const conditions = { mode, duration: Number(duration) || null, count: Number(count) || null, punctuation: punctuation === 'punctuation',
+    quoteLength: quoteLength || null, difficulty: difficulty || null, wordList: wordList || null, inputClass, correctionPolicy,
+    language: 'en', corpus, metricVersion };
+  return SHAPE_MODES.includes(mode) && corpus === CORPUS_VERSION && metricVersion === METRIC_VERSION && conditionKey(conditions) === key
+    ? conditions : null;
+}
+// A key's shape without its corpus and metric version, to tell "another version of this shape".
+const shapePart = (key) => String(key).split(':').slice(0, 9).join(':');
+
+// The shapes the board can compare: every key this build writes that anyone on the board has a best
+// on. Timed tests first, then word counts, then quotes, shortest first.
+export function boardShapes(rows) {
+  const keys = new Set(rows.flatMap((row) => Object.keys(row.bests || {})).filter((key) => shapeOf(key)));
+  const length = (shape) => shape.duration || shape.count || 0;
+  return [...keys].map((key) => ({ key, conditions: shapeOf(key) })).sort((a, b) => SHAPE_MODES.indexOf(a.conditions.mode) - SHAPE_MODES.indexOf(b.conditions.mode)
+    || length(a.conditions) - length(b.conditions) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}
+
+// Each shape's name in the picker: its length and text, then whichever other parts of its description
+// (word list, input, correction policy) differ between the shapes listed. `parts` is the app's own
+// description of conditions, in parts.
+export function shapeLabels(shapes, parts) {
+  const described = shapes.map((shape) => parts(shape.conditions));
+  const names = Object.keys(described[0] || {});
+  const differs = new Set(names.filter((name) => described.some((part) => part[name] !== described[0][name])));
+  return described.map((part) => names.filter((name) => name === 'length' || name === 'text' || differs.has(name)).map((name) => part[name]).join(' · '));
+}
+
+// The shape the picker opens on: the one you have the most best-eligible runs on, then the one the most
+// people on the board have a best on, then the first listed.
+export function defaultShape(shapes, runs, rows) {
+  const counts = new Map();
+  for (const run of runs) {
+    if (!shareableBest(run)) continue;
+    const key = conditionKey(run.conditions);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const holders = (key) => rows.filter((row) => row.bests?.[key]).length;
+  return [...shapes].sort((a, b) => (counts.get(b.key) || 0) - (counts.get(a.key) || 0) || holders(b.key) - holders(a.key))[0]?.key ?? null;
+}
+
+// The rows on one shape: each person's best on exactly that key, the fastest first (accuracy breaks a
+// tie), then those without one. A best on the same shape from another build is marked, never compared.
+export function bestsOrder(rows, key) {
+  const placed = rows.map((row) => {
+    const best = row.bests?.[key] ?? null;
+    const otherVersion = !best && Object.keys(row.bests || {}).some((other) => other !== key && !shapeOf(other) && shapePart(other) === shapePart(key));
+    return { ...row, best, otherVersion };
+  });
+  return placed.sort((a, b) => Number(Boolean(b.best)) - Number(Boolean(a.best))
+    || (b.best?.wpm ?? 0) - (a.best?.wpm ?? 0) || (b.best?.accuracy ?? 0) - (a.best?.accuracy ?? 0) || byName(a, b));
 }
 
 // Runs from `since` on, or all of them when there is none. `since` is the latest clear's time as the
@@ -165,7 +268,7 @@ export const publishSummary = (session, summary, { replace = false } = {}) => ca
 export const shareSummary = (session, summary) => call(session, 'share', summary);
 export const stopSharing = (session) => call(session, 'unshare');
 
-export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isRunning, signIn, openOnline, onUndoRefused = () => {} }) {
+export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, conditionParts, isRunning, signIn, openOnline, onUndoRefused = () => {} }) {
   let visible = false;
   // Whether this account shares, as this device last knew it (see knownSharing); null until it knows.
   let sharing = getSession() ? knownSharing(getSession()) : null;
@@ -220,7 +323,9 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   // new day. A read that fails leaves it, so the next check tries again.
   let readDay = '';
   const serviceDay = () => utcDay(new Date(Date.now() + offset));
-  const summary = (since = known?.from) => boardSummary(runsSince(runs(), since, offset), dailyKey());
+  // Runs' bests are dated on the service's clock, by the offset from the latest reply.
+  const summarize = (list) => boardSummary(list, dailyKey(), new Date(), offset);
+  const summary = (since = known?.from) => summarize(runsSince(runs(), since, offset));
   // Every reply names this account's latest clear, the clear before it and the service's time.
   function seen(result) {
     if (result?.now) offset = Date.parse(result.now) - Date.now();
@@ -356,7 +461,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
       let base = record.before;
       let result = null;
       if (record.replacing !== 'undo') {
-        result = seen(await publishSummary(session, { ...boardSummary(runsSince(runs(), at), dailyKey()),
+        result = seen(await publishSummary(session, { ...summarize(runsSince(runs(), at)),
           clear: { id, at, sent: new Date().toISOString() } }, { replace: true }));
         if (result?.clear?.id === id && 'undo' in result) base = result.undo;
       }
@@ -408,7 +513,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     // A clear sends the runs since it happened here (this device's clock on both sides) and its times as
     // this device reads them; the service turns them into its own.
     const value = mode === 'undo' ? { ...summary(before ? before.from : null), undo: mine.id, before: before?.id ?? null }
-      : mode ? { ...boardSummary(runsSince(runs(), mine.at), dailyKey()), clear: { id: mine.id, at: mine.at, sent: new Date().toISOString() } }
+      : mode ? { ...summarize(runsSince(runs(), mine.at)), clear: { id: mine.id, at: mine.at, sent: new Date().toISOString() } }
         : { ...summary(), clear: known?.id ?? null };
     const key = JSON.stringify(value);
     pending = false;
@@ -525,6 +630,39 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
       const time = practiceTime(entry.week.seconds);
       return row(entry, time.value, time.unit, plural(entry.week.runs, 'run'));
     }));
+    renderBests(board.rows);
+  }
+
+  // The shape picked in this tab, kept while the board still lists it. Until one is picked the picker
+  // opens on the default (see defaultShape).
+  let picked = null;
+  let listed = '';
+  // Bests on one shape at a time: only rows whose key is exactly the picked one are compared.
+  function renderBests(rows) {
+    const shapes = boardShapes(rows);
+    $('board-bests-none').hidden = shapes.length > 0;
+    for (const id of ['board-shape-field', 'board-bests-meta', 'board-bests']) $(id).hidden = !shapes.length;
+    const select = $('board-shape');
+    if (!shapes.length) { select.replaceChildren(); listed = ''; return; }
+    const key = shapes.some((shape) => shape.key === picked) ? picked : defaultShape(shapes, runs(), rows);
+    const labels = shapeLabels(shapes, conditionParts);
+    // Rebuilt only when the shapes or their names change, so a re-read never disturbs the picker.
+    const signature = JSON.stringify(shapes.map((shape, index) => [shape.key, labels[index]]));
+    if (signature !== listed) {
+      listed = signature;
+      select.replaceChildren(...shapes.map((shape, index) => {
+        const option = document.createElement('option');
+        option.value = shape.key;
+        option.textContent = labels[index];
+        return option;
+      }));
+    }
+    if (select.value !== key) select.value = key;
+    const shape = shapes.find((entry) => entry.key === key);
+    $('board-bests-meta').textContent = `${Object.values(conditionParts(shape.conditions)).join(' · ')} · best completed test or retest · dates in utc`;
+    $('board-bests').replaceChildren(...bestsOrder(rows, key).map((entry) => (entry.best
+      ? row(entry, String(entry.best.wpm), 'wpm', `${entry.best.accuracy}% accuracy · ${entry.best.date}`)
+      : row(entry, '—', '', entry.otherVersion ? 'another version of this shape · not compared' : 'no best on this shape yet'))));
   }
 
   // Opening the board sends this tab's summary first whenever it differs from the last one sent here,
@@ -718,6 +856,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   }
 
   $('refresh-friends-board').addEventListener('click', () => { if (!loading) refresh({ manual: true }); });
+  $('board-shape').addEventListener('change', (event) => { picked = event.target.value; if (board?.rows) renderBests(board.rows); });
   $('share-board').addEventListener('change', (event) => setShare(event.target.checked));
   $('friends-board-signin').addEventListener('click', signIn);
   $('friends-board-online').addEventListener('click', openOnline);

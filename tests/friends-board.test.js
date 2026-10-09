@@ -59,7 +59,7 @@ test('practice time counts completed, uninterrupted runs since Monday, and nothi
     run('undated', { at: null, elapsedMs: 9000 }),
   ];
   assert.deepEqual(boardSummary(runs, dailyKey, now).week, { start: '2026-10-05', seconds: 135, runs: 3 });
-  assert.deepEqual(boardSummary([], dailyKey, now), { daily: null, week: { start: '2026-10-05', seconds: 0, runs: 0 } });
+  assert.deepEqual(boardSummary([], dailyKey, now), { daily: null, week: { start: '2026-10-05', seconds: 0, runs: 0 }, bests: {} });
 });
 
 test('practice time reads in seconds, then minutes, and never rounds up', () => {
@@ -102,7 +102,7 @@ test('the board sends only the signed-in summary, as that account', async () => 
     assert.deepEqual(Object.keys(calls[0].data.p_data.daily).sort(), ['accuracy', 'attempts', 'date', 'version', 'wpm']);
     assert.deepEqual(calls[1].data, { p_action: 'board', p_data: {} });
     // A history clear or undo replaces the stored summary instead of being folded into it.
-    assert.deepEqual(calls[2].data, { p_action: 'replace', p_data: { daily: null, week: { start: '2026-10-05', seconds: 0, runs: 0 } } });
+    assert.deepEqual(calls[2].data, { p_action: 'replace', p_data: { daily: null, week: { start: '2026-10-05', seconds: 0, runs: 0 }, bests: {} } });
     // Sharing is opt-in: turning it on sends the summary, turning it off sends nothing about the runs.
     assert.deepEqual(calls[3].data, { p_action: 'share', p_data: summary });
     assert.deepEqual(calls[4].data, { p_action: 'unshare', p_data: {} });

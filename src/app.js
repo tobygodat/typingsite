@@ -183,13 +183,22 @@ function conditions(inputClass = 'physical-keyboard') {
   };
 }
 
+// The parts of a conditions description, named and in the order it reads. The friends board's shape
+// picker names a shape by the parts that tell it apart from the others.
+function conditionParts(value = conditions()) {
+  return {
+    language: value.wordList ? `english ${value.wordList}` : 'english',
+    length: value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`,
+    text: value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain',
+    input: value.inputClass === 'touch' ? 'touch input' : 'physical keyboard',
+    correction: value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error',
+    corpus: `corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')}`,
+    metric: 'metric v1',
+  };
+}
+
 function describeConditions(value = conditions()) {
-  const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
-  const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
-  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
-  const correction = value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error';
-  const language = value.wordList ? `english ${value.wordList}` : 'english';
-  return `${language} · ${length} · ${punctuation} · ${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
+  return Object.values(conditionParts(value)).join(' · ');
 }
 
 // A drill is always one minute of generated text, whatever the baseline was.
@@ -1932,7 +1941,7 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
-    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
+    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
     { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
@@ -2053,6 +2062,7 @@ friendsBoard = createFriendsBoard({
   canPublish: () => cloudChecked,
   runs: () => profile.runs,
   dailyKey: () => conditionKey(dailyConditions()),
+  conditionParts,
   isRunning: () => runActive || localRaceRunning(),
   signIn: () => openAccountDialog('signin'),
   // The button that asks for this disappears with the board, so focus lands on the Online selector.
