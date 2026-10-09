@@ -248,6 +248,37 @@ test('a run stored while a clock was far off never stops sharing from turning on
   expect(supabase.board.summaries.get(ada.id).sharing).not.toBe(false);
 });
 
+test('a device whose clock runs two days ahead learns the service’s clock before its first publish', async ({ page, supabase }) => {
+  // Tuesday 10:00 UTC on the service, running on from there. This device's clock reads Thursday, two
+  // days ahead but in the same UTC week. (Both in the past, so sign-in tokens read as fresh.)
+  const started = Date.now();
+  const serviceNow = () => Date.parse('2026-10-06T10:00:00Z') + (Date.now() - started);
+  supabase.board.now = () => new Date(serviceNow());
+  const ada = supabase.addUser('ada@stilltype.test');
+  seedProfile(supabase, ada, []);
+  supabase.board.summaries.set(ada.id, { daily: null, week: { start: '2026-10-05', seconds: 0, runs: 0 }, bests: {} });
+  // The device already knows the account shares, so loading never reads the board.
+  await remembers(page, ada);
+  await page.clock.install({ time: new Date(serviceNow() + 2 * DAY_MS) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  // Two runs, without opening the board. The first publish is preceded by one quiet read, and is taken.
+  const first = await typeTenWords(page);
+  await expect.poll(() => supabase.board.published.length).toBe(1);
+  expect(supabase.board.published[0].bests).toEqual({ [K10]: { wpm: first.wpm, accuracy: first.accuracy, date: '2026-10-06' } });
+  await page.locator('#run-again').click();
+  const second = await typeTenWords(page);
+  await expect.poll(() => supabase.board.published.length).toBe(2);
+  expect(supabase.board.calls).toEqual(['board', 'publish', 'publish']);
+  expect(supabase.board.refused).toEqual([]);
+  // The row has both runs, and the best of them dated on the service's day, not this device's.
+  const top = [first, second].sort((a, b) => b.wpm - a.wpm || b.accuracy - a.accuracy)[0];
+  expect(supabase.board.summaries.get(ada.id)).toMatchObject({ week: { start: '2026-10-05', runs: 2 },
+    bests: { [K10]: { wpm: top.wpm, accuracy: top.accuracy, date: '2026-10-06' } } });
+  expect(Object.keys(supabase.board.summaries.get(ada.id).bests)).toEqual([K10]);
+  await expect(page.locator('#friends-board-status')).toHaveText('');
+});
+
 test('a clear takes your bests off the board, and undo brings them back', async ({ page, browser, supabase }) => {
   const { ada } = circle(supabase);
   const runs = practice();
@@ -296,15 +327,23 @@ test('a clear takes your bests off the board, and undo brings them back', async 
 
 test('a tab that missed a clear can’t put the cleared bests back', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
-  const runs = practice();
+  // Ada's fastest one-minute test was earlier today, before the clear. The service keeps a best from
+  // the clear's own day, so only the tab leaving that run out keeps it off the board.
+  const earlier = { ...fastest(practice(), TIME60), id: 'earlier-today', textId: 'text-earlier-today', score: { wpm: 104, accuracy: 99 },
+    at: new Date(Math.max(Date.parse(`${utcDay()}T00:00:00Z`), Date.now() - 3600000)).toISOString() };
+  const runs = practice([earlier]);
   await sharing(page, supabase, ada, runs);
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
-  // A second tab, loaded before the clear, keeps the runs and their bests in its copy.
+  // A second tab, loaded before the clear, keeps the runs and their bests in its copy. It opens the
+  // board before the clear, so it has heard from the service and its next write goes without a read.
   const second = await page.context().newPage();
   await supabase.attach(second);
   await openApp(second);
   await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openBoard(second);
+  await expect.poll(() => supabase.board.summaries.get(ada.id).bests[K60]).toEqual({ wpm: 104, accuracy: 99, date: earlier.at.slice(0, 10) });
+  await openView(second, 'Practice');
 
   await clearHistory(page);
   await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('replace');
@@ -317,7 +356,11 @@ test('a tab that missed a clear can’t put the cleared bests back', async ({ pa
   await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('publish');
   expect(supabase.board.refused).toHaveLength(1);
   expect(Object.keys(supabase.board.refused[0].bests).sort()).toEqual([K60, K30, K25, K10].sort());
-  expect(supabase.board.published.at(-1)).toMatchObject({ clear: clear.id, bests: { [K10]: { wpm: typed.wpm, accuracy: typed.accuracy } } });
+  expect(supabase.board.refused[0].bests[K60]).toEqual({ wpm: 104, accuracy: 99, date: earlier.at.slice(0, 10) });
+  const retried = supabase.board.published.at(-1);
+  expect(retried.clear).toBe(clear.id);
+  expect(retried.bests).toEqual({ [K10]: { wpm: typed.wpm, accuracy: typed.accuracy, date: utcDay() } });
+  expect(supabase.board.summaries.get(ada.id).bests[K60]).toBeUndefined();
   expect(supabase.board.summaries.get(ada.id).bests).toEqual({ [K10]: { wpm: typed.wpm, accuracy: typed.accuracy, date: utcDay() } });
 });
 

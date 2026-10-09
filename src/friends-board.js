@@ -5,7 +5,9 @@
 // your own list. Each browser publishes its own owner's summary, so the numbers are friendly and
 // unverified. Guests publish nothing.
 import { request, freshSession, loadSession, AuthError } from './account.js';
-import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from './typing.js';
+import { CORPUS_VERSION, CORRECTION_POLICIES, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS,
+  conditionKey } from './typing.js';
+import { wordListIds } from './words.js';
 import { dailyPassage, trendRun, validRun } from './insights.js';
 
 const DAY_MS = 86400000;
@@ -94,9 +96,11 @@ export function boardSummary(runs, dailyKey, date = new Date(), offset = 0) {
   };
 }
 
-// The test shape a condition key names, as conditions, when this build writes that key the same way:
-// one of its own test modes, its corpus and metric version, and the key read back exactly. Otherwise
-// null: a key from another build, which the board never compares.
+// The test shape a condition key names, as conditions, when this build writes that key: one of its own
+// test modes with only that mode's parts filled in, each a value the app offers (a length from its own
+// list, a word list, or a quote's length and difficulty; an input and a correction policy it records),
+// its corpus and metric version, and the key read back exactly. Otherwise null: a key from another
+// build, or one no copy of this build writes, which the board never lists or compares.
 export function shapeOf(key) {
   const parts = typeof key === 'string' ? key.split(':') : [];
   if (parts.length !== 11) return null;
@@ -104,8 +108,15 @@ export function shapeOf(key) {
   const conditions = { mode, duration: Number(duration) || null, count: Number(count) || null, punctuation: punctuation === 'punctuation',
     quoteLength: quoteLength || null, difficulty: difficulty || null, wordList: wordList || null, inputClass, correctionPolicy,
     language: 'en', corpus, metricVersion };
-  return SHAPE_MODES.includes(mode) && corpus === CORPUS_VERSION && metricVersion === METRIC_VERSION && conditionKey(conditions) === key
-    ? conditions : null;
+  const quote = mode === 'quote';
+  const written = SHAPE_MODES.includes(mode)
+    && (mode === 'time' ? TEST_DURATIONS.includes(conditions.duration) : !duration)
+    && (mode === 'words' ? TEST_COUNTS.includes(conditions.count) : !count)
+    && (quote ? QUOTE_LENGTHS.includes(quoteLength) && QUOTE_DIFFICULTIES.includes(difficulty) && !wordList
+      : !quoteLength && !difficulty && wordListIds.includes(wordList))
+    && INPUT_CLASSES.includes(inputClass) && CORRECTION_POLICIES.includes(correctionPolicy)
+    && corpus === CORPUS_VERSION && metricVersion === METRIC_VERSION;
+  return written && conditionKey(conditions) === key ? conditions : null;
 }
 // A key's shape without its corpus and metric version, to tell "another version of this shape".
 const shapePart = (key) => String(key).split(':').slice(0, 9).join(':');
@@ -337,8 +348,10 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, con
   // the service's clock. Summaries count only runs from then on, so a tab that missed a clear elsewhere
   // can't bring cleared runs back.
   let known = null;
-  // The service's clock minus this device's, from the latest reply.
+  // The service's clock minus this device's, from the latest reply; `clockKnown` once a reply in this
+  // page load has set it.
   let offset = 0;
+  let clockKnown = false;
   // This tab's own latest clear, { id, at } with `at` by this device's clock, while the service may still
   // hold it (an undo names it), and the clear before it, whose runs an undo sends again: the latest this
   // tab knew when it cleared, then the one the service names while this tab's clear is the latest.
@@ -367,11 +380,21 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, con
   const summary = (since = known?.from) => summarize(runsSince(runs(), since, offset));
   // Every reply names this account's latest clear, the clear before it and the service's time.
   function seen(result) {
-    if (result?.now) offset = Date.parse(result.now) - Date.now();
+    if (result?.now) {
+      offset = Date.parse(result.now) - Date.now();
+      clockKnown = true;
+    }
     if (result && 'clear' in result) known = result.clear;
     // While this tab's own clear is the latest, the clear before it is the one the service would put back.
     if (mine && result?.clear?.id === mine.id && 'undo' in result) before = result.undo;
     return result;
+  }
+  // Bests are dated on the service's clock, so a write that carries a summary waits until this page load
+  // knows it: a tab whose first request would be a write (it already knows the account shares) reads the
+  // board once first. That read is part of the write, so it goes when the write does, never mid-run, and
+  // quietly: what the write's caller shows is all that is shown.
+  async function learnClock(session) {
+    if (!clockKnown) seen(await readBoard(session));
   }
   // A board the service sent, and the day it is for.
   function took(result) {
@@ -542,6 +565,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, con
       return null;
     }
     const seq = toggles;
+    if (due(session)) await learnClock(session);
     if ((await sendOthers(session, seq, replacing && mine ? mine.at : null)) === false) return null;
     // A clear or undo always has its clear; without one there is nothing to replace, only to publish.
     if (replacing && !mine) replacing = false;
@@ -802,6 +826,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, con
       render('Turning sharing on…');
       try {
         const result = await enqueue(async () => {
+          await learnClock(session);
           // A clear this tab missed refuses the first try; the second sends the runs since then.
           let reply = null;
           for (let attempt = 0; attempt < 2 && (!reply || reply.refused); attempt += 1) {

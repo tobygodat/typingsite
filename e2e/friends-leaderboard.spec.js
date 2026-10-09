@@ -606,11 +606,16 @@ test('a clear on one device stays cleared when a tab that missed it publishes', 
   await sharing(page, supabase, ada, { runs: practiceThisWeek(5) });
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
-  // A second tab, loaded before the clear, keeps the five runs in its copy.
+  // A second tab, loaded before the clear, keeps the five runs in its copy. It opens the board before the
+  // clear, so it has heard from the service and its next write goes without a read first.
   const second = await page.context().newPage();
   await supabase.attach(second);
   await openApp(second);
   await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openView(second, 'Challenge');
+  await second.locator('#challenge-friends').click();
+  await expect(second.locator('#friends-board-lists')).toBeVisible();
+  await openView(second, 'Practice');
 
   await openView(page, 'Progress');
   await page.locator('#clear-history').click();
@@ -1428,7 +1433,8 @@ test('a clear another tab left is sent from a tab mid-run only once the run is o
   await second.keyboard.type(text.slice(3));
   await expect(second.locator('body')).toHaveAttribute('data-view', 'results');
   await expect.poll(() => supabase.board.summaries.get(ada.id).clear?.id).toBe(left.mine.id);
-  expect(fromSecond[0]).toBe('replace');
+  // Its first write, after one read for the service's clock (this tab hadn't heard from the board yet).
+  expect(fromSecond.slice(0, 2)).toEqual(['board', 'replace']);
 });
 
 test('a tab that hears sharing was turned on elsewhere shows it at once and only reads the board', async ({ page, supabase }) => {

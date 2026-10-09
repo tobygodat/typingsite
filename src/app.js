@@ -1,6 +1,8 @@
 import {
   CORPUS_VERSION,
   METRIC_VERSION,
+  TEST_COUNTS,
+  TEST_DURATIONS,
   compareAttempts,
   completeAttempt,
   conditionKey,
@@ -313,7 +315,7 @@ function setModeControls() {
   $('punctuation-toggle').disabled = prefs.mode === 'quote';
   $('word-list').disabled = prefs.mode === 'quote';
   $('duration-options').hidden = prefs.mode === 'quote';
-  const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
+  const values = prefs.mode === 'time' ? TEST_DURATIONS : TEST_COUNTS;
   const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
   $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
     const button = document.createElement('button');
@@ -1945,8 +1947,8 @@ function paletteCommands(query) {
     { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
-    ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
-    ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
+    ...TEST_DURATIONS.map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
+    ...TEST_COUNTS.map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
