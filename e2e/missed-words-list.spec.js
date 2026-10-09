@@ -98,8 +98,6 @@ test('words missed across runs build a list in Training that starts an uncounted
   await page.screenshot({ path: shot(testInfo, 'training-list-light') });
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
 
-  const best = await page.locator('#best').textContent();
-  expect(best).toMatch(/^Best · \d+ wpm$/);
   await action.click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
   await expect(page.locator('#session-kicker')).toHaveText('missed words');
@@ -115,8 +113,8 @@ test('words missed across runs build a list in Training that starts an uncounted
   const practiceWpm = Number(await page.locator('#result-wpm').textContent());
   expect(practiceWpm).toBeGreaterThanOrEqual(40);
   expect(practiceWpm).toBeLessThanOrEqual(110);
-  // Out of bests, and out of the evidence: the list still counts the same runs.
-  await expect(page.locator('#best')).toHaveText(best);
+  // Out of the evidence: the list still counts the same runs. (#best shows the best for the practice
+  // settings, never a word-practice key, so the signed-in test checks the stored bests instead.)
   await expect(note).toContainText(`your last ${runs} complete tests`);
   expect(await listRows(page)).toEqual(rows);
 
@@ -241,4 +239,74 @@ test('signed in, the list rides the synced run summaries, starts from the palett
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
   await expect(page.locator('#session-title')).not.toHaveText('Practice words you keep missing');
   expect((await passageText(page)).split(' ')).toHaveLength(25);
+});
+
+// Holds the next account-row fetch until `release()`, as a slow network would. The page boots from
+// its device copy, so Train draws the list before a newer row arrives; adopting that row redraws
+// Progress but not Train, which leaves the list on screen out of date.
+async function holdNextProfileFetch(page) {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let asked;
+  const fetched = new Promise((resolve) => { asked = resolve; });
+  let held = false;
+  await page.route(/supabase\.co\/rest\/v1\/profiles\?/, async (route) => {
+    if (held || route.request().method() !== 'GET') return route.fallback();
+    held = true;
+    asked();
+    await gate;
+    return route.fallback();
+  });
+  return { fetched, release };
+}
+
+test('a list left stale by a sync is checked when pressed: redrawn, and never a silent no-op', async ({ page, supabase }) => {
+  const user = supabase.addUser('stale@stilltype.test');
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const row = (traces, updatedAt) => ({ data: { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: traces,
+    runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt } });
+  const shownWords = async () => (await listRows(page)).map(([word]) => word).sort();
+  supabase.profiles.set(user.id, row([trace('a', day(4), ['their', 'because']), trace('b', day(3), ['their', 'because'])], day(3)));
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+
+  // Reloads with the account row held back and draws Train from the device copy. Someone practises
+  // the list and comes back to it (adopting a row over a plain test would reset it and switch to
+  // Practice); then `traces`, saved meanwhile on another device, arrive. Focus waits on the button.
+  const syncUnderList = async (shown, traces) => {
+    const { fetched, release } = await holdNextProfileFetch(page);
+    await page.reload();
+    await fetched;
+    await expect(page.locator('#text-display .char').first()).toBeVisible();
+    await openView(page, 'Train');
+    expect(await shownWords()).toEqual([...shown].sort());
+    await page.locator('#practice-missed-list').click();
+    await expect(page.locator('#session-title')).toHaveText('Practice words you keep missing');
+    await openView(page, 'Train');
+    await page.locator('#practice-missed-list').focus();
+    supabase.profiles.set(user.id, row(traces, new Date().toISOString()));
+    release();
+    await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    // The precondition: the newer row is in, and Train still shows the old words.
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+    expect(await shownWords()).toEqual([...shown].sort());
+  };
+
+  // Different words now: the press practises the words the runs hold, not the stale ones.
+  await syncUnderList(['their', 'because'], [trace('c', day(2), ['river', 'garden']), trace('d', day(1), ['river', 'garden'])]);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#session-title')).toHaveText('Practice words you keep missing');
+  expect(new Set((await passageText(page)).split(' '))).toEqual(new Set(['river', 'garden']));
+
+  // History cleared elsewhere: the press redraws the list, starts nothing, says so, and keeps focus
+  // in the section rather than on the button it just hid.
+  await syncUnderList(['river', 'garden'], []);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#missed-words-note')).toHaveText(/^Not enough evidence yet: no runs counted so far\./);
+  await expect(page.locator('#missed-words-list')).toBeHidden();
+  await expect(page.locator('#practice-missed-list')).toBeHidden();
+  await expect(page.locator('#missed-words-heading')).toBeFocused();
+  await expect(page.locator('#announcement')).toHaveText('Fewer than two words to practice now. The list has been updated.');
+  // Every session start switches to Practice, so staying on Train means nothing started.
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
 });

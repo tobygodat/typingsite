@@ -117,6 +117,8 @@ const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let lastCompleted = null;
 let wordsPassage = null;
+// The words the Train list last drew, so its button can tell when the runs changed underneath.
+let missedListWords = [];
 let ghostOn = false;
 let palette = null;
 let onlineRace = null;
@@ -865,6 +867,20 @@ function practiseRecurringWords() {
   startWordPractice(words.map((item) => item.word), { recurring: true });
 }
 
+// The Train list's button. A sync or a clear elsewhere can change the runs under a list drawn
+// earlier, so a list that no longer matches is redrawn; with fewer than two words left nothing
+// starts, the change is announced and focus stays on the section instead of the hidden button.
+function practiseMissedList() {
+  const live = recurringMissedWords(profile.runs).words.map((item) => item.word);
+  if (live.length !== missedListWords.length || live.some((word, index) => word !== missedListWords[index])) renderMissedWords();
+  if (live.length >= 2) {
+    practiseRecurringWords();
+    return;
+  }
+  announce('Fewer than two words to practice now. The list has been updated.');
+  $('missed-words-heading').focus();
+}
+
 function resultHeadline(completed) {
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
@@ -1196,6 +1212,7 @@ function renderMissedWords() {
     return row;
   }));
   $('missed-words-list').hidden = !enough;
+  missedListWords = enough ? words.map((item) => item.word) : [];
   $('practice-missed-list').hidden = !enough;
   $('practice-missed-list').textContent = `Practice these ${words.length} words`;
   // The run card can offer "Practice these N words" too, so the name says which words these are.
@@ -1859,7 +1876,7 @@ function bindEvents() {
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
-  $('practice-missed-list').addEventListener('click', practiseRecurringWords);
+  $('practice-missed-list').addEventListener('click', practiseMissedList);
   $('start-daily').addEventListener('click', startDaily);
   $('start-drill').addEventListener('click', startDrill);
   $('skip-to-retest').addEventListener('click', startRetest);
