@@ -23,7 +23,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox }) {
+export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, playKeySound = () => {} }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -472,12 +472,12 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const replay = replayAttempt(attempt);
     const offsetMs = Math.max(0, performance.now() - startPerf);
     if (event.inputType?.startsWith('delete')) {
-      if (!replay.typed.length) return;
+      if (!replay.typed.length) { playKeySound('delete'); return; }
       attempt.events.push({ type: 'delete', count: 1, offsetMs });
     } else if (event.inputType === 'insertText' && event.data && [...event.data].length === 1 && !/[\r\n]/u.test(event.data)) {
       if (replay.typed.length >= attempt.text.length) return;
       const mustCorrect = attempt.conditions.correctionPolicy !== 'relaxed' && replay.typed.length > 0 && replay.typed.at(-1) !== attempt.text[replay.typed.length - 1];
-      if (mustCorrect) { $('online-help').textContent = 'Correct the mistyped letter before continuing.'; return; }
+      if (mustCorrect) { playKeySound('blocked'); $('online-help').textContent = 'Correct the mistyped letter before continuing.'; return; }
       attempt.events.push({ type: 'insert', text: event.data, position: replay.typed.length, accepted: true, offsetMs });
     } else return;
     attempt.status = 'running';
@@ -486,7 +486,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     textView.ensureAhead(next.typed.length);
     updateCharacterStates(textView.characters, next.typed, attempt.text, previousLength);
     const correct = next.typed.at(-1) === attempt.text[next.typed.length - 1];
-    fx.update(next.typed.length, next.typed.length <= previousLength ? 'delete' : correct ? 'correct' : 'wrong', next.typed.length > 0 && !correct);
+    const outcome = next.typed.length <= previousLength ? 'delete' : correct ? 'correct' : 'wrong';
+    fx.update(next.typed.length, outcome, next.typed.length > 0 && !correct);
+    playKeySound(outcome);
     textView.trimBehind(next.typed.length);
     $('online-input').value = next.typed;
     $('online-input').setSelectionRange(next.typed.length, next.typed.length);

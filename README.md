@@ -29,9 +29,9 @@ Train also shows recurring letter pairs across recent matching runs. Each target
 
 Clear history requires typing `clear` and offers an immediate Undo. It includes daily results. Signed-in accounts retain 1,000 compact run summaries and pattern counts for the newest 120 runs, alongside 24 full attempt traces. Comparisons remain until cleared. Guests keep this history only for the tab.
 
-Press ⌘K (Ctrl-K on Windows and Linux) for commands: go to a view, restart, change the test mode or length, toggle punctuation, switch theme or text size, toggle live metrics, the keyboard or focus mode, and clear local history. Opening it mid-run takes that run out of comparisons.
+Press ⌘K (Ctrl-K on Windows and Linux) for commands: go to a view, restart, change the test mode or length, toggle punctuation, switch theme or text size, toggle live metrics, the keyboard or focus mode, set typing sounds and their volume, and clear local history. Opening it mid-run takes that run out of comparisons.
 
-The settings control changes theme (system, dark or light), passage size, live metrics, the keyboard display and focus mode. Preferences survive reload. Focus mode has an explicit exit; Escape also leaves it.
+The settings control changes theme (system, dark or light), passage size, live metrics, the keyboard display, focus mode and typing sounds (off by default; clicks, or clicks with a low tick for mistyped letters, with a volume slider). Preferences survive reload. Focus mode has an explicit exit; Escape also leaves it.
 
 Choose **Daily** in Challenge for a passage shared by every visitor, selected by the UTC date from a frozen pool of 14 original texts. It resets at midnight UTC and uses the same continue-on-error rule for everyone. The daily run leaves your practice settings intact. Results label first and repeat attempts, show a personal daily best for matching physical-keyboard conditions, and sync to a signed-in account. When a passage returns after 14 days, it keeps its identity and is labelled previously displayed; a first attempt today does not make old text fresh training evidence. Daily scores stay separate from practice trends and bests; a result can still lead into a drill and fresh quote retest.
 

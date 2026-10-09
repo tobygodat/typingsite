@@ -82,6 +82,21 @@
               <span><strong>focus mode</strong></span>
               <input class="switch" id="focus-toggle" type="checkbox">
             </label>
+            <label class="preference-row" for="sound-select">
+              <span><strong>sound</strong></span>
+              <select class="input select select-wide" id="sound-select">
+                <option value="off" selected>off</option>
+                <option value="clicks">clicks</option>
+                <option value="clicks-errors">clicks + error tick</option>
+              </select>
+            </label>
+            <label class="preference-row" id="sound-volume-row" for="sound-volume" hidden>
+              <span><strong>volume</strong></span>
+              <span class="preference-range">
+                <span id="sound-volume-value" class="preference-value num" aria-hidden="true">50%</span>
+                <input class="range" id="sound-volume" type="range" min="0" max="100" step="5" value="50" aria-valuetext="50%">
+              </span>
+            </label>
           </div>
         </details>
 

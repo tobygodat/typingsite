@@ -15,6 +15,7 @@ import {
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
+import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, SOUND_LABELS, SOUND_MODES, createSounds, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
 import { listenForSequence } from './egg.js';
@@ -44,6 +45,8 @@ const defaultPreferences = {
   stopOnError: false,
   focusMode: false,
   theme: 'system',
+  sound: DEFAULT_SOUND_MODE,
+  soundVolume: DEFAULT_SOUND_VOLUME,
 };
 
 function emptyProfile() {
@@ -70,6 +73,8 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  value.sound = normalizeSoundMode(value.sound);
+  value.soundVolume = normalizeSoundVolume(value.soundVolume);
   return value;
 }
 
@@ -112,6 +117,8 @@ let primaryNotice = '';
 let liveSecond = -1;
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
+// Key sounds read the current preferences on each key; the AudioContext waits for the first audible key.
+const sounds = createSounds({ settings: () => ({ mode: prefs.sound, volume: prefs.soundVolume }) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let lastCompleted = null;
@@ -281,12 +288,24 @@ function applyPreferences() {
   $('stop-on-error-toggle').checked = prefs.stopOnError;
   $('focus-toggle').checked = prefs.focusMode;
   $('keyboard').hidden = !prefs.keyboard;
+  applySoundPreferences();
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
   showBest();
+}
+
+// The volume row only shows once a sound is chosen. Turning sound off closes the AudioContext;
+// the next audible key makes a new one.
+function applySoundPreferences() {
+  $('sound-select').value = prefs.sound;
+  $('sound-volume').value = String(prefs.soundVolume);
+  $('sound-volume').setAttribute('aria-valuetext', `${prefs.soundVolume}%`);
+  $('sound-volume-value').textContent = `${prefs.soundVolume}%`;
+  $('sound-volume-row').hidden = prefs.sound === 'off';
+  if (prefs.sound === 'off') sounds.release();
 }
 
 function setModeControls() {
@@ -689,6 +708,7 @@ function refreshAfterInput(type, previousLength, blocked = false) {
   if (blocked) outcome = 'blocked';
   else if (length > previousLength) outcome = lastCorrect ? 'correct' : 'wrong';
   (isPrimary ? primaryFx : raceFx).update(length, outcome, length > 0 && !lastCorrect);
+  sounds.play(outcome);
   textView.trimBehind(length);
   if (isPrimary) {
     setRunning(true);
@@ -1743,6 +1763,10 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
+  $('sound-select').addEventListener('change', (event) => setSound(event.target.value));
+  // Dragging updates the level as it goes; the profile is saved once the slider settles.
+  $('sound-volume').addEventListener('input', (event) => setSoundVolume(Number(event.target.value), { save: false }));
+  $('sound-volume').addEventListener('change', () => saveProfile());
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
     applyPreferences();
@@ -1901,6 +1925,18 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession('practice');
 }
 
+function setSound(mode) {
+  prefs.sound = normalizeSoundMode(mode);
+  applySoundPreferences();
+  saveProfile();
+}
+
+function setSoundVolume(volume, { save = true } = {}) {
+  prefs.soundVolume = normalizeSoundVolume(volume);
+  applySoundPreferences();
+  if (save) saveProfile();
+}
+
 function setWordList(id) {
   prefs.wordList = id;
   applyPreferences();
@@ -1928,6 +1964,8 @@ function paletteCommands(query) {
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
+    ...SOUND_MODES.map((mode) => ({ group: 'sound', label: `sound · ${SOUND_LABELS[mode]}`, keywords: 'audio typing key clicks error tick mute volume', hint: prefs.sound === mode ? 'current' : '', on: prefs.sound === mode, run: () => setSound(mode) })),
+    ...[25, 50, 75, 100].map((volume) => ({ group: 'sound', label: `sound volume · ${volume}%`, keywords: 'audio loud quiet louder quieter', hint: prefs.soundVolume === volume ? 'current' : '', on: prefs.soundVolume === volume, disabled: prefs.sound === 'off', run: () => setSoundVolume(volume) })),
     ...(session
       ? [{ group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount }]
       : [
@@ -2032,6 +2070,7 @@ onlineRace = createOnlineRace({
   inbox,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
+  playKeySound: (outcome) => sounds.play(outcome),
   onPassageSeen(id) {
     if (!id || profile.seenTextIds.includes(id)) return;
     profile.seenTextIds.push(id);

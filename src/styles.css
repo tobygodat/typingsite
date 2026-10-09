@@ -383,6 +383,19 @@ kbd {
 .preference-row > span { min-width: 0; display: grid; gap: 2px; }
 .preference-row strong { font-size: 15px; font-weight: 600; }
 .preference-row .select { width: 104px; height: 36px; font-size: 14px; }
+.preference-row .select-wide { width: 176px; }
+.preference-row > .preference-range { display: flex; align-items: center; gap: var(--space-3); }
+.preference-value { min-width: 4ch; color: var(--muted); font: 500 var(--text-mono)/1 var(--font-mono); text-align: right; }
+
+/* Native track and thumb, in the accent. */
+.range {
+  width: 104px;
+  height: 36px;
+  margin: 0;
+  border-radius: var(--radius-sm);
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 
 .site-footer {
   padding: var(--space-8) 0 var(--space-6);
@@ -1955,7 +1968,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (pointer: coarse) {
-  .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
+  .btn, .input, .nav-item, .segmented button, .icon-control, .range { min-height: 44px; }
 }
 
 @media (max-width: 760px) {

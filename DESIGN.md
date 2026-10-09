@@ -309,6 +309,7 @@ Mode and length pickers are a 14px frame with a hairline border, holding 36px Li
 - **Focus:** the border turns accent and gains a 3px accent-soft ring.
 - **Error:** a coral border (`aria-invalid`) and a 14px coral message below.
 - **Switch:** a 38×22 track (hairline-strong, accent when on) with a text-coloured knob that slides 16px.
+- **Range (sound volume):** the native slider tinted with `accent-color`, 104px wide, with its value as a small muted mono percentage to its left. It appears only while a sound is chosen.
 
 ### Navigation (the dock)
 A floating, opaque 58px bar with 18px corners, sticky at the top on desktop and fixed to the bottom under 760px (62px, full width, with safe-area padding). It holds the italic wordmark and green full stop, four lowercase nav items (muted, text colour on hover and when active, with the gliding pill), a hairline separator, a labelled settings control (icon and lowercase "settings"; icon only below 900px, so the centred dock clears the account button) and the ⌘K / Ctrl-K palette trigger, shown as a search icon at every width. The account button sits apart from the dock, top right. The settings popover is a 340px raised panel of 52px rows, anchored to the dock's right edge: below it on desktop, above it on mobile.
