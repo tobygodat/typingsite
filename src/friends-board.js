@@ -98,7 +98,8 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   let pending = false;
   // That change includes a history clear or undo, so it replaces the stored summary instead of adding to it.
   let replacing = false;
-  // The UTC day, by this browser's clock, of the last read. A new week always begins with a new day.
+  // The UTC day, by this browser's clock, of the last board received. A new week always begins with a
+  // new day. A read that fails leaves it, so the next check tries again.
   let readDay = '';
   const summary = () => boardSummary(runs(), dailyKey());
 
@@ -189,12 +190,14 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   // Opening the board sends this tab's summary first whenever it differs from the last one sent here,
   // history loaded from the account included, so your own row is current. The service folds a publish
   // into the stored summary (the better daily, the larger week), so a copy older than another tab's or
-  // device's is safe to send. If the publish fails, the board is still read. aria-disabled, not
-  // disabled, while loading: a disabled button would drop keyboard focus.
+  // device's is safe to send. If the publish fails, the board is still read. Before the account check
+  // the board is only read, and the summary is sent once the check has settled this tab's copy (resume).
+  // aria-disabled, not disabled, while loading: a disabled button would drop keyboard focus.
   async function refresh({ manual = false } = {}) {
     const session = getSession();
     if (!session) { render(); return; }
-    readDay = utcDay();
+    const day = utcDay();
+    if (!canPublish()) pending = true;
     const current = ++generation;
     loading = true;
     $('refresh-friends-board').setAttribute('aria-disabled', 'true');
@@ -203,6 +206,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
       const result = (canPublish() && await publishChange(session).catch(() => null)) || await readBoard(session);
       if (current !== generation) return;
       board = result;
+      readDay = day;
       render(manual ? 'Updated.' : '');
     } catch (failure) {
       if (current !== generation) return;

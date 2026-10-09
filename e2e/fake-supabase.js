@@ -26,6 +26,7 @@ export class FakeSupabase {
     this.googleCodes = new Map();
     // Routed requests bypass context.setOffline, so offline tests flip this too.
     this.offline = false;
+    this.holdProfiles = null;
     this.races = new FakeRaces(this);
     this.board = new FakeBoard(this);
   }
@@ -135,6 +136,8 @@ export class FakeSupabase {
 
       case 'GET /rest/v1/profiles': {
         if (!caller) return reply(401, { message: 'JWT expired' });
+        // A test can hold profile reads, keeping the page's account check in flight.
+        if (this.holdProfiles) await this.holdProfiles;
         const owner = (url.searchParams.get('user_id') || '').replace(/^eq\./, '');
         const row = owner === caller ? this.profiles.get(caller) : null;
         return reply(200, row ? [{ data: row.data, updated_at: row.updated_at }] : []);

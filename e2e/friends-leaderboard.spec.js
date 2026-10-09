@@ -43,8 +43,7 @@ function practiceThisWeek(count, extra = []) {
   return [...runs, ...extra];
 }
 
-function seedProfile(supabase, user, runs) {
-  const updatedAt = new Date(Date.now() - 3600000).toISOString();
+function seedProfile(supabase, user, runs, { updatedAt = new Date(Date.now() - 3600000).toISOString() } = {}) {
   const data = { version: 2, profileId: randomUUID(), preferences: {}, attempts: [], runs, loops: [], seenTextIds: [], bests: {}, updatedAt };
   supabase.profiles.set(user.id, { data, updated_at: updatedAt });
 }
@@ -272,6 +271,53 @@ test('opening the board publishes history loaded from the account over a lower w
   await page.locator('#refresh-friends-board').click();
   await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
   expect(supabase.board.published).toHaveLength(1);
+});
+
+test('a board opened during the account check publishes the history the check brings', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  supabase.board.summaries.set(ada.id, { daily: null, week: { start: mondayOf(), seconds: 0, runs: 0 } });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  // Another device then saves six runs from this week to the account; this tab's copy has none.
+  seedProfile(supabase, ada, practiceThisWeek(6), { updatedAt: new Date(Date.now() + 60000).toISOString() });
+  let release;
+  supabase.holdProfiles = new Promise((resolve) => { release = resolve; });
+  await page.reload();
+  await expect(page.locator('#text-display .char').first()).toBeVisible();
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  // Opened before the check, the board is only read.
+  await expect(page.locator('#board-week')).toContainText('You 0 min 0 runs');
+  expect(supabase.board.published).toEqual([]);
+  supabase.holdProfiles = null;
+  release();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  // Once the check has brought the six runs, they go to the board without a new run or a reopen.
+  await expect.poll(() => supabase.board.published.length).toBe(1);
+  expect(supabase.board.published[0]).toMatchObject({ action: 'publish', week: { start: mondayOf(), runs: 6 } });
+  expect(supabase.board.summaries.get(ada.id).week.runs).toBe(6);
+});
+
+test('a midnight re-read that fails is tried again at the next check', async ({ page, supabase }) => {
+  supabase.addUser('ada@stilltype.test');
+  let now = '2026-10-03T23:50:00Z';
+  supabase.board.now = () => new Date(now);
+  await page.clock.install({ time: new Date(now) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  // The first read after midnight fails; the next 30-second check reads Sunday's board.
+  now = '2026-10-04T00:00:30Z';
+  supabase.board.missing = true;
+  await page.clock.fastForward('10:30');
+  await expect(page.locator('#friends-board-status')).toHaveText('The friends board is being set up. Please try again shortly.');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  supabase.board.missing = false;
+  await page.clock.fastForward(30_000);
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04 · best completed attempt · physical keyboard');
+  await expect(page.locator('#friends-board-status')).toHaveText('');
 });
 
 test('a tab that never saw another tab’s runs adds its own without erasing them', async ({ page, supabase }) => {
