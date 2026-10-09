@@ -587,7 +587,7 @@ test('a clear on one device stays cleared when a tab that missed it publishes', 
   await page.locator('#confirm-clear').click();
   await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('replace');
   const { clear } = supabase.board.summaries.get(ada.id);
-  expect(supabase.board.published.at(-1)).toMatchObject({ clear, week: { runs: 0 } });
+  expect(supabase.board.published.at(-1)).toMatchObject({ clear: { id: clear.id }, week: { runs: 0 } });
 
   // The stale tab finishes a run. Sent with all six runs it is refused; it learns the clear and sends
   // only the run since, so the board doesn't get the cleared five back.
@@ -678,10 +678,12 @@ test('a clear from a device whose clock runs behind still takes effect after an 
   const replaced = () => [...supabase.board.published, ...supabase.board.refused].find((entry) => entry.action === 'replace');
   await expect.poll(() => replaced()?.clear?.id).toBeTruthy();
   const ours = replaced().clear;
-  expect(Date.parse(ours.from)).toBeLessThan(Date.parse(other.from));
-  // It is taken, in the order it arrived, and runs still count from the other device's later time.
+  expect(Date.parse(ours.at)).toBeLessThan(Date.parse(other.from));
+  // It is taken, in the order it arrived, and runs count from when it really happened: after the other.
   expect(supabase.board.refused).toEqual([]);
-  expect(supabase.board.summaries.get(ada.id).clear).toEqual({ id: ours.id, from: other.from });
+  const stored = supabase.board.summaries.get(ada.id).clear;
+  expect(stored.id).toBe(ours.id);
+  expect(Date.parse(stored.from)).toBeGreaterThanOrEqual(Date.parse(other.from));
 });
 
 test('a clear queued behind a publish that is refused still goes out', async ({ page, supabase }) => {
@@ -773,6 +775,79 @@ test('an opt-out that fails is kept across a reload and sent before anything els
   // Settled, the opt-out is no longer kept on the device, and nothing turned sharing back on.
   await expect.poll(() => page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('stilltype-board-optout')))).toEqual([]);
   expect(supabase.board.calls.slice(before)).not.toContain('share');
+});
+
+test('a clear from a device whose clock is an hour behind still keeps out runs made before it', async ({ page, browser, supabase }) => {
+  // The run below must fall in this week by both clocks.
+  test.skip(Date.now() - Date.parse(`${mondayOf()}T00:00:00Z`) < 2 * 3600000, 'Too close to Monday 00:00 UTC.');
+  const ada = supabase.addUser('ada@stilltype.test');
+  // A run from half an hour ago, saved to the account before the clear.
+  const halfHourAgo = { ...practiceThisWeek(1)[0], id: 'half-hour-ago', at: new Date(Date.now() - 30 * 60000).toISOString() };
+  sharing(supabase, ada, { runs: [halfHourAgo] });
+  // Another device of Ada's, with a clock that reads right, has that run and is open before the clear.
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  try {
+    await supabase.attach(other);
+    await openApp(other);
+    await signInWithEmail(other, 'ada@stilltype.test');
+    // This device's clock reads an hour behind, so by it the clear happens before that run.
+    await page.clock.install({ time: new Date(Date.now() - 3600000) });
+    await openApp(page);
+    await signInWithEmail(page, 'ada@stilltype.test');
+    await openView(page, 'Progress');
+    await page.locator('#clear-history').click();
+    await page.locator('#confirm-clear-input').fill('clear');
+    await page.locator('#confirm-clear').click();
+    await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('replace');
+    const { clear } = supabase.board.summaries.get(ada.id);
+    // Runs count from when the clear really happened, not an hour earlier.
+    expect(Date.parse(clear.from)).toBeGreaterThan(Date.parse(halfHourAgo.at));
+    // The other device finishes a run: only that one counts, not its half-hour-old run.
+    await chooseWords(other, 10);
+    await completePassage(other);
+    await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('publish');
+    expect(supabase.board.published.at(-1)).toMatchObject({ clear: clear.id, week: { runs: 1 } });
+    expect(supabase.board.summaries.get(ada.id).week.runs).toBe(1);
+  } finally { await context.close(); }
+});
+
+test('a clear the board never confirmed is kept across a reload and sent before any other write', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  sharing(supabase, ada, { runs: practiceThisWeek(3) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect.poll(() => supabase.board.summaries.get(ada.id).week.runs).toBe(3);
+  // The board can't be reached when the history is cleared.
+  supabase.board.missing = true;
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(page.locator('#history-feedback')).toHaveText('History cleared.');
+  const kept = () => page.evaluate(() => {
+    const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-board-replace'));
+    return key ? JSON.parse(localStorage.getItem(key)) : null;
+  });
+  await page.waitForTimeout(2500);
+  const op = await kept();
+  expect(op).toMatchObject({ replacing: 'clear', mine: { id: expect.any(String) } });
+  expect(supabase.board.summaries.get(ada.id).week.runs).toBe(3);
+  supabase.board.missing = false;
+
+  // After a reload the first write is that same clear, and the board ends cleared.
+  const before = supabase.board.calls.length;
+  await page.reload();
+  await expect(page.locator('#text-display .char').first()).toBeVisible();
+  await expect.poll(() => supabase.board.summaries.get(ada.id).week.runs).toBe(0);
+  const writes = supabase.board.calls.slice(before).filter((action) => action !== 'board');
+  expect(writes[0]).toBe('replace');
+  expect(supabase.board.published.find((entry) => entry.action === 'replace').clear.id).toBe(op.mine.id);
+  expect(supabase.board.summaries.get(ada.id).clear.id).toBe(op.mine.id);
+  // Confirmed, it is no longer kept on the device.
+  await expect.poll(kept).toBeNull();
 });
 
 test('turning sharing off removes your row, and a tab that missed it can’t share again', async ({ page, supabase }) => {

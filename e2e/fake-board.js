@@ -50,17 +50,18 @@ export class FakeBoard {
   // 'publish' (and 'share' while sharing) folds the summary in: the stored daily stays unless the new one
   // is for a later day (today's first) or better on the same daily, and within a week the larger
   // practice time and run count stay. 'share' while not sharing starts afresh. 'replace' overwrites it:
-  // clears take effect in the order they arrive, each keeping its id and the time it happened (never
-  // later than now, nor earlier than the clear it follows), and an undo puts back the clear before.
-  // True when the write was taken.
+  // clears take effect in the order they arrive, each keeping its id and the time it happened, turned
+  // into the service's time by the gap between when it happened and when it was sent (never later than
+  // now, nor earlier than the clear it follows), and an undo puts back the clear before. A clear or undo
+  // repeated after a lost reply is answered as done. True when the write was taken (or already was).
   store(caller, action, data) {
     const now = this.now();
     const today = utcDay(now);
     const thisWeek = mondayOf(now);
     const old = this.summaries.get(caller);
     const current = old?.clear ?? null;
-    const clear = action === 'replace' && data.clear
-      ? { id: data.clear.id, from: new Date(Math.min(Date.parse(data.clear.from), now.getTime())).toISOString() } : null;
+    const clear = action === 'replace' && data.clear ? { id: data.clear.id,
+      from: new Date(Math.min(Date.parse(data.clear.at) + (now.getTime() - Date.parse(data.clear.sent)), now.getTime())).toISOString() } : null;
     if (action !== 'replace' && (data.clear ?? null) !== (current?.id ?? null)) return false;
     if (!old) {
       if (action !== 'share') return false;
@@ -68,13 +69,14 @@ export class FakeBoard {
       return true;
     }
     if (!shares(old) && action !== 'share') return false;
+    if ((clear && clear.id === current?.id) || (action === 'replace' && !clear && data.undo === old.undone)) return true;
     if (action === 'replace' && !clear && data.undo !== current?.id) return false;
-    const next = { sharing: true, clear: current, undo: old.undo ?? null, daily: data.daily || null, week: { ...data.week } };
+    const next = { sharing: true, clear: current, undo: old.undo ?? null, undone: old.undone ?? null, daily: data.daily || null, week: { ...data.week } };
     if (clear) {
       if (current && Date.parse(current.from) > Date.parse(clear.from)) clear.from = current.from;
-      Object.assign(next, { clear, undo: current });
+      Object.assign(next, { clear, undo: current, undone: null });
     }
-    else if (action === 'replace') Object.assign(next, { clear: old.undo ?? null, undo: null });
+    else if (action === 'replace') Object.assign(next, { clear: old.undo ?? null, undo: null, undone: data.undo });
     else if (shares(old)) {
       // Today's (or this week's) first, then the later date.
       const ahead = (a, b, latest) => (a === latest) !== (b === latest) ? a === latest : a > b;
@@ -114,10 +116,10 @@ export class FakeBoard {
         week: summary?.week?.start === weekStart ? { seconds: summary.week.seconds, runs: summary.week.runs } : null };
     };
     // Someone who doesn't share sees nobody, and nobody sees them.
-    if (!shares(own)) return { date, weekStart, sharing: false, clear: own?.clear ?? null, rows: [] };
+    if (!shares(own)) return { date, weekStart, now: now.toISOString(), sharing: false, clear: own?.clear ?? null, rows: [] };
     const mutual = [...this.listed(viewer)].filter(([account]) => shares(this.summaries.get(account))
       && (this.auth.races.friends.get(account) || []).some((friend) => friend.friendId === viewer || friend.email === email));
-    return { date, weekStart, sharing: true, clear: own.clear ?? null, rows: [row(viewer, { self: true, id: null, name: null }),
+    return { date, weekStart, now: now.toISOString(), sharing: true, clear: own.clear ?? null, rows: [row(viewer, { self: true, id: null, name: null }),
       ...mutual.map(([account, friend]) => row(account, { self: false, id: friend.id, name: friend.name }))
         .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))] };
   }

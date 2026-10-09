@@ -16,15 +16,20 @@ create table race_private.summaries (
   -- False after turning sharing off: the row is then only a marker, with no numbers.
   sharing boolean not null,
   -- The latest history clear on any device, in the order clears arrive: an id the clearing browser made,
-  -- and the time runs count from. That is when it cleared by that browser's clock (never later than the
-  -- service's), however late the request arrived, but never earlier than the clear it follows, so a
-  -- clear can't bring back runs an earlier one removed. A browser must name it to share or publish, and
-  -- counts only runs from then on, so a browser that missed a clear can't bring the cleared numbers back.
+  -- and the time runs count from, in the service's time. That is when it cleared, however late the
+  -- request arrived: the browser sends when it cleared and when it sent the request, both by its own
+  -- clock, and the gap between them is laid back from the service's clock at arrival, so the browser's
+  -- clock being off doesn't matter (only network delay does). Never later than now, nor earlier than the
+  -- clear it follows, so a clear can't bring back runs an earlier one removed. A browser must name it to
+  -- share or publish, and counts only runs from then on (converted to the service's time by its own
+  -- clock's offset), so a browser that missed a clear can't bring the cleared numbers back.
   clear_id uuid,
   clear_from timestamptz,
   -- The clear before it, which an undo of the latest one puts back.
   undo_id uuid,
   undo_from timestamptz,
+  -- The clear the last undo took back, so an undo repeated after a lost reply is answered as done.
+  undone_id uuid,
   -- Today's best completed physical-keyboard daily attempt, and how many completed attempts there were.
   daily_date date,
   -- Which daily it was (conditions with corpus and metric version, and the passage), so a reader
@@ -80,7 +85,9 @@ returns jsonb language sql set search_path = '' as $$
     select m.account_id, m.friend_row, m.name, false from mutual m
   )
   select jsonb_build_object('date', c.today, 'weekStart', c.week_start, 'sharing', coalesce(me.sharing, false),
-    'clear', case when me.clear_id is not null then jsonb_build_object('id', me.clear_id, 'from', me.clear_from) end, 'rows',
+    'clear', case when me.clear_id is not null then jsonb_build_object('id', me.clear_id, 'from', me.clear_from) end,
+    -- The service's time, so a browser can turn its own run times into the service's.
+    'now', clock_timestamp(), 'rows',
     case when coalesce(me.sharing, false) then
       (select jsonb_agg(jsonb_build_object('self', p.self, 'id', p.friend_row, 'name', p.name,
           'daily', case when s.daily_date = c.today then jsonb_build_object('version', s.daily_version, 'wpm', s.daily_wpm,
@@ -101,6 +108,7 @@ revoke all on function race_private.board_snapshot(uuid) from public, anon, auth
 -- the numbers while sharing, and is either a history clear ('clear': its id and when it happened) or the
 -- undo of one ('undo': the id it undoes). Clears take effect in the order they arrive, whatever the
 -- devices' clocks say; an undo of a clear that is no longer the latest is refused, so a newer clear wins.
+-- A clear or undo repeated after a lost reply is answered as done.
 -- 'unshare' empties the row down to the marker.
 create function race_private.board(p_action text, p_data jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
@@ -158,15 +166,16 @@ begin
       end if;
       v_known := (p_data->>'clear')::uuid;
     elsif jsonb_typeof(p_data->'clear') = 'object' and not p_data ? 'undo' then
-      -- A clear: its id, and when it happened by the clearing browser's clock.
+      -- A clear: its id, when it happened and when this request was sent, both by the browser's clock.
       if coalesce(p_data->'clear'->>'id', '') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-        or coalesce(p_data->'clear'->>'from', '')
-          !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?(Z|[+-][0-9]{2}(:?[0-9]{2})?)$' then
+        or coalesce(p_data->'clear'->>'at', '') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?(Z|[+-][0-9]{2}(:?[0-9]{2})?)$'
+        or coalesce(p_data->'clear'->>'sent', '') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?(Z|[+-][0-9]{2}(:?[0-9]{2})?)$' then
         raise exception 'Invalid board request.';
       end if;
       v_clear_id := (p_data->'clear'->>'id')::uuid;
-      -- A clock running ahead can't place a clear in the future.
-      v_clear_from := least((p_data->'clear'->>'from')::timestamptz, clock_timestamp());
+      -- In the service's time: as long before now as it happened before it was sent. Never in the future.
+      v_clear_from := least((p_data->'clear'->>'at')::timestamptz + (clock_timestamp() - (p_data->'clear'->>'sent')::timestamptz),
+        clock_timestamp());
     elsif jsonb_typeof(p_data->'undo') = 'string' and not p_data ? 'clear'
         and p_data->>'undo' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
       v_undo := (p_data->>'undo')::uuid;
@@ -190,10 +199,18 @@ begin
       if found then return race_private.board_snapshot(v_uid); end if;
     end if;
     select * into v_old from race_private.summaries where user_id = v_uid for update;
-    -- Refused, changing nothing: no row or not sharing (except to turn it on); a share or publish that
-    -- missed the latest clear; an undo of a clear that isn't the latest.
-    if not found or (not v_old.sharing and p_action <> 'share')
-      or (p_action <> 'replace' and v_known is distinct from v_old.clear_id)
+    -- Refused, changing nothing: no row or not sharing (except to turn it on).
+    if not found or (not v_old.sharing and p_action <> 'share') then
+      return race_private.board_snapshot(v_uid) || jsonb_build_object('refused', true);
+    end if;
+    -- A clear or undo repeated after a lost reply is answered as done, changing nothing: the clear is
+    -- still the latest, or the undo already took it back.
+    if (v_clear_id is not null and v_clear_id = v_old.clear_id) or (v_undo is not null and v_undo = v_old.undone_id) then
+      return race_private.board_snapshot(v_uid);
+    end if;
+    -- Refused, changing nothing: a share or publish that missed the latest clear; an undo of a clear
+    -- that isn't the latest.
+    if (p_action <> 'replace' and v_known is distinct from v_old.clear_id)
       or (p_action = 'replace' and v_clear_id is null and v_undo is distinct from v_old.clear_id) then
       return race_private.board_snapshot(v_uid) || jsonb_build_object('refused', true);
     end if;
@@ -201,17 +218,20 @@ begin
     v_new.clear_from := v_old.clear_from;
     v_new.undo_id := v_old.undo_id;
     v_new.undo_from := v_old.undo_from;
+    v_new.undone_id := v_old.undone_id;
     if v_clear_id is not null then
+      v_new.undone_id := null;
       v_new.undo_id := v_old.clear_id;
       v_new.undo_from := v_old.clear_from;
       v_new.clear_id := v_clear_id;
-      -- A device whose clock runs behind can't move the time runs count from back past an earlier clear.
+      -- A clear that arrives after a later one (sent late) can't move the time back past it.
       v_new.clear_from := greatest(v_old.clear_from, v_clear_from);
     elsif p_action = 'replace' then
       v_new.clear_id := v_old.undo_id;
       v_new.clear_from := v_old.undo_from;
       v_new.undo_id := null;
       v_new.undo_from := null;
+      v_new.undone_id := v_undo;
     elsif v_old.sharing then
       -- A browser's summary is a lower bound: another tab or device of the same account may hold runs
       -- this one never saw. So the stored daily stays unless this one is for a later day (today's
@@ -238,7 +258,7 @@ begin
       end if;
     end if;
     update race_private.summaries set sharing = true, clear_id = v_new.clear_id, clear_from = v_new.clear_from,
-        undo_id = v_new.undo_id, undo_from = v_new.undo_from, daily_date = v_new.daily_date,
+        undo_id = v_new.undo_id, undo_from = v_new.undo_from, undone_id = v_new.undone_id, daily_date = v_new.daily_date,
         daily_version = v_new.daily_version, daily_wpm = v_new.daily_wpm, daily_accuracy = v_new.daily_accuracy,
         daily_attempts = v_new.daily_attempts, week_start = v_new.week_start, week_seconds = v_new.week_seconds,
         week_runs = v_new.week_runs, updated_at = v_new.updated_at

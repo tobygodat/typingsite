@@ -37,6 +37,15 @@ begin
   return v_result;
 end $$;
 
+-- A clear as a browser sends it: its id, when it happened and when the request was sent, by its clock.
+create function pg_temp.clearing(p_id uuid, p_at timestamptz, p_sent timestamptz) returns jsonb language sql as $$
+  select jsonb_build_object('id', p_id, 'at', to_jsonb(p_at)#>>'{}', 'sent', to_jsonb(p_sent)#>>'{}')
+$$;
+-- Two times within a second of each other (a request takes a moment to arrive).
+create function pg_temp.near(p_a timestamptz, p_b timestamptz) returns boolean language sql as $$
+  select abs(extract(epoch from p_a - p_b)) < 1
+$$;
+
 do $smoke$
 declare
   ada uuid := gen_random_uuid();
@@ -94,7 +103,7 @@ begin
   perform set_config('request.jwt.claim.sub',ada::text,true);
   foreach act in array array['publish','replace'] loop
     board := pg_temp.board(act,jsonb_build_object('daily',null,'week',week,'clear',case when act = 'replace'
-      then jsonb_build_object('id',gen_random_uuid(),'from',to_jsonb(clock_timestamp())#>>'{}') end));
+      then pg_temp.clearing(gen_random_uuid(),clock_timestamp(),clock_timestamp()) end));
     if (board->>'sharing')::boolean or board->'rows' <> '[]'::jsonb or exists(select 1 from race_private.summaries where user_id = ada) then
       raise exception 'A % from an account that does not share was stored: %', act, board;
     end if;
@@ -131,8 +140,9 @@ begin
     jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',60)),
     jsonb_build_object('daily',null,'week',week,'clear','yesterday'),
     jsonb_build_object('daily',null,'week',week,'clear',7),
-    jsonb_build_object('daily',null,'week',week,'clear',jsonb_build_object('id','not-an-id','from','2026-10-09T10:00:00Z')),
-    jsonb_build_object('daily',null,'week',week,'clear',jsonb_build_object('id',gen_random_uuid(),'from','yesterday'))
+    jsonb_build_object('daily',null,'week',week,'clear',jsonb_build_object('id','not-an-id','at','2026-10-09T10:00:00Z','sent','2026-10-09T10:00:00Z')),
+    jsonb_build_object('daily',null,'week',week,'clear',jsonb_build_object('id',gen_random_uuid(),'at','yesterday','sent','2026-10-09T10:00:00Z')),
+    jsonb_build_object('daily',null,'week',week,'clear',jsonb_build_object('id',gen_random_uuid(),'at','2026-10-09T10:00:00Z'))
   ] loop
     denied := false;
     begin perform pg_temp.board(act,bad);
@@ -177,13 +187,21 @@ begin
     raise exception 'A daily from another build did not replace the stored one: %', board;
   end if;
   -- A history clear replaces the row, so the numbers can go down and a daily can go. It keeps the id the
-  -- browser gave it and the time it happened there, even when the request arrives much later.
-  t := to_jsonb(clock_timestamp() - interval '10 minutes')#>>'{}';
+  -- browser gave it, and runs count from when it happened, in the service's time: this one was sent ten
+  -- minutes after it happened, by a clock that reads right.
   board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
-    'clear',jsonb_build_object('id',g1,'from',t)));
-  if board->'clear'->>'id' is distinct from g1::text or (board->'clear'->>'from')::timestamptz <> t::timestamptz
+    'clear',pg_temp.clearing(g1,clock_timestamp() - interval '10 minutes',clock_timestamp())));
+  t := board->'clear'->>'from';
+  if board->'clear'->>'id' is distinct from g1::text or not pg_temp.near(t::timestamptz, clock_timestamp() - interval '10 minutes')
     or jsonb_typeof(board->'rows'->0->'daily') <> 'null' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) then
     raise exception 'A delayed clear lost the time it happened: %', board;
+  end if;
+  -- Sent again after a lost reply, the same clear is answered as done and changes nothing.
+  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,
+    'clear',pg_temp.clearing(g1,clock_timestamp() - interval '10 minutes',clock_timestamp())));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g1::text or board->'clear'->>'from' is distinct from t
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) then
+    raise exception 'A repeated clear changed the row: %', board;
   end if;
   -- A browser that missed the clear (it knows none, or another) is refused, changing nothing, however
   -- it writes, and the reply names the clear it missed.
@@ -205,36 +223,40 @@ begin
   if board ? 'refused' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',60,'runs',1) then
     raise exception 'A publish that named the clear was refused: %', board;
   end if;
-  -- A newer clear from another device wins: an undo of the first clear is refused, changing nothing.
-  t2 := to_jsonb(clock_timestamp() - interval '1 minute')#>>'{}';
+  -- A device whose clock reads an hour behind clears just now: runs count from now, not an hour ago.
   board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
-    'clear',jsonb_build_object('id',g2,'from',t2)));
-  if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text or (board->'clear'->>'from')::timestamptz <> t2::timestamptz then
-    raise exception 'A newer clear was refused: %', board;
+    'clear',pg_temp.clearing(g2,clock_timestamp() - interval '1 hour',clock_timestamp() - interval '1 hour')));
+  t2 := board->'clear'->>'from';
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text or not pg_temp.near(t2::timestamptz, clock_timestamp()) then
+    raise exception 'A clear from a clock an hour behind was placed an hour early: %', board;
   end if;
+  -- That newer clear wins: an undo of the first one is refused, changing nothing.
   board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g1));
   if not coalesce((board->>'refused')::boolean, false) or board->'clear'->>'id' is distinct from g2::text
     or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
     raise exception 'An undo overtook a newer clear: %', board;
   end if;
-  -- Clears take effect in the order they arrive, whatever the devices' clocks say: one from a clock
-  -- running behind becomes the latest, but runs still count from the later time, so nothing the
-  -- earlier clear removed comes back.
+  -- Clears take effect in the order they arrive: one made half an hour ago and sent only now (it waited
+  -- offline) becomes the latest, but runs still count from the newer clear's time, so nothing it
+  -- removed comes back.
   board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
-    'clear',jsonb_build_object('id',g4,'from',to_jsonb(clock_timestamp() - interval '20 minutes')#>>'{}')));
-  if board ? 'refused' or board->'clear'->>'id' is distinct from g4::text or (board->'clear'->>'from')::timestamptz <> t2::timestamptz then
-    raise exception 'A clear from a clock running behind was refused or moved the boundary back: %', board;
+    'clear',pg_temp.clearing(g4,clock_timestamp() - interval '30 minutes',clock_timestamp())));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g4::text or board->'clear'->>'from' is distinct from t2 then
+    raise exception 'A clear sent late moved the time runs count from back: %', board;
   end if;
-  -- An undo of the latest clear puts back the numbers it sends and the clear before it, with its time.
-  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g4));
-  if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text or (board->'clear'->>'from')::timestamptz <> t2::timestamptz
-    or board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',97,'attempts',2)
-    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) then
-    raise exception 'An undo did not restore the summary and the clear before it: %', board;
-  end if;
+  -- An undo of the latest clear puts back the numbers it sends and the clear before it, with its time;
+  -- repeated after a lost reply, it is answered as done and changes nothing.
+  foreach act in array array['first','repeat'] loop
+    board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g4));
+    if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text or board->'clear'->>'from' is distinct from t2
+      or board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',97,'attempts',2)
+      or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) then
+      raise exception 'The % undo did not leave the summary and the clear before it: %', act, board;
+    end if;
+  end loop;
   -- A clock running ahead can't place a clear in the future.
   board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,
-    'clear',jsonb_build_object('id',g3,'from',to_jsonb(clock_timestamp() + interval '1 day')#>>'{}')));
+    'clear',pg_temp.clearing(g3,clock_timestamp() + interval '1 day',clock_timestamp())));
   if board->'clear'->>'id' is distinct from g3::text or (board->'clear'->>'from')::timestamptz > clock_timestamp() then
     raise exception 'A clear was placed in the future: %', board;
   end if;
@@ -327,7 +349,7 @@ begin
 
   -- Clearing a daily result clears it for friends too.
   perform pg_temp.board('replace',jsonb_build_object('daily',null,'week',week,
-    'clear',jsonb_build_object('id',gen_random_uuid(),'from',to_jsonb(clock_timestamp())#>>'{}')));
+    'clear',pg_temp.clearing(gen_random_uuid(),clock_timestamp(),clock_timestamp())));
   perform set_config('request.jwt.claim.sub',lin::text,true);
   board := pg_temp.board('board','{}');
   if jsonb_typeof(board->'rows'->1->'daily') <> 'null' or board->'rows'->1->'week'->>'seconds' <> '1830' then raise exception 'A cleared daily still showed.'; end if;
@@ -351,7 +373,7 @@ begin
   end if;
   foreach act in array array['publish','replace'] loop
     board := pg_temp.board(act,jsonb_build_object('daily',null,'week',week,'clear',case when act = 'replace'
-      then jsonb_build_object('id',gen_random_uuid(),'from',to_jsonb(clock_timestamp())#>>'{}') end));
+      then pg_temp.clearing(gen_random_uuid(),clock_timestamp(),clock_timestamp()) end));
     if not coalesce((board->>'refused')::boolean, false) or (board->>'sharing')::boolean or board->'rows' <> '[]'::jsonb then
       raise exception 'A % after turning sharing off was taken: %', act, board;
     end if;
@@ -376,6 +398,6 @@ begin
   -- Deleting an account deletes its row.
   delete from auth.users where id = ada;
   if exists(select 1 from race_private.summaries where user_id = ada) then raise exception 'A deleted account kept its board row.'; end if;
-  raise notice 'Friends board privacy, opt-in sharing, missed, delayed, out-of-order and overtaken clears, opt-outs, mutual lists, limits, dates and merge checks passed.';
+  raise notice 'Friends board privacy, opt-in sharing, missed, delayed, repeated, out-of-order and overtaken clears, clocks off, opt-outs, mutual lists, limits, dates and merge checks passed.';
 end $smoke$;
 rollback;

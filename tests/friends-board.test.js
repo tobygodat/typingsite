@@ -115,6 +115,11 @@ test('after a clear elsewhere, a summary counts only runs from the clear on', ()
   // The service's time, to the microsecond, as its replies carry it.
   assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00.123456+00:00').map((r) => r.id), ['after']);
   assert.equal(boardSummary(runsSince(runs, '2026-10-09T11:00:00Z'), dailyKey, now).week.runs, 1);
+  // On a device whose clock reads an hour behind, a run it stamped 10:30 happened at 11:30 service time.
+  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00Z', 3600000).map((r) => r.id), ['before', 'after']);
+  // On one an hour ahead, a run it stamped 12:00 happened at 11:00, only just in.
+  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00Z', -3600000).map((r) => r.id), ['after']);
+  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00.001Z', -3600000).map((r) => r.id), []);
 });
 
 test('a service without the board migration says it is being set up', async () => {

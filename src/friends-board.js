@@ -44,10 +44,12 @@ export function boardSummary(runs, dailyKey, date = new Date()) {
   };
 }
 
-// Runs from `since` on (the time of the latest clear, as the service holds it), or all of them when there is none.
-export function runsSince(runs, since) {
+// Runs from `since` on, or all of them when there is none. `since` is the latest clear's time as the
+// service holds it; `offset` (the service's clock minus this device's) puts the runs' own times on the
+// service's clock first, so neither clock being off lets a run before the clear count.
+export function runsSince(runs, since, offset = 0) {
   const from = since ? Date.parse(since) : Number.NaN;
-  return Number.isNaN(from) ? runs : runs.filter((run) => run.at && Date.parse(run.at) >= from);
+  return Number.isNaN(from) ? runs : runs.filter((run) => run.at && Date.parse(run.at) + offset >= from);
 }
 
 // Under a minute in seconds, then minutes: one decimal below ten, whole above. Never rounded up.
@@ -77,6 +79,17 @@ const newId = () => crypto.randomUUID();
 const optOutKey = (session) => `stilltype-board-optout:${session.user.id}`;
 function optOutPending(session) {
   try { return localStorage.getItem(optOutKey(session)) === '1'; } catch { return false; }
+}
+// A clear or undo the service hasn't confirmed yet, kept on this device across reloads until it has.
+const replaceKey = (session) => `stilltype-board-replace:${session.user.id}`;
+function pendingReplace(session) {
+  try { return JSON.parse(localStorage.getItem(replaceKey(session))); } catch { return null; }
+}
+function rememberReplace(session, state) {
+  try {
+    if (state) localStorage.setItem(replaceKey(session), JSON.stringify(state));
+    else localStorage.removeItem(replaceKey(session));
+  } catch {}
 }
 function rememberOptOut(session, pending) {
   try {
@@ -122,13 +135,17 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   // A run, clear or undo in this tab that the service has not accepted yet; it goes out after the
   // account check, on the next board read, and when the browser comes back online.
   let pending = false;
-  // That change includes a history clear ('clear') or its undo ('undo'), so it replaces the stored
-  // summary instead of adding to it.
+  // That change includes a history clear ('clear'), its undo ('undo'), or both ('clear+undo': a clear
+  // not yet confirmed and then undone, sent in turn since the first may have arrived after all), so it
+  // replaces the stored summary instead of adding to it.
   let replacing = false;
-  // The latest history clear on any device, { id, from }, as the service's replies name it. Summaries
-  // count only runs from its time on, so a tab that missed a clear elsewhere can't bring cleared runs back.
+  // The latest history clear on any device, { id, from }, as the service's replies name it, its time on
+  // the service's clock. Summaries count only runs from then on, so a tab that missed a clear elsewhere
+  // can't bring cleared runs back.
   let known = null;
-  // This tab's own latest clear, { id, from } stamped when it happened here, while the service may still
+  // The service's clock minus this device's, from the latest reply.
+  let offset = 0;
+  // This tab's own latest clear, { id, at } with `at` by this device's clock, while the service may still
   // hold it (an undo names it), and the clear before it, whose runs an undo sends again.
   let mine = null;
   let before = null;
@@ -145,14 +162,25 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   // The switch's setting made before the account check: it waits for the check and then applies to the
   // profile the check settles on, which may say otherwise.
   let held = null;
+  // A clear or undo made here that the service hasn't confirmed: back after a reload, sent before any
+  // other write.
+  const kept = getSession() && pendingReplace(getSession());
+  if (kept?.replacing && kept.mine) ({ replacing, mine, before } = kept);
+  if (replacing) pending = true;
   // The UTC day, by this browser's clock, of the last board received. A new week always begins with a
   // new day. A read that fails leaves it, so the next check tries again.
   let readDay = '';
-  const summary = (since = known?.from) => boardSummary(runsSince(runs(), since), dailyKey());
-  // Every reply names this account's latest clear.
+  const summary = (since = known?.from) => boardSummary(runsSince(runs(), since, offset), dailyKey());
+  // Every reply names this account's latest clear and the service's time.
   function seen(result) {
+    if (result?.now) offset = Date.parse(result.now) - Date.now();
     if (result && 'clear' in result) known = result.clear;
     return result;
+  }
+  // Keeps the clear or undo still to be sent, or forgets it once it is settled.
+  function keep() {
+    const session = getSession();
+    if (session) rememberReplace(session, replacing && mine ? { replacing, mine, before } : null);
   }
 
   // Writes go one at a time, in order. One asked for while another is in flight waits for it to settle,
@@ -176,6 +204,7 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
     replacing = false;
     published = '';
     mine = null;
+    keep();
   }
   // The row's removal waits behind any write already on its way. Once the service confirms it, the
   // opt-out is settled here too, unless the switch has moved again since.
@@ -223,8 +252,11 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
     const mode = replacing;
     // The clear this write is about. A newer clear made while it is on its way is not this write's to settle.
     const sent = mode ? mine : null;
+    // A clear sends the runs since it happened here (this device's clock on both sides) and its times as
+    // this device reads them; the service turns them into its own.
     const value = mode === 'undo' ? { ...summary(before ? before.from : null), undo: mine.id }
-      : mode === 'clear' ? { ...summary(mine.from), clear: mine } : { ...summary(), clear: known?.id ?? null };
+      : mode ? { ...boardSummary(runsSince(runs(), mine.at), dailyKey()), clear: { id: mine.id, at: mine.at, sent: new Date().toISOString() } }
+        : { ...summary(), clear: known?.id ?? null };
     const key = JSON.stringify(value);
     pending = false;
     replacing = false;
@@ -241,9 +273,13 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
     if (result?.refused) {
       if (!result.sharing) { stoppedElsewhere(); return result; }
       if (mode === 'undo') onUndoRefused();
+      keep();
       if (!retried) return sendChange(session, true);
       return result;
     }
+    // The clear is in; the undo that followed it goes next.
+    if (mode === 'clear+undo' && mine === sent && !replacing) { replacing = 'undo'; keep(); return sendChange(session, retried); }
+    keep();
     published = key;
     return result;
   }
@@ -346,14 +382,15 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
     pending = true;
     if (replace === 'clear') {
       // The clear's identity: an id, and the time it happened here, kept however late it goes out.
-      if (replacing !== 'clear') before = known;
-      mine = { id: newId(), from: new Date().toISOString() };
+      if (replacing !== 'clear' && replacing !== 'clear+undo') before = known;
+      mine = { id: newId(), at: new Date().toISOString() };
       replacing = 'clear';
     } else if (replace === 'undo') {
-      // A clear that never left this tab and its undo cancel out; the restored summary goes as usual.
+      // A clear not yet confirmed goes first and its undo after (a clear repeated is answered as done).
       // A clear the board no longer holds (a newer one overtook it) can't be undone there.
-      if (replacing === 'clear') { replacing = false; mine = null; } else if (mine) replacing = 'undo'; else setTimeout(onUndoRefused);
+      if (replacing === 'clear') replacing = 'clear+undo'; else if (mine) replacing = 'undo'; else setTimeout(onUndoRefused);
     }
+    if (replace) keep();
     clearTimeout(publishTimer);
     publishTimer = setTimeout(async () => {
       const session = getSession();
