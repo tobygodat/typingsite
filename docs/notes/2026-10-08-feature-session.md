@@ -253,7 +253,10 @@ The handoff carries the migrations, the bugs found on master, the merge rules an
 - Privacy: rows show only to mutual friends, so adding an email never reveals whether it has an account. For one-way visibility, drop the `exists()` clause in the `mutual` CTE; the one-way section of `supabase/tests/friends-board.sql` then fails by design.
 - Rows store no display name; each reader sees their own name for that friend.
 - The board shows each person's best daily attempt and the attempt count, as the Daily panel does. "First attempt only" would be stricter.
-- No opt-out: two people on each other's lists share automatically, including pairs that existed before the migration (from their next run). A "pause sharing" control would need a preference and a palette command.
+- Sharing is opt-in and off by default, including for friend pairs that existed before the migration (PRODUCT.md leaves participation terms for shared data undecided). A "share on friends board" switch on the board and a palette command turn it on. Until then nothing is published, and the board shows no rows, yours or friends', with one line saying so. Friends who don't share never appear.
+- Retention: only today's daily and this week's practice are kept, and each new day or week replaces the last. Turning sharing off leaves a marker row with no numbers. Deleting the account removes the row (`on delete cascade`).
+- Stale devices: the row records the last history clear on any device (`cleared_at`). A publish or share that missed a newer clear is refused; the browser adopts the clear and republishes only runs since then. Publishes against an opt-out marker are refused the same way, so a stale device can't revive the row. Undo restores the earlier `cleared_at`; the marker moves only on a clear, so an undo never undercounts.
+- Weekly totals stop growing past 1,000 runs in a week, because `retainRuns` drops the oldest runs (about 143 runs a day). The board never goes down, since the server keeps the higher total. Left for you to decide (open review thread); the merge rule is to read #27's per-day archive once #27 lands.
 - Publishing: only this tab's own runs, clears and undos are sent, about 1.5 s later and never mid-run. Publishes from one tab go out in order, queued changes collapse, and a replace waits for an in-flight publish.
 - The server merges each publish: the later or better daily is kept, and the week keeps the maximum attempts, minutes and runs. A daily from another build replaces. Clear and undo send an explicit `replace`.
 - Daily results carry `daily_version` (the daily condition key plus the passage text version). A result from another build reads "another version of the daily · not compared".
@@ -283,8 +286,9 @@ The handoff carries the migrations, the bugs found on master, the merge rules an
   - every open challenge, never cut;
   - every result answered in the last 7 days, never cut;
   - then the newest 50 other rows.
-  - Known gap, not fixed: more than 30 open invitations and challenges at once make the overflow swap in and out of the 30-entry inbox, re-marking them unread. Normal use can't reach it (the limit is 30 waiting per sender), but many senders together could.
+  - The inbox's 30-entry cap applies only to history, so open races and results from the last 7 days always show, and the list scrolls inside the popover at 320px.
 - The inbox dedupes ids, and the delivered-results memory keeps only ids the service still lists.
+- Retries are safe after a lost reply: each send carries a request id (`unique (sender_id, request_id)`), so a repeat returns the stored challenge and uses no quota; a repeated finish returns the stored result, and the first finish always stands. An older send can't re-enable Send for a newer offer.
 - The server can't verify input class, so it trusts the client, as it does for all trace data. The client sends a reply only when it was made on the sender's kind of input.
 - Starting a ghost race ends any drill-and-retest cycle in progress, as the daily does.
 - The "Name they see" field defaults to the email's local part, so part of the sender's email reaches the friend unless they edit it.
