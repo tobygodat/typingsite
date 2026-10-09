@@ -1,7 +1,7 @@
 // Accounts: Supabase Auth and one row of profile data per user, spoken to over fetch so the app
 // keeps no runtime dependencies. With no session the visitor is a guest and nothing is stored.
 // The publishable key is meant for browsers; row-level security limits every row to its owner.
-import { dailyChallengeId, retainRuns, trendRun } from './insights.js';
+import { dailyChallengeId, retainRuns, settleDailyFirsts, trendRun } from './insights.js';
 import { conditionKey } from './typing.js';
 
 const SUPABASE_URL = 'https://bicbyljexprkaedakofa.supabase.co';
@@ -320,7 +320,8 @@ const fuller = (held, other) => ((other.patterns?.length || 0) > (held.patterns?
 // Merges another copy of this account's profile (`cloud`: the account row, or another tab's cache) into
 // this device's (`local`). Field by field:
 // - attempts, runs, loops (HISTORY): union by id, ordered by date, then the usual caps. Equal dates
-//   (undated records from older builds) order by id, so both sides list them the same way.
+//   (undated records from older builds) order by id, so both sides list them the same way. Only a day's
+//   earliest daily attempt keeps its first-attempt label (settleDailyFirsts).
 // - bests: per condition key the best by beatsBest (the higher wpm), so a merge never lowers a best.
 // - seenTextIds: union, so a passage once shown is never offered as fresh again.
 // - preferences and preferencesAt: setting by setting, from mergePreferences above.
@@ -372,7 +373,8 @@ export function mergeSynced(local, cloud) {
       const id = recordId(item);
       byId.set(id, byId.has(id) ? fuller(byId.get(id), item) : item);
     }
-    merged[name] = keep([...byId.values()].sort((a, b) => compare(a[at] || '', b[at] || '') || compare(recordId(a), recordId(b))));
+    // Settled before the caps, so the day's earliest attempt is found even if the cap then drops it.
+    merged[name] = keep(settleDailyFirsts([...byId.values()].sort((a, b) => compare(a[at] || '', b[at] || '') || compare(recordId(a), recordId(b)))));
   }
   merged.bests = { ...theirs.bests };
   for (const [key, best] of Object.entries(mine.bests)) {

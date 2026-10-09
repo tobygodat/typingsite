@@ -137,6 +137,24 @@ test('equal setting stamps settle on the same value on every copy', () => {
   assert.equal(mergeSynced(phone, older).preferences.theme, 'dark');
 });
 
+test('two devices that each tried the same daily before merging keep one first attempt', () => {
+  const daily = (id, n, extra = {}) => item(id, n, { kind: 'daily', challengeDate: '2026-10-01', firstDailyAttempt: true, ...extra });
+  // The laptop tried first; the phone, not yet holding the laptop's copy, labelled its own try first too.
+  const laptop = profile({ attempts: [daily('laptop', 2)], runs: [daily('laptop', 2)] });
+  const phone = profile({ attempts: [daily('phone', 5)], runs: [daily('phone', 5), daily('other-day', 6, { challengeDate: '2026-10-02' })] });
+  for (const merged of [mergeSynced(laptop, phone), mergeSynced(phone, laptop)]) {
+    for (const name of ['attempts', 'runs']) {
+      const first = merged[name].filter((record) => record.challengeDate === '2026-10-01' && record.firstDailyAttempt).map((record) => record.id);
+      assert.deepEqual(first, ['laptop'], name);
+    }
+    assert.equal(merged.runs.find((record) => record.id === 'other-day').firstDailyAttempt, true);
+  }
+  // A repeat stays a repeat, and the inputs are not changed.
+  const repeat = profile({ runs: [daily('early', 1, { firstDailyAttempt: false })] });
+  assert.deepEqual(mergeSynced(repeat, phone).runs.filter((record) => record.firstDailyAttempt).map((record) => record.id), ['other-day']);
+  assert.equal(phone.runs[0].firstDailyAttempt, true);
+});
+
 test('a clear drops what the other side held from before it, without losing later work', () => {
   const marker = minute(10);
   const cleared = profile({ historyClearedAt: marker, runs: [item('after-here', 12, { textId: 'q-after-here' })], seenTextIds: ['q-after-here'] });

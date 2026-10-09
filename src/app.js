@@ -22,7 +22,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { dailyChallengeId, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, settleDailyFirsts, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const $ = (id) => document.getElementById(id);
@@ -94,8 +94,8 @@ function normalizeProfile(parsed) {
     ...emptyProfile(),
     ...parsed,
     preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences }),
-    attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
-    runs: retainRuns(records),
+    attempts: settleDailyFirsts(traces),
+    runs: retainRuns(settleDailyFirsts(records)),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
     bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
@@ -144,6 +144,8 @@ let clearTimer = null;
 // What the newest clear removed from each copy merged here, so an Undo from any tab brings all of it
 // back (account.mergeAndHold): { marker, before } or null. In memory only.
 let heldClear = null;
+// The history clear this tab's training state (baseline, results on show) was last checked against.
+let trainingClear = profile.historyClearedAt || null;
 
 let race = {
   passage: null,
@@ -326,6 +328,7 @@ function flushDeferredSync() {
   if (runInProgress()) return;
   if (cacheWaiting && absorbCache()) setTimeout(showMerged);
   if (preferencesWaiting) followStoredPreferences();
+  forgetClearedTraining();
 }
 
 // A one-keyboard race never sets runActive; its turns start, end and restart here.
@@ -419,9 +422,13 @@ function setModeControls() {
   $('word-list').disabled = prefs.mode === 'quote';
   $('duration-options').hidden = prefs.mode === 'quote';
   const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
-  const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
-  $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
-    const button = document.createElement('button');
+  // The length buttons are relabelled in place rather than rebuilt, so one holding keyboard focus keeps
+  // it when conditions change from another tab or device.
+  const lengths = $('duration-options');
+  const existing = [...lengths.querySelectorAll(':scope > button')];
+  existing.slice(values.length).forEach((button) => button.remove());
+  values.forEach((value, index) => {
+    const button = existing[index] || lengths.appendChild(document.createElement('button'));
     const selected = value === (prefs.mode === 'time' ? prefs.duration : prefs.count);
     button.type = 'button';
     button.textContent = value;
@@ -429,8 +436,7 @@ function setModeControls() {
     button.className = selected ? 'is-active' : '';
     button.setAttribute('aria-pressed', String(selected));
     button.setAttribute('aria-label', `${value} ${prefs.mode === 'time' ? 'seconds' : 'words'}`);
-    return button;
-  }));
+  });
   showBest();
   requestAnimationFrame(() => updateGlides());
 }
@@ -876,6 +882,8 @@ function updateLive(reset = false) {
 
 function storeAttempt(completed) {
   completed.at = new Date().toISOString();
+  // Shown as the day's first attempt, it is a repeat if another device's earlier attempt arrived since.
+  if (completed.kind === 'daily') completed.firstDailyAttempt = settleDailyFirsts([...profile.runs, completed]).at(-1).firstDailyAttempt;
   const key = conditionKey(completed.conditions);
   const score = completed.summary.score;
   const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
@@ -885,7 +893,14 @@ function storeAttempt(completed) {
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
     profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
   }
-  if (eligibleBest && completed.textId && !profile.seenTextIds.includes(completed.textId)) profile.seenTextIds.push(completed.textId);
+  // The passage was marked seen when shown (resetSession). A merge with a copy that had cleared history
+  // can drop marks it can't date, as it does for a passage only shown; one that was then typed, even
+  // in an interrupted run or a daily attempt, is marked again.
+  if (completed.kind !== 'drill') {
+    for (const id of [completed.textId, completed.kind === 'daily' ? dailyChallengeId(completed.challengeDate) : null]) {
+      if (id && !profile.seenTextIds.includes(id)) profile.seenTextIds.push(id);
+    }
+  }
   const saved = saveProfile();
   showBest();
   return saved;
@@ -1041,9 +1056,10 @@ function renderComparison(before, after, saved) {
     $('comparison-sample').textContent = `${trainedTarget} · ${beforePattern.timings.length} before · ${afterPattern.timings.length} after`;
   } else {
     $('comparison-timing').textContent = '—';
-    $('comparison-sample').textContent = trainedTarget
-      ? `${trainedTarget} · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
-      : `keystrokes · ${before?.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
+    $('comparison-sample').textContent = !before ? 'no baseline'
+      : trainedTarget
+        ? `${trainedTarget} · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
+        : `keystrokes · ${before.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
   }
   let comparisonSaved = saved;
   if (comparison.comparable && saved) {
@@ -1062,7 +1078,9 @@ function renderComparison(before, after, saved) {
     });
     comparisonSaved = saveProfile();
   }
-  $('comparison-caveat').textContent = `${comparison.reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
+  // No baseline: a clear from another tab or device removed it while this retest was under way.
+  const reason = before ? comparison.reason : 'Your history was cleared, so there is no baseline to compare with.';
+  $('comparison-caveat').textContent = `${reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
   renderHistory();
 }
 
@@ -1483,13 +1501,9 @@ function renderRaceResults() {
   announce('Challenge complete.');
 }
 
-function clearHistory() {
-  clearSnapshot = JSON.stringify(profile);
-  // Copies elsewhere drop what they hold from before this moment when they merge with this one. What
-  // they held is kept here as this tab merges them (account.mergeAndHold), for Undo.
-  profile = account.clearProfile(profile);
-  clearedAt = profile.historyClearedAt;
-  heldClear = { marker: clearedAt, before: normalizeProfile(JSON.parse(clearSnapshot)) };
+// What this tab holds in memory about the runs a clear removes: the baseline, the drill and retest it
+// offers, and the results on show.
+function forgetTraining() {
   baselineAttempt = null;
   trainingContext = null;
   selectedTarget = null;
@@ -1507,6 +1521,35 @@ function clearHistory() {
   $('comparison-panel').hidden = true;
   $('start-drill').disabled = true;
   $('skip-to-retest').disabled = true;
+}
+
+// A clear made in another tab or on another device arrives as stored data only. When a new one covers
+// the baseline or the run on show (dated at or before it, or named by it, as a merge into a copy that
+// hadn't heard of it decides), this tab forgets them as the clearing tab did. Only a newly arrived
+// clear is checked, so a run made here after this tab knew of it is never taken for a cleared one.
+// Never mid-run: flushDeferredSync checks again when the run ends, so a drill then stands alone and a
+// retest makes no comparison with the cleared run.
+function forgetClearedTraining() {
+  const marker = profile.historyClearedAt || null;
+  if (marker === trainingClear || runInProgress()) return;
+  trainingClear = marker;
+  if (!marker) return;
+  const named = new Set(profile.historyClearedIds || []);
+  const cleared = (record) => Boolean(record) && ((record.at || '') <= marker || named.has(record.id));
+  if (!cleared(baselineAttempt) && !cleared(lastCompleted)) return;
+  forgetTraining();
+  renderTraining();
+}
+
+function clearHistory() {
+  clearSnapshot = JSON.stringify(profile);
+  // Copies elsewhere drop what they hold from before this moment when they merge with this one. What
+  // they held is kept here as this tab merges them (account.mergeAndHold), for Undo.
+  profile = account.clearProfile(profile);
+  clearedAt = profile.historyClearedAt;
+  heldClear = { marker: clearedAt, before: normalizeProfile(JSON.parse(clearSnapshot)) };
+  trainingClear = clearedAt;
+  forgetTraining();
   const saved = saveProfile();
   $('clear-dialog').close();
   $('history-toast').hidden = false;
@@ -1591,6 +1634,7 @@ function absorb(data) {
 function showMerged() {
   followStoredPreferences();
   if (runInProgress()) return;
+  forgetClearedTraining();
   // Newer test conditions wait while a passage is prepared; one nobody has started is prepared again
   // with them, as a page load did before merging (the practice screen only; navigate does it on the
   // way back). Focus stays where it is.

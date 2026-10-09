@@ -89,6 +89,22 @@ export function recurringTargets(runs, loops, compatibleConditions) {
 // The seen-text id that marks a day's challenge as attempted (the passage itself has its own id).
 export const dailyChallengeId = (day) => `daily-${day}-v1`;
 
+// Only the earliest attempt at a day's challenge (by date, then id, the order every copy sorts by) can
+// be its first attempt. Two devices that each tried the day before either held the other's copy both
+// label their own try first; once their runs meet, the later one becomes a repeat. Flags are only
+// ever cleared, never set, so a label stays conservative. Returns the records, changed ones copied.
+export function settleDailyFirsts(records) {
+  const earliest = new Map();
+  const before = (a, b) => (a.at || '') < (b.at || '') || ((a.at || '') === (b.at || '') && String(a.id) < String(b.id));
+  for (const record of records) {
+    if (record?.kind !== 'daily' || !record.challengeDate) continue;
+    const held = earliest.get(record.challengeDate);
+    if (!held || before(record, held)) earliest.set(record.challengeDate, record);
+  }
+  return records.map((record) => (record?.kind === 'daily' && record.firstDailyAttempt
+    && earliest.get(record.challengeDate) !== record ? { ...record, firstDailyAttempt: false } : record));
+}
+
 // Stable UTC selection from a frozen text pool: preferences and seen history never change it.
 export function dailyPassage(date = new Date()) {
   const day = date.toISOString().slice(0, 10);

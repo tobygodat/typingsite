@@ -569,3 +569,125 @@ test('a tab puts back a run that another tab’s write from an older read left o
   await expect(other.locator('body')).toHaveAttribute('data-font-size', '36');
   expect(errors).toEqual([]);
 });
+
+async function clearHistoryIn(page) {
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+}
+
+// A device that hasn't heard of a clear shows a passage, then merges the clear (which drops seen marks it
+// can't date) before the passage is typed. Typing it still marks it seen.
+for (const kind of ['daily', 'interrupted']) {
+  test(`a ${kind} run of a passage shown before a clear arrived keeps the passage marked seen`, async ({ page, browser, supabase }) => {
+    supabase.addUser(EMAIL);
+    const errors = [];
+    await openApp(page);
+    await signInWithEmail(page, EMAIL);
+    await finishRun(page);
+    await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
+    const { context, page: phone } = await device(browser, supabase, errors);
+    try {
+      await clearHistoryIn(page);
+      await expect.poll(() => cloud(supabase)?.historyClearedAt).toBeTruthy();
+
+      if (kind === 'daily') {
+        await openView(phone, 'Challenge');
+        await phone.locator('#challenge-daily').click();
+        await phone.locator('#start-daily').click();
+        await expect(phone.locator('#session-description')).toContainText('first attempt');
+      } else {
+        await phone.locator('#restart-button').click();
+      }
+      // The save of the passage shown goes up and merges the clear before anything is typed.
+      await expect.poll(async () => (await cachedProfile(phone))?.historyClearedAt).toBeTruthy();
+      const text = await passageText(phone);
+      if (kind === 'daily') {
+        await typeInto(phone, text);
+        await expect(phone.locator('body')).toHaveAttribute('data-view', 'results');
+        await phone.locator('#run-again').click();
+        await expect(phone.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
+        await expect(phone.locator('#session-description')).toContainText('repeat attempt');
+      } else {
+        await typeInto(phone, text.slice(0, 3));
+        await openView(phone, 'Progress');
+      }
+      const data = await cachedProfile(phone);
+      const run = data.runs.at(-1);
+      expect(run.kind).toBe(kind === 'daily' ? 'daily' : 'test');
+      expect(data.seenTextIds).toContain(run.textId);
+      if (kind === 'daily') expect(data.seenTextIds).toContain(`daily-${run.challengeDate}-v1`);
+      expect(errors).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test('a test shape picked in another tab leaves keyboard focus on the length pill it was on', async ({ page, context, supabase }) => {
+  supabase.addUser(EMAIL);
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await chooseWords(page, 10);
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  await page.locator('#duration-options [data-length="25"]').focus();
+  await chooseWords(other, 50);
+  await expect(page.locator('#condition-line')).toContainText('50 words');
+  await expect(page.locator('#duration-options [data-length="25"]')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#condition-line')).toContainText('25 words');
+  expect(errors).toEqual([]);
+});
+
+test('a clear in another tab withdraws the drill and retest offered for a cleared run', async ({ page, context, supabase }) => {
+  supabase.addUser(EMAIL);
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await finishRun(page);
+  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  await clearHistoryIn(other);
+  await expect(page.locator('#best')).toHaveText('No best yet');
+  await expect(page.locator('#skip-to-retest')).toBeDisabled();
+  await expect(page.locator('#start-drill')).toBeDisabled();
+  await expect(page.locator('#result-delta')).toHaveText('No run yet.');
+  expect(errors).toEqual([]);
+});
+
+test('a clear in another tab during a retest applies when it ends, with no comparison to the cleared run', async ({ page, context, supabase }) => {
+  supabase.addUser(EMAIL);
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await finishRun(page);
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 3));
+
+  await clearHistoryIn(other);
+  await expect.poll(() => cloud(supabase)?.historyClearedAt).toBeTruthy();
+  // Nothing changes mid-run.
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.keyboard.type(text.slice(3));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', 'unavailable');
+  await expect(page.locator('#comparison-caveat')).toContainText('history was cleared');
+  await expect(page.locator('#skip-to-retest')).toBeDisabled();
+  // The retest itself is kept; no comparison with the cleared run is.
+  await expect.poll(() => runIds(cloud(supabase)).length, { timeout: 15000 }).toBe(1);
+  expect(cloud(supabase).loops || []).toEqual([]);
+  expect(errors).toEqual([]);
+});
