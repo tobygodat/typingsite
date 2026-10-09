@@ -93,8 +93,8 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   // The last summary the service accepted in this tab, so an unchanged publish is not sent again.
   let published = '';
   let publishTimer = 0;
-  // A run, clear or undo in this tab that the service has not accepted yet. Only such a change is
-  // published: this tab's copy of the profile can be older than another tab's or device's.
+  // A run, clear or undo in this tab that the service has not accepted yet; it goes out after the
+  // account check, on the next board read, and when the browser comes back online.
   let pending = false;
   // That change includes a history clear or undo, so it replaces the stored summary instead of adding to it.
   let replacing = false;
@@ -186,8 +186,11 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     }));
   }
 
-  // Opening the board reads it, sending this tab's unsent change first so your own row is current.
-  // aria-disabled, not disabled, while loading: a disabled button would drop keyboard focus.
+  // Opening the board sends this tab's summary first whenever it differs from the last one sent here,
+  // history loaded from the account included, so your own row is current. The service folds a publish
+  // into the stored summary (the better daily, the larger week), so a copy older than another tab's or
+  // device's is safe to send. If the publish fails, the board is still read. aria-disabled, not
+  // disabled, while loading: a disabled button would drop keyboard focus.
   async function refresh({ manual = false } = {}) {
     const session = getSession();
     if (!session) { render(); return; }
@@ -197,10 +200,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     $('refresh-friends-board').setAttribute('aria-disabled', 'true');
     render(board ? '' : 'Loading the board…');
     try {
-      let result = (pending && canPublish() && await publishChange(session)) || await readBoard(session);
-      // Nothing from any device yet this week (a new week, or runs from before the board existed):
-      // no newer summary can be lost, so this tab's fills your row in.
-      if (canPublish() && !result?.rows?.find((entry) => entry.self)?.week) result = await publishChange(session).catch(() => null) || result;
+      const result = (canPublish() && await publishChange(session).catch(() => null)) || await readBoard(session);
       if (current !== generation) return;
       board = result;
       render(manual ? 'Updated.' : '');

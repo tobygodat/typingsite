@@ -247,9 +247,31 @@ test('opening the board in an older tab leaves another tab’s newer result alon
   await openView(page, 'Challenge');
   await page.locator('#challenge-friends').click();
   await expect(page.locator('#board-daily')).toContainText(`You ${wpm} wpm`);
-  // Opening only read the board: the older tab sent nothing over the newer result.
-  expect(supabase.board.published.length).toBe(1);
+  // Opening sent the older tab's empty summary too, and the service folded it in: the newer result stays.
+  expect(supabase.board.published.at(-1)).toMatchObject({ action: 'publish', daily: null, week: { runs: 0 } });
   expect(supabase.board.summaries.get(ada.id).daily.wpm).toBe(wpm);
+  expect(supabase.board.summaries.get(ada.id).week.runs).toBe(1);
+});
+
+test('opening the board publishes history loaded from the account over a lower week row', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  seedProfile(supabase, ada, practiceThisWeek(6));
+  // A stale tab or device already put an empty week on the board.
+  supabase.board.summaries.set(ada.id, { daily: null, week: { start: mondayOf(), seconds: 0, runs: 0 } });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  // This tab loaded the fuller history from the account and has changed nothing itself.
+  expect(supabase.board.published).toEqual([]);
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect(page.locator('#board-week')).toContainText('6 runs');
+  expect(supabase.board.published).toHaveLength(1);
+  expect(supabase.board.published[0]).toMatchObject({ action: 'publish', week: { start: mondayOf(), runs: 6 } });
+  expect(supabase.board.summaries.get(ada.id).week.runs).toBe(6);
+  // Opened again with nothing new, the board is only read.
+  await page.locator('#refresh-friends-board').click();
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+  expect(supabase.board.published).toHaveLength(1);
 });
 
 test('a tab that never saw another tab’s runs adds its own without erasing them', async ({ page, supabase }) => {
