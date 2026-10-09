@@ -1,5 +1,42 @@
 -- Friends board checks. Runs inside a transaction and rolls everything back.
 begin;
+
+-- Every call goes through these, made as PostgREST makes it: as the authenticated role with the user's
+-- id in the JWT claim (set beforehand), or as anon when there is none. So a missing grant anywhere on
+-- the path fails here as it would in production; setup and checks around the calls run as the owner.
+create function pg_temp.as_caller() returns void language plpgsql as $$
+begin
+  perform set_config('role', case when coalesce(current_setting('request.jwt.claim.sub', true), '') = '' then 'anon' else 'authenticated' end, true);
+end $$;
+create function pg_temp.board(p_action text, p_data jsonb default '{}') returns jsonb language plpgsql as $$
+declare
+  v_result jsonb;
+begin
+  perform pg_temp.as_caller();
+  begin
+    v_result := public.friends_board(p_action, p_data);
+  exception when others then
+    perform set_config('role', 'none', true);
+    raise;
+  end;
+  perform set_config('role', 'none', true);
+  return v_result;
+end $$;
+create function pg_temp.race(p_action text, p_room uuid, p_data jsonb, p_guest text) returns jsonb language plpgsql as $$
+declare
+  v_result jsonb;
+begin
+  perform pg_temp.as_caller();
+  begin
+    v_result := public.race_action(p_action, p_room, p_data, p_guest);
+  exception when others then
+    perform set_config('role', 'none', true);
+    raise;
+  end;
+  perform set_config('role', 'none', true);
+  return v_result;
+end $$;
+
 do $smoke$
 declare
   ada uuid := gen_random_uuid();
@@ -40,14 +77,15 @@ begin
     or has_function_privilege('authenticated','race_private.board_snapshot(uuid)','EXECUTE')
     or has_function_privilege('anon','race_private.board(text,jsonb)','EXECUTE')
     or has_function_privilege('anon','public.friends_board(text,jsonb)','EXECUTE')
-    or not has_function_privilege('authenticated','public.friends_board(text,jsonb)','EXECUTE') then
+    or not has_function_privilege('authenticated','public.friends_board(text,jsonb)','EXECUTE')
+    or not has_function_privilege('authenticated','race_private.board(text,jsonb)','EXECUTE') then
     raise exception 'Board storage or helpers are exposed.';
   end if;
 
-  -- Guests have no board.
+  -- Guests (the anon role) have no board.
   perform set_config('request.jwt.claim.sub','',true);
   denied := false;
-  begin perform public.friends_board('board','{}');
+  begin perform pg_temp.board('board','{}');
   exception when others then denied := true; end;
   if not denied then raise exception 'Guest read a board.'; end if;
 
@@ -55,7 +93,7 @@ begin
   -- nothing, and its board is empty.
   perform set_config('request.jwt.claim.sub',ada::text,true);
   foreach act in array array['publish','replace'] loop
-    board := public.friends_board(act,jsonb_build_object('daily',null,'week',week,'clear',case when act = 'replace'
+    board := pg_temp.board(act,jsonb_build_object('daily',null,'week',week,'clear',case when act = 'replace'
       then jsonb_build_object('id',gen_random_uuid(),'from',to_jsonb(clock_timestamp())#>>'{}') end));
     if (board->>'sharing')::boolean or board->'rows' <> '[]'::jsonb or exists(select 1 from race_private.summaries where user_id = ada) then
       raise exception 'A % from an account that does not share was stored: %', act, board;
@@ -63,7 +101,7 @@ begin
   end loop;
 
   -- Sharing stores the account's own summary, and it sees only itself until a friend chooses it back.
-  board := public.friends_board('share',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week));
+  board := pg_temp.board('share',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week));
   if not (board->>'sharing')::boolean or board->>'date' <> today::text or board->>'weekStart' <> monday::text or jsonb_array_length(board->'rows') <> 1
     or not (board->'rows'->0->>'self')::boolean or board->'rows'->0->'daily'->>'wpm' <> '84'
     or board->'rows'->0->'daily'->>'version' <> v
@@ -97,13 +135,13 @@ begin
     jsonb_build_object('daily',null,'week',week,'clear',jsonb_build_object('id',gen_random_uuid(),'from','yesterday'))
   ] loop
     denied := false;
-    begin perform public.friends_board(act,bad);
+    begin perform pg_temp.board(act,bad);
     exception when others then denied := true; end;
     if not denied then raise exception 'Accepted an impossible summary (%): %', act, bad; end if;
   end loop;
   end loop;
   denied := false;
-  begin perform public.friends_board('rank','{}');
+  begin perform pg_temp.board('rank','{}');
   exception when others then denied := true; end;
   if not denied then raise exception 'Unknown board action was accepted.'; end if;
   if (select daily_wpm from race_private.summaries where user_id = ada) <> 84 then raise exception 'A refused summary changed the row.'; end if;
@@ -118,21 +156,21 @@ begin
     jsonb_build_object('daily',jsonb_build_object('date',today - 1,'version',v,'wpm',99,'accuracy',99,'attempts',1),
       'week',jsonb_build_object('start',monday - 7,'seconds',9000,'runs',90))
   ] loop
-    board := public.friends_board('publish',bad);
+    board := pg_temp.board('publish',bad);
     if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',97,'attempts',3)
       or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) then
       raise exception 'A stale summary lowered the stored one: % gave %', bad, board;
     end if;
   end loop;
   -- The same speed more accurately is better, and practice time and runs each keep the larger.
-  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',99,'attempts',1),
+  board := pg_temp.board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',99,'attempts',1),
     'week',jsonb_build_object('start',monday,'seconds',1900,'runs',40)));
   if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',99,'attempts',3)
     or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1900,'runs',41) then
     raise exception 'A better result or more practice was not kept: %', board;
   end if;
   -- A daily from another build is never compared, so it takes the stored one's place.
-  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v || '+next','wpm',61,'accuracy',95,'attempts',1),
+  board := pg_temp.board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v || '+next','wpm',61,'accuracy',95,'attempts',1),
     'week',jsonb_build_object('start',monday,'seconds',10,'runs',1)));
   if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v || '+next','wpm',61,'accuracy',95,'attempts',1)
     or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1900,'runs',41) then
@@ -141,7 +179,7 @@ begin
   -- A history clear replaces the row, so the numbers can go down and a daily can go. It keeps the id the
   -- browser gave it and the time it happened there, even when the request arrives much later.
   t := to_jsonb(clock_timestamp() - interval '10 minutes')#>>'{}';
-  board := public.friends_board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
     'clear',jsonb_build_object('id',g1,'from',t)));
   if board->'clear'->>'id' is distinct from g1::text or (board->'clear'->>'from')::timestamptz <> t::timestamptz
     or jsonb_typeof(board->'rows'->0->'daily') <> 'null' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) then
@@ -155,7 +193,7 @@ begin
     jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'clear',gen_random_uuid())
   ] loop
     foreach act in array array['publish','share'] loop
-      board := public.friends_board(act,bad);
+      board := pg_temp.board(act,bad);
       if not coalesce((board->>'refused')::boolean, false) or board->'clear'->>'id' is distinct from g1::text or not (board->>'sharing')::boolean
         or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
         raise exception 'A % that missed the clear was taken: % gave %', act, bad, board;
@@ -163,18 +201,18 @@ begin
     end loop;
   end loop;
   -- Naming the clear, a browser's runs since then are folded in as usual.
-  board := public.friends_board('publish',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',60,'runs',1),'clear',g1));
+  board := pg_temp.board('publish',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',60,'runs',1),'clear',g1));
   if board ? 'refused' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',60,'runs',1) then
     raise exception 'A publish that named the clear was refused: %', board;
   end if;
   -- A newer clear from another device wins: an undo of the first clear is refused, changing nothing.
   t2 := to_jsonb(clock_timestamp() - interval '1 minute')#>>'{}';
-  board := public.friends_board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
     'clear',jsonb_build_object('id',g2,'from',t2)));
   if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text or (board->'clear'->>'from')::timestamptz <> t2::timestamptz then
     raise exception 'A newer clear was refused: %', board;
   end if;
-  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g1));
+  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g1));
   if not coalesce((board->>'refused')::boolean, false) or board->'clear'->>'id' is distinct from g2::text
     or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
     raise exception 'An undo overtook a newer clear: %', board;
@@ -182,41 +220,41 @@ begin
   -- Clears take effect in the order they arrive, whatever the devices' clocks say: one from a clock
   -- running behind becomes the latest, but runs still count from the later time, so nothing the
   -- earlier clear removed comes back.
-  board := public.friends_board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+  board := pg_temp.board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
     'clear',jsonb_build_object('id',g4,'from',to_jsonb(clock_timestamp() - interval '20 minutes')#>>'{}')));
   if board ? 'refused' or board->'clear'->>'id' is distinct from g4::text or (board->'clear'->>'from')::timestamptz <> t2::timestamptz then
     raise exception 'A clear from a clock running behind was refused or moved the boundary back: %', board;
   end if;
   -- An undo of the latest clear puts back the numbers it sends and the clear before it, with its time.
-  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g4));
+  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g4));
   if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text or (board->'clear'->>'from')::timestamptz <> t2::timestamptz
     or board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',97,'attempts',2)
     or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) then
     raise exception 'An undo did not restore the summary and the clear before it: %', board;
   end if;
   -- A clock running ahead can't place a clear in the future.
-  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,
+  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,
     'clear',jsonb_build_object('id',g3,'from',to_jsonb(clock_timestamp() + interval '1 day')#>>'{}')));
   if board->'clear'->>'id' is distinct from g3::text or (board->'clear'->>'from')::timestamptz > clock_timestamp() then
     raise exception 'A clear was placed in the future: %', board;
   end if;
-  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g3));
+  board := pg_temp.board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g3));
   if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text then raise exception 'Undoing the clear from ahead failed: %', board; end if;
 
   -- Lin has Ada on her list, but Ada has not chosen Lin: neither sees the other.
   perform set_config('request.jwt.claim.sub',lin::text,true);
-  perform public.race_action('befriend',null,jsonb_build_object('email',ada_email,'name','Ada'),null);
-  board := public.friends_board('share',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',72,'accuracy',96,'attempts',1),
+  perform pg_temp.race('befriend',null,jsonb_build_object('email',ada_email,'name','Ada'),null);
+  board := pg_temp.board('share',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',72,'accuracy',96,'attempts',1),
     'week',jsonb_build_object('start',monday,'seconds',754,'runs',12)));
   if jsonb_array_length(board->'rows') <> 1 then raise exception 'A one-way friend appeared on the board.'; end if;
   perform set_config('request.jwt.claim.sub',ada::text,true);
-  board := public.friends_board('board','{}');
-  if jsonb_array_length(board->'rows') <> 1 or board::text like '%754%' then raise exception 'Someone who added Ada appeared without being chosen back.'; end if;
+  board := pg_temp.board('board','{}');
+  if jsonb_array_length(board->'rows') <> 1 or (board->'rows')::text like '%754%' then raise exception 'Someone who added Ada appeared without being chosen back.'; end if;
 
   -- Once Ada adds Lin's email too, each sees the other, labelled with their own name for them.
-  friends := public.race_action('befriend',null,jsonb_build_object('email',lin_email,'name','Lin'),null);
+  friends := pg_temp.race('befriend',null,jsonb_build_object('email',lin_email,'name','Lin'),null);
   lin_row := friends->0->>'id';
-  board := public.friends_board('board','{}');
+  board := pg_temp.board('board','{}');
   if jsonb_array_length(board->'rows') <> 2 or board->'rows'->1->>'name' <> 'Lin' or board->'rows'->1->>'id' <> lin_row
     or (board->'rows'->1->>'self')::boolean or board->'rows'->1->'daily'->>'wpm' <> '72'
     or board->'rows'->1->'daily'->>'accuracy' <> '96' or board->'rows'->1->'week'->>'seconds' <> '754' then
@@ -226,32 +264,32 @@ begin
     raise exception 'The board exposed an account id or email.';
   end if;
   perform set_config('request.jwt.claim.sub',lin::text,true);
-  board := public.friends_board('board','{}');
+  board := pg_temp.board('board','{}');
   if jsonb_array_length(board->'rows') <> 2 or board->'rows'->1->>'name' <> 'Ada' or board->'rows'->1->'daily'->>'wpm' <> '84' then
     raise exception 'Lin does not see Ada: %', board;
   end if;
 
   -- An unconfirmed email never resolves, in either direction.
   perform set_config('request.jwt.claim.sub',kai::text,true);
-  perform public.race_action('befriend',null,jsonb_build_object('email',ada_email,'name','Ada'),null);
-  board := public.friends_board('share',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',300,'runs',3)));
+  perform pg_temp.race('befriend',null,jsonb_build_object('email',ada_email,'name','Ada'),null);
+  board := pg_temp.board('share',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',300,'runs',3)));
   if jsonb_array_length(board->'rows') <> 1 then raise exception 'An unconfirmed account saw a friend.'; end if;
   perform set_config('request.jwt.claim.sub',ada::text,true);
-  perform public.race_action('befriend',null,jsonb_build_object('email',kai_email,'name','Kai'),null);
-  if jsonb_array_length(public.friends_board('board','{}')->'rows') <> 2 then raise exception 'An unconfirmed email resolved to an account.'; end if;
+  perform pg_temp.race('befriend',null,jsonb_build_object('email',kai_email,'name','Kai'),null);
+  if jsonb_array_length(pg_temp.board('board','{}')->'rows') <> 2 then raise exception 'An unconfirmed email resolved to an account.'; end if;
 
   -- A mutual friend who doesn't share is not on the board, and sees no one on theirs, even friends who share.
   insert into race_private.friends(owner_id, friend_id, name) values (ada, sam, 'Sam from the race'), (sam, ada, 'Ada');
-  perform public.race_action('befriend',null,jsonb_build_object('email',sam_email,'name','Sam'),null);
-  if jsonb_array_length(public.friends_board('board','{}')->'rows') <> 2 then raise exception 'A friend who does not share appeared.'; end if;
+  perform pg_temp.race('befriend',null,jsonb_build_object('email',sam_email,'name','Sam'),null);
+  if jsonb_array_length(pg_temp.board('board','{}')->'rows') <> 2 then raise exception 'A friend who does not share appeared.'; end if;
   perform set_config('request.jwt.claim.sub',sam::text,true);
-  board := public.friends_board('board','{}');
+  board := pg_temp.board('board','{}');
   if (board->>'sharing')::boolean or board->'rows' <> '[]'::jsonb then raise exception 'Someone who does not share saw the board: %', board; end if;
 
   -- Once Sam shares, someone on the list twice (raced, and typed by email) appears once, under the raced name.
-  perform public.friends_board('share',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0)));
+  perform pg_temp.board('share',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0)));
   perform set_config('request.jwt.claim.sub',ada::text,true);
-  board := public.friends_board('board','{}');
+  board := pg_temp.board('board','{}');
   if jsonb_array_length(board->'rows') <> 3 or board->'rows'->2->>'name' <> 'Sam from the race'
     or jsonb_typeof(board->'rows'->2->'daily') <> 'null' or board->'rows'->2->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) then
     raise exception 'A friend listed twice was not shown once: %', board;
@@ -263,24 +301,24 @@ begin
   update race_private.summaries set daily_date = today - 1, daily_wpm = 75, daily_accuracy = 95, daily_attempts = 1,
     week_seconds = 800, week_runs = 13 where user_id = lin;
   perform set_config('request.jwt.claim.sub',ada::text,true);
-  board := public.friends_board('board','{}');
+  board := pg_temp.board('board','{}');
   if board->>'date' <> today::text or jsonb_typeof(board->'rows'->1->'daily') <> 'null' or board->'rows'->1->'week'->>'seconds' <> '800' then
     raise exception 'Yesterday''s daily showed as today''s: %', board;
   end if;
   update race_private.summaries set week_start = monday - 7 where user_id = lin;
-  if jsonb_typeof(public.friends_board('board','{}')->'rows'->1->'week') <> 'null' then raise exception 'Last week''s practice showed as this week''s.'; end if;
+  if jsonb_typeof(pg_temp.board('board','{}')->'rows'->1->'week') <> 'null' then raise exception 'Last week''s practice showed as this week''s.'; end if;
 
   -- Today's result and this week's practice take the place of yesterday's and last week's, even when
   -- lower. Today's also wins over a later day sent from a clock running ahead.
   perform set_config('request.jwt.claim.sub',lin::text,true);
-  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',60,'accuracy',94,'attempts',1),
+  board := pg_temp.board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',60,'accuracy',94,'attempts',1),
     'week',jsonb_build_object('start',monday,'seconds',30,'runs',1)));
   if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',60,'accuracy',94,'attempts',1)
     or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',30,'runs',1) then
     raise exception 'A new day or week did not replace the old one: %', board;
   end if;
   update race_private.summaries set daily_date = today + 1, daily_wpm = 99 where user_id = lin;
-  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',58,'accuracy',94,'attempts',1),
+  board := pg_temp.board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',58,'accuracy',94,'attempts',1),
     'week',jsonb_build_object('start',monday,'seconds',30,'runs',1)));
   if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',58,'accuracy',94,'attempts',1) then
     raise exception 'A later day kept today''s result off the board: %', board;
@@ -288,49 +326,49 @@ begin
   perform set_config('request.jwt.claim.sub',ada::text,true);
 
   -- Clearing a daily result clears it for friends too.
-  perform public.friends_board('replace',jsonb_build_object('daily',null,'week',week,
+  perform pg_temp.board('replace',jsonb_build_object('daily',null,'week',week,
     'clear',jsonb_build_object('id',gen_random_uuid(),'from',to_jsonb(clock_timestamp())#>>'{}')));
   perform set_config('request.jwt.claim.sub',lin::text,true);
-  board := public.friends_board('board','{}');
+  board := pg_temp.board('board','{}');
   if jsonb_typeof(board->'rows'->1->'daily') <> 'null' or board->'rows'->1->'week'->>'seconds' <> '1830' then raise exception 'A cleared daily still showed.'; end if;
 
   -- Removing someone hides you from them, and them from you.
-  perform public.race_action('unfriend',null,jsonb_build_object('friendId',(public.race_action('friends',null,'{}',null)->0->>'id')),null);
-  if jsonb_array_length(public.friends_board('board','{}')->'rows') <> 1 then raise exception 'A removed friend still showed.'; end if;
+  perform pg_temp.race('unfriend',null,jsonb_build_object('friendId',(pg_temp.race('friends',null,'{}',null)->0->>'id')),null);
+  if jsonb_array_length(pg_temp.board('board','{}')->'rows') <> 1 then raise exception 'A removed friend still showed.'; end if;
   perform set_config('request.jwt.claim.sub',ada::text,true);
-  board := public.friends_board('board','{}');
+  board := pg_temp.board('board','{}');
   if jsonb_array_length(board->'rows') <> 2 or board->'rows'->1->>'name' <> 'Sam from the race' then raise exception 'Ada still sees someone who removed her: %', board; end if;
 
   -- Turning sharing off empties the row down to a marker with no numbers: friends stop seeing it and the
   -- board empties. A publish or replace from a browser that missed the change is refused and doesn't
   -- share again, and turning off twice is fine.
   perform set_config('request.jwt.claim.sub',sam::text,true);
-  board := public.friends_board('unshare','{}');
+  board := pg_temp.board('unshare','{}');
   if (board->>'sharing')::boolean or board->'rows' <> '[]'::jsonb
     or not exists(select 1 from race_private.summaries where user_id = sam and not sharing and week_start is null and week_seconds is null
       and week_runs is null and daily_date is null and daily_wpm is null) then
     raise exception 'Turning sharing off kept numbers: %', board;
   end if;
   foreach act in array array['publish','replace'] loop
-    board := public.friends_board(act,jsonb_build_object('daily',null,'week',week,'clear',case when act = 'replace'
+    board := pg_temp.board(act,jsonb_build_object('daily',null,'week',week,'clear',case when act = 'replace'
       then jsonb_build_object('id',gen_random_uuid(),'from',to_jsonb(clock_timestamp())#>>'{}') end));
     if not coalesce((board->>'refused')::boolean, false) or (board->>'sharing')::boolean or board->'rows' <> '[]'::jsonb then
       raise exception 'A % after turning sharing off was taken: %', act, board;
     end if;
   end loop;
-  perform public.friends_board('unshare','{}');
+  perform pg_temp.board('unshare','{}');
   if exists(select 1 from race_private.summaries where user_id = sam and (sharing or week_start is not null)) then raise exception 'A write after turning sharing off shared again.'; end if;
   perform set_config('request.jwt.claim.sub',ada::text,true);
-  if jsonb_array_length(public.friends_board('board','{}')->'rows') <> 1 then raise exception 'Ada still sees someone who stopped sharing.'; end if;
+  if jsonb_array_length(pg_temp.board('board','{}')->'rows') <> 1 then raise exception 'Ada still sees someone who stopped sharing.'; end if;
 
   -- Turning sharing on again shares this browser's summary, and friends see it again.
   perform set_config('request.jwt.claim.sub',sam::text,true);
-  board := public.friends_board('share',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',120,'runs',2)));
+  board := pg_temp.board('share',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',120,'runs',2)));
   if not (board->>'sharing')::boolean or board ? 'refused' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',120,'runs',2) then
     raise exception 'Turning sharing on again failed: %', board;
   end if;
   perform set_config('request.jwt.claim.sub',ada::text,true);
-  board := public.friends_board('board','{}');
+  board := pg_temp.board('board','{}');
   if jsonb_array_length(board->'rows') <> 2 or board->'rows'->1->'week' is distinct from jsonb_build_object('seconds',120,'runs',2) then
     raise exception 'Ada does not see someone who shares again: %', board;
   end if;

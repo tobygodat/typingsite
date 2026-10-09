@@ -715,6 +715,66 @@ test('a clear queued behind a publish that is refused still goes out', async ({ 
   expect(supabase.board.summaries.get(ada.id)).toMatchObject({ clear: { id: ours.id }, week: { runs: 0 }, daily: null });
 });
 
+test('sharing turned on during the account check waits for it, then keeps the choice and sends the checked runs', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  // Another device then saves four runs from this week to the account, with sharing still off there.
+  seedProfile(supabase, ada, practiceThisWeek(4), { updatedAt: new Date(Date.now() + 60000).toISOString() });
+  let release;
+  supabase.holdProfiles = new Promise((resolve) => { release = resolve; });
+  await page.reload();
+  await expect(page.locator('#text-display .char').first()).toBeVisible();
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect(page.locator('#friends-board-off')).toBeVisible();
+  // Turned on while the check is still fetching: it shows as on, and nothing is sent yet.
+  await page.locator('#share-board').check();
+  await expect(page.locator('#share-board')).toBeChecked();
+  await page.waitForTimeout(1000);
+  expect(supabase.board.published).toEqual([]);
+  supabase.holdProfiles = null;
+  release();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  // The check adopted the newer profile (which said off); the choice holds, and the share carries its four runs.
+  await expect.poll(() => supabase.board.published.length).toBe(1);
+  expect(supabase.board.published[0]).toMatchObject({ action: 'share', week: { start: mondayOf(), runs: 4 } });
+  await expect.poll(() => supabase.profiles.get(ada.id)?.data?.preferences?.shareBoard).toBe(true);
+  expect(supabase.board.summaries.get(ada.id)).toMatchObject({ sharing: true, week: { runs: 4 } });
+});
+
+test('an opt-out that fails is kept across a reload and sent before anything else', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  sharing(supabase, ada, { runs: practiceThisWeek(2) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  // The board can't be reached when sharing is turned off.
+  supabase.board.missing = true;
+  await page.locator('#share-board').uncheck();
+  await expect(page.locator('#friends-board-status')).toContainText('Your row comes off once the board can be reached.');
+  expect(supabase.board.summaries.get(ada.id).sharing).not.toBe(false);
+  supabase.board.missing = false;
+
+  // After a reload, the first thing sent to the board is the opt-out; the row ends as a marker.
+  const before = supabase.board.calls.length;
+  await page.reload();
+  await expect(page.locator('#text-display .char').first()).toBeVisible();
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect.poll(() => supabase.board.summaries.get(ada.id)?.sharing).toBe(false);
+  expect(supabase.board.calls[before]).toBe('unshare');
+  expect(supabase.board.summaries.get(ada.id)).toMatchObject({ sharing: false, daily: null, week: null });
+  await expect(page.locator('#share-board')).not.toBeChecked();
+  await expect(page.locator('#friends-board-off')).toBeVisible();
+  await expect(page.locator('#friends-board-lists')).toBeHidden();
+  // Settled, the opt-out is no longer kept on the device, and nothing turned sharing back on.
+  await expect.poll(() => page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('stilltype-board-optout')))).toEqual([]);
+  expect(supabase.board.calls.slice(before)).not.toContain('share');
+});
+
 test('turning sharing off removes your row, and a tab that missed it can’t share again', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');

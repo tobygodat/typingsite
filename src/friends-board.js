@@ -73,6 +73,17 @@ export function weekOrder(rows) {
 }
 
 const newId = () => crypto.randomUUID();
+// An opt-out the service hasn't confirmed yet, kept on this device across reloads until it has.
+const optOutKey = (session) => `stilltype-board-optout:${session.user.id}`;
+function optOutPending(session) {
+  try { return localStorage.getItem(optOutKey(session)) === '1'; } catch { return false; }
+}
+function rememberOptOut(session, pending) {
+  try {
+    if (pending) localStorage.setItem(optOutKey(session), '1');
+    else localStorage.removeItem(optOutKey(session));
+  } catch {}
+}
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 async function call(session, action, data = {}) {
@@ -127,8 +138,13 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   let toggles = 0;
   // The switch stays on while turning sharing on is still on its way.
   let turningOn = false;
-  // Sharing was turned off here but the service hasn't removed the row yet; retried before anything else.
-  let unsharing = false;
+  // Sharing was turned off here but the service hasn't confirmed it yet: nothing is published, no sharing
+  // state from the service is accepted, and the opt-out is sent again before any other board request.
+  // Kept across reloads.
+  let unsharing = Boolean(getSession() && optOutPending(getSession()));
+  // The switch's setting made before the account check: it waits for the check and then applies to the
+  // profile the check settles on, which may say otherwise.
+  let held = null;
   // The UTC day, by this browser's clock, of the last board received. A new week always begins with a
   // new day. A read that fails leaves it, so the next check tries again.
   let readDay = '';
@@ -151,7 +167,7 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   }
   const publishChange = (session) => enqueue(() => sendChange(session));
   // Only while sharing, and only after the account check (before it, resume() sends the summary).
-  const publishIfSharing = (session) => (canPublish() && isSharing() ? publishChange(session).catch(() => null) : null);
+  const publishIfSharing = (session) => (canPublish() && isSharing() && !unsharing ? publishChange(session).catch(() => null) : null);
 
   // Stops publishing at once.
   function forget() {
@@ -161,10 +177,16 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
     published = '';
     mine = null;
   }
-  // The row's removal waits behind any write already on its way.
+  // The row's removal waits behind any write already on its way. Once the service confirms it, the
+  // opt-out is settled here too, unless the switch has moved again since.
   async function removeRow(session) {
+    const seq = toggles;
     const result = seen(await enqueue(() => stopSharing(session)));
-    unsharing = false;
+    if (seq === toggles) {
+      unsharing = false;
+      rememberOptOut(session, false);
+      if (isSharing()) setSharing(false);
+    }
     return result;
   }
 
@@ -172,7 +194,7 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   // reply that crossed a switch here, or came while removing the row is unconfirmed, doesn't count.
   // True when it turned sharing on in this tab, whose summary is then due (now, or after the check).
   function learn(result, seq) {
-    if (typeof result?.sharing !== 'boolean' || seq !== toggles || unsharing || result.sharing === isSharing()) return false;
+    if (typeof result?.sharing !== 'boolean' || seq !== toggles || unsharing || held !== null || result.sharing === isSharing()) return false;
     if (!result.sharing) { stoppedElsewhere(); return false; }
     setSharing(true);
     note = '';
@@ -195,7 +217,7 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   // where it was made), so it sends what is due now, once: its runs since that clear, or a clear of its
   // own queued meanwhile.
   async function sendChange(session, retried = false) {
-    if (!isSharing()) { forget(); return null; }
+    if (!isSharing() || unsharing) { forget(); return null; }
     // A clear or undo always has its clear; without one there is nothing to replace, only to publish.
     if (replacing && !mine) replacing = false;
     const mode = replacing;
@@ -255,13 +277,13 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
 
   function render(status = '') {
     const signedIn = Boolean(getSession());
-    const sharing = signedIn && isSharing();
+    const sharing = signedIn && isSharing() && !unsharing;
     $('friends-board-guest').hidden = signedIn;
     $('refresh-friends-board').hidden = !signedIn;
     $('friends-board-share').hidden = !signedIn;
-    $('share-board').checked = sharing || turningOn;
+    $('share-board').checked = held ?? (sharing || turningOn);
     // Not sharing, you see nobody else's row either: the board says so beside the switch.
-    $('friends-board-off').hidden = !signedIn || sharing || turningOn;
+    $('friends-board-off').hidden = !signedIn || (held ?? (sharing || turningOn));
     $('friends-board-status').textContent = signedIn ? status || (!sharing && !turningOn ? note : '') : '';
     // A daily result from another build (another passage, corpus or scoring) is not compared; its row says so.
     const version = board?.date && dailyVersion(dailyKey(), new Date(`${board.date}T00:00:00Z`));
@@ -320,7 +342,7 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   // check, or one that failed, stays pending until resume() (the check, or the browser coming back online).
   // Nothing at all while sharing is off.
   function schedulePublish({ replace } = {}) {
-    if (!isSharing()) return;
+    if (!isSharing() || unsharing) return;
     pending = true;
     if (replace === 'clear') {
       // The clear's identity: an id, and the time it happened here, kept however late it goes out.
@@ -349,15 +371,26 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   }
 
   // The switch on the board, and its palette command. Turning sharing on sends this tab's summary and
-  // takes effect once the service has it. Turning it off stops publishing at once and removes your row,
-  // retrying (resume, or the next board read) if that fails. Focus stays where it was.
-  async function setShare(on) {
+  // takes effect once the service has it; before the account check it waits for the check (resume), so
+  // it sends the checked summary and holds against the profile the check adopts. Turning it off stops
+  // publishing at once and removes your row, retrying (resume, the next board read, or the next load) if
+  // that fails. Focus stays where it was.
+  async function setShare(on, { force = false } = {}) {
     const session = getSession();
-    if (!session || (on === isSharing() && !turningOn && !unsharing)) { render(); return; }
+    if (!session) { render(); return; }
+    if (!canPublish()) {
+      held = on;
+      if (!on) stopHere(session);
+      render(on ? 'Turning sharing on…' : '');
+      if (!on) removeRow(session).then(() => render(), () => {});
+      return;
+    }
+    if (!force && on === isSharing() && !turningOn && !unsharing) { render(); return; }
     const seq = ++toggles;
     if (on) {
       turningOn = true;
       unsharing = false;
+      rememberOptOut(session, false);
       note = '';
       render('Turning sharing on…');
       try {
@@ -386,11 +419,7 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
       }
       return;
     }
-    turningOn = false;
-    setSharing(false);
-    forget();
-    unsharing = true;
-    board = null;
+    stopHere(session);
     render();
     try {
       const result = await removeRow(session);
@@ -404,6 +433,16 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
     }
   }
 
+  // Turning sharing off: nothing more is published, and the opt-out is kept until the service confirms it.
+  function stopHere(session) {
+    turningOn = false;
+    setSharing(false);
+    forget();
+    unsharing = true;
+    rememberOptOut(session, true);
+    board = null;
+  }
+
   $('refresh-friends-board').addEventListener('click', () => { if (!loading) refresh({ manual: true }); });
   $('share-board').addEventListener('change', (event) => setShare(event.target.checked));
   $('friends-board-signin').addEventListener('click', signIn);
@@ -413,8 +452,16 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   return {
     schedulePublish,
     setShare,
+    // After the account check (and when the browser is back online): a switch made before the check
+    // now applies to the profile it settled on, and an unconfirmed opt-out goes out first.
     resume() {
       const session = getSession();
+      if (held !== null && session) {
+        const on = held;
+        held = null;
+        if (on) setShare(true, { force: true });
+        else if (isSharing()) setSharing(false);
+      }
       if (unsharing && session) removeRow(session).then(() => { if (visible) refresh(); }, () => {});
       if (pending) schedulePublish();
     },

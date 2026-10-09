@@ -18,7 +18,9 @@ export class FakeBoard {
   constructor(auth) {
     this.auth = auth;
     this.summaries = new Map();
-    // Writes the service took (and turning sharing off), and writes it refused.
+    // Every board call's action, in order; the writes the service took (and turning sharing off); and
+    // the writes it refused.
+    this.calls = [];
     this.published = [];
     this.refused = [];
     // Set to stand in for a project where the migration has not been applied yet.
@@ -121,6 +123,7 @@ export class FakeBoard {
   }
 
   handle(caller, { p_action: action, p_data: data = {} }, reply) {
+    this.calls.push(action);
     if (this.missing) return reply(404, { message: 'Could not find the function public.friends_board(p_action, p_data) in the schema cache' });
     if (!caller) return reply(401, { message: 'permission denied for function friends_board' });
     const write = ['share', 'publish', 'replace'].includes(action);
