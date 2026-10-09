@@ -1,11 +1,14 @@
 import {
   CORPUS_VERSION,
   CUSTOM_MAX,
+  CUSTOM_MIN_CHARS,
+  CUSTOM_MIN_WORDS,
   METRIC_VERSION,
   compareAttempts,
   completeAttempt,
   conditionKey,
   createAttempt,
+  customTextProblem,
   makeDrill,
   normalizeCustomText,
   normalizeManualTarget,
@@ -15,7 +18,6 @@ import {
   replayAttempt,
   selectPassage,
   summarizePatterns,
-  untypableCharacter,
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
@@ -88,7 +90,7 @@ let unsynced = false;
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
   const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
-  value.customText = untypableCharacter(customText) ? '' : customText;
+  value.customText = customTextProblem(customText) ? '' : customText;
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
   return value;
 }
@@ -755,6 +757,12 @@ function markKeyboardTargets(target) {
   document.querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
 
+// The live readout shows no rate until a second has passed: before that it is noise. Custom text can be short
+// enough to finish inside that second, so its run card follows the same floor. Built-in passages take far
+// longer than a second to type, so their card is unchanged.
+const RATE_FLOOR_MS = 1000;
+const rateShown = (completed) => completed.kind !== 'custom' || completed.summary.elapsedMs >= RATE_FLOOR_MS;
+
 function updateLive(reset = false) {
   if (!attempt) return;
   const replay = replayAttempt(attempt);
@@ -766,7 +774,7 @@ function updateLive(reset = false) {
   const second = startTime === null ? -1 : Math.floor(boundedElapsed / 1000);
   if (reset || second !== liveSecond) {
     liveSecond = second;
-    const score = second >= 1 ? replayAttempt({ ...attempt, endedAt: boundedElapsed }).score : null;
+    const score = second >= 0 && boundedElapsed >= RATE_FLOOR_MS ? replayAttempt({ ...attempt, endedAt: boundedElapsed }).score : null;
     setText($('live-wpm'), score ? score.wpm : '—');
     setText($('live-accuracy'), score ? score.accuracy : '—');
   }
@@ -856,7 +864,9 @@ function renderCard(completed) {
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
   $('run-card').hidden = false;
-  renderSpeedGraph($('speed-graph'), completed, { animate: true });
+  const graph = $('speed-graph').closest('figure');
+  graph.hidden = !rateShown(completed);
+  if (!graph.hidden) renderSpeedGraph($('speed-graph'), completed, { animate: true });
 }
 
 function resultHeadline(completed) {
@@ -881,7 +891,8 @@ function renderResults(completed, saved) {
   const replay = completed.summary;
   const counted = completed.status === 'complete';
   const firstErrors = replay.firstAttempts.filter((item) => !item.correct).length;
-  $('result-wpm').textContent = replay.score.wpm;
+  const speed = rateShown(completed) ? `${replay.score.wpm} wpm` : 'Too quick to time';
+  $('result-wpm').textContent = rateShown(completed) ? replay.score.wpm : '—';
   $('result-accuracy').textContent = replay.score.accuracy;
   $('result-errors').textContent = firstErrors;
   $('result-time').textContent = `${(replay.elapsedMs / 1000).toFixed(1)} s`;
@@ -914,8 +925,8 @@ function renderResults(completed, saved) {
   renderDaily();
   $('comparison-panel').hidden = true;
   announce(saved
-    ? `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy.`
-    : `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+    ? `${speed}, ${replay.score.accuracy}% accuracy.`
+    : `${speed}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
 }
 
 function renderEvidenceList(evidence) {
@@ -1761,7 +1772,7 @@ function bindEvents() {
     if (practice) resetSession('practice', { focus: true });
   });
   $('mode-custom').addEventListener('click', () => openCustom(!customOpen));
-  $('custom-text').addEventListener('input', () => { updateCustomCount(); setCustomError(); });
+  $('custom-text').addEventListener('input', updateCustomState);
   $('custom-use').addEventListener('click', useCustomText);
   document.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => {
     customOpen = false;
@@ -1933,8 +1944,25 @@ function updateCustomCount() {
 }
 
 function setCustomError(message = '') {
-  $('custom-error').textContent = message;
+  if ($('custom-error').textContent !== message) $('custom-error').textContent = message;
   $('custom-text').setAttribute('aria-invalid', String(Boolean(message)));
+}
+
+function customErrorMessage(problem) {
+  if (!problem) return '';
+  if (problem.kind === 'empty') return 'Add some text first.';
+  if (problem.kind === 'short') return `Use at least ${CUSTOM_MIN_WORDS} words and ${CUSTOM_MIN_CHARS} characters, so the run is long enough to time.`;
+  if (problem.kind === 'untypable') return `“${problem.char}” (U+${problem.char.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}) can’t be typed here. Custom text uses the letters, digits, spaces and punctuation of an English keyboard.`;
+  return `Keep it to ${CUSTOM_MAX.toLocaleString('en')} characters, about ten minutes of typing. This text has ${problem.length.toLocaleString('en')}.`;
+}
+
+// While the text is too short to time, "Use this text" is off and the line under it says why. Other problems
+// are reported when the button is pressed, and editing clears them.
+function updateCustomState() {
+  updateCustomCount();
+  const problem = customTextProblem(normalizeCustomText($('custom-text').value, Infinity));
+  $('custom-use').disabled = problem?.kind === 'empty' || problem?.kind === 'short';
+  setCustomError(problem?.kind === 'short' ? customErrorMessage(problem) : '');
 }
 
 // The panel never opens or closes beside a live run: like the other mode buttons, it restarts the run first.
@@ -1944,8 +1972,7 @@ function openCustom(open = true) {
   if (open) {
     if (!$('custom-text').value) $('custom-text').value = prefs.customText || '';
     $('custom-order').value = prefs.customOrder;
-    updateCustomCount();
-    setCustomError();
+    updateCustomState();
   }
   setModeControls();
   if (open) $('custom-text').focus();
@@ -1954,11 +1981,7 @@ function openCustom(open = true) {
 // Signed in, the text is kept with the other preferences; a guest's preferences live only in memory.
 function useCustomText() {
   const text = normalizeCustomText($('custom-text').value, Infinity);
-  const untypable = untypableCharacter(text);
-  const error = !text ? 'Add some text first.'
-    : untypable ? `“${untypable}” (U+${untypable.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}) can’t be typed here. Custom text uses the letters, digits, spaces and punctuation of an English keyboard.`
-      : text.length > CUSTOM_MAX ? `Keep it to ${CUSTOM_MAX.toLocaleString('en')} characters, about ten minutes of typing. This text has ${text.length.toLocaleString('en')}.`
-        : '';
+  const error = customErrorMessage(customTextProblem(text));
   setCustomError(error);
   if (error) {
     $('custom-text').focus();

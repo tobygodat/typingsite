@@ -198,6 +198,23 @@ export function untypableCharacter(text) {
   return null;
 }
 
+// A passage needs enough typing to time: the clock starts on the first key, so one letter finishes at the
+// instant it starts. Built-in passages are at least 10 words because they are counted and compared; custom
+// text never is, so a short phrase is enough.
+export const CUSTOM_MIN_WORDS = 2;
+export const CUSTOM_MIN_CHARS = 10;
+
+// Why a normalised custom text can't be used yet, or null. Pass normalizeCustomText(value, Infinity), so an
+// over-long text is reported rather than cut.
+export function customTextProblem(text) {
+  if (!text) return { kind: 'empty' };
+  const char = untypableCharacter(text);
+  if (char) return { kind: 'untypable', char };
+  if (text.length < CUSTOM_MIN_CHARS || text.split(' ').length < CUSTOM_MIN_WORDS) return { kind: 'short' };
+  if (text.length > CUSTOM_MAX) return { kind: 'long', length: text.length };
+  return null;
+}
+
 export function replayAttempt(attempt) {
   let typed = '';
   let insertions = 0;

@@ -78,6 +78,33 @@ test('leaving custom for practice restores the test controls', async ({ page }) 
   await expect(page.locator('#duration-options')).toBeVisible();
 });
 
+test('text too short to time is refused, and a short phrase is accepted', async ({ page }) => {
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill('a');
+  await expect(page.locator('#custom-error')).toHaveText('Use at least 2 words and 10 characters, so the run is long enough to time.');
+  await expect(page.locator('#custom-text')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#custom-use')).toBeDisabled();
+
+  await page.locator('#custom-text').fill('hello world');
+  await expect(page.locator('#custom-error')).toHaveText('');
+  await expect(page.locator('#custom-use')).toBeEnabled();
+  await page.locator('#custom-use').click();
+  expect(await passageText(page)).toBe('hello world');
+
+  // Automation finishes eleven letters well inside a second: the card shows no rate rather than thousands of wpm.
+  await typeInto(page, 'hello world');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  const seconds = parseFloat(await page.locator('#result-time').textContent());
+  if (seconds < 1) {
+    await expect(page.locator('#result-wpm')).toHaveText('—');
+    await expect(page.locator('.run-card-graph')).toBeHidden();
+    await expect(page.locator('#announcement')).toContainText('Too quick to time');
+  } else {
+    await expect(page.locator('#result-wpm')).toHaveText(/^\d+$/);
+  }
+});
+
 test('smart punctuation is normalised to typeable characters', async ({ page }) => {
   await openApp(page);
   await page.locator('#mode-custom').click();
@@ -93,17 +120,17 @@ test('accents fold to plain letters and the length cap is checked after punctuat
   await page.locator('#custom-use').click();
   expect(await passageText(page)).toBe('cafe au lait');
 
-  // 1,001 ellipses become 3,003 characters: refused with the count, not silently cut.
+  // 501 "ab…" words are 2,004 characters as pasted but 3,005 once each ellipsis expands: refused with the count.
   await page.locator('#mode-custom').click();
-  await page.locator('#custom-text').fill('…'.repeat(1001));
+  await page.locator('#custom-text').fill(Array(501).fill('ab…').join(' '));
   await page.locator('#custom-use').click();
   await expect(page.locator('#custom-error')).toContainText('Keep it to 3,000 characters');
-  await expect(page.locator('#custom-error')).toContainText('3,003');
+  await expect(page.locator('#custom-error')).toContainText('3,005');
   await expect(page.locator('#custom-options')).toBeVisible();
 
-  await page.locator('#custom-text').fill('…'.repeat(1000));
+  await page.locator('#custom-text').fill(Array(500).fill('ab…').join(' '));
   await page.locator('#custom-use').click();
-  expect((await passageText(page)).length).toBe(3000);
+  expect((await passageText(page)).length).toBe(2999);
 });
 
 test('changing stop on error keeps the custom passage', async ({ page }) => {

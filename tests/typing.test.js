@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   CUSTOM_MAX,
   compareAttempts,
+  customTextProblem,
   completeAttempt,
   conditionKey,
   createAttempt,
@@ -162,4 +163,19 @@ test('reordered custom text is never longer than the validated source', () => {
   assert.ok(drewLong > 0, 'the long word is still drawn sometimes');
   assert.equal(orderCustomText(source, 'as-written'), source);
   assert.equal(orderCustomText('', 'random'), '');
+});
+
+test('custom text must be typeable and long enough to time', () => {
+  const problem = (value) => customTextProblem(normalizeCustomText(value, Infinity))?.kind ?? null;
+  assert.equal(problem(''), 'empty');
+  assert.equal(problem(' \u200B '), 'empty');
+  // One letter finishes on the key that starts the clock; two short words under ten characters are still too quick.
+  assert.equal(problem('a'), 'short');
+  assert.equal(problem('hi there'), 'short');
+  assert.equal(problem('abcdefghijklmnop'), 'short');
+  assert.equal(problem('hello world'), null);
+  assert.equal(problem('“Hi,” I said.'), null);
+  assert.deepEqual(customTextProblem('go 🚀 now'), { kind: 'untypable', char: '🚀' });
+  assert.deepEqual(customTextProblem(normalizeCustomText(Array(501).fill('ab…').join(' '), Infinity)), { kind: 'long', length: 3005 });
+  assert.equal(problem(Array(500).fill('ab…').join(' ')), null);
 });
