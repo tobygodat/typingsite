@@ -16,7 +16,8 @@ function ago(at, now = Date.now()) {
   return new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-export function createInbox({ getSession, listInvites, actions, announce, isRunning }) {
+// `describe` can word an entry from its saved fields (a race result in the current speed unit).
+export function createInbox({ getSession, listInvites, actions, announce, isRunning, describe = (entry) => entry.text }) {
   let entries = [];
   let invites = [];
   let polling = false;
@@ -71,7 +72,7 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
       row.dataset.kind = entry.kind;
       if (!entry.read) row.dataset.unread = 'true';
       const copy = document.createElement('p');
-      copy.textContent = entry.text;
+      copy.textContent = describe(entry);
       const meta = document.createElement('span');
       meta.className = 'inbox-meta';
       const closed = isClosed(entry);
@@ -117,11 +118,12 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     pendingToast = null;
     toastEntry = entry;
     const action = actions[entry.kind];
-    $('challenge-toast-text').textContent = entry.text;
+    const text = describe(entry);
+    $('challenge-toast-text').textContent = text;
     $('challenge-toast-action').hidden = !action;
     $('challenge-toast-action').textContent = action?.label || '';
     $('challenge-toast').hidden = false;
-    announce(entry.text);
+    announce(text);
     toastLeft = TOAST_MS;
     startToastTimer();
   }
@@ -232,6 +234,7 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     refresh,
     notify,
     runChanged,
+    render,
     get invites() { return invites; },
     subscribe(listener) { listeners.add(listener); },
     // The room was opened another way: the toast for it goes and its entry counts as read. An

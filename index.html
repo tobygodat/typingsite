@@ -57,6 +57,13 @@
                 <option value="36">large</option>
               </select>
             </label>
+            <label class="preference-row" for="speed-unit">
+              <span><strong>speed unit</strong></span>
+              <select class="input select" id="speed-unit">
+                <option value="wpm" selected>wpm</option>
+                <option value="cpm">cpm</option>
+              </select>
+            </label>
             <label class="preference-row" for="word-list">
               <span><strong>word list</strong></span>
               <select class="input select" id="word-list">
@@ -67,7 +74,7 @@
               </select>
             </label>
             <label class="preference-row" for="live-toggle">
-              <span><strong>live wpm and accuracy</strong></span>
+              <span><strong data-speed-unit="live % and accuracy">live wpm and accuracy</strong></span>
               <input class="switch" id="live-toggle" type="checkbox">
             </label>
             <label class="preference-row" for="keyboard-toggle">
@@ -186,7 +193,7 @@
                 <small id="timer-label" class="sr-only">remaining</small>
               </div>
               <div class="live-stat">
-                <strong id="live-wpm" class="num">—</strong><span>wpm</span>
+                <strong id="live-wpm" class="num">—</strong><span data-speed-unit>wpm</span>
               </div>
               <div class="live-stat">
                 <strong id="live-accuracy" class="num">—</strong><span>%<span class="sr-only"> input accuracy</span></span>
@@ -231,21 +238,21 @@
             <figure class="run-card-graph">
               <div id="speed-graph" class="speed-graph" role="img" aria-label="Speed over time"></div>
               <figcaption class="graph-legend" aria-hidden="true">
-                <span class="legend-speed">speed</span>
+                <span class="legend-speed" data-speed-unit="speed · %">speed · wpm</span>
                 <span class="legend-average">average</span>
                 <span class="legend-miss">mistake</span>
               </figcaption>
             </figure>
             <div class="run-card-score">
               <strong id="result-wpm" class="num">—</strong>
-              <span class="run-card-unit">wpm</span>
+              <span class="run-card-unit" data-speed-unit>wpm</span>
             </div>
             <dl class="run-card-facts">
               <div><dt>accuracy</dt><dd><strong id="result-accuracy" class="num">—</strong><b>%</b></dd></div>
               <div><dt>first-try errors</dt><dd id="result-errors" class="num">—</dd></div>
               <div><dt>time</dt><dd id="result-time" class="num">—</dd></div>
             </dl>
-            <p class="metric-note">wpm counts correct characters kept · accuracy counts every character typed, corrected ones included</p>
+            <p class="metric-note"><span id="speed-definition">wpm counts correct characters kept</span> · accuracy counts every character typed, corrected ones included</p>
             <p class="condition-copy" id="result-conditions">english · common words · corpus v3 · metric v1</p>
           </article>
 
@@ -260,7 +267,7 @@
               <div class="comparison-rows">
                 <div><span>accuracy</span><strong id="comparison-accuracy" class="num">—</strong></div>
                 <div><span>target timing</span><strong id="comparison-timing" class="num">—</strong></div>
-                <div><span>wpm</span><strong id="comparison-wpm" class="num">—</strong></div>
+                <div><span data-speed-unit>wpm</span><strong id="comparison-wpm" class="num">—</strong></div>
               </div>
               <p><span id="comparison-sample">No observed sample</span> · <span id="comparison-caveat">One sample, not proof of lasting change.</span></p>
             </article>
@@ -436,7 +443,7 @@
             <section id="online-results" class="race-leaderboard" hidden aria-labelledby="online-winner">
               <div class="race-result-heading"><h2 id="online-winner">Race results</h2><button id="online-again" class="btn btn-secondary" type="button">New race</button></div>
               <div id="online-result-rows" class="race-results"></div>
-              <p>Corrected wpm uses matching characters and elapsed race time. Accuracy includes corrected mistakes. Online scores are unranked and don’t count in your progress.</p>
+              <p><span data-speed-unit="Corrected %">Corrected wpm</span> uses matching characters and elapsed race time. Accuracy includes corrected mistakes. Online scores are unranked and don’t count in your progress.</p>
             </section>
             <div id="online-after" class="online-after" hidden>
               <p id="online-rematch-note" class="online-copy" role="status"></p>

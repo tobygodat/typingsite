@@ -1,6 +1,7 @@
 import { createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 import { createTypingFx } from './motion.js';
 import * as multiplayer from './multiplayer.js';
+import { formatSpeed, speedValue } from './units.js';
 
 const $ = (id) => document.getElementById(id);
 const stamp = (value) => typeof value === 'number' ? value : Date.parse(value);
@@ -21,9 +22,14 @@ function pendingInvite() {
 
 function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE); } catch {} }
 
+// An inbox result keeps both wpm scores, so it reads in whichever speed unit is chosen when shown.
+export function raceResultText({ lead, opponent, wpm }, unit) {
+  return `${lead} ${opponent}: ${formatSpeed(wpm[0], unit)} to ${speedValue(wpm[1], unit)}.`;
+}
+
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox }) {
+export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, speedUnit = () => 'wpm' }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -315,9 +321,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       const lead = ahead === 0 ? 'You tied with' : ahead > 0 ? 'You beat' : 'You raced';
       // Finished rooms are deleted a day after they expire, so Race again lapses a little before.
       const until = new Date(Date.parse(room.expiresAt || new Date().toISOString()) + RESULT_RETAINED_MS).toISOString();
+      const race = { lead, opponent: opponent.name, wpm: [me.wpm || 0, opponent.wpm || 0] };
       inbox.notify({ id: `result:${room.id}`, kind: 'result', roomId: room.id, until,
-        conditions: room.conditions,
-        text: `${lead} ${opponent.name}: ${me.wpm || 0} wpm to ${opponent.wpm || 0}.` }, { toast: justFinished && away() });
+        conditions: room.conditions, race, text: raceResultText(race, speedUnit()) }, { toast: justFinished && away() });
     }
   }
   function renderAfter() {
@@ -453,7 +459,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       const name = document.createElement('strong');
       name.textContent = player.name;
       row.append(name);
-      for (const value of [`${player.wpm || 0} wpm`, `${player.accuracy ?? 100}% accuracy`, `${(player.elapsed || 0).toFixed(1)} s`]) {
+      for (const value of [formatSpeed(player.wpm || 0, speedUnit()), `${player.accuracy ?? 100}% accuracy`, `${(player.elapsed || 0).toFixed(1)} s`]) {
         const span = document.createElement('span');
         span.className = 'num';
         span.textContent = value;
@@ -606,6 +612,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     rematchRoom: (roomId, conditions) => rematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions),
     // The race this tab is seated in and still waiting or racing, if any.
     get liveRoomId() { return room && !terminal(room) ? room.id : null; },
+    // The speed unit changed: redraw a finished race's scores in it.
+    refreshSpeed() { if (room?.status === 'finished') renderResults(); },
     open() { navigate('compete'); setMode('online'); },
     onViewChange(view) {
       if (view === 'compete') { renderHome(); if (mode === 'online') { refreshInvites(); loadFriends(); fx.relayout(); } }

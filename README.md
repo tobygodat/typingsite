@@ -29,7 +29,7 @@ Train also shows recurring letter pairs across recent matching runs. Each target
 
 Clear history requires typing `clear` and offers an immediate Undo. It includes daily results. Signed-in accounts retain 1,000 compact run summaries and pattern counts for the newest 120 runs, alongside 24 full attempt traces. Comparisons remain until cleared. Guests keep this history only for the tab.
 
-Press ⌘K (Ctrl-K on Windows and Linux) for commands: go to a view, restart, change the test mode or length, toggle punctuation, switch theme or text size, toggle live metrics, the keyboard or focus mode, and clear local history. Opening it mid-run takes that run out of comparisons.
+Press ⌘K (Ctrl-K on Windows and Linux) for commands: go to a view, restart, change the test mode or length, toggle punctuation, switch theme, text size or speed unit (wpm or cpm, display only), toggle live metrics, the keyboard or focus mode, and clear local history. Opening it mid-run takes that run out of comparisons.
 
 The settings control changes theme (system, dark or light), passage size, live metrics, the keyboard display and focus mode. Preferences survive reload. Focus mode has an explicit exit; Escape also leaves it.
 

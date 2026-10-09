@@ -1,4 +1,5 @@
 import {
+  CHARS_PER_WORD,
   CORPUS_VERSION,
   METRIC_VERSION,
   compareAttempts,
@@ -19,11 +20,12 @@ import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
-import { createOnlineRace } from './online-race.js';
+import { createOnlineRace, raceResultText } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
+import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, speedDefinition, speedValue } from './units.js';
 
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
@@ -39,6 +41,7 @@ const defaultPreferences = {
   difficulty: 'any',
   wordList: DEFAULT_WORD_LIST,
   fontSize: '28',
+  speedUnit: DEFAULT_SPEED_UNIT,
   liveMetrics: false,
   keyboard: false,
   stopOnError: false,
@@ -70,6 +73,7 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  value.speedUnit = normalizeSpeedUnit(value.speedUnit);
   return value;
 }
 
@@ -124,6 +128,9 @@ let activeRecommendation = null;
 let selectedTarget = null;
 let trainingContext = null;
 let resultBestBefore = null;
+// What the results screen shows, kept so a speed unit change can redraw it in place.
+let shownResult = null;
+let shownComparison = null;
 let clearSnapshot = null;
 let clearTimer = null;
 
@@ -199,6 +206,11 @@ function signed(value, unit) {
   return `${sign}${Math.abs(value)} ${unit}`;
 }
 
+// Speed is saved, scored and compared in wpm; these show it in the chosen unit (src/units.js).
+const speedNumber = (wpm) => speedValue(wpm, prefs.speedUnit);
+const speed = (wpm) => formatSpeed(wpm, prefs.speedUnit);
+const signedSpeed = (wpmDelta) => signed(speedNumber(wpmDelta), normalizeSpeedUnit(prefs.speedUnit));
+
 // The live numbers tick ten times a second; only touch the DOM when the text changes.
 function setText(element, value) {
   const text = String(value);
@@ -227,7 +239,7 @@ function currentBestKey() {
 
 function showBest() {
   const best = profile.bests[currentBestKey()];
-  $('best').textContent = best ? `Best · ${best.wpm} wpm` : 'No best yet';
+  $('best').textContent = best ? `Best · ${speed(best.wpm)}` : 'No best yet';
 }
 
 function resolvedTheme() {
@@ -286,7 +298,16 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  applySpeedUnit();
   showBest();
+}
+
+// Static unit labels: an empty data-speed-unit is the unit itself, otherwise % marks where it goes.
+function applySpeedUnit() {
+  const unit = normalizeSpeedUnit(prefs.speedUnit);
+  $('speed-unit').value = unit;
+  document.querySelectorAll('[data-speed-unit]').forEach((node) => { node.textContent = (node.dataset.speedUnit || '%').replace('%', unit); });
+  $('speed-definition').textContent = speedDefinition(unit);
 }
 
 function setModeControls() {
@@ -540,6 +561,7 @@ function showUnavailableRetest(reason) {
   switchView('results');
   $('comparison-panel').hidden = false;
   $('comparison-panel').dataset.outcome = 'unavailable';
+  shownComparison = null;
   $('comparison-status').textContent = 'No fair retest available.';
   $('comparison-accuracy').textContent = '—';
   $('comparison-timing').textContent = '—';
@@ -706,7 +728,7 @@ function ghostPace() {
   // The active attempt knows its real input class (touch is detected after reset).
   const best = profile.bests[conditionKey(attempt?.conditions || conditions())];
   const wpm = best?.wpm || 60;
-  return { wpm, cps: (wpm * 5) / 60, fromBest: Boolean(best) };
+  return { wpm, cps: (wpm * CHARS_PER_WORD) / 60, fromBest: Boolean(best) };
 }
 
 function markKeyboardTargets(target) {
@@ -726,7 +748,7 @@ function updateLive(reset = false) {
   if (reset || second !== liveSecond) {
     liveSecond = second;
     const score = second >= 1 ? replayAttempt({ ...attempt, endedAt: boundedElapsed }).score : null;
-    setText($('live-wpm'), score ? score.wpm : '—');
+    setText($('live-wpm'), score ? speedNumber(score.wpm) : '—');
     setText($('live-accuracy'), score ? score.accuracy : '—');
   }
   let progress;
@@ -814,17 +836,24 @@ function renderCard(completed) {
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
   $('run-card').hidden = false;
-  renderSpeedGraph($('speed-graph'), completed, { animate: true });
+  renderSpeedGraph($('speed-graph'), completed, { animate: true, unit: prefs.speedUnit });
 }
 
-function resultHeadline(completed) {
+function resultHeadline(completed, bestBefore) {
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
-  if (!resultBestBefore) return 'First run at these settings';
-  const delta = completed.summary.score.wpm - resultBestBefore.wpm;
-  if (delta === 0) return `Matched your best of ${resultBestBefore.wpm}`;
-  return `${delta > 0 ? '+' : '−'}${Math.abs(delta)} vs your best of ${resultBestBefore.wpm}`;
+  if (!bestBefore) return 'First run at these settings';
+  const delta = completed.summary.score.wpm - bestBefore.wpm;
+  if (delta === 0) return `Matched your best of ${speed(bestBefore.wpm)}`;
+  return `${delta > 0 ? '+' : '−'}${Math.abs(speedNumber(delta))} vs your best of ${speed(bestBefore.wpm)}`;
+}
+
+// The run card's speed and the headline that compares it with the best before this run.
+function renderResultSpeed() {
+  if (!shownResult) return;
+  $('result-wpm').textContent = speedNumber(shownResult.completed.summary.score.wpm);
+  $('result-delta').textContent = resultHeadline(shownResult.completed, shownResult.bestBefore);
 }
 
 function retestLength(value) {
@@ -838,12 +867,12 @@ function renderResults(completed, saved) {
   const replay = completed.summary;
   const counted = completed.status === 'complete';
   const firstErrors = replay.firstAttempts.filter((item) => !item.correct).length;
-  $('result-wpm').textContent = replay.score.wpm;
+  shownResult = { completed, bestBefore: resultBestBefore };
+  renderResultSpeed();
   $('result-accuracy').textContent = replay.score.accuracy;
   $('result-errors').textContent = firstErrors;
   $('result-time').textContent = `${(replay.elapsedMs / 1000).toFixed(1)} s`;
   $('result-conditions').textContent = describeRun(completed);
-  $('result-delta').textContent = resultHeadline(completed);
   // A retest reports a failed save once, in the comparison caveat.
   $('result-comparison-note').textContent = [
     counted ? '' : 'Focus or input changed during the run, so it isn’t counted.',
@@ -867,8 +896,8 @@ function renderResults(completed, saved) {
   renderDaily();
   $('comparison-panel').hidden = true;
   announce(saved
-    ? `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy.`
-    : `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+    ? `${speed(replay.score.wpm)}, ${replay.score.accuracy}% accuracy.`
+    : `${speed(replay.score.wpm)}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
 }
 
 function renderEvidenceList(evidence) {
@@ -904,7 +933,8 @@ function renderComparison(before, after, saved) {
   panel.dataset.outcome = outcome;
   $('comparison-status').textContent = comparison.comparable ? COMPARISON_HEADINGS[comparison.state] : 'Retest complete.';
   $('comparison-accuracy').textContent = comparison.comparable ? signed(comparison.accuracyDelta, 'pp') : '—';
-  $('comparison-wpm').textContent = comparison.comparable ? signed(comparison.wpmDelta, 'wpm') : '—';
+  shownComparison = comparison;
+  $('comparison-wpm').textContent = comparison.comparable ? signedSpeed(comparison.wpmDelta) : '—';
 
   const trainedTarget = trainingContext?.target || selectedTarget;
   const beforePattern = before ? summarizePatterns([before]).pairs.find((item) => item.pair === trainedTarget) : null;
@@ -1139,8 +1169,8 @@ function renderHistory() {
   const week = weeklyChange(eligible, key);
   $('progress-week').textContent = week.wpm === null
     ? `This week: ${week.current.length} matching runs. A week-to-week change needs runs in both this week and the preceding week.`
-    : `Weekly median: ${signed(week.wpm, 'wpm')} · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs this week / ${week.previous.length} last week. This describes your runs, not a proven learning effect.`;
-  renderTrend($('progress-trend'), matching, openHistoryRun);
+    : `Weekly median: ${signedSpeed(week.wpm)} · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs this week / ${week.previous.length} last week. This describes your runs, not a proven learning effect.`;
+  renderTrend($('progress-trend'), matching, openHistoryRun, prefs.speedUnit);
   $('progress-trend-note').textContent = matching.length
     ? `${matching.length} completed practice runs and retests, oldest to newest. Select a point or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs appear only in All saved runs.' : ''}`
     : 'No completed practice runs at these conditions in this period. Try a longer period or different conditions.';
@@ -1148,7 +1178,7 @@ function renderHistory() {
     const row = element('details', '', 'run-row');
     row.dataset.runId = run.id;
     const summary = element('summary', '', 'run-summary');
-    summary.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
+    summary.append(element('strong', `${speed(run.score.wpm)} · ${run.score.accuracy}%`, 'num'),
       element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : 'practice'} · view details`));
     const detail = element('div', '', 'run-detail');
     detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
@@ -1179,15 +1209,15 @@ function renderHistory() {
     }
     row.querySelector('.history-accuracy').textContent = signed(loop.comparison.accuracyDelta, 'pp');
     const measures = row.querySelectorAll('.history-measure span');
-    if (measures[1]) measures[1].textContent = 'Corrected wpm';
-    row.querySelector('.history-timing').textContent = signed(loop.comparison.wpmDelta, 'wpm');
+    if (measures[1]) measures[1].textContent = `Corrected ${normalizeSpeedUnit(prefs.speedUnit)}`;
+    row.querySelector('.history-timing').textContent = signedSpeed(loop.comparison.wpmDelta);
     const status = row.querySelector('.history-status');
     status.textContent = loop.comparison.state;
     status.className = `history-status badge ${loop.comparison.state === 'improved' ? 'badge-success' : loop.comparison.state === 'regressed' ? 'badge-danger' : 'badge-neutral'}`;
     const detail = row.querySelector('.history-detail');
     detail.append(scoreFacts([
-      ['before', loop.comparison.before ? `${loop.comparison.before.wpm} wpm · ${loop.comparison.before.accuracy}%` : 'Not retained in this older comparison'],
-      ['after', loop.comparison.after ? `${loop.comparison.after.wpm} wpm · ${loop.comparison.after.accuracy}%` : 'Not retained in this older comparison'],
+      ['before', loop.comparison.before ? `${speed(loop.comparison.before.wpm)} · ${loop.comparison.before.accuracy}%` : 'Not retained in this older comparison'],
+      ['after', loop.comparison.after ? `${speed(loop.comparison.after.wpm)} · ${loop.comparison.after.accuracy}%` : 'Not retained in this older comparison'],
       ['drill', loop.drillCompleted ? `${loop.drill?.duration || 60} s · ${loop.target || 'general'}` : 'Skipped'],
     ]));
     const timing = loop.targetTiming;
@@ -1227,12 +1257,12 @@ function renderDaily() {
   const today = completed.filter((r) => r.challengeDate === daily.day && conditionKey(r.conditions) === conditionKey(dailyConditions()));
   const best = [...today].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
   $('daily-status').textContent = best
-    ? `Today’s best: ${best.score.wpm} wpm · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard.${session ? '' : ' Sign in to save future results beyond this tab.'}`
+    ? `Today’s best: ${speed(best.score.wpm)} · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard.${session ? '' : ' Sign in to save future results beyond this tab.'}`
     : `No completed physical-keyboard attempt today.${session ? ' Your results save to your account.' : ' Results last in this tab; sign in to save future attempts.'}`;
   $('daily-history-panel').hidden = !completed.length;
   $('daily-history').replaceChildren(...[...completed].reverse().slice(0, 30).map((run) => {
     const row = element('div', '', 'daily-result');
-    row.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
+    row.append(element('strong', `${speed(run.score.wpm)} · ${run.score.accuracy}%`, 'num'),
       element('span', `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`));
     return row;
   }));
@@ -1317,7 +1347,10 @@ function finishRacePlayer() {
     $('race-handoff').classList.remove('is-revealing');
     $('race-handoff').hidden = false;
     announce(`${race.names[0]} finished. Pass the keyboard to ${race.names[1]}.`);
-  } else renderRaceResults();
+  } else {
+    renderRaceResults();
+    announce('Challenge complete.');
+  }
 }
 
 function renderRaceResults() {
@@ -1340,19 +1373,18 @@ function renderRaceResults() {
     row.className = 'race-result-row';
     const name = document.createElement('strong');
     name.textContent = result.name;
-    const speed = document.createElement('span');
-    speed.className = 'num';
-    speed.textContent = result.attempt.status === 'complete' ? `${score.wpm} wpm` : 'interrupted';
+    const speedCell = document.createElement('span');
+    speedCell.className = 'num';
+    speedCell.textContent = result.attempt.status === 'complete' ? speed(score.wpm) : 'interrupted';
     const accuracy = document.createElement('span');
     accuracy.className = 'num';
     accuracy.textContent = `${score.accuracy}% accuracy`;
     const elapsed = document.createElement('span');
     elapsed.className = 'num';
     elapsed.textContent = `${(result.attempt.summary.elapsedMs / 1000).toFixed(1)} s`;
-    row.append(name, speed, accuracy, elapsed);
+    row.append(name, speedCell, accuracy, elapsed);
     return row;
   }));
-  announce('Challenge complete.');
 }
 
 function clearHistory() {
@@ -1368,6 +1400,8 @@ function clearHistory() {
   activeRecommendation = null;
   for (const id of ['result-wpm', 'result-accuracy', 'result-errors', 'result-time']) $(id).textContent = '—';
   $('result-delta').textContent = 'No run yet.';
+  shownResult = null;
+  shownComparison = null;
   $('result-comparison-note').textContent = '';
   $('run-card-stamp').textContent = 'no run yet';
   $('run-card').hidden = true;
@@ -1462,6 +1496,7 @@ function adoptProfile(data) {
   applyPreferences();
   setModeControls();
   renderHistory();
+  renderSpeeds();
   if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice');
 }
 
@@ -1737,6 +1772,7 @@ function bindEvents() {
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
+  $('speed-unit').addEventListener('change', (event) => setSpeedUnit(event.target.value));
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
   $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
@@ -1901,6 +1937,31 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession('practice');
 }
 
+// Display only: bests, comparisons and condition keys stay in wpm, so nothing is reset or re-keyed.
+function setSpeedUnit(unit) {
+  prefs.speedUnit = normalizeSpeedUnit(unit);
+  applyPreferences();
+  saveProfile();
+  renderSpeeds();
+}
+
+// Redraws every speed figure already on screen in the current unit.
+function renderSpeeds() {
+  if (attempt?.status === 'running') {
+    liveSecond = -2; // never a real second, so the live figure is recomputed now
+    updateLive();
+  }
+  renderResultSpeed();
+  // A hidden graph is only cleared here; the resize observer redraws it when results are shown.
+  if (lastCompleted) renderSpeedGraph($('speed-graph'), lastCompleted, { animate: false, unit: prefs.speedUnit });
+  if (shownComparison?.comparable) $('comparison-wpm').textContent = signedSpeed(shownComparison.wpmDelta);
+  if (document.body.dataset.view === 'progress') renderHistory();
+  renderDaily();
+  if (!$('race-leaderboard').hidden && race.results.length === 2) renderRaceResults();
+  onlineRace?.refreshSpeed();
+  inbox?.render();
+}
+
 function setWordList(id) {
   prefs.wordList = id;
   applyPreferences();
@@ -1925,7 +1986,8 @@ function paletteCommands(query) {
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
-    { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
+    ...[['wpm', 'words'], ['cpm', 'characters']].map(([unit, per]) => ({ group: 'display', label: `speed unit · ${unit}`, keywords: `${per} per minute speed measure`, hint: prefs.speedUnit === unit ? 'current' : '', on: prefs.speedUnit === unit, run: () => setSpeedUnit(unit) })),
+    { group: 'display', label: 'live metrics', keywords: 'wpm cpm speed accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
     ...(session
@@ -1966,7 +2028,7 @@ function toggleGhost() {
   ghostOn = !ghostOn;
   document.body.dataset.ghost = ghostOn ? 'on' : 'off';
   const pace = ghostPace();
-  const message = ghostOn ? `Ghost pacer · ${pace.wpm} wpm${pace.fromBest ? ' (your best)' : ''}` : 'Ghost off';
+  const message = ghostOn ? `Ghost pacer · ${speed(pace.wpm)}${pace.fromBest ? ' (your best)' : ''}` : 'Ghost off';
   $('egg-feedback').textContent = message;
   $('egg-toast').hidden = false;
   $('egg-toast').classList.toggle('is-solo', $('history-toast').hidden);
@@ -1993,14 +2055,14 @@ new ResizeObserver(() => {
   const width = Math.round(graph.clientWidth);
   // Sub-pixel layout settling is ignored so it cannot cut the first draw short.
   if (!lastCompleted || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
-  renderSpeedGraph(graph, lastCompleted, { animate: false });
+  renderSpeedGraph(graph, lastCompleted, { animate: false, unit: prefs.speedUnit });
 }).observe($('speed-graph'));
 let trendWidth = 0;
 new ResizeObserver(() => {
   const container = $('progress-trend');
   if (!container.clientWidth || trendWidth === container.clientWidth) return;
   trendWidth = container.clientWidth;
-  renderTrend(container, filterRuns(profile.runs.filter(trendRun), $('progress-conditions').value, $('progress-period').value), openHistoryRun);
+  renderTrend(container, filterRuns(profile.runs.filter(trendRun), $('progress-conditions').value, $('progress-period').value), openHistoryRun, prefs.speedUnit);
 }).observe($('progress-trend'));
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
@@ -2021,6 +2083,7 @@ inbox = createInbox({
   getSession: () => session,
   listInvites: listRaceInvites,
   announce,
+  describe: (entry) => (entry.kind === 'result' && Array.isArray(entry.race?.wpm) ? raceResultText(entry.race, prefs.speedUnit) : entry.text),
   actions: {
     invite: { label: 'Join', run: (entry) => onlineRace.joinInvite(entry.roomId) },
     joined: { label: 'Open', available: (entry) => onlineRace?.liveRoomId === entry.roomId, run: () => onlineRace.open() },
@@ -2032,6 +2095,7 @@ onlineRace = createOnlineRace({
   inbox,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
+  speedUnit: () => prefs.speedUnit,
   onPassageSeen(id) {
     if (!id || profile.seenTextIds.includes(id)) return;
     profile.seenTextIds.push(id);
