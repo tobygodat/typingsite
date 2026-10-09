@@ -1917,10 +1917,12 @@ function setRestartKey(key) {
   saveProfile();
 }
 
-// The restart keys (esc, plus tab or enter when chosen) only act from the typing input, the bare
-// page or the result card's run-again button (focused on finish), so Tab still moves focus through
-// settings, the palette, dialogs and the other result-screen controls. Open dialogs, settings and
-// menus have already claimed esc by now, and esc leaves focus mode before it restarts anything.
+// The restart keys (esc, plus tab or enter when chosen) only act from the typing input or the bare
+// page. Esc and enter also act from the result card's run-again button (focused on finish); tab
+// never does, so it keeps moving focus through every control, including run-again on to the rest
+// of the result screen, where enter or space runs again as the button's own activation. Open
+// dialogs, settings and menus have already claimed esc by now, and esc leaves focus mode before
+// it restarts anything.
 function quickRestart(event) {
   const key = event.key;
   if ((key !== prefs.restartKey && key !== 'Escape') || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return false;
@@ -1928,8 +1930,8 @@ function quickRestart(event) {
   const view = document.body.dataset.view;
   const active = document.activeElement;
   const onInput = active === $('typing-input');
-  const onPage = !active || active === document.body;
-  const onRunAgain = view === 'results' && active === $('run-again');
+  const onPage = !active || active === document.body || active === document.documentElement;
+  const onRunAgain = key !== 'Tab' && view === 'results' && active === $('run-again');
   if (!onInput && !onRunAgain && !(onPage && (view === 'practice' || view === 'results'))) return false;
   // Enter only restarts from the result card or before a run starts, never mid-run. The attempt's
   // own status decides: runActive only tracks the faded chrome, which a nav click can bring back.
@@ -1952,6 +1954,12 @@ function runAgain() {
   else resetSession('practice', { focus: true });
 }
 
+// The key that restarts from where focus sits. On the result card that is the focused run-again
+// button (the palette hands focus back to it), which tab moves past and enter activates.
+function restartHint() {
+  return document.body.dataset.view === 'results' && prefs.restartKey === 'Tab' ? 'enter' : restartKeys[prefs.restartKey];
+}
+
 function setWordList(id) {
   prefs.wordList = id;
   applyPreferences();
@@ -1966,7 +1974,7 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartKeys[prefs.restartKey], run: restartTest },
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartHint(), run: restartTest },
     ...Object.entries(restartKeys).map(([key, name]) => ({ group: 'test', label: `restart key · ${name}`, keywords: 'quick restart tab enter escape shortcut', hint: prefs.restartKey === key ? 'current' : '', on: prefs.restartKey === key, run: () => setRestartKey(key) })),
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
