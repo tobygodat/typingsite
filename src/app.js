@@ -768,7 +768,8 @@ function storeAttempt(completed) {
   return saved;
 }
 
-function finishPrimary(forcedElapsed = null) {
+// `replacing`: another session or view takes over at once, so a drill draws no retest passage to throw away.
+function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   if (!attempt || attempt.status !== 'running') return;
   clearInterval(ticker);
   ticker = null;
@@ -788,6 +789,7 @@ function finishPrimary(forcedElapsed = null) {
 
   if (sessionKind === 'drill' && baselineAttempt) {
     if (trainingContext) trainingContext.drillCompleted = valid;
+    if (replacing) return;
     announce(valid ? 'Drill complete. Retest ready.' : 'Drill interrupted. Retest ready.');
     startRetest();
     return;
@@ -1000,9 +1002,10 @@ function navigate(view) {
     switchView('practice');
     return;
   }
+  // Leaving mid-drill draws no retest passage to throw away; Train's retest button draws one when asked.
   if (attempt?.status === 'running' && view !== 'practice') {
     markInterrupted(NOTICES.leftSurface);
-    finishPrimary();
+    finishPrimary(null, { replacing: true });
   }
   if (race.attempt?.status === 'running' && view !== 'compete') markRaceInterrupted();
   switchView(view);
@@ -1212,7 +1215,7 @@ function todayPassage() {
 }
 
 function startDaily() {
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
   if (race.attempt?.status === 'running') markRaceInterrupted();
   baselineAttempt = null;
   trainingContext = null;
