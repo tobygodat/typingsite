@@ -348,12 +348,12 @@ Opaque raised pills of 16px radius at the bottom centre, with a status dot and 1
 - **Do** keep exactly one filled-green primary action per view. All other actions are secondary, ghost or danger.
 - **Do** separate sections with a 1px hairline and 32px of space.
 - **Do** pair coral with a second cue: a tint or a word.
-- **Do** drive every duration from the `--dur-*` scale (80, 150, 200, 250, 350ms × `--motion-scale`) with the `--ease-out` curve (`cubic-bezier(0.22, 1, 0.36, 1)`), so reduced motion takes them all to zero.
+- **Do** drive every duration from the `--dur-*` scale (150, 200, 250, 350ms × `--motion-scale`) with the `--ease-out` curve (`cubic-bezier(0.22, 1, 0.36, 1)`), so reduced motion takes them all to zero.
 - **Do** keep chrome fades at 200ms or less, and animate the selection pill by transform only.
 - **Do** keep chrome labels lowercase and headings and buttons in sentence case.
 
 ### Don't:
-- **Don't** move anything decorative near the passage while a run is in progress. Letter states change instantly; only the caret spring and the ~150ms line scroll move.
+- **Don't** move anything decorative near the passage while a run is in progress. Letter and on-screen key states change instantly; only the caret spring and the ~150ms line scroll move.
 - **Don't** reintroduce the effects removed after the critique: a streak glow or caret aura, a letter ink trail (letters landing lit and cooling), an error shake, digit pop-ins or number reels, a word underline or lens sweeping through the glyphs, run-card tilt, glare or foil, glass surfaces, a live rhythm strip, or blur reveals on restart and results.
 - **Don't** use backdrop-filter, translucent surfaces or coloured glows. Floating surfaces are opaque raised stock with the one float shadow. (The challenge handoff's blurred passage veil is a concealment device that hides the next player's text. It is not a reveal effect and must not spread elsewhere.)
 - **Don't** add kickers or eyebrows above headings, and don't use uppercase tracked labels.

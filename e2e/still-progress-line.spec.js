@@ -1,5 +1,6 @@
 // Still run: the progress lines beside the passage step with each update; they never glide.
-import { test, expect, openApp, openView, passageText, typeInto, chooseWords } from './fixtures.js';
+// The on-screen keys press and release at once; they never ease.
+import { test, expect, openApp, openView, openSettings, passageText, typeInto, chooseWords } from './fixtures.js';
 
 // Counts every transition the line starts from here on, however briefly it runs.
 const watch = (locator) => locator.evaluate((node) => {
@@ -21,6 +22,25 @@ async function lineMotion(locator) {
 
 const still = { duration: '0s', animations: 0, started: 0 };
 const progressOf = (page) => page.locator('#progress-bar').evaluate((node) => Number(node.style.getPropertyValue('--progress')));
+
+// Reads an on-screen key inside the next keydown and keyup themselves, after the app has pressed or
+// released it and before any frame is drawn, so a transition shows as the key still wearing its old look.
+const armKey = (key) => key.evaluate((node) => {
+  node.look = () => {
+    const style = getComputedStyle(node);
+    return { transform: style.transform, background: style.backgroundColor, color: style.color, border: style.borderTopColor, animations: node.getAnimations().length };
+  };
+  node.seen = {};
+  // Window listeners run after the app's document listener.
+  window.addEventListener('keydown', () => { node.seen.down = node.look(); }, { once: true });
+  window.addEventListener('keyup', () => { node.seen.up = node.look(); }, { once: true });
+});
+
+// The key's look in that event, and once any transition would long have finished.
+const keyLook = (key, phase) => key.evaluate(async (node, name) => {
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  return { inEvent: node.seen[name], settled: node.look() };
+}, phase);
 
 test('a timed run’s line steps every tick, even after a pointer nudge, and restarts instantly', async ({ page }) => {
   await openApp(page);
@@ -79,4 +99,42 @@ test('the one-keyboard challenge line steps with each keystroke', async ({ page 
   await typeInto(page, text.slice(0, 12), '#race-input');
   await expect(page.locator('#race-progress')).not.toHaveAttribute('aria-valuenow', '0');
   expect(await lineMotion(line)).toEqual(still);
+});
+
+test('on-screen keys press and release instantly mid-run, even after a pointer nudge', async ({ page }) => {
+  await openApp(page);
+  await openSettings(page);
+  await page.locator('#keyboard-toggle').check();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await chooseWords(page, 10);
+  await expect(page.locator('#keyboard')).toBeVisible();
+  await page.mouse.move(10, 10);
+  const text = await passageText(page);
+  const at = [...text].findIndex((char, index) => index >= 3 && /[a-z]/.test(char));
+  await typeInto(page, text.slice(0, at));
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+
+  // A nudge brings the chrome back while the run goes on; the keys still never ease.
+  await page.mouse.move(80, 80);
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'false');
+  const durations = await page.locator('#keyboard .key').evaluateAll((keys) => [...new Set(keys.map((key) => getComputedStyle(key).transitionDuration))]);
+  expect(durations).toEqual(['0s']);
+
+  const letter = text[at];
+  const key = page.locator(`#keyboard .key[data-key="${letter}"]`);
+  await armKey(key);
+  await page.keyboard.down(letter);
+  const pressed = await keyLook(key, 'down');
+  expect(pressed.settled.transform).toBe('matrix(1, 0, 0, 1, 0, 2)');
+  expect(pressed.settled.animations).toBe(0);
+  expect(pressed.inEvent).toEqual(pressed.settled);
+  await page.keyboard.up(letter);
+  const released = await keyLook(key, 'up');
+  expect(released.settled.transform).toBe('none');
+  expect(released.inEvent).toEqual(released.settled);
+
+  // The press was typed into the same run.
+  await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, at + 1));
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
 });

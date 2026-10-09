@@ -50,7 +50,6 @@
 
   /* Motion: every duration scales from one place and drops to zero for reduced motion. */
   --motion-scale: 1;
-  --dur-micro: calc(80ms * var(--motion-scale));
   --dur-quick: calc(150ms * var(--motion-scale));
   --dur-base: calc(200ms * var(--motion-scale));
   --dur-fast: calc(250ms * var(--motion-scale));
@@ -1128,7 +1127,8 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   place-items: center;
   color: var(--muted);
   font: 500 13px/1 var(--font-mono);
-  transition: color var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out), border-color var(--dur-micro) var(--ease-out);
+  /* Still run: keys press and release instantly, even after a pointer nudge brings the chrome back mid-run. */
+  transition: none;
 }
 
 .key.space { width: 240px; }
