@@ -73,3 +73,33 @@ test('a stale copy of the session gives way to the newest stored one instead of 
     globalThis.fetch = originalFetch;
   }
 });
+
+test('refreshing a session another tab has signed out of never touches the session stored since', async () => {
+  const later = Math.floor(Date.now() / 1000) + 3600;
+  const other = JSON.stringify({ access_token: 'b', refresh_token: 'b-refresh', expires_at: later, user: { id: 'u2' } });
+  const store = new Map([['stilltype-session-v1', other]]);
+  const originalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  const old = { access_token: 'a', refresh_token: 'a-refresh', expires_at: 1, user: { id: 'u1' } };
+  const reply = (status, body) => async () => ({ ok: status < 300, status, text: async () => JSON.stringify(body) });
+  try {
+    // The old account's refresh token was ended by its sign-out: refused, but the other account stays.
+    globalThis.fetch = reply(400, { error: 'invalid_grant' });
+    await assert.rejects(freshSession(old));
+    assert.equal(store.get('stilltype-session-v1'), other);
+    // Still accepted: the refreshed session is returned but not stored over the other account.
+    globalThis.fetch = reply(200, { access_token: 'a2', refresh_token: 'a-refresh-2', expires_in: 3600, user: { id: 'u1' } });
+    assert.equal((await freshSession(old)).refresh_token, 'a-refresh-2');
+    assert.equal(store.get('stilltype-session-v1'), other);
+    // The stored session's own refresh token refused: that session is over.
+    const own = { access_token: 'c', refresh_token: 'c-refresh', expires_at: 1, user: { id: 'u3' } };
+    store.set('stilltype-session-v1', JSON.stringify(own));
+    globalThis.fetch = reply(400, { error: 'invalid_grant' });
+    await assert.rejects(freshSession(own));
+    assert.equal(store.has('stilltype-session-v1'), false);
+  } finally {
+    globalThis.localStorage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
+});

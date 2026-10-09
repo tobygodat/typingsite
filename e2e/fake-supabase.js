@@ -148,7 +148,9 @@ export class FakeSupabase {
         return route.fulfill({ status: 302, headers: { location: back.toString() } });
       }
 
+      // Supabase's default (global) sign-out ends every session of the user: their refresh tokens stop working.
       case 'POST /auth/v1/logout':
+        for (const [token, user] of this.refreshTokens) if (user.id === caller) this.refreshTokens.delete(token);
         return reply(204);
 
       case 'GET /rest/v1/profiles': {

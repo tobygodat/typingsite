@@ -691,3 +691,100 @@ test('a clear in another tab during a retest applies when it ends, with no compa
   expect(cloud(supabase).loops || []).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+const isProfileWrite = (request) => request.method() === 'PATCH' && /\/rest\/v1\/profiles/.test(request.url());
+
+test('undo right after a clear keeps a run saved while an earlier write was still out', async ({ page, supabase }) => {
+  supabase.addUser(EMAIL);
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await finishRun(page);
+  await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
+
+  // The next write is held until a later run is saved and history is cleared.
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let heldWrite;
+  const writeOut = new Promise((resolve) => { heldWrite = resolve; });
+  let holding = true;
+  await page.route(/\/rest\/v1\/profiles/, async (route) => {
+    if (holding && isProfileWrite(route.request())) {
+      holding = false;
+      heldWrite();
+      await gate;
+    }
+    await route.fallback();
+  });
+  let writes = 0;
+  page.on('response', (response) => { if (isProfileWrite(response.request())) writes += 1; });
+  await finishRun(page);
+  await writeOut;
+  await finishRun(page);
+  await clearHistoryIn(page);
+  await expect(page.locator('#progress-empty')).toBeVisible();
+
+  // The held write lands, and the push queued behind it goes up, before the undo.
+  release();
+  await expect.poll(() => writes).toBeGreaterThanOrEqual(2);
+  await page.locator('#undo-clear').click();
+  await expect(page.locator('#history-feedback')).toHaveText('History restored.');
+  await expect(page.locator('#run-history .run-row')).toHaveCount(3);
+  await expect.poll(() => runIds(cloud(supabase)).length, { timeout: 15000 }).toBe(3);
+});
+
+test('signing out while the account service never answers still finishes and keeps this device’s runs', async ({ page, supabase }) => {
+  supabase.addUser(EMAIL);
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  let release;
+  const stalled = new Promise((resolve) => { release = resolve; });
+  await page.route(/\/rest\/v1\/profiles/, async (route) => {
+    await stalled;
+    await route.fallback().catch(() => {});
+  });
+  try {
+    await finishRun(page);
+    const userId = (await storageKeys(page)).find((key) => key.startsWith('stilltype-profile-v2:'));
+    await page.locator('#account-trigger').click();
+    const started = Date.now();
+    await Promise.all([page.waitForEvent('load', { timeout: 45000 }), page.locator('#account-signout').click()]);
+    expect(Date.now() - started).toBeLessThan(40000);
+    await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+    // Nothing reached the account, so the run stays on the device for the next sign-in.
+    expect(await storageKeys(page)).toContain(userId);
+    const kept = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), userId);
+    expect(kept.runs).toHaveLength(1);
+  } finally {
+    release();
+  }
+});
+
+test('an old tab of a signed-out account leaves the account signed in since alone', async ({ page, context, supabase }) => {
+  supabase.addUser(EMAIL);
+  supabase.addUser('second@stilltype.test');
+  // Short-lived tokens, so every request refreshes first.
+  supabase.sessionSeconds = 30;
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await other.locator('#account-trigger').click();
+  await Promise.all([other.waitForEvent('load'), other.locator('#account-signout').click()]);
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+  await signInWithEmail(other, 'second@stilltype.test');
+
+  // The first tab still holds the old account, whose refresh token the sign-out ended. Coming back to it
+  // must not end the other account's session.
+  await page.evaluate(() => dispatchEvent(new Event('online')));
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  // Whatever the first tab does in the background happens within a few round trips.
+  await page.waitForTimeout(2000);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('stilltype-session-v1'))?.user?.email);
+  expect(stored).toBe('second@stilltype.test');
+  await other.reload();
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'member');
+  await expect(other.locator('#account-email')).toHaveText('second@stilltype.test');
+  expect(errors).toEqual([]);
+});

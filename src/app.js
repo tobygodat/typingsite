@@ -1567,7 +1567,11 @@ function clearHistory() {
 function undoClear() {
   if (!clearSnapshot) return;
   let before;
-  try { before = heldClear?.marker === clearedAt ? heldClear.before : normalizeProfile(JSON.parse(clearSnapshot)); } catch { return; }
+  // What the clear removed from copies merged since, together with this tab's own copy from just before it.
+  try {
+    const snapshot = normalizeProfile(JSON.parse(clearSnapshot));
+    before = heldClear?.marker === clearedAt ? account.mergeSynced(heldClear.before, snapshot) : snapshot;
+  } catch { return; }
   heldClear = null;
   // Restores the history even if the clear has already synced, keeping anything added since: this tab's
   // own, and whatever the clear removed from the account row or another tab as they merged here.
@@ -1701,6 +1705,9 @@ async function pushOnce({ cloud: known } = {}) {
     return true;
   }
   const userId = session.user.id;
+  // Checked before refreshing too: a tab still holding an account another tab has signed out of must
+  // not refresh it, nor end whichever session the device holds now.
+  if (!signedInAs(userId)) return false;
   try {
     session = await account.freshSession(session);
     if (!signedInAs(userId)) return false;
@@ -1711,6 +1718,7 @@ async function pushOnce({ cloud: known } = {}) {
         if (!signedInAs(userId)) return false;
       }
       const edits = localEdits;
+      const heldAtMerge = heldClear;
       const theirs = cloud?.data?.version === 2 ? normalizeProfile(cloud.data) : null;
       const { merged, held } = theirs ? account.mergeAndHold(heldClear, profile, theirs) : { merged: profile, held: heldClear };
       let written;
@@ -1719,7 +1727,9 @@ async function pushOnce({ cloud: known } = {}) {
       else written = await account.insertCloudProfile(session, merged);
       if (!signedInAs(userId)) return false;
       if (written) {
-        heldClear = held;
+        // A clear made here while the write was out holds this tab's whole copy from before it, which
+        // this merge never saw; that hold stays, and the merge below adds this write's copy to it.
+        if (heldClear === heldAtMerge) heldClear = held;
         noteCloudAt(written);
         absorb(merged);
         storeLocally();
@@ -1749,6 +1759,7 @@ async function pushOnHide() {
   if (!session || !syncTimer || !lastCloudAt) return;
   const userId = session.user.id;
   const edits = localEdits;
+  if (!signedInAs(userId)) return;
   try {
     session = await account.freshSession(session);
     if (!signedInAs(userId)) return;
@@ -1773,6 +1784,7 @@ async function pullProfile({ force = false } = {}) {
     return;
   }
   const userId = session.user.id;
+  if (!signedInAs(userId)) return;
   try {
     session = await account.freshSession(session);
     if (!signedInAs(userId)) return;
@@ -1875,6 +1887,8 @@ async function signOutAccount() {
     absorbCache();
     unsynced = true;
     synced = await pushProfile();
+    // Unreachable (requests time out, see account.request) or refused: another round would only wait again.
+    if (!synced && $('account').dataset.sync !== 'syncing') break;
   }
   const settled = synced && account.loadCachedProfileText(userId) === cacheText;
   await account.signOut(session, { keepCache: !settled });

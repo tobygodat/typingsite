@@ -72,23 +72,35 @@ export function loadSession() {
   return session?.user?.id && session.refresh_token ? session : null;
 }
 
-function storeSession(data) {
-  const session = {
+function sessionFrom(data) {
+  return {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: data.expires_at || Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
     user: { id: data.user.id, email: data.user.email || '' },
   };
+}
+
+function storeSession(data) {
+  const session = sessionFrom(data);
   writeJson(SESSION_KEY, session);
   return session;
 }
 
+// A request that hasn't finished by then fails as unreachable, so nothing waiting behind it (the push
+// queue, sign-out) can hang on a stalled connection; edits stay on the device, as offline. A keepalive
+// request (a page being hidden) is left to the browser.
+export const REQUEST_TIMEOUT_MS = 15000;
+
 export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false } = {}) {
+  const signal = !keepalive && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
   let response;
+  let text;
   try {
     response = await fetch(`${SUPABASE_URL}${path}`, {
       method,
       keepalive,
+      signal,
       headers: {
         apikey: SUPABASE_KEY,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -97,10 +109,10 @@ export async function request(path, { method = 'GET', body, token, headers = {},
       },
       body: body ? JSON.stringify(body) : undefined,
     });
+    text = await response.text();
   } catch {
     throw new AuthError('Can’t reach the account service. Check your connection.');
   }
-  const text = await response.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch {}
   if (!response.ok) {
@@ -167,10 +179,14 @@ export async function freshSession(session = loadSession()) {
   if (session.expires_at - 60 > Date.now() / 1000) return session;
   try {
     const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token } });
-    return storeSession(data);
+    // Stored only while the device is still signed in as this user: another tab may have signed out, or
+    // in as someone else, since this tab read the session.
+    return loadSession()?.user.id === session.user?.id ? storeSession(data) : sessionFrom(data);
   } catch (error) {
-    // A rejected refresh token means the session is over; a network failure keeps it for later.
-    if (error.status >= 400 && error.status < 500) remove(SESSION_KEY);
+    // A rejected refresh token means the session is over; a network failure keeps it for later. Only the
+    // session whose token was refused is removed, never one another tab stored since (a newer token, or
+    // another account).
+    if (error.status >= 400 && error.status < 500 && loadSession()?.refresh_token === session.refresh_token) remove(SESSION_KEY);
     throw error;
   }
 }
