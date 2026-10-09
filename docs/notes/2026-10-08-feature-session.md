@@ -51,7 +51,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - The "first-try errors" label wraps to two lines in the 3-column facts grid, so main-row labels sit at uneven heights.
 
 ### From the missed-words practice work (PR #23)
-- A persistent "words you keep missing" list in Training was not built. It's the natural next step. It should work for guests within the tab (in memory, like their runs) and persist only for signed-in users.
+- A persistent "words you keep missing" list in Training was not built here. It should work for guests within the tab (in memory, like their runs) and persist only for signed-in users. #58, stacked on #23, builds it (see the #58 notes below).
 - From a missed-words or drill result with no baseline there's no direct way back to normal practice except the dock nav (src/app.js ~1785, `run-again`).
 - The run card is sticky (src/styles.css:1167, `top: 104px`). At 1280×800 it's taller than the viewport, so the conditions and actions sit below the fold. Shorten the graph or move conditions/actions up.
 - The results page now has up to four nearby buttons (Start drill, Skip to retest, Run again, Practice words). It needs an action-hierarchy pass: one primary, the rest quiet.
@@ -78,7 +78,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - The "Paper" redesign mockups live only on your laptop. Commit or export them under `design/paper/` as reference material, so a future session can build them as an opt-in proposal theme (like PR #24). They stay non-binding until PRODUCT.md and DESIGN.md adopt them; Afterimage remains the shipped system.
 - Hosting check (22:45 UTC): PRs still deploy only to Vercel (Vercel status + Vercel Preview Comments check); there's no Cloudflare config or check. Production `typingsite-toby-godats-projects.vercel.app` is behind Vercel Deployment Protection. `typingsite.vercel.app` is someone else's site. If a custom domain is behind Cloudflare DNS, that couldn't be verified from the sandbox.
 - Many open PRs (#18–#26+) each touch src/app.js, index.html and src/styles.css, as does #17. Expect merge conflicts; merge small ones first (caps lock, restart key, export), then re-run CI on the rest.
-- The Codex review bot hit its usage limit during this session, so later rounds used independent multi-agent reviews instead (three rounds on #51).
+- The Codex review bot hit its usage limit during this session, so later rounds used independent multi-agent reviews instead (three rounds on #51). #58 and #59 had no Codex review; their fixes came from independent reviews (28b8a83, 9975de0).
 
 ### From reviewing the PR screenshots
 - Run card (PR #22): c/i/e/m reads 51/0/0/0 while first-try errors reads 1 and the word history marks "day" as mistyped. "incorrect" counts the final state, so a corrected mistake disappears from it. Side by side, the two numbers look contradictory. Keep c/i/e/m a partition of the final character state, and keep first-try errors as separate first-attempt evidence (the metric contract). The fix is the label: call it "left incorrect", or drop the field. Don't redefine "incorrect" as first-try errors, which would count a corrected letter twice.
@@ -178,7 +178,7 @@ These are flags and ideas collected while building the Tier 1–2 features from 
 - **View jumps (#42):** rule toggles no longer move you off Progress or the challenge screen; master's `resetSession` always switches view. Other settings that reset (word list, #21 numbers, #32 error modes) probably jump the same way. Check when merging.
 - **Conditions builder (#42):** `sessionConditions(kind)` and `ruleLimits(ruleSession())` are the start of cross-cutting item 3. The handoff's merge rules list the session kinds to route through them.
 
-### From the round-2 feature PRs (#44–#55)
+### From the round-2 feature PRs (#44–#59)
 The handoff carries the migrations, the bugs found on master, the merge rules and the decisions for these PRs. These are the remaining flags, ideas and follow-ups.
 
 **#44 standard test**
@@ -271,6 +271,7 @@ The handoff carries the migrations, the bugs found on master, the merge rules an
 - The board doesn't poll. It refreshes on open, on Refresh and after this tab publishes. An open board also reads again once after 00:00 UTC on the service's clock. These automatic reads are quiet in the status line. Sharing turned on in another tab shows at once, and the board only re-reads (3dea114).
 - `supabase/tests/friends-board.sql` now makes every RPC call as `authenticated`, or as `anon` when there's no JWT subject (f3caecd). A review finding about a missing EXECUTE grant was wrong (the migration grants it at line 296), but the old test couldn't have caught one; see the handoff's SQL test note.
 - The #51 fixer first flagged the profile-sync data loss, now confirmed; see the handoff's "Bugs found on master" and its #51 merge rule.
+- **Open, not fixed:** the daily result is dated on the device's clock, and a device more than a day off can get every board write refused. See the handoff's decision 15.
 - **On master today:** `#challenge-online` keeps `btn-secondary` while the other mode buttons are `btn-ghost`, so Online always looks bordered.
 
 **#52 still progress line**
@@ -305,3 +306,36 @@ The handoff carries the migrations, the bugs found on master, the merge rules an
 - A run with an emoji or another astral character can't be sent, and the sender sees no reason. A reply with one shows "A character a ghost race can’t replay, so not sent."
 - #55's tests hit master's speed-graph overflow (see the #35–#43 section); #36 fixes it.
 - Ideas: list sent and received ghost races on Challenge → Online; keep the reply trace so the sender can watch the friend's run; add a palette command to challenge a friend with this run.
+
+**#58 missed-words list (stacked on #23)**
+- **Recording:** each counted run keeps `missedWords`, the words missed on the first try, up to 12 (`MAX_MISSED_WORDS`, `src/insights.js:5`; recorded at `:25` on #58). Counted runs are complete tests, retests and new daily passages, the runs pattern memory reads (`patternRun`, `:50-51`). Word practice, drills, races and interrupted runs keep none. `retainRuns` keeps the field on the newest 120 counted runs only (`:32-44`).
+- The list counts only runs on the newest counted run's input class, so touch is never pooled with a physical keyboard. All other test conditions are pooled, and the note under the heading says so (`recurringMissedWords`, `src/insights.js:118`; `renderMissedWords`, `src/app.js:1200` on #58).
+- PRODUCT.md's signed-in retention line now lists the missed words (`PRODUCT.md:49` on #58).
+- The list's button checks the runs again when pressed (`practiseMissedList`, `src/app.js:873` on #58). If a sync or another tab changed them, it redraws the list first and practises the words the runs hold now. With fewer than two left it starts nothing, announces that and moves focus to the heading (28b8a83).
+- The guest e2e test no longer checks `#best`: it shows the best for the practice settings, never a word-practice key, so it couldn't fail. The signed-in test's check of the stored bests is the proof (`e2e/missed-words-list.spec.js:116-117`, `:212` on #58).
+- **Changes to #23's code:**
+  - `startWordPractice` clears `trainingContext` (`src/app.js:854-859` on #58), so a drill's context from earlier doesn't carry into the next retest's record. #23's "Practice words" button now goes through it (`:844`).
+  - `resetSession('missed')` with no words to practise starts a normal test (`src/app.js:476`). Clear history empties the practised words (`:1465`), so Run again after a clear starts a normal test.
+- **Still flagged from #23:**
+  - The retest after word practice records `target` and `recommendationKind` from the active recommendation (`src/app.js:997-998` on #58). `'missed-words'` would be more honest.
+  - The slow-word copy is ambiguous for numeric tokens, for example "3 80 wpm" (`src/app.js:841`).
+- **Pre-existing:** `adoptProfile` doesn't re-render Train (`src/app.js:1555-1563` on #58, the same on master), so a sync while Train is open leaves the list stale. The button's check covers a press; the handoff's #57 + #58 rule covers the rest.
+- **No backfill:** summaries stored before #58 carry no missed words, and nothing rebuilds them from the 24 kept traces (`normalizeProfile` makes records from traces only for a profile with no `runs`, `src/app.js:80` on #58). Someone with a long history sees "no runs counted so far" until a new counted run, and no list until two.
+
+**#59 friends bests (stacked on #51)**
+- Bests come from the run summaries since the board's clear, the same runs as the week's practice, not from the profile's bests (`summary`, `src/friends-board.js:379-380` on #59). Profile bests are wpm-only and follow the profile's history, not the board's clear.
+- Eligible runs: completed, uninterrupted test or retest runs in time, words or quote mode, dated and within the service's limits (`shareableBest`, `src/friends-board.js:41`).
+- At most 16 shapes, the keys this build can compare first (`MAX_SHAPES`, `:18`; `shapeBests`, `:54`). A best's date runs from 2026-01-01 to tomorrow on the service's clock (`:21`, `:60`); the service checks the same (`20261009150000_friends_bests.sql:63`).
+- `shapeOf` (`src/friends-board.js:104-120`) lists a key only if it has 11 parts, each a value this build writes. The option lists (`TEST_DURATIONS`, `TEST_COUNTS`, `QUOTE_LENGTHS`, `QUOTE_DIFFICULTIES`, `INPUT_CLASSES`, `CORRECTION_POLICIES`) now live in `src/typing.js:311-316`. A unit test checks index.html's quote and word-list options against them (`tests/friends-bests.test.js:159-161`). The handoff's merge rules list the PRs that change the key, and #32's policies.
+- **Changes to #51's client:**
+  - `learnClock` (`src/friends-board.js:396-398`): a tab whose first request would be a write reads the board once first, so its bests are dated on the service's clock. It runs before a publish (`:568`) and before turning sharing on (`:829`). Side effect: a tab that hasn't heard from the board since loading learns the latest clear from that read, instead of being refused once and retrying.
+  - Two #51 e2e tests were adjusted for it. "a clear on one device stays cleared when a tab that missed it publishes" (`e2e/friends-leaderboard.spec.js:604` on #59) now opens the board in the second tab before the clear, so its next write goes without a read. "a clear another tab left is sent from a tab mid-run only once the run is over" (`:1409`) now expects a `board` read before the `replace`.
+  - `boardSummary` takes an `offset` and returns `bests`; two `tests/friends-board.test.js` assertions now expect `bests: {}` (`:62`, `:105`).
+  - `describeConditions` is now built from `conditionParts` (`src/app.js:190`), which the shape picker also uses.
+- The stale-tab test proves pre-clear bests are not resent (`e2e/friends-bests.spec.js:328` on #59).
+- **Flags:**
+  - `storeAttempt`'s `eligibleBest` (`src/app.js:774` on #59) duplicates `trendRun` (`src/insights.js:28`). A shared helper would keep them from drifting.
+  - Ties: profile bests compare wpm only and keep the first run at a speed (`src/app.js:778`). The board breaks a tie by accuracy, then the earlier date (`src/friends-board.js:67`). So on a tie the "You" row can show a different run's accuracy and date from the profile's best.
+  - A best older than the newest 1,000 run summaries (`MAX_RUN_SUMMARIES`, `src/insights.js:3`) is no longer sent. Publishes fold, so the service keeps it until the row's bests are rebuilt: by an undo, by sharing turned off and on, or by the 16-shape cut.
+  - On desktop the Bests column sits alone in the left half of a second grid row: `.friends-board-lists` has two columns (`src/styles.css:1505`), and one at ≤760px.
+  - #51's board screenshots (`docs/screenshots/friends-leaderboard/`) predate the Bests section; #59's are in `docs/screenshots/friends-bests/`.
