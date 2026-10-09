@@ -586,9 +586,8 @@ test('a clear on one device stays cleared when a tab that missed it publishes', 
   await page.locator('#confirm-clear-input').fill('clear');
   await page.locator('#confirm-clear').click();
   await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('replace');
-  expect(supabase.board.published.at(-1)).toMatchObject({ clear: true, week: { runs: 0 } });
-  const { clearedAt } = supabase.board.summaries.get(ada.id);
-  expect(clearedAt).toBeTruthy();
+  const { clear } = supabase.board.summaries.get(ada.id);
+  expect(supabase.board.published.at(-1)).toMatchObject({ clear, week: { runs: 0 } });
 
   // The stale tab finishes a run. Sent with all six runs it is refused; it learns the clear and sends
   // only the run since, so the board doesn't get the cleared five back.
@@ -596,14 +595,71 @@ test('a clear on one device stays cleared when a tab that missed it publishes', 
   await completePassage(second);
   await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('publish');
   expect(supabase.board.refused).toHaveLength(1);
-  expect(supabase.board.refused[0]).toMatchObject({ action: 'publish', clearedAt: null, week: { runs: 6 } });
-  expect(supabase.board.published.at(-1)).toMatchObject({ clearedAt, week: { runs: 1 } });
-  expect(supabase.board.summaries.get(ada.id)).toMatchObject({ sharing: true, clearedAt, week: { start: mondayOf(), runs: 1 } });
+  expect(supabase.board.refused[0]).toMatchObject({ action: 'publish', clear: null, week: { runs: 6 } });
+  expect(supabase.board.published.at(-1)).toMatchObject({ clear: clear.id, week: { runs: 1 } });
+  expect(supabase.board.summaries.get(ada.id)).toMatchObject({ sharing: true, clear, week: { start: mondayOf(), runs: 1 } });
   // It keeps the clear for its next run, which goes through at once.
   await second.locator('#run-again').click();
   await completePassage(second);
   await expect.poll(() => supabase.board.summaries.get(ada.id).week.runs).toBe(2);
   expect(supabase.board.refused).toHaveLength(1);
+});
+
+test('a clear made offline keeps its own time, so the runs after it count once it gets through', async ({ page, context, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  sharing(supabase, ada, { runs: practiceThisWeek(3) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  supabase.offline = true;
+  await context.setOffline(true);
+  // Cleared and one run made offline, then a second run once back online.
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(page.locator('#history-feedback')).toHaveText('History cleared.');
+  const clearedHere = Date.now();
+  await openView(page, 'Practice');
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.waitForTimeout(2000);
+  expect(supabase.board.published).toEqual([]);
+  supabase.offline = false;
+  await context.setOffline(false);
+  // The clear arrives late, carrying the run made after it and the time it happened here.
+  await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('replace');
+  expect(supabase.board.published.at(-1)).toMatchObject({ week: { runs: 1 } });
+  const { clear } = supabase.board.summaries.get(ada.id);
+  expect(Date.parse(clear.from)).toBeLessThan(clearedHere + 1000);
+  await page.locator('#run-again').click();
+  await completePassage(page);
+  // Both runs since the clear count.
+  await expect.poll(() => supabase.board.summaries.get(ada.id).week.runs).toBe(2);
+  expect(supabase.board.published.at(-1)).toMatchObject({ action: 'publish', clear: clear.id, week: { runs: 2 } });
+});
+
+test('an undo is refused when another device cleared after it, and the board stays cleared', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  sharing(supabase, ada, { runs: practiceThisWeek(3) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('replace');
+  const mine = supabase.board.summaries.get(ada.id).clear;
+  // Another device clears too, after this one; then this tab undoes its own clear.
+  const newer = supabase.board.clearElsewhere(ada.id);
+  await page.locator('#undo-clear').click();
+  await expect(page.locator('#history-feedback')).toHaveText('History restored here. The friends board keeps a newer clear from another device.');
+  await expect(page.locator('#undo-clear')).toBeHidden();
+  expect(supabase.board.refused.at(-1)).toMatchObject({ action: 'replace', undo: mine.id, week: { runs: 3 } });
+  // The tab then sends its runs since the newer clear (none), and the board stays cleared.
+  await expect.poll(() => supabase.board.published.at(-1)?.clear).toBe(newer.id);
+  expect(supabase.board.summaries.get(ada.id)).toMatchObject({ clear: newer, week: { runs: 0 }, daily: null });
+  // This tab keeps its restored history.
+  await expect(page.locator('#clear-history')).toBeVisible();
 });
 
 test('turning sharing off removes your row, and a tab that missed it can’t share again', async ({ page, supabase }) => {
@@ -643,7 +699,7 @@ test('turning sharing off removes your row, and a tab that missed it can’t sha
     await expect(page.locator('#friends-board-lists')).toBeHidden();
     expect(supabase.board.published.at(-1)).toMatchObject({ action: 'unshare' });
     // Only a marker with no numbers is left.
-    expect(supabase.board.summaries.get(ada.id)).toEqual({ sharing: false, clearedAt: null, daily: null, week: null });
+    expect(supabase.board.summaries.get(ada.id)).toMatchObject({ sharing: false, daily: null, week: null });
 
     // Lin no longer sees her.
     await linPage.locator('#refresh-friends-board').click();

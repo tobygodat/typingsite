@@ -22,8 +22,10 @@ declare
   lin_row text;
   bad jsonb;
   act text;
-  cleared text;
-  stale text;
+  g1 uuid := gen_random_uuid();
+  g2 uuid := gen_random_uuid();
+  g3 uuid := gen_random_uuid();
+  t text;
   denied boolean;
 begin
   insert into auth.users (id,email,email_confirmed_at) values
@@ -51,7 +53,8 @@ begin
   -- nothing, and its board is empty.
   perform set_config('request.jwt.claim.sub',ada::text,true);
   foreach act in array array['publish','replace'] loop
-    board := public.friends_board(act,jsonb_build_object('daily',null,'week',week));
+    board := public.friends_board(act,jsonb_build_object('daily',null,'week',week,'clear',case when act = 'replace'
+      then jsonb_build_object('id',gen_random_uuid(),'from',to_jsonb(clock_timestamp())#>>'{}') end));
     if (board->>'sharing')::boolean or board->'rows' <> '[]'::jsonb or exists(select 1 from race_private.summaries where user_id = ada) then
       raise exception 'A % from an account that does not share was stored: %', act, board;
     end if;
@@ -86,8 +89,10 @@ begin
     jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',604801,'runs',1)),
     jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',-60,'runs',1)),
     jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',60)),
-    jsonb_build_object('daily',null,'week',week,'clearedAt','yesterday','restore','yesterday'),
-    jsonb_build_object('daily',null,'week',week,'clearedAt',7,'restore',7)
+    jsonb_build_object('daily',null,'week',week,'clear','yesterday'),
+    jsonb_build_object('daily',null,'week',week,'clear',7),
+    jsonb_build_object('daily',null,'week',week,'clear',jsonb_build_object('id','not-an-id','from','2026-10-09T10:00:00Z')),
+    jsonb_build_object('daily',null,'week',week,'clear',jsonb_build_object('id',gen_random_uuid(),'from','yesterday'))
   ] loop
     denied := false;
     begin perform public.friends_board(act,bad);
@@ -131,44 +136,65 @@ begin
     or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1900,'runs',41) then
     raise exception 'A daily from another build did not replace the stored one: %', board;
   end if;
-  -- A history clear replaces the row, so the numbers can go down and a daily can go, and records when.
-  board := public.friends_board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),'clear',true));
-  cleared := board->>'clearedAt';
-  if cleared is null or jsonb_typeof(board->'rows'->0->'daily') <> 'null' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) then
-    raise exception 'A clear did not replace the stored summary: %', board;
+  -- A history clear replaces the row, so the numbers can go down and a daily can go. It keeps the id the
+  -- browser gave it and the time it happened there, even when the request arrives much later.
+  t := to_jsonb(clock_timestamp() - interval '10 minutes')#>>'{}';
+  board := public.friends_board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+    'clear',jsonb_build_object('id',g1,'from',t)));
+  if board->'clear'->>'id' is distinct from g1::text or (board->'clear'->>'from')::timestamptz <> t::timestamptz
+    or jsonb_typeof(board->'rows'->0->'daily') <> 'null' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) then
+    raise exception 'A delayed clear lost the time it happened: %', board;
   end if;
-  -- A browser that missed the clear (it has seen none, or an older one) is refused, changing nothing,
-  -- however it writes, and the reply tells it the clear it missed.
-  stale := to_jsonb(cleared::timestamptz - interval '1 second')#>>'{}';
+  -- A browser that missed the clear (it knows none, or another) is refused, changing nothing, however
+  -- it writes, and the reply names the clear it missed.
   foreach bad in array array[
     jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week),
-    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'clearedAt',null),
-    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'clearedAt',stale)
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'clear',null),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'clear',gen_random_uuid())
   ] loop
     foreach act in array array['publish','share'] loop
       board := public.friends_board(act,bad);
-      if not coalesce((board->>'refused')::boolean, false) or board->>'clearedAt' <> cleared or not (board->>'sharing')::boolean
+      if not coalesce((board->>'refused')::boolean, false) or board->'clear'->>'id' is distinct from g1::text or not (board->>'sharing')::boolean
         or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
         raise exception 'A % that missed the clear was taken: % gave %', act, bad, board;
       end if;
     end loop;
   end loop;
-  -- With the clear it has seen, a browser's runs since then are folded in as usual.
-  board := public.friends_board('publish',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',60,'runs',1),'clearedAt',cleared));
+  -- Naming the clear, a browser's runs since then are folded in as usual.
+  board := public.friends_board('publish',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',60,'runs',1),'clear',g1));
   if board ? 'refused' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',60,'runs',1) then
-    raise exception 'A publish that saw the clear was refused: %', board;
+    raise exception 'A publish that named the clear was refused: %', board;
   end if;
-  -- An undo puts back the numbers and the clear from before it (none), so a browser that never saw
-  -- the clear may publish again.
-  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'restore',null));
-  if board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',97,'attempts',2)
-    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) or jsonb_typeof(board->'clearedAt') <> 'null' then
-    raise exception 'An undo did not restore the summary: %', board;
+  -- A newer clear from another device wins: an undo of the first clear is refused, and so is an older
+  -- clear that arrives late, both changing nothing.
+  board := public.friends_board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+    'clear',jsonb_build_object('id',g2,'from',to_jsonb(clock_timestamp() - interval '1 minute')#>>'{}')));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text then raise exception 'A newer clear was refused: %', board; end if;
+  foreach bad in array array[
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g1),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'clear',jsonb_build_object('id',gen_random_uuid(),'from',to_jsonb(clock_timestamp() - interval '20 minutes')#>>'{}'))
+  ] loop
+    board := public.friends_board('replace',bad);
+    if not coalesce((board->>'refused')::boolean, false) or board->'clear'->>'id' is distinct from g2::text
+      or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
+      raise exception 'An older undo or clear overtook a newer clear: % gave %', bad, board;
+    end if;
+  end loop;
+  -- An undo of the latest clear puts back the numbers it sends and the clear before it, with its time.
+  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g2));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g1::text or (board->'clear'->>'from')::timestamptz <> t::timestamptz
+    or board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',97,'attempts',2)
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) then
+    raise exception 'An undo did not restore the summary and the clear before it: %', board;
   end if;
-  board := public.friends_board('publish',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',10,'runs',1)));
-  if board ? 'refused' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) then
-    raise exception 'A publish after the undo was refused or lowered the row: %', board;
+  -- A clock running ahead can't place a clear in the future.
+  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,
+    'clear',jsonb_build_object('id',g3,'from',to_jsonb(clock_timestamp() + interval '1 day')#>>'{}')));
+  if board->'clear'->>'id' is distinct from g3::text or (board->'clear'->>'from')::timestamptz > clock_timestamp() then
+    raise exception 'A clear was placed in the future: %', board;
   end if;
+  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g3));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g1::text then raise exception 'Undoing the clear from ahead failed: %', board; end if;
 
   -- Lin has Ada on her list, but Ada has not chosen Lin: neither sees the other.
   perform set_config('request.jwt.claim.sub',lin::text,true);
@@ -227,8 +253,8 @@ begin
   -- Yesterday's daily and last week's practice read as nothing yet, whatever the session time zone.
   perform set_config('TimeZone','Pacific/Kiritimati',true);
   perform set_config('request.jwt.claim.sub',lin::text,true);
-  perform public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today - 1,'version',v,'wpm',75,'accuracy',95,'attempts',1),
-    'week',jsonb_build_object('start',monday,'seconds',800,'runs',13)));
+  update race_private.summaries set daily_date = today - 1, daily_wpm = 75, daily_accuracy = 95, daily_attempts = 1,
+    week_seconds = 800, week_runs = 13 where user_id = lin;
   perform set_config('request.jwt.claim.sub',ada::text,true);
   board := public.friends_board('board','{}');
   if board->>'date' <> today::text or jsonb_typeof(board->'rows'->1->'daily') <> 'null' or board->'rows'->1->'week'->>'seconds' <> '800' then
@@ -255,7 +281,8 @@ begin
   perform set_config('request.jwt.claim.sub',ada::text,true);
 
   -- Clearing a daily result clears it for friends too.
-  perform public.friends_board('replace',jsonb_build_object('daily',null,'week',week));
+  perform public.friends_board('replace',jsonb_build_object('daily',null,'week',week,
+    'clear',jsonb_build_object('id',gen_random_uuid(),'from',to_jsonb(clock_timestamp())#>>'{}')));
   perform set_config('request.jwt.claim.sub',lin::text,true);
   board := public.friends_board('board','{}');
   if jsonb_typeof(board->'rows'->1->'daily') <> 'null' or board->'rows'->1->'week'->>'seconds' <> '1830' then raise exception 'A cleared daily still showed.'; end if;
@@ -278,7 +305,8 @@ begin
     raise exception 'Turning sharing off kept numbers: %', board;
   end if;
   foreach act in array array['publish','replace'] loop
-    board := public.friends_board(act,jsonb_build_object('daily',null,'week',week));
+    board := public.friends_board(act,jsonb_build_object('daily',null,'week',week,'clear',case when act = 'replace'
+      then jsonb_build_object('id',gen_random_uuid(),'from',to_jsonb(clock_timestamp())#>>'{}') end));
     if not coalesce((board->>'refused')::boolean, false) or (board->>'sharing')::boolean or board->'rows' <> '[]'::jsonb then
       raise exception 'A % after turning sharing off was taken: %', act, board;
     end if;
@@ -303,6 +331,6 @@ begin
   -- Deleting an account deletes its row.
   delete from auth.users where id = ada;
   if exists(select 1 from race_private.summaries where user_id = ada) then raise exception 'A deleted account kept its board row.'; end if;
-  raise notice 'Friends board privacy, opt-in sharing, missed clears and opt-outs, mutual lists, limits, dates and merge checks passed.';
+  raise notice 'Friends board privacy, opt-in sharing, missed, delayed and overtaken clears, opt-outs, mutual lists, limits, dates and merge checks passed.';
 end $smoke$;
 rollback;

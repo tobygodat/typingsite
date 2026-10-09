@@ -1411,13 +1411,14 @@ function undoClear() {
   clearTimeout(clearTimer);
   $('history-feedback').textContent = 'History restored.';
   $('undo-clear').hidden = true;
+  clearTimeout(clearTimer);
   applyPreferences();
   setModeControls();
   renderHistory();
   renderTraining();
   renderDaily();
   friendsBoard?.schedulePublish({ replace: 'undo' });
-  setTimeout(() => { $('history-toast').hidden = true; }, 1600);
+  clearTimer = setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
 // ── Accounts ──────────────────────────────────────────────────────────────
@@ -2054,6 +2055,15 @@ friendsBoard = createFriendsBoard({
   signIn: () => openAccountDialog('signin'),
   // The button that asks for this disappears with the board, so focus lands on the Online selector.
   openOnline: () => { onlineRace.open(); $('challenge-online').focus(); },
+  // Another device cleared after the clear this undo reverses: this tab keeps its restored history, but
+  // the board keeps the newer clear. Said quietly where the undo was made.
+  onUndoRefused: () => {
+    $('history-feedback').textContent = 'History restored here. The friends board keeps a newer clear from another device.';
+    $('undo-clear').hidden = true;
+    $('history-toast').hidden = false;
+    clearTimeout(clearTimer);
+    clearTimer = setTimeout(() => { $('history-toast').hidden = true; }, 5000);
+  },
 });
 onlineRace = createOnlineRace({
   getSession: () => session,

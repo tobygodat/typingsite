@@ -15,10 +15,15 @@ create table race_private.summaries (
   user_id uuid primary key references auth.users(id) on delete cascade,
   -- False after turning sharing off: the row is then only a marker, with no numbers.
   sharing boolean not null,
-  -- The latest history clear on any device (an undo puts back the value from before it). A browser
-  -- must have seen it to share or publish, and counts only runs from then on, so a browser that missed
-  -- a clear can't bring the cleared numbers back.
-  cleared_at timestamptz,
+  -- The latest history clear on any device: an id the clearing browser made, and when it cleared by
+  -- that browser's clock (never later than the service's), however late the request arrived. A browser
+  -- must name it to share or publish, and counts only runs from then on, so a browser that missed a
+  -- clear can't bring the cleared numbers back.
+  clear_id uuid,
+  clear_from timestamptz,
+  -- The clear before it, which an undo of the latest one puts back.
+  undo_id uuid,
+  undo_from timestamptz,
   -- Today's best completed physical-keyboard daily attempt, and how many completed attempts there were.
   daily_date date,
   -- Which daily it was (conditions with corpus and metric version, and the passage), so a reader
@@ -34,7 +39,8 @@ create table race_private.summaries (
   updated_at timestamptz not null default now(),
   check (num_nulls(daily_date, daily_version, daily_wpm, daily_accuracy, daily_attempts) in (0, 5)),
   check (num_nulls(week_start, week_seconds, week_runs) = case when sharing then 0 else 3 end),
-  check (sharing or daily_date is null)
+  check (sharing or daily_date is null),
+  check ((clear_id is null) = (clear_from is null) and (undo_id is null) = (undo_from is null))
 );
 alter table race_private.summaries enable row level security;
 revoke all on race_private.summaries from public, anon, authenticated;
@@ -73,7 +79,7 @@ returns jsonb language sql set search_path = '' as $$
     select m.account_id, m.friend_row, m.name, false from mutual m
   )
   select jsonb_build_object('date', c.today, 'weekStart', c.week_start, 'sharing', coalesce(me.sharing, false),
-    'clearedAt', me.cleared_at, 'rows',
+    'clear', case when me.clear_id is not null then jsonb_build_object('id', me.clear_id, 'from', me.clear_from) end, 'rows',
     case when coalesce(me.sharing, false) then
       (select jsonb_agg(jsonb_build_object('self', p.self, 'id', p.friend_row, 'name', p.name,
           'daily', case when s.daily_date = c.today then jsonb_build_object('version', s.daily_version, 'wpm', s.daily_wpm,
@@ -88,11 +94,12 @@ $$;
 revoke all on function race_private.board_snapshot(uuid) from public, anon, authenticated;
 
 -- 'share' turns sharing on from a summary (or folds it into the row when already on). 'publish' folds a
--- summary into the row; it never turns sharing on. Both carry the last clear the browser has seen and
--- are refused, changing nothing, when it is older than the stored one, and a publish is refused while
--- not sharing; the reply ("refused") says what the browser missed. 'replace' (a history clear or its
--- undo) overwrites the numbers while sharing: 'clear' moves the last clear to now, 'restore' puts back
--- the value from before it. 'unshare' empties the row down to the marker.
+-- summary into the row; it never turns sharing on. Both name the latest clear the browser knows ('clear',
+-- an id or null) and are refused, changing nothing, when it isn't the stored one, and a publish is
+-- refused while not sharing; the reply ("refused") says what the browser missed. 'replace' overwrites
+-- the numbers while sharing, and is either a history clear ('clear': its id and when it happened) or the
+-- undo of one ('undo': the id it undoes). A clear older than the stored one, or an undo of a clear that
+-- is no longer the latest, is refused: the newer clear wins. 'unshare' empties the row down to the marker.
 create function race_private.board(p_action text, p_data jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
@@ -103,8 +110,10 @@ declare
   v_practice jsonb;
   v_date date;
   v_start date;
-  v_seen timestamptz;
-  v_field text;
+  v_known uuid;
+  v_clear_id uuid;
+  v_clear_from timestamptz;
+  v_undo uuid;
   v_new race_private.summaries;
   v_old race_private.summaries;
   v_same boolean;
@@ -139,14 +148,29 @@ begin
     v_start := (v_practice->>'start')::date;
     if extract(isodow from v_start) <> 1 or abs(v_start - v_week) > 7 or (v_practice->>'seconds')::integer > 604800
       or (v_practice->>'runs')::integer > 10000 then raise exception 'That practice time is outside the board limits.'; end if;
-    -- The last clear this browser has seen (share, publish), or the one an undo puts back (replace).
-    v_field := case when p_action = 'replace' then 'restore' else 'clearedAt' end;
-    if coalesce(jsonb_typeof(p_data->v_field), 'null') not in ('string', 'null')
-      or coalesce(p_data->>v_field, '2000-01-01T00:00:00Z')
-        !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?(Z|[+-][0-9]{2}(:?[0-9]{2})?)$' then
+    if p_action <> 'replace' then
+      -- The latest clear this browser knows, by id.
+      if coalesce(jsonb_typeof(p_data->'clear'), 'null') not in ('string', 'null')
+        or coalesce(p_data->>'clear', '00000000-0000-0000-0000-000000000000') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+        raise exception 'Invalid board request.';
+      end if;
+      v_known := (p_data->>'clear')::uuid;
+    elsif jsonb_typeof(p_data->'clear') = 'object' and not p_data ? 'undo' then
+      -- A clear: its id, and when it happened by the clearing browser's clock.
+      if coalesce(p_data->'clear'->>'id', '') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        or coalesce(p_data->'clear'->>'from', '')
+          !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?(Z|[+-][0-9]{2}(:?[0-9]{2})?)$' then
+        raise exception 'Invalid board request.';
+      end if;
+      v_clear_id := (p_data->'clear'->>'id')::uuid;
+      -- A clock running ahead can't place a clear in the future.
+      v_clear_from := least((p_data->'clear'->>'from')::timestamptz, clock_timestamp());
+    elsif jsonb_typeof(p_data->'undo') = 'string' and not p_data ? 'clear'
+        and p_data->>'undo' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+      v_undo := (p_data->>'undo')::uuid;
+    else
       raise exception 'Invalid board request.';
     end if;
-    v_seen := (p_data->>v_field)::timestamptz;
     v_new.user_id := v_uid;
     v_new.sharing := true;
     v_new.daily_date := v_date;
@@ -164,18 +188,28 @@ begin
       if found then return race_private.board_snapshot(v_uid); end if;
     end if;
     select * into v_old from race_private.summaries where user_id = v_uid for update;
-    -- Refused, changing nothing: no row or not sharing (except to turn it on), or a clear this browser missed.
+    -- Refused, changing nothing: no row or not sharing (except to turn it on); a share or publish that
+    -- missed the latest clear; a clear older than the latest; an undo of a clear that isn't the latest.
     if not found or (not v_old.sharing and p_action <> 'share')
-      or (p_action <> 'replace' and v_old.cleared_at is not null and (v_seen is null or v_seen < v_old.cleared_at)) then
+      or (p_action <> 'replace' and v_known is distinct from v_old.clear_id)
+      or (v_clear_id is not null and v_old.clear_from > v_clear_from)
+      or (p_action = 'replace' and v_clear_id is null and v_undo is distinct from v_old.clear_id) then
       return race_private.board_snapshot(v_uid) || jsonb_build_object('refused', true);
     end if;
-    v_new.cleared_at := v_old.cleared_at;
-    if p_action = 'replace' then
-      if p_data->'clear' = 'true'::jsonb then
-        v_new.cleared_at := greatest(clock_timestamp(), v_old.cleared_at + interval '1 microsecond');
-      elsif p_data ? 'restore' then
-        v_new.cleared_at := v_seen;
-      end if;
+    v_new.clear_id := v_old.clear_id;
+    v_new.clear_from := v_old.clear_from;
+    v_new.undo_id := v_old.undo_id;
+    v_new.undo_from := v_old.undo_from;
+    if v_clear_id is not null then
+      v_new.undo_id := v_old.clear_id;
+      v_new.undo_from := v_old.clear_from;
+      v_new.clear_id := v_clear_id;
+      v_new.clear_from := v_clear_from;
+    elsif p_action = 'replace' then
+      v_new.clear_id := v_old.undo_id;
+      v_new.clear_from := v_old.undo_from;
+      v_new.undo_id := null;
+      v_new.undo_from := null;
     elsif v_old.sharing then
       -- A browser's summary is a lower bound: another tab or device of the same account may hold runs
       -- this one never saw. So the stored daily stays unless this one is for a later day (today's
@@ -201,7 +235,8 @@ begin
         v_new.week_runs := v_old.week_runs;
       end if;
     end if;
-    update race_private.summaries set sharing = true, cleared_at = v_new.cleared_at, daily_date = v_new.daily_date,
+    update race_private.summaries set sharing = true, clear_id = v_new.clear_id, clear_from = v_new.clear_from,
+        undo_id = v_new.undo_id, undo_from = v_new.undo_from, daily_date = v_new.daily_date,
         daily_version = v_new.daily_version, daily_wpm = v_new.daily_wpm, daily_accuracy = v_new.daily_accuracy,
         daily_attempts = v_new.daily_attempts, week_start = v_new.week_start, week_seconds = v_new.week_seconds,
         week_runs = v_new.week_runs, updated_at = v_new.updated_at

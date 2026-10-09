@@ -1,8 +1,10 @@
 // The friends board for the browser tests: one row per account that shares, shown only to mutual
 // friends who share too and labelled with the reader's own name for them. It reads the friend lists
 // kept by e2e/fake-races.js. A test can set a summary directly ({ daily, week }) to stand for sharing
-// turned on elsewhere; `sharing: false` marks an account that turned it off, and `clearedAt` its last
-// history clear. supabase/tests/friends-board.sql checks the migration itself; this mirrors its replies.
+// turned on elsewhere; `sharing: false` marks an account that turned it off, `clear` ({ id, from }) its
+// latest history clear and `undo` the clear before it. supabase/tests/friends-board.sql checks the migration itself; this mirrors its replies.
+import { randomUUID } from 'node:crypto';
+
 const DAY_MS = 86400000;
 export const utcDay = (date = new Date()) => date.toISOString().slice(0, 10);
 export function mondayOf(date = new Date()) {
@@ -41,33 +43,36 @@ export class FakeBoard {
     return accounts;
   }
 
-  // As race_private.board: a publish or share that missed the last clear is refused, and so is a
-  // publish or replace while not sharing. Otherwise 'publish' (and 'share' while sharing) folds the
-  // summary in: the stored daily stays unless the new one is for a later day (today's first) or better
-  // on the same daily, and within a week the larger practice time and run count stay. 'share' while not
-  // sharing starts afresh. 'replace' overwrites it; 'clear' moves the last clear to now and 'restore'
-  // puts back the one before. True when the write was taken.
+  // As race_private.board: a publish or share that doesn't name the latest clear is refused, and so is a
+  // publish or replace while not sharing, a clear older than the latest, and an undo of a clear that
+  // isn't the latest. Otherwise 'publish' (and 'share' while sharing) folds the summary in: the stored
+  // daily stays unless the new one is for a later day (today's first) or better on the same daily, and
+  // within a week the larger practice time and run count stay. 'share' while not sharing starts afresh.
+  // 'replace' overwrites it: a clear keeps its id and the time it happened (never later than now), and
+  // an undo puts back the clear before. True when the write was taken.
   store(caller, action, data) {
     const now = this.now();
     const today = utcDay(now);
     const thisWeek = mondayOf(now);
     const old = this.summaries.get(caller);
-    const cleared = old?.clearedAt ?? null;
-    const seen = action === 'replace' ? data.restore : data.clearedAt;
-    if (action !== 'replace' && cleared && (!seen || Date.parse(seen) < Date.parse(cleared))) return false;
+    const current = old?.clear ?? null;
+    const clear = action === 'replace' && data.clear
+      ? { id: data.clear.id, from: new Date(Math.min(Date.parse(data.clear.from), now.getTime())).toISOString() } : null;
+    if (action !== 'replace' && (data.clear ?? null) !== (current?.id ?? null)) return false;
     if (!old) {
       if (action !== 'share') return false;
-      this.summaries.set(caller, { sharing: true, clearedAt: null, daily: data.daily || null, week: { ...data.week } });
+      this.summaries.set(caller, { sharing: true, clear: null, undo: null, daily: data.daily || null, week: { ...data.week } });
       return true;
     }
     if (!shares(old) && action !== 'share') return false;
-    const next = { sharing: true, clearedAt: cleared, daily: data.daily || null, week: { ...data.week } };
-    if (action === 'replace') {
-      if (data.clear === true) next.clearedAt = new Date(Math.max(now.getTime(), cleared ? Date.parse(cleared) + 1 : 0)).toISOString();
-      else if ('restore' in data) next.clearedAt = data.restore;
-    } else if (shares(old)) {
+    if (clear && current && Date.parse(current.from) > Date.parse(clear.from)) return false;
+    if (action === 'replace' && !clear && data.undo !== current?.id) return false;
+    const next = { sharing: true, clear: current, undo: old.undo ?? null, daily: data.daily || null, week: { ...data.week } };
+    if (clear) Object.assign(next, { clear, undo: current });
+    else if (action === 'replace') Object.assign(next, { clear: old.undo ?? null, undo: null });
+    else if (shares(old)) {
       // Today's (or this week's) first, then the later date.
-      const ahead = (a, b, current) => (a === current) !== (b === current) ? a === current : a > b;
+      const ahead = (a, b, latest) => (a === latest) !== (b === latest) ? a === latest : a > b;
       const same = Boolean(old.daily && next.daily && old.daily.date === next.daily.date && old.daily.version === next.daily.version);
       if (same) next.daily = { ...next.daily, attempts: Math.max(old.daily.attempts, next.daily.attempts) };
       const better = same && (old.daily.wpm - next.daily.wpm || old.daily.accuracy - next.daily.accuracy) > 0;
@@ -80,6 +85,14 @@ export class FakeBoard {
     }
     this.summaries.set(caller, next);
     return true;
+  }
+
+  // Another device of the account clears its history now.
+  clearElsewhere(user) {
+    const old = this.summaries.get(user);
+    const clear = { id: randomUUID(), from: this.now().toISOString() };
+    this.summaries.set(user, { ...old, clear, undo: old?.clear ?? null, daily: null, week: { start: mondayOf(this.now()), seconds: 0, runs: 0 } });
+    return clear;
   }
 
   board(viewer) {
@@ -96,10 +109,10 @@ export class FakeBoard {
         week: summary?.week?.start === weekStart ? { seconds: summary.week.seconds, runs: summary.week.runs } : null };
     };
     // Someone who doesn't share sees nobody, and nobody sees them.
-    if (!shares(own)) return { date, weekStart, sharing: false, clearedAt: own?.clearedAt ?? null, rows: [] };
+    if (!shares(own)) return { date, weekStart, sharing: false, clear: own?.clear ?? null, rows: [] };
     const mutual = [...this.listed(viewer)].filter(([account]) => shares(this.summaries.get(account))
       && (this.auth.races.friends.get(account) || []).some((friend) => friend.friendId === viewer || friend.email === email));
-    return { date, weekStart, sharing: true, clearedAt: own.clearedAt ?? null, rows: [row(viewer, { self: true, id: null, name: null }),
+    return { date, weekStart, sharing: true, clear: own.clear ?? null, rows: [row(viewer, { self: true, id: null, name: null }),
       ...mutual.map(([account, friend]) => row(account, { self: false, id: friend.id, name: friend.name }))
         .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))] };
   }
@@ -121,7 +134,8 @@ export class FakeBoard {
       this.published.push({ caller, action, ...data });
     } else if (action === 'unshare') {
       this.published.push({ caller, action });
-      this.summaries.set(caller, { sharing: false, clearedAt: this.summaries.get(caller)?.clearedAt ?? null, daily: null, week: null });
+      const old = this.summaries.get(caller);
+      this.summaries.set(caller, { sharing: false, clear: old?.clear ?? null, undo: old?.undo ?? null, daily: null, week: null });
     } else if (action !== 'board') return reply(400, { message: 'Unknown board action.' });
     return reply(200, this.board(caller));
   }

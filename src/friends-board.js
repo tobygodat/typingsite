@@ -44,7 +44,7 @@ export function boardSummary(runs, dailyKey, date = new Date()) {
   };
 }
 
-// Runs from `since` on (an ISO time from the service), or all of them when there is none.
+// Runs from `since` on (the time of the latest clear, as the service holds it), or all of them when there is none.
 export function runsSince(runs, since) {
   const from = since ? Date.parse(since) : Number.NaN;
   return Number.isNaN(from) ? runs : runs.filter((run) => run.at && Date.parse(run.at) >= from);
@@ -72,6 +72,7 @@ export function weekOrder(rows) {
   return [...rows].sort((a, b) => (b.week?.seconds ?? -1) - (a.week?.seconds ?? -1) || byName(a, b));
 }
 
+const newId = () => crypto.randomUUID();
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 async function call(session, action, data = {}) {
@@ -90,15 +91,16 @@ async function call(session, action, data = {}) {
 export const readBoard = (session) => call(session, 'board');
 // Publishing folds the summary into the stored one, keeping whatever another tab or device of the
 // account sent that this one lacks. Replacing (after a history clear or its undo) can lower it.
-// Publishing and sharing carry the last clear this tab has seen; the service refuses them, changing
-// nothing, if another device has cleared since, and its reply says when.
+// Publishing and sharing name the latest history clear this tab knows; the service refuses them,
+// changing nothing, if it holds another, and its reply names that clear and when it happened. A clear
+// sends its own id and the time it happened here; an undo names the clear it undoes.
 export const publishSummary = (session, summary, { replace = false } = {}) => call(session, replace ? 'replace' : 'publish', summary);
 // Turning sharing on shares this summary (or folds it into the row another device shares); publishing
 // and replacing never turn it on. Turning it off leaves only a marker with no numbers.
 export const shareSummary = (session, summary) => call(session, 'share', summary);
 export const stopSharing = (session) => call(session, 'unshare');
 
-export function createFriendsBoard({ getSession, canPublish, isSharing, setSharing, runs, dailyKey, isRunning, signIn, openOnline }) {
+export function createFriendsBoard({ getSession, canPublish, isSharing, setSharing, runs, dailyKey, isRunning, signIn, openOnline, onUndoRefused = () => {} }) {
   let visible = false;
   let loading = false;
   let board = null;
@@ -112,11 +114,13 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   // That change includes a history clear ('clear') or its undo ('undo'), so it replaces the stored
   // summary instead of adding to it.
   let replacing = false;
-  // The last history clear on any device that this tab has seen, from the service's replies. Summaries
-  // count only runs from then on, so a tab that missed a clear elsewhere can't bring cleared runs back.
-  let clearedAt = null;
-  // The clear in effect before this tab's own latest clear, which its undo puts back.
-  let clearedBefore = null;
+  // The latest history clear on any device, { id, from }, as the service's replies name it. Summaries
+  // count only runs from its time on, so a tab that missed a clear elsewhere can't bring cleared runs back.
+  let known = null;
+  // This tab's own latest clear, { id, from } stamped when it happened here, while the service may still
+  // hold it (an undo names it), and the clear before it, whose runs an undo sends again.
+  let mine = null;
+  let before = null;
   // A quiet line for the board when sharing was turned off on another device.
   let note = '';
   // Bumped by each switch of the sharing setting here, so a reply that crossed one doesn't count.
@@ -128,10 +132,10 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   // The UTC day, by this browser's clock, of the last board received. A new week always begins with a
   // new day. A read that fails leaves it, so the next check tries again.
   let readDay = '';
-  const summary = (since = clearedAt) => boardSummary(runsSince(runs(), since), dailyKey());
-  // Every reply says when this account's history was last cleared.
+  const summary = (since = known?.from) => boardSummary(runsSince(runs(), since), dailyKey());
+  // Every reply names this account's latest clear.
   function seen(result) {
-    if (result && 'clearedAt' in result) clearedAt = result.clearedAt;
+    if (result && 'clear' in result) known = result.clear;
     return result;
   }
 
@@ -155,6 +159,7 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
     pending = false;
     replacing = false;
     published = '';
+    mine = null;
   }
   // The row's removal waits behind any write already on its way.
   async function removeRow(session) {
@@ -183,15 +188,16 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
 
   // The service's reply, or null when a publish is unchanged. A replace is always sent: another tab or
   // device may have raised the stored summary since this one last sent the same numbers, and a clear or
-  // undo must still set it to exactly this tab's. A clear moves the last clear to now; an undo puts back
-  // the one before and sends the restored runs from then on. A failure leaves the change pending.
-  // Refused, the tab has learned what it missed: sharing off elsewhere, so it stops; or a clear
-  // elsewhere, so it sends its runs since then, once.
+  // undo must still set it to exactly this tab's. A clear sends the runs since it happened here, however
+  // late it goes out; an undo names that clear and sends the restored runs since the one before. A
+  // failure leaves the change pending. Refused, the tab has learned what it missed: sharing off
+  // elsewhere, so it stops; or a newer clear elsewhere (which also beats this tab's own clear or undo,
+  // and an undo then says so where it was made), so it sends its runs since that clear, once.
   async function sendChange(session, retried = false) {
     if (!isSharing()) { forget(); return null; }
     const mode = replacing;
-    const value = mode === 'undo' ? { ...summary(clearedBefore), restore: clearedBefore }
-      : mode === 'clear' ? { ...summary(), clear: true } : { ...summary(), clearedAt };
+    const value = mode === 'undo' ? { ...summary(before ? before.from : null), undo: mine.id }
+      : mode === 'clear' ? { ...summary(mine.from), clear: mine } : { ...summary(), clear: known?.id ?? null };
     const key = JSON.stringify(value);
     pending = false;
     replacing = false;
@@ -204,9 +210,11 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
       replacing ||= mode;
       throw error;
     }
+    if (mode === 'undo' || result?.refused) mine = null;
     if (result?.refused) {
-      if (!result.sharing) stoppedElsewhere();
-      else if (!retried) return sendChange(session, true);
+      if (!result.sharing) { stoppedElsewhere(); return result; }
+      if (mode === 'undo') onUndoRefused();
+      if (!retried) return sendChange(session, true);
       return result;
     }
     published = key;
@@ -309,8 +317,16 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   function schedulePublish({ replace } = {}) {
     if (!isSharing()) return;
     pending = true;
-    if (replace === 'clear' && replacing !== 'clear') clearedBefore = clearedAt;
-    if (replace) replacing = replace;
+    if (replace === 'clear') {
+      // The clear's identity: an id, and the time it happened here, kept however late it goes out.
+      if (replacing !== 'clear') before = known;
+      mine = { id: newId(), from: new Date().toISOString() };
+      replacing = 'clear';
+    } else if (replace === 'undo') {
+      // A clear that never left this tab and its undo cancel out; the restored summary goes as usual.
+      // A clear the board no longer holds (a newer one overtook it) can't be undone there.
+      if (replacing === 'clear') { replacing = false; mine = null; } else if (mine) replacing = 'undo'; else setTimeout(onUndoRefused);
+    }
     clearTimeout(publishTimer);
     publishTimer = setTimeout(async () => {
       const session = getSession();
@@ -344,7 +360,7 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
           // A clear this tab missed refuses the first try; the second sends the runs since then.
           let reply = null;
           for (let attempt = 0; attempt < 2 && (!reply || reply.refused); attempt += 1) {
-            const value = { ...summary(), clearedAt };
+            const value = { ...summary(), clear: known?.id ?? null };
             reply = seen(await shareSummary(session, value));
             if (!reply?.refused) published = JSON.stringify(value);
           }
