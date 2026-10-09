@@ -37,7 +37,6 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
   let ticker = 0;
   let interrupted = false;
   let unsupported = false;
-  let touched = false;
   let inputClass = 'physical-keyboard';
   let notice = '';
   let deck = [];
@@ -103,8 +102,6 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
   function start() {
     state = 'running';
     startedAt = now();
-    inputClass = touched ? 'touch' : 'physical-keyboard';
-    renderConditions();
     ticker = setInterval(tick, 100);
     renderClock();
   }
@@ -158,7 +155,6 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     input.readOnly = true;
     input.tabIndex = -1;
     $('compose-form').dataset.state = 'done';
-    touched = false;
     renderClock();
     setRunning(false);
     const counted = state === 'complete' && !unsupported && summary.measurable;
@@ -182,7 +178,8 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     interrupted = false;
     unsupported = false;
     notice = '';
-    inputClass = touched ? 'touch' : 'physical-keyboard';
+    // Each session starts as a physical keyboard, like a practice attempt.
+    inputClass = 'physical-keyboard';
     input.value = '';
     input.readOnly = false;
     input.removeAttribute('tabindex');
@@ -256,14 +253,12 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
   });
   input.addEventListener('drop', (event) => event.preventDefault());
 
-  // A touch on the surface before a start marks the next session as touch input.
-  $('compose-form').addEventListener('pointerdown', (event) => {
-    if (event.pointerType !== 'touch') return;
-    touched = true;
-    if (state === 'ready') {
-      inputClass = 'touch';
-      renderConditions();
-    }
+  // Only a touch on the writing field before the first key marks the session as touch input, as on
+  // the practice field; a tap on a button (Another prompt, Write another) types nothing.
+  input.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch' || state !== 'ready') return;
+    inputClass = 'touch';
+    renderConditions();
   });
   $('compose-form').addEventListener('submit', (event) => event.preventDefault());
   done.addEventListener('click', () => finish('done'));

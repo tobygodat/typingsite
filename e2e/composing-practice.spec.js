@@ -454,6 +454,40 @@ test('composing screenshots, dark and light', async ({ page }, testInfo) => {
   await page.screenshot({ path: shot(testInfo, 'progress-light') });
 });
 
+test.describe('touchscreen laptop', () => {
+  test.use({ hasTouch: true });
+
+  test('a tap on a button keeps physical keyboard; only a tap on the field means touch input', async ({ page }) => {
+    await startPausedClock(page);
+    await openCompose(page);
+    const conditions = page.locator('#compose-conditions');
+
+    // Another prompt by touch, then typed on the keyboard: a physical-keyboard session.
+    await page.locator('#compose-another').tap();
+    await expect(page.locator('#compose-input')).toBeFocused();
+    await expect(conditions).toContainText('physical keyboard');
+    await typePaced(page, [...'Toast, coffee and the radio on low. Then the bus.'], 230);
+    await expect(conditions).toContainText('physical keyboard');
+    await page.keyboard.press('Control+Enter');
+    await expect(page.locator('#compose-saved')).toHaveText('Kept for this tab: these numbers, not your words.');
+
+    // Write another by touch keeps the next session on the keyboard too, until the field is tapped.
+    await page.locator('#compose-next').tap();
+    await expect(conditions).toContainText('physical keyboard');
+    await page.locator('#compose-input').tap();
+    await expect(conditions).toContainText('touch input');
+    await typePaced(page, [...'The bus was late again, so I walked to work.'], 230);
+    await page.keyboard.press('Control+Enter');
+    await expect(page.locator('#compose-saved')).toHaveText('Kept for this tab: these numbers, not your words.');
+
+    await openView(page, 'Progress');
+    const rows = page.locator('#compose-history .compose-row');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.filter({ hasText: 'physical keyboard' })).toHaveCount(1);
+    await expect(rows.filter({ hasText: 'touch input' })).toHaveCount(1);
+  });
+});
+
 for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow phone', { width: 320, height: 640 }]]) {
   test.describe(`${name} ${viewport.width}px`, () => {
     test.use({ viewport, hasTouch: true, isMobile: true });
