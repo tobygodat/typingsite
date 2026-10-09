@@ -250,13 +250,16 @@ function showChrome(shown) {
   if (document.body.dataset.running !== value) document.body.dataset.running = value;
 }
 
+// The footer best belongs to the session on screen. A custom session (any non-comparable kind) has no best,
+// so it says it isn't counted rather than showing the best for the time or word settings underneath it.
 function currentBestKey() {
-  return conditionKey(conditions());
+  return comparableKind(sessionKind) ? conditionKey(conditions()) : null;
 }
 
 function showBest() {
-  const best = profile.bests[currentBestKey()];
-  $('best').textContent = best ? `Best · ${best.wpm} wpm` : 'No best yet';
+  const key = currentBestKey();
+  const best = key && profile.bests[key];
+  $('best').textContent = !key ? 'Not counted' : best ? `Best · ${best.wpm} wpm` : 'No best yet';
 }
 
 function resolvedTheme() {
@@ -472,7 +475,7 @@ function choosePassage(extraSeen = []) {
 }
 
 // Restarting or changing a setting keeps a custom passage; every other session restarts as practice.
-const restartKind = () => (sessionKind === 'custom' ? 'custom' : 'practice');
+const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custom' : 'practice');
 
 function sessionDurationMs() {
   if (sessionKind === 'daily') return null;
@@ -2040,7 +2043,8 @@ function inPractice(change) {
 
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
-  const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  // During a custom session no test shape is current, only "custom text".
+  const shape = (mode, length) => comparableKind(sessionKind) && prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
   const commands = [
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),

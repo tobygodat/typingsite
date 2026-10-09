@@ -117,6 +117,29 @@ test('a word list change keeps a custom passage, from settings or the palette', 
   expect(await passageText(page)).toBe(TEXT);
 });
 
+test('the footer best follows the session: none for custom, back for the word test', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
+  const best = await page.locator('#best').textContent();
+
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(TEXT);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#best')).toHaveText('Not counted');
+  // Nor does the palette call the word test current.
+  await page.locator('#palette-trigger').click();
+  const option = (label) => page.locator('#palette-list [role="option"]').filter({ hasText: label }).first();
+  await expect(option('custom text')).toContainText('current');
+  await expect(option('words · 10 words')).not.toContainText('current');
+  await page.keyboard.press('Escape');
+
+  await page.locator('#mode-words').click();
+  await expect(page.locator('#best')).toHaveText(best);
+});
+
 test('text too short to time is refused, and a short phrase is accepted', async ({ page }) => {
   await openApp(page);
   await page.locator('#mode-custom').click();
