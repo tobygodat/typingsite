@@ -3,6 +3,7 @@
 // a token only ever sees its own profile row.
 import { createHash, randomUUID } from 'node:crypto';
 import { FakeRaces } from './fake-races.js';
+import { FakeChallenges } from './fake-challenges.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -26,6 +27,7 @@ export class FakeSupabase {
     // Routed requests bypass context.setOffline, so offline tests flip this too.
     this.offline = false;
     this.races = new FakeRaces(this);
+    this.challenges = new FakeChallenges(this);
   }
 
   addUser(email, password = 'correct horse battery') {
@@ -83,6 +85,8 @@ export class FakeSupabase {
     switch (`${method} ${url.pathname}`) {
       case 'POST /rest/v1/rpc/race_action':
         return this.races.handle(caller, body, reply);
+      case 'POST /rest/v1/rpc/challenge_action':
+        return this.challenges.handle(caller, body, reply);
       case 'GET /auth/v1/settings':
         return reply(200, { external: { google: this.googleEnabled, email: true } });
 

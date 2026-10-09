@@ -28,6 +28,7 @@ Product behaviour:
 - Condition-aware bests; drills, challenges and interrupted attempts do not become personal bests.
 - Online two-player challenges via Supabase: account invitations in the Challenge inbox or a shareable guest link, ready states, a synchronized countdown, live progress, reconnection and observed results. Hosts sign in; invited guests need no account. Original shared-keyboard challenges remain under One keyboard.
 - Friends, Race again and the inbox (7 October 2026): a private per-account friend list (saved from an email invite or added after a race) with one-click Challenge; Race again on any closed two-player race, keeping both seats; an envelope inbox beside the account button and an 18-second top-right toast for incoming challenges and rematches. See `docs/online-races.md`.
+- Ghost races (9 October 2026): "Challenge a friend with this run" under a finished practice, retest or daily run sends its text, conditions and a compact keystroke trace to a friend. The friend races it from the inbox within seven days on the practice surface, against a periwinkle ghost caret replaying the sender's keys; both inboxes get who finished first and both wpm. Runs are kind `challenge` and stay out of bests, trends, comparisons and pattern evidence. The migration `20261009100000_ghost_challenges.sql` must be applied before release. See `docs/online-races.md`.
 - Typed history-clear confirmation with immediate Undo.
 
 Shipped visual system (Afterimage):
@@ -67,7 +68,8 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `src/insights.js`: compact run summaries, bounded pattern memory, condition/period filters, weekly medians, recurring targets and frozen daily text selection.
 - `src/progress-view.js`: keyboard-accessible WPM/accuracy charts; presentational only.
 - `src/app.js`: orchestration — screen state, input handling, preferences and theme, history, local challenge, palette commands and the ghost toggle.
-- `src/motion.js`: caret, line scroll and ghost pacer (presentational).
+- `src/motion.js`: caret, line scroll and the ghost caret — the pacer or a ghost race's recorded run (presentational).
+- `src/ghost-race.js`: ghost challenges — the compact keystroke trace, its replay score (mirrors the database), the outcome wording and the `challenge_action` transport.
 - `e2e/`: Playwright browser verification (`playwright.config.js`); `e2e/fake-supabase.js` stands in for Supabase.
 - `scripts/measure-latency.mjs`: standalone Chromium browser event-to-paint benchmark for an exclusive desktop session.
 - `src/graph.js`: run-card speed graph (SVG) from the attempt's event log (presentational).
@@ -97,7 +99,7 @@ The newest 24 attempt traces and 1,000 compact run summaries (including drills, 
 - Broaden physical-device/browser coverage, including assistive technology, actual touch keyboards and IME behavior. Responsive layouts and direct physical-keyboard input were tested on the pre-redesign build; this is not a complete accessibility certification.
 - Validate the expanded original corpus's descriptive difficulty labels. Generated retests match configured conditions but do not guarantee matched target frequency; target sample limits remain visible.
 - Run/pattern retention is now explicit (1,000 / 120); evaluate account payload size and concurrent-device merges before expanding it further.
-- Recorded ghosts and public matchmaking remain later roadmap stages. Private friend rooms now have lifecycle enforcement, server timing and multi-client testing; full anti-cheat and rankings remain deferred. (The hidden ghost pacer is a pace line, not a recorded ghost.)
+- Public matchmaking remains a later roadmap stage; recorded ghosts exist only as friend-to-friend ghost races. Private friend rooms now have lifecycle enforcement, server timing and multi-client testing; full anti-cheat and rankings remain deferred. (The hidden ghost pacer is a pace line, not a recorded ghost.)
 - The recommender is a transparent baseline, not ML. There are no learning outcome benchmarks, user studies, deployment or public rankings.
 - Accounts: Google sign-in needs the Google provider enabled in Supabase (Auth → Providers) with a Google Cloud OAuth client; every origin the app runs on (local dev, the Vercel URL) must be in Auth → URL Configuration → Redirect URLs. Sync is last-writer-wins for the whole profile; merge concurrent edits from two devices if that becomes a real problem.
 

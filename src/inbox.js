@@ -1,10 +1,17 @@
-// The envelope inbox (top right) and the challenge toast. Pending invitations come from the race
-// service; other entries (an opponent joined, a race result) are added by the online race. Entries
-// are kept per signed-in user on this device only; guests keep nothing and see no inbox.
+// The envelope inbox (top right) and the challenge toast. Pending invitations and ghost challenges
+// come from the race service; other entries (an opponent joined, a race result) are added by the
+// online race. Entries are kept per signed-in user on this device only; guests keep nothing and see
+// no inbox.
+import { offerText, resultText } from './ghost-race.js';
+
 const $ = (id) => document.getElementById(id);
 const STORE = 'stilltype-inbox-v1:';
+// Ghost race results already delivered, so a cleared result does not return on the next poll.
+const DELIVERED = 'stilltype-inbox-delivered-v1:';
 const MAX_ENTRIES = 30;
+const MAX_DELIVERED = 200;
 const POLL_MS = 10000;
+const DAY_MS = 86400000;
 export const TOAST_MS = 18000;
 
 function ago(at, now = Date.now()) {
@@ -16,9 +23,10 @@ function ago(at, now = Date.now()) {
   return new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-export function createInbox({ getSession, listInvites, actions, announce, isRunning }) {
+export function createInbox({ getSession, listInvites, listChallenges = null, actions, announce, isRunning }) {
   let entries = [];
   let invites = [];
+  let delivered = new Set();
   let polling = false;
   // Set on sign-out: nothing in flight may write this account's entries back.
   let forgotten = false;
@@ -36,15 +44,25 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
 
   function load() {
     entries = [];
+    delivered = new Set();
     if (!userId()) return;
     try {
       const saved = JSON.parse(localStorage.getItem(STORE + userId()));
       if (Array.isArray(saved)) entries = saved.filter((entry) => entry?.id && entry.text).slice(0, MAX_ENTRIES);
     } catch {}
+    try {
+      const ids = JSON.parse(localStorage.getItem(DELIVERED + userId()));
+      if (Array.isArray(ids)) delivered = new Set(ids.filter((id) => typeof id === 'string').slice(-MAX_DELIVERED));
+    } catch {}
   }
   function save() {
     if (!userId()) return;
     try { localStorage.setItem(STORE + userId(), JSON.stringify(entries.slice(0, MAX_ENTRIES))); } catch {}
+  }
+  function deliver(id) {
+    if (!userId() || delivered.has(id)) return;
+    delivered.add(id);
+    try { localStorage.setItem(DELIVERED + userId(), JSON.stringify([...delivered].slice(-MAX_DELIVERED))); } catch {}
   }
 
   // An entry's action lapses when the service would no longer honour it (`until`), or when the
@@ -103,7 +121,8 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     if (known) {
       Object.assign(known, { ...entry, read: known.read, at: known.at });
     } else if (userId()) {
-      entries.unshift({ ...entry, at: new Date().toISOString(), read: false });
+      // An entry may carry when it happened (a ghost race sent or answered while this device was away).
+      entries.unshift({ at: new Date().toISOString(), ...entry, read: false });
       entries = entries.slice(0, MAX_ENTRIES);
     }
     save();
@@ -149,13 +168,41 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     $('challenge-toast').hidden = true;
   }
 
+  // A ghost challenge for this account (Race), then its result; a lapsed one closes. A result arrives
+  // once: the sender hears a fresh one with a toast, and clearing it keeps it gone.
+  function applyChallenges(challenges) {
+    const fresh = (at) => Date.now() - Date.parse(at) < DAY_MS;
+    let changed = false;
+    for (const challenge of [...challenges].reverse()) {
+      const id = `challenge:${challenge.id}`;
+      const known = entries.find((entry) => entry.id === id);
+      if (challenge.status === 'done' && challenge.result) {
+        if (!known && delivered.has(id)) continue;
+        notify({ id, kind: 'challenge-result', challengeId: challenge.id, closed: false, until: null, at: challenge.completedAt,
+          text: resultText(challenge) }, { toast: challenge.role === 'sent' && fresh(challenge.completedAt) });
+        deliver(id);
+      } else if (challenge.role === 'received' && challenge.status === 'open') {
+        notify({ id, kind: 'challenge', challengeId: challenge.id, closed: false, until: challenge.expiresAt, at: challenge.createdAt,
+          text: offerText(challenge) }, { toast: true });
+      } else if (known?.kind === 'challenge' && !known.closed) {
+        known.closed = true;
+        changed = true;
+      }
+    }
+    if (toastEntry?.kind === 'challenge' && isClosed(entries.find((entry) => entry.id === toastEntry.id) || toastEntry)) hideToast();
+    if (changed) { save(); render(); }
+  }
+
   async function refresh() {
     const session = getSession();
     if (!session || polling || forgotten) return invites;
     polling = true;
     try {
-      const listed = await listInvites(session);
+      // Ghost challenges are a second source: if they can't be read, invitations still arrive.
+      const [listed, challenges] = await Promise.all([listInvites(session),
+        listChallenges ? listChallenges(session).catch(() => null) : null]);
       if (forgotten) return invites;
+      if (Array.isArray(challenges)) applyChallenges(challenges);
       invites = listed;
       const open = new Set(invites.map((invite) => `invite:${invite.id}`));
       for (const invite of [...invites].reverse()) {
@@ -247,6 +294,8 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
       }
       toasted.add(id);
     },
+    // Records a result this device produced, so the next poll does not deliver it again.
+    deliver,
     // A request this device discovered has lapsed: its toast goes and its entry closes.
     withdraw(id) {
       if (toastEntry?.id === id || pendingToast?.id === id) { pendingToast = null; hideToast(); }
@@ -257,9 +306,10 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
       forgotten = true;
       pendingToast = null;
       hideToast();
-      if (userId()) { try { localStorage.removeItem(STORE + userId()); } catch {} }
+      if (userId()) { try { localStorage.removeItem(STORE + userId()); localStorage.removeItem(DELIVERED + userId()); } catch {} }
       entries = [];
       invites = [];
+      delivered = new Set();
     },
   };
 }

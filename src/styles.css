@@ -1367,6 +1367,21 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .input-action { display: flex; gap: var(--space-2); max-width: 460px; }
 .input-action .input { flex: 1; }
 
+/* Ghost races: the offer is another quiet disclosure; the result reads like the race results. */
+.ghost-offer-copy { max-width: 60ch; margin: var(--space-3) 0 0; color: var(--muted); font-size: var(--text-small); }
+.ghost-offer-form { margin-top: var(--space-4); display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3) var(--space-4); }
+.ghost-offer-form .filter-field { flex: 1 1 180px; }
+#ghost-offer-empty .btn { margin-top: var(--space-3); }
+.ghost-offer > .result-note { margin: var(--space-3) 0 0; }
+.ghost-offer > .field-error:empty { display: none; }
+
+.ghost-result .race-results { margin-top: var(--space-6); }
+.ghost-result .race-result-row { grid-template-columns: minmax(0, 1fr) repeat(3, auto); gap: var(--space-2) var(--space-6); padding: var(--space-4) 0; }
+.ghost-result .race-result-row strong { overflow-wrap: anywhere; }
+.comparison-panel.ghost-result > p { margin-top: var(--space-4); }
+.comparison-panel.ghost-result > p:empty { display: none; }
+.ghost-result > .btn { margin-top: var(--space-4); }
+
 /* ── Progress ───────────────────────────────────────────────────────────── */
 
 .page-heading {
@@ -1964,6 +1979,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .training-target { grid-template-columns: 1fr; }
   .training-target button { justify-self: start; }
   .daily-heading { flex-direction: column; }
+}
+
+@media (max-width: 560px) {
+  .ghost-result .race-result-row { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 360px) {

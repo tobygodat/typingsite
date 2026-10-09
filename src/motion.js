@@ -1,6 +1,7 @@
 // Typing-surface motion: a spring-driven caret, line scrolling, and an optional
-// ghost pacer. Nothing decorative moves while a run is in progress. Everything
-// here is presentational; scoring never reads from it.
+// ghost caret (the hidden pacer, or a friend's recorded run in a ghost race).
+// Nothing decorative moves while a run is in progress. Everything here is
+// presentational; scoring never reads from it.
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const IDLE_AFTER_MS = 800;
@@ -47,7 +48,8 @@ export function createTypingFx(wrap, display, options = {}) {
   const ghostCaret = document.createElement('span');
   ghostCaret.className = 'ghost-caret is-hidden';
   for (const node of [caret, ghostCaret]) node.setAttribute('aria-hidden', 'true');
-  const ghost = { cps: 0, start: 0, frame: 0, index: -1, armed: false };
+  // A pacer moves at `cps`; a recorded run follows `points`, [ms from the first key, characters typed].
+  const ghost = { cps: 0, points: null, cursor: 0, start: 0, frame: 0, index: -1, armed: false };
 
   const caretX = spring(1400, 70);
   const caretY = spring(1400, 70);
@@ -145,9 +147,19 @@ export function createTypingFx(wrap, display, options = {}) {
   function ghostTick(now) {
     ghost.frame = 0;
     if (!ghost.armed || !ghost.start) return;
-    const index = Math.floor(((now - ghost.start) / 1000) * ghost.cps);
+    const elapsed = now - ghost.start;
+    let index;
+    let done;
+    if (ghost.points) {
+      while (ghost.cursor < ghost.points.length && ghost.points[ghost.cursor][0] <= elapsed) ghost.cursor += 1;
+      index = ghost.cursor ? ghost.points[ghost.cursor - 1][1] : 0;
+      done = ghost.cursor >= ghost.points.length;
+    } else {
+      index = Math.floor((elapsed / 1000) * ghost.cps);
+      done = index >= characters.length;
+    }
     placeGhost(Math.min(index, characters.length));
-    if (index < characters.length) ghost.frame = requestAnimationFrame(ghostTick);
+    if (!done) ghost.frame = requestAnimationFrame(ghostTick);
   }
 
   function stopGhost() {
@@ -166,6 +178,7 @@ export function createTypingFx(wrap, display, options = {}) {
       wrap.dataset.blocked = 'false';
       stopGhost();
       ghost.index = -1;
+      ghost.cursor = 0;
       display.append(ghostCaret, caret);
       ghostCaret.classList.toggle('is-hidden', !ghost.armed);
       if (ghost.armed) requestAnimationFrame(() => placeGhost(0));
@@ -198,13 +211,28 @@ export function createTypingFx(wrap, display, options = {}) {
       arm(cps) {
         ghost.armed = cps > 0;
         ghost.cps = cps;
+        ghost.points = null;
+        ghost.cursor = 0;
         ghost.index = -1;
         ghostCaret.classList.toggle('is-hidden', !ghost.armed);
         if (ghost.armed) placeGhost(0);
         else stopGhost();
       },
+      // A friend's recorded run: the ghost jumps to where their caret was at each of their keys.
+      replay(points) {
+        stopGhost();
+        ghost.points = points?.length ? points : null;
+        ghost.armed = Boolean(ghost.points);
+        ghost.cps = 0;
+        ghost.cursor = 0;
+        ghost.index = -1;
+        ghostCaret.classList.toggle('is-hidden', !ghost.armed);
+        if (ghost.armed) placeGhost(0);
+      },
       run(startTime) {
-        if (!ghost.armed || reducedMotion.matches) return;
+        // The pacer is decoration and stays put under reduced motion. A recorded run is the race
+        // itself, so it still steps from key to key, with no transition, like a race progress bar.
+        if (!ghost.armed || (reducedMotion.matches && !ghost.points)) return;
         ghost.start = startTime;
         if (!ghost.frame) ghost.frame = requestAnimationFrame(ghostTick);
       },
