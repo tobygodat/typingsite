@@ -28,7 +28,8 @@ Product behaviour:
 - Condition-aware bests; drills, challenges and interrupted attempts do not become personal bests.
 - Online two-player challenges via Supabase: account invitations in the Challenge inbox or a shareable guest link, ready states, a synchronized countdown, live progress, reconnection and observed results. Hosts sign in; invited guests need no account. Original shared-keyboard challenges remain under One keyboard.
 - Friends, Race again and the inbox (7 October 2026): a private per-account friend list (saved from an email invite or added after a race) with one-click Challenge; Race again on any closed two-player race, keeping both seats; an envelope inbox beside the account button and an 18-second top-right toast for incoming challenges and rematches. See `docs/online-races.md`.
-- Typed history-clear confirmation with immediate Undo.
+- Typed history-clear confirmation with immediate Undo (covers lesson progress too).
+- Learn to type (8 October 2026, `src/lessons.js`): a beginner path of 14 lessons that add keys a few at a time (f j, d k, s l, a ;, e i, r u, g h, t y, w o, q p, v m, b n, c x, z). Passages are real words from the existing word lists made only of learned keys; the first home-row lessons, where no such words exist, use key pairs labelled as "repetitions, not words". The on-screen keyboard becomes a split finger map during lessons. One completed run at 95% accuracy and the lesson's speed target (10–15 wpm) unlocks the next lesson; the numbers and met / not met are shown. Progress lives in `profile.lessons` (guests: this tab only). Lessons are their own kind: never runs, traces, bests, trends, retests, pattern evidence or seen text. Once every letter is in, the learn screen hands off to a practice run and the existing recommender → drill → retest loop. Entry points are the quiet "learn to type" link in the practice controls, the palette, and first-run links on Train and Progress.
 
 Shipped visual system (Afterimage):
 
@@ -64,6 +65,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `src/words.js`: the 200 (Monkeytype's default english, verbatim apart from "I" stored as "i") / 1k / 5k / 10k common-word lists for generated passages and drills. The 5k and 10k lists are cleaned web-frequency lists (see the file header); keep them filtered.
 - `src/typing.js`: corpus, metric/event versions, replay, comparison and transparent pattern baseline (engine; unchanged in behaviour by the redesign).
 - `src/corpus.js`: additional original quotes and real-word drill vocabulary (corpus v5).
+- `src/lessons.js`: the beginner path — lesson order and speed targets, finger zones, real-word passage selection with labelled key pairs, and lesson progress (`profile.lessons`).
 - `src/insights.js`: compact run summaries, bounded pattern memory, condition/period filters, weekly medians, recurring targets and frozen daily text selection.
 - `src/progress-view.js`: keyboard-accessible WPM/accuracy charts; presentational only.
 - `src/app.js`: orchestration — screen state, input handling, preferences and theme, history, local challenge, palette commands and the ghost toggle.

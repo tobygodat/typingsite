@@ -24,6 +24,10 @@ import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
+import {
+  FINGER_ZONES, LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
+  lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, normalizeLessonProgress, recordLessonRun,
+} from './lessons.js';
 
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
@@ -56,6 +60,7 @@ function emptyProfile() {
     loops: [],
     seenTextIds: [],
     bests: {},
+    lessons: {},
   };
 }
 
@@ -91,6 +96,7 @@ function normalizeProfile(parsed) {
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
     bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
+    lessons: normalizeLessonProgress(parsed.lessons),
   };
 }
 
@@ -126,6 +132,9 @@ let trainingContext = null;
 let resultBestBefore = null;
 let clearSnapshot = null;
 let clearTimer = null;
+// The lesson being typed, and the last lesson result in this tab (shown on the learn screen).
+let lessonIndex = 0;
+let lessonResult = null;
 
 let race = {
   passage: null,
@@ -178,20 +187,39 @@ function conditions(inputClass = 'physical-keyboard') {
   };
 }
 
+// The one place a correction policy becomes words.
+const correctionLabel = (policy) => (policy === 'relaxed' ? 'continue on error' : 'stop on error');
+const inputLabel = (value) => (value.inputClass === 'touch' ? 'touch input' : 'physical keyboard');
+
 function describeConditions(value = conditions()) {
   const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
   const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
-  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
-  const correction = value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error';
+  const input = inputLabel(value);
+  const correction = correctionLabel(value.correctionPolicy);
   const language = value.wordList ? `english ${value.wordList}` : 'english';
   return `${language} · ${length} · ${punctuation} · ${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
 }
 
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
+  if (run.kind === 'lesson') return describeLesson(run);
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${run.conditions.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error'}`;
+  return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}`;
+}
+
+function describeLesson(run) {
+  const index = LESSONS.findIndex((lesson) => lesson.id === run.conditions.lesson);
+  return `lesson ${index + 1} of ${LESSONS.length} · keys ${lessonKeys(index).join(' ')} · ${makeupShort(index, run.lesson)} · pass at ${LESSON_ACCURACY}% accuracy and ${LESSONS[index].wpm} wpm · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}`;
+}
+
+// Lesson runs carry their own conditions: never comparable with a practice key, never a best.
+function lessonConditions() {
+  return {
+    mode: 'lesson', lesson: LESSONS[lessonIndex].id, duration: null, count: null, punctuation: false,
+    quoteLength: null, difficulty: null, wordList: null, inputClass: 'physical-keyboard',
+    correctionPolicy: conditions().correctionPolicy, language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION,
+  };
 }
 
 function signed(value, unit) {
@@ -280,7 +308,7 @@ function applyPreferences() {
   $('keyboard-toggle').checked = prefs.keyboard;
   $('stop-on-error-toggle').checked = prefs.stopOnError;
   $('focus-toggle').checked = prefs.focusMode;
-  $('keyboard').hidden = !prefs.keyboard;
+  $('keyboard').hidden = !prefs.keyboard && sessionKind !== 'lesson';
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
   $('quote-length').value = prefs.quoteLength;
@@ -437,7 +465,7 @@ function choosePassage(extraSeen = []) {
 }
 
 function sessionDurationMs() {
-  if (sessionKind === 'daily') return null;
+  if (sessionKind === 'daily' || sessionKind === 'lesson') return null;
   if (sessionKind === 'drill') return 60000;
   if (prefs.mode === 'time') return prefs.duration * 1000;
   return null;
@@ -449,6 +477,7 @@ function configureSessionCopy() {
     drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
+    lesson: ['lesson', `Lesson ${lessonIndex + 1} · ${keysLabel(LESSONS[lessonIndex].keys)}`, lessonCopy(lessonIndex, passage)],
   }[sessionKind];
   $('session-kicker').textContent = copy[0];
   $('session-title').textContent = copy[1];
@@ -466,7 +495,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   setRunning(false);
   primaryNotice = '';
   sessionKind = kind;
-  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
+  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList)
+    : kind === 'lesson' ? lessonPassage(lessonIndex) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
@@ -495,7 +525,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     }
     return false;
   }
-  if (kind !== 'drill' && passage.id && !profile.seenTextIds.includes(passage.id)) {
+  // Drills and lessons are generated practice text, never a passage to keep fresh for a retest.
+  if (kind !== 'drill' && kind !== 'lesson' && passage.id && !profile.seenTextIds.includes(passage.id)) {
     profile.seenTextIds.push(passage.id);
     saveProfile();
   }
@@ -508,13 +539,14 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: kind === 'daily' ? dailyConditions() : conditions(),
+    conditions: kind === 'daily' ? dailyConditions() : kind === 'lesson' ? lessonConditions() : conditions(),
   });
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;
     attempt.firstDailyAttempt = passage.firstDailyAttempt;
   }
   if (kind === 'drill') attempt.target = selectedTarget;
+  if (kind === 'lesson') attempt.lesson = { id: passage.lessonId, index: lessonIndex, pairs: passage.pairs, words: passage.words };
   attempt.fresh = passage.fresh !== false;
   startTime = null;
   $('typing-input').value = '';
@@ -524,7 +556,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   primaryCharacters = primaryTextView.characters;
   primaryFx.reset(primaryCharacters);
   primaryFx.ghost.arm(ghostOn ? ghostPace().cps : 0);
-  markKeyboardTargets(kind === 'drill' ? selectedTarget : null);
+  renderKeyboard();
+  if (kind !== 'lesson') markKeyboardTargets(kind === 'drill' ? selectedTarget : null);
   $('typing-status').className = 'badge badge-info';
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
   $('input-help').textContent = '';
@@ -703,6 +736,11 @@ function refreshAfterInput(type, previousLength, blocked = false) {
 
 // The ghost runs at the personal best for these exact conditions, or a gentle 60 wpm without one.
 function ghostPace() {
+  // In a lesson the pace line runs at the lesson's speed target.
+  if (attempt?.kind === 'lesson') {
+    const wpm = LESSONS[lessonIndex].wpm;
+    return { wpm, cps: (wpm * 5) / 60, fromBest: false };
+  }
   // The active attempt knows its real input class (touch is detected after reset).
   const best = profile.bests[conditionKey(attempt?.conditions || conditions())];
   const wpm = best?.wpm || 60;
@@ -711,7 +749,7 @@ function ghostPace() {
 
 function markKeyboardTargets(target) {
   const letters = new Set((target || '').toLowerCase());
-  document.querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
+  $('keyboard').querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
 
 function updateLive(reset = false) {
@@ -784,6 +822,11 @@ function finishPrimary(forcedElapsed = null) {
   setRunning(false);
   $('typing-status').className = `badge ${valid ? 'badge-success' : 'badge-warning'}`;
   $('typing-status').textContent = valid ? 'Complete' : 'Interrupted';
+  // Lessons keep their own progress and never enter runs, traces or bests.
+  if (sessionKind === 'lesson') {
+    finishLesson(completed, valid);
+    return;
+  }
   const saved = storeAttempt(completed);
 
   if (sessionKind === 'drill' && baselineAttempt) {
@@ -992,6 +1035,8 @@ function switchView(view) {
   onlineRace?.onViewChange(view);
   if (view === 'results') renderTraining();
   if (view === 'compete') renderDaily();
+  if (view === 'learn') renderLessons();
+  renderFirstRun();
 }
 
 function navigate(view) {
@@ -1129,7 +1174,7 @@ function renderHistory() {
   const hasProgress = eligible.length > 0 || profile.loops.length > 0;
   $('progress-empty').hidden = hasProgress;
   $('progress-content').hidden = !hasProgress;
-  const hasHistory = profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0;
+  const hasHistory = profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0 || lessonsStarted(profile.lessons);
   $('clear-history').hidden = !hasHistory;
   $('clear-history').disabled = !hasHistory;
   const source = conditionOptions($('progress-conditions'), [...eligible, ...profile.loops]);
@@ -1238,7 +1283,213 @@ function renderDaily() {
   }));
 }
 
+// ── Lessons ───────────────────────────────────────────────────────────────
+
+const HANDOFF_COPY = 'That’s the whole keyboard. From here the training loop takes over: take a practice run, and Train suggests a one-minute drill from your own mistakes once there’s enough evidence, then retests you on fresh text.';
+let lessonActions = { primary: null, secondary: null };
+
+function lessonCopy(index, current = null) {
+  return `${LESSONS[index].focus} ${makeupCopy(index, current?.lessonId === LESSONS[index].id ? current : null)}`;
+}
+
+const lessonFingers = (lesson) => lesson.keys.map((key) => `${key} ${fingerFor(key)}`).join(' · ');
+
+// "left and right index" for a mirrored pair, otherwise each finger in key order.
+function fingerNames(lesson) {
+  const fingers = lesson.keys.map((key) => fingerFor(key));
+  const [a, b] = fingers.map((name) => name.split(' '));
+  return b && a[0] !== b[0] && a[1] === b[1] ? `${a[0]} and ${b[0]} ${a[1]}` : fingers.join(' and ');
+}
+
+function lessonMeta(index) {
+  const lesson = LESSONS[index];
+  const tries = profile.lessons[lesson.id]?.tries;
+  return `${lessonFingers(lesson)} · pass at ${LESSON_ACCURACY}% accuracy and ${lesson.wpm} wpm in one run${tries ? ` · ${tries} ${tries === 1 ? 'try' : 'tries'} so far` : ''}`;
+}
+
+function startLesson(index) {
+  if (!lessonUnlocked(profile.lessons, index)) return;
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
+  if (race.attempt?.status === 'running') markRaceInterrupted();
+  lessonIndex = index;
+  resetSession('lesson', { focus: true });
+}
+
+// Every letter is in: the training loop (practice → recommendation → drill → retest) takes over.
+function startTrainingLoop() {
+  lessonResult = null;
+  resetSession('practice', { focus: true });
+}
+
+function finishLesson(completed, valid) {
+  const { score, elapsedMs, firstAttempts } = completed.summary;
+  let outcome = null;
+  let firstPass = false;
+  let saved = true;
+  if (valid) {
+    const recorded = recordLessonRun(profile.lessons, lessonIndex, score);
+    profile.lessons = recorded.progress;
+    // A lesson that was locked when it finished (it can't be started locked) still shows its numbers.
+    outcome = recorded.outcome || lessonOutcome(lessonIndex, score);
+    firstPass = recorded.firstPass;
+    saved = saveProfile();
+  }
+  lessonResult = { index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, saved, valid };
+  switchView('learn');
+  announce(`${lessonHeadline(lessonResult)} ${score.accuracy}% accuracy, ${score.wpm} wpm.`);
+  // Show the result from the top of the page, or from the result itself when the page is too short.
+  scrollTo({ top: 0, behavior: 'instant' });
+  if ($('lesson-current').getBoundingClientRect().bottom > innerHeight) $('lesson-current').scrollIntoView({ block: 'start', behavior: 'instant' });
+  $('lesson-primary').focus({ preventScroll: true });
+}
+
+function lessonHeadline(result) {
+  const n = result.index + 1;
+  if (!result.valid) return `Lesson ${n} interrupted · not counted`;
+  const next = nextLessonIndex(profile.lessons);
+  if (result.outcome?.passed) {
+    if (!result.firstPass) return `Lesson ${n} passed again.`;
+    if (next >= LESSONS.length) return `Lesson ${n} passed. Every letter is in.`;
+    const keys = LESSONS[next].keys;
+    return `Lesson ${n} passed. ${keysLabel(keys)} ${keys.length > 1 ? 'are' : 'is'} next.`;
+  }
+  const { accuracyMet, speedMet, accuracyTarget, wpmTarget } = result.outcome;
+  const needs = [accuracyMet ? '' : `${accuracyTarget}% accuracy`, speedMet ? '' : `${wpmTarget} wpm`].filter(Boolean).join(' and ');
+  return `Not yet. Lesson ${n} needs ${needs} in one run.`;
+}
+
+function lessonFacts(result) {
+  const { outcome, score } = result;
+  const group = (label, value, need) => {
+    const item = document.createElement('div');
+    item.append(element('dt', label), element('dd', value, 'num'));
+    if (need) item.append(element('dd', need, 'lesson-need num'));
+    return item;
+  };
+  // Each target says whether it was met in words, beside the number it qualifies.
+  const met = (item, ok) => {
+    const word = element('dd', '', `status badge ${ok ? 'badge-success' : 'badge-neutral'}`);
+    const dot = element('span', '', 'status-dot');
+    dot.setAttribute('aria-hidden', 'true');
+    word.append(dot, ok ? 'met' : 'not met');
+    item.append(word);
+    return item;
+  };
+  return [
+    met(group('accuracy', `${score.accuracy}%`, `${outcome.accuracyTarget}% needed`), outcome.accuracyMet),
+    met(group('wpm', String(score.wpm), `${outcome.wpmTarget} needed`), outcome.speedMet),
+    group('first-try errors', String(result.errors)),
+    group('time', `${(result.elapsedMs / 1000).toFixed(1)} s`),
+  ];
+}
+
+function renderLessons() {
+  const progress = profile.lessons;
+  const next = nextLessonIndex(progress);
+  const complete = next >= LESSONS.length;
+  const result = lessonResult;
+  let status = null;
+  let heading;
+  let copy;
+  let meta = '';
+  let primary;
+  let secondary = null;
+  if (result) {
+    const n = result.index + 1;
+    const repeat = [`Repeat lesson ${n}`, () => startLesson(result.index)];
+    heading = lessonHeadline(result);
+    if (!result.valid) {
+      status = ['interrupted', 'badge-warning'];
+      copy = 'Focus or input changed during the run, so it doesn’t count toward unlocking.';
+      primary = [`Try lesson ${n} again`, () => startLesson(result.index)];
+    } else if (result.outcome?.passed) {
+      status = ['passed', 'badge-success'];
+      copy = complete ? HANDOFF_COPY : lessonCopy(next);
+      if (!complete) meta = lessonMeta(next);
+      primary = complete ? ['Take a practice run', startTrainingLoop] : [`Start lesson ${next + 1}`, () => startLesson(next)];
+      secondary = repeat;
+    } else {
+      status = ['not yet', 'badge-neutral'];
+      const lesson = LESSONS[result.index];
+      const after = LESSONS[result.index + 1]?.keys;
+      if (progress[lesson.id]?.passed) copy = 'You passed this lesson before; this try doesn’t change that.';
+      else if (after) copy = `${keysLabel(after)} ${after.length > 1 ? 'stay' : 'stays'} locked until one run meets both numbers.`;
+      else copy = 'Every letter is in once one run meets both numbers.';
+      primary = [`Try lesson ${n} again`, () => startLesson(result.index)];
+      if (complete) secondary = ['Take a practice run', startTrainingLoop];
+      else if (next !== result.index) secondary = [`Start lesson ${next + 1}`, () => startLesson(next)];
+    }
+    if (!result.saved) meta = [meta, 'Couldn’t save on this device.'].filter(Boolean).join(' · ');
+  } else if (complete) {
+    status = ['all letters in', 'badge-success'];
+    heading = 'Every letter is in.';
+    copy = HANDOFF_COPY;
+    primary = ['Take a practice run', startTrainingLoop];
+  } else {
+    heading = `Lesson ${next + 1} · ${keysLabel(LESSONS[next].keys)}`;
+    copy = lessonCopy(next);
+    meta = lessonMeta(next);
+    primary = [`Start lesson ${next + 1}`, () => startLesson(next)];
+  }
+  $('lesson-status').hidden = !status;
+  if (status) {
+    $('lesson-status').className = `status badge ${status[1]}`;
+    $('lesson-status-word').textContent = status[0];
+  }
+  $('lesson-current-heading').textContent = heading;
+  $('lesson-current-copy').textContent = copy;
+  $('lesson-current-meta').textContent = meta;
+  $('lesson-facts').hidden = !result?.valid;
+  $('lesson-facts').replaceChildren(...(result?.valid ? lessonFacts(result) : []));
+  $('lesson-primary').textContent = primary[0];
+  $('lesson-secondary').hidden = !secondary;
+  $('lesson-secondary').textContent = secondary?.[0] || '';
+  lessonActions = { primary: primary[1], secondary: secondary?.[1] || null };
+
+  const fresh = complete ? [] : LESSONS[next].keys;
+  renderFingerMap($('lesson-keyboard'), { known: lessonKeys(complete ? LESSONS.length - 1 : next - 1), fresh });
+  $('finger-caption-keys').textContent = complete ? 'every key learned' : `green edge: lesson ${next + 1}’s keys`;
+  $('lesson-save-note').textContent = `${session ? 'Lesson progress saves to your account.' : 'Lesson progress lasts for this tab; sign in to keep it.'} Lessons stay out of your bests, progress charts and retests.`;
+
+  $('lesson-list').replaceChildren(...LESSONS.map((lesson, index) => {
+    const entry = progress[lesson.id];
+    const passed = Boolean(entry?.passed);
+    const open = !passed && index <= next;
+    const row = element('li', '', 'lesson-row');
+    row.dataset.state = passed ? 'passed' : open ? 'next' : 'locked';
+    const keys = element('span', '', 'lesson-keys');
+    keys.append(...lesson.keys.map((key) => element('kbd', key)));
+    const main = element('div', '', 'lesson-row-main');
+    main.append(keys, element('span', fingerNames(lesson), 'lesson-row-note'));
+    const state = element('span', '', `lesson-row-state status badge ${passed ? 'badge-success' : open ? 'badge-info' : 'badge-neutral'}`);
+    const dot = element('span', '', 'status-dot');
+    dot.setAttribute('aria-hidden', 'true');
+    state.append(dot, passed ? 'passed' : open ? 'next' : 'locked');
+    const numbers = passed ? `${entry.passed.wpm} wpm · ${entry.passed.accuracy}%`
+      : entry?.last ? `${entry.tries} ${entry.tries === 1 ? 'try' : 'tries'} · last ${entry.last.wpm} wpm · ${entry.last.accuracy}%` : '';
+    const detail = element('div', '', 'lesson-row-detail');
+    detail.append(state, element('span', numbers, 'lesson-row-numbers num'));
+    row.append(element('span', String(index + 1), 'lesson-number num'), main, detail);
+    if (passed || open) {
+      const button = element('button', passed ? 'Repeat' : 'Start', 'btn btn-ghost btn-sm');
+      button.type = 'button';
+      button.setAttribute('aria-label', `${passed ? 'Repeat' : 'Start'} lesson ${index + 1}, ${keysLabel(lesson.keys)}`);
+      button.addEventListener('click', () => startLesson(index));
+      row.append(button);
+    }
+    return row;
+  }));
+}
+
+function renderFirstRun() {
+  $('train-learn').hidden = Boolean(lastCompleted || profile.runs.length || profile.attempts.length);
+}
+
 function buildKeyboard() {
+  const keyboard = $('keyboard');
+  keyboard.classList.remove('finger-map');
+  keyboard.removeAttribute('role');
+  keyboard.setAttribute('aria-label', 'On-screen keyboard');
   const fragment = document.createDocumentFragment();
   ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', ' '].forEach((keys) => {
     const row = document.createElement('div');
@@ -1252,7 +1503,58 @@ function buildKeyboard() {
     }
     fragment.append(row);
   });
-  $('keyboard').replaceChildren(fragment);
+  keyboard.replaceChildren(fragment);
+}
+
+// A split keyboard where each column belongs to one finger, labelled underneath; thumbs take the space bar.
+// Keys learned before this lesson read in the text colour, this lesson's keys get the green edge.
+const FINGER_ROWS = { left: ['qwert', 'asdfg', 'zxcvb'], right: ['yuiop', 'hjkl;', 'nm'] };
+const FINGER_COLUMNS = { left: [['pinky', 1, 1], ['ring', 2, 1], ['middle', 3, 1], ['index', 4, 2]], right: [['index', 1, 2], ['middle', 3, 1], ['ring', 4, 1], ['pinky', 5, 1]] };
+
+function fingerMapLabel(fresh) {
+  const zones = FINGER_ZONES.map((zone) => `${zone.hand} ${zone.finger}: ${zone.keys.join(' ')}`);
+  return `Finger map. ${zones.join('. ')}. Thumbs: space.${fresh.length ? ` New keys: ${fresh.join(' ')}, ${fresh.map((key) => fingerFor(key)).join(' and ')}.` : ''}`;
+}
+
+function renderFingerMap(container, { known = [], fresh = [] } = {}) {
+  const key = (letter) => {
+    const node = element('span', letter === ' ' ? 'space' : letter, `key${letter === ' ' ? ' space' : ''}`);
+    node.dataset.key = letter;
+    node.classList.toggle('target', fresh.includes(letter));
+    node.classList.toggle('is-known', letter === ' ' || known.includes(letter));
+    return node;
+  };
+  const hands = ['left', 'right'].map((hand) => {
+    const grid = element('div', '', `finger-hand finger-hand-${hand}`);
+    FINGER_ROWS[hand].forEach((row, rowIndex) => [...row].forEach((letter, column) => {
+      const node = key(letter);
+      node.style.gridArea = `${rowIndex + 1} / ${column + 1}`;
+      grid.append(node);
+    }));
+    for (const [finger, column, span] of FINGER_COLUMNS[hand]) {
+      const label = element('span', '', 'finger-label');
+      label.style.gridArea = `4 / ${column} / 5 / ${column + span}`;
+      label.append(element('span', finger, 'finger-label-full'), element('span', finger[0], 'finger-label-short'));
+      grid.append(label);
+    }
+    return grid;
+  });
+  const thumbs = element('div', '', 'finger-thumbs');
+  thumbs.append(key(' '), element('span', 'thumbs', 'finger-label'));
+  // Narrow screens shorten the finger names to a letter; the legend says what each letter means.
+  const legend = element('span', 'p pinky · r ring · m middle · i index', 'finger-legend');
+  container.classList.add('finger-map');
+  container.setAttribute('role', 'img');
+  container.setAttribute('aria-label', fingerMapLabel(fresh));
+  container.replaceChildren(...hands, thumbs, legend);
+}
+
+// The typing keyboard shows the finger map for the whole of a lesson, whatever the keyboard setting.
+function renderKeyboard() {
+  const lesson = sessionKind === 'lesson';
+  if (lesson) renderFingerMap($('keyboard'), { known: lessonKeys(lessonIndex - 1), fresh: LESSONS[lessonIndex].keys });
+  else if ($('keyboard').classList.contains('finger-map')) buildKeyboard();
+  $('keyboard').hidden = !prefs.keyboard && !lesson;
 }
 
 function startRace() {
@@ -1362,6 +1664,8 @@ function clearHistory() {
   profile.loops = [];
   profile.seenTextIds = [];
   profile.bests = {};
+  profile.lessons = {};
+  lessonResult = null;
   baselineAttempt = null;
   trainingContext = null;
   selectedTarget = null;
@@ -1390,6 +1694,8 @@ function clearHistory() {
   renderHistory();
   renderTraining();
   renderDaily();
+  renderLessons();
+  renderFirstRun();
   showBest();
 }
 
@@ -1407,6 +1713,8 @@ function undoClear() {
   renderHistory();
   renderTraining();
   renderDaily();
+  renderLessons();
+  renderFirstRun();
   setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
@@ -1462,6 +1770,8 @@ function adoptProfile(data) {
   applyPreferences();
   setModeControls();
   renderHistory();
+  renderLessons();
+  renderFirstRun();
   if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice');
 }
 
@@ -1712,7 +2022,10 @@ function bindEvents() {
     }
     const practice = event.target.closest('[data-action="go-practice"]');
     if (practice) resetSession('practice', { focus: true });
+    if (event.target.closest('[data-action="open-lessons"]')) navigate('learn');
   });
+  $('lesson-primary').addEventListener('click', () => lessonActions.primary?.());
+  $('lesson-secondary').addEventListener('click', () => lessonActions.secondary?.());
   document.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => {
     prefs.mode = button.dataset.mode;
     setModeControls();
@@ -1898,7 +2211,7 @@ function setStopOnError(enabled) {
   prefs.stopOnError = enabled;
   applyPreferences();
   saveProfile();
-  if (document.body.dataset.view === 'practice') resetSession('practice');
+  if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : 'practice');
 }
 
 function setWordList(id) {
@@ -1915,8 +2228,10 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
+    { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: () => navigate('learn') },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
+    ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: () => startLesson(nextLessonIndex(profile.lessons)) }]),
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
@@ -1936,7 +2251,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
-    { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.runs.length === 0 && profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
+    { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.runs.length === 0 && profile.attempts.length === 0 && profile.loops.length === 0 && !lessonsStarted(profile.lessons), run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
   // Only an exact word finds this one.
   if (query === 'ghost') commands.unshift({ group: 'secret', secret: true, label: 'ghost pacer', hint: onOff(ghostOn), on: ghostOn, run: toggleGhost });
@@ -2015,6 +2330,7 @@ setRunning(false);
 renderHistory();
 renderTraining();
 renderDaily();
+renderFirstRun();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
 inbox = createInbox({
   isRunning: () => runActive || localRaceRunning(),

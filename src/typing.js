@@ -217,6 +217,7 @@ export function summarizePatterns(attempts, limit = 20, compatibleConditions = n
     && !attempt.interrupted
     && attempt.kind !== 'drill'
     && attempt.kind !== 'race'
+    && attempt.kind !== 'lesson'
     && (attempt.kind !== 'daily' || attempt.fresh !== false)
     && (!key || conditionKey(attempt.conditions) === key)).slice(-limit);
   const pairs = new Map();
@@ -331,6 +332,8 @@ export function comparable(before, after) {
     && after.fresh !== false
     && before.kind !== 'drill'
     && after.kind !== 'drill'
+    && before.kind !== 'lesson'
+    && after.kind !== 'lesson'
     && !before.interrupted
     && !after.interrupted;
 }

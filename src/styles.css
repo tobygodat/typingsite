@@ -765,6 +765,27 @@ kbd {
 }
 
 .compact-switch:hover { color: var(--text); }
+
+/* A quiet text action: the "learn to type" entry in the mode area and the first-run links. */
+.quiet-link {
+  min-height: var(--control);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-small);
+  text-decoration: underline;
+  text-decoration-color: var(--hairline-strong);
+  text-underline-offset: 3px;
+  transition: color var(--dur-quick) var(--ease-out), text-decoration-color var(--dur-quick) var(--ease-out);
+}
+
+.quiet-link:hover { color: var(--text); text-decoration-color: currentColor; }
+
+.first-run-learn { margin: 0; color: var(--muted); font-size: var(--text-small); }
+.first-run-learn .quiet-link { min-height: 0; padding: var(--space-1) 0; font-size: inherit; color: var(--text); }
+.section-heading .first-run-learn { margin-top: var(--space-3); }
 .compact-switch .switch { width: 30px; height: 18px; }
 .compact-switch .switch::before { width: 12px; height: 12px; }
 .compact-switch .switch:checked::before { transform: translateX(12px); }
@@ -839,6 +860,8 @@ body[data-session="practice"] .live-stats { justify-content: flex-start; }
 
 body[data-session="drill"] .practice-controls,
 body[data-session="drill"] .quote-options,
+body[data-session="lesson"] .practice-controls,
+body[data-session="lesson"] .quote-options,
 body[data-session="retest"] .practice-controls,
 body[data-session="retest"] .quote-options { display: none; }
 
@@ -1132,6 +1155,57 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 .key.space { width: 240px; }
 .key.target { color: var(--text); border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
 .key.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); transform: translateY(2px); }
+
+/* Still run: key presses show instantly while typing. */
+body[data-running="true"] .key { transition: none; }
+
+/* The finger map: a split keyboard, one column per finger, labelled under each column with a rule.
+   Learned keys read in the text colour; the lesson's new keys keep the green edge of .key.target. */
+.finger-map {
+  --key-size: 40px;
+  grid-template-columns: auto auto;
+  column-gap: var(--space-6);
+  row-gap: var(--space-2);
+}
+
+.finger-hand {
+  display: grid;
+  grid-template-columns: repeat(5, var(--key-size));
+  grid-template-rows: repeat(3, var(--key-size)) auto;
+  gap: 5px;
+}
+
+.finger-hand .finger-label { align-self: start; }
+.finger-map .key { width: auto; height: auto; }
+.finger-map .key.is-known { color: var(--text); }
+
+.finger-label {
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--hairline-strong);
+  color: var(--muted);
+  font: var(--text-fine)/1.3 var(--font-mono);
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.finger-label-short,
+.finger-legend { display: none; }
+
+.finger-legend { margin-top: var(--space-1); color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); text-align: center; }
+
+.finger-thumbs {
+  grid-column: 1 / -1;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Space sits centred under the two hands, with its label beside it. */
+.finger-thumbs .key.space { width: calc(var(--key-size) * 6); height: var(--key-size); margin-left: calc(var(--space-3) + 6ch); }
+.finger-thumbs .finger-label { width: 6ch; padding: 0; border: 0; text-align: left; }
+.finger-legend { grid-column: 1 / -1; }
 
 body[data-focus-mode="true"] .dock-zone,
 body[data-focus-mode="true"] .corner,
@@ -1456,6 +1530,85 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .daily-result { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-4); }
 .daily-result span { color: var(--muted); }
 .local-challenge-heading { margin-top: var(--space-8); }
+
+/* ── Learn to type ──────────────────────────────────────────────────────── */
+
+.learn-screen .page-heading p { max-width: 60ch; margin: var(--space-3) 0 0; color: var(--muted); }
+
+.learn-layout {
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--hairline);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-16);
+  align-items: start;
+}
+
+.lesson-current { min-width: 0; display: grid; justify-items: start; gap: var(--space-3); scroll-margin-top: calc(var(--space-4) + 58px + var(--space-6)); }
+.lesson-current h2 { margin: 0; font-size: var(--text-title); line-height: 1.2; letter-spacing: -0.015em; }
+.lesson-current > p { max-width: 56ch; margin: 0; }
+#lesson-current-copy { color: var(--muted); }
+#lesson-current-meta:empty { display: none; }
+
+.lesson-facts {
+  width: 100%;
+  margin: var(--space-2) 0;
+  padding: var(--space-4) 0;
+  border-block: 1px solid var(--hairline);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+/* Labels, values, targets and met words line up across the four facts, even when a label wraps. */
+.lesson-facts > div { grid-row: span 4; display: grid; grid-template-rows: subgrid; row-gap: var(--space-1); align-items: end; }
+.lesson-facts .status { align-self: start; }
+.lesson-facts dt { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.02em; }
+.lesson-facts dd { margin: 0; font-size: var(--text-title); font-weight: 300; line-height: 1.1; letter-spacing: -0.02em; }
+.lesson-facts dd.lesson-need { color: var(--muted); font-size: var(--text-small); font-weight: 400; letter-spacing: 0; }
+.lesson-facts dd.status { font: 500 var(--text-mono)/1.3 var(--font-mono); letter-spacing: 0.02em; }
+
+.lesson-actions { margin-top: var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.finger-figure { margin: 0; display: grid; gap: var(--space-3); justify-items: center; }
+.finger-figure .keyboard { margin: 0; }
+
+.finger-caption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-1) var(--space-4);
+  color: var(--muted);
+  font: var(--text-fine)/1.4 var(--font-mono);
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+
+.lesson-list-section { margin-top: var(--space-10); padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
+.lesson-list-section h2 { margin: 0 0 var(--space-2); font-size: var(--text-title); font-weight: 400; }
+.lesson-list-section .result-note { max-width: 60ch; margin: 0 0 var(--space-4); color: var(--muted); }
+.lesson-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hairline); }
+
+.lesson-row {
+  min-height: calc(var(--control) + var(--space-4));
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--hairline);
+  display: grid;
+  grid-template-columns: var(--space-8) minmax(0, 1fr) minmax(0, auto) 88px;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.lesson-number { color: var(--muted); font-size: var(--text-lead); }
+.lesson-row-main { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.lesson-keys { display: inline-flex; gap: var(--space-1); }
+.lesson-keys kbd { color: var(--text); }
+.lesson-row[data-state="locked"] .lesson-keys kbd { color: var(--muted); }
+.lesson-row-note { color: var(--muted); font-size: var(--text-small); }
+.lesson-row-detail { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: var(--space-1) var(--space-3); }
+.lesson-row-numbers { color: var(--muted); font-size: var(--text-small); }
+.lesson-row .btn { justify-self: end; grid-column: 4; }
 
 /* ── Challenge ──────────────────────────────────────────────────────────── */
 
@@ -1854,6 +2007,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 
 @media (max-width: 900px) {
+  .learn-layout { grid-template-columns: minmax(0, 1fr); gap: var(--space-10); }
   .results-layout { grid-template-columns: 1fr; gap: var(--space-10); }
   .run-card { position: static; width: min(420px, 100%); justify-self: center; }
   .history-summary { grid-template-columns: minmax(0, 1fr) 120px 120px; }
@@ -1934,6 +2088,17 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   body[data-font-size="36"] .typing-wrap { --passage-size: 32px; }
   .shortcut-row { display: none; }
   .keyboard { display: none; }
+  /* The finger map stays in lessons, sized to the column; its labels shorten to a letter. */
+  .keyboard.finger-map { --key-size: calc((100vw - 32px - var(--space-4) - 40px) / 10); display: grid; column-gap: var(--space-4); }
+  .finger-label-full { display: none; }
+  .finger-label-short { display: inline; }
+  .finger-legend { display: block; }
+  .finger-map .key { font-size: var(--text-fine); }
+  .lesson-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lesson-current { scroll-margin-top: var(--space-4); }
+  .lesson-row { grid-template-columns: var(--space-6) minmax(0, 1fr) auto; gap: var(--space-2) var(--space-3); }
+  .lesson-row-detail { grid-column: 2; grid-row: 2; justify-content: flex-start; }
+  .lesson-row .btn { grid-column: 3; grid-row: 1 / span 2; }
   .site-footer { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: var(--space-2); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }

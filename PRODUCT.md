@@ -45,6 +45,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 - Recurring pattern counts across recent matching runs, last-practice information and later fresh observations for revisits. No confident target from a single sparse run.
 - Corpus v5: 39 original quotes, at least three in each length/difficulty bucket, plus expanded real-word targeted drills. Difficulty labels remain descriptive, not calibrated.
 - Condition-aware personal bests, guarded history deletion with immediate undo, explicit insufficient-evidence and interrupted states.
+- A beginner path ("learn to type"): 14 lessons that add keys a few at a time with a finger map, real words from the common-word lists (labelled key pairs where none exist yet), unlocking on one run at 95% accuracy and a gentle speed, then a hand-off to the training loop. Lessons never count as bests, trends or retests.
 - Native HTML/CSS/JS modules with no runtime dependencies. `npm run dev` serves on :5173; `npm test` runs the engine checks. Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono are self-hosted in `src/fonts/`.
 - Signed-in retention: newest 24 full attempt traces, 1,000 compact run summaries and pattern counts on the newest 120 summaries; comparison summaries remain until cleared. Clear/Undo includes daily history. Guests retain everything only in memory for the tab. Older records keep unknown dates and missing score snapshots explicit.
 - `src/typing.js` owns corpus selection, scoring, replay and pattern evidence; `src/app.js` owns UI orchestration and local persistence.
@@ -61,7 +62,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 **Explicitly undecided:**
 - A framework for later stages. This milestone deliberately retains native modules; see `docs/decisions/2026-09-22-learning-loop.md`.
 - Retention period, identity/sync needs, and participation terms for any shared or model-training data. Local-only practice proceeds without them.
-- Whether the beginner path reuses the weak-pattern recommender or needs its own progression model.
+- Whether the beginner path should later feed its own evidence into the recommender. Today lessons use their own key-introduction progression and hand off to the weak-pattern recommender once every letter is in.
 - Hosting and deployment target.
 
 **Deferred, not denied:** public matchmaking, seasons, full anti-cheat, learned ranked difficulty, additional languages, rhythm or music mechanics, browser-wide keystroke capture, extension packaging, Zetamac integration, LLM-generated drills. Public ranking requires integrity work before launch.
