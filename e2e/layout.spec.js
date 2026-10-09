@@ -22,9 +22,12 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
         for (const height of boxes) expect(height, selector).toBeGreaterThanOrEqual(44);
       }
 
+      // The first-run "Learn to type" links sit inside a sentence and still give a finger 44px.
+      const learnLinks = { Train: '#train-learn [data-action="open-lessons"]', Progress: '#progress-empty [data-action="open-lessons"]' };
       for (const view of ['Train', 'Progress', 'Challenge']) {
         await openView(page, view);
         expect(await overflow(page), view).toBeLessThanOrEqual(0);
+        if (learnLinks[view]) expect((await page.locator(learnLinks[view]).boundingBox()).height, view).toBeGreaterThanOrEqual(44);
       }
     });
 

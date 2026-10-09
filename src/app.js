@@ -806,7 +806,7 @@ function storeAttempt(completed) {
   return saved;
 }
 
-// `replacing`: another session takes over at once, so a drill draws no retest passage to throw away.
+// `replacing`: another session or view takes over at once, so a drill draws no retest passage to throw away.
 function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   if (!attempt || attempt.status !== 'running') return;
   clearInterval(ticker);
@@ -1047,9 +1047,10 @@ function navigate(view) {
     switchView('practice');
     return;
   }
+  // Leaving mid-drill draws no retest passage to throw away; Train's retest button draws one when asked.
   if (attempt?.status === 'running' && view !== 'practice') {
     markInterrupted(NOTICES.leftSurface);
-    finishPrimary();
+    finishPrimary(null, { replacing: true });
   }
   if (race.attempt?.status === 'running' && view !== 'compete') markRaceInterrupted();
   switchView(view);

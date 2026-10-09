@@ -2137,6 +2137,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 @media (pointer: coarse) {
   .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
+  /* A link inside a sentence still gets a full touch target; the negative margin keeps its line from growing. */
+  .first-run-learn .quiet-link { min-height: var(--control); margin-block: calc((var(--control) - 1lh) / -2); }
 }
 
 @media (max-width: 760px) {

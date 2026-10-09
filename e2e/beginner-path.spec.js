@@ -232,6 +232,28 @@ test('guests keep lesson progress for the tab only, and clearing history clears 
   await expect(page.locator('#lesson-list .lesson-row').first()).toHaveAttribute('data-state', 'next');
 });
 
+test('opening learn to type mid-drill ends the drill without drawing a retest passage', async ({ page, supabase }) => {
+  const user = supabase.addUser('drill@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1);
+  const seen = supabase.profileFor(user.email).seenTextIds;
+  await typeInto(page, (await passageText(page)).slice(0, 4));
+  await expect(body(page)).toHaveAttribute('data-running', 'true');
+
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('learn to type');
+  await page.keyboard.press('Enter');
+  await expect(body(page)).toHaveAttribute('data-view', 'learn');
+  // The interrupted drill and anything drawn with it reach the account in the same save.
+  await expect.poll(() => supabase.profileFor(user.email)?.runs?.map((run) => `${run.kind} ${run.status}`)).toEqual(['test complete', 'drill interrupted']);
+  expect(supabase.profileFor(user.email).seenTextIds).toEqual(seen);
+});
+
 test('a suggestion sent from the learn screen records the learn view', async ({ page, supabase }) => {
   await openApp(page);
   await openLessons(page);

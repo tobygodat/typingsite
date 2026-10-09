@@ -1,5 +1,5 @@
 import { quoteCorpus } from '../src/typing.js';
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, freshTextCheck, openView } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, freshTextCheck, openView, signInWithEmail } from './fixtures.js';
 
 const translateY = (page) => page.locator('#text-display').evaluate((node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).m42);
 
@@ -70,6 +70,26 @@ test('a skipped drill is saved as a fresh-text check', async ({ page }) => {
   await expect(page.locator('#comparison-caveat')).not.toContainText('Couldn’t save');
   await openView(page, 'Progress');
   await expect(page.locator('.history-target')).toHaveText('Fresh-text check');
+});
+
+test('leaving a drill for another view ends it without drawing a retest passage', async ({ page, supabase }) => {
+  const user = supabase.addUser('loop@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.locator('#start-drill').click();
+  await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1);
+  const seen = supabase.profileFor(user.email).seenTextIds;
+  await typeInto(page, (await passageText(page)).slice(0, 4));
+  await openView(page, 'Progress');
+  // The interrupted drill and anything drawn with it reach the account in the same save.
+  await expect.poll(() => supabase.profileFor(user.email)?.runs?.map((run) => `${run.kind} ${run.status}`)).toEqual(['test complete', 'drill interrupted']);
+  expect(supabase.profileFor(user.email).seenTextIds).toEqual(seen);
+  // Train still offers the retest, which draws its passage only when asked.
+  await openView(page, 'Train');
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
 });
 
 test('a manual drill works without a baseline', async ({ page }) => {
