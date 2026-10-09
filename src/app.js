@@ -115,7 +115,10 @@ const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCh
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-let lastCompleted = null;
+// The completed run the results view shows: its numbers, run card graph and Watch replay. Only
+// showResult sets it. `attempt` moves on without it (a drill whose retest is unavailable, the
+// next run), so nothing on the results view reads `attempt`.
+let shownResult = null;
 let ghostOn = false;
 let palette = null;
 let onlineRace = null;
@@ -809,7 +812,6 @@ const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', '
 
 // Draw after the results view is shown so the graph has its size.
 function renderCard(completed) {
-  lastCompleted = completed;
   const kind = completed.kind === 'test' ? 'practice' : completed.kind;
   const at = new Date();
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
@@ -834,12 +836,18 @@ function retestLength(value) {
   return value.quoteLength && value.quoteLength !== 'any' ? `${value.quoteLength} quote` : 'quote';
 }
 
+// Records the run the results view now shows; Watch replay appears only when it has a trace.
+function showResult(completed) {
+  shownResult = completed;
+  $('watch-replay').hidden = !completed?.events?.length;
+}
+
 function renderResults(completed, saved) {
   activeRecommendation ||= recommendTarget([], completed.conditions);
   const replay = completed.summary;
   const counted = completed.status === 'complete';
   const firstErrors = replay.firstAttempts.filter((item) => !item.correct).length;
-  $('watch-replay').hidden = !completed.events?.length;
+  showResult(completed);
   $('result-wpm').textContent = replay.score.wpm;
   $('result-accuracy').textContent = replay.score.accuracy;
   $('result-errors').textContent = firstErrors;
@@ -1373,7 +1381,7 @@ function clearHistory() {
   $('result-comparison-note').textContent = '';
   $('run-card-stamp').textContent = 'no run yet';
   $('run-card').hidden = true;
-  lastCompleted = null;
+  showResult(null);
   $('speed-graph').replaceChildren();
   $('recommendation-title').textContent = 'Finish a run to get a drill.';
   $('recommendation-evidence').textContent = '';
@@ -1778,7 +1786,7 @@ function bindEvents() {
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   const replayView = createReplayView($('replay-dialog'));
-  $('watch-replay').addEventListener('click', () => replayView.open(attempt));
+  $('watch-replay').addEventListener('click', () => replayView.open(shownResult));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
@@ -1998,8 +2006,8 @@ new ResizeObserver(() => {
   const graph = $('speed-graph');
   const width = Math.round(graph.clientWidth);
   // Sub-pixel layout settling is ignored so it cannot cut the first draw short.
-  if (!lastCompleted || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
-  renderSpeedGraph(graph, lastCompleted, { animate: false });
+  if (!shownResult || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
+  renderSpeedGraph(graph, shownResult, { animate: false });
 }).observe($('speed-graph'));
 let trendWidth = 0;
 new ResizeObserver(() => {

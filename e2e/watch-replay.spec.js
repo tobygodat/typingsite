@@ -1,4 +1,5 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings } from './fixtures.js';
+import { quoteCorpus } from '../src/typing.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView } from './fixtures.js';
 
 async function finishWithCorrectedMiss(page) {
   await openApp(page);
@@ -75,6 +76,43 @@ test('in focus mode, one Escape closes the replay and focus mode stays on', asyn
   await page.keyboard.press('Escape');
   await expect(page.locator('#replay-dialog')).toBeHidden();
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
+});
+
+test('Watch replay plays the run the results show, not a drill whose retest was unavailable', async ({ page }) => {
+  // Exhaust the gentle medium quotes (as in learning-loop.spec.js), so the drill's retest is refused.
+  const pool = quoteCorpus.filter((quote) => quote.difficulty === 'gentle' && quote.text.split(/\s+/).length > 30 && quote.text.split(/\s+/).length <= 60);
+  const texts = new Set(pool.map((quote) => quote.text));
+  const seen = new Set();
+  const note = async () => { const text = await passageText(page); if (texts.has(text)) seen.add(text); };
+  await page.clock.install();
+  await openApp(page);
+  // Before any run there is nothing to replay.
+  await openView(page, 'train');
+  await expect(page.locator('#watch-replay')).toBeHidden();
+  await openView(page, 'practice');
+  await page.locator('#mode-quote').click();
+  await page.locator('#quote-length').selectOption('medium');
+  await page.locator('#quote-difficulty').selectOption('gentle');
+  for (let tries = 0; seen.size < pool.length && tries < pool.length + 3; tries += 1) {
+    await note();
+    if (seen.size < pool.length) await page.locator('#restart-button').click();
+  }
+  expect(seen.size).toBe(pool.length);
+  const baseline = await completePassage(page);
+
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  const drill = await passageText(page);
+  await typeInto(page, drill.slice(0, 12));
+  await page.clock.fastForward(60_000);
+  await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', 'unavailable');
+
+  // The results still describe the baseline, so that is what plays.
+  await page.locator('#watch-replay').click();
+  await expect(page.locator('#replay-dialog')).toBeVisible();
+  await expect(page.locator('#replay-text')).toHaveText(baseline);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#replay-dialog')).toBeHidden();
 });
 
 test('replay controls wrap inside the dialog at phone width', async ({ page }) => {
