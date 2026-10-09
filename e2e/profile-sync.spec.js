@@ -457,3 +457,48 @@ test('a retest keeps its baseline’s conditions when another tab picks others, 
   await expect(page.locator('#duration-options [data-length="25"]')).toHaveAttribute('aria-pressed', 'true');
   expect(errors).toEqual([]);
 });
+
+// A drill and its retest run at the baseline's conditions without changing the saved ones, so a pick
+// another tab makes during the drill outlasts the retest, whether the drill had started or was only
+// prepared when the pick came.
+for (const when of ['prepared', 'running']) {
+  test(`a pick another tab makes while a drill is ${when} survives the retest and applies after it`, async ({ page, context, supabase }) => {
+    await page.clock.install();
+    supabase.addUser(EMAIL);
+    const errors = [];
+    await openApp(page);
+    await signInWithEmail(page, EMAIL);
+    const other = await extraPage(context, supabase, errors);
+    await openApp(other);
+    await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+    await chooseWords(page, 10);
+    await typeInto(page, await passageText(page));
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+    await page.locator('#start-drill').click();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+    const drill = await passageText(page);
+    if (when === 'running') await typeInto(page, drill.slice(0, 5));
+
+    await chooseWords(other, 25);
+    await expect.poll(() => cloud(supabase)?.preferences.count).toBe(25);
+    if (when === 'prepared') await typeInto(page, drill.slice(0, 5));
+    await page.clock.fastForward(60_000);
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+    await expect(page.locator('#condition-line')).toContainText('10 words');
+    await typeInto(page, await passageText(page));
+    await expect(page.locator('#comparison-panel')).toBeVisible();
+    await expect(page.locator('#result-conditions')).toContainText('10 words');
+
+    // The retest's comparison reached the account, and the other tab's pick is still the saved one.
+    await expect.poll(() => cloud(supabase)?.loops?.length, { timeout: 15000 }).toBe(1);
+    expect(cloud(supabase).preferences).toMatchObject({ mode: 'words', count: 25 });
+    expect((await cachedProfile(page)).preferences).toMatchObject({ mode: 'words', count: 25 });
+    await expect(other.locator('#condition-line')).toContainText('25 words');
+    await expect(page.locator('#duration-options [data-length="25"]')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#run-again').click();
+    await expect(page.locator('#condition-line')).toContainText('25 words');
+    expect((await passageText(page)).split(' ')).toHaveLength(25);
+    expect(errors).toEqual([]);
+  });
+}

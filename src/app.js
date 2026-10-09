@@ -1082,7 +1082,11 @@ function startRetest() {
   resetSession('retest', { focus: true });
 }
 
+// A drill or retest runs at its baseline's conditions without recording them as a settings edit: the
+// saved settings, including a pick from another tab or device made meanwhile, apply again once it ends
+// (resetSession leaves them waiting), and a restore never outranks a choice someone made.
 function restoreConditions(source) {
+  commitPreferences();
   prefs = {
     ...prefs,
     mode: source.mode,
@@ -1094,6 +1098,7 @@ function restoreConditions(source) {
     wordList: source.wordList || prefs.wordList,
     stopOnError: source.correctionPolicy !== 'relaxed',
   };
+  livePreferences = JSON.stringify(prefs);
   applyPreferences();
   setModeControls();
 }
