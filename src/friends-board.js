@@ -75,6 +75,23 @@ export function weekOrder(rows) {
 }
 
 const newId = () => crypto.randomUUID();
+// Whether the account shares is the service's to say: its row is the only record, and every board reply
+// says. This device keeps what it last read (or last chose) only to show the switch and to know when to
+// publish before the next read: true, false, or null when it has never read the board for this account.
+// It is never synced, so one device can't put sharing back on for another.
+const sharingKey = (session) => `stilltype-board-sharing:${session.user.id}`;
+function knownSharing(session) {
+  try {
+    const value = localStorage.getItem(sharingKey(session));
+    return value === '1' ? true : value === '0' ? false : null;
+  } catch { return null; }
+}
+function rememberSharing(session, value) {
+  try {
+    if (value === null) localStorage.removeItem(sharingKey(session));
+    else localStorage.setItem(sharingKey(session), value ? '1' : '0');
+  } catch {}
+}
 // An opt-out the service hasn't confirmed yet, kept on this device across reloads until it has.
 const optOutKey = (session) => `stilltype-board-optout:${session.user.id}`;
 function optOutPending(session) {
@@ -124,8 +141,18 @@ export const publishSummary = (session, summary, { replace = false } = {}) => ca
 export const shareSummary = (session, summary) => call(session, 'share', summary);
 export const stopSharing = (session) => call(session, 'unshare');
 
-export function createFriendsBoard({ getSession, canPublish, isSharing, setSharing, runs, dailyKey, isRunning, signIn, openOnline, onUndoRefused = () => {} }) {
+export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isRunning, signIn, openOnline, onUndoRefused = () => {} }) {
   let visible = false;
+  // Whether this account shares, as this device last knew it (see knownSharing); null until it knows.
+  let sharing = getSession() ? knownSharing(getSession()) : null;
+  // Signed out: this device stops keeping whether the account shares.
+  let closed = false;
+  const isSharing = () => sharing === true;
+  function setSharing(value) {
+    sharing = value;
+    const session = getSession();
+    if (session && !closed) rememberSharing(session, value);
+  }
   let loading = false;
   let board = null;
   let generation = 0;
@@ -214,17 +241,24 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
     if (seq === toggles) {
       unsharing = false;
       rememberOptOut(session, false);
-      if (isSharing()) setSharing(false);
+      setSharing(false);
     }
     return result;
   }
 
-  // The service knows whether this account shares: another device may have turned it on or off. A
-  // reply that crossed a switch here, or came while removing the row is unconfirmed, doesn't count.
-  // True when it turned sharing on in this tab, whose summary is then due (now, or after the check).
+  // Every reply says whether this account shares, and that is what this tab goes by: another device may
+  // have turned it on or off. A reply that crossed a switch here, or came while an opt-out made here is
+  // unconfirmed, doesn't count. Learning that the account shares never shares anything itself: only the
+  // switch sends 'share'. This tab then publishes into the row that is already there, which an opt-out
+  // still on its way from another device turns into a marker when it lands. True when it turned sharing
+  // on in this tab, whose summary is then due (now, or after the check).
   function learn(result, seq) {
-    if (typeof result?.sharing !== 'boolean' || seq !== toggles || unsharing || held !== null || result.sharing === isSharing()) return false;
-    if (!result.sharing) { stoppedElsewhere(); return false; }
+    if (typeof result?.sharing !== 'boolean' || seq !== toggles || unsharing || held !== null || result.sharing === sharing) return false;
+    if (!result.sharing) {
+      // A tab that thought it shared says so; one that didn't know yet just knows now.
+      if (sharing) stoppedElsewhere(); else setSharing(false);
+      return false;
+    }
     setSharing(true);
     note = '';
     pending = true;
@@ -311,19 +345,23 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
     return item;
   }
 
+  // What the switch shows: a choice made before the account check, then what this device knows.
+  const switchedOn = () => held ?? ((isSharing() && !unsharing) || turningOn);
+
   function render(status = '') {
     const signedIn = Boolean(getSession());
-    const sharing = signedIn && isSharing() && !unsharing;
+    const shared = signedIn && isSharing() && !unsharing;
     $('friends-board-guest').hidden = signedIn;
     $('refresh-friends-board').hidden = !signedIn;
     $('friends-board-share').hidden = !signedIn;
-    $('share-board').checked = held ?? (sharing || turningOn);
-    // Not sharing, you see nobody else's row either: the board says so beside the switch.
-    $('friends-board-off').hidden = !signedIn || (held ?? (sharing || turningOn));
-    $('friends-board-status').textContent = signedIn ? status || (!sharing && !turningOn ? note : '') : '';
+    $('share-board').checked = switchedOn();
+    // Not sharing, you see nobody else's row either: the board says so beside the switch. Until this
+    // device has read the board once it can't say either way, so it says nothing.
+    $('friends-board-off').hidden = !signedIn || switchedOn() || sharing === null;
+    $('friends-board-status').textContent = signedIn ? status || (!shared && !turningOn ? note : '') : '';
     // A daily result from another build (another passage, corpus or scoring) is not compared; its row says so.
     const version = board?.date && dailyVersion(dailyKey(), new Date(`${board.date}T00:00:00Z`));
-    const rows = sharing && board?.sharing && board.rows
+    const rows = shared && board?.sharing && board.rows
       ? board.rows.map((entry) => (entry.daily && entry.daily.version !== version ? { ...entry, daily: null, otherVersion: true } : entry))
       : null;
     $('friends-board-lists').hidden = !rows;
@@ -407,9 +445,9 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
     }, 1500);
   }
 
-  // The switch on the board, and its palette command. Turning sharing on sends this tab's summary and
-  // takes effect once the service has it; before the account check it waits for the check (resume), so
-  // it sends the checked summary and holds against the profile the check adopts. Turning it off stops
+  // The switch on the board, and its palette command: the only way this device shares or stops. Turning
+  // sharing on sends this tab's summary and takes effect once the service has it; before the account
+  // check it waits for the check (resume), so it sends the checked summary. Turning it off stops
   // publishing at once and removes your row, retrying (resume, the next board read, or the next load) if
   // that fails. Focus stays where it was.
   async function setShare(on, { force = false } = {}) {
@@ -422,7 +460,7 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
       if (!on) removeRow(session).then(() => render(), () => {});
       return;
     }
-    if (!force && on === isSharing() && !turningOn && !unsharing) { render(); return; }
+    if (!force && on === sharing && !turningOn && !unsharing) { render(); return; }
     const seq = ++toggles;
     if (on) {
       turningOn = true;
@@ -489,18 +527,32 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   return {
     schedulePublish,
     setShare,
-    // After the account check (and when the browser is back online): a switch made before the check
-    // now applies to the profile it settled on, and an unconfirmed opt-out goes out first.
+    // After the account check (and when the browser is back online): sharing turned on before the check
+    // now goes out with the checked summary, and an unconfirmed opt-out goes out first. A device that
+    // has never read the board for this account reads it once, quietly, to learn whether it shares (and
+    // so publish what it has); one that knows learns of changes elsewhere from its next board request.
     resume() {
       const session = getSession();
       if (held !== null && session) {
         const on = held;
         held = null;
         if (on) setShare(true, { force: true });
-        else if (isSharing()) setSharing(false);
       }
       if (unsharing && session) removeRow(session).then(() => { if (visible) refresh(); }, () => {});
+      else if (session && sharing === null && !turningOn && !loading) refresh();
       if (pending) schedulePublish();
+    },
+    // What the switch shows: true or false, or null while this device doesn't know yet.
+    get sharing() {
+      if (!getSession()) return null;
+      return held === null && !turningOn && !unsharing && sharing === null ? null : switchedOn();
+    },
+    // Signing out: what this device knew of the account's sharing goes with it. An opt-out, clear or
+    // undo still unconfirmed stays, and goes out the next time the account signs in here.
+    signOut() {
+      const session = getSession();
+      if (session) rememberSharing(session, null);
+      closed = true;
     },
     // Switching to the board and arriving on the screen can both ask at once; one request answers both.
     show() { if (visible && loading) return; visible = true; refresh(); },
