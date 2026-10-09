@@ -20,6 +20,7 @@
   --text-mono: 12px;
   --text-label: 14px;
   --text-small: 15px;
+  --text-field: 16px;
   --text-body: 17px;
   --text-lead: 20px;
   --text-title: 30px;
@@ -754,14 +755,17 @@ kbd {
 }
 
 /* The custom length: the pill becomes a short field in place, with no box of its own beyond the
-   focus ring. Pill and field share one width ("custom" in mono), so the row never jumps, and the
-   message sits in the gap under the row, so the passage never moves. */
+   focus ring. Pill and field share one width, so the row never jumps, and the message sits in the
+   gap under the row, so the passage never moves. The word "custom" is Literata like the mode
+   options; only a number in the pill is mono, like the presets beside it. */
 .custom-length { display: flex; }
-.segmented.compact #custom-length { min-width: calc(6ch + var(--space-4)); }
-.segmented .custom-length-input { width: calc(6ch + var(--space-4)); color: var(--text); text-align: center; }
+.segmented.compact #custom-length { min-width: var(--space-16); padding: 0 var(--space-1); }
+.segmented.compact #custom-length:not(.is-active) { font: 400 var(--text-small)/1 var(--font-serif); }
+.segmented .custom-length-input { width: var(--space-16); color: var(--text); text-align: center; }
 .custom-length-input::placeholder { color: var(--muted); opacity: 1; }
-/* A coral rule under the field, paired with the message's words; the placeholder keeps the ground behind it. */
-.custom-length-input[aria-invalid="true"] { box-shadow: inset 0 -2px 0 var(--danger); }
+/* A coral hairline, as on other fields, paired with the message's words; no tint, so the
+   placeholder keeps its contrast. */
+.custom-length-input[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--danger); }
 
 .custom-length-error {
   position: absolute;
@@ -774,8 +778,10 @@ kbd {
   text-align: center;
 }
 
-/* Focus mode hides the row; the palette's "custom time…" shows it while the field is open. */
-body[data-focus-mode="true"] .practice-controls[data-editing] { visibility: visible; }
+/* Focus mode hides the row; the palette's "custom time…" shows it while the field is open, and a
+   message left by an invalid entry stays readable until the run starts. */
+body[data-focus-mode="true"] .practice-controls[data-editing],
+body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visible; }
 
 .compact-switch {
   height: 44px;
@@ -1983,6 +1989,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 @media (pointer: coarse) {
   .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control { min-height: 44px; }
+  /* Under 16px, iOS zooms the page in to type, and leaves it zoomed. The width stays shared with the pill. */
+  .segmented.compact .custom-length-input { padding: 0 var(--space-1); font-size: var(--text-field); }
 }
 
 @media (max-width: 760px) {

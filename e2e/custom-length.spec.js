@@ -9,6 +9,7 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
 const pill = (page) => page.locator('#custom-length');
 const field = (page) => page.locator('#custom-length-input');
 const message = (page) => page.locator('#custom-length-error');
+const rowWidth = async (page) => (await page.locator('#duration-options').boundingBox()).width;
 
 async function setCustom(page, value) {
   await pill(page).click();
@@ -21,9 +22,13 @@ test('a custom time is validated in place and becomes the test length', async ({
   await openApp(page);
   await expect(pill(page)).toHaveText('custom');
   await expect(pill(page)).toHaveAttribute('aria-pressed', 'false');
+  // "custom" is a word, so Literata like the mode options; the field takes its exact width.
+  await expect(pill(page)).toHaveCSS('font-family', /^Literata/);
+  const closed = await rowWidth(page);
 
   await pill(page).click();
   await expect(pill(page)).toBeHidden();
+  expect(await rowWidth(page)).toBeCloseTo(closed, 1);
   await expect(field(page)).toBeFocused();
   await expect(field(page)).toHaveAttribute('placeholder', '5–600');
   await expect(field(page)).toHaveAttribute('aria-label', 'custom time in seconds, 5 to 600');
@@ -214,6 +219,56 @@ test('the palette opens the custom field, switching mode when needed', async ({ 
   await expect(page.locator('.practice-controls')).toHaveCSS('visibility', 'hidden');
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
   await expect(page.locator('#condition-line')).toContainText('· 40 s ·');
+
+  // Leaving the field returns to the passage, since the row (pill included) hides again.
+  const openFromPalette = async () => {
+    await page.keyboard.press('Control+k');
+    await page.keyboard.type('custom time');
+    await page.keyboard.press('Enter');
+    await expect(field(page)).toBeFocused();
+  };
+  for (const [key, length] of [['Escape', '40'], ['Tab', '50']]) {
+    await openFromPalette();
+    await field(page).fill('50');
+    await field(page).press(key);
+    await expect(page.locator('.practice-controls')).toHaveCSS('visibility', 'hidden');
+    await expect(page.locator('#typing-input')).toBeFocused();
+    await expect(page.locator('#condition-line')).toContainText(`· ${length} s ·`);
+    await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
+  }
+
+  // A bad entry left behind stays readable under the hidden row, and clears when the run starts.
+  await openFromPalette();
+  await field(page).fill('700');
+  await page.locator('#typing-wrap').click();
+  await expect(page.locator('.practice-controls')).toHaveCSS('visibility', 'hidden');
+  await expect(message(page)).toHaveText('Too long: use at most 600 seconds.');
+  await expect(message(page)).toHaveCSS('visibility', 'visible');
+  await expect(page.locator('#typing-input')).toBeFocused();
+  await page.keyboard.type((await passageText(page)).slice(0, 3));
+  await expect(page.locator('#typing-status')).toHaveText('In progress');
+  await expect(message(page)).toHaveText('');
+});
+
+test('the palette’s custom length after a finished quote draws no quote just to replace it', async ({ page, supabase }) => {
+  supabase.addUser('ada@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await page.locator('#mode-quote').click();
+  await page.locator('#quote-length').selectOption('short');
+  await completePassage(page);
+  const seenQuotes = () => page.evaluate(() => {
+    const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-profile-v2:'));
+    return JSON.parse(localStorage.getItem(key)).seenTextIds.filter((id) => !id.startsWith('generated-'));
+  });
+  const before = await seenQuotes();
+  expect(before.length).toBeGreaterThan(0);
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('custom time');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#mode-time')).toHaveAttribute('aria-pressed', 'true');
+  await expect(field(page)).toBeFocused();
+  expect(await seenQuotes()).toEqual(before);
 });
 
 test('a guest’s custom length lasts for the tab only', async ({ page }) => {
@@ -254,7 +309,9 @@ for (const width of [320, 390]) {
   test(`the field and its message fit a ${width}px phone`, async ({ page }) => {
     await page.setViewportSize({ width, height: 740 });
     await openApp(page);
+    const closed = await rowWidth(page);
     await pill(page).click();
+    expect(await rowWidth(page)).toBeCloseTo(closed, 1);
     await field(page).fill('1000');
     await field(page).press('Enter');
     await expect(message(page)).toHaveText('Too long: use at most 600 seconds.');

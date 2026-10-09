@@ -23,10 +23,9 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { dailyPassage, filterRuns, recurringTargets, retainRuns, retainTraces, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
-const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
 const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -147,7 +146,7 @@ let race = {
 // A guest's profile lives only in memory, so there is nothing to fail.
 function saveProfile() {
   profile.preferences = { ...prefs };
-  profile.attempts = profile.attempts.slice(-MAX_STORED_ATTEMPTS);
+  profile.attempts = retainTraces(profile.attempts);
   profile.runs = retainRuns(profile.runs);
   if (!session) return true;
   unsynced = true;
@@ -378,7 +377,8 @@ function closeCustomLength({ focus = false } = {}) {
   delete document.querySelector('.practice-controls').dataset.editing;
   $('custom-length-input').setAttribute('aria-invalid', 'false');
   updateGlide($('duration-options'), { instant: true });
-  if (focus) $('custom-length').focus({ preventScroll: true });
+  // Focus mode hides the row again, pill included, so focus goes back to the passage.
+  if (focus) (prefs.focusMode ? $('typing-input') : $('custom-length')).focus({ preventScroll: true });
 }
 
 function commitCustomLength({ leaving = false } = {}) {
@@ -441,18 +441,20 @@ function bindCustomLength() {
   form.addEventListener('focusout', (event) => {
     // Switching windows keeps the field open; the browser hands focus back on return.
     if (form.hidden || form.contains(event.relatedTarget) || !document.hasFocus()) return;
+    // In focus mode the row hides again as the field closes, so focus bound for it would be lost.
+    const stranded = prefs.focusMode && (!event.relatedTarget || controls.contains(event.relatedTarget));
     if (dropCustomLength) {
       dropCustomLength = false;
       closeCustomLength();
-      return;
-    }
-    commitCustomLength({ leaving: true });
+    } else commitCustomLength({ leaving: true });
+    if (stranded) $('typing-input').focus({ preventScroll: true });
   });
 }
 
+// A mode change resets once, in the new mode, so a quote is never drawn (and marked seen) only to be replaced.
 function setCustomLengthFromPalette(mode) {
-  navigate('practice');
   if (prefs.mode !== mode) setTestShape(mode);
+  else navigate('practice');
   openCustomLength(mode);
 }
 
@@ -701,6 +703,8 @@ function startAttempt(targetAttempt, type = 'primary') {
     ticker = setInterval(updateLive, 100);
     primaryFx.ghost.run(stamp);
     setRunning(true);
+    // A message left by an abandoned custom length belongs to the row, not to the run.
+    setCustomLengthError('');
     $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>In progress';
   } else {
     if (race.startTime !== null) return;

@@ -2,6 +2,10 @@ import { conditionKey, replayAttempt, summarizePatterns, textId } from './typing
 
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
+export const MAX_TRACES = 24;
+// Characters of JSON for the full traces together. One 600 s trace at 130 wpm is about 1.5 million,
+// and a browser allows about 5 million per site, so long custom runs keep fewer traces than 24.
+export const TRACE_BUDGET = 2_500_000;
 
 export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
@@ -22,6 +26,26 @@ export function runRecord(attempt, at = attempt.at || null) {
 export function retainRuns(runs) {
   const kept = runs.slice(-MAX_RUN_SUMMARIES);
   return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS ? { ...run, patterns: [] } : run);
+}
+
+const traceSizes = new WeakMap();
+function traceSize(trace) {
+  if (!trace || typeof trace !== 'object') return JSON.stringify(trace ?? null).length;
+  if (!traceSizes.has(trace)) traceSizes.set(trace, JSON.stringify(trace).length);
+  return traceSizes.get(trace);
+}
+
+// The newest full traces, at most MAX_TRACES and within TRACE_BUDGET; the newest is always kept.
+// An older run loses only its trace: bests, trends and recurring evidence read the compact summaries.
+export function retainTraces(traces, { max = MAX_TRACES, budget = TRACE_BUDGET } = {}) {
+  const kept = [];
+  let total = 0;
+  for (let i = traces.length - 1; i >= 0 && kept.length < max; i -= 1) {
+    total += traceSize(traces[i]);
+    if (kept.length && total > budget) break;
+    kept.push(traces[i]);
+  }
+  return kept.reverse();
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;

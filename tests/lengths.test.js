@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LENGTHS, isPresetLength, isValidLength, normalizeLengthPreferences, parseCustomLength } from '../src/lengths.js';
-import { CORPUS_VERSION, METRIC_VERSION, conditionKey, makePassage, selectPassage, timedWordSupply } from '../src/typing.js';
+import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, conditionKey, createAttempt, makePassage, selectPassage, timedWordSupply } from '../src/typing.js';
+import { MAX_TRACES, TRACE_BUDGET, retainTraces } from '../src/insights.js';
 
 // The conditions object exactly as app.js builds it for a time or word test.
 const shape = (mode, length) => ({
@@ -118,4 +119,42 @@ test('presets keep the same 1,600-word timed passage; long custom times get enou
   assert.ok(long.length >= 300 * 5 * 10, `${long.length} characters`);
   assert.equal(selectPassage({ mode: 'time', duration: 600, random: seeded() }).text.split(' ').length, 3000);
   assert.equal(selectPassage({ mode: 'words', count: 500, random: seeded() }).text.split(' ').length, 500);
+});
+
+// A finished trace as the app stores it: every keystroke an event, one error in 33 corrected.
+function storedTrace(id, mode, length, wpm) {
+  const passage = selectPassage({ mode, duration: mode === 'time' ? length : 0, count: mode === 'words' ? length : 25, random: seeded() });
+  const attempt = createAttempt({ id, text: passage.text, textId: passage.id, conditions: shape(mode, length) });
+  const keys = mode === 'time' ? Math.min(passage.text.length, Math.round((wpm * 5 * length) / 60)) : passage.text.length;
+  let offsetMs = 0;
+  for (let position = 0; position < keys; position += 1) {
+    offsetMs += 60_000 / (wpm * 5);
+    if (position % 33 === 7) {
+      attempt.events.push({ type: 'insert', text: 'q', position, accepted: true, offsetMs });
+      attempt.events.push({ type: 'delete', count: 1, offsetMs: offsetMs + 60 });
+    }
+    attempt.events.push({ type: 'insert', text: passage.text[position], position, accepted: true, offsetMs: offsetMs + 120 });
+  }
+  attempt.startedAt = 0;
+  return completeAttempt(attempt, { endedAt: offsetMs + 120 });
+}
+
+test('long custom runs keep fewer full traces, so the device cache stays inside the storage quota', () => {
+  // Runs of the default 30 s, even fast ones, keep all 24 traces.
+  const preset = storedTrace('preset', 'time', 30, 130);
+  const presets = Array.from({ length: 30 }, (_, i) => ({ ...preset, id: `p${i}` }));
+  assert.deepEqual(retainTraces(presets).map((t) => t.id), presets.slice(-MAX_TRACES).map((t) => t.id));
+
+  // 24 maximum-length custom runs (600 s at 130 wpm, 500 words) do not.
+  const longest = [storedTrace('time', 'time', 600, 130), storedTrace('words', 'words', 500, 130)];
+  assert.ok(JSON.stringify(longest[0]).length > 1_000_000);
+  const traces = Array.from({ length: MAX_TRACES }, (_, i) => ({ ...longest[i % 2], id: `long${i}` }));
+  const kept = retainTraces([...presets, ...traces]);
+  assert.ok(kept.length >= 2 && kept.length < MAX_TRACES, `${kept.length} kept`);
+  assert.ok(JSON.stringify(kept).length <= TRACE_BUDGET);
+  assert.deepEqual(kept.map((t) => t.id), traces.slice(-kept.length).map((t) => t.id));
+
+  // The newest trace is always kept, whatever its size.
+  assert.deepEqual(retainTraces(traces, { budget: 10 }).map((t) => t.id), ['long23']);
+  assert.deepEqual(retainTraces([]), []);
 });
