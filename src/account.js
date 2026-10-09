@@ -179,6 +179,52 @@ export async function signOut(session, { keepCache = false } = {}) {
   try { await request('/auth/v1/logout', { method: 'POST', token: session?.access_token }); } catch {}
 }
 
+// Deleting an account is one server step: the delete-account Edge Function
+// (supabase/functions/delete-account) checks the caller's token and deletes the auth user, and the
+// profile, race rooms, race seats and friend rows go with it through ON DELETE CASCADE.
+export const DELETE_ACCOUNT_PATH = '/functions/v1/delete-account';
+
+export const DELETE_COPY = {
+  session: 'Your session has ended, so nothing was deleted. Sign out, sign in again, then delete your account.',
+  missing: 'Account deletion isn’t switched on yet, so nothing was deleted. Try again later.',
+  unavailable: 'Account deletion isn’t available right now, so nothing was deleted. Try again later.',
+  failed: 'Your account couldn’t be deleted just now, so nothing changed. Try again in a moment.',
+  offline: 'Can’t reach the account service. Check your connection and try again.',
+};
+
+// Resolves once the account is gone; otherwise throws an AuthError whose message says what happened.
+// Signing out and clearing this device are left to the caller, for after success only.
+export async function deleteAccount(session) {
+  let current;
+  try {
+    current = await freshSession(session);
+  } catch (error) {
+    // A rejected refresh token means the session is over; anything else is the service or the network.
+    const ended = error.status >= 400 && error.status < 500;
+    throw new AuthError(ended ? DELETE_COPY.session : error.status ? DELETE_COPY.failed : DELETE_COPY.offline);
+  }
+  if (!current) throw new AuthError(DELETE_COPY.session);
+  try {
+    await request(DELETE_ACCOUNT_PATH, { method: 'POST', token: current.access_token, body: {} });
+    return;
+  } catch (error) {
+    if (error.status === 401 || error.status === 403) throw new AuthError(DELETE_COPY.session);
+    if (error.status === 404) throw new AuthError(DELETE_COPY.missing);
+    if (error.status) throw new AuthError(DELETE_COPY.failed);
+  }
+  // No reply at all. A function that isn't deployed can fail this way in a browser, when the platform's
+  // not-found reply has no CORS headers. Say nothing was deleted only if the account still exists.
+  let stillThere = false;
+  try { stillThere = (await request('/auth/v1/user', { token: current.access_token }))?.id === current.user.id; } catch {}
+  throw new AuthError(stillThere ? DELETE_COPY.unavailable : DELETE_COPY.offline);
+}
+
+// After a confirmed deletion: the session and this account's device cache go, nothing is sent.
+export function forgetAccount(session) {
+  remove(SESSION_KEY);
+  if (session?.user?.id) remove(profileKey(session.user.id));
+}
+
 export async function fetchCloudProfile(session) {
   const rows = await request(`/rest/v1/profiles?select=data,updated_at&user_id=eq.${session.user.id}`, { token: session.access_token });
   return rows?.[0] || null;

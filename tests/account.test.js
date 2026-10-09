@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { challengeFor, cleanRedirectUrl, freshSession, MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, suggestionRow } from '../src/account.js';
+import {
+  challengeFor, cleanRedirectUrl, deleteAccount, DELETE_ACCOUNT_PATH, DELETE_COPY, forgetAccount, freshSession,
+  MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, suggestionRow,
+} from '../src/account.js';
 
 test('PKCE challenge matches the RFC 7636 example', async () => {
   assert.equal(await challengeFor('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'), 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
@@ -72,4 +75,84 @@ test('a stale copy of the session gives way to the newest stored one instead of 
     globalThis.localStorage = originalStorage;
     globalThis.fetch = originalFetch;
   }
+});
+
+// Account deletion: one call to the delete-account function, and a plain sentence for every failure.
+async function withAccountService(handler, run) {
+  const store = new Map();
+  const calls = [];
+  const originalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  globalThis.fetch = async (url, init = {}) => {
+    const path = new URL(url).pathname;
+    calls.push({ path, method: init.method || 'GET', authorization: init.headers?.Authorization });
+    return handler(path, init);
+  };
+  try {
+    await run(calls, store);
+  } finally {
+    globalThis.localStorage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
+}
+
+const liveSession = () => ({ access_token: 'token', refresh_token: 'refresh', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: 'u1', email: 'ada@stilltype.test' } });
+const reply = (status, body) => new Response(body === undefined ? null : JSON.stringify(body), { status });
+
+test('deleting an account is one authenticated call to the delete-account function', async () => {
+  await withAccountService(() => reply(200, { deleted: true }), async (calls) => {
+    await deleteAccount(liveSession());
+    assert.deepEqual(calls, [{ path: DELETE_ACCOUNT_PATH, method: 'POST', authorization: 'Bearer token' }]);
+  });
+});
+
+test('a failed deletion says what happened, never the platform’s raw text', async () => {
+  const cases = [[404, DELETE_COPY.missing], [401, DELETE_COPY.session], [403, DELETE_COPY.session], [500, DELETE_COPY.failed], [546, DELETE_COPY.failed]];
+  for (const [status, message] of cases) {
+    await withAccountService(() => reply(status, { message: 'raw platform text' }), async () => {
+      await assert.rejects(deleteAccount(liveSession()), { message });
+    });
+  }
+});
+
+test('with no reply, deletion says nothing was deleted only once the account is confirmed to exist', async () => {
+  const blocked = (userReply) => (path) => {
+    if (path === DELETE_ACCOUNT_PATH) throw new TypeError('Failed to fetch');
+    return userReply();
+  };
+  await withAccountService(blocked(() => reply(200, { id: 'u1' })), async (calls) => {
+    await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.unavailable });
+    assert.deepEqual(calls.map((call) => call.path), [DELETE_ACCOUNT_PATH, '/auth/v1/user']);
+  });
+  await withAccountService(blocked(() => { throw new TypeError('Failed to fetch'); }), async () => {
+    await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.offline });
+  });
+  // The account may already be gone (a lost reply), so no claim either way.
+  await withAccountService(blocked(() => reply(403, { error_code: 'user_not_found' })), async () => {
+    await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.offline });
+  });
+});
+
+test('an ended session is reported before anything reaches the function', async () => {
+  const expired = { ...liveSession(), expires_at: 1 };
+  await withAccountService(() => reply(400, { error_description: 'Invalid Refresh Token' }), async (calls) => {
+    await assert.rejects(deleteAccount(expired), { message: DELETE_COPY.session });
+    assert.deepEqual(calls.map((call) => call.path), ['/auth/v1/token']);
+  });
+  await withAccountService(() => { throw new TypeError('Failed to fetch'); }, async (calls) => {
+    await assert.rejects(deleteAccount(expired), { message: DELETE_COPY.offline });
+    assert.deepEqual(calls.map((call) => call.path), ['/auth/v1/token']);
+  });
+});
+
+test('forgetting a deleted account removes its session and device cache, sends nothing and keeps other accounts', async () => {
+  await withAccountService(() => reply(200), async (calls, store) => {
+    store.set('stilltype-session-v1', '{}');
+    store.set(profileKey('u1'), '{}');
+    store.set(profileKey('u2'), '{}');
+    forgetAccount(liveSession());
+    assert.deepEqual([...store.keys()], [profileKey('u2')]);
+    assert.deepEqual(calls, []);
+  });
 });

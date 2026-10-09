@@ -1742,6 +1742,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 #clear-dialog,
 #account-dialog,
+#delete-account-dialog,
 #suggest-dialog {
   width: min(460px, calc(100% - 32px));
   padding: 0;
@@ -1754,11 +1755,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 #clear-dialog[open],
 #account-dialog[open],
+#delete-account-dialog[open],
 #suggest-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
+#delete-account-dialog::backdrop,
 #suggest-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
-:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
+:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #delete-account-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
 
 .account-fields { display: grid; gap: var(--space-3); }
 .account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
@@ -1821,6 +1824,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .toast .status-dot { color: var(--accent); }
 .account-toast { padding-right: 20px; }
 .account-toast .status-dot { color: var(--warning); }
+.account-toast[data-tone="done"] .status-dot { color: var(--accent); }
 .egg-toast { padding-right: 20px; bottom: calc(var(--space-6) + 64px); }
 
 /* A race challenge drops in under the corner buttons, then leaves after TOAST_MS in src/inbox.js. */

@@ -45,6 +45,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 - Recurring pattern counts across recent matching runs, last-practice information and later fresh observations for revisits. No confident target from a single sparse run.
 - Corpus v5: 39 original quotes, at least three in each length/difficulty bucket, plus expanded real-word targeted drills. Difficulty labels remain descriptive, not calibrated.
 - Condition-aware personal bests, guarded history deletion with immediate undo, explicit insufficient-evidence and interrupted states.
+- Self-serve account deletion behind a typed confirmation: the server deletes the account and everything keyed to it first, and only then does the device sign out and clear its copy. A failure changes nothing and says so. There is no undo.
 - Native HTML/CSS/JS modules with no runtime dependencies. `npm run dev` serves on :5173; `npm test` runs the engine checks. Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono are self-hosted in `src/fonts/`.
 - Signed-in retention: newest 24 full attempt traces, 1,000 compact run summaries and pattern counts on the newest 120 summaries; comparison summaries remain until cleared. Clear/Undo includes daily history. Guests retain everything only in memory for the tab. Older records keep unknown dates and missing score snapshots explicit.
 - `src/typing.js` owns corpus selection, scoring, replay and pattern evidence; `src/app.js` owns UI orchestration and local persistence.

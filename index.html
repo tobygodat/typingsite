@@ -123,6 +123,7 @@
             <p class="account-sync status" role="status"><span class="status-dot" aria-hidden="true"></span><span id="account-sync"></span></p>
             <div class="account-actions account-member-actions">
               <button id="account-signout" class="btn btn-ghost btn-sm" type="button">Sign out</button>
+              <button id="account-delete" class="btn btn-ghost btn-sm danger-text" type="button">Delete my account</button>
             </div>
           </div>
         </div>
@@ -544,6 +545,25 @@
       <div class="dialog-actions">
         <button id="cancel-clear" class="btn btn-ghost" value="cancel">Cancel</button>
         <button id="confirm-clear" class="btn btn-danger" type="button" disabled>Clear history</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="delete-account-dialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-copy">
+    <form id="delete-account-form" class="dialog-content" novalidate>
+      <div>
+        <h2 id="delete-account-title">Delete your account?</h2>
+        <p id="delete-account-copy">This deletes your account for good, with everything saved to it: settings, runs and progress, daily results, your friend list and your online races. You can’t undo it.</p>
+      </div>
+      <div class="account-fields">
+        <label for="confirm-delete-input"><span>Type <strong>delete</strong> to confirm</span>
+          <input id="confirm-delete-input" class="input" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" aria-describedby="delete-account-error">
+        </label>
+        <p id="delete-account-error" class="field-error" role="alert"></p>
+      </div>
+      <div class="dialog-actions">
+        <button id="cancel-delete-account" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="confirm-delete-account" class="btn btn-danger" type="submit" disabled>Delete account</button>
       </div>
     </form>
   </dialog>

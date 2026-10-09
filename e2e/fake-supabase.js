@@ -26,6 +26,11 @@ export class FakeSupabase {
     // Routed requests bypass context.setOffline, so offline tests flip this too.
     this.offline = false;
     this.races = new FakeRaces(this);
+    // How POST /functions/v1/delete-account answers: 'ok' deletes like the real function; 'missing'
+    // is the platform's reply for a function that isn't deployed and 'blocked' the same reply without
+    // CORS headers; 'fail' is deleteUser failing.
+    this.deleteAccount = 'ok';
+    this.deletedUsers = [];
   }
 
   addUser(email, password = 'correct horse battery') {
@@ -36,6 +41,23 @@ export class FakeSupabase {
 
   profileFor(email) {
     return this.profiles.get(this.users.get(email)?.id)?.data || null;
+  }
+
+  // What auth.admin.deleteUser does to the real project: the user, their sessions and every row whose
+  // foreign key cascades from auth.users (profiles; race rooms by host or invitee; race seats; friends).
+  deleteUser(id) {
+    const user = [...this.users.values()].find((candidate) => candidate.id === id);
+    this.users.delete(user.email);
+    for (const [token, owner] of this.tokens) if (owner === id) this.tokens.delete(token);
+    for (const [token, owner] of this.refreshTokens) if (owner.id === id) this.refreshTokens.delete(token);
+    this.profiles.delete(id);
+    for (const [roomId, room] of this.races.rooms) {
+      if (room.players.find((player) => player.slot === 1)?.userId === id || room.invitedUser === id) this.races.rooms.delete(roomId);
+      else room.players = room.players.filter((player) => player.userId !== id);
+    }
+    this.races.friends.delete(id);
+    for (const [owner, list] of this.races.friends) this.races.friends.set(owner, list.filter((friend) => friend.friendId !== id));
+    this.deletedUsers.push(user.email);
   }
 
   issueSession(user) {
@@ -128,6 +150,23 @@ export class FakeSupabase {
 
       case 'POST /auth/v1/logout':
         return reply(204);
+
+      case 'GET /auth/v1/user': {
+        const user = [...this.users.values()].find((candidate) => candidate.id === caller);
+        if (!user) return reply(403, { code: 403, error_code: 'user_not_found', msg: 'User from sub claim in JWT does not exist' });
+        return reply(200, { id: user.id, email: user.email });
+      }
+
+      // Mirrors supabase/functions/delete-account: the caller's token names the user, nothing else.
+      case 'POST /functions/v1/delete-account': {
+        if (this.deleteAccount === 'missing') return reply(404, { code: 'NOT_FOUND', message: 'Requested function was not found' });
+        // The same, seen from a browser when that reply has no CORS headers: no response at all.
+        if (this.deleteAccount === 'blocked') return route.abort('failed');
+        if (!caller) return reply(401, { error: 'Your session has ended. Sign in again, then delete your account.' });
+        if (this.deleteAccount === 'fail') return reply(500, { error: 'Your account couldn’t be deleted just now. Nothing was removed. Try again in a moment.' });
+        this.deleteUser(caller);
+        return reply(200, { deleted: true });
+      }
 
       case 'GET /rest/v1/profiles': {
         if (!caller) return reply(401, { message: 'JWT expired' });
