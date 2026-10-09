@@ -407,6 +407,33 @@ test('nothing is sent mid-run, and an undone clear ends on the restored summary'
   expect(supabase.board.published.at(-1).action).toBe('replace');
 });
 
+test('a clear made while a publish is still on its way is not undone when that publish lands', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect.poll(() => supabase.board.summaries.get(ada.id)?.week.runs).toBe(1);
+  // The next run's publish is slow to reach the service, and the history is cleared meanwhile.
+  let land;
+  supabase.board.holdNext = new Promise((resolve) => { land = resolve; });
+  await page.locator('#run-again').click();
+  await completePassage(page);
+  // Polled as a boolean: a returned promise would be awaited.
+  await expect.poll(() => supabase.board.holdNext === null).toBe(true);
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(page.locator('#history-feedback')).toHaveText('History cleared.');
+  // The clear waits for the publish ahead of it rather than overtaking it.
+  await page.waitForTimeout(2500);
+  expect(supabase.board.published.map((entry) => entry.action)).toEqual(['publish']);
+  land();
+  await expect.poll(() => supabase.board.published.map((entry) => entry.action)).toEqual(['publish', 'publish', 'replace']);
+  expect(supabase.board.summaries.get(ada.id)).toEqual({ daily: null, week: { start: mondayOf(), seconds: 0, runs: 0 } });
+});
+
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 

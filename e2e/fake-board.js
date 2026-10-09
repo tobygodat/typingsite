@@ -17,6 +17,9 @@ export class FakeBoard {
     this.missing = false;
     // The service's clock; a test that moves the page's clock moves this one with it.
     this.now = () => new Date();
+    // Set to a promise to hold the next write: it is stored and answered only once that settles, while
+    // later requests go through, as a slow request can on the real service.
+    this.holdNext = null;
   }
 
   emailOf(id) { return [...this.auth.users.values()].find((user) => user.id === id)?.email.toLowerCase(); }
@@ -79,6 +82,11 @@ export class FakeBoard {
   handle(caller, { p_action: action, p_data: data = {} }, reply) {
     if (this.missing) return reply(404, { message: 'Could not find the function public.friends_board(p_action, p_data) in the schema cache' });
     if (!caller) return reply(401, { message: 'permission denied for function friends_board' });
+    if ((action === 'publish' || action === 'replace') && this.holdNext) {
+      const held = this.holdNext;
+      this.holdNext = null;
+      return held.then(() => this.handle(caller, { p_action: action, p_data: data }, reply));
+    }
     if (action === 'publish' || action === 'replace') {
       this.published.push({ caller, action, ...data });
       this.store(caller, data, action === 'replace');

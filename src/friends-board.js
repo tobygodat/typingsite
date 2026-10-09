@@ -102,8 +102,19 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   let readDay = '';
   const summary = () => boardSummary(runs(), dailyKey());
 
+  // Writes go one at a time, in order. One asked for while another is in flight waits for it to settle,
+  // then sends the summary as it is by then; an unchanged one is skipped, so queued changes collapse into
+  // one write, and a clear or undo among them makes it a replace. So an earlier publish from this tab
+  // can never reach the service after its clear or undo and bring the cleared numbers back.
+  let writes = Promise.resolve();
+  function publishChange(session) {
+    const write = writes.catch(() => {}).then(() => sendChange(session));
+    writes = write;
+    return write;
+  }
+
   // The service's reply, or null when the summary is unchanged. A failure leaves the change pending.
-  async function publishChange(session) {
+  async function sendChange(session) {
     const value = summary();
     const key = JSON.stringify(value);
     const replace = replacing;
