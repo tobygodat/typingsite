@@ -64,19 +64,31 @@ test('learn to type opens from the mode area, the palette and first-run states',
   await expect(map.locator('.key.target')).toHaveText(['f', 'j']);
   await expect(map.locator('.finger-label-full')).toHaveText(['pinky', 'ring', 'middle', 'index', 'index', 'middle', 'ring', 'pinky']);
 
-  // First-run states link here quietly.
+  // First-run states link here quietly. The links hide with their screen, so focus moves to the lesson's action.
   await openView(page, 'Train');
   await expect(page.locator('#train-learn')).toBeVisible();
-  await page.locator('#train-learn button').click();
+  await page.locator('#train-learn button').focus();
+  await page.keyboard.press('Enter');
   await expect(body(page)).toHaveAttribute('data-view', 'learn');
+  await expect(page.locator('#lesson-primary')).toBeFocused();
   await openView(page, 'Progress');
   await page.locator('#progress-empty .quiet-link').click();
   await expect(body(page)).toHaveAttribute('data-view', 'learn');
+  await expect(page.locator('#lesson-primary')).toBeFocused();
 
   await page.keyboard.press('Control+k');
   await page.keyboard.type('learn to type');
   await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('learn to type');
   await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).toHaveText('here');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#palette')).toBeHidden();
+  await expect(page.locator('#lesson-primary')).toBeFocused();
+  await openView(page, 'Practice');
+  await page.locator('#open-lessons').focus();
+  await page.keyboard.press('Enter');
+  await expect(body(page)).toHaveAttribute('data-view', 'learn');
+  await expect(page.locator('#lesson-primary')).toBeFocused();
+  await page.keyboard.press('Control+k');
   await page.locator('#palette-input').fill('next lesson');
   await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('next lesson · f j');
   await page.keyboard.press('Enter');
@@ -169,6 +181,13 @@ test('Escape restarts a lesson, and an interrupted lesson is not counted', async
   await expect(page.locator('#typing-input')).toHaveValue('');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
   await expect(page.locator('#session-title')).toHaveText('Lesson 1 · f and j');
+  // The palette's restart does what Esc does: a lesson stays a lesson.
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('restart test');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+  await expect(page.locator('#session-title')).toHaveText('Lesson 1 · f and j');
+  await expect(page.locator('#typing-input')).toBeFocused();
 
   const text = await passageText(page);
   await typeInto(page, text.slice(0, 5));
@@ -192,7 +211,7 @@ test('guests keep lesson progress for the tab only, and clearing history clears 
   await openLessons(page);
   await startLesson(page, 1);
   await typeLesson(page);
-  await expect(page.locator('#lesson-save-note')).toContainText('Lesson progress lasts for this tab; sign in to keep it.');
+  await expect(page.locator('#lesson-save-note')).toContainText('Lesson progress lasts for this tab; sign in to save future lessons.');
 
   await openView(page, 'Progress');
   await expect(page.locator('#clear-history')).toBeVisible();
@@ -270,6 +289,35 @@ test('passing every lesson hands off to the training loop', async ({ page }) => 
   await page.locator('[data-nav="practice"].nav-item').click();
   await openLessons(page);
   await expect(page.locator('#lesson-current-heading')).toHaveText('Every letter is in.');
+});
+
+test('a key-pair lesson is labelled, and its finger map stays in view on a laptop screen', async ({ page }, testInfo) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await openApp(page);
+  await openLessons(page);
+  await startLesson(page, 1);
+  await expect(page.locator('#session-description')).toContainText('Key pairs only (repetitions, not words).');
+  await page.mouse.move(0, 0);
+  await shot(page, testInfo, 'lesson-pairs-dark');
+
+  // At 1280×721 the finger names and the thumbs row stay above the fold, before and during the run.
+  const inView = () => page.evaluate(() => ({
+    scrollY,
+    fits: document.querySelector('#keyboard .finger-thumbs').getBoundingClientRect().bottom <= innerHeight
+      && document.querySelector('#keyboard .finger-label').getBoundingClientRect().bottom <= innerHeight,
+  }));
+  await page.setViewportSize({ width: 1280, height: 721 });
+  expect(await inView()).toEqual({ scrollY: 0, fits: true });
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 8));
+  await expect(body(page)).toHaveAttribute('data-running', 'true');
+  expect(await inView()).toEqual({ scrollY: 0, fits: true });
+  await page.keyboard.type(text.slice(8));
+  await expect(body(page)).toHaveAttribute('data-view', 'learn');
+  // The next lesson starts from the top even when the result scrolled the learn screen.
+  await page.locator('#lesson-primary').click();
+  await expect(page.locator('#session-title')).toHaveText('Lesson 2 · d and k');
+  expect(await inView()).toEqual({ scrollY: 0, fits: true });
 });
 
 for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow phone', { width: 320, height: 640 }]]) {

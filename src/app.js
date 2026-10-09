@@ -806,7 +806,8 @@ function storeAttempt(completed) {
   return saved;
 }
 
-function finishPrimary(forcedElapsed = null) {
+// `replacing`: another session takes over at once, so a drill draws no retest passage to throw away.
+function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   if (!attempt || attempt.status !== 'running') return;
   clearInterval(ticker);
   ticker = null;
@@ -831,6 +832,7 @@ function finishPrimary(forcedElapsed = null) {
 
   if (sessionKind === 'drill' && baselineAttempt) {
     if (trainingContext) trainingContext.drillCompleted = valid;
+    if (replacing) return;
     announce(valid ? 'Drill complete. Retest ready.' : 'Drill interrupted. Retest ready.');
     startRetest();
     return;
@@ -1309,10 +1311,18 @@ function lessonMeta(index) {
 
 function startLesson(index) {
   if (!lessonUnlocked(profile.lessons, index)) return;
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
   if (race.attempt?.status === 'running') markRaceInterrupted();
   lessonIndex = index;
   resetSession('lesson', { focus: true });
+  // From a scrolled learn screen too, a lesson starts with its title, label and finger map in view.
+  scrollTo({ top: 0, behavior: 'instant' });
+}
+
+// The in-page links sit in a screen that is about to hide, so focus moves to the learn screen's action.
+function openLessons() {
+  navigate('learn');
+  $('lesson-primary').focus({ preventScroll: true });
 }
 
 // Every letter is in: the training loop (practice → recommendation → drill → retest) takes over.
@@ -1449,7 +1459,7 @@ function renderLessons() {
   const fresh = complete ? [] : LESSONS[next].keys;
   renderFingerMap($('lesson-keyboard'), { known: lessonKeys(complete ? LESSONS.length - 1 : next - 1), fresh });
   $('finger-caption-keys').textContent = complete ? 'every key learned' : `green edge: lesson ${next + 1}’s keys`;
-  $('lesson-save-note').textContent = `${session ? 'Lesson progress saves to your account.' : 'Lesson progress lasts for this tab; sign in to keep it.'} Lessons stay out of your bests, progress charts and retests.`;
+  $('lesson-save-note').textContent = `${session ? 'Lesson progress saves to your account.' : 'Lesson progress lasts for this tab; sign in to save future lessons.'} Lessons stay out of your bests, progress charts and retests.`;
 
   $('lesson-list').replaceChildren(...LESSONS.map((lesson, index) => {
     const entry = progress[lesson.id];
@@ -1507,7 +1517,7 @@ function buildKeyboard() {
 }
 
 // A split keyboard where each column belongs to one finger, labelled underneath; thumbs take the space bar.
-// Keys learned before this lesson read in the text colour, this lesson's keys get the green edge.
+// Keys learned before this lesson read in the text colour, this lesson's keys get the full green edge.
 const FINGER_ROWS = { left: ['qwert', 'asdfg', 'zxcvb'], right: ['yuiop', 'hjkl;', 'nm'] };
 const FINGER_COLUMNS = { left: [['pinky', 1, 1], ['ring', 2, 1], ['middle', 3, 1], ['index', 4, 2]], right: [['index', 1, 2], ['middle', 3, 1], ['ring', 4, 1], ['pinky', 5, 1]] };
 
@@ -2022,7 +2032,7 @@ function bindEvents() {
     }
     const practice = event.target.closest('[data-action="go-practice"]');
     if (practice) resetSession('practice', { focus: true });
-    if (event.target.closest('[data-action="open-lessons"]')) navigate('learn');
+    if (event.target.closest('[data-action="open-lessons"]')) openLessons();
   });
   $('lesson-primary').addEventListener('click', () => lessonActions.primary?.());
   $('lesson-secondary').addEventListener('click', () => lessonActions.secondary?.());
@@ -2228,8 +2238,9 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
-    { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: () => navigate('learn') },
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
+    { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
+    // Like Esc: the current kind of session starts again (a lesson stays a lesson), with one new passage.
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => resetSession(sessionKind, { focus: true }) },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: () => startLesson(nextLessonIndex(profile.lessons)) }]),
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),

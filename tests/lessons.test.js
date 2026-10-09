@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORPUS_VERSION, METRIC_VERSION, comparable, completeAttempt, conditionKey, createAttempt, summarizePatterns } from '../src/typing.js';
+import { CORPUS_VERSION, METRIC_VERSION, comparable, completeAttempt, conditionKey, createAttempt, metrics, summarizePatterns } from '../src/typing.js';
 import { recurringTargets, trendRun } from '../src/insights.js';
 import { wordList, wordListIds } from '../src/words.js';
 import {
@@ -51,6 +51,9 @@ test('early lessons are labelled key pairs, then a mix, then real words only', (
   assert.match(makeupCopy(4), /^Real words from the common-word lists/);
 
   const first = lessonPassage(0, seeded());
+  // Beside a drawn passage the label stays short but still says what the passage is.
+  assert.equal(makeupCopy(0, first), 'Key pairs only (repetitions, not words).');
+  assert.match(makeupCopy(3, lessonPassage(3, seeded())), /^Key pairs first \(repetitions, not words\), then \d+ real words\.$/);
   assert.equal(first.words, 0);
   assert.ok(first.pairs > 0);
   assert.ok(words(first).every((item) => /^[fj]{2}$/.test(item)), first.text);
@@ -86,6 +89,13 @@ test('one run at 95% accuracy and the speed target unlocks the next lesson', () 
   assert.deepEqual(lessonOutcome(0, { wpm: 10, accuracy: 95 }), { accuracyMet: true, speedMet: true, passed: true, accuracyTarget: 95, wpmTarget: 10 });
   assert.equal(lessonOutcome(0, { wpm: 40, accuracy: 94 }).passed, false);
   assert.equal(lessonOutcome(0, { wpm: 9, accuracy: 100 }).passed, false);
+  // A lesson passes on the numbers it shows: 69 of 73 insertions (94.5%) shows and passes as 95%;
+  // 68 of 72 (94.4%) shows 94% and does not.
+  const shown = (attempts, mistakes) => metrics('x', 'x', attempts, mistakes, 60000);
+  assert.equal(shown(73, 4).accuracy, 95);
+  assert.equal(lessonOutcome(0, { ...shown(73, 4), wpm: 10 }).accuracyMet, true);
+  assert.equal(shown(72, 4).accuracy, 94);
+  assert.equal(lessonOutcome(0, { ...shown(72, 4), wpm: 10 }).accuracyMet, false);
 
   let progress = {};
   assert.equal(nextLessonIndex(progress), 0);
