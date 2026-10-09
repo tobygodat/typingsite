@@ -306,18 +306,110 @@ test('an older open ghost race still reaches a new device behind more than fifty
   await signInWithEmail(page, 'lin@stilltype.test');
   await expect(page.locator('#challenge-toast')).toContainText('Ada challenged you to beat their 8-word run.', { timeout: 12000 });
   await page.locator('#challenge-toast-close').click();
-  // The open race tops the full inbox, and a later poll repeats nothing.
+  // The open race tops the inbox, every result from the week stays, and a later poll repeats nothing.
   await page.locator('#inbox-trigger').click();
   const rows = page.locator('#inbox-list .inbox-entry');
-  await expect(rows).toHaveCount(30);
+  await expect(rows).toHaveCount(56);
   await expect(rows.first()).toHaveAttribute('data-kind', 'challenge');
   await expect(page.locator('#inbox-list [data-inbox-action="challenge"]')).toHaveCount(1);
   await page.waitForTimeout(11000);
-  await expect(rows).toHaveCount(30);
+  await expect(rows).toHaveCount(56);
   await expect(page.locator('#inbox-count')).toBeHidden();
   await page.locator('#inbox-list [data-inbox-action="challenge"]').click();
   await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
   await expect(page.locator('#accessible-passage')).toHaveText(passage);
+});
+
+test('a slow send for an earlier run never re-enables Send while a newer run is being sent', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  befriend(supabase, ada, supabase.addUser('lin@stilltype.test'), 'Lin');
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await chooseWords(page, 10);
+  await typeInto(page, await passageText(page), '#typing-input', { delay: 90 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  const send = page.locator('#send-ghost');
+  const status = page.locator('#ghost-offer-status');
+  supabase.challenges.held = [];
+  await page.locator('#ghost-offer summary').click();
+  await page.locator('#ghost-name').fill('Ada');
+  await send.click();
+  await expect(status).toHaveText('Sending to Lin…');
+  await expect(send).toBeDisabled();
+
+  // While the first send is in flight, a second run is finished and sent too.
+  await page.locator('#run-again').click();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await typeInto(page, await passageText(page), '#typing-input', { delay: 90 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await page.locator('#ghost-offer summary').click();
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(status).toHaveText('Sending to Lin…');
+  await expect.poll(() => supabase.challenges.held.length).toBe(2);
+
+  // The first reply lands: the second send still owns the button.
+  const firstReply = page.waitForResponse((response) => /\/rpc\/challenge_action$/.test(response.url())
+    && response.request().postDataJSON().p_action === 'send');
+  supabase.challenges.held.shift()();
+  await firstReply;
+  await page.waitForTimeout(500);
+  await expect(send).toBeDisabled();
+  await expect(status).toHaveText('Sending to Lin…');
+  // Closing and reopening the offer doesn't release it either.
+  await page.locator('#ghost-offer summary').click();
+  await page.locator('#ghost-offer summary').click();
+  await expect(page.locator('#ghost-friend')).toBeEnabled();
+  await expect(send).toBeDisabled();
+
+  supabase.challenges.held.shift()();
+  await expect(status).toHaveText('Sent to Lin. They have 7 days to race it, and the result arrives in your inbox.');
+  await expect(send).toBeEnabled();
+  supabase.challenges.held = null;
+  expect(supabase.challenges.rows.size).toBe(2);
+});
+
+test('every open ghost race and every result from the last week stays in a crowded inbox, which scrolls at 320 px', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  const passage = 'river light patient words carry the quiet home';
+  const conditions = { mode: 'words', count: 8, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' };
+  const trace = steadyTrace(passage, 140);
+  const day = 86400000;
+  const now = Date.now();
+  // 35 races for Lin to run, oldest first, and 35 of Lin's own challenges answered two to three days ago.
+  for (let i = 0; i < 35; i += 1) {
+    supabase.challenges.seed(ada.id, lin.id, { name: `Ada ${i}`, label: 'Lin', passage, conditions, trace, createdAt: now - 5 * day + i * 60000 });
+    supabase.challenges.seed(lin.id, ada.id, { name: 'Lin', label: `Friend ${i}`, passage, conditions, trace, createdAt: now - 3 * day + i * 60000, answered: true });
+  }
+  await page.setViewportSize({ width: 320, height: 640 });
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await expect(page.locator('#challenge-toast')).toBeVisible({ timeout: 12000 });
+  await page.locator('#challenge-toast-close').click();
+  await page.locator('#inbox-trigger').click();
+  const list = page.locator('#inbox-list');
+  await expect(list.locator('[data-inbox-action="challenge"]')).toHaveCount(35);
+  await expect(list.locator('[data-kind="challenge-result"]')).toHaveCount(35);
+
+  // The long list scrolls inside the inbox, which stays on screen and inside 320 px.
+  const box = await list.boundingBox();
+  expect(box.y + box.height).toBeLessThanOrEqual(640);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(320);
+  expect(await list.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+
+  // Cleared results stay cleared; the races come back, and the oldest is still there to run.
+  await page.locator('#inbox-clear').click();
+  await expect(list.locator('.inbox-entry')).toHaveCount(0);
+  await expect(list.locator('[data-inbox-action="challenge"]')).toHaveCount(35, { timeout: 15000 });
+  await expect(list.locator('[data-kind="challenge-result"]')).toHaveCount(0);
+  const oldest = list.locator('.inbox-entry', { hasText: 'Ada 0 challenged you' });
+  await oldest.scrollIntoViewIfNeeded();
+  await oldest.getByRole('button', { name: 'Race' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
+  await expect(page.locator('#session-title')).toHaveText('Race Ada 0’s run');
 });
 
 test('guests are never offered a challenge; the offer fits a narrow phone and an empty friend list points to online races', async ({ page, supabase }) => {

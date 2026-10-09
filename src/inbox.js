@@ -9,9 +9,11 @@ const STORE = 'stilltype-inbox-v1:';
 // Ghost race results already delivered, so a cleared result does not return on the next poll. Only
 // ids the service still lists are kept.
 const DELIVERED = 'stilltype-inbox-delivered-v1:';
+// Entries kept beyond open ghost races and the week's ghost race results, which are never cut.
 const MAX_ENTRIES = 30;
 const POLL_MS = 10000;
 const DAY_MS = 86400000;
+const WEEK_MS = 7 * DAY_MS;
 export const TOAST_MS = 18000;
 
 function ago(at, now = Date.now()) {
@@ -48,8 +50,9 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     if (!userId()) return;
     try {
       const saved = JSON.parse(localStorage.getItem(STORE + userId()));
-      if (Array.isArray(saved)) entries = saved.filter((entry) => entry?.id && entry.text).slice(0, MAX_ENTRIES);
+      if (Array.isArray(saved)) entries = saved.filter((entry) => entry?.id && entry.text);
     } catch {}
+    trim();
     try {
       const ids = JSON.parse(localStorage.getItem(DELIVERED + userId()));
       if (Array.isArray(ids)) delivered = new Set(ids.filter((id) => typeof id === 'string'));
@@ -57,7 +60,18 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
   }
   function save() {
     if (!userId()) return;
-    try { localStorage.setItem(STORE + userId(), JSON.stringify(entries.slice(0, MAX_ENTRIES))); } catch {}
+    try { localStorage.setItem(STORE + userId(), JSON.stringify(entries)); } catch {}
+  }
+  // The service lists every open ghost race and every result from the last week, so those stay
+  // reachable however many there are; everything else keeps the newest MAX_ENTRIES.
+  const freshResult = (at) => Date.now() - Date.parse(at) < WEEK_MS;
+  function kept(entry) {
+    if (entry.kind === 'challenge') return !isClosed(entry);
+    return entry.kind === 'challenge-result' && freshResult(entry.completedAt || entry.at);
+  }
+  function trim() {
+    let others = 0;
+    entries = entries.filter((entry) => kept(entry) || ++others <= MAX_ENTRIES);
   }
   function storeDelivered() {
     if (!userId()) return;
@@ -130,7 +144,7 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     } else if (userId()) {
       // An entry may carry when it happened (a ghost race sent or answered while this device was away).
       entries.unshift({ at: new Date().toISOString(), ...entry, read: false });
-      entries = entries.slice(0, MAX_ENTRIES);
+      trim();
     }
     save();
     render();
@@ -195,10 +209,12 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
       const id = `challenge:${challenge.id}`;
       const known = entries.find((entry) => entry.id === id);
       if (challenge.status === 'done' && challenge.result) {
-        if (!known && delivered.has(id)) continue;
+        // A result older than a week only updates an entry already here: it is history, not news.
+        if (!known && (delivered.has(id) || !freshResult(challenge.completedAt))) continue;
         notify({ id, kind: 'challenge-result', challengeId: challenge.id, closed: false, until: null, at: challenge.completedAt,
-          text: resultText(challenge) }, { toast: challenge.role === 'sent' && fresh(challenge.completedAt) });
-        deliver(id);
+          completedAt: challenge.completedAt, text: resultText(challenge) }, { toast: challenge.role === 'sent' && fresh(challenge.completedAt) });
+        // Only a result left on the list counts as delivered.
+        if (entries.some((entry) => entry.id === id)) deliver(id);
       } else if (challenge.role === 'received' && challenge.status === 'open') {
         notify({ id, kind: 'challenge', challengeId: challenge.id, closed: false, until: challenge.expiresAt, at: challenge.createdAt,
           text: offerText(challenge) }, { toast: true });

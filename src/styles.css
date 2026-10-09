@@ -468,7 +468,8 @@ kbd {
   animation: fade-in var(--dur-quick) var(--ease-out);
 }
 
-/* Inbox: unread entries are counted on the envelope; the list keeps the newest thirty. */
+/* Inbox: unread entries are counted on the envelope. The list scrolls: it keeps every open ghost race and
+   the week's ghost race results, then the newest thirty others. */
 .corner-trigger { position: relative; }
 
 .inbox-count {

@@ -67,6 +67,8 @@ export class FakeChallenges {
         }
         const row = this.seed(caller, recipient, { name, label: friend.name, passage: data.passage,
           conditions: data.conditions || {}, duration: data.duration || null, trace: data.trace });
+        // With `held` set to an array, the reply waits until a test calls the release pushed onto it.
+        if (this.held) return new Promise((release) => this.held.push(release)).then(() => reply(200, this.view(row, caller)));
         return reply(200, this.view(row, caller));
       }
       if (action === 'list') return reply(200, this.list(caller));

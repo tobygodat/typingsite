@@ -132,6 +132,9 @@ let clearTimer = null;
 let ghostRace = null;
 let offerRun = null;
 let offerSentTo = new Set();
+// The offered run whose send is in flight. Only that request may release the Send button.
+let offerSending = null;
+const offerBusy = () => Boolean(offerRun) && offerSending === offerRun;
 
 let race = {
   passage: null,
@@ -1365,7 +1368,7 @@ async function submitGhostRun() {
     ghost.sender = view.sender || ghost.sender;
     ghost.state = 'sent';
     const id = `challenge:${ghost.id}`;
-    inbox?.notify({ id, kind: 'challenge-result', challengeId: ghost.id, closed: false, until: null, text: resultText(view) });
+    inbox?.notify({ id, kind: 'challenge-result', challengeId: ghost.id, closed: false, until: null, completedAt: view.completedAt, text: resultText(view) });
     inbox?.deliver(id);
   } catch (error) {
     ghost.state = 'failed';
@@ -1408,7 +1411,7 @@ async function loadGhostFriends() {
   select.replaceChildren(...offerFriends.map((friend) => new Option(friend.email ? `${friend.name} (${friend.email})` : friend.name, friend.id)));
   if (offerFriends.some((friend) => friend.id === prior)) select.value = prior;
   select.disabled = empty;
-  $('send-ghost').disabled = empty;
+  $('send-ghost').disabled = empty || offerBusy();
 }
 
 async function sendGhost(event) {
@@ -1417,10 +1420,11 @@ async function sendGhost(event) {
   const friend = offerFriends.find((value) => value.id === $('ghost-friend').value);
   const name = $('ghost-name').value.trim();
   $('ghost-offer-error').textContent = '';
-  if (!payload || !friend || !session) return;
+  if (!payload || !friend || !session || offerBusy()) return;
   if (!name) { $('ghost-offer-error').textContent = 'Enter the name your friend will see.'; $('ghost-name').focus(); return; }
   if (offerSentTo.has(friend.id)) { $('ghost-offer-status').textContent = `Already sent to ${friend.name}.`; return; }
   const run = offerRun;
+  offerSending = run;
   $('send-ghost').disabled = true;
   $('ghost-offer-status').textContent = `Sending to ${friend.name}…`;
   try {
@@ -1434,7 +1438,9 @@ async function sendGhost(event) {
     $('ghost-offer-status').textContent = '';
     $('ghost-offer-error').textContent = error.message;
   } finally {
-    $('send-ghost').disabled = false;
+    // A reply for an earlier run leaves the button to the offer now on screen.
+    if (offerSending === run) offerSending = null;
+    if (run === offerRun) $('send-ghost').disabled = false;
   }
 }
 
