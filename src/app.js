@@ -1435,7 +1435,7 @@ function renderLessons() {
       primary = [`Try lesson ${n} again`, start(result.index)];
     } else if (!result.recorded) {
       status = ['not counted', 'badge-neutral'];
-      copy = 'This lesson was locked when the run finished, so nothing was saved.';
+      copy = 'Your lesson progress changed during this run (history was cleared here or on another device), so this lesson is locked and nothing was saved.';
       primary = complete ? ['Take a practice run', startTrainingLoop] : [`Start lesson ${next + 1}`, start(next)];
     } else if (result.touch) {
       status = ['touch input', 'badge-neutral'];
@@ -1810,12 +1810,16 @@ function adoptProfile(data) {
   profile = normalizeProfile(data);
   prefs = profile.preferences;
   account.cacheProfile(session.user.id, profile);
+  // Less lesson progress (history cleared on another device) can lock the lesson started from the cache.
+  // One waiting is replaced, as when history is cleared here; one being typed finishes as not counted.
+  if (lessonResult && !lessonUnlocked(profile.lessons, lessonResult.index)) lessonResult = null;
   applyPreferences();
   setModeControls();
   renderHistory();
   renderLessons();
   renderFirstRun();
   if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice');
+  if (sessionKind === 'lesson' && attempt?.status !== 'running' && !lessonUnlocked(profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
 }
 
 // The newer of the device cache and the account row wins; the other side is brought up to date.
@@ -2120,6 +2124,18 @@ function bindEvents() {
       if (ghostOn) primaryFx.ghost.arm(ghostPace().cps);
     }
   });
+  // A lesson starts with the input class of the tap or click that started it (startedBy). After that, any
+  // touch while it is prepared or running makes it touch input, wherever the tap lands: the palette, settings
+  // or restart can refocus the input and open the soft keyboard with no tap on the passage. Restarts keep
+  // the class. The cost is deliberate: on a touchscreen laptop, a tap and then hardware-keyboard typing
+  // gives a labelled touch try that doesn't unlock.
+  document.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch' || sessionKind !== 'lesson' || !['ready', 'running'].includes(attempt?.status)) return;
+    lessonInputClass = 'touch';
+    if (attempt.conditions.inputClass === 'touch') return;
+    attempt.conditions.inputClass = 'touch';
+    $('condition-line').textContent = describeRun(attempt);
+  }, true);
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
   $('typing-input').addEventListener('compositionstart', () => {
     if (attempt && ['ready', 'running'].includes(attempt.status)) {
@@ -2130,11 +2146,7 @@ function bindEvents() {
       showInputNotice('primary', NOTICES.composition, { sticky: true });
     }
   });
-  // Restarting focuses the input, so a tap here opens the soft keyboard: a lesson takes the tap's input class.
-  $('restart-button').addEventListener('click', (event) => {
-    if (sessionKind === 'lesson') lessonInputClass = startedBy(event);
-    resetSession(sessionKind, { focus: true });
-  });
+  $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
@@ -2277,10 +2289,7 @@ function paletteCommands(query) {
     })),
     { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
     // Like Esc: the current kind of session starts again (a lesson stays a lesson), with one new passage.
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: (event) => {
-      if (sessionKind === 'lesson') lessonInputClass = startedBy(event);
-      resetSession(sessionKind, { focus: true });
-    } },
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => resetSession(sessionKind, { focus: true }) },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: (event) => startLesson(nextLessonIndex(profile.lessons), event) }]),
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
@@ -2328,8 +2337,7 @@ function bindPalette() {
 }
 
 // ↑ ↑ ↓ ↓ ← → ← → b a, or "ghost" in the palette: a pacer caret at your best pace for these conditions.
-// `event` is the palette's tap or key; the typed sequence passes none and a lesson keeps its input class.
-function toggleGhost(event) {
+function toggleGhost() {
   ghostOn = !ghostOn;
   document.body.dataset.ghost = ghostOn ? 'on' : 'off';
   const pace = ghostPace();
@@ -2340,10 +2348,8 @@ function toggleGhost(event) {
   clearTimeout(toggleGhost.timer);
   toggleGhost.timer = setTimeout(() => { $('egg-toast').hidden = true; }, 3000);
   announce(message);
-  if (document.body.dataset.view === 'practice' && sessionKind !== 'retest') {
-    if (event && sessionKind === 'lesson') lessonInputClass = startedBy(event);
-    resetSession(sessionKind, { focus: true });
-  } else primaryFx.ghost.arm(ghostOn ? pace.cps : 0);
+  if (document.body.dataset.view === 'practice' && sessionKind !== 'retest') resetSession(sessionKind, { focus: true });
+  else primaryFx.ghost.arm(ghostOn ? pace.cps : 0);
 }
 
 listenForSequence(toggleGhost);

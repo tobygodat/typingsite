@@ -31,15 +31,19 @@ async function typeLesson(page, options = {}) {
   return text;
 }
 
-// A signed-in learner who passed the first `count` lessons at plausible beginner numbers.
-function learner(supabase, email, count) {
-  const user = supabase.addUser(email);
+// An account profile whose first `count` lessons were passed at plausible beginner numbers.
+function lessonProfile(count, updatedAt = '2026-10-08T12:00:00Z') {
   const lessons = Object.fromEntries(LESSONS.slice(0, count).map((lesson, i) => {
     const record = { wpm: 13 + i * 2, accuracy: 96 + (i % 4), at: `2026-10-0${1 + (i % 7)}T18:${10 + i}:00Z` };
     return [lesson.id, { tries: 1 + (i % 3), last: record, passed: record }];
   }));
-  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, lessons,
-    updatedAt: '2026-10-08T12:00:00Z' } });
+  return { version: 2, preferences: {}, attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, lessons, updatedAt };
+}
+
+// A signed-in learner who passed the first `count` lessons.
+function learner(supabase, email, count) {
+  const user = supabase.addUser(email);
+  supabase.profiles.set(user.id, { data: lessonProfile(count) });
   return user;
 }
 
@@ -293,6 +297,81 @@ test.describe('on a touch screen', () => {
     await expect(rows.first().locator('.lesson-row-numbers')).toContainText('touch input');
     await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
   });
+
+  // Any later tap counts, wherever it lands: this palette command refocuses the input with no tap on the passage.
+  test('a tap on a palette command during a keyboard-started lesson makes it touch input', async ({ page }) => {
+    await openApp(page);
+    await openLessons(page);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    await page.keyboard.press('Control+k');
+    await page.locator('#palette-input').fill('keyboard');
+    await page.locator('#palette-list [role="option"]').filter({ has: page.locator('.opt-label', { hasText: /^keyboard$/ }) }).tap();
+    await expect(page.locator('#palette')).toBeHidden();
+    await expect(page.locator('#typing-input')).toBeFocused();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    // Focus given inside a palette click leaves Chromium with no caret in the input (a separate, existing
+    // palette issue), so the test refocuses it without a pointer before typing.
+    await page.locator('#typing-input').blur();
+    await typeLesson(page);
+    await expect(page.locator('#lesson-status')).toHaveText('touch input');
+    await expect(page.locator('#lesson-list .lesson-row').nth(1)).toHaveAttribute('data-state', 'locked');
+  });
+});
+
+test('a newer account profile that locks the current lesson replaces it, or the run finishes as not counted', async ({ page, supabase }) => {
+  const user = learner(supabase, 'two-devices@stilltype.test', 3);
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  // Holds the load-time profile check, so a lesson can start from the device's cached progress first.
+  let held = false;
+  let release = null;
+  await page.route(/\/rest\/v1\/profiles/, async (route) => {
+    if (held && route.request().method() === 'GET') await new Promise((done) => { release = done; });
+    await route.fallback();
+  });
+  const cloud = (count, minutes) => supabase.profiles.set(user.id, { data: lessonProfile(count, new Date(Date.now() + minutes * 60000).toISOString()) });
+  const reloadHeld = async () => {
+    held = true;
+    release = null;
+    await page.reload();
+    await expect(page.locator('#text-display .char').first()).toBeVisible();
+    await expect.poll(() => typeof release).toBe('function');
+  };
+
+  // History cleared on another device while lesson 4 waits: it gives way to lesson 1.
+  cloud(0, 5);
+  await reloadHeld();
+  await openLessons(page);
+  await startLesson(page, 4);
+  release();
+  await expect(page.locator('#lesson-list .lesson-row[data-state="passed"]')).toHaveCount(0);
+  await expect(page.locator('#session-title')).toHaveText('Lesson 1 · f and j');
+  await expect(body(page)).toHaveAttribute('data-view', 'practice');
+
+  // The same while lesson 4 is being typed: the run isn't interrupted, and it finishes as not counted.
+  cloud(3, 10);
+  held = false;
+  await page.reload();
+  await expect(page.locator('#lesson-list .lesson-row[data-state="passed"]')).toHaveCount(3);
+  // Any push from this page lands before the other device's newer row does.
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  cloud(0, 15);
+  await reloadHeld();
+  await openLessons(page);
+  await startLesson(page, 4);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 4));
+  await expect(body(page)).toHaveAttribute('data-running', 'true');
+  release();
+  await expect(page.locator('#lesson-list .lesson-row[data-state="passed"]')).toHaveCount(0);
+  await expect(page.locator('#session-title')).toHaveText(/^Lesson 4 · /);
+  await page.keyboard.type(text.slice(4));
+  await expect(body(page)).toHaveAttribute('data-view', 'learn');
+  await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 4 is locked · not counted');
+  await expect(page.locator('#lesson-status')).toHaveText('not counted');
+  await expect(page.locator('#lesson-primary')).toHaveText('Start lesson 1');
+  expect(supabase.profileFor(user.email).lessons).toEqual({});
 });
 
 test('clearing history replaces a lesson it locks, and a restart never starts a locked lesson', async ({ page }) => {
