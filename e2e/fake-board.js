@@ -44,12 +44,13 @@ export class FakeBoard {
   }
 
   // As race_private.board: a publish or share that doesn't name the latest clear is refused, and so is a
-  // publish or replace while not sharing, a clear older than the latest, and an undo of a clear that
-  // isn't the latest. Otherwise 'publish' (and 'share' while sharing) folds the summary in: the stored
-  // daily stays unless the new one is for a later day (today's first) or better on the same daily, and
-  // within a week the larger practice time and run count stay. 'share' while not sharing starts afresh.
-  // 'replace' overwrites it: a clear keeps its id and the time it happened (never later than now), and
-  // an undo puts back the clear before. True when the write was taken.
+  // publish or replace while not sharing, and an undo of a clear that isn't the latest. Otherwise
+  // 'publish' (and 'share' while sharing) folds the summary in: the stored daily stays unless the new one
+  // is for a later day (today's first) or better on the same daily, and within a week the larger
+  // practice time and run count stay. 'share' while not sharing starts afresh. 'replace' overwrites it:
+  // clears take effect in the order they arrive, each keeping its id and the time it happened (never
+  // later than now, nor earlier than the clear it follows), and an undo puts back the clear before.
+  // True when the write was taken.
   store(caller, action, data) {
     const now = this.now();
     const today = utcDay(now);
@@ -65,10 +66,12 @@ export class FakeBoard {
       return true;
     }
     if (!shares(old) && action !== 'share') return false;
-    if (clear && current && Date.parse(current.from) > Date.parse(clear.from)) return false;
     if (action === 'replace' && !clear && data.undo !== current?.id) return false;
     const next = { sharing: true, clear: current, undo: old.undo ?? null, daily: data.daily || null, week: { ...data.week } };
-    if (clear) Object.assign(next, { clear, undo: current });
+    if (clear) {
+      if (current && Date.parse(current.from) > Date.parse(clear.from)) clear.from = current.from;
+      Object.assign(next, { clear, undo: current });
+    }
     else if (action === 'replace') Object.assign(next, { clear: old.undo ?? null, undo: null });
     else if (shares(old)) {
       // Today's (or this week's) first, then the later date.

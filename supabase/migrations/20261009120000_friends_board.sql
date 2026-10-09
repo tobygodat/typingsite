@@ -15,10 +15,11 @@ create table race_private.summaries (
   user_id uuid primary key references auth.users(id) on delete cascade,
   -- False after turning sharing off: the row is then only a marker, with no numbers.
   sharing boolean not null,
-  -- The latest history clear on any device: an id the clearing browser made, and when it cleared by
-  -- that browser's clock (never later than the service's), however late the request arrived. A browser
-  -- must name it to share or publish, and counts only runs from then on, so a browser that missed a
-  -- clear can't bring the cleared numbers back.
+  -- The latest history clear on any device, in the order clears arrive: an id the clearing browser made,
+  -- and the time runs count from. That is when it cleared by that browser's clock (never later than the
+  -- service's), however late the request arrived, but never earlier than the clear it follows, so a
+  -- clear can't bring back runs an earlier one removed. A browser must name it to share or publish, and
+  -- counts only runs from then on, so a browser that missed a clear can't bring the cleared numbers back.
   clear_id uuid,
   clear_from timestamptz,
   -- The clear before it, which an undo of the latest one puts back.
@@ -98,8 +99,9 @@ revoke all on function race_private.board_snapshot(uuid) from public, anon, auth
 -- an id or null) and are refused, changing nothing, when it isn't the stored one, and a publish is
 -- refused while not sharing; the reply ("refused") says what the browser missed. 'replace' overwrites
 -- the numbers while sharing, and is either a history clear ('clear': its id and when it happened) or the
--- undo of one ('undo': the id it undoes). A clear older than the stored one, or an undo of a clear that
--- is no longer the latest, is refused: the newer clear wins. 'unshare' empties the row down to the marker.
+-- undo of one ('undo': the id it undoes). Clears take effect in the order they arrive, whatever the
+-- devices' clocks say; an undo of a clear that is no longer the latest is refused, so a newer clear wins.
+-- 'unshare' empties the row down to the marker.
 create function race_private.board(p_action text, p_data jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
@@ -189,10 +191,9 @@ begin
     end if;
     select * into v_old from race_private.summaries where user_id = v_uid for update;
     -- Refused, changing nothing: no row or not sharing (except to turn it on); a share or publish that
-    -- missed the latest clear; a clear older than the latest; an undo of a clear that isn't the latest.
+    -- missed the latest clear; an undo of a clear that isn't the latest.
     if not found or (not v_old.sharing and p_action <> 'share')
       or (p_action <> 'replace' and v_known is distinct from v_old.clear_id)
-      or (v_clear_id is not null and v_old.clear_from > v_clear_from)
       or (p_action = 'replace' and v_clear_id is null and v_undo is distinct from v_old.clear_id) then
       return race_private.board_snapshot(v_uid) || jsonb_build_object('refused', true);
     end if;
@@ -204,7 +205,8 @@ begin
       v_new.undo_id := v_old.clear_id;
       v_new.undo_from := v_old.clear_from;
       v_new.clear_id := v_clear_id;
-      v_new.clear_from := v_clear_from;
+      -- A device whose clock runs behind can't move the time runs count from back past an earlier clear.
+      v_new.clear_from := greatest(v_old.clear_from, v_clear_from);
     elsif p_action = 'replace' then
       v_new.clear_id := v_old.undo_id;
       v_new.clear_from := v_old.undo_from;

@@ -25,7 +25,9 @@ declare
   g1 uuid := gen_random_uuid();
   g2 uuid := gen_random_uuid();
   g3 uuid := gen_random_uuid();
+  g4 uuid := gen_random_uuid();
   t text;
+  t2 text;
   denied boolean;
 begin
   insert into auth.users (id,email,email_confirmed_at) values
@@ -165,24 +167,29 @@ begin
   if board ? 'refused' or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',60,'runs',1) then
     raise exception 'A publish that named the clear was refused: %', board;
   end if;
-  -- A newer clear from another device wins: an undo of the first clear is refused, and so is an older
-  -- clear that arrives late, both changing nothing.
+  -- A newer clear from another device wins: an undo of the first clear is refused, changing nothing.
+  t2 := to_jsonb(clock_timestamp() - interval '1 minute')#>>'{}';
   board := public.friends_board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
-    'clear',jsonb_build_object('id',g2,'from',to_jsonb(clock_timestamp() - interval '1 minute')#>>'{}')));
-  if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text then raise exception 'A newer clear was refused: %', board; end if;
-  foreach bad in array array[
-    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g1),
-    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'clear',jsonb_build_object('id',gen_random_uuid(),'from',to_jsonb(clock_timestamp() - interval '20 minutes')#>>'{}'))
-  ] loop
-    board := public.friends_board('replace',bad);
-    if not coalesce((board->>'refused')::boolean, false) or board->'clear'->>'id' is distinct from g2::text
-      or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
-      raise exception 'An older undo or clear overtook a newer clear: % gave %', bad, board;
-    end if;
-  end loop;
+    'clear',jsonb_build_object('id',g2,'from',t2)));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text or (board->'clear'->>'from')::timestamptz <> t2::timestamptz then
+    raise exception 'A newer clear was refused: %', board;
+  end if;
+  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g1));
+  if not coalesce((board->>'refused')::boolean, false) or board->'clear'->>'id' is distinct from g2::text
+    or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',0,'runs',0) or jsonb_typeof(board->'rows'->0->'daily') <> 'null' then
+    raise exception 'An undo overtook a newer clear: %', board;
+  end if;
+  -- Clears take effect in the order they arrive, whatever the devices' clocks say: one from a clock
+  -- running behind becomes the latest, but runs still count from the later time, so nothing the
+  -- earlier clear removed comes back.
+  board := public.friends_board('replace',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',0,'runs',0),
+    'clear',jsonb_build_object('id',g4,'from',to_jsonb(clock_timestamp() - interval '20 minutes')#>>'{}')));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g4::text or (board->'clear'->>'from')::timestamptz <> t2::timestamptz then
+    raise exception 'A clear from a clock running behind was refused or moved the boundary back: %', board;
+  end if;
   -- An undo of the latest clear puts back the numbers it sends and the clear before it, with its time.
-  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g2));
-  if board ? 'refused' or board->'clear'->>'id' is distinct from g1::text or (board->'clear'->>'from')::timestamptz <> t::timestamptz
+  board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g4));
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text or (board->'clear'->>'from')::timestamptz <> t2::timestamptz
     or board->'rows'->0->'daily' is distinct from jsonb_build_object('version',v,'wpm',84,'accuracy',97,'attempts',2)
     or board->'rows'->0->'week' is distinct from jsonb_build_object('seconds',1830,'runs',41) then
     raise exception 'An undo did not restore the summary and the clear before it: %', board;
@@ -194,7 +201,7 @@ begin
     raise exception 'A clear was placed in the future: %', board;
   end if;
   board := public.friends_board('replace',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week,'undo',g3));
-  if board ? 'refused' or board->'clear'->>'id' is distinct from g1::text then raise exception 'Undoing the clear from ahead failed: %', board; end if;
+  if board ? 'refused' or board->'clear'->>'id' is distinct from g2::text then raise exception 'Undoing the clear from ahead failed: %', board; end if;
 
   -- Lin has Ada on her list, but Ada has not chosen Lin: neither sees the other.
   perform set_config('request.jwt.claim.sub',lin::text,true);
@@ -331,6 +338,6 @@ begin
   -- Deleting an account deletes its row.
   delete from auth.users where id = ada;
   if exists(select 1 from race_private.summaries where user_id = ada) then raise exception 'A deleted account kept its board row.'; end if;
-  raise notice 'Friends board privacy, opt-in sharing, missed, delayed and overtaken clears, opt-outs, mutual lists, limits, dates and merge checks passed.';
+  raise notice 'Friends board privacy, opt-in sharing, missed, delayed, out-of-order and overtaken clears, opt-outs, mutual lists, limits, dates and merge checks passed.';
 end $smoke$;
 rollback;

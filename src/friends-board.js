@@ -191,11 +191,16 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
   // undo must still set it to exactly this tab's. A clear sends the runs since it happened here, however
   // late it goes out; an undo names that clear and sends the restored runs since the one before. A
   // failure leaves the change pending. Refused, the tab has learned what it missed: sharing off
-  // elsewhere, so it stops; or a newer clear elsewhere (which also beats this tab's own clear or undo,
-  // and an undo then says so where it was made), so it sends its runs since that clear, once.
+  // elsewhere, so it stops; or a newer clear elsewhere (which an undo can't reverse, and then says so
+  // where it was made), so it sends what is due now, once: its runs since that clear, or a clear of its
+  // own queued meanwhile.
   async function sendChange(session, retried = false) {
     if (!isSharing()) { forget(); return null; }
+    // A clear or undo always has its clear; without one there is nothing to replace, only to publish.
+    if (replacing && !mine) replacing = false;
     const mode = replacing;
+    // The clear this write is about. A newer clear made while it is on its way is not this write's to settle.
+    const sent = mode ? mine : null;
     const value = mode === 'undo' ? { ...summary(before ? before.from : null), undo: mine.id }
       : mode === 'clear' ? { ...summary(mine.from), clear: mine } : { ...summary(), clear: known?.id ?? null };
     const key = JSON.stringify(value);
@@ -210,7 +215,7 @@ export function createFriendsBoard({ getSession, canPublish, isSharing, setShari
       replacing ||= mode;
       throw error;
     }
-    if (mode === 'undo' || result?.refused) mine = null;
+    if (sent && mine === sent && (mode === 'undo' || result?.refused)) mine = null;
     if (result?.refused) {
       if (!result.sharing) { stoppedElsewhere(); return result; }
       if (mode === 'undo') onUndoRefused();

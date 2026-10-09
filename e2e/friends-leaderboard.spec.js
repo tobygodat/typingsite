@@ -662,6 +662,59 @@ test('an undo is refused when another device cleared after it, and the board sta
   await expect(page.locator('#clear-history')).toBeVisible();
 });
 
+test('a clear from a device whose clock runs behind still takes effect after an earlier one', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  sharing(supabase, ada, { runs: practiceThisWeek(3) });
+  // This device's clock reads five minutes behind the service's.
+  await page.clock.install({ time: new Date(Date.now() - 5 * 60000) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  // Another device clears first; then this one clears, later in fact but earlier by its clock.
+  const other = supabase.board.clearElsewhere(ada.id);
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  const replaced = () => [...supabase.board.published, ...supabase.board.refused].find((entry) => entry.action === 'replace');
+  await expect.poll(() => replaced()?.clear?.id).toBeTruthy();
+  const ours = replaced().clear;
+  expect(Date.parse(ours.from)).toBeLessThan(Date.parse(other.from));
+  // It is taken, in the order it arrived, and runs still count from the other device's later time.
+  expect(supabase.board.refused).toEqual([]);
+  expect(supabase.board.summaries.get(ada.id).clear).toEqual({ id: ours.id, from: other.from });
+});
+
+test('a clear queued behind a publish that is refused still goes out', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  sharing(supabase, ada, { runs: practiceThisWeek(3) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  // A run's publish is slow to arrive...
+  let land;
+  supabase.board.holdNext = new Promise((resolve) => { land = resolve; });
+  await chooseWords(page, 10);
+  await completePassage(page);
+  // Polled as a boolean: a returned promise would be awaited.
+  await expect.poll(() => supabase.board.holdNext === null).toBe(true);
+  // ...meanwhile another device clears, and then this tab clears too; its clear waits behind the publish.
+  const other = supabase.board.clearElsewhere(ada.id);
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(page.locator('#history-feedback')).toHaveText('History cleared.');
+  await page.waitForTimeout(2500);
+  expect(supabase.board.published).toEqual([]);
+  // The publish lands and is refused, having missed the other clear; this tab's own clear still goes out.
+  land();
+  await expect.poll(() => supabase.board.published.find((entry) => entry.action === 'replace')?.clear?.id).toBeTruthy();
+  const ours = supabase.board.published.find((entry) => entry.action === 'replace').clear;
+  expect(ours.id).not.toBe(other.id);
+  expect(supabase.board.refused).toHaveLength(1);
+  expect(supabase.board.refused[0]).toMatchObject({ action: 'publish', clear: null, week: { runs: 4 } });
+  expect(supabase.board.summaries.get(ada.id)).toMatchObject({ clear: { id: ours.id }, week: { runs: 0 }, daily: null });
+});
+
 test('turning sharing off removes your row, and a tab that missed it can’t share again', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');
