@@ -166,17 +166,51 @@ test('a long timed run replays in a three-line window that follows the caret', a
 // capture in the test output folder.
 const shotPath = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/watch-replay/${name}` : testInfo.outputPath(name));
 
+// For the screenshots: a 50-word run typed at a steady human pace (about 75 wpm) on a paused
+// clock, with one miss a few lines in that stays on screen for a beat before the backspace.
+async function finishLongRunWithMiss(page) {
+  await page.clock.install();
+  await openApp(page);
+  await chooseWords(page, 50);
+  const text = await passageText(page);
+  const at = [...text].findIndex((char, index) => index > 160 && /[a-z]/.test(char));
+  const miss = text[at] === 'x' ? 'z' : 'x';
+  await page.clock.pauseAt(Date.now() + 1000);
+  await page.locator('#typing-input').focus();
+  const typeAtPace = async (keys) => {
+    for (const key of keys) {
+      await page.keyboard.type(key);
+      await page.clock.fastForward(key === ' ' ? 190 : 100 + (key.charCodeAt(0) % 4) * 12);
+    }
+  };
+  await typeAtPace(text.slice(0, at) + miss);
+  await page.clock.fastForward(700);
+  await page.keyboard.press('Backspace');
+  await page.clock.fastForward(150);
+  await typeAtPace(text.slice(at));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-errors')).toHaveText('1');
+}
+
 for (const theme of ['dark', 'light']) {
   test(`screenshot: replay mid-playback (${theme})`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ colorScheme: theme });
-    await finishWithCorrectedMiss(page);
+    await finishLongRunWithMiss(page);
     await page.locator('#watch-replay').click();
     const dialog = page.locator('#replay-dialog');
-    // Catch the frame where the miss is on screen, then hold it there.
-    await expect(page.locator('#replay-text .char.wrong')).toHaveCount(1);
+    await expect(dialog).toHaveAttribute('data-state', 'playing');
+    // Play up to the miss, a little into it, then hold that frame.
+    const wrong = page.locator('#replay-text .char.wrong');
+    for (let step = 0; step < 600 && !(await wrong.count()); step += 1) await page.clock.fastForward(100);
+    await page.clock.fastForward(300);
+    await expect(wrong).toHaveCount(1);
     await page.locator('#replay-toggle').click();
     await expect(dialog).toHaveAttribute('data-state', 'paused');
+    const view = await replayWindow(page);
+    expect(view.lines).toBe(3);
+    expect(view.caretShown).toBe(true);
     await page.screenshot({ path: shotPath(testInfo, `replay-${theme}.png`) });
   });
 }
