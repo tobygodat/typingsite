@@ -26,13 +26,34 @@ function keysFor(types, gap = 200, pauses = {}) {
   });
 }
 
-test('active time leaves out every gap longer than the pause cut-off', () => {
+test('active time counts every gap longer than the pause cut-off as the average shorter gap', () => {
   assert.equal(activeTime([]), 0);
   assert.equal(activeTime([0]), 0);
   assert.equal(activeTime([0, 200, 400]), 400);
-  // A 2 s gap still counts; anything longer is thinking time and counts for nothing.
+  // A 2 s gap still counts as it is.
   assert.equal(activeTime([0, COMPOSE_PAUSE_MS, COMPOSE_PAUSE_MS + 100]), COMPOSE_PAUSE_MS + 100);
-  assert.equal(activeTime([0, 100, 100 + COMPOSE_PAUSE_MS + 1, 100 + COMPOSE_PAUSE_MS + 301]), 400);
+  // Gaps of 100 and 300 ms average 200 ms, which is what the thinking pause between them counts as.
+  assert.equal(activeTime([0, 100, 100 + COMPOSE_PAUSE_MS + 1, 100 + COMPOSE_PAUSE_MS + 301]), 600);
+  // Nothing but pauses: no typing rhythm to go on, so no active time.
+  assert.equal(activeTime([0, 5000, 10_000]), 0);
+});
+
+test('writing in bursts is measured at the speed of the keys, not faster', () => {
+  // 26 bursts of three keys 100 ms apart (10 keys a second, 120 wpm), with 2.1 s between bursts.
+  const times = [];
+  for (let burst = 0; burst < 26; burst += 1) for (let key = 0; key < 3; key += 1) times.push(burst * 2300 + key * 100);
+  const keys = times.map((at) => ({ type: 'insert', at }));
+  const summary = composeSummary({ keys, text: 'ab '.repeat(26), elapsedMs: times.at(-1) + 100 });
+  // 52 gaps of 100 ms plus 25 pauses counted as 100 ms each.
+  assert.equal(summary.activeMs, 7700);
+  assert.equal(summary.wpm, Math.round(78 / 5 / (7700 / 60_000)));
+  assert.ok(summary.wpm >= 120 && summary.wpm <= 122, `${summary.wpm} wpm`);
+  // Word at a time: six keys 200 ms apart (60 wpm), then 2.5 s of thought.
+  const words = [];
+  for (let word = 0; word < 10; word += 1) for (let key = 0; key < 6; key += 1) words.push({ type: 'insert', at: word * 3500 + key * 200 });
+  const paced = composeSummary({ keys: words, text: 'word, '.repeat(10), elapsedMs: words.at(-1).at + 200 });
+  assert.equal(paced.wpm, Math.round(60 / 5 / (59 * 200 / 60_000)));
+  assert.ok(paced.wpm <= 62, `${paced.wpm} wpm`);
 });
 
 test('free-typing speed is kept characters ÷ 5 per active minute', () => {
@@ -50,9 +71,9 @@ test('free-typing speed is kept characters ÷ 5 per active minute', () => {
 test('a long pause lowers elapsed time use but not the speed', () => {
   const steady = composeSummary({ keys: keysFor('i'.repeat(41)), text: 'x'.repeat(41), elapsedMs: 8000 });
   const paused = composeSummary({ keys: keysFor('i'.repeat(41), 200, { 20: 9000 }), text: 'x'.repeat(41), elapsedMs: 17_200 });
-  // The 9.2 s gap is left out entirely, so only one 200 ms interval is lost.
-  assert.equal(paused.activeMs, steady.activeMs - 200);
-  assert.ok(Math.abs(paused.wpm - steady.wpm) <= 2);
+  // The 9.2 s gap counts as one ordinary 200 ms gap, so the speed is exactly the same.
+  assert.equal(paused.activeMs, steady.activeMs);
+  assert.equal(paused.wpm, steady.wpm);
   assert.equal(paused.elapsedMs, 17_200);
 });
 

@@ -1141,7 +1141,8 @@ body[data-session="practice"] .compose-measure { justify-content: space-between;
   margin: var(--space-2) 0 var(--space-6);
 }
 
-/* Three lines like the passage, scrolling inside, so the page never moves while you write. */
+/* Three lines like the passage, scrolling inside, so the page never moves while you write. No
+   scrollbar appears beside the writing, and the caret holds still instead of blinking. */
 #compose-input {
   display: block;
   width: 100%;
@@ -1153,9 +1154,11 @@ body[data-session="practice"] .compose-measure { justify-content: space-between;
   outline: 0;
   resize: none;
   overflow-y: auto;
+  scrollbar-width: none;
   background: transparent;
   color: var(--text);
   caret-color: var(--accent);
+  caret-animation: manual;
   font-family: var(--font-serif);
   font-size: var(--passage-size);
   font-weight: 400;
@@ -1163,6 +1166,7 @@ body[data-session="practice"] .compose-measure { justify-content: space-between;
   letter-spacing: -0.004em;
 }
 
+#compose-input::-webkit-scrollbar { display: none; }
 #compose-input::placeholder { color: var(--muted); opacity: 1; font-style: italic; }
 
 /* Finished: the writing and the clock stop being "current". */

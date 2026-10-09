@@ -32,6 +32,8 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
   let state = 'ready';
   let keys = [];
   let startedAt = null;
+  // The elapsed time a finished session ended at, so the clock and the heading agree.
+  let endedMs = null;
   let ticker = 0;
   let interrupted = false;
   let unsupported = false;
@@ -42,7 +44,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
   let deckIndex = -1;
   let promptId = null;
 
-  const elapsed = () => (startedAt === null ? 0 : Math.min(COMPOSE_LIMIT_MS, now() - startedAt));
+  const elapsed = () => endedMs ?? (startedAt === null ? 0 : Math.min(COMPOSE_LIMIT_MS, now() - startedAt));
   const inputLabel = () => (inputClass === 'touch' ? 'touch input' : 'physical keyboard');
 
   function setText(element, value) {
@@ -76,14 +78,21 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     announce(message);
   }
 
+  // Running, whole seconds left round up, like a countdown; finished, the time used rounds the
+  // same way as the result heading, so the two always add up to the minute.
   function renderClock() {
     const spent = elapsed();
-    setText($('compose-timer'), Math.max(0, Math.ceil((COMPOSE_LIMIT_MS - spent) / 1000)));
+    const ended = endedMs !== null;
+    const left = ended ? LIMIT_S - Math.round(spent / 1000) : Math.max(0, Math.ceil((COMPOSE_LIMIT_MS - spent) / 1000));
+    setText($('compose-timer'), left);
     const percent = Math.round((spent / COMPOSE_LIMIT_MS) * 100);
     $('compose-progress-bar').style.setProperty('--progress', String(spent / COMPOSE_LIMIT_MS));
     const track = $('compose-progress');
     track.setAttribute('aria-valuenow', String(percent));
-    track.setAttribute('aria-valuetext', startedAt === null ? 'Not started' : `${LIMIT_S - Math.ceil(spent / 1000)} seconds left`);
+    let label = `${left} seconds left`;
+    if (startedAt === null) label = 'Not started';
+    else if (ended) label = `Ended after ${LIMIT_S - left} seconds`;
+    track.setAttribute('aria-valuetext', label);
   }
 
   function tick() {
@@ -109,24 +118,29 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
   function resultHeading(summary, endedBy, counted) {
     if (state === 'interrupted') return 'Interrupted · not saved';
     if (unsupported) return 'IME input · not measured or saved';
-    if (!counted) return 'Too short to measure · not saved';
+    if (!counted) return summary.activeMs < COMPOSE_MIN_ACTIVE_MS ? 'Too short to measure · not saved' : 'No text left to measure · not saved';
     return endedBy === 'time' ? `Time’s up at ${LIMIT_S} s` : `Finished after ${Math.round(summary.elapsedMs / 1000)} s`;
   }
 
   function renderResult(summary, { endedBy, counted, saved }) {
     setText($('compose-result-heading'), resultHeading(summary, endedBy, counted));
-    setText($('compose-wpm'), summary.wpm ?? '—');
-    setText($('compose-backspace'), summary.backspaceRate ?? '—');
+    // IME text was never keyed, so neither rate means anything.
+    setText($('compose-wpm'), unsupported ? '—' : summary.wpm ?? '—');
+    setText($('compose-backspace'), unsupported ? '—' : summary.backspaceRate ?? '—');
     setText($('compose-active'), (summary.activeMs / 1000).toFixed(1));
     setText($('compose-characters'), summary.characters);
-    setText($('compose-definition'), 'Free-typing wpm: characters in your text ÷ 5, per minute of active typing (gaps over 2 s left out). '
-      + `Backspace rate: ${summary.backspaces} of ${summary.keystrokes} ${summary.keystrokes === 1 ? 'key was' : 'keys were'} backspace or delete. `
+    setText($('compose-definition'), 'Free-typing wpm: characters in your text ÷ 5, per minute of active typing (a pause over 2\u00a0s counts as your average gap). '
+      + `Backspace rate: ${summary.backspaces} of ${summary.keystrokes} ${summary.keystrokes === 1 ? 'keystroke was' : 'keystrokes were'} backspace or delete, held repeats included. `
       + 'Never compared with copy tests, and never a best.');
     let status = notice;
     if (counted) {
       if (saved === false) status = 'Couldn’t save on this device.';
       else status = signedIn() ? 'Saved to your history: these numbers, not your words.' : 'Kept for this tab: these numbers, not your words.';
-    } else if (!notice) status = `A speed needs at least ${COMPOSE_MIN_ACTIVE_MS / 1000} s of active typing.`;
+    } else if (!notice) {
+      status = summary.activeMs < COMPOSE_MIN_ACTIVE_MS
+        ? `A speed needs at least ${COMPOSE_MIN_ACTIVE_MS / 1000} s of active typing.`
+        : 'The field was empty at the end, so there is no speed.';
+    }
     setText($('compose-saved'), status);
     $('compose-result').hidden = false;
     $('compose-footer').hidden = true;
@@ -138,8 +152,11 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     ticker = 0;
     const elapsedMs = endedBy === 'time' ? COMPOSE_LIMIT_MS : elapsed();
     const summary = composeSummary({ keys, text: input.value, elapsedMs });
+    endedMs = summary.elapsedMs;
     state = interrupted ? 'interrupted' : 'complete';
+    // Read-only and out of the tab order: a finished field has no caret to show focus with.
     input.readOnly = true;
+    input.tabIndex = -1;
     $('compose-form').dataset.state = 'done';
     touched = false;
     renderClock();
@@ -161,12 +178,14 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     state = 'ready';
     keys = [];
     startedAt = null;
+    endedMs = null;
     interrupted = false;
     unsupported = false;
     notice = '';
     inputClass = touched ? 'touch' : 'physical-keyboard';
     input.value = '';
     input.readOnly = false;
+    input.removeAttribute('tabindex');
     $('compose-form').dataset.state = 'ready';
     done.disabled = true;
     $('compose-result').hidden = true;
@@ -273,6 +292,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
       state = 'ready';
       keys = [];
       startedAt = null;
+      endedMs = null;
       input.value = '';
     },
     restart,

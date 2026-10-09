@@ -1278,7 +1278,7 @@ function renderComposeHistory() {
   $('compose-history').hidden = !list.length;
   if (!list.length) return;
   const shown = [...list].reverse().slice(0, 10);
-  $('compose-history-note').textContent = 'Free-typing wpm is characters in your text ÷ 5 per minute of active typing, gaps over 2 s left out. '
+  $('compose-history-note').textContent = 'Free-typing wpm is characters in your text ÷ 5 per minute of active typing, a pause over 2\u00a0s counting as your average gap. '
     + `Kept apart from copy-test charts and never a best. ${list.length} ${list.length === 1 ? 'session' : 'sessions'} saved`
     + `${list.length > shown.length ? `; the newest ${shown.length} are shown` : ''}. Only these numbers are kept, never your words.`;
   $('compose-history-list').replaceChildren(...shown.map((item) => {
@@ -1287,7 +1287,7 @@ function renderComposeHistory() {
     main.append(element('strong', `${item.wpm} wpm`, 'num'), element('span', `${item.backspaceRate}% backspace rate`, 'num'));
     const prompt = promptText(item.promptId);
     row.append(main, element('p', prompt ? `“${prompt}”` : 'A prompt no longer offered'),
-      element('p', `${dateCopy(item.at)} · ${item.characters} characters · ${item.backspaces} ${item.backspaces === 1 ? 'backspace' : 'backspaces'} in ${item.keystrokes} keys · ${(item.activeMs / 1000).toFixed(1)} s active of ${Math.round(item.elapsedMs / 1000)} s · ${item.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`, 'condition-copy'));
+      element('p', `${dateCopy(item.at)} · ${item.characters} characters · ${item.backspaces} ${item.backspaces === 1 ? 'backspace' : 'backspaces'} in ${item.keystrokes} keystrokes · ${(item.activeMs / 1000).toFixed(1)} s active of ${(item.elapsedMs / 1000).toFixed(1)} s · ${item.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`, 'condition-copy'));
     return row;
   }));
 }

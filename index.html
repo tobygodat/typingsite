@@ -248,11 +248,12 @@
               <p id="compose-help" class="compose-help"></p>
               <p id="compose-privacy" class="compose-privacy"></p>
             </div>
+            <!-- Done comes first, so Tab then Space from the field finishes rather than wiping the writing. -->
             <div class="typing-actions">
+              <button id="compose-done" class="btn btn-primary" type="button" aria-keyshortcuts="Control+Enter Meta+Enter" disabled>Done</button>
               <button id="compose-restart" class="icon-control" type="button" title="Start over (Escape)" aria-label="Start over">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
               </button>
-              <button id="compose-done" class="btn btn-primary" type="button" aria-keyshortcuts="Control+Enter Meta+Enter" disabled>Done</button>
             </div>
           </div>
 

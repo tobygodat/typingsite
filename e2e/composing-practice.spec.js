@@ -1,6 +1,6 @@
 // Composing practice: a prompt, a free-typing field, free-typing speed and backspace rate,
 // kept apart from copy tests and stored as numbers only.
-import { test, expect, openApp, openView, signInWithEmail, storageKeys } from './fixtures.js';
+import { test, expect, openApp, openSettings, openView, passageText, signInWithEmail, storageKeys } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const shot = (testInfo, name) => (process.env.SCREENSHOTS
@@ -22,11 +22,18 @@ async function typePaced(page, keys, gap = 230, pauses = {}) {
 function expected(keys, gap, pauses = {}) {
   let text = '';
   for (const key of keys) text = key === '\b' ? text.slice(0, -1) : text + key;
-  let activeMs = 0;
+  // Gaps over 2 s count as the average of the shorter gaps.
+  let typing = 0;
+  let gaps = 0;
+  let long = 0;
   for (let index = 1; index < keys.length; index += 1) {
     const between = gap + (pauses[index - 1] || 0);
-    if (between <= 2000) activeMs += between;
+    if (between <= 2000) {
+      typing += between;
+      gaps += 1;
+    } else long += 1;
   }
+  const activeMs = Math.round(gaps ? typing + long * (typing / gaps) : 0);
   const backspaces = [...keys].filter((key) => key === '\b').length;
   return {
     text,
@@ -97,8 +104,8 @@ test('composing reports free-typing speed and backspace rate, never a best', asy
   await expect(page.locator('#compose-backspace')).toHaveText(String(want.backspaceRate));
   await expect(page.locator('#compose-active')).toHaveText((want.activeMs / 1000).toFixed(1));
   await expect(page.locator('#compose-characters')).toHaveText(String(want.text.length));
-  await expect(page.locator('#compose-definition')).toContainText('characters in your text ÷ 5, per minute of active typing (gaps over 2 s left out)');
-  await expect(page.locator('#compose-definition')).toContainText(`${want.backspaces} of ${want.keys} keys were backspace or delete`);
+  await expect(page.locator('#compose-definition')).toContainText('characters in your text ÷ 5, per minute of active typing (a pause over 2 s counts as your average gap)');
+  await expect(page.locator('#compose-definition')).toContainText(`${want.backspaces} of ${want.keys} keystrokes were backspace or delete, held repeats included`);
   await expect(page.locator('#compose-definition')).toContainText('Never compared with copy tests, and never a best.');
   await expect(page.locator('#compose-saved')).toHaveText('Kept for this tab: these numbers, not your words.');
   await expect(page.locator('#compose-next')).toBeFocused();
@@ -112,7 +119,7 @@ test('composing reports free-typing speed and backspace rate, never a best', asy
   await expect(page.locator('#compose-history .compose-row-main')).toContainText(`${want.wpm} wpm`);
   await expect(page.locator('#compose-history .compose-row-main')).toContainText(`${want.backspaceRate}% backspace rate`);
   await expect(page.locator('#compose-history .compose-row')).toContainText(`“${prompt}”`);
-  await expect(page.locator('#compose-history .compose-row')).toContainText(`${want.text.length} characters · ${want.backspaces} backspaces in ${want.keys} keys`);
+  await expect(page.locator('#compose-history .compose-row')).toContainText(`${want.text.length} characters · ${want.backspaces} backspaces in ${want.keys} keystrokes`);
   await expect(page.locator('#compose-history-note')).toContainText('1 session saved');
   await expect(page.locator('#compose-history-note')).toContainText('never a best');
   await expect(page.locator('#compose-history')).not.toContainText('quiet, so I read');
@@ -152,6 +159,7 @@ test('the minute ends it on its own and the field stops taking keys', async ({ p
   await expect(page.locator('#compose-result-heading')).toHaveText('Time’s up at 60 s');
   await expect(page.locator('#compose-timer')).toHaveText('0');
   await expect(page.locator('#compose-progress')).toHaveAttribute('aria-valuenow', '100');
+  await expect(page.locator('#compose-progress')).toHaveAttribute('aria-valuetext', 'Ended after 60 seconds');
   const value = await page.locator('#compose-input').inputValue();
   await page.locator('#compose-input').focus();
   await page.keyboard.type('more');
@@ -239,6 +247,107 @@ test('opening commands or leaving mid-way means it is not saved', async ({ page 
   await openView(page, 'Practice');
   await expect(page.locator('#compose-result-heading')).toHaveText('Interrupted · not saved');
   await expect(page.locator('#compose-saved')).toHaveText('You left mid-way, so this one wasn’t saved.');
+});
+
+test('Tab reaches Done first, the finished field leaves the tab order and the clock agrees', async ({ page }) => {
+  await startPausedClock(page);
+  await openCompose(page);
+  // No scrollbar beside the writing, and the caret holds still.
+  await expect(page.locator('#compose-input')).toHaveCSS('scrollbar-width', 'none');
+  await expect(page.locator('#compose-input')).toHaveCSS('caret-animation', 'manual');
+
+  // 49 keys and one 2.6 s pause: 13.87 s from the first key to Done.
+  await typePaced(page, [...'First line of my answer, and then a little more.'], 230, { 20: 2600 });
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#compose-done')).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(page.locator('#compose-result-heading')).toHaveText('Finished after 14 s');
+  await expect(page.locator('#compose-input')).toHaveValue('First line of my answer, and then a little more.');
+  await expect(page.locator('#compose-timer')).toHaveText('46');
+  await expect(page.locator('#compose-progress')).toHaveAttribute('aria-valuetext', 'Ended after 14 seconds');
+
+  // The read-only field has no caret to show focus, so Shift+Tab passes over it.
+  await expect(page.locator('#compose-next')).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('#compose-retry')).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('#compose-another')).toBeFocused();
+  await page.locator('#compose-retry').click();
+  await expect(page.locator('#compose-input')).toBeFocused();
+  await expect(page.locator('#compose-input')).toHaveJSProperty('tabIndex', 0);
+});
+
+test('keyless input, focus loss and an emptied field are never saved, and settings wait', async ({ page }) => {
+  await startPausedClock(page);
+  // A copy test in progress is dropped on the way in, and its hidden passage is left alone.
+  await page.locator('#typing-input').focus();
+  await page.keyboard.type('th');
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+  const hidden = await passageText(page);
+  await page.mouse.move(5, 5);
+  await page.mouse.move(40, 40);
+  await openCompose(page);
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'false');
+
+  // A setting that would draw a new passage waits until composing ends.
+  await openSettings(page);
+  await page.locator('#word-list').selectOption('1k');
+  await page.locator('details.preferences summary').click();
+  await expect(page.locator('#compose-form')).toBeVisible();
+  expect(await passageText(page)).toBe(hidden);
+
+  // Several characters in one go and undo are refused.
+  const cdp = await page.context().newCDPSession(page);
+  await page.locator('#compose-input').focus();
+  await cdp.send('Input.insertText', { text: 'a whole sentence' });
+  await expect(page.locator('#compose-input')).toHaveValue('');
+  await expect(page.locator('#compose-help')).toHaveText('One key at a time.');
+  await typePaced(page, [...'abc'], 200);
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('#compose-input')).toHaveValue('abc');
+  await expect(page.locator('#compose-help')).toHaveText('Only typed keys count, so drop and undo are off.');
+  await page.keyboard.press('Escape');
+
+  // IME text is never keyed, so no rate is shown for it.
+  await typePaced(page, [...'Tea first, then the news. '], 200);
+  await cdp.send('Input.imeSetComposition', { text: 'にほ', selectionStart: 2, selectionEnd: 2 });
+  await cdp.send('Input.insertText', { text: '日本' });
+  await expect(page.locator('#compose-help')).toHaveText('IME input isn’t measured. Esc to start over.');
+  await page.keyboard.press('Control+Enter');
+  await expect(page.locator('#compose-result-heading')).toHaveText('IME input · not measured or saved');
+  await expect(page.locator('#compose-wpm')).toHaveText('—');
+  await expect(page.locator('#compose-backspace')).toHaveText('—');
+
+  // Focus leaving the window mid-way means it won't be saved.
+  await page.locator('#compose-retry').click();
+  await typePaced(page, [...'The kettle clicked off. '], 200);
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await expect(page.locator('#compose-help')).toHaveText('Focus lost, so this one won’t be saved. Esc to start over.');
+  await page.locator('#compose-input').focus();
+  await typePaced(page, [...'Then toast. '], 200);
+  await page.keyboard.press('Control+Enter');
+  await expect(page.locator('#compose-result-heading')).toHaveText('Interrupted · not saved');
+
+  // Plenty of typing, all deleted again: nothing to measure, and it says why.
+  await page.locator('#compose-retry').click();
+  const keys = [...'Nothing to keep here at all.'];
+  await typePaced(page, [...keys, ...keys.map(() => '\b')], 200);
+  await page.keyboard.press('Control+Enter');
+  await expect(page.locator('#compose-result-heading')).toHaveText('No text left to measure · not saved');
+  await expect(page.locator('#compose-active')).toHaveText(((keys.length * 2 - 1) * 0.2).toFixed(1));
+  await expect(page.locator('#compose-saved')).toHaveText('The field was empty at the end, so there is no speed.');
+
+  await openView(page, 'Progress');
+  await expect(page.locator('#compose-history')).toBeHidden();
+
+  // Leaving composing starts a fresh copy test from the new word list.
+  await openView(page, 'Practice');
+  await page.locator('#mode-time').click();
+  await page.clock.runFor(50);
+  await expect(page.locator('#typing-form')).toBeVisible();
+  await expect(page.locator('#typing-input')).toHaveValue('');
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'false');
+  expect(await passageText(page)).not.toBe(hidden);
 });
 
 test('signed in, only the numbers reach the account', async ({ page, supabase }) => {

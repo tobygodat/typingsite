@@ -54,21 +54,30 @@ export function countWords(text) {
   return String(text).replace(FORMAT, '').trim().split(/\s+/u).filter(Boolean).length;
 }
 
-// Active time is the sum of the gaps between consecutive keys, leaving out every gap longer than
-// the pause cut-off. Times are milliseconds from the first key.
+// Active time is the sum of the gaps between consecutive keys, where a gap longer than the pause
+// cut-off (thinking, not typing) counts as the average of the shorter gaps. Dropping long gaps
+// outright would leave the key after each pause with no time of its own and overstate the speed
+// of anyone who writes in bursts. Times are milliseconds from the first key.
 export function activeTime(times, pauseMs = COMPOSE_PAUSE_MS) {
-  let total = 0;
+  let typing = 0;
+  let gaps = 0;
+  let pauses = 0;
   for (let i = 1; i < times.length; i += 1) {
     const gap = times[i] - times[i - 1];
-    if (gap >= 0 && gap <= pauseMs) total += gap;
+    if (gap < 0) continue;
+    if (gap <= pauseMs) {
+      typing += gap;
+      gaps += 1;
+    } else pauses += 1;
   }
-  return total;
+  return gaps ? typing + pauses * (typing / gaps) : 0;
 }
 
 // keys: [{ type: 'insert' | 'delete', at }], one entry per key that changed the text.
 // - characters: what is in the text when it ends (what you kept), not every key pressed.
 // - wpm: characters ÷ 5 per minute of active time, or null when there is too little typing to say.
-// - backspaceRate: backspace and delete presses as a share of all keys, in whole percent.
+// - backspaceRate: backspace and delete keystrokes (each auto-repeat of a held key included) as a
+//   share of all keystrokes, in whole percent.
 export function composeSummary({ keys = [], text = '', elapsedMs = 0 } = {}) {
   const inserts = keys.filter((key) => key.type === 'insert').length;
   const backspaces = keys.filter((key) => key.type === 'delete').length;
