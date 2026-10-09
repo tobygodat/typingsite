@@ -78,28 +78,27 @@
               <span><strong>stop on error</strong></span>
               <input class="switch" id="stop-on-error-toggle" type="checkbox">
             </label>
-            <label class="preference-row" for="min-accuracy">
-              <span><strong>minimum accuracy</strong></span>
-              <select class="input select" id="min-accuracy">
-                <option value="0" selected>off</option>
-                <option value="80">80%</option>
-                <option value="90">90%</option>
-                <option value="95">95%</option>
-                <option value="98">98%</option>
-              </select>
-            </label>
-            <label class="preference-row" for="min-wpm">
-              <span><strong>minimum speed</strong></span>
-              <select class="input select" id="min-wpm">
-                <option value="0" selected>off</option>
-                <option value="20">20 wpm</option>
-                <option value="30">30 wpm</option>
-                <option value="40">40 wpm</option>
-                <option value="60">60 wpm</option>
-                <option value="80">80 wpm</option>
-                <option value="100">100 wpm</option>
-              </select>
-            </label>
+            <div class="preference-row" role="group" aria-labelledby="minimums-label">
+              <span><strong id="minimums-label">minimums</strong></span>
+              <span class="preference-pair">
+                <select class="input select" id="min-accuracy" aria-label="minimum accuracy">
+                  <option value="0" selected>any %</option>
+                  <option value="80">80%</option>
+                  <option value="90">90%</option>
+                  <option value="95">95%</option>
+                  <option value="98">98%</option>
+                </select>
+                <select class="input select" id="min-wpm" aria-label="minimum speed">
+                  <option value="0" selected>any wpm</option>
+                  <option value="20">20 wpm</option>
+                  <option value="30">30 wpm</option>
+                  <option value="40">40 wpm</option>
+                  <option value="60">60 wpm</option>
+                  <option value="80">80 wpm</option>
+                  <option value="100">100 wpm</option>
+                </select>
+              </span>
+            </div>
             <label class="preference-row" for="focus-toggle">
               <span><strong>focus mode</strong></span>
               <input class="switch" id="focus-toggle" type="checkbox">

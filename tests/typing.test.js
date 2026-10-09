@@ -9,9 +9,9 @@ import {
   makeDrill,
   makePassage,
   metrics,
+  accuracyGraceCharacters,
   MINIMUM_GRACE_CHARACTERS,
   MINIMUM_GRACE_MS,
-  minimumGrace,
   minimumMissed,
   passageComplete,
   recommendTarget,
@@ -118,9 +118,12 @@ test('generated passages draw from the selected common-word list', async () => {
 test('minimums wait out a five-second, twenty-character grace and judge the shown numbers', () => {
   assert.equal(MINIMUM_GRACE_MS, 5000);
   assert.equal(MINIMUM_GRACE_CHARACTERS, 20);
-  assert.equal(minimumGrace({ elapsedMs: 4999, insertions: 200 }), true);
-  assert.equal(minimumGrace({ elapsedMs: 60000, insertions: 19 }), true);
-  assert.equal(minimumGrace({ elapsedMs: 5000, insertions: 20 }), false);
+  const slow = { wpm: 10, accuracy: 100 };
+  assert.equal(minimumMissed({ wpm: 40 }, slow, { elapsedMs: 4999, insertions: 200 }), null);
+  assert.equal(minimumMissed({ wpm: 40 }, slow, { elapsedMs: 60000, insertions: 19 }), null);
+  assert.equal(minimumMissed({ wpm: 40 }, slow, { elapsedMs: 5000, insertions: 20 }).metric, 'wpm');
+  // Without a running replay (the end of the run) there is no grace.
+  assert.equal(minimumMissed({ wpm: 40 }, slow).metric, 'wpm');
 
   assert.equal(minimumMissed(null, { wpm: 10, accuracy: 50 }), null);
   assert.equal(minimumMissed({ accuracy: 95 }, { wpm: 10, accuracy: 95 }), null, 'at the minimum is not below it');
@@ -128,6 +131,23 @@ test('minimums wait out a five-second, twenty-character grace and judge the show
   assert.deepEqual(minimumMissed({ wpm: 40 }, { wpm: 39, accuracy: 100 }), { metric: 'wpm', minimum: 40, value: 39 });
   assert.equal(minimumMissed({ accuracy: 90, wpm: 40 }, { wpm: 40, accuracy: 90 }), null);
   assert.equal(minimumMissed({ accuracy: 90, wpm: 40 }, { wpm: 30, accuracy: 80 }).metric, 'accuracy', 'accuracy is reported first when both miss');
+});
+
+test('the opening can\'t fail an accuracy minimum: two misses alone never cross it after the grace', () => {
+  assert.deepEqual([80, 90, 95, 98].map(accuracyGraceCharacters), [20, 20, 40, 100]);
+  for (const minimum of [80, 90, 95, 98]) {
+    const characters = accuracyGraceCharacters(minimum);
+    const twoMisses = metrics('x'.repeat(characters), 'x'.repeat(characters), characters, 2, 60000);
+    assert.ok(twoMisses.accuracy >= minimum, `${minimum}%: ${twoMisses.accuracy}% after ${characters} characters`);
+  }
+  // One opening typo, then perfect typing at 60 wpm: 25 characters by five seconds reads 96%.
+  const typo = { wpm: 60, accuracy: 96 };
+  assert.equal(minimumMissed({ accuracy: 98 }, typo, { elapsedMs: 5000, insertions: 25 }), null);
+  assert.equal(minimumMissed({ accuracy: 95 }, { wpm: 60, accuracy: 92 }, { elapsedMs: 5000, insertions: 25 }), null);
+  // Past the grace, a run that really is under the minimum is judged.
+  assert.equal(minimumMissed({ accuracy: 98 }, { wpm: 60, accuracy: 97 }, { elapsedMs: 20000, insertions: 100 }).metric, 'accuracy');
+  // A speed minimum keeps the short grace even when an accuracy minimum waits longer.
+  assert.equal(minimumMissed({ accuracy: 98, wpm: 80 }, typo, { elapsedMs: 5000, insertions: 25 }).metric, 'wpm');
 });
 
 test('minimums never enter the conditions key, so bests and retests keep matching', () => {

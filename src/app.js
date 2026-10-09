@@ -6,7 +6,6 @@ import {
   conditionKey,
   createAttempt,
   makeDrill,
-  minimumGrace,
   minimumMissed,
   normalizeManualTarget,
   passageComplete,
@@ -120,6 +119,9 @@ let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
+// The time of the last key since a minimum stopped the run; see the Run again key guard.
+let stopHold = null;
+const STOP_HOLD_MS = 600;
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
@@ -209,9 +211,11 @@ function describeMinimums(minimums) {
   return [minimums?.accuracy ? `min ${minimums.accuracy}% accuracy` : '', minimums?.wpm ? `min ${minimums.wpm} wpm` : ''].filter(Boolean).join(' · ');
 }
 
-// "accuracy fell below 95%", "speed fell below 40 wpm".
+// "Stopped: accuracy fell below 95%" for a run ended on the tick; "Finished under your 98% minimum
+// accuracy" for one that reached its end below it.
 function stopReason(stop) {
-  return stop.metric === 'accuracy' ? `accuracy fell below ${stop.minimum}%` : `speed fell below ${stop.minimum} wpm`;
+  if (stop.atEnd) return `Finished under your ${stop.metric === 'accuracy' ? `${stop.minimum}% minimum accuracy` : `${stop.minimum} wpm minimum speed`}`;
+  return `Stopped: ${stop.metric === 'accuracy' ? `accuracy fell below ${stop.minimum}%` : `speed fell below ${stop.minimum} wpm`}`;
 }
 
 // A drill is always one minute of generated text, whatever the baseline was.
@@ -547,9 +551,10 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     attempt.firstDailyAttempt = passage.firstDailyAttempt;
   }
   if (kind === 'drill') attempt.target = selectedTarget;
-  // Only open practice stops at a minimum: drills, retests and the daily challenge always run to
-  // the end, so a threshold can never filter what the learning loop compares.
+  // Open practice stops at the current minimums. A retest carries its baseline's, so both sides of a
+  // comparison pass the same filter; drills and the daily challenge always run to the end.
   if (kind === 'practice') attempt.minimums = practiceMinimums();
+  if (kind === 'retest') attempt.minimums = baselineAttempt?.minimums || null;
   attempt.fresh = passage.fresh !== false;
   startTime = null;
   $('typing-input').value = '';
@@ -765,9 +770,8 @@ function updateLive(reset = false) {
     setText($('live-wpm'), score ? score.wpm : '—');
     setText($('live-accuracy'), score ? score.accuracy : '—');
     // Minimums are judged on this once-a-second tick, after the grace period, never per keystroke.
-    if (!reset && live && attempt.minimums && attempt.status === 'running' && !attempt.interrupted && !attempt.unsupportedInput
-      && !minimumGrace({ elapsedMs: live.elapsedMs, insertions: live.insertions })) {
-      const stop = minimumMissed(attempt.minimums, score);
+    if (!reset && live && attempt.minimums && attempt.status === 'running' && !attempt.interrupted && !attempt.unsupportedInput) {
+      const stop = minimumMissed(attempt.minimums, score, live);
       if (stop) {
         finishPrimary(boundedElapsed, stop);
         return;
@@ -820,8 +824,9 @@ function finishPrimary(forcedElapsed = null, stop = null) {
   const endedAt = forcedElapsed ?? offsetFor();
   const clean = !attempt.interrupted && !attempt.unsupportedInput;
   const final = completeAttempt(attempt, { endedAt });
-  // A run that reaches its end under a minimum stops there too, so every counted run met them.
-  const stopped = clean ? stop || minimumMissed(attempt.minimums, final.summary.score) : null;
+  // A run that reaches its end under a minimum isn't counted either, so every counted run met them.
+  const missed = clean && !stop ? minimumMissed(attempt.minimums, final.summary.score) : null;
+  const stopped = clean ? stop || (missed && { ...missed, atEnd: true }) : null;
   const valid = clean && !stopped;
   const completed = { ...final, status: valid ? 'complete' : 'interrupted' };
   if (stopped) completed.stopped = stopped;
@@ -852,6 +857,7 @@ function finishPrimary(forcedElapsed = null, stop = null) {
   switchView('results');
   renderCard(completed);
   $('run-again').focus({ preventScroll: true });
+  stopHold = stop ? now() : null;
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -868,7 +874,7 @@ function renderCard(completed) {
 }
 
 function resultHeadline(completed) {
-  if (completed.status !== 'complete') return 'Interrupted · not counted';
+  if (completed.status !== 'complete') return completed.stopped?.atEnd ? 'Under your minimum · not counted' : 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
   if (!resultBestBefore) return 'First run at these settings';
@@ -894,7 +900,7 @@ function renderResults(completed, saved) {
   $('result-time').textContent = `${(replay.elapsedMs / 1000).toFixed(1)} s`;
   $('result-conditions').textContent = describeRun(completed);
   $('result-delta').textContent = resultHeadline(completed);
-  const stopped = completed.stopped ? `Stopped: ${stopReason(completed.stopped)}` : '';
+  const stopped = completed.stopped ? stopReason(completed.stopped) : '';
   // A retest reports a failed save once, in the comparison caveat.
   $('result-comparison-note').textContent = [
     counted ? '' : stopped ? `${stopped}, so it isn’t counted.` : 'Focus or input changed during the run, so it isn’t counted.',
@@ -907,7 +913,7 @@ function renderResults(completed, saved) {
   }
   $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
   $('recommendation-evidence').textContent = counted ? activeRecommendation.reason
-    : stopped ? 'Practice runs stop when they fall below your minimums. Change them in settings.' : 'This run lost focus or used unsupported input.';
+    : stopped ? 'Runs under your minimums aren’t counted. Change them in settings.' : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
     ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
@@ -989,7 +995,8 @@ function renderComparison(before, after, saved) {
     });
     comparisonSaved = saveProfile();
   }
-  $('comparison-caveat').textContent = `${comparison.reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
+  const reason = after.stopped ? 'The retest fell under the baseline’s minimums, so no comparison is made.' : comparison.reason;
+  $('comparison-caveat').textContent = `${reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
   renderHistory();
 }
 
@@ -1828,6 +1835,16 @@ function bindEvents() {
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
+  // A minimum stops a run mid-word, and focus lands here. Until the typist pauses, Space and Enter
+  // do nothing, so the keys already on their way can't discard the result and start a new run.
+  $('run-again').addEventListener('keydown', (event) => {
+    if (stopHold === null) return;
+    const stamp = now();
+    if (stamp - stopHold >= STOP_HOLD_MS) { stopHold = null; return; }
+    stopHold = stamp;
+    if (event.key === ' ' || event.key === 'Enter') event.preventDefault();
+  });
+  $('run-again').addEventListener('keyup', (event) => { if (stopHold !== null && event.key === ' ') event.preventDefault(); });
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);

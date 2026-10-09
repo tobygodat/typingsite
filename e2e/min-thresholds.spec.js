@@ -40,26 +40,32 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
   await expect(page.locator('#condition-line')).toContainText('continue on error · corpus v5 · metric v1 · min 95% accuracy');
   await page.keyboard.press('Escape');
 
-  // Twenty-four keys in 4.8 s stay inside the five-second grace, so the run is still going.
+  // Thirty-nine keys in 7.8 s: past five seconds, but a 95% minimum waits for 40 characters, so
+  // the opening misses can't decide it on their own. The run is still going.
   const text = await passageText(page);
+  const keys = withMisses(text.slice(0, 52));
   await page.clock.pauseAt(Date.now() + 1000);
-  await typeAtPace(page, withMisses(text.slice(0, 24)));
+  await typeAtPace(page, keys.slice(0, 39));
   await expect(page.locator('#typing-status')).toHaveText('In progress');
 
-  // The first once-a-second tick after five seconds judges it.
-  await page.clock.runFor(1000);
+  // The fortieth key lands at 7.8 s and the tick at 8 s stops the run mid-word. The typist keeps
+  // going at the same pace, spaces and Enter included: none of it reaches Run again.
+  await typeAtPace(page, keys.slice(39));
+  await page.keyboard.press('Enter');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: accuracy fell below 95%, so it isn’t counted.');
   await page.clock.resume();
   await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
   await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: accuracy fell below 95%, so it isn’t counted.');
   await expect(page.locator('#recommendation-title')).toHaveText('Restart for a counted run');
-  await expect(page.locator('#recommendation-evidence')).toContainText('fall below your minimums');
+  await expect(page.locator('#recommendation-evidence')).toHaveText('Runs under your minimums aren’t counted. Change them in settings.');
   await expect(page.locator('#announcement')).toHaveText(/^Stopped: accuracy fell below 95%\. \d+ wpm, 8\d% accuracy\.$/);
   await expect(page.locator('#result-conditions')).toContainText('min 95% accuracy');
   expect(Number(await page.locator('#result-accuracy').textContent())).toBeLessThan(95);
-  const wpm = Number(await page.locator('#result-wpm').textContent());
-  expect(wpm).toBe(48);
-  await expect(page.locator('#result-time')).toHaveText('5.0 s');
+  // 34 of 40 keys right in 8 s.
+  await expect(page.locator('#result-accuracy')).toHaveText('85');
+  await expect(page.locator('#result-wpm')).toHaveText('51');
+  await expect(page.locator('#result-time')).toHaveText('8.0 s');
   await expect(page.locator('#start-drill')).toBeDisabled();
   await expect(page.locator('#skip-to-retest')).toBeDisabled();
   await expect(page.locator('#run-again')).toBeFocused();
@@ -75,8 +81,9 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
   await page.waitForTimeout(450);
   await shot(page, testInfo, 'stopped-light');
 
-  // Run again starts a fresh practice run that still carries the minimum.
-  await page.locator('#run-again').click();
+  // Once the typist has paused, Enter on Run again starts a fresh run that still carries the minimum.
+  await expect(page.locator('#run-again')).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(page.locator('#typing-status')).toHaveText('Ready');
   await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy');
 });
@@ -115,7 +122,7 @@ test('the grace period forgives an early miss, and a run that ends above the min
   await expect(page.locator('#condition-line')).not.toContainText('min');
 });
 
-test('a run that reaches its end under the minimum is stopped too, so every counted run met it', async ({ page }) => {
+test('a run that reaches its end under the minimum isn’t counted either, so every counted run met it', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
@@ -125,8 +132,9 @@ test('a run that reaches its end under the minimum is stopped too, so every coun
   const text = await passageText(page);
   await typeInto(page, withMisses(text));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
-  await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: accuracy fell below 98%, so it isn’t counted.');
+  await expect(page.locator('#result-delta')).toHaveText('Under your minimum · not counted');
+  await expect(page.locator('#result-comparison-note')).toHaveText('Finished under your 98% minimum accuracy, so it isn’t counted.');
+  await expect(page.locator('#announcement')).toHaveText(/^Finished under your 98% minimum accuracy\. \d+ wpm, \d+% accuracy\.$/);
   await expect(page.locator('#best')).toHaveText('No best yet');
 });
 
@@ -164,7 +172,7 @@ test('the palette sets a minimum speed, which stops a slow run and resets for a 
   await expect(page.locator('#minimum-note')).toBeHidden();
 });
 
-test('retests and the daily challenge run to the end whatever the minimums', async ({ page }) => {
+test('a retest carries its baseline’s minimums, and the daily challenge has none', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
   await chooseWords(page, 10);
@@ -174,13 +182,15 @@ test('retests and the daily challenge run to the end whatever the minimums', asy
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 
-  // The retest keeps the baseline's conditions but never stops at a minimum, so no outcome is filtered.
+  // The retest passes the same filter as its baseline (min 20 wpm), not today's setting, so both
+  // sides of the comparison were selected alike.
   await openSettings(page);
   await page.locator('#min-wpm').selectOption('100');
   await page.keyboard.press('Escape');
   await page.locator('#skip-to-retest').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
-  await expect(page.locator('#condition-line')).not.toContainText('min');
+  await expect(page.locator('#condition-line')).toContainText('min 20 wpm');
+  await expect(page.locator('#condition-line')).not.toContainText('min 100 wpm');
   const retest = await passageText(page);
   await page.clock.pauseAt(Date.now() + 1000);
   await typeAtPace(page, retest.slice(0, 22));
@@ -191,12 +201,25 @@ test('retests and the daily challenge run to the end whatever the minimums', asy
   await expect(page.locator('#comparison-panel')).toBeVisible();
   await expect(page.locator('#comparison-status')).not.toHaveText('Retest complete.');
 
+  // A retest under the baseline's minimum stops, and no comparison is made from it.
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  const slow = await passageText(page);
+  // The page clock ran ahead of this process while paused, so pause from the page's own time.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
+  await typeAtPace(page, slow.slice(0, 21), 1000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await page.clock.resume();
+  await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: speed fell below 20 wpm, so it isn’t counted.');
+  await expect(page.locator('#comparison-status')).toHaveText('Retest complete.');
+  await expect(page.locator('#comparison-caveat')).toHaveText('The retest fell under the baseline’s minimums, so no comparison is made.');
+
   await runCommand(page, 'daily challenge');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   await expect(page.locator('#condition-line')).not.toContainText('min');
 });
 
-for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }]) {
+for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
   test.describe(`${viewport.width}px`, () => {
     test.use({ viewport, hasTouch: true, isMobile: true });
 
@@ -214,6 +237,13 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
         const box = await page.locator(id).boundingBox();
         expect(box.x + box.width, id).toBeLessThanOrEqual(popover.x + popover.width);
       }
+      // Both minimums share one row, so focus mode stays in view without scrolling the popover.
+      const focusRow = await page.locator('label[for="focus-toggle"]').boundingBox();
+      expect(focusRow.y + focusRow.height).toBeLessThanOrEqual(popover.y + popover.height);
+      // The label sits under every control, lengths included, never between the rows.
+      const lengths = await page.locator('#duration-options').boundingBox();
+      const note = await page.locator('#minimum-note').boundingBox();
+      expect(note.y).toBeGreaterThanOrEqual(lengths.y + lengths.height);
       if (viewport.width === 390) await shot(page, testInfo, 'settings-mobile');
       await page.locator('details.preferences summary').click();
       await expect(page.locator('.preferences-popover')).toBeHidden();
@@ -234,6 +264,12 @@ test('desktop settings and the practice label, dark and light', async ({ page },
     await page.locator('details.preferences summary').click();
     await expect(page.locator('.preferences-popover')).toBeHidden();
     await expect(page.locator('#minimum-note')).toBeVisible();
+    // The label takes its own line, so the controls stay centred under the dock.
+    const first = await page.locator('.practice-controls .segmented').first().boundingBox();
+    const last = await page.locator('.practice-controls .compact-switch').boundingBox();
+    const dock = await page.locator('.dock').boundingBox();
+    expect(Math.abs((first.x + last.x + last.width) / 2 - (dock.x + dock.width / 2))).toBeLessThanOrEqual(2);
+    expect((await page.locator('#minimum-note').boundingBox()).y).toBeGreaterThanOrEqual(last.y + last.height);
     await page.mouse.move(1270, 790);
     await shot(page, testInfo, `practice-${scheme}`);
   }

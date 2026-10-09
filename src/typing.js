@@ -119,22 +119,27 @@ export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', c
   };
 }
 
-// Minimum accuracy and speed to continue (practice runs only). They decide whether a run may go
-// on, never how it is scored, so they are not test conditions. The opening keystrokes are too
-// noisy to judge, so the running check waits until both the time and the character grace have
-// passed; a run that reaches its end is judged on its final score.
+// Minimum accuracy and speed to continue (practice runs and their retests). They decide whether a
+// run may go on, never how it is scored, so they are not test conditions. The opening can't fail a
+// run on its own: the running check waits five seconds and twenty characters, and accuracy waits
+// until two misses alone can't take the rounded figure under the minimum (40 characters at 95%,
+// 100 at 98%). A run that reaches its end is judged on its final score.
 export const MINIMUM_GRACE_MS = 5000;
 export const MINIMUM_GRACE_CHARACTERS = 20;
 
-export function minimumGrace({ elapsedMs = 0, insertions = 0 } = {}) {
-  return elapsedMs < MINIMUM_GRACE_MS || insertions < MINIMUM_GRACE_CHARACTERS;
+export function accuracyGraceCharacters(minimum) {
+  return Math.max(MINIMUM_GRACE_CHARACTERS, Math.ceil(200 / (100 - minimum)));
 }
 
-// The first minimum the score is under, against the same rounded numbers the run shows.
-export function minimumMissed(minimums, score) {
+// The first minimum the score is under, against the same rounded numbers the run shows. Pass the
+// live replay while the run is going, so each minimum waits out its grace.
+export function minimumMissed(minimums, score, running = null) {
   if (!minimums || !score) return null;
-  if (minimums.accuracy && score.accuracy < minimums.accuracy) return { metric: 'accuracy', minimum: minimums.accuracy, value: score.accuracy };
-  if (minimums.wpm && score.wpm < minimums.wpm) return { metric: 'wpm', minimum: minimums.wpm, value: score.wpm };
+  const judged = (characters) => !running || (running.elapsedMs >= MINIMUM_GRACE_MS && running.insertions >= characters);
+  if (minimums.accuracy && score.accuracy < minimums.accuracy && judged(accuracyGraceCharacters(minimums.accuracy))) {
+    return { metric: 'accuracy', minimum: minimums.accuracy, value: score.accuracy };
+  }
+  if (minimums.wpm && score.wpm < minimums.wpm && judged(MINIMUM_GRACE_CHARACTERS)) return { metric: 'wpm', minimum: minimums.wpm, value: score.wpm };
   return null;
 }
 
