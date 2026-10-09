@@ -13,6 +13,7 @@ import {
   MINIMUM_GRACE_CHARACTERS,
   MINIMUM_GRACE_MS,
   minimumMissed,
+  minimumStop,
   passageComplete,
   recommendTarget,
   replayAttempt,
@@ -165,4 +166,32 @@ test('minimums never enter the conditions key, so bests and retests keep matchin
   const plain = completeAttempt(attempt, { endedAt: 1000 });
   const withMinimum = completeAttempt({ ...attempt, minimums: { accuracy: 95 } }, { endedAt: 1000 });
   assert.deepEqual(withMinimum.summary.score, plain.summary.score);
+});
+
+test('the duration is the end of a timed run: a miss there is an end-of-run failure, a second earlier a live stop', () => {
+  // A 15 s run under a 60 wpm minimum, a key every 190 ms: 74 keys read 63 wpm at 14 s and 59 at 15 s.
+  const text = 'the quiet light moves across the room and the world carries on for a moment';
+  const typed = (keys) => {
+    const attempt = createAttempt({ id: 't', text, textId: 'one', conditions: { mode: 'time', duration: 15, correctionPolicy: 'relaxed' } });
+    attempt.events = [...text.slice(0, keys)].map((char, i) => ({ type: 'insert', text: char, offsetMs: i * 190 }));
+    attempt.startedAt = 0;
+    return (endedAt) => replayAttempt({ ...attempt, endedAt });
+  };
+  const minimums = { wpm: 60 };
+  const run = typed(74);
+  assert.equal(run(14000).score.wpm, 63);
+  assert.equal(minimumStop(minimums, run(14000), { elapsedMs: 14000, durationMs: 15000 }), null);
+  assert.equal(run(15000).score.wpm, 59);
+  assert.deepEqual(minimumStop(minimums, run(15000), { elapsedMs: 15000, durationMs: 15000 }), { metric: 'wpm', minimum: 60, value: 59, atEnd: true });
+  assert.equal(minimumStop(minimums, run(15000), { elapsedMs: 15400, durationMs: 15000 }).atEnd, true, 'past the duration too');
+
+  // 66 keys read 57 wpm at 14 s: a live stop, before the end.
+  const short = typed(66);
+  assert.deepEqual(minimumStop(minimums, short(14000), { elapsedMs: 14000, durationMs: 15000 }), { metric: 'wpm', minimum: 60, value: 57 });
+
+  // An untimed run ends with its passage: judged on the final score, with no grace.
+  const quick = typed(12)(2500);
+  assert.equal(minimumStop({ wpm: 100 }, quick, { elapsedMs: 2500 }), null, 'inside the grace the live check waits');
+  assert.equal(minimumStop({ wpm: 100 }, quick, { elapsedMs: 2500, finished: true }).atEnd, true);
+  assert.equal(minimumStop(null, quick, { elapsedMs: 2500, finished: true }), null);
 });

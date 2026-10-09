@@ -6,7 +6,7 @@ import {
   conditionKey,
   createAttempt,
   makeDrill,
-  minimumMissed,
+  minimumStop,
   normalizeManualTarget,
   passageComplete,
   recommendTarget,
@@ -770,8 +770,11 @@ function updateLive(reset = false) {
     setText($('live-wpm'), score ? score.wpm : '—');
     setText($('live-accuracy'), score ? score.accuracy : '—');
     // Minimums are judged on this once-a-second tick, after the grace period, never per keystroke.
-    if (!reset && live && attempt.minimums && attempt.status === 'running' && !attempt.interrupted && !attempt.unsupportedInput) {
-      const stop = minimumMissed(attempt.minimums, score, live);
+    // The duration comes first: a tick at or past it is the end of the run, so the end-of-run check
+    // judges it (in finishPrimary, below), never this live one.
+    const ended = duration && elapsed >= duration;
+    if (!reset && !ended && live && attempt.minimums && attempt.status === 'running' && !attempt.interrupted && !attempt.unsupportedInput) {
+      const stop = minimumStop(attempt.minimums, live, { elapsedMs: boundedElapsed, durationMs: duration });
       if (stop) {
         finishPrimary(boundedElapsed, stop);
         return;
@@ -824,9 +827,10 @@ function finishPrimary(forcedElapsed = null, stop = null) {
   const endedAt = forcedElapsed ?? offsetFor();
   const clean = !attempt.interrupted && !attempt.unsupportedInput;
   const final = completeAttempt(attempt, { endedAt });
-  // A run that reaches its end under a minimum isn't counted either, so every counted run met them.
-  const missed = clean && !stop ? minimumMissed(attempt.minimums, final.summary.score) : null;
-  const stopped = clean ? stop || (missed && { ...missed, atEnd: true }) : null;
+  // A run that reaches its end (its duration or its passage) under a minimum isn't counted either,
+  // so every counted run met them. The tick passes a live stop from the same judgement.
+  const end = { elapsedMs: endedAt, durationMs: sessionDurationMs(), finished: passageComplete(attempt, final.summary.typed) };
+  const stopped = clean ? stop || minimumStop(attempt.minimums, final.summary, end) : null;
   const valid = clean && !stopped;
   const completed = { ...final, status: valid ? 'complete' : 'interrupted' };
   if (stopped) completed.stopped = stopped;

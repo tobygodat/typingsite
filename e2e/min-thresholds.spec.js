@@ -261,6 +261,40 @@ for (const end of ['last character', 'timer']) {
   });
 }
 
+// The duration is the end of a timed run. Under a 60 wpm minimum, 190 ms a key stays above it on
+// every tick while the typist types; then they pause. 74 keys read 59 wpm at 15 s, the buzzer itself:
+// the run finished under its minimum. 66 keys read 57 wpm at 14 s: the run is stopped there.
+for (const [keys, ending] of [[74, 'at the buzzer'], [66, 'a second before it']]) {
+  test(`a 15 s run that falls under the minimum ${ending}`, async ({ page }) => {
+    await page.clock.install();
+    await openApp(page);
+    await page.locator('#duration-options [data-length="15"]').click();
+    await openSettings(page);
+    await page.locator('#min-wpm').selectOption('60');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#condition-line')).toContainText('15 s');
+    const text = await passageText(page);
+    await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
+    await typeAtPace(page, text.slice(0, keys), 190);
+    await expect(page.locator('#typing-status')).toHaveText('In progress');
+    await page.clock.runFor(3000);
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+    await page.clock.resume();
+    if (keys === 74) {
+      await expect(page.locator('#result-time')).toHaveText('15.0 s');
+      await expect(page.locator('#result-wpm')).toHaveText('59');
+      await expect(page.locator('#result-delta')).toHaveText('Under your minimum · not counted');
+      await expect(page.locator('#result-comparison-note')).toHaveText('Finished under your 60 wpm minimum speed, so it isn’t counted.');
+    } else {
+      await expect(page.locator('#result-time')).toHaveText('14.0 s');
+      await expect(page.locator('#result-wpm')).toHaveText('57');
+      await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
+      await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: speed fell below 60 wpm, so it isn’t counted.');
+    }
+    await expect(page.locator('#best')).toHaveText('No best yet');
+  });
+}
+
 test('a retest stopped under its baseline’s minimum shows no timing for the drilled pair', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
