@@ -91,7 +91,7 @@ The newest 24 attempt traces and 1,000 compact run summaries (including drills, 
 
 ## Remaining work
 
-- The 30 September change adds an 80 px narrow numeral token below 360 px to fix the run-card overflow. Continue checking large scores when changing result typography.
+- The 30 September change adds an 80 px narrow numeral token below 360 px to fix the run-card overflow; `e2e/layout.spec.js` now holds a three-digit score inside the card while the window narrows from 390 to 361, 360 and 320 px, which also checks that the speed graph gives its old width back. Continue checking large scores when changing result typography.
 - GitHub Actions runs unit, static build and Chromium browser checks on PRs and master pushes. Add Firefox/WebKit projects to broaden coverage.
 - Repeat the latency benchmark across more desktop browsers and physical devices. The current named Chromium run is recorded in `docs/verification/2026-09-22-latency.md`.
 - Broaden physical-device/browser coverage, including assistive technology, actual touch keyboards and IME behavior. Responsive layouts and direct physical-keyboard input were tested on the pre-redesign build; this is not a complete accessibility certification.

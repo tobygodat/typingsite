@@ -267,7 +267,7 @@ A single centred column, `min(1080px, 100% - 48px)` wide (100% - 32px under 760p
 - **Results:** a two-column grid (run card 320–400px, copy fluid, 64px gap). The run card is sticky at 104px from the top. Under 900px it stacks, with the card centred at up to 420px, and it stops sticking when the viewport is shorter than 720px.
 - **Progress / Challenge:** heading row, then hairline-separated rows on fixed column grids that collapse to two columns under 900px and 760px.
 - **Spacing:** a 4px-based scale (4, 8, 12, 16, 24, 32, 40, 56, 64). Section breaks are 32px of padding above a hairline rule. Row padding is 12px (evidence) or 24px (history, race results).
-- **Breakpoints:** 900px (results and tables stack), 760px (dock moves to the bottom, keyboard and shortcuts hidden, type steps down), 360px (nav tightens), max-height 720px (run card un-sticks). Coarse pointers keep a 44px minimum target.
+- **Breakpoints:** 900px (results and tables stack), 760px (dock moves to the bottom, keyboard and shortcuts hidden, type steps down), 360px (nav tightens), max-height 720px (run card un-sticks). Coarse pointers keep a 44px minimum target, checked for every visible control by `e2e/touch-targets.spec.js`; text-sized controls (the footer link, plain disclosures) reach it with padding and a matching negative margin, so the text does not move.
 
 ### Named Rules
 **The Rules-Not-Boxes Rule.** Sections are separated by a 1px hairline and space, never by a card. If a region is not a floating object or the run card, it has no background and no border box.
@@ -320,7 +320,7 @@ A 7px dot in the current colour, followed by a lowercase 12px mono word, coloure
 
 ### Progress, recurring patterns and daily challenge
 
-Progress keeps the editorial column: condition/period fields, two charts, run rows, then drill/retest rows, all separated by space and rules. Corrected WPM uses the green line; accuracy uses the neutral text line. Axis labels show each chart's scale. Chart points have 44px hit areas, keyboard activation and accessible labels that open the corresponding run. Charts stack on mobile and redraw at the available width. Run and comparison disclosures expose their details without adding cards.
+Progress keeps the editorial column: condition/period fields, two charts, run rows, then drill/retest rows, all separated by space and rules. Corrected WPM uses the green line; accuracy uses the neutral text line. Axis labels show each chart's scale. Chart points have 44px hit areas (48px on coarse pointers, where the axis labels let taps through), keyboard activation and accessible labels that open the corresponding run. Charts stack on mobile and redraw at the available width. Run and comparison disclosures expose their details without adding cards.
 
 The training memory section sits below the existing drill actions. Pair headings and counts use Literata; each row offers a neutral bordered button to practice the target again. Sample counts, matching conditions, last practice and later fresh observations stay adjacent to the target.
 

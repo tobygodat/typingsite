@@ -1181,7 +1181,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .run-card-graph { margin: 0; display: grid; gap: var(--space-2); }
 
 .speed-graph { aspect-ratio: 16 / 9; margin-inline: -4px; }
-.speed-graph svg { display: block; overflow: visible; }
+/* The graph is drawn at its pixel width; it may shrink with the card, so a narrower window never
+   inherits the old width (the resize observer in app.js then redraws it to fit). */
+.speed-graph svg { display: block; overflow: visible; max-width: 100%; height: auto; }
 
 .graph-axis { stroke: var(--hairline-strong); stroke-width: 1; }
 .graph-grid { stroke: var(--hairline); stroke-width: 1; }
@@ -1954,8 +1956,25 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .nav-label-short { display: inline; }
 }
 
+/* Coarse pointers keep a 44px minimum target. e2e/touch-targets.spec.js measures every control.
+   Text-sized controls grow into the space around them, not the layout: padding with a matching
+   negative margin. Relative position keeps that reach above the content that follows. */
 @media (pointer: coarse) {
   .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
+  /* 12px mono on a 1.5 line is 18px: 8px up into the gap above, so it stays off the line before
+     it, and 24px down into the footer's own padding makes 50. */
+  .footer-link {
+    padding-block: var(--space-2) var(--space-6);
+    margin-block: calc(var(--space-2) * -1) calc(var(--space-6) * -1);
+  }
+  /* "View passage" and "Your daily results": a 27px line, 51px with 12px each side. */
+  .run-detail summary,
+  .daily-challenge summary { position: relative; padding-block: var(--space-3); margin-block: calc(var(--space-3) * -1); }
+  .toast-close { min-width: var(--control); }
+  /* Chart points: a 48px circle, so the reach through the centre clears 44 at any sub-pixel offset.
+     The date labels are drawn over the end points; taps pass through every axis label. */
+  .trend-hit { r: var(--space-6); }
+  .trend-label { pointer-events: none; }
 }
 
 @media (max-width: 760px) {
