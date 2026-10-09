@@ -1,0 +1,155 @@
+-- Friends board checks. Runs inside a transaction and rolls everything back.
+begin;
+do $smoke$
+declare
+  ada uuid := gen_random_uuid();
+  lin uuid := gen_random_uuid();
+  sam uuid := gen_random_uuid();
+  kai uuid := gen_random_uuid();
+  ada_email text := 'board-test-' || ada::text || '@example.invalid';
+  -- Stored with capitals, typed in lower case: resolved the way a typed invite is.
+  lin_stored text := 'Board-Test-' || lin::text || '@Example.invalid';
+  lin_email text := lower('Board-Test-' || lin::text || '@Example.invalid');
+  sam_email text := 'board-test-' || sam::text || '@example.invalid';
+  kai_email text := 'board-test-' || kai::text || '@example.invalid';
+  today date := (clock_timestamp() at time zone 'utc')::date;
+  monday date := (clock_timestamp() at time zone 'utc')::date - (extract(isodow from (clock_timestamp() at time zone 'utc')::date)::integer - 1);
+  week jsonb;
+  board jsonb;
+  friends jsonb;
+  lin_row text;
+  bad jsonb;
+  denied boolean;
+begin
+  insert into auth.users (id,email,email_confirmed_at) values
+    (ada,ada_email,now()), (lin,lin_stored,now()), (sam,sam_email,now()), (kai,kai_email,null);
+  week := jsonb_build_object('start',monday,'seconds',1830,'runs',41);
+
+  if has_table_privilege('anon','race_private.summaries','SELECT')
+    or has_table_privilege('authenticated','race_private.summaries','SELECT')
+    or has_table_privilege('authenticated','race_private.summaries','INSERT')
+    or has_function_privilege('authenticated','race_private.board_snapshot(uuid)','EXECUTE')
+    or has_function_privilege('anon','race_private.board(text,jsonb)','EXECUTE')
+    or has_function_privilege('anon','public.friends_board(text,jsonb)','EXECUTE')
+    or not has_function_privilege('authenticated','public.friends_board(text,jsonb)','EXECUTE') then
+    raise exception 'Board storage or helpers are exposed.';
+  end if;
+
+  -- Guests have no board.
+  perform set_config('request.jwt.claim.sub','',true);
+  denied := false;
+  begin perform public.friends_board('board','{}');
+  exception when others then denied := true; end;
+  if not denied then raise exception 'Guest read a board.'; end if;
+
+  -- An account publishes its own summary and sees only itself until a friend chooses it back.
+  perform set_config('request.jwt.claim.sub',ada::text,true);
+  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',84,'accuracy',97,'attempts',2),'week',week));
+  if board->>'date' <> today::text or board->>'weekStart' <> monday::text or jsonb_array_length(board->'rows') <> 1
+    or not (board->'rows'->0->>'self')::boolean or board->'rows'->0->'daily'->>'wpm' <> '84'
+    or board->'rows'->0->'daily'->>'attempts' <> '2' or board->'rows'->0->'week'->>'seconds' <> '1830' then
+    raise exception 'Own summary was not stored: %', board;
+  end if;
+
+  -- Impossible or stale summaries are refused, and the stored row is left as it was.
+  foreach bad in array array[
+    jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',401,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',84,'accuracy',101,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',84.5,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',84,'accuracy',97,'attempts',0),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today - 3,'wpm',84,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('wpm',84,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily','84 wpm','week',week),
+    jsonb_build_object('daily',null),
+    jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday + 1,'seconds',60,'runs',1)),
+    jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday - 14,'seconds',60,'runs',1)),
+    jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',604801,'runs',1)),
+    jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',-60,'runs',1)),
+    jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',60))
+  ] loop
+    denied := false;
+    begin perform public.friends_board('publish',bad);
+    exception when others then denied := true; end;
+    if not denied then raise exception 'Accepted an impossible summary: %', bad; end if;
+  end loop;
+  denied := false;
+  begin perform public.friends_board('rank','{}');
+  exception when others then denied := true; end;
+  if not denied then raise exception 'Unknown board action was accepted.'; end if;
+  if (select daily_wpm from race_private.summaries where user_id = ada) <> 84 then raise exception 'A refused summary changed the row.'; end if;
+
+  -- Lin has Ada on her list, but Ada has not chosen Lin: neither sees the other.
+  perform set_config('request.jwt.claim.sub',lin::text,true);
+  perform public.race_action('befriend',null,jsonb_build_object('email',ada_email,'name','Ada'),null);
+  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',72,'accuracy',96,'attempts',1),
+    'week',jsonb_build_object('start',monday,'seconds',754,'runs',12)));
+  if jsonb_array_length(board->'rows') <> 1 then raise exception 'A one-way friend appeared on the board.'; end if;
+  perform set_config('request.jwt.claim.sub',ada::text,true);
+  board := public.friends_board('board','{}');
+  if jsonb_array_length(board->'rows') <> 1 or board::text like '%754%' then raise exception 'Someone who added Ada appeared without being chosen back.'; end if;
+
+  -- Once Ada adds Lin's email too, each sees the other, labelled with their own name for them.
+  friends := public.race_action('befriend',null,jsonb_build_object('email',lin_email,'name','Lin'),null);
+  lin_row := friends->0->>'id';
+  board := public.friends_board('board','{}');
+  if jsonb_array_length(board->'rows') <> 2 or board->'rows'->1->>'name' <> 'Lin' or board->'rows'->1->>'id' <> lin_row
+    or (board->'rows'->1->>'self')::boolean or board->'rows'->1->'daily'->>'wpm' <> '72'
+    or board->'rows'->1->'daily'->>'accuracy' <> '96' or board->'rows'->1->'week'->>'seconds' <> '754' then
+    raise exception 'Mutual friend missing from the board: %', board;
+  end if;
+  if board::text ilike '%' || lin::text || '%' or board::text ilike '%' || lin_email || '%' or board::text ilike '%' || ada::text || '%' then
+    raise exception 'The board exposed an account id or email.';
+  end if;
+  perform set_config('request.jwt.claim.sub',lin::text,true);
+  board := public.friends_board('board','{}');
+  if jsonb_array_length(board->'rows') <> 2 or board->'rows'->1->>'name' <> 'Ada' or board->'rows'->1->'daily'->>'wpm' <> '84' then
+    raise exception 'Lin does not see Ada: %', board;
+  end if;
+
+  -- An unconfirmed email never resolves, in either direction.
+  perform set_config('request.jwt.claim.sub',kai::text,true);
+  perform public.race_action('befriend',null,jsonb_build_object('email',ada_email,'name','Ada'),null);
+  board := public.friends_board('publish',jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday,'seconds',300,'runs',3)));
+  if jsonb_array_length(board->'rows') <> 1 then raise exception 'An unconfirmed account saw a friend.'; end if;
+  perform set_config('request.jwt.claim.sub',ada::text,true);
+  perform public.race_action('befriend',null,jsonb_build_object('email',kai_email,'name','Kai'),null);
+  if jsonb_array_length(public.friends_board('board','{}')->'rows') <> 2 then raise exception 'An unconfirmed email resolved to an account.'; end if;
+
+  -- Someone on the list twice (raced, and typed by email) appears once, under the raced name, even
+  -- with nothing published yet.
+  insert into race_private.friends(owner_id, friend_id, name) values (ada, sam, 'Sam from the race'), (sam, ada, 'Ada');
+  perform public.race_action('befriend',null,jsonb_build_object('email',sam_email,'name','Sam'),null);
+  board := public.friends_board('board','{}');
+  if jsonb_array_length(board->'rows') <> 3 or board->'rows'->2->>'name' <> 'Sam from the race'
+    or jsonb_typeof(board->'rows'->2->'daily') <> 'null' or jsonb_typeof(board->'rows'->2->'week') <> 'null' then
+    raise exception 'A friend listed twice was not shown once: %', board;
+  end if;
+
+  -- Yesterday's daily and last week's practice read as nothing yet, whatever the session time zone.
+  perform set_config('TimeZone','Pacific/Kiritimati',true);
+  perform set_config('request.jwt.claim.sub',lin::text,true);
+  perform public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today - 1,'wpm',75,'accuracy',95,'attempts',1),
+    'week',jsonb_build_object('start',monday,'seconds',800,'runs',13)));
+  perform set_config('request.jwt.claim.sub',ada::text,true);
+  board := public.friends_board('board','{}');
+  if board->>'date' <> today::text or jsonb_typeof(board->'rows'->1->'daily') <> 'null' or board->'rows'->1->'week'->>'seconds' <> '800' then
+    raise exception 'Yesterday''s daily showed as today''s: %', board;
+  end if;
+  update race_private.summaries set week_start = monday - 7 where user_id = lin;
+  if jsonb_typeof(public.friends_board('board','{}')->'rows'->1->'week') <> 'null' then raise exception 'Last week''s practice showed as this week''s.'; end if;
+
+  -- Clearing a daily result clears it for friends too.
+  perform public.friends_board('publish',jsonb_build_object('daily',null,'week',week));
+  perform set_config('request.jwt.claim.sub',lin::text,true);
+  board := public.friends_board('board','{}');
+  if jsonb_typeof(board->'rows'->1->'daily') <> 'null' or board->'rows'->1->'week'->>'seconds' <> '1830' then raise exception 'A cleared daily still showed.'; end if;
+
+  -- Removing someone hides you from them, and them from you.
+  perform public.race_action('unfriend',null,jsonb_build_object('friendId',(public.race_action('friends',null,'{}',null)->0->>'id')),null);
+  if jsonb_array_length(public.friends_board('board','{}')->'rows') <> 1 then raise exception 'A removed friend still showed.'; end if;
+  perform set_config('request.jwt.claim.sub',ada::text,true);
+  board := public.friends_board('board','{}');
+  if jsonb_array_length(board->'rows') <> 2 or board->'rows'->1->>'name' <> 'Sam from the race' then raise exception 'Ada still sees someone who removed her: %', board; end if;
+  raise notice 'Friends board privacy, mutual lists, limits and dates checks passed.';
+end $smoke$;
+rollback;

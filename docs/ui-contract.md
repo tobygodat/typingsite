@@ -59,7 +59,7 @@ Retest outcome IDs are `#comparison-panel`, `#comparison-status`, `#comparison-a
 
 ## Online challenge
 
-Challenge defaults to `#online-challenge`; `#challenge-online`, `#challenge-daily` and `#challenge-local` select online, daily or shared-keyboard play with `aria-pressed`. `src/online-race.js` owns online state and uses the same text renderer and caret effects as practice.
+Challenge defaults to `#online-challenge`; `#challenge-online`, `#challenge-daily`, `#challenge-friends` and `#challenge-local` select online, daily, the friends board or shared-keyboard play with `aria-pressed`. `src/online-race.js` owns online state and uses the same text renderer and caret effects as practice.
 
 Hosts use `#online-name`, optional `#online-invite-email` and `#create-online-race`. Guests are offered `#online-signin` to host. Account invitations appear in `#online-invites` with `[data-accept-invite]` buttons. A fragment invitation opens `#online-guest-join` with `#online-guest-name` and `#join-online-race`.
 
@@ -73,7 +73,11 @@ Room credentials and pending guest invites use expiring tab-scoped sessionStorag
 
 ## Daily challenge
 
-`#daily-challenge` contains `#daily-date`, `#start-daily`, `#daily-status` and `#daily-history-panel`. Daily uses the primary typing surface with `data-session="daily"`, fixed quote conditions and continue-on-error. Its UTC date is captured at start. Saved completed scores distinguish first/repeat attempts and fresh/previously displayed text. Daily scores stay out of practice trends and bests. Daily and One keyboard selectors are disabled while an online room is active.
+`#daily-challenge` contains `#daily-date`, `#start-daily`, `#daily-status` and `#daily-history-panel`. Daily uses the primary typing surface with `data-session="daily"`, fixed quote conditions and continue-on-error. Its UTC date is captured at start. Saved completed scores distinguish first/repeat attempts and fresh/previously displayed text. Daily scores stay out of practice trends and bests. Daily, Friends and One keyboard selectors are disabled while an online room is active.
+
+## Friends board
+
+`#friends-board` (`src/friends-board.js`) shows guests `#friends-board-guest` with `#friends-board-signin`. Signed in, `#friends-board-lists` holds `#board-daily` (today's best completed physical-keyboard daily attempt, with the attempt count) and `#board-week` (completed, uninterrupted practice time since Monday 00:00 UTC, with the run count), each an ordered list of `.board-row` items (`.board-name`, `.board-value`, `.board-detail`); your own row is `[data-self]` and reads "You". `#board-daily-meta` and `#board-week-meta` name the date and rule. Rows come only from mutual friends and carry the name on your own list. `#refresh-friends-board` reloads, `#friends-board-status` reports loading and failures, and `#friends-board-empty` (with `#friends-board-online`) explains how friends get there when nobody else is listed. The summary is published after each stored run, clear and undo, never mid-run and never for guests. See [online races](online-races.md#friends-board-9-october-2026).
 
 ## Local challenge
 

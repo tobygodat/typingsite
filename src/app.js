@@ -21,6 +21,7 @@ import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
+import { boardSummary, createFriendsBoard } from './friends-board.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
@@ -119,6 +120,7 @@ let ghostOn = false;
 let palette = null;
 let onlineRace = null;
 let inbox = null;
+let friendsBoard = null;
 let baselineAttempt = null;
 let activeRecommendation = null;
 let selectedTarget = null;
@@ -785,6 +787,8 @@ function finishPrimary(forcedElapsed = null) {
   $('typing-status').className = `badge ${valid ? 'badge-success' : 'badge-warning'}`;
   $('typing-status').textContent = valid ? 'Complete' : 'Interrupted';
   const saved = storeAttempt(completed);
+  // Signed in, today's daily result and this week's practice time go to the friends board.
+  friendsBoard?.schedulePublish();
 
   if (sessionKind === 'drill' && baselineAttempt) {
     if (trainingContext) trainingContext.drillCompleted = valid;
@@ -1391,6 +1395,7 @@ function clearHistory() {
   renderTraining();
   renderDaily();
   showBest();
+  friendsBoard?.schedulePublish();
 }
 
 function undoClear() {
@@ -1407,6 +1412,7 @@ function undoClear() {
   renderHistory();
   renderTraining();
   renderDaily();
+  friendsBoard?.schedulePublish();
   setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
@@ -1915,6 +1921,7 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
+    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
@@ -2027,9 +2034,20 @@ inbox = createInbox({
     result: { label: 'Race again', run: (entry) => onlineRace.rematchRoom(entry.roomId, entry.conditions) },
   },
 });
+// Publishing waits for the account check, so a stale device copy never overwrites a newer summary.
+friendsBoard = createFriendsBoard({
+  getSession: () => session,
+  canPublish: () => cloudChecked,
+  summary: () => boardSummary(profile.runs, conditionKey(dailyConditions())),
+  isRunning: () => runActive || localRaceRunning(),
+  signIn: () => openAccountDialog('signin'),
+  // The button that asks for this disappears with the board, so focus lands on the Online selector.
+  openOnline: () => { onlineRace.open(); $('challenge-online').focus(); },
+});
 onlineRace = createOnlineRace({
   getSession: () => session,
   inbox,
+  board: friendsBoard,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
   onPassageSeen(id) {

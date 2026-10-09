@@ -28,6 +28,7 @@ Product behaviour:
 - Condition-aware bests; drills, challenges and interrupted attempts do not become personal bests.
 - Online two-player challenges via Supabase: account invitations in the Challenge inbox or a shareable guest link, ready states, a synchronized countdown, live progress, reconnection and observed results. Hosts sign in; invited guests need no account. Original shared-keyboard challenges remain under One keyboard.
 - Friends, Race again and the inbox (7 October 2026): a private per-account friend list (saved from an email invite or added after a race) with one-click Challenge; Race again on any closed two-player race, keeping both seats; an envelope inbox beside the account button and an 18-second top-right toast for incoming challenges and rematches. See `docs/online-races.md`.
+- Friends board (9 October 2026): Challenge → Friends shows today's daily result and this week's practice time for you and the friends who have you on their list too, labelled with your own names for them. Each signed-in browser publishes its own summary; guests see a sign-in prompt. Needs `supabase/migrations/20261009120000_friends_board.sql` applied. See `docs/online-races.md`.
 - Typed history-clear confirmation with immediate Undo.
 
 Shipped visual system (Afterimage):
@@ -74,6 +75,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `src/palette.js`: the ⌘K / Ctrl-K command palette.
 - `src/online-race.js`: online lobby, friend list, invitations, synchronized race surface, transient results and Race again.
 - `src/inbox.js`: the envelope inbox, invitation polling and the challenge toast.
+- `src/friends-board.js`: the friends board on Challenge (today's daily and this week's practice among mutual friends), the summary each signed-in browser publishes, and its RPC.
 - `src/multiplayer.js`: race RPC transport, link handling and tab-scoped reconnect credentials.
 - `src/account.js`: Supabase Auth (email/password, Google via PKCE), session refresh and the `profiles` row, over `fetch`.
 - `supabase/migrations/`: the `profiles` table and its owner-only row-level security, as applied to the `typingsite` project.
