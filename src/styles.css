@@ -68,6 +68,7 @@
   --raised-2: rgba(255, 255, 255, 0.085);
   --text: #ece8e1;
   --muted: #a39e96;
+  --placeholder: rgba(163, 158, 150, 0.8);
   --hairline: rgba(255, 255, 255, 0.075);
   --hairline-strong: rgba(255, 255, 255, 0.15);
   --outline: #7d7972;
@@ -92,17 +93,18 @@
   --raised-2: rgba(27, 26, 25, 0.07);
   --text: #1b1a19;
   --muted: #6b665e;
+  --placeholder: rgba(107, 102, 94, 0.92);
   --hairline: rgba(27, 26, 25, 0.1);
   --hairline-strong: rgba(27, 26, 25, 0.2);
   --outline: #857f75;
-  --accent: #2e7d4f;
+  --accent: #217245;
   --accent-ink: #fbf9f5;
   --accent-soft: rgba(46, 125, 79, 0.11);
-  --danger: #b4432c;
+  --danger: #ad3d26;
   --danger-soft: rgba(180, 67, 44, 0.12);
   --warning: #8a5a00;
   --selection: #e3dccf;
-  --ghost: #4f5bc4;
+  --ghost: #4c57c0;
   --shadow-float: 0 8px 24px rgba(70, 56, 30, 0.12);
   --card-top: #fffdf9;
   --card-bottom: #efeae1;
@@ -611,7 +613,8 @@ kbd {
   transition: border-color var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
 }
 
-.input::placeholder { color: var(--muted); opacity: 0.8; }
+/* opacity: 1 overrides the browser's own placeholder fade, so the token alone sets the contrast. */
+.input::placeholder { color: var(--placeholder); opacity: 1; }
 .input:focus-visible { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .input[aria-invalid="true"] { border-color: var(--danger); }
 .select { padding-right: 8px; cursor: pointer; }
@@ -1683,7 +1686,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   font-size: 19px;
 }
 
-#palette-input::placeholder { color: var(--muted); }
+#palette-input::placeholder { color: var(--muted); opacity: 1; }
 
 .palette-scroll {
   position: relative;

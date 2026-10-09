@@ -392,7 +392,7 @@
       "accent-light": {
         "role": "primary",
         "displayName": "Afterimage Green (light theme)",
-        "canonical": "#2e7d4f",
+        "canonical": "#217245",
         "tonalRamp": [
           "#001500",
           "#003108",
@@ -427,7 +427,7 @@
       "danger-light": {
         "role": "secondary",
         "displayName": "Ember Coral (light theme)",
-        "canonical": "#b4432c",
+        "canonical": "#ad3d26",
         "tonalRamp": [
           "#2d0000",
           "#4f0000",
@@ -477,7 +477,7 @@
       "ghost-light": {
         "role": "tertiary",
         "displayName": "Ghost Periwinkle (light theme)",
-        "canonical": "#4f5bc4",
+        "canonical": "#4c57c0",
         "tonalRamp": [
           "#07003c",
           "#17165c",
