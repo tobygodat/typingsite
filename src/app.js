@@ -146,6 +146,7 @@ let race = {
   results: [],
   characters: [],
   textView: null,
+  notice: '',
 };
 
 // Signed in, the profile is cached on this device and synced to the account shortly after.
@@ -309,11 +310,12 @@ function applyPreferences() {
 }
 
 // Quick end only changes word and quote runs that let a mistake stand. Elsewhere the switch is
-// disabled and shows off: a timed run ends on the clock, and stop on error waits for every letter.
+// disabled but keeps its value, like punctuation in a quote test, and a note says where it applies.
 function syncQuickEnd() {
   const applies = quickEndApplies(conditions());
   $('quick-end-toggle').disabled = !applies;
-  $('quick-end-toggle').checked = applies && prefs.quickEnd;
+  $('quick-end-toggle').checked = prefs.quickEnd;
+  $('quick-end-note').hidden = applies;
 }
 
 function setModeControls() {
@@ -715,8 +717,16 @@ function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
   if (type === 'primary') {
     $('input-help').textContent = message;
     if (sticky) primaryNotice = message;
-  } else $('race-help').textContent = message;
+  } else {
+    $('race-help').textContent = message;
+    if (sticky) race.notice = message;
+  }
   if (speak) announce(message);
+}
+
+// A strict space or quick end notice never hides why a run won't count; it follows that notice.
+function withRule(sticky, rule) {
+  return sticky ? `${sticky} ${rule}` : rule;
 }
 
 function refusePaste(type) {
@@ -739,7 +749,9 @@ function refreshAfterInput(type, previousLength, blocked = false) {
   let outcome = 'delete';
   if (blocked) outcome = 'blocked';
   else if (length > previousLength) outcome = lastCorrect ? 'correct' : 'wrong';
-  // A refused space leaves the caret on the letter it skipped, marked like any other miss.
+  // A refused space is a miss at the letter it skipped: that letter is tinted until the next key,
+  // so the coral caret always sits beside a tinted letter.
+  if (blocked === 'space') characters[length].className = 'char wrong';
   (isPrimary ? primaryFx : raceFx).update(length, outcome, (length > 0 && !lastCorrect) || blocked === 'space');
   textView.trimBehind(length);
   const waiting = awaitingSubmit(targetAttempt, replay.typed);
@@ -748,13 +760,13 @@ function refreshAfterInput(type, previousLength, blocked = false) {
   if (blocked === 'space' || (waiting && (length > previousLength || blocked === 'submit'))) announce(rule);
   if (isPrimary) {
     setRunning(true);
-    $('input-help').textContent = rule || (blocked ? NOTICES.blocked : primaryNotice);
+    $('input-help').textContent = rule ? withRule(primaryNotice, rule) : blocked ? NOTICES.blocked : primaryNotice;
     updateLive();
     if (sessionDurationMs() === null && passageComplete(targetAttempt, replay.typed)) finishPrimary();
   } else {
     const help = $('race-help');
-    if (rule) help.textContent = rule;
-    else if ([NOTICES.strictSpace, NOTICES.submit].includes(help.textContent)) help.textContent = 'Esc restarts.';
+    if (rule) help.textContent = withRule(race.notice, rule);
+    else if ([NOTICES.strictSpace, NOTICES.submit].some((notice) => help.textContent.endsWith(notice))) help.textContent = race.notice || 'Esc restarts.';
     updateRaceProgress(replay);
     if (passageComplete(targetAttempt, replay.typed)) finishRacePlayer();
   }
@@ -1030,7 +1042,8 @@ function restoreConditions(source) {
     wordList: source.wordList || prefs.wordList,
     stopOnError: source.correctionPolicy !== 'relaxed',
     strictSpace: source.strictSpace === true,
-    quickEnd: source.quickEnd !== false,
+    // Only where quick end is part of the source's key; a timed or stop-on-error run keeps the preference.
+    quickEnd: quickEndApplies(source) ? source.quickEnd !== false : prefs.quickEnd,
   };
   profile.preferences = prefs;
   applyPreferences();
@@ -1082,7 +1095,7 @@ function markRaceInterrupted() {
   if (race.attempt?.status !== 'running' || race.attempt.interrupted) return;
   race.attempt.interrupted = true;
   race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
-  showInputNotice('race', NOTICES.raceFocusLost, { speak: false });
+  showInputNotice('race', NOTICES.raceFocusLost, { sticky: true, speak: false });
   inbox?.runChanged();
 }
 
@@ -1328,6 +1341,7 @@ function startRace() {
     results: [],
     characters: [],
     textView: null,
+    notice: '',
   };
   if (race.passage?.id && !profile.seenTextIds.includes(race.passage.id)) {
     profile.seenTextIds.push(race.passage.id);
@@ -1342,6 +1356,7 @@ function startRace() {
 function setupRacePlayer() {
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
+  race.notice = '';
   inbox?.runChanged();
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
@@ -1902,6 +1917,11 @@ function bindEvents() {
       preferences.querySelector('summary').focus();
       return;
     }
+    // A held space that submitted a run (quick end off) must not also press Run again.
+    if (event.repeat && event.key === ' ' && document.activeElement === $('run-again')) {
+      event.preventDefault();
+      return;
+    }
     if (event.repeat && event.key.length === 1 && (document.activeElement === $('typing-input') || document.activeElement === $('race-input'))) {
       event.preventDefault();
       showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
@@ -1965,13 +1985,16 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession('practice');
 }
 
-// Strict space and quick end change how a run is scored, so like stop on error they start a fresh passage.
+// Strict space and quick end change how a run is scored, so like stop on error they start a fresh
+// passage. The daily keeps its fixed rules, so it stays; a practice passage that hasn't started is
+// rebuilt from any screen, so the run on return matches the switch.
 function setInputRule(key, enabled) {
   if (prefs[key] === enabled) return;
   prefs[key] = enabled;
   applyPreferences();
   saveProfile();
-  if (document.body.dataset.view === 'practice') resetSession('practice');
+  if (sessionKind === 'daily') return;
+  if (document.body.dataset.view === 'practice' || (sessionKind === 'practice' && attempt?.status === 'ready')) resetSession('practice');
 }
 
 function setWordList(id) {
