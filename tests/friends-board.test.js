@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
-import { boardSummary, dailyOrder, dailyVersion, practiceTime, publishSummary, readBoard, weekOrder, weekStart } from '../src/friends-board.js';
+import { boardSummary, dailyOrder, dailyVersion, practiceTime, publishSummary, readBoard, runsSince, shareSummary, stopSharing, weekOrder, weekStart } from '../src/friends-board.js';
 import { dailyPassage } from '../src/insights.js';
 
 const daily = { mode: 'quote', duration: null, count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any',
@@ -94,6 +94,8 @@ test('the board sends only the signed-in summary, as that account', async () => 
     await publishSummary(session, summary);
     await readBoard(session);
     await publishSummary(session, boardSummary([], dailyKey, now), { replace: true });
+    await shareSummary(session, summary);
+    await stopSharing(session);
     assert.match(calls[0].url, /\/rest\/v1\/rpc\/friends_board$/);
     assert.equal(calls[0].headers.Authorization, 'Bearer account-token');
     assert.deepEqual(calls[0].data, { p_action: 'publish', p_data: summary });
@@ -101,7 +103,18 @@ test('the board sends only the signed-in summary, as that account', async () => 
     assert.deepEqual(calls[1].data, { p_action: 'board', p_data: {} });
     // A history clear or undo replaces the stored summary instead of being folded into it.
     assert.deepEqual(calls[2].data, { p_action: 'replace', p_data: { daily: null, week: { start: '2026-10-05', seconds: 0, runs: 0 } } });
+    // Sharing is opt-in: turning it on sends the summary, turning it off sends nothing about the runs.
+    assert.deepEqual(calls[3].data, { p_action: 'share', p_data: summary });
+    assert.deepEqual(calls[4].data, { p_action: 'unshare', p_data: {} });
   } finally { globalThis.fetch = original; }
+});
+
+test('after a clear elsewhere, a summary counts only runs from the clear on', () => {
+  const runs = [run('before', { at: '2026-10-09T10:00:00Z' }), run('after', { at: '2026-10-09T12:00:00Z' }), run('undated', { at: null })];
+  assert.deepEqual(runsSince(runs, null).map((r) => r.id), ['before', 'after', 'undated']);
+  // The service's time, to the microsecond, as its replies carry it.
+  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00.123456+00:00').map((r) => r.id), ['after']);
+  assert.equal(boardSummary(runsSince(runs, '2026-10-09T11:00:00Z'), dailyKey, now).week.runs, 1);
 });
 
 test('a service without the board migration says it is being set up', async () => {

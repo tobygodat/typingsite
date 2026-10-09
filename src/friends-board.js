@@ -1,7 +1,8 @@
 // The friends board on the Challenge screen: today's daily result and this week's practice time for
-// you and the people you chose. The service shows a row only to mutual friends (each on the other's
-// list) and never returns an account id or email; rows carry the name on your own list. Each browser
-// publishes its own owner's summary, so the numbers are friendly and unverified. Guests publish nothing.
+// you and the people you chose. Sharing is opt-in and off by default: only an account that shares sees
+// the board, and it sees only mutual friends (each on the other's list) who share too. The service never
+// returns an account id or email; rows carry the name on your own list. Each browser publishes its own
+// owner's summary, so the numbers are friendly and unverified. Guests publish nothing.
 import { request, freshSession, loadSession, AuthError } from './account.js';
 import { conditionKey } from './typing.js';
 import { dailyPassage, validRun } from './insights.js';
@@ -41,6 +42,12 @@ export function boardSummary(runs, dailyKey, date = new Date()) {
     daily: best ? { date: day, version: dailyVersion(dailyKey, date), wpm: best.score.wpm, accuracy: best.score.accuracy, attempts: Math.min(daily.length, MAX_ATTEMPTS) } : null,
     week: { start, seconds: Math.min(Math.round(ms / 1000), 7 * DAY_MS / 1000), runs: Math.min(week.length, MAX_RUNS) },
   };
+}
+
+// Runs from `since` on (an ISO time from the service), or all of them when there is none.
+export function runsSince(runs, since) {
+  const from = since ? Date.parse(since) : Number.NaN;
+  return Number.isNaN(from) ? runs : runs.filter((run) => run.at && Date.parse(run.at) >= from);
 }
 
 // Under a minute in seconds, then minutes: one decimal below ten, whole above. Never rounded up.
@@ -83,9 +90,15 @@ async function call(session, action, data = {}) {
 export const readBoard = (session) => call(session, 'board');
 // Publishing folds the summary into the stored one, keeping whatever another tab or device of the
 // account sent that this one lacks. Replacing (after a history clear or its undo) can lower it.
+// Publishing and sharing carry the last clear this tab has seen; the service refuses them, changing
+// nothing, if another device has cleared since, and its reply says when.
 export const publishSummary = (session, summary, { replace = false } = {}) => call(session, replace ? 'replace' : 'publish', summary);
+// Turning sharing on shares this summary (or folds it into the row another device shares); publishing
+// and replacing never turn it on. Turning it off leaves only a marker with no numbers.
+export const shareSummary = (session, summary) => call(session, 'share', summary);
+export const stopSharing = (session) => call(session, 'unshare');
 
-export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isRunning, signIn, openOnline }) {
+export function createFriendsBoard({ getSession, canPublish, isSharing, setSharing, runs, dailyKey, isRunning, signIn, openOnline }) {
   let visible = false;
   let loading = false;
   let board = null;
@@ -96,43 +109,108 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
   // A run, clear or undo in this tab that the service has not accepted yet; it goes out after the
   // account check, on the next board read, and when the browser comes back online.
   let pending = false;
-  // That change includes a history clear or undo, so it replaces the stored summary instead of adding to it.
+  // That change includes a history clear ('clear') or its undo ('undo'), so it replaces the stored
+  // summary instead of adding to it.
   let replacing = false;
+  // The last history clear on any device that this tab has seen, from the service's replies. Summaries
+  // count only runs from then on, so a tab that missed a clear elsewhere can't bring cleared runs back.
+  let clearedAt = null;
+  // The clear in effect before this tab's own latest clear, which its undo puts back.
+  let clearedBefore = null;
+  // A quiet line for the board when sharing was turned off on another device.
+  let note = '';
+  // Bumped by each switch of the sharing setting here, so a reply that crossed one doesn't count.
+  let toggles = 0;
+  // The switch stays on while turning sharing on is still on its way.
+  let turningOn = false;
+  // Sharing was turned off here but the service hasn't removed the row yet; retried before anything else.
+  let unsharing = false;
   // The UTC day, by this browser's clock, of the last board received. A new week always begins with a
   // new day. A read that fails leaves it, so the next check tries again.
   let readDay = '';
-  const summary = () => boardSummary(runs(), dailyKey());
+  const summary = (since = clearedAt) => boardSummary(runsSince(runs(), since), dailyKey());
+  // Every reply says when this account's history was last cleared.
+  function seen(result) {
+    if (result && 'clearedAt' in result) clearedAt = result.clearedAt;
+    return result;
+  }
 
   // Writes go one at a time, in order. One asked for while another is in flight waits for it to settle,
   // then sends the summary as it is by then; an unchanged publish is skipped, so queued changes collapse
   // into one write, and a clear or undo among them makes it a replace. So an earlier publish from this tab
   // can never reach the service after its clear or undo and bring the cleared numbers back.
   let writes = Promise.resolve();
-  function publishChange(session) {
-    const write = writes.catch(() => {}).then(() => sendChange(session));
+  function enqueue(task) {
+    const write = writes.catch(() => {}).then(task);
     writes = write;
     return write;
+  }
+  const publishChange = (session) => enqueue(() => sendChange(session));
+  // Only while sharing, and only after the account check (before it, resume() sends the summary).
+  const publishIfSharing = (session) => (canPublish() && isSharing() ? publishChange(session).catch(() => null) : null);
+
+  // Stops publishing at once.
+  function forget() {
+    clearTimeout(publishTimer);
+    pending = false;
+    replacing = false;
+    published = '';
+  }
+  // The row's removal waits behind any write already on its way.
+  async function removeRow(session) {
+    const result = seen(await enqueue(() => stopSharing(session)));
+    unsharing = false;
+    return result;
+  }
+
+  // The service knows whether this account shares: another device may have turned it on or off. A
+  // reply that crossed a switch here, or came while removing the row is unconfirmed, doesn't count.
+  // True when it turned sharing on in this tab, whose summary is then due (now, or after the check).
+  function learn(result, seq) {
+    if (typeof result?.sharing !== 'boolean' || seq !== toggles || unsharing || result.sharing === isSharing()) return false;
+    if (!result.sharing) { stoppedElsewhere(); return false; }
+    setSharing(true);
+    note = '';
+    pending = true;
+    return true;
+  }
+  // Sharing was turned off on another device: this tab stops too, and the board says so in one line.
+  function stoppedElsewhere() {
+    setSharing(false);
+    forget();
+    note = 'Sharing was turned off on another device.';
   }
 
   // The service's reply, or null when a publish is unchanged. A replace is always sent: another tab or
   // device may have raised the stored summary since this one last sent the same numbers, and a clear or
-  // undo must still set it to exactly this tab's. A failure leaves the change pending.
-  async function sendChange(session) {
-    const value = summary();
+  // undo must still set it to exactly this tab's. A clear moves the last clear to now; an undo puts back
+  // the one before and sends the restored runs from then on. A failure leaves the change pending.
+  // Refused, the tab has learned what it missed: sharing off elsewhere, so it stops; or a clear
+  // elsewhere, so it sends its runs since then, once.
+  async function sendChange(session, retried = false) {
+    if (!isSharing()) { forget(); return null; }
+    const mode = replacing;
+    const value = mode === 'undo' ? { ...summary(clearedBefore), restore: clearedBefore }
+      : mode === 'clear' ? { ...summary(), clear: true } : { ...summary(), clearedAt };
     const key = JSON.stringify(value);
-    const replace = replacing;
     pending = false;
     replacing = false;
-    if (key === published && !replace) return null;
+    if (key === published && !mode) return null;
+    let result;
     try {
-      const result = await publishSummary(session, value, { replace });
-      published = key;
-      return result;
+      result = seen(await publishSummary(session, value, { replace: Boolean(mode) }));
     } catch (error) {
       pending = true;
-      replacing ||= replace;
+      replacing ||= mode;
       throw error;
     }
+    if (result?.refused) {
+      if (!result.sharing) stoppedElsewhere();
+      else if (!retried) return sendChange(session, true);
+      return result;
+    }
+    published = key;
+    return result;
   }
 
   function row(entry, value, unit, detail) {
@@ -164,12 +242,17 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
 
   function render(status = '') {
     const signedIn = Boolean(getSession());
+    const sharing = signedIn && isSharing();
     $('friends-board-guest').hidden = signedIn;
     $('refresh-friends-board').hidden = !signedIn;
-    $('friends-board-status').textContent = signedIn ? status : '';
+    $('friends-board-share').hidden = !signedIn;
+    $('share-board').checked = sharing || turningOn;
+    // Not sharing, you see nobody else's row either: the board says so beside the switch.
+    $('friends-board-off').hidden = !signedIn || sharing || turningOn;
+    $('friends-board-status').textContent = signedIn ? status || (!sharing && !turningOn ? note : '') : '';
     // A daily result from another build (another passage, corpus or scoring) is not compared; its row says so.
     const version = board?.date && dailyVersion(dailyKey(), new Date(`${board.date}T00:00:00Z`));
-    const rows = signedIn && board?.rows
+    const rows = sharing && board?.sharing && board.rows
       ? board.rows.map((entry) => (entry.daily && entry.daily.version !== version ? { ...entry, daily: null, otherVersion: true } : entry))
       : null;
     $('friends-board-lists').hidden = !rows;
@@ -197,19 +280,23 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
     const session = getSession();
     if (!session) { render(); return; }
     const day = utcDay();
-    if (!canPublish()) pending = true;
+    if (!canPublish() && isSharing()) pending = true;
     const current = ++generation;
+    const seq = toggles;
     loading = true;
     $('refresh-friends-board').setAttribute('aria-disabled', 'true');
     render(board ? '' : 'Loading the board…');
     try {
-      const result = (canPublish() && await publishChange(session).catch(() => null)) || await readBoard(session);
-      if (current !== generation) return;
+      if (unsharing) await removeRow(session);
+      let result = (await publishIfSharing(session)) || seen(await readBoard(session));
+      // Sharing was turned on elsewhere: this tab's history goes out too.
+      if (learn(result, seq)) result = (await publishIfSharing(session)) || result;
+      if (current !== generation || seq !== toggles) return;
       board = result;
       readDay = day;
       render(manual ? 'Updated.' : '');
     } catch (failure) {
-      if (current !== generation) return;
+      if (current !== generation || seq !== toggles) return;
       render(failure.message || 'The friends board is unavailable. Try again.');
     } finally {
       if (current === generation) { loading = false; $('refresh-friends-board').removeAttribute('aria-disabled'); }
@@ -218,31 +305,98 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isR
 
   // After a run, or a clear or an undo (replace). Nothing is sent mid-run. A change sent before the account
   // check, or one that failed, stays pending until resume() (the check, or the browser coming back online).
-  function schedulePublish({ replace = false } = {}) {
+  // Nothing at all while sharing is off.
+  function schedulePublish({ replace } = {}) {
+    if (!isSharing()) return;
     pending = true;
-    if (replace) replacing = true;
+    if (replace === 'clear' && replacing !== 'clear') clearedBefore = clearedAt;
+    if (replace) replacing = replace;
     clearTimeout(publishTimer);
     publishTimer = setTimeout(async () => {
       const session = getSession();
-      if (!session || !canPublish()) return;
+      if (!session || !canPublish() || !isSharing()) return;
       if (isRunning()) { schedulePublish(); return; }
+      const seq = toggles;
       try {
         const result = await publishChange(session);
-        if (!result) return;
+        if (!result || seq !== toggles) return;
+        learn(result, seq);
         board = result;
         if (visible) render();
       } catch {}
     }, 1500);
   }
 
+  // The switch on the board, and its palette command. Turning sharing on sends this tab's summary and
+  // takes effect once the service has it. Turning it off stops publishing at once and removes your row,
+  // retrying (resume, or the next board read) if that fails. Focus stays where it was.
+  async function setShare(on) {
+    const session = getSession();
+    if (!session || (on === isSharing() && !turningOn && !unsharing)) { render(); return; }
+    const seq = ++toggles;
+    if (on) {
+      turningOn = true;
+      unsharing = false;
+      note = '';
+      render('Turning sharing on…');
+      try {
+        const result = await enqueue(async () => {
+          // A clear this tab missed refuses the first try; the second sends the runs since then.
+          let reply = null;
+          for (let attempt = 0; attempt < 2 && (!reply || reply.refused); attempt += 1) {
+            const value = { ...summary(), clearedAt };
+            reply = seen(await shareSummary(session, value));
+            if (!reply?.refused) published = JSON.stringify(value);
+          }
+          pending = false;
+          replacing = false;
+          return reply;
+        });
+        if (seq !== toggles) return;
+        turningOn = false;
+        if (result?.refused) { render('Sharing couldn’t be turned on. Try again.'); return; }
+        setSharing(true);
+        board = result;
+        render();
+      } catch (failure) {
+        if (seq !== toggles) return;
+        turningOn = false;
+        render(failure.message || 'Sharing couldn’t be turned on. Try again.');
+      }
+      return;
+    }
+    turningOn = false;
+    setSharing(false);
+    forget();
+    unsharing = true;
+    board = null;
+    render();
+    try {
+      const result = await removeRow(session);
+      if (seq !== toggles) return;
+      board = result;
+      render('Your row is off the board.');
+    } catch (failure) {
+      if (seq !== toggles) return;
+      unsharing = true;
+      render(`${failure.message || 'The board is unavailable.'} Your row comes off once the board can be reached.`);
+    }
+  }
+
   $('refresh-friends-board').addEventListener('click', () => { if (!loading) refresh({ manual: true }); });
+  $('share-board').addEventListener('change', (event) => setShare(event.target.checked));
   $('friends-board-signin').addEventListener('click', signIn);
   $('friends-board-online').addEventListener('click', openOnline);
   render();
 
   return {
     schedulePublish,
-    resume() { if (pending) schedulePublish(); },
+    setShare,
+    resume() {
+      const session = getSession();
+      if (unsharing && session) removeRow(session).then(() => { if (visible) refresh(); }, () => {});
+      if (pending) schedulePublish();
+    },
     // Switching to the board and arriving on the screen can both ask at once; one request answers both.
     show() { if (visible && loading) return; visible = true; refresh(); },
     hide() { visible = false; },

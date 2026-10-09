@@ -1512,6 +1512,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .board-value strong { font-size: var(--text-title); font-weight: 300; line-height: 1; letter-spacing: -0.015em; }
 .board-unit { color: var(--muted); font: var(--text-mono)/1.5 var(--font-mono); }
 .board-detail { color: var(--muted); font-size: var(--text-small); }
+.friends-board-share { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: var(--space-4) 0; }
+.friends-board-off { margin: 0; max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
 .friends-board-empty { margin-bottom: var(--space-6); }
 .friends-board-empty p { margin: 0 0 var(--space-3); max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
 

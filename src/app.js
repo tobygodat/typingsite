@@ -45,6 +45,8 @@ const defaultPreferences = {
   stopOnError: false,
   focusMode: false,
   theme: 'system',
+  // Opt-in: nothing goes to the friends board until the account chooses to share.
+  shareBoard: false,
 };
 
 function emptyProfile() {
@@ -71,6 +73,7 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  value.shareBoard = value.shareBoard === true;
   return value;
 }
 
@@ -1396,7 +1399,7 @@ function clearHistory() {
   renderDaily();
   showBest();
   // A clear lowers the published numbers, which an ordinary publish never does.
-  friendsBoard?.schedulePublish({ replace: true });
+  friendsBoard?.schedulePublish({ replace: 'clear' });
 }
 
 function undoClear() {
@@ -1413,7 +1416,7 @@ function undoClear() {
   renderHistory();
   renderTraining();
   renderDaily();
-  friendsBoard?.schedulePublish({ replace: true });
+  friendsBoard?.schedulePublish({ replace: 'undo' });
   setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
@@ -1926,6 +1929,7 @@ function paletteCommands(query) {
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
     { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
+    { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? onOff(prefs.shareBoard) : 'sign in', on: Boolean(session && prefs.shareBoard), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!prefs.shareBoard); } },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
@@ -2042,6 +2046,8 @@ inbox = createInbox({
 friendsBoard = createFriendsBoard({
   getSession: () => session,
   canPublish: () => cloudChecked,
+  isSharing: () => prefs.shareBoard,
+  setSharing: (value) => { prefs.shareBoard = value; saveProfile(); },
   runs: () => profile.runs,
   dailyKey: () => conditionKey(dailyConditions()),
   isRunning: () => runActive || localRaceRunning(),

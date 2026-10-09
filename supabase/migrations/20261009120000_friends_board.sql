@@ -1,5 +1,9 @@
 -- Friends board: today's daily challenge result and this week's practice time, among friends.
--- Each signed-in account publishes one summary row about itself from its own browser. A row is shown
+-- Sharing is opt-in. An account that chooses to share keeps one summary row about itself, written from
+-- its own browser. Only today's daily and this week's practice are kept: each newer day or week
+-- overwrites the last. Turning sharing off empties the row down to a marker that holds no numbers (so a
+-- browser that missed the change can't share again), and deleting the account deletes it. Only
+-- accounts that share see the board, and they see only friends who share too. A row is shown
 -- only to mutual friends: you see someone when each of you has the other on your friend list, by
 -- account or by a confirmed email (resolved exactly as a typed invite is). Because both lists must
 -- agree, adding an email never reveals whether it belongs to an account, or anything about it, unless
@@ -9,6 +13,12 @@
 
 create table race_private.summaries (
   user_id uuid primary key references auth.users(id) on delete cascade,
+  -- False after turning sharing off: the row is then only a marker, with no numbers.
+  sharing boolean not null,
+  -- The latest history clear on any device (an undo puts back the value from before it). A browser
+  -- must have seen it to share or publish, and counts only runs from then on, so a browser that missed
+  -- a clear can't bring the cleared numbers back.
+  cleared_at timestamptz,
   -- Today's best completed physical-keyboard daily attempt, and how many completed attempts there were.
   daily_date date,
   -- Which daily it was (conditions with corpus and metric version, and the passage), so a reader
@@ -18,17 +28,21 @@ create table race_private.summaries (
   daily_accuracy integer check (daily_accuracy between 0 and 100),
   daily_attempts integer check (daily_attempts between 1 and 1000),
   -- Completed, uninterrupted runs since Monday 00:00 UTC.
-  week_start date not null check (extract(isodow from week_start) = 1),
-  week_seconds integer not null check (week_seconds between 0 and 604800),
-  week_runs integer not null check (week_runs between 0 and 10000),
+  week_start date check (extract(isodow from week_start) = 1),
+  week_seconds integer check (week_seconds between 0 and 604800),
+  week_runs integer check (week_runs between 0 and 10000),
   updated_at timestamptz not null default now(),
-  check (num_nulls(daily_date, daily_version, daily_wpm, daily_accuracy, daily_attempts) in (0, 5))
+  check (num_nulls(daily_date, daily_version, daily_wpm, daily_accuracy, daily_attempts) in (0, 5)),
+  check (num_nulls(week_start, week_seconds, week_runs) = case when sharing then 0 else 3 end),
+  check (sharing or daily_date is null)
 );
 alter table race_private.summaries enable row level security;
 revoke all on race_private.summaries from public, anon, authenticated;
 
--- The viewer's own row, then one row per mutual friend. A daily result counts only for today's UTC
--- date and practice time only for this UTC week; anything older reads as nothing yet.
+-- The viewer's own row, then one row per mutual friend who shares. A viewer who doesn't share sees no
+-- rows at all. A daily result counts only for today's UTC date and practice time only for this UTC
+-- week; anything older reads as nothing yet. Only the viewer learns their own sharing state and last
+-- clear; nobody else's is ever returned.
 create function race_private.board_snapshot(p_viewer uuid)
 returns jsonb language sql set search_path = '' as $$
   with clock as (
@@ -58,19 +72,27 @@ returns jsonb language sql set search_path = '' as $$
     union all
     select m.account_id, m.friend_row, m.name, false from mutual m
   )
-  select jsonb_build_object('date', c.today, 'weekStart', c.week_start, 'rows',
-    (select jsonb_agg(jsonb_build_object('self', p.self, 'id', p.friend_row, 'name', p.name,
-        'daily', case when s.daily_date = c.today then jsonb_build_object('version', s.daily_version, 'wpm', s.daily_wpm,
-          'accuracy', s.daily_accuracy, 'attempts', s.daily_attempts) end,
-        'week', case when s.week_start = c.week_start then jsonb_build_object('seconds', s.week_seconds,
-          'runs', s.week_runs) end)
-      order by p.self desc, lower(p.name), p.friend_row)
-     from people p left join race_private.summaries s on s.user_id = p.account_id))
-  from clock c
+  select jsonb_build_object('date', c.today, 'weekStart', c.week_start, 'sharing', coalesce(me.sharing, false),
+    'clearedAt', me.cleared_at, 'rows',
+    case when coalesce(me.sharing, false) then
+      (select jsonb_agg(jsonb_build_object('self', p.self, 'id', p.friend_row, 'name', p.name,
+          'daily', case when s.daily_date = c.today then jsonb_build_object('version', s.daily_version, 'wpm', s.daily_wpm,
+            'accuracy', s.daily_accuracy, 'attempts', s.daily_attempts) end,
+          'week', case when s.week_start = c.week_start then jsonb_build_object('seconds', s.week_seconds,
+            'runs', s.week_runs) end)
+        order by p.self desc, lower(p.name), p.friend_row)
+       from people p join race_private.summaries s on s.user_id = p.account_id and s.sharing)
+    else '[]'::jsonb end)
+  from clock c left join race_private.summaries me on me.user_id = p_viewer
 $$;
 revoke all on function race_private.board_snapshot(uuid) from public, anon, authenticated;
 
--- 'publish' folds a summary into the caller's row; 'replace' (after a history clear or its undo) overwrites it.
+-- 'share' turns sharing on from a summary (or folds it into the row when already on). 'publish' folds a
+-- summary into the row; it never turns sharing on. Both carry the last clear the browser has seen and
+-- are refused, changing nothing, when it is older than the stored one, and a publish is refused while
+-- not sharing; the reply ("refused") says what the browser missed. 'replace' (a history clear or its
+-- undo) overwrites the numbers while sharing: 'clear' moves the last clear to now, 'restore' puts back
+-- the value from before it. 'unshare' empties the row down to the marker.
 create function race_private.board(p_action text, p_data jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
@@ -81,6 +103,8 @@ declare
   v_practice jsonb;
   v_date date;
   v_start date;
+  v_seen timestamptz;
+  v_field text;
   v_new race_private.summaries;
   v_old race_private.summaries;
   v_same boolean;
@@ -89,7 +113,12 @@ begin
   if p_data is null or jsonb_typeof(p_data) <> 'object' then raise exception 'Invalid board request.'; end if;
   v_week := v_today - (extract(isodow from v_today)::integer - 1);
 
-  if p_action in ('publish', 'replace') then
+  if p_action = 'unshare' then
+    insert into race_private.summaries as s (user_id, sharing) values (v_uid, false)
+      on conflict (user_id) do update set sharing = false, daily_date = null, daily_version = null, daily_wpm = null,
+        daily_accuracy = null, daily_attempts = null, week_start = null, week_seconds = null, week_runs = null,
+        updated_at = clock_timestamp();
+  elsif p_action in ('share', 'publish', 'replace') then
     -- Only the caller's own row is ever written. A missing or null daily means none in this browser.
     v_daily := case when jsonb_typeof(p_data->'daily') = 'null' then null else p_data->'daily' end;
     v_practice := p_data->'week';
@@ -110,7 +139,16 @@ begin
     v_start := (v_practice->>'start')::date;
     if extract(isodow from v_start) <> 1 or abs(v_start - v_week) > 7 or (v_practice->>'seconds')::integer > 604800
       or (v_practice->>'runs')::integer > 10000 then raise exception 'That practice time is outside the board limits.'; end if;
+    -- The last clear this browser has seen (share, publish), or the one an undo puts back (replace).
+    v_field := case when p_action = 'replace' then 'restore' else 'clearedAt' end;
+    if coalesce(jsonb_typeof(p_data->v_field), 'null') not in ('string', 'null')
+      or coalesce(p_data->>v_field, '2000-01-01T00:00:00Z')
+        !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?(Z|[+-][0-9]{2}(:?[0-9]{2})?)$' then
+      raise exception 'Invalid board request.';
+    end if;
+    v_seen := (p_data->>v_field)::timestamptz;
     v_new.user_id := v_uid;
+    v_new.sharing := true;
     v_new.daily_date := v_date;
     v_new.daily_version := v_daily->>'version';
     v_new.daily_wpm := (v_daily->>'wpm')::integer;
@@ -120,41 +158,54 @@ begin
     v_new.week_seconds := (v_practice->>'seconds')::integer;
     v_new.week_runs := (v_practice->>'runs')::integer;
     v_new.updated_at := clock_timestamp();
-    -- The first summary creates the row. Later ones lock it, so two tabs publishing at once take turns.
-    insert into race_private.summaries select (v_new).* on conflict (user_id) do nothing;
-    if not found then
-      select * into v_old from race_private.summaries where user_id = v_uid for update;
-      if p_action = 'publish' then
-        -- A browser's summary is a lower bound: another tab or device of the same account may hold runs
-        -- this one never saw. So the stored daily stays unless this one is for a later day (today's
-        -- before any other) or is a better result on the same daily, and within one week the larger
-        -- practice time and run count stay. A daily from another build replaces the stored one.
-        v_same := coalesce(v_old.daily_date = v_new.daily_date and v_old.daily_version = v_new.daily_version, false);
-        if v_same then v_new.daily_attempts := greatest(v_old.daily_attempts, v_new.daily_attempts); end if;
-        if v_old.daily_date is not null and (v_new.daily_date is null
-            or (v_old.daily_date = v_today, v_old.daily_date) > (v_new.daily_date = v_today, v_new.daily_date)
-            or (v_same and (v_old.daily_wpm, v_old.daily_accuracy) > (v_new.daily_wpm, v_new.daily_accuracy))) then
-          v_new.daily_date := v_old.daily_date;
-          v_new.daily_version := v_old.daily_version;
-          v_new.daily_wpm := v_old.daily_wpm;
-          v_new.daily_accuracy := v_old.daily_accuracy;
-          if not v_same then v_new.daily_attempts := v_old.daily_attempts; end if;
-        end if;
-        if v_old.week_start = v_new.week_start then
-          v_new.week_seconds := greatest(v_old.week_seconds, v_new.week_seconds);
-          v_new.week_runs := greatest(v_old.week_runs, v_new.week_runs);
-        elsif (v_old.week_start = v_week, v_old.week_start) > (v_new.week_start = v_week, v_new.week_start) then
-          v_new.week_start := v_old.week_start;
-          v_new.week_seconds := v_old.week_seconds;
-          v_new.week_runs := v_old.week_runs;
-        end if;
-      end if;
-      update race_private.summaries set daily_date = v_new.daily_date, daily_version = v_new.daily_version,
-          daily_wpm = v_new.daily_wpm, daily_accuracy = v_new.daily_accuracy, daily_attempts = v_new.daily_attempts,
-          week_start = v_new.week_start, week_seconds = v_new.week_seconds, week_runs = v_new.week_runs,
-          updated_at = v_new.updated_at
-        where user_id = v_uid;
+    -- Only sharing creates the row, as sent. Writes lock it, so two tabs writing at once take turns.
+    if p_action = 'share' then
+      insert into race_private.summaries select (v_new).* on conflict (user_id) do nothing;
+      if found then return race_private.board_snapshot(v_uid); end if;
     end if;
+    select * into v_old from race_private.summaries where user_id = v_uid for update;
+    -- Refused, changing nothing: no row or not sharing (except to turn it on), or a clear this browser missed.
+    if not found or (not v_old.sharing and p_action <> 'share')
+      or (p_action <> 'replace' and v_old.cleared_at is not null and (v_seen is null or v_seen < v_old.cleared_at)) then
+      return race_private.board_snapshot(v_uid) || jsonb_build_object('refused', true);
+    end if;
+    v_new.cleared_at := v_old.cleared_at;
+    if p_action = 'replace' then
+      if p_data->'clear' = 'true'::jsonb then
+        v_new.cleared_at := greatest(clock_timestamp(), v_old.cleared_at + interval '1 microsecond');
+      elsif p_data ? 'restore' then
+        v_new.cleared_at := v_seen;
+      end if;
+    elsif v_old.sharing then
+      -- A browser's summary is a lower bound: another tab or device of the same account may hold runs
+      -- this one never saw. So the stored daily stays unless this one is for a later day (today's
+      -- before any other) or is a better result on the same daily, and within one week the larger
+      -- practice time and run count stay. A daily from another build replaces the stored one.
+      v_same := coalesce(v_old.daily_date = v_new.daily_date and v_old.daily_version = v_new.daily_version, false);
+      if v_same then v_new.daily_attempts := greatest(v_old.daily_attempts, v_new.daily_attempts); end if;
+      if v_old.daily_date is not null and (v_new.daily_date is null
+          or (v_old.daily_date = v_today, v_old.daily_date) > (v_new.daily_date = v_today, v_new.daily_date)
+          or (v_same and (v_old.daily_wpm, v_old.daily_accuracy) > (v_new.daily_wpm, v_new.daily_accuracy))) then
+        v_new.daily_date := v_old.daily_date;
+        v_new.daily_version := v_old.daily_version;
+        v_new.daily_wpm := v_old.daily_wpm;
+        v_new.daily_accuracy := v_old.daily_accuracy;
+        if not v_same then v_new.daily_attempts := v_old.daily_attempts; end if;
+      end if;
+      if v_old.week_start = v_new.week_start then
+        v_new.week_seconds := greatest(v_old.week_seconds, v_new.week_seconds);
+        v_new.week_runs := greatest(v_old.week_runs, v_new.week_runs);
+      elsif (v_old.week_start = v_week, v_old.week_start) > (v_new.week_start = v_week, v_new.week_start) then
+        v_new.week_start := v_old.week_start;
+        v_new.week_seconds := v_old.week_seconds;
+        v_new.week_runs := v_old.week_runs;
+      end if;
+    end if;
+    update race_private.summaries set sharing = true, cleared_at = v_new.cleared_at, daily_date = v_new.daily_date,
+        daily_version = v_new.daily_version, daily_wpm = v_new.daily_wpm, daily_accuracy = v_new.daily_accuracy,
+        daily_attempts = v_new.daily_attempts, week_start = v_new.week_start, week_seconds = v_new.week_seconds,
+        week_runs = v_new.week_runs, updated_at = v_new.updated_at
+      where user_id = v_uid;
   elsif p_action <> 'board' then
     raise exception 'Unknown board action.';
   end if;
