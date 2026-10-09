@@ -13,8 +13,11 @@ const MIN = 44;
 
 // Controls WCAG 2.5.5 exempts from the minimum. Keep this list as short as possible, and say why.
 const EXEMPT = [
-  // None today. An inline link inside running text that cannot grow without overlapping the next
-  // line would go here (the "inline" exception), named by a selector and a reason.
+  // Progress chart points closer together than a 44px target (the "equivalent" exception): every
+  // run is also a full-size row in the run history below. Each point still gets the whole gap to
+  // its neighbours and a 44px height, so a tap opens the point under it; the dense chart test
+  // checks that instead.
+  { selector: '.trend-dense .trend-dot', reason: 'equivalent: its run history row' },
 ];
 
 // Runs in the page. Returns every visible control under `root` and its hit area.
@@ -144,19 +147,24 @@ for (const theme of ['dark', 'light']) {
       await page.screenshot({ path: shot(testInfo, `inline-controls-390-${theme}`) });
       if (theme === 'dark') {
         // The same screen with each grown control's hit area outlined.
-        const outline = await page.addStyleTag({ content: '.footer-link, .run-detail summary { outline: 1px dashed var(--accent); outline-offset: 0; }' });
+        const outline = await page.addStyleTag({ content: '.footer-link::after, .run-detail summary::after { outline: 1px dashed var(--accent); }' });
         await page.screenshot({ path: shot(testInfo, `inline-controls-hit-areas-390-${theme}`) });
         await outline.evaluate((node) => node.remove());
       }
 
-      // 320px: a fast run, so the numeral holds three real digits.
+      // 320px: a quick but human run, so the numeral holds three real digits at 100–110 wpm. The
+      // shared CPU adds its own time to each key, so the delay is retuned if a run misses.
       await page.setViewportSize({ width: 320, height: 640 });
-      await openView(page, 'Practice');
-      await chooseWords(page, 10);
-      await typeRun(page, 60);
-      const fast = Number(await page.locator('#result-wpm').textContent());
+      let fast = 0;
+      for (let attempt = 0, delay = 104; attempt < 4 && !(fast >= 100 && fast <= 110); attempt += 1) {
+        if (attempt) delay = Math.round(delay * fast / 105);
+        await openView(page, 'Practice');
+        await chooseWords(page, 25);
+        await typeRun(page, delay);
+        fast = Number(await page.locator('#result-wpm').textContent());
+      }
       expect(fast).toBeGreaterThanOrEqual(100);
-      expect(fast).toBeLessThan(1000);
+      expect(fast).toBeLessThanOrEqual(110);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
       await page.evaluate(() => window.scrollTo({ top: document.querySelector('#run-card').getBoundingClientRect().top + scrollY - 16, behavior: 'instant' }));
       await page.screenshot({ path: shot(testInfo, `run-card-320-${theme}`) });
@@ -313,6 +321,37 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       small.push(...await sweep(page, 'history toast', '#history-toast'));
 
       expect(small).toEqual([]);
+    });
+
+    test('a dense Progress chart gives each point its own gap, and a tap opens the run under it', async ({ page, supabase }) => {
+      await page.clock.install({ time: new Date('2026-09-30T12:00:00Z') });
+      const user = supabase.addUser('dense@stilltype.test');
+      // Fourteen runs at one pace: a flat line whose points sit closer than 44px at both widths.
+      const traces = Array.from({ length: 14 }, (_, i) => errorTrace(`run-${String(i).padStart(2, '0')}`, `2026-09-${17 + i}T12:00:00Z`));
+      supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: traces,
+        runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt: '2026-09-30T12:00:00Z' } });
+      await openApp(page);
+      await signInWithEmail(page, user.email);
+      await openView(page, 'Progress');
+      await expect(page.locator('#progress-trend .trend-dot')).toHaveCount(28);
+      await expect(page.locator('#progress-trend svg.trend-dense')).toHaveCount(2);
+      expect(await sweep(page, 'progress, dense chart')).toEqual([]);
+
+      // The exempt points: each owns its centre, is at least 44px tall and fills the gap it has.
+      const step = await page.locator('#progress-trend svg').first().evaluate((svg) => parseFloat(svg.style.getPropertyValue('--trend-step'))
+        * svg.getBoundingClientRect().width / svg.viewBox.baseVal.width);
+      expect(step).toBeLessThan(MIN);
+      const points = await page.evaluate(measure, { root: '#progress-trend', exempt: [] });
+      expect(points).toHaveLength(28);
+      for (const { control, hit } of points) {
+        expect(hit[0], `${control} width`).toBeGreaterThanOrEqual(Math.floor(step) - 1);
+        expect(hit[1], `${control} height`).toBeGreaterThanOrEqual(MIN);
+      }
+      const dot = page.locator('#progress-trend .trend-dot.trend-wpm').nth(6).locator('circle');
+      await dot.scrollIntoViewIfNeeded();
+      const box = await dot.boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(page.locator('#run-history details[open]')).toHaveAttribute('data-run-id', 'run-06');
     });
   });
 }

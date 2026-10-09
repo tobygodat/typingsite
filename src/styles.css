@@ -1957,23 +1957,22 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 /* Coarse pointers keep a 44px minimum target. e2e/touch-targets.spec.js measures every control.
-   Text-sized controls grow into the space around them, not the layout: padding with a matching
-   negative margin. Relative position keeps that reach above the content that follows. */
+   Text-sized controls reach into the space around them with a transparent ::after, so neither the
+   layout nor the focus ring moves. Relative position keeps that reach above the content after it. */
 @media (pointer: coarse) {
   .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
-  /* 12px mono on a 1.5 line is 18px: 8px up into the gap above, so it stays off the line before
-     it, and 24px down into the footer's own padding makes 50. */
-  .footer-link {
-    padding-block: var(--space-2) var(--space-6);
-    margin-block: calc(var(--space-2) * -1) calc(var(--space-6) * -1);
-  }
+  .footer-link, .run-detail summary, .daily-challenge summary { position: relative; }
+  .footer-link::after, .run-detail summary::after, .daily-challenge summary::after { content: ""; position: absolute; }
+  /* 12px mono on a 1.5 line is 18px, 34px with its own 8px padding: 16px more, down into the
+     footer's own padding, makes 50 and stays off the line before it. */
+  .footer-link::after { inset: 0 0 calc(var(--space-4) * -1); }
   /* "View passage" and "Your daily results": a 27px line, 51px with 12px each side. */
-  .run-detail summary,
-  .daily-challenge summary { position: relative; padding-block: var(--space-3); margin-block: calc(var(--space-3) * -1); }
+  .run-detail summary::after, .daily-challenge summary::after { inset: calc(var(--space-3) * -1) 0; }
   .toast-close { min-width: var(--control); }
-  /* Chart points: a 48px circle, so the reach through the centre clears 44 at any sub-pixel offset.
+  /* Chart points: 48px tall and up to 48px wide, so the reach through the centre clears 44 at any
+     sub-pixel offset, but never wider than the gap to the next point (see progress-view.js).
      The date labels are drawn over the end points; taps pass through every axis label. */
-  .trend-hit { r: var(--space-6); }
+  .trend-hit { rx: min(var(--space-6), var(--trend-step) / 2); ry: var(--space-6); }
   .trend-label { pointer-events: none; }
 }
 
