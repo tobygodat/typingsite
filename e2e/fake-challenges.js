@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { scoreTrace, validTrace } from '../src/ghost-race.js';
 
 const DAY = 86400000;
+// Rows listed beyond every open challenge and every result from the last week.
+const HISTORY = 50;
 
 export class FakeChallenges {
   constructor(auth) { this.auth = auth; this.rows = new Map(); }
@@ -27,13 +29,27 @@ export class FakeChallenges {
     return score;
   }
 
-  // Adds a challenge directly, as if `sender` had sent it, for tests that start on the recipient.
-  seed(sender, recipient, { name, label = 'Friend', passage, conditions = {}, duration = null, trace }) {
+  // Adds a challenge directly, as if `sender` had sent it, for tests that start on the recipient. An
+  // earlier `createdAt` backdates it; `answered` gives it a reply an hour later, scored like the sender's.
+  seed(sender, recipient, { name, label = 'Friend', passage, conditions = {}, duration = null, trace, createdAt = Date.now(), answered = false }) {
+    const sent = this.score(passage, trace, duration, conditions);
     const row = { id: randomUUID(), senderId: sender, recipientId: recipient, senderName: name, recipientName: label,
-      passage, conditions, duration, trace, sender: this.score(passage, trace, duration, conditions), result: null,
-      createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * DAY).toISOString(), completedAt: null };
+      passage, conditions, duration, trace, sender: sent, result: answered ? { ...sent } : null,
+      createdAt: new Date(createdAt).toISOString(), expiresAt: new Date(createdAt + 7 * DAY).toISOString(),
+      completedAt: answered ? new Date(createdAt + DAY / 24).toISOString() : null };
     this.rows.set(row.id, row);
     return row;
+  }
+
+  // As the service lists them: every open challenge (0), every result from the last week (1), then the
+  // newest fifty others (2), newest first within each.
+  list(caller) {
+    const now = Date.now();
+    const tier = (row) => (!row.result && now < Date.parse(row.expiresAt) ? 0 : row.result && now - Date.parse(row.completedAt) < 7 * DAY ? 1 : 2);
+    let older = 0;
+    return [...this.rows.values()].filter((row) => row.senderId === caller || row.recipientId === caller)
+      .sort((a, b) => tier(a) - tier(b) || Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      .filter((row) => tier(row) < 2 || ++older <= HISTORY).map((row) => this.view(row, caller));
   }
 
   handle(caller, { p_action: action, p_id: id, p_data: data = {} }, reply) {
@@ -53,10 +69,7 @@ export class FakeChallenges {
           conditions: data.conditions || {}, duration: data.duration || null, trace: data.trace });
         return reply(200, this.view(row, caller));
       }
-      if (action === 'list') {
-        return reply(200, [...this.rows.values()].filter((row) => row.senderId === caller || row.recipientId === caller)
-          .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 50).map((row) => this.view(row, caller)));
-      }
+      if (action === 'list') return reply(200, this.list(caller));
       const row = this.rows.get(id);
       if (action === 'get') {
         if (!row || (row.senderId !== caller && row.recipientId !== caller)) return failure('That ghost race is unavailable.');

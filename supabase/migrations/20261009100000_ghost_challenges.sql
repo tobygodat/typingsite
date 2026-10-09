@@ -200,10 +200,19 @@ begin
   end if;
 
   if p_action = 'list' then
-    -- The newest fifty the caller sent or received, without passages or traces.
-    return coalesce((select jsonb_agg(race_private.challenge_view(c, v_uid) order by c.created_at desc)
-      from race_private.challenges c where c.id in (select id from race_private.challenges
-        where sender_id = v_uid or recipient_id = v_uid order by created_at desc limit 50)), '[]'::jsonb);
+    -- What the caller sent or received, without passages or traces, in three tiers: every challenge
+    -- still open (0), then every result from the last seven days (1), then the newest fifty others for
+    -- history (2); newest first within each. Tiers 0 and 1 are never cut, so newer runs can't crowd out
+    -- a race still to be run or a result not yet heard on another device. Seven-day windows and the
+    -- sender quotas above bound them. A row only moves down the tiers, so one that falls out of
+    -- history never returns.
+    return coalesce((select jsonb_agg(race_private.challenge_view(c, v_uid) order by t.tier, c.created_at desc, c.id)
+      from (select id, tier, row_number() over (partition by tier order by created_at desc, id) as n
+          from (select id, created_at, case when completed_at is null and expires_at > v_now then 0
+              when completed_at > v_now - interval '7 days' then 1 else 2 end as tier
+            from race_private.challenges where sender_id = v_uid or recipient_id = v_uid) mine) t
+        join race_private.challenges c on c.id = t.id
+      where t.tier < 2 or t.n <= 50), '[]'::jsonb);
   end if;
 
   if p_action = 'get' then

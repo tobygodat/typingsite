@@ -6,10 +6,10 @@ import { offerText, resultText } from './ghost-race.js';
 
 const $ = (id) => document.getElementById(id);
 const STORE = 'stilltype-inbox-v1:';
-// Ghost race results already delivered, so a cleared result does not return on the next poll.
+// Ghost race results already delivered, so a cleared result does not return on the next poll. Only
+// ids the service still lists are kept.
 const DELIVERED = 'stilltype-inbox-delivered-v1:';
 const MAX_ENTRIES = 30;
-const MAX_DELIVERED = 200;
 const POLL_MS = 10000;
 const DAY_MS = 86400000;
 export const TOAST_MS = 18000;
@@ -52,17 +52,21 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     } catch {}
     try {
       const ids = JSON.parse(localStorage.getItem(DELIVERED + userId()));
-      if (Array.isArray(ids)) delivered = new Set(ids.filter((id) => typeof id === 'string').slice(-MAX_DELIVERED));
+      if (Array.isArray(ids)) delivered = new Set(ids.filter((id) => typeof id === 'string'));
     } catch {}
   }
   function save() {
     if (!userId()) return;
     try { localStorage.setItem(STORE + userId(), JSON.stringify(entries.slice(0, MAX_ENTRIES))); } catch {}
   }
+  function storeDelivered() {
+    if (!userId()) return;
+    try { localStorage.setItem(DELIVERED + userId(), JSON.stringify([...delivered])); } catch {}
+  }
   function deliver(id) {
     if (!userId() || delivered.has(id)) return;
     delivered.add(id);
-    try { localStorage.setItem(DELIVERED + userId(), JSON.stringify([...delivered].slice(-MAX_DELIVERED))); } catch {}
+    storeDelivered();
   }
 
   // An entry's action lapses when the service would no longer honour it (`until`), or when the
@@ -172,11 +176,22 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
   }
 
   // A ghost challenge for this account (Race), then its result; a lapsed one closes. A result arrives
-  // once: the sender hears a fresh one with a toast, and clearing it keeps it gone.
+  // once: the sender hears a fresh one with a toast, and clearing it keeps it gone. The service lists
+  // every open challenge, then every result from the last week, then the newest fifty others, so
+  // working from the end leaves the open ones at the top of the inbox.
   function applyChallenges(challenges) {
     const fresh = (at) => Date.now() - Date.parse(at) < DAY_MS;
+    // One entry per challenge, from its first (most pressing) place in the list.
+    const listed = new Map();
+    for (const challenge of challenges) if (challenge?.id && !listed.has(challenge.id)) listed.set(challenge.id, challenge);
+    // A delivered result the service no longer lists never comes back, so it need not be remembered.
+    const ids = new Set([...listed.keys()].map((id) => `challenge:${id}`));
+    if ([...delivered].some((id) => !ids.has(id))) {
+      delivered = new Set([...delivered].filter((id) => ids.has(id)));
+      storeDelivered();
+    }
     let changed = false;
-    for (const challenge of [...challenges].reverse()) {
+    for (const challenge of [...listed.values()].reverse()) {
       const id = `challenge:${challenge.id}`;
       const known = entries.find((entry) => entry.id === id);
       if (challenge.status === 'done' && challenge.result) {

@@ -290,6 +290,36 @@ test('a timed ghost race runs on the sender’s clock and is led by the text kep
   await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Ada sees this result in their inbox too.');
 });
 
+test('an older open ghost race still reaches a new device behind more than fifty newer answered ones', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  const passage = 'river light patient words carry the quiet home';
+  const conditions = { mode: 'words', count: 8, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' };
+  const trace = steadyTrace(passage, 140);
+  const day = 86400000;
+  const now = Date.now();
+  supabase.challenges.seed(ada.id, lin.id, { name: 'Ada', label: 'Lin', passage, conditions, trace, createdAt: now - 3 * day });
+  for (let i = 0; i < 55; i += 1) {
+    supabase.challenges.seed(ada.id, lin.id, { name: 'Ada', label: 'Lin', passage, conditions, trace, createdAt: now - 2 * day + i * 60000, answered: true });
+  }
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await expect(page.locator('#challenge-toast')).toContainText('Ada challenged you to beat their 8-word run.', { timeout: 12000 });
+  await page.locator('#challenge-toast-close').click();
+  // The open race tops the full inbox, and a later poll repeats nothing.
+  await page.locator('#inbox-trigger').click();
+  const rows = page.locator('#inbox-list .inbox-entry');
+  await expect(rows).toHaveCount(30);
+  await expect(rows.first()).toHaveAttribute('data-kind', 'challenge');
+  await expect(page.locator('#inbox-list [data-inbox-action="challenge"]')).toHaveCount(1);
+  await page.waitForTimeout(11000);
+  await expect(rows).toHaveCount(30);
+  await expect(page.locator('#inbox-count')).toBeHidden();
+  await page.locator('#inbox-list [data-inbox-action="challenge"]').click();
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
+  await expect(page.locator('#accessible-passage')).toHaveText(passage);
+});
+
 test('guests are never offered a challenge; the offer fits a narrow phone and an empty friend list points to online races', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   await page.setViewportSize({ width: 320, height: 720 });

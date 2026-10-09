@@ -8,6 +8,8 @@ declare
   lin uuid := gen_random_uuid();
   kim uuid := gen_random_uuid();
   outsider uuid := gen_random_uuid();
+  mia uuid := gen_random_uuid();
+  noa uuid := gen_random_uuid();
   passage text := 'The quick brown fox jumps over the lazy dog.';
   long_passage text := 'the quick brown fox jumps over the lazy dog and keeps on running past the old mill and the river';
   -- One slip ("x", then a deletion) on the way to the end: 45 insertions, 44 of them right.
@@ -18,10 +20,12 @@ declare
   friend_kim uuid;
   friend_nobody uuid;
   outsider_friend uuid;
+  friend_noa uuid;
   sent jsonb;
   view jsonb;
   listed jsonb;
   challenge uuid;
+  viewer uuid;
   denied boolean;
   n integer;
 begin
@@ -262,6 +266,41 @@ begin
   exception when others then denied := true; end;
   if not denied then raise exception 'Challenged a removed friend.'; end if;
 
-  raise notice 'Ghost challenge privacy, RLS, trace scoring, timed runs, expiry, cleanup and quota checks passed.';
+  -- The list never cuts an open race or a fresh result. Noa has an open challenge from three days ago,
+  -- 55 newer ones already answered, and 60 old expired ones: all 56 recent rows arrive, the open one
+  -- first, then only the newest fifty of the old ones.
+  insert into auth.users (id, email, email_confirmed_at) values
+    (mia, 'ghost-mia-' || mia || '@example.invalid', now()), (noa, 'ghost-noa-' || noa || '@example.invalid', now());
+  insert into race_private.friends (owner_id, friend_id, name) values (mia, noa, 'Noa') returning id into friend_noa;
+  perform set_config('request.jwt.claim.sub', mia::text, true);
+  sent := public.challenge_action('send', null, jsonb_build_object('friendId', friend_noa, 'displayName', 'Mia', 'passage', passage, 'trace', trace));
+  update race_private.challenges set created_at = now() - interval '3 days', expires_at = now() + interval '4 days' where id = (sent->>'id')::uuid;
+  insert into race_private.challenges (sender_id, recipient_id, sender_name, recipient_name, passage, sender_trace, sender_wpm,
+      sender_accuracy, sender_elapsed_ms, sender_correct, recipient_wpm, recipient_accuracy, recipient_elapsed_ms, recipient_correct,
+      completed_at, created_at, expires_at)
+    select mia, noa, 'Mia', 'Noa', passage, trace, 78, 98, 6750, 44, 80, 100, 6600, 44,
+      now() - interval '2 days' + i * interval '1 minute' + interval '1 hour', now() - interval '2 days' + i * interval '1 minute',
+      now() + interval '5 days' + i * interval '1 minute'
+    from generate_series(1, 55) i;
+  insert into race_private.challenges (sender_id, recipient_id, sender_name, recipient_name, passage, sender_trace, sender_wpm,
+      sender_accuracy, sender_elapsed_ms, sender_correct, created_at, expires_at)
+    select mia, noa, 'Old ' || i, 'Old ' || i, passage, trace, 78, 98, 6750, 44,
+      now() - interval '20 days' + i * interval '1 minute', now() - interval '13 days' + i * interval '1 minute'
+    from generate_series(1, 60) i;
+  foreach viewer in array array[noa, mia] loop
+    perform set_config('request.jwt.claim.sub', viewer::text, true);
+    listed := public.challenge_action('list', null, '{}');
+    if listed->0->>'id' <> sent->>'id' or listed->0->>'status' <> 'open' then
+      raise exception 'The open challenge was not listed first: %', left(listed::text, 300);
+    end if;
+    if jsonb_array_length(listed) <> 106
+      or (select count(*) from jsonb_array_elements(listed) with ordinality e(c, pos) where pos between 2 and 56 and c->>'status' = 'done') <> 55
+      or (select count(*) from jsonb_array_elements(listed) with ordinality e(c, pos) where pos > 56 and c->>'status' = 'expired'
+        and (c->>'name') in (select 'Old ' || i from generate_series(11, 60) i)) <> 50 then
+      raise exception 'The list did not keep every recent row and the newest fifty old ones: % rows', jsonb_array_length(listed);
+    end if;
+  end loop;
+
+  raise notice 'Ghost challenge privacy, RLS, trace scoring, timed runs, expiry, cleanup, quota and inbox list checks passed.';
 end $smoke$;
 rollback;
