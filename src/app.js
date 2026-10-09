@@ -132,8 +132,10 @@ let trainingContext = null;
 let resultBestBefore = null;
 let clearSnapshot = null;
 let clearTimer = null;
-// The lesson being typed, and the last lesson result in this tab (shown on the learn screen).
+// The lesson being typed, the input class of the tap or click that started it, and the last lesson
+// result in this tab (shown on the learn screen).
 let lessonIndex = 0;
+let lessonInputClass = 'physical-keyboard';
 let lessonResult = null;
 
 let race = {
@@ -217,10 +219,14 @@ function describeLesson(run) {
 function lessonConditions() {
   return {
     mode: 'lesson', lesson: LESSONS[lessonIndex].id, duration: null, count: null, punctuation: false,
-    quoteLength: null, difficulty: null, wordList: null, inputClass: 'physical-keyboard',
+    quoteLength: null, difficulty: null, wordList: null, inputClass: lessonInputClass,
     correctionPolicy: conditions().correctionPolicy, language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION,
   };
 }
+
+// A tap that starts a session focuses the input and opens the soft keyboard, so no pointerdown reaches
+// the input: the activating event says touch instead. Keyboard Enter and mouse clicks are a physical keyboard.
+const startedBy = (event) => (event?.pointerType === 'touch' ? 'touch' : 'physical-keyboard');
 
 function signed(value, unit) {
   const sign = value > 0 ? '+' : value < 0 ? '−' : '';
@@ -1314,11 +1320,13 @@ function lessonMeta(index) {
   return `${lessonFingers(lesson)} · pass at ${LESSON_ACCURACY}% accuracy and ${lesson.wpm} wpm in one run${tries ? ` · ${tries} ${tries === 1 ? 'try' : 'tries'} so far` : ''}`;
 }
 
-function startLesson(index) {
+// `event` is the tap, click or key that started it; a tap on the passage still marks a ready lesson as touch.
+function startLesson(index, event = null) {
   if (!lessonUnlocked(profile.lessons, index)) return;
   if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
   if (race.attempt?.status === 'running') markRaceInterrupted();
   lessonIndex = index;
+  lessonInputClass = startedBy(event);
   resetSession('lesson', { focus: true });
   // From a scrolled learn screen too, a lesson starts with its title, label and finger map in view.
   scrollTo({ top: 0, behavior: 'instant' });
@@ -1416,29 +1424,30 @@ function renderLessons() {
   let meta = '';
   let primary;
   let secondary = null;
+  const start = (index) => (event) => startLesson(index, event);
   if (result) {
     const n = result.index + 1;
-    const repeat = [`Repeat lesson ${n}`, () => startLesson(result.index)];
+    const repeat = [`Repeat lesson ${n}`, start(result.index)];
     heading = lessonHeadline(result);
     if (!result.valid) {
       status = ['interrupted', 'badge-warning'];
       copy = 'Focus or input changed during the run, so it doesn’t count toward unlocking.';
-      primary = [`Try lesson ${n} again`, () => startLesson(result.index)];
+      primary = [`Try lesson ${n} again`, start(result.index)];
     } else if (!result.recorded) {
       status = ['not counted', 'badge-neutral'];
       copy = 'This lesson was locked when the run finished, so nothing was saved.';
-      primary = complete ? ['Take a practice run', startTrainingLoop] : [`Start lesson ${next + 1}`, () => startLesson(next)];
+      primary = complete ? ['Take a practice run', startTrainingLoop] : [`Start lesson ${next + 1}`, start(next)];
     } else if (result.touch) {
       status = ['touch input', 'badge-neutral'];
       copy = 'Lessons teach finger positions on a physical keyboard, so only a physical-keyboard run unlocks the next keys. This run is kept as a touch try.';
-      primary = [`Try lesson ${n} again`, () => startLesson(result.index)];
+      primary = [`Try lesson ${n} again`, start(result.index)];
       if (complete) secondary = ['Take a practice run', startTrainingLoop];
-      else if (next !== result.index) secondary = [`Start lesson ${next + 1}`, () => startLesson(next)];
+      else if (next !== result.index) secondary = [`Start lesson ${next + 1}`, start(next)];
     } else if (result.outcome?.passed) {
       status = ['passed', 'badge-success'];
       copy = complete ? HANDOFF_COPY : lessonCopy(next);
       if (!complete) meta = lessonMeta(next);
-      primary = complete ? ['Take a practice run', startTrainingLoop] : [`Start lesson ${next + 1}`, () => startLesson(next)];
+      primary = complete ? ['Take a practice run', startTrainingLoop] : [`Start lesson ${next + 1}`, start(next)];
       secondary = repeat;
     } else {
       status = ['not yet', 'badge-neutral'];
@@ -1447,9 +1456,9 @@ function renderLessons() {
       if (progress[lesson.id]?.passed) copy = 'You passed this lesson before; this try doesn’t change that.';
       else if (after) copy = `${keysLabel(after)} ${after.length > 1 ? 'stay' : 'stays'} locked until one run meets both numbers.`;
       else copy = 'Every letter is in once one run meets both numbers.';
-      primary = [`Try lesson ${n} again`, () => startLesson(result.index)];
+      primary = [`Try lesson ${n} again`, start(result.index)];
       if (complete) secondary = ['Take a practice run', startTrainingLoop];
-      else if (next !== result.index) secondary = [`Start lesson ${next + 1}`, () => startLesson(next)];
+      else if (next !== result.index) secondary = [`Start lesson ${next + 1}`, start(next)];
     }
     if (!result.saved) meta = [meta, 'Couldn’t save on this device.'].filter(Boolean).join(' · ');
   } else if (complete) {
@@ -1461,7 +1470,7 @@ function renderLessons() {
     heading = `Lesson ${next + 1} · ${keysLabel(LESSONS[next].keys)}`;
     copy = lessonCopy(next);
     meta = lessonMeta(next);
-    primary = [`Start lesson ${next + 1}`, () => startLesson(next)];
+    primary = [`Start lesson ${next + 1}`, start(next)];
   }
   $('lesson-status').hidden = !status;
   if (status) {
@@ -1506,7 +1515,7 @@ function renderLessons() {
       const button = element('button', passed ? 'Repeat' : 'Start', 'btn btn-ghost btn-sm');
       button.type = 'button';
       button.setAttribute('aria-label', `${passed ? 'Repeat' : 'Start'} lesson ${index + 1}, ${keysLabel(lesson.keys)}`);
-      button.addEventListener('click', () => startLesson(index));
+      button.addEventListener('click', start(index));
       row.append(button);
     }
     return row;
@@ -2058,8 +2067,8 @@ function bindEvents() {
     if (practice) resetSession('practice', { focus: true });
     if (event.target.closest('[data-action="open-lessons"]')) openLessons();
   });
-  $('lesson-primary').addEventListener('click', () => lessonActions.primary?.());
-  $('lesson-secondary').addEventListener('click', () => lessonActions.secondary?.());
+  $('lesson-primary').addEventListener('click', (event) => lessonActions.primary?.(event));
+  $('lesson-secondary').addEventListener('click', (event) => lessonActions.secondary?.(event));
   document.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => {
     prefs.mode = button.dataset.mode;
     setModeControls();
@@ -2264,9 +2273,12 @@ function paletteCommands(query) {
     })),
     { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
     // Like Esc: the current kind of session starts again (a lesson stays a lesson), with one new passage.
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => resetSession(sessionKind, { focus: true }) },
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: (event) => {
+      if (sessionKind === 'lesson') lessonInputClass = startedBy(event);
+      resetSession(sessionKind, { focus: true });
+    } },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
-    ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: () => startLesson(nextLessonIndex(profile.lessons)) }]),
+    ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: (event) => startLesson(nextLessonIndex(profile.lessons), event) }]),
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },

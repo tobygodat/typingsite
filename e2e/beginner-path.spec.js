@@ -256,6 +256,28 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#lesson-status')).toHaveText('passed');
     await expect(rows.nth(1)).toHaveAttribute('data-state', 'next');
   });
+
+  // A tap that starts a lesson focuses the input and opens the soft keyboard, so no tap reaches the passage.
+  test('a tap on a lesson’s start button marks it as touch input; a mouse click stays a physical keyboard', async ({ page }) => {
+    await openApp(page);
+    await openLessons(page);
+    await page.locator('#lesson-primary').tap();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await typeLesson(page);
+    await expect(page.locator('#lesson-status')).toHaveText('touch input');
+    const rows = page.locator('#lesson-list .lesson-row');
+    await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
+
+    await page.locator('#lesson-primary').click();
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    await page.keyboard.press('Control+k');
+    await page.locator('#palette-input').fill('learn to type');
+    await page.keyboard.press('Enter');
+    await expect(body(page)).toHaveAttribute('data-view', 'learn');
+    await rows.first().getByRole('button').tap();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+  });
 });
 
 test('clearing history replaces a lesson it locks, and a restart never starts a locked lesson', async ({ page }) => {
