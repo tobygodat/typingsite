@@ -87,7 +87,7 @@ const faded = (colour, opacity) => [...colour.slice(0, 3), colour[3] * opacity];
 
 // The ghost caret is drawn at the opacity of its .ghost-caret rule.
 const ghostOpacity = plainNumber(rules.find((r) => r.selectors.includes('.ghost-caret'))?.declarations.opacity ?? '1', '.ghost-caret');
-// Every placeholder rule must set opacity itself, or Firefox fades it by its own default.
+// Every placeholder rule must set opacity itself, so no browser default fade applies on top of the token.
 const placeholderRules = rules.filter((r) => r.selectors.some((s) => s.endsWith('::placeholder')));
 
 function pairs(tokens) {
@@ -123,11 +123,16 @@ function pairs(tokens) {
   assert.ok(placeholderRules.some((r) => r.selectors.includes('.input::placeholder')), '.input::placeholder rule not found');
   for (const { selectors, declarations } of placeholderRules) {
     const where = selectors.join(', ');
-    assert.ok(declarations.opacity, `${where} must set opacity`);
-    text(`${where} on raised`, faded(parseColour(resolve(declarations.color, tokens)), plainNumber(declarations.opacity, where)), raised);
+    // Reported with the ratios rather than thrown, so a failing run still lists every pair.
+    if (!declarations.opacity) list.push({ label: `${where} sets no opacity, so a browser default fade can apply`, value: 0, min: 1 });
+    text(`${where} on raised`, faded(parseColour(resolve(declarations.color, tokens)), plainNumber(declarations.opacity ?? '1', where)), raised);
   }
 
+  // Carets cross mistyped letters, so they hold 3:1 on the coral tint as well as on bare ground.
+  const tint = over(colour('--danger-soft'), ground);
   nonText('ghost caret over ground', faded(colour('--ghost'), ghostOpacity), ground);
+  nonText('ghost caret over --danger-soft over ground', faded(colour('--ghost'), ghostOpacity), tint);
+  nonText('caret (--accent) over --danger-soft over ground', colour('--accent'), tint);
   nonText('--outline against raised', colour('--outline'), raised);
   nonText('--outline against ground', colour('--outline'), ground);
   nonText('caret (--accent) over ground', colour('--accent'), ground);

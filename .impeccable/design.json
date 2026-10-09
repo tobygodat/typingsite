@@ -477,7 +477,7 @@
       "ghost-light": {
         "role": "tertiary",
         "displayName": "Ghost Periwinkle (light theme)",
-        "canonical": "#4c57c0",
+        "canonical": "#434db5",
         "tonalRamp": [
           "#07003c",
           "#17165c",

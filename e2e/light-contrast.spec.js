@@ -1,6 +1,6 @@
-// Rendered contrast in both themes: a mistyped letter on its tint, the caret and ghost caret, the
-// selected palette row's green hint, and input placeholders. tests/contrast.test.js checks the
-// token pairs; this checks that the page really paints them that way.
+// Rendered contrast in both themes: a mistyped letter on its tint, the caret and ghost caret on ground
+// and on that tint, the selected palette row's green hint, and input placeholders.
+// tests/contrast.test.js checks the token pairs; this checks that the page really paints them that way.
 import { test, expect, openApp, chooseWords, passageText } from './fixtures.js';
 
 const shotPath = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/light-contrast/${name}.png` : testInfo.outputPath(`${name}.png`));
@@ -86,6 +86,10 @@ for (const theme of ['light', 'dark']) {
       expect(ratio(rgba(paint.caret), ground)).toBeGreaterThanOrEqual(3);
       expect(paint.ghostOpacity).toBeGreaterThan(0);
       expect(ratio(stack([[paint.ground], [paint.ghost, paint.ghostOpacity]]), ground)).toBeGreaterThanOrEqual(3);
+      // Both carets cross mistyped letters, so they also hold 3:1 on the coral tint.
+      const tinted = stack([[paint.ground], [paint.wrongTint]]);
+      expect(ratio(rgba(paint.caret), tinted)).toBeGreaterThanOrEqual(3);
+      expect(ratio(stack([[paint.ground], [paint.wrongTint], [paint.ghost, paint.ghostOpacity]]), tinted)).toBeGreaterThanOrEqual(3);
     });
 
     test('the selected palette row keeps its green hint readable', async ({ page }, testInfo) => {
@@ -95,6 +99,8 @@ for (const theme of ['light', 'dark']) {
       const selected = page.locator('#palette-list [aria-selected="true"]');
       await expect(selected.locator('.opt-hint.is-on')).toBeVisible();
       await expect(page.locator('.palette-highlight')).toHaveCSS('opacity', '1');
+      // Let the box finish fading in, so the passage behind it doesn't show through the shot.
+      await page.locator('#palette .palette-box').evaluate((box) => Promise.all(box.getAnimations().map((a) => a.finished)));
       if (theme === 'light') await page.screenshot({ path: shotPath(testInfo, 'light-palette-selected') });
 
       const paint = await page.evaluate(() => {
