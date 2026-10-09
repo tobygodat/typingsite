@@ -6,7 +6,7 @@ This document is the integration contract between the static interface in `index
 
 - `body[data-view]` is one of `practice`, `results`, `progress`, or `compete`.
 - Only the matching `[data-screen]` is visible. Navigation controls use `[data-nav]` with the same values and set `aria-current="page"` (and `.is-active`) on the active item. The dock labels them practice, train, progress and challenge; the brand link also navigates to practice.
-- `#typing-screen` is the shared typing surface. Its `data-session` value is one of `practice`, `drill`, or `retest`; `body[data-session]` mirrors it for styling.
+- `#typing-screen` is the shared typing surface. Its `data-session` value is one of `practice`, `drill`, `retest`, `daily` or `ghost-race`; `body[data-session]` mirrors it for styling.
 - Results, progress, and challenge use `#results-screen`, `#progress-screen`, and `#compete-screen`.
 - `body[data-running]` is present from the first keystroke of a run until it finishes or restarts. While it is set, chrome other than the passage and its measure row fades out; pointer movement, finishing or restarting brings it back. It never changes the passage geometry.
 - Buttons with `[data-action]` expose intent for delegated event handlers. All navigation and state changes happen without a page reload.
@@ -41,7 +41,7 @@ Practice mode controls are `#mode-time`, `#mode-words`, `#mode-quote`, `#duratio
 
 ## Completed run and recommendation
 
-`#results-heading` contains `#result-delta`, the one-line headline for the run. `#result-comparison-note` stays empty except for interrupted-run and storage messages.
+`#results-heading` contains `#result-delta`, the one-line headline for the run. `#result-comparison-note` stays empty except for interrupted-run and storage messages and, after a race of your best, the wpm and accuracy against the best with the not-counted caveat.
 
 The run card is `#run-card`: `#run-card-stamp` (date, time and session kind), `#speed-graph` (an SVG speed-over-time graph drawn by `src/graph.js` from the attempt's keystrokes, mistakes in coral; `role="img"` with a text summary in its `aria-label`; presentational only) and its legend, `#result-wpm`, `#result-accuracy`, `#result-errors`, `#result-time`, a one-line metric definition, and `#result-conditions`. The card is a static print: numbers are set directly, with no tilt, reels or count-up.
 
@@ -102,3 +102,9 @@ Required IDs: `account`, `account-trigger`, `account-guest`, `account-create`, `
 ## Accessibility and sizing
 
 All controls are reachable by keyboard and use one focus ring (the accent outline). Mobile interactive targets are at least 44 px. The skip link targets `#typing-input`. Status updates use `#announcement`. Unsupported composition, paste, touch-only input, and focus interruption are announced and displayed in `#input-help`; interrupted attempts are never stored as comparable results. All motion scales to zero under `prefers-reduced-motion`.
+
+## Race your best
+
+`#race-best` in the run card's head appears after a practice run or retest when the best for those conditions still has its trace among the newest 24 kept. `#progress-race` on Progress states the best for the selected conditions in `#progress-race-copy`, with `#progress-race-start` when it can be raced and the reason when it cannot. The palette command "race your best" uses the conditions on screen and shows the best's wpm or "unavailable"; when unavailable it explains why in `#race-toast` / `#race-feedback` and announces it.
+
+A race uses the shared typing surface with `data-session="ghost-race"`, the best's exact text and conditions, and `.ghost-caret` following the best's recorded caret positions (`src/ghost-race.js`, drawn by `src/motion.js`; hidden under reduced motion). `#condition-line` and `#result-conditions` begin `race your best · repeated text · not counted`. `#result-delta` states the gap to the best (time to the finish, or characters reached in a timed test); `#run-again` reads "Race again". The race is never a best, trend point, fresh comparison or pattern evidence, and keeps a run summary only.

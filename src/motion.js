@@ -1,6 +1,6 @@
 // Typing-surface motion: a spring-driven caret, line scrolling, and an optional
-// ghost pacer. Nothing decorative moves while a run is in progress. Everything
-// here is presentational; scoring never reads from it.
+// ghost caret (the pacer, or a recorded best being raced). Nothing decorative moves
+// while a run is in progress. Everything here is presentational; scoring never reads from it.
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const IDLE_AFTER_MS = 800;
@@ -47,7 +47,7 @@ export function createTypingFx(wrap, display, options = {}) {
   const ghostCaret = document.createElement('span');
   ghostCaret.className = 'ghost-caret is-hidden';
   for (const node of [caret, ghostCaret]) node.setAttribute('aria-hidden', 'true');
-  const ghost = { cps: 0, start: 0, frame: 0, index: -1, armed: false };
+  const ghost = { cps: 0, track: null, start: 0, frame: 0, index: -1, armed: false };
 
   const caretX = spring(1400, 70);
   const caretY = spring(1400, 70);
@@ -145,9 +145,11 @@ export function createTypingFx(wrap, display, options = {}) {
   function ghostTick(now) {
     ghost.frame = 0;
     if (!ghost.armed || !ghost.start) return;
-    const index = Math.floor(((now - ghost.start) / 1000) * ghost.cps);
+    const elapsed = now - ghost.start;
+    const index = ghost.track ? ghost.track.at(elapsed) : Math.floor((elapsed / 1000) * ghost.cps);
     placeGhost(Math.min(index, characters.length));
-    if (index < characters.length) ghost.frame = requestAnimationFrame(ghostTick);
+    // A recorded ghost stops where its run stopped; the pacer stops at the end of the text.
+    if (ghost.track ? elapsed < ghost.track.endMs : index < characters.length) ghost.frame = requestAnimationFrame(ghostTick);
   }
 
   function stopGhost() {
@@ -168,7 +170,8 @@ export function createTypingFx(wrap, display, options = {}) {
       ghost.index = -1;
       display.append(ghostCaret, caret);
       ghostCaret.classList.toggle('is-hidden', !ghost.armed);
-      if (ghost.armed) requestAnimationFrame(() => placeGhost(0));
+      // Checked again when the frame runs: the caller usually re-arms or disarms right after reset.
+      if (ghost.armed) requestAnimationFrame(() => { if (ghost.armed) placeGhost(0); });
       setState('idle');
       snapNext = true;
       needsMeasure = true;
@@ -198,6 +201,19 @@ export function createTypingFx(wrap, display, options = {}) {
       arm(cps) {
         ghost.armed = cps > 0;
         ghost.cps = cps;
+        ghost.track = null;
+        ghost.index = -1;
+        ghostCaret.classList.toggle('is-hidden', !ghost.armed);
+        if (ghost.armed) placeGhost(0);
+        else stopGhost();
+      },
+      // A recorded ghost: track.at(ms) is its caret position that long after the first keystroke.
+      // It steps letter to letter with no easing. Like the pacer it stays still under reduced
+      // motion, so there it is hidden rather than left standing at the start.
+      follow(track) {
+        ghost.armed = Boolean(track) && !reducedMotion.matches;
+        ghost.cps = 0;
+        ghost.track = ghost.armed ? track : null;
         ghost.index = -1;
         ghostCaret.classList.toggle('is-hidden', !ghost.armed);
         if (ghost.armed) placeGhost(0);
@@ -210,6 +226,7 @@ export function createTypingFx(wrap, display, options = {}) {
       },
       disarm() {
         ghost.armed = false;
+        ghost.track = null;
         stopGhost();
         ghostCaret.classList.add('is-hidden');
       },

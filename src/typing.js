@@ -217,6 +217,8 @@ export function summarizePatterns(attempts, limit = 20, compatibleConditions = n
     && !attempt.interrupted
     && attempt.kind !== 'drill'
     && attempt.kind !== 'race'
+    // Racing your best repeats text you've typed, so like a repeated daily it isn't pattern evidence.
+    && attempt.kind !== 'ghost-race'
     && (attempt.kind !== 'daily' || attempt.fresh !== false)
     && (!key || conditionKey(attempt.conditions) === key)).slice(-limit);
   const pairs = new Map();
@@ -331,6 +333,8 @@ export function comparable(before, after) {
     && after.fresh !== false
     && before.kind !== 'drill'
     && after.kind !== 'drill'
+    && before.kind !== 'ghost-race'
+    && after.kind !== 'ghost-race'
     && !before.interrupted
     && !after.interrupted;
 }

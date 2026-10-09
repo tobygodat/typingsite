@@ -227,6 +227,7 @@
           <article id="run-card" class="run-card" aria-label="Run summary" hidden>
             <header class="run-card-head">
               <span id="run-card-stamp" class="run-card-stamp">no run yet</span>
+              <button id="race-best" class="btn btn-secondary btn-sm" type="button" hidden>Race your best</button>
             </header>
             <figure class="run-card-graph">
               <div id="speed-graph" class="speed-graph" role="img" aria-label="Speed over time"></div>
@@ -324,6 +325,10 @@
                 <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="all">All saved runs</option>
               </select>
             </label>
+          </div>
+          <div id="progress-race" class="progress-race" hidden>
+            <p id="progress-race-copy"></p>
+            <button id="progress-race-start" class="btn btn-secondary btn-sm" type="button">Race your best</button>
           </div>
           <p id="progress-week" class="result-note"></p>
           <div id="progress-trend" class="progress-trend"></div>
@@ -622,6 +627,11 @@
   <div id="egg-toast" class="toast egg-toast" role="status" hidden>
     <span class="ghost-mark" aria-hidden="true"></span>
     <span id="egg-feedback"></span>
+  </div>
+
+  <div id="race-toast" class="toast race-toast" role="status" hidden>
+    <span class="status-dot" aria-hidden="true"></span>
+    <span id="race-feedback"></span>
   </div>
 
   <div id="suggest-toast" class="toast" role="status" hidden>

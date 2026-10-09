@@ -212,7 +212,7 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 - **Lamp Amber** (warning): interrupted runs and mixed comparison outcomes only.
 
 ### Tertiary
-- **Ghost Periwinkle** (ghost): used only for the hidden ghost pacer: its caret, its palette entry and its toast mark. It never appears anywhere else.
+- **Ghost Periwinkle** (ghost): used only for the ghost caret (the hidden pacer, or the recorded best in Race your best), the pacer's palette entry and its toast mark. It never appears anywhere else.
 
 ### Neutral
 - **Warm Near-Black / Warm Paper** (ground): the page.
@@ -329,10 +329,10 @@ Challenge opens with the daily passage and its one filled-green action, followed
 Below 360px, the run-card WPM uses `--text-numeral-narrow` (80px); the existing mobile size is now `--text-numeral-mobile` (112px).
 
 ### Typing zone (signature)
-Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint (no underline). The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost pacer is a 2px periwinkle bar at 70% opacity.
+Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint (no underline). The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost caret (the pacer, or a raced best) is a 2px periwinkle bar at 70% opacity. A raced best steps from letter to letter on its recorded timing, with no easing, and is hidden under reduced motion.
 
 ### Run card (signature)
-A static print: 22px corners, 22px padding, a strong hairline border, and the card-stock gradient. From top to bottom it holds a mono date stamp, the 16:9 speed graph (an SVG line chart: a 2px accent line of wpm per second, averaged over a trailing three seconds; a dotted muted line at the final wpm; coral dots on the line where mistakes happened; hairline gridlines at 0, half and top with 12px mono labels, and a mono time axis), a one-line mono legend, which draws once over about 450ms (`--dur-develop`), the numeral WPM with a mono unit, a three-column facts list (mono labels, 24px Literata values), an italic 13px metric note, and the mono conditions line. It does not tilt, shine or animate after the graph has drawn.
+A static print: 22px corners, 22px padding, a strong hairline border, and the card-stock gradient. From top to bottom it holds a mono date stamp, the 16:9 speed graph (an SVG line chart: a 2px accent line of wpm per second, averaged over a trailing three seconds; a dotted muted line at the final wpm; coral dots on the line where mistakes happened; hairline gridlines at 0, half and top with 12px mono labels, and a mono time axis), a one-line mono legend, which draws once over about 450ms (`--dur-develop`), the numeral WPM with a mono unit, a three-column facts list (mono labels, 24px Literata values), an italic 13px metric note, and the mono conditions line. It does not tilt, shine or animate after the graph has drawn. After a practice run or retest whose best still has its keystrokes, a small secondary "Race your best" button sits at the right of the stamp (it wraps below it on narrow cards), so a sticky card never holds it below the fold.
 
 ### Command palette
 A 600px opaque raised panel with 22px corners over a flat dim. It has a 62px search row (19px input) and 46px option rows with a 6px state dot (accent when selected). Mono group labels and mono hints sit on the right. It enters and exits with a 4px lift and fade over 150ms.
@@ -357,7 +357,7 @@ Opaque raised pills of 16px radius at the bottom centre, with a status dot and 1
 - **Don't** reintroduce the effects removed after the critique: a streak glow or caret aura, a letter ink trail (letters landing lit and cooling), an error shake, digit pop-ins or number reels, a word underline or lens sweeping through the glyphs, run-card tilt, glare or foil, glass surfaces, a live rhythm strip, or blur reveals on restart and results.
 - **Don't** use backdrop-filter, translucent surfaces or coloured glows. Floating surfaces are opaque raised stock with the one float shadow. (The challenge handoff's blurred passage veil is a concealment device that hides the next player's text. It is not a reveal effect and must not spread elsewhere.)
 - **Don't** add kickers or eyebrows above headings, and don't use uppercase tracked labels.
-- **Don't** add a second accent. Periwinkle belongs to the ghost pacer alone, and amber to interrupted and mixed results alone.
+- **Don't** add a second accent. Periwinkle belongs to the ghost caret alone, and amber to interrupted and mixed results alone.
 - **Don't** box ordinary sections as cards. The run card is the one card.
 - **Don't** move the app back toward the retired Ash system: no blue call to action, no Geist sans, no dark-only rule, no mono status pills.
 - **Don't** invest in the wordmark. "Stilltype" is a working title, and the brand stays an italic word and a green full stop.

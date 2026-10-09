@@ -29,6 +29,7 @@ Product behaviour:
 - Online two-player challenges via Supabase: account invitations in the Challenge inbox or a shareable guest link, ready states, a synchronized countdown, live progress, reconnection and observed results. Hosts sign in; invited guests need no account. Original shared-keyboard challenges remain under One keyboard.
 - Friends, Race again and the inbox (7 October 2026): a private per-account friend list (saved from an email invite or added after a race) with one-click Challenge; Race again on any closed two-player race, keeping both seats; an envelope inbox beside the account button and an 18-second top-right toast for incoming challenges and rematches. See `docs/online-races.md`.
 - Typed history-clear confirmation with immediate Undo.
+- Race your best (9 October 2026): from the run card after a practice run or retest, from Progress (the selected conditions) or from the palette, race the best for those conditions on its exact text and conditions while a periwinkle ghost caret replays that run's recorded keystroke positions over time (`src/ghost-race.js`; drawn by `src/motion.js`, never scored). It needs the best's trace among the newest 24 kept; otherwise Progress and the palette say why. The race repeats seen text, so it is labelled "not counted": never a best, trend point, fresh comparison or pattern evidence, and it keeps a run summary only, with no trace, so racing never pushes the best's own keystrokes out. The end card states the gap from both event logs (time to the finish for word and quote tests, characters reached for timed tests) beside both wpm and accuracy. Races on another input class are not compared. Under reduced motion the ghost stays hidden and the finish is still compared.
 
 Shipped visual system (Afterimage):
 
@@ -67,7 +68,8 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `src/insights.js`: compact run summaries, bounded pattern memory, condition/period filters, weekly medians, recurring targets and frozen daily text selection.
 - `src/progress-view.js`: keyboard-accessible WPM/accuracy charts; presentational only.
 - `src/app.js`: orchestration — screen state, input handling, preferences and theme, history, local challenge, palette commands and the ghost toggle.
-- `src/motion.js`: caret, line scroll and ghost pacer (presentational).
+- `src/motion.js`: caret, line scroll and the ghost caret: the pacer, or a raced best following a recorded track (presentational).
+- `src/ghost-race.js`: Race your best: whether a best can be raced, the ghost's recorded positions over time, and the race-against-best result and copy.
 - `e2e/`: Playwright browser verification (`playwright.config.js`); `e2e/fake-supabase.js` stands in for Supabase.
 - `scripts/measure-latency.mjs`: standalone Chromium browser event-to-paint benchmark for an exclusive desktop session.
 - `src/graph.js`: run-card speed graph (SVG) from the attempt's event log (presentational).
@@ -83,7 +85,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 
 ## Decisions to preserve
 
-Afterimage is binding (see `AGENTS.md` and the Brand Commitments in `PRODUCT.md`): Literata for the passage and numerals, Geist Mono for small labels only; dark and light themes that follow the system until the user picks; one green accent for action, current state and the caret; opaque surfaces with no glass or glow; the still-run motion rule. The text-size preference keeps its stored values `22` / `28` / `36` (small / medium / large), mapped to the passage size in `src/styles.css`. Errors retain the non-colour tint; the wavy underline was removed on 29 September 2026. The ghost pacer and speed graph are presentational and never scored. Keep metrics and conditions visible; never turn small-sample timing into a confident weakness or learning claim.
+Afterimage is binding (see `AGENTS.md` and the Brand Commitments in `PRODUCT.md`): Literata for the passage and numerals, Geist Mono for small labels only; dark and light themes that follow the system until the user picks; one green accent for action, current state and the caret; opaque surfaces with no glass or glow; the still-run motion rule. The text-size preference keeps its stored values `22` / `28` / `36` (small / medium / large), mapped to the passage size in `src/styles.css`. Errors retain the non-colour tint; the wavy underline was removed on 29 September 2026. The ghost pacer, the race-your-best ghost and the speed graph are presentational and never scored; a race of your best is repeated text and never counts. Keep metrics and conditions visible; never turn small-sample timing into a confident weakness or learning claim.
 
 Stop on error is off by default, so mistakes can be typed through; turning it on requires mandatory correction. Live metrics and the on-screen keyboard are also off by default. The selected correction policy is recorded in comparison keys, and retests restore the baseline policy. Do not mix correction policies, quote difficulty/performance points or multiplayer ratings into personal skill progress. Existing unversioned `stilltype-best` data is not imported into comparable bests.
 
@@ -97,7 +99,7 @@ The newest 24 attempt traces and 1,000 compact run summaries (including drills, 
 - Broaden physical-device/browser coverage, including assistive technology, actual touch keyboards and IME behavior. Responsive layouts and direct physical-keyboard input were tested on the pre-redesign build; this is not a complete accessibility certification.
 - Validate the expanded original corpus's descriptive difficulty labels. Generated retests match configured conditions but do not guarantee matched target frequency; target sample limits remain visible.
 - Run/pattern retention is now explicit (1,000 / 120); evaluate account payload size and concurrent-device merges before expanding it further.
-- Recorded ghosts and public matchmaking remain later roadmap stages. Private friend rooms now have lifecycle enforcement, server timing and multi-client testing; full anti-cheat and rankings remain deferred. (The hidden ghost pacer is a pace line, not a recorded ghost.)
+- Shared recorded ghosts (racing someone else's run) and public matchmaking remain later roadmap stages; racing your own best is local (Race your best). Private friend rooms now have lifecycle enforcement, server timing and multi-client testing; full anti-cheat and rankings remain deferred. (The hidden ghost pacer is a pace line, not a recorded ghost.)
 - The recommender is a transparent baseline, not ML. There are no learning outcome benchmarks, user studies, deployment or public rankings.
 - Accounts: Google sign-in needs the Google provider enabled in Supabase (Auth → Providers) with a Google Cloud OAuth client; every origin the app runs on (local dev, the Vercel URL) must be in Auth → URL Configuration → Redirect URLs. Sync is last-writer-wins for the whole profile; merge concurrent edits from two devices if that becomes a real problem.
 
