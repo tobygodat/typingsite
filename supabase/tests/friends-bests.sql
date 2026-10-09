@@ -140,6 +140,8 @@ begin
     jsonb_build_object(k60,jsonb_build_object('wpm',84,'accuracy',97,'date','yesterday')),
     jsonb_build_object(k60,jsonb_build_object('wpm',84,'accuracy',97,'date',today,'attempts',3)),
     jsonb_build_object(k60,pg_temp.best(84,97,today + 2)),
+    jsonb_build_object(k60,pg_temp.best(84,97,date '2025-12-31')),
+    jsonb_build_object(k60,pg_temp.best(84,97,date '0001-01-01')),
     jsonb_build_object(k60,'84 wpm'),
     jsonb_build_object(k60,jsonb_build_array(84,97)),
     jsonb_build_array(jsonb_build_object(k60,pg_temp.best(84,97,today))),
@@ -159,6 +161,11 @@ begin
   begin perform pg_temp.board('publish',pg_temp.summary(jsonb_build_object(k60,jsonb_build_object('wpm',84,'accuracy',97,'date','2026-02-30'))));
   exception when others then denied := true; end;
   if not denied then raise exception 'Accepted a best on a date that does not exist.'; end if;
+  -- The first day of 2026 is the earliest date a best can carry.
+  if race_private.sent_bests(jsonb_build_object(k60,pg_temp.best(84,97,date '2026-01-01')),today)
+      is distinct from jsonb_build_object(k60,pg_temp.best(84,97,date '2026-01-01')) then
+    raise exception 'Refused a best dated on the first day of 2026.';
+  end if;
   if pg_temp.stored(ada) is distinct from jsonb_build_object(k60,pg_temp.best(84,97,today - 2),k30,pg_temp.best(88,96,today - 1)) then
     raise exception 'Refused bests changed the row: %', pg_temp.stored(ada);
   end if;

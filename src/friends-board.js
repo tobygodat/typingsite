@@ -15,6 +15,8 @@ const MAX_ATTEMPTS = 1000;
 const MAX_RUNS = 10000;
 export const MAX_SHAPES = 16;
 const KEY_PATTERN = /^[A-Za-z0-9:._-]{1,200}$/;
+// A best's date: none before Stilltype existed, and none later than tomorrow on the service's clock.
+const FIRST_DAY = Date.parse('2026-01-01T00:00:00Z');
 // The app's own test shapes: timed, word-count and quote tests.
 const SHAPE_MODES = ['time', 'words', 'quote'];
 const $ = (id) => document.getElementById(id);
@@ -43,14 +45,18 @@ export function shareableBest(run) {
 
 // Each test shape's best among `runs`, keyed by its condition key (the shape, corpus and metric
 // version): the fastest, then the more accurate, then the earlier. Dated by the UTC day it was set on
-// the service's clock (`offset` is the service's clock minus this device's). At most 16 shapes: the ones
-// with the most runs, then the most recently run.
-export function shapeBests(runs, offset = 0) {
+// the service's clock (`offset` is the service's clock minus this device's, `date` this device's now).
+// A run dated outside the service's limits on that clock (a clock that was far off when it was stored)
+// is left out, so it can never get a write refused. At most 16 shapes: the ones this build can compare
+// first, then the ones with the most runs, then the most recently run.
+export function shapeBests(runs, offset = 0, date = new Date()) {
+  const serviceToday = Date.parse(`${utcDay(new Date(date.getTime() + offset))}T00:00:00Z`);
   const shapes = new Map();
   for (const run of runs) {
     if (!shareableBest(run)) continue;
-    const key = conditionKey(run.conditions);
     const at = Date.parse(run.at);
+    if (!(at + offset >= FIRST_DAY && at + offset < serviceToday + 2 * DAY_MS)) continue;
+    const key = conditionKey(run.conditions);
     const { wpm, accuracy } = run.score;
     const entry = shapes.get(key) || { runs: 0, last: 0, best: null };
     entry.runs += 1;
@@ -62,7 +68,8 @@ export function shapeBests(runs, offset = 0) {
     shapes.set(key, entry);
   }
   return Object.fromEntries([...shapes]
-    .sort(([keyA, a], [keyB, b]) => b.runs - a.runs || b.last - a.last || (keyA < keyB ? -1 : 1))
+    .sort(([keyA, a], [keyB, b]) => Number(Boolean(shapeOf(keyB))) - Number(Boolean(shapeOf(keyA)))
+      || b.runs - a.runs || b.last - a.last || (keyA < keyB ? -1 : 1))
     .slice(0, MAX_SHAPES)
     .map(([key, { best }]) => [key, { wpm: best.wpm, accuracy: best.accuracy, date: utcDay(new Date(best.at + offset)) }]));
 }
@@ -83,7 +90,7 @@ export function boardSummary(runs, dailyKey, date = new Date(), offset = 0) {
   return {
     daily: best ? { date: day, version: dailyVersion(dailyKey, date), wpm: best.score.wpm, accuracy: best.score.accuracy, attempts: Math.min(daily.length, MAX_ATTEMPTS) } : null,
     week: { start, seconds: Math.min(Math.round(ms / 1000), 7 * DAY_MS / 1000), runs: Math.min(week.length, MAX_RUNS) },
-    bests: shapeBests(runs, offset),
+    bests: shapeBests(runs, offset, date),
   };
 }
 
@@ -112,14 +119,46 @@ export function boardShapes(rows) {
     || length(a.conditions) - length(b.conditions) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
-// Each shape's name in the picker: its length and text, then whichever other parts of its description
-// (word list, input, correction policy) differ between the shapes listed. `parts` is the app's own
-// description of conditions, in parts.
+// A shape's description in parts: the app's own (`parts`), and for a quote the punctuation setting its
+// key keeps ('on' or 'off'). A quote ignores that setting, so the app doesn't describe it, but two quote
+// keys can differ by it alone.
+function describedParts(conditions, parts) {
+  const part = parts(conditions);
+  if (conditions.mode !== 'quote') return part;
+  const { language, length, text, ...rest } = part;
+  return { language, length, text, setting: conditions.punctuation ? 'on' : 'off', ...rest };
+}
+// The setting, named short in the picker and in full under it.
+const named = (name, value, full = false) => (name === 'setting' ? `punctuation ${full ? 'setting ' : ''}${value}` : value);
+// A quote has no word list (its language part is plain "english"), and only a quote has that setting, so
+// each is compared, and named, only between the shapes it belongs to.
+const belongs = (name, conditions) => (name === 'language' ? conditions.mode !== 'quote' : name !== 'setting' || conditions.mode === 'quote');
+// Each listed shape's parts, and which parts tell the listed shapes apart.
+function tellApart(shapes, parts) {
+  const described = shapes.map((shape) => describedParts(shape.conditions, parts));
+  const names = [...new Set(described.flatMap((part) => Object.keys(part)))];
+  const differs = new Set(names.filter((name) => new Set(described.filter((part, index) => belongs(name, shapes[index].conditions))
+    .map((part) => part[name])).size > 1));
+  return { described, names, differs };
+}
+
+// Each shape's name in the picker: its length and text first, then whichever other parts of its
+// description (a quote's punctuation setting, word list, input, correction policy) differ between the
+// shapes listed, so what tells two apart comes before a narrow picker cuts the rest off.
 export function shapeLabels(shapes, parts) {
-  const described = shapes.map((shape) => parts(shape.conditions));
-  const names = Object.keys(described[0] || {});
-  const differs = new Set(names.filter((name) => described.some((part) => part[name] !== described[0][name])));
-  return described.map((part) => names.filter((name) => name === 'length' || name === 'text' || differs.has(name)).map((name) => part[name]).join(' · '));
+  const { described, names, differs } = tellApart(shapes, parts);
+  const order = ['length', 'text', 'setting', ...names].filter((name, index, all) => all.indexOf(name) === index
+    && (name === 'length' || name === 'text' || differs.has(name)));
+  return described.map((part, index) => order.filter((name) => belongs(name, shapes[index].conditions) && part[name] !== undefined)
+    .map((name) => named(name, part[name])).join(' · '));
+}
+
+// The full description of the picked shape: the app's own, with the punctuation setting when it tells
+// this quote apart from another listed.
+export function shapeDescription(shapes, key, parts) {
+  const { described, differs } = tellApart(shapes, parts);
+  const part = described[shapes.findIndex((shape) => shape.key === key)] || {};
+  return Object.entries(part).filter(([name]) => name !== 'setting' || differs.has(name)).map(([name, value]) => named(name, value, true)).join(' · ');
 }
 
 // The shape the picker opens on: the one you have the most best-eligible runs on, then the one the most
@@ -658,8 +697,7 @@ export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, con
       }));
     }
     if (select.value !== key) select.value = key;
-    const shape = shapes.find((entry) => entry.key === key);
-    $('board-bests-meta').textContent = `${Object.values(conditionParts(shape.conditions)).join(' · ')} · best completed test or retest · dates in utc`;
+    $('board-bests-meta').textContent = `${shapeDescription(shapes, key, conditionParts)} · best completed test or retest · dates in utc`;
     $('board-bests').replaceChildren(...bestsOrder(rows, key).map((entry) => (entry.best
       ? row(entry, String(entry.best.wpm), 'wpm', `${entry.best.accuracy}% accuracy · ${entry.best.date}`)
       : row(entry, '—', '', entry.otherVersion ? 'another version of this shape · not compared' : 'no best on this shape yet'))));

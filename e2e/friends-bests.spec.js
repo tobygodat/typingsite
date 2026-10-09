@@ -21,6 +21,9 @@ const K25 = conditionKey(WORDS25);
 const K10 = conditionKey(WORDS10);
 // The same 60-second shape scored by another build of the metric.
 const K60_OLD = conditionKey({ ...TIME60, metricVersion: 'stilltype-metrics-v0' });
+// A 60-second test with stop on error, and a medium quote.
+const K60_STOP = conditionKey({ ...TIME60, correctionPolicy: 'mandatory' });
+const KQUOTE = conditionKey(shape({ mode: 'quote', duration: null, wordList: null, quoteLength: 'medium', difficulty: 'any' }));
 
 const dayAgo = (days, hour = 18) => {
   const date = new Date(Date.now() - days * DAY_MS);
@@ -219,6 +222,32 @@ test('only completed practice tests and retests are shared, never drills, dailie
   expect(supabase.board.published[1].bests).toEqual({ [K60]: { wpm: 64, accuracy: 95, date: at.slice(0, 10) } });
 });
 
+test('a run stored while a clock was far off never stops sharing from turning on', async ({ page, supabase }) => {
+  const { ada } = circle(supabase);
+  const runs = practice();
+  const own60 = fastest(runs, TIME60);
+  const own30 = fastest(runs, TIME30);
+  // The fastest on their shapes: one stored while a clock read four days ahead, one while a clock read
+  // a year before Stilltype. The service refuses either date, so neither travels.
+  const ahead = { ...own60, id: 'ahead', textId: 'text-ahead', at: new Date(Date.now() + 4 * DAY_MS).toISOString(), score: { wpm: 109, accuracy: 99 } };
+  const behind = { ...own30, id: 'behind', textId: 'text-behind', at: '2025-06-01T12:00:00.000Z', score: { wpm: 107, accuracy: 99 } };
+  seedProfile(supabase, ada, [...runs, ahead, behind]);
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect(page.locator('#share-board')).not.toBeChecked();
+  await page.locator('#share-board').check();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  await expect(page.locator('#share-board')).toBeChecked();
+  await expect(page.locator('#friends-board-status')).toHaveText('');
+  expect(supabase.board.published).toHaveLength(1);
+  expect(supabase.board.published[0]).toMatchObject({ action: 'share', week: { start: mondayOf() } });
+  expect(supabase.board.published[0].bests[K60]).toEqual({ wpm: own60.score.wpm, accuracy: own60.score.accuracy, date: own60.at.slice(0, 10) });
+  expect(supabase.board.published[0].bests[K30]).toEqual({ wpm: own30.score.wpm, accuracy: own30.score.accuracy, date: own30.at.slice(0, 10) });
+  expect(supabase.board.summaries.get(ada.id).sharing).not.toBe(false);
+});
+
 test('a clear takes your bests off the board, and undo brings them back', async ({ page, browser, supabase }) => {
   const { ada } = circle(supabase);
   const runs = practice();
@@ -296,7 +325,7 @@ test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
   test('the bests fit a phone and 320px', async ({ page, supabase }, testInfo) => {
-    const { ada } = circle(supabase);
+    const { ada, lin } = circle(supabase);
     await sharing(page, supabase, ada, practice());
     await openApp(page);
     await signInWithEmail(page, 'ada@stilltype.test');
@@ -318,5 +347,34 @@ test.describe('phone', () => {
     const select = await page.locator('#board-shape').boundingBox();
     const column = await page.locator('#friends-board-lists .board-bests').boundingBox();
     expect(select.x + select.width).toBeLessThanOrEqual(column.x + column.width + 0.5);
+
+    // With shapes that differ in more than length and text (a correction policy, a quote), the closed
+    // select at 320px still tells every shape apart: what differs comes right after the length and text,
+    // so the part a long name loses to the ellipsis is never the part that tells it apart. The shape it
+    // opens on fits whole.
+    shares(supabase, lin, { [K60]: best(78, 96, 3), [K60_STOP]: best(74, 98, 2), [KQUOTE]: best(66, 97, 6) });
+    await page.locator('#refresh-friends-board').click();
+    await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+    const picker = page.locator('#board-shape');
+    await expect(picker.locator('option')).toHaveText(['30 s · plain · continue on error', '60 s · plain · stop on error', '60 s · plain · continue on error',
+      '25 words · plain · continue on error', 'medium quote · any · continue on error']);
+    await expect(picker).toHaveValue(K60);
+    const shown = await picker.evaluate((node) => {
+      const style = getComputedStyle(node);
+      const context = document.createElement('canvas').getContext('2d');
+      context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      // The text's room: the box inside its padding, less the native arrow.
+      const room = node.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 20;
+      // What the closed select shows of a name: all of it, or as much as fits before an ellipsis.
+      const visible = (text) => {
+        if (context.measureText(text).width <= room) return text;
+        let end = text.length;
+        while (end > 0 && context.measureText(`${text.slice(0, end)}…`).width > room) end -= 1;
+        return `${text.slice(0, end)}…`;
+      };
+      return { selected: visible(node.selectedOptions[0].textContent), options: [...node.options].map((option) => visible(option.textContent)) };
+    });
+    expect(shown.selected).toBe('60 s · plain · continue on error');
+    expect(new Set(shown.options).size).toBe(5);
   });
 });

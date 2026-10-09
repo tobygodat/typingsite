@@ -15,8 +15,8 @@ export function mondayOf(date = new Date()) {
 const shares = (summary) => Boolean(summary) && summary.sharing !== false;
 
 // As race_private.sent_bests: at most 16 shapes, each a condition key holding exactly a whole wpm of
-// 0-400, a whole accuracy of 0-100 and a date no later than tomorrow (UTC). The message the service
-// raises, or null when they are fine.
+// 0-400, a whole accuracy of 0-100 and a date from 2026 on and no later than tomorrow (UTC). The message
+// the service raises, or null when they are fine.
 export function invalidBests(bests, today) {
   if (bests === undefined || bests === null) return null;
   if (typeof bests !== 'object' || Array.isArray(bests)) return 'Invalid bests.';
@@ -28,7 +28,7 @@ export function invalidBests(bests, today) {
       || Object.keys(best).some((field) => !['wpm', 'accuracy', 'date'].includes(field))
       || !Number.isInteger(best.wpm) || best.wpm < 0 || !Number.isInteger(best.accuracy) || best.accuracy < 0
       || typeof best.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(best.date)) return 'Invalid bests.';
-    if (best.wpm > 400 || best.accuracy > 100 || best.date > tomorrow) return 'That best is outside the board limits.';
+    if (best.wpm > 400 || best.accuracy > 100 || best.date < '2026-01-01' || best.date > tomorrow) return 'That best is outside the board limits.';
   }
   return null;
 }

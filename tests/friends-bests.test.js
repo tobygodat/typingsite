@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
-import { MAX_SHAPES, bestsOrder, boardShapes, boardSummary, defaultShape, runsSince, shapeBests, shapeLabels, shapeOf } from '../src/friends-board.js';
+import { MAX_SHAPES, bestsOrder, boardShapes, boardSummary, defaultShape, runsSince, shapeBests, shapeDescription, shapeLabels, shapeOf } from '../src/friends-board.js';
 import { bestsSince, foldBests, invalidBests } from '../e2e/fake-board.js';
 
 const base = { mode: 'time', duration: 60, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
@@ -17,6 +17,7 @@ const now = new Date('2026-10-09T15:00:00Z');
 const run = (id, overrides = {}) => ({ id, at: '2026-10-09T12:00:00Z', status: 'complete', kind: 'test', interrupted: false,
   conditions: time60, score: { wpm: 70, accuracy: 97 }, elapsedMs: 60000, challengeDate: null, ...overrides });
 const score = (wpm, accuracy) => ({ score: { wpm, accuracy } });
+const utcDayOf = (date) => date.toISOString().slice(0, 10);
 // The app's own description of conditions, in parts (as src/app.js conditionParts gives them).
 const parts = (value) => ({
   language: value.wordList ? `english ${value.wordList}` : 'english',
@@ -80,6 +81,43 @@ test('at most 16 shapes are shared: the ones with the most runs, then the most r
   for (const shape of Object.keys(bests)) assert.match(shape, /^[A-Za-z0-9:._-]{1,200}$/, 'the service accepts the key');
 });
 
+test('a run dated outside the service’s limits never travels, so it can’t get a write refused', () => {
+  // Stored while a clock was days ahead, or years behind: the fastest on their shapes, but left out.
+  const runs = [
+    run('real', { at: '2026-10-08T10:00:00Z', ...score(70, 95) }),
+    run('ahead', { at: '2026-10-16T10:00:00Z', ...score(72, 95) }),
+    run('behind', { at: '2025-12-31T23:00:00Z', ...score(90, 99) }),
+    run('ahead-only', { conditions: time30, at: '2026-10-12T10:00:00Z', ...score(88, 97) }),
+    run('tomorrow', { conditions: words25, at: '2026-10-10T23:59:00Z', ...score(61, 93) }),
+  ];
+  const { bests } = boardSummary(runs, 'daily-key', now);
+  assert.deepEqual(bests, { [key(time60)]: { wpm: 70, accuracy: 95, date: '2026-10-08' }, [key(words25)]: { wpm: 61, accuracy: 93, date: '2026-10-10' } });
+  assert.equal(invalidBests(bests, utcDayOf(now)), null);
+  // On the service’s clock: this device reads two days ahead of it, so its run on the 12th was on the 10th there.
+  const offset = -2 * 86400000;
+  const shifted = boardSummary(runs, 'daily-key', new Date(now.getTime() - offset), offset).bests;
+  assert.deepEqual(shifted[key(time30)], { wpm: 88, accuracy: 97, date: '2026-10-10' });
+  assert.equal(invalidBests(shifted, utcDayOf(now)), null);
+  // Whatever the dates, a summary built from stored runs always passes the service's limits.
+  for (let days = -400; days <= 400; days += 37) {
+    const at = new Date(now.getTime() + days * 86400000).toISOString();
+    assert.equal(invalidBests(boardSummary([...runs, run(`d${days}`, { at, ...score(99, 99) })], 'daily-key', now).bests, utcDayOf(now)), null, at);
+  }
+});
+
+test('the 16 shapes shared are this build’s first, however many runs another version’s have', () => {
+  const runs = [];
+  for (let seconds = 1; seconds <= 16; seconds += 1) {
+    for (let i = 0; i < 5; i += 1) runs.push(run(`old-${seconds}-${i}`, { conditions: { ...time60, duration: seconds, corpus: 'original-en-v4' } }));
+  }
+  runs.push(run('current-1', score(74, 96)), run('current-2', { conditions: words25 }));
+  const bests = shapeBests(runs);
+  assert.equal(Object.keys(bests).length, MAX_SHAPES);
+  assert.deepEqual(bests[key(time60)], { wpm: 74, accuracy: 96, date: '2026-10-09' });
+  assert.ok(key(words25) in bests);
+  assert.equal(Object.keys(bests).filter((shape) => shapeOf(shape)).length, 2);
+});
+
 test('a summary’s bests count only runs since the board’s clear, so cleared bests never travel', () => {
   const runs = [run('before', { at: '2026-10-09T10:00:00Z', ...score(96, 99) }), run('after', { at: '2026-10-09T12:00:00Z', ...score(71, 95) })];
   assert.deepEqual(boardSummary(runs, 'daily-key', now).bests, { [key(time60)]: { wpm: 96, accuracy: 99, date: '2026-10-09' } });
@@ -107,12 +145,33 @@ test('the picker lists comparable shapes in order and names each by what tells i
   ];
   const shapes = boardShapes(rows);
   assert.deepEqual(shapes.map((shape) => shape.key), [key(time30), key(time60), key(words25), key(quote)]);
-  assert.deepEqual(shapeLabels(shapes, parts), ['english 200 · 30 s · plain · stop on error', 'english 200 · 60 s · plain · stop on error',
-    'english 200 · 25 words · plain · continue on error', 'english · medium quote · any · stop on error']);
+  // Length and text first, then what differs: a quote's missing word list is not a difference.
+  assert.deepEqual(shapeLabels(shapes, parts), ['30 s · plain · stop on error', '60 s · plain · stop on error',
+    '25 words · plain · continue on error', 'medium quote · any · stop on error']);
+  const relaxedQuote = { ...quote, correctionPolicy: 'relaxed' };
+  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key({ ...time60, correctionPolicy: 'relaxed' })]: {}, [key(relaxedQuote)]: {} } }]), parts),
+    ['60 s · plain · stop on error', '60 s · plain · continue on error', 'medium quote · any · continue on error']);
+  // Word lists are compared between the shapes that have one.
+  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key({ ...time60, wordList: '1k' })]: {}, [key(quote)]: {} } }]), parts),
+    ['60 s · plain · english 1k', '60 s · plain · english 200', 'medium quote · any']);
   // When the shapes differ only in length and text, that is all the picker says.
   assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time30)]: {}, [key(time60)]: {} } }]), parts), ['30 s · plain', '60 s · plain']);
   assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key(touch60)]: {} } }]), parts), ['60 s · plain · physical keyboard', '60 s · plain · touch input']);
   assert.deepEqual(boardShapes([{ bests: {} }, { bests: undefined }]), []);
+});
+
+test('two quote shapes that differ only by the punctuation setting their keys keep are told apart', () => {
+  const withSetting = { ...quote, punctuation: true };
+  const shapes = boardShapes([{ bests: { [key(quote)]: {} } }, { bests: { [key(withSetting)]: {}, [key(time60)]: {} } }]);
+  assert.deepEqual(shapes.map((shape) => shape.key), [key(time60), key(quote), key(withSetting)]);
+  assert.deepEqual(shapeLabels(shapes, parts), ['60 s · plain', 'medium quote · any · punctuation off', 'medium quote · any · punctuation on']);
+  assert.equal(shapeDescription(shapes, key(withSetting), parts),
+    'english · medium quote · any · punctuation setting on · physical keyboard · stop on error · corpus v5 · metric v1');
+  // When the setting tells nothing apart, neither the name nor the description mentions it.
+  const one = boardShapes([{ bests: { [key(withSetting)]: {}, [key(time60)]: {} } }]);
+  assert.deepEqual(shapeLabels(one, parts), ['60 s · plain', 'medium quote · any']);
+  assert.equal(shapeDescription(one, key(withSetting), parts), 'english · medium quote · any · physical keyboard · stop on error · corpus v5 · metric v1');
+  assert.equal(shapeDescription(one, key(time60), parts), 'english 200 · 60 s · plain · physical keyboard · stop on error · corpus v5 · metric v1');
 });
 
 test('the picker opens on the shape you have the most runs on, then the one most people have a best on', () => {
@@ -149,6 +208,8 @@ test('the fake service folds and cuts bests as the migration does', () => {
   assert.deepEqual(bestsSince({ a: at(1, 1, '2026-10-07'), b: at(1, 1, '2026-10-08'), c: at(1, 1, '2026-10-09') }, '2026-10-09T08:00:00Z'),
     { b: at(1, 1, '2026-10-08'), c: at(1, 1, '2026-10-09') });
   assert.equal(invalidBests({ a: at(84, 97, '2026-10-11') }, '2026-10-09'), 'That best is outside the board limits.');
+  assert.equal(invalidBests({ a: at(84, 97, '2025-12-31') }, '2026-10-09'), 'That best is outside the board limits.');
+  assert.equal(invalidBests({ a: at(84, 97, '2026-01-01') }, '2026-10-09'), null);
   assert.equal(invalidBests({ 'a b': at(84, 97, '2026-10-09') }, '2026-10-09'), 'Invalid bests.');
 });
 

@@ -37,8 +37,9 @@ alter table race_private.summaries add constraint summaries_bests_check
   check (race_private.valid_bests(bests) and (sharing or bests = '{}'::jsonb));
 
 -- The bests a browser sent, checked and written out afresh. None sent (or null) means none in that
--- browser. A best is dated by the UTC day it was set, which can't be later than tomorrow (a run keeps
--- the date it started on, and the browser's clock may be a little ahead).
+-- browser. A best is dated by the UTC day it was set, which can't be before 2026 (Stilltype didn't
+-- exist) or later than tomorrow (a run keeps the date it started on, and the browser's clock may be a
+-- little ahead).
 create function race_private.sent_bests(p_bests jsonb, p_today date)
 returns jsonb language plpgsql stable set search_path = '' as $$
 declare
@@ -59,7 +60,7 @@ begin
       raise exception 'Invalid bests.';
     end if;
     v_date := (v_best->>'date')::date;
-    if (v_best->>'wpm')::integer > 400 or (v_best->>'accuracy')::integer > 100 or v_date > p_today + 1 then
+    if (v_best->>'wpm')::integer > 400 or (v_best->>'accuracy')::integer > 100 or v_date < date '2026-01-01' or v_date > p_today + 1 then
       raise exception 'That best is outside the board limits.';
     end if;
     v_bests := v_bests || jsonb_build_object(v_key, jsonb_build_object('wpm', (v_best->>'wpm')::integer,
