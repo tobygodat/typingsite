@@ -86,12 +86,15 @@ export function recurringTargets(runs, loops, compatibleConditions) {
       || b.slowRuns - a.slowRuns || a.pair.localeCompare(b.pair));
 }
 
+// The seen-text id that marks a day's challenge as attempted (the passage itself has its own id).
+export const dailyChallengeId = (day) => `daily-${day}-v1`;
+
 // Stable UTC selection from a frozen text pool: preferences and seen history never change it.
 export function dailyPassage(date = new Date()) {
   const day = date.toISOString().slice(0, 10);
   const index = Math.floor(Date.parse(`${day}T00:00:00Z`) / 86400000);
   const text = DAILY_TEXTS[((index % DAILY_TEXTS.length) + DAILY_TEXTS.length) % DAILY_TEXTS.length];
-  return { id: `daily-${day}-v1`, sourceTextId: `daily-${textId(text)}`, textVersion: `daily-${textId(text)}@1`, day, text, difficulty: 'steady',
+  return { id: dailyChallengeId(day), sourceTextId: `daily-${textId(text)}`, textVersion: `daily-${textId(text)}@1`, day, text, difficulty: 'steady',
     resetAt: new Date(Date.parse(`${day}T00:00:00Z`) + 86400000).toISOString() };
 }
 
