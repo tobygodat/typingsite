@@ -1933,9 +1933,11 @@ function quickRestart(event) {
   const onPage = !active || active === document.body || active === document.documentElement;
   const onRunAgain = key !== 'Tab' && view === 'results' && active === $('run-again');
   if (!onInput && !onRunAgain && !(onPage && (view === 'practice' || view === 'results'))) return false;
-  // Enter only restarts from the result card or before a run starts, never mid-run. The attempt's
-  // own status decides: runActive only tracks the faded chrome, which a nav click can bring back.
-  if (key === 'Enter' && (attempt?.status === 'running' || (view !== 'results' && !onInput))) return false;
+  // Enter never restarts mid-run; before a run starts or once it has finished it acts from the same
+  // places as the other keys, including the bare page (touch startup leaves the input unfocused).
+  // The attempt's own status decides: runActive only tracks the faded chrome, which a nav click can
+  // bring back.
+  if (key === 'Enter' && attempt?.status === 'running') return false;
   event.preventDefault();
   // A held key restarts once; its repeats would otherwise burn through fresh passages.
   if (!event.repeat) restartTest();

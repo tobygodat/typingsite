@@ -154,6 +154,43 @@ test('enter stays inert mid-run after the chrome returns via the practice nav', 
   await expect(page.locator('#typing-status')).toContainText('In progress');
 });
 
+test('enter restarts from the bare page while the run is ready, but not mid-run', async ({ page }) => {
+  const bodyFocused = () => page.evaluate(() => document.activeElement === document.body);
+  await openApp(page);
+  await chooseWords(page, 10);
+  await openSettings(page);
+  await page.locator('#restart-key').selectOption('Enter');
+  await page.keyboard.press('Escape');
+
+  // Enter on a control activates that control and never restarts: here it opens settings.
+  const first = await passageText(page);
+  await expect(page.locator('details.preferences summary')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.preferences-popover')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.preferences-popover')).toBeHidden();
+  expect(await passageText(page)).toBe(first);
+
+  // As at touch startup, nothing has focus and the run is ready: enter brings a fresh passage.
+  await page.evaluate(() => document.activeElement?.blur());
+  expect(await bodyFocused()).toBe(true);
+  await page.keyboard.press('Enter');
+  await expect.poll(() => passageText(page)).not.toBe(first);
+  await expect(page.locator('#typing-status')).toContainText('Ready');
+  await expect(page.locator('body')).not.toHaveAttribute('data-running', 'true');
+  await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
+
+  // Mid-run, enter from the bare page does nothing.
+  const second = await passageText(page);
+  await typeInto(page, second.slice(0, 3));
+  await page.evaluate(() => document.activeElement?.blur());
+  expect(await bodyFocused()).toBe(true);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#typing-status')).toContainText('In progress');
+  await expect(page.locator('#text-display .char.correct')).toHaveCount(3);
+  expect(await passageText(page)).toBe(second);
+});
+
 for (const stored of ['toString', '__proto__']) {
   test(`a synced restart key of "${stored}" falls back to esc`, async ({ page, supabase }) => {
     const user = supabase.addUser(`restart-${stored.replace(/_/g, '')}@stilltype.test`);
