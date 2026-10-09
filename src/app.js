@@ -23,7 +23,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { MAX_MISSED_WORDS, dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -470,7 +470,9 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   ticker = null;
   setRunning(false);
   primaryNotice = '';
-  sessionKind = kind;
+  // Word practice whose words were cleared with history falls back to a normal test.
+  sessionKind = kind === 'missed' && !wordsPassage ? 'practice' : kind;
+  kind = sessionKind;
   passage = selectedPassage || (kind === 'missed' ? wordsPassage : kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
@@ -1180,13 +1182,14 @@ function renderTraining() {
 
 // Words missed on the first try in two or more recent counted runs, with what was counted.
 function renderMissedWords() {
-  const { runs, recurring, words } = recurringMissedWords(profile.runs);
+  const { runs, inputClass, recurring, words } = recurringMissedWords(profile.runs);
   const enough = words.length >= 2;
+  const input = inputClass === 'touch' ? 'touch input' : 'a physical keyboard';
   $('missed-words-note').textContent = enough
-    ? `First-try misses in your last ${runs} complete tests, retests and daily runs, all test conditions together. Word practice and drills aren’t counted.`
+    ? `First-try misses in your last ${runs} complete tests, retests and new daily passages on ${input}, all other test conditions together, up to ${MAX_MISSED_WORDS} words a run. Word practice and drills aren’t counted.`
     : runs < 2
-      ? `Not enough evidence yet: ${runs ? 'one run' : 'no runs'} counted so far. A word shows here once you miss it on the first try in two complete tests, retests or daily runs.`
-      : `Not enough evidence yet: ${recurring ? `only ${wordCopy(words[0].word)} was missed on the first try in more than one of your last ${runs} runs (in ${words[0].runs})` : `no word was missed on the first try in more than one of your last ${runs} runs`}. The list starts at two such words.`;
+      ? `Not enough evidence yet: ${runs ? `one run on ${input}` : 'no runs'} counted so far. A word shows here once you miss it on the first try in two complete tests, retests or new daily passages.`
+      : `Not enough evidence yet: ${recurring ? `only ${wordCopy(words[0].word)} was missed on the first try in more than one of your last ${runs} runs on ${input} (in ${words[0].runs})` : `no word was missed on the first try in more than one of your last ${runs} runs on ${input}`}. The list starts at two such words.`;
   $('missed-words-list').replaceChildren(...(enough ? words : []).map((item) => {
     const row = element('li', '', 'missed-word');
     row.append(element('span', wordCopy(item.word), 'missed-word-text'), element('span', `missed in ${item.runs} of the last ${runs} runs`, 'num'));
@@ -1195,6 +1198,8 @@ function renderMissedWords() {
   $('missed-words-list').hidden = !enough;
   $('practice-missed-list').hidden = !enough;
   $('practice-missed-list').textContent = `Practice these ${words.length} words`;
+  // The run card can offer "Practice these N words" too, so the name says which words these are.
+  $('practice-missed-list').setAttribute('aria-label', `Practice these ${words.length} words you keep missing`);
 }
 
 function renderHistory() {
@@ -1439,6 +1444,8 @@ function clearHistory() {
   trainingContext = null;
   selectedTarget = null;
   activeRecommendation = null;
+  // The practised words came from the cleared runs, so Run again starts a normal test.
+  wordsPassage = null;
   for (const id of ['result-wpm', 'result-accuracy', 'result-errors', 'result-time']) $(id).textContent = '—';
   $('result-delta').textContent = 'No run yet.';
   $('result-comparison-note').textContent = '';

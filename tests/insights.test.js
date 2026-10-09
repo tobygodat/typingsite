@@ -238,18 +238,35 @@ test('runs pattern memory leaves out record no missed words', () => {
   missing({ kind: 'daily', fresh: false }); // a daily passage shown before
 });
 
-test('missed words stay only on the newest 120 summaries, and trimmed ones are no evidence', () => {
+test('missed words stay only on the newest 120 counted summaries, and trimmed ones are no evidence', () => {
   const runs = Array.from({ length: 130 }, (_, i) => run(String(i), { missedWords: ['the'] }));
-  const practice = run('practice', { kind: 'missed' });
+  // A practice run never counts, so it neither keeps the field nor takes a counted run's place.
+  const practice = run('practice', { kind: 'missed', missedWords: ['the'] });
   delete practice.patterns;
   const kept = retainRuns([...runs, practice]);
-  assert.equal(kept.filter((r) => 'missedWords' in r).length, 119);
+  assert.equal(kept.filter((r) => 'missedWords' in r).length, 120);
   // Dropped, not emptied: an empty list would read as a clean run.
   assert.equal('missedWords' in kept[0], false);
+  assert.equal('missedWords' in kept[9], false);
+  assert.deepEqual(kept[10].missedWords, ['the']);
+  // Pattern counts still go by position among all summaries.
   assert.deepEqual(kept[0].patterns, []);
+  assert.deepEqual(kept[10].patterns, []);
+  assert.deepEqual(kept[11].patterns, runs[11].patterns);
   assert.equal('patterns' in kept.at(-1), false);
+  assert.equal('missedWords' in kept.at(-1), false);
   assert.deepEqual(kept.at(-2).missedWords, ['the']);
   assert.deepEqual(retainRuns(kept), kept);
+});
+
+test('drills and word practice between counted runs never push them out of the stored window', () => {
+  // 100 counted tests, then 100 drills and practice runs: all 100 tests keep their missed words.
+  const tests = Array.from({ length: 100 }, (_, i) => run(`t${i}`, { missedWords: [i % 2 ? 'odd' : 'even'] }));
+  const uncounted = Array.from({ length: 100 }, (_, i) => run(`u${i}`, { kind: i % 2 ? 'drill' : 'missed', interrupted: i % 5 === 0 }));
+  const kept = retainRuns([...tests, ...uncounted]);
+  assert.equal(kept.filter((r) => 'missedWords' in r).length, 100);
+  assert.equal(recurringMissedWords(kept).runs, 100);
+  assert.deepEqual(recurringMissedWords(kept).words.map((w) => [w.word, w.runs]), [['odd', 50], ['even', 50]]);
 });
 
 const missedRun = (id, missedWords, overrides = {}) => run(id, { missedWords, ...overrides });
@@ -257,9 +274,9 @@ const missedRun = (id, missedWords, overrides = {}) => run(id, { missedWords, ..
 test('words you keep missing need two runs and rank by runs missed in, then the latest miss', () => {
   // Legacy summaries without the field normalise to no evidence: not counted at all.
   const legacy = run('legacy');
-  assert.deepEqual(recurringMissedWords([legacy, legacy]), { runs: 0, recurring: 0, words: [] });
+  assert.deepEqual(recurringMissedWords([legacy, legacy]), { runs: 0, inputClass: 'physical-keyboard', recurring: 0, words: [] });
   // One run is never enough, however often the word was missed in it.
-  assert.deepEqual(recurringMissedWords([legacy, missedRun('a', ['the', 'the', 'and'])]), { runs: 1, recurring: 0, words: [] });
+  assert.deepEqual(recurringMissedWords([legacy, missedRun('a', ['the', 'the', 'and'])]), { runs: 1, inputClass: 'physical-keyboard', recurring: 0, words: [] });
 
   const runs = [
     missedRun('a', ['they', 'there']),
@@ -286,24 +303,39 @@ test('word practice, drills, interruptions and repeat daily text never feed the 
   const both = (id, overrides = {}) => missedRun(id, ['the', 'and'], overrides);
   const excluded = [both('m', { kind: 'missed' }), both('d', { kind: 'drill' }), both('i', { interrupted: true }),
     both('s', { status: 'interrupted' }), both('r', { kind: 'race' }), both('p', { kind: 'daily', fresh: false })];
-  assert.deepEqual(recurringMissedWords([...excluded, both('only')]), { runs: 1, recurring: 0, words: [] });
+  assert.deepEqual(recurringMissedWords([...excluded, both('only')]), { runs: 1, inputClass: 'physical-keyboard', recurring: 0, words: [] });
   const counted = recurringMissedWords([both('fresh-daily', { kind: 'daily' }), both('retest', { kind: 'retest' })]);
   assert.deepEqual(counted.words.map((w) => [w.word, w.runs]), [['and', 2], ['the', 2]]);
 });
 
-test('the list counts only the newest 120 counted runs, across all test conditions', () => {
+test('the list counts only the newest 120 counted runs, across all other test conditions', () => {
   const quote = { ...conditions, mode: 'quote', count: null, wordList: null, correctionPolicy: 'relaxed' };
   const runs = [
     missedRun('old-1', ['gone']), missedRun('old-2', ['gone']),
     ...Array.from({ length: 120 }, (_, i) => missedRun(`new-${i}`, [i % 2 ? 'odd' : 'even'], { conditions: i % 3 ? conditions : quote })),
-    // Uncounted runs after them don't push counted runs out of the window.
+    // Uncounted runs after them don't push counted runs out of the window, as stored either.
     ...Array.from({ length: 5 }, (_, i) => missedRun(`drill-${i}`, ['gone'], { kind: 'drill' })),
   ];
-  const result = recurringMissedWords(runs);
-  assert.equal(result.runs, 120);
-  assert.deepEqual(result.words.map((w) => [w.word, w.runs]), [['odd', 60], ['even', 60]]);
+  for (const result of [recurringMissedWords(runs), recurringMissedWords(retainRuns(runs))]) {
+    assert.equal(result.runs, 120);
+    assert.deepEqual(result.words.map((w) => [w.word, w.runs]), [['odd', 60], ['even', 60]]);
+  }
   // At most eight rows by default; `recurring` still says how many qualified.
   const wide = [missedRun('w1', [...'abcdefghij']), missedRun('w2', [...'abcdefghij'])];
   assert.equal(recurringMissedWords(wide).words.length, 8);
   assert.equal(recurringMissedWords(wide).recurring, 10);
+});
+
+test('touch runs are never pooled with physical-keyboard runs: the newest run picks the input', () => {
+  const touch = { ...conditions, inputClass: 'touch' };
+  const keyboard = { ...conditions, inputClass: 'physical-keyboard' };
+  const keys = [missedRun('k1', ['the'], { conditions: keyboard }), missedRun('k2', ['the', 'and'], { conditions: keyboard }), missedRun('k3', ['and'])];
+  const tally = (runs) => { const result = recurringMissedWords(runs); return [result.inputClass, result.runs, result.words.map((w) => [w.word, w.runs])]; };
+  // A run without the field counts as a physical keyboard, the default.
+  assert.deepEqual(tally(keys), ['physical-keyboard', 3, [['and', 2], ['the', 2]]]);
+  // One touch miss of "the" after them doesn't make a third, and touch stands alone.
+  assert.deepEqual(tally([...keys, missedRun('t1', ['the'], { conditions: touch })]), ['touch', 1, []]);
+  assert.deepEqual(tally([...keys, missedRun('t1', ['the'], { conditions: touch }), missedRun('t2', ['the', 'of'], { conditions: touch })]), ['touch', 2, [['the', 2]]]);
+  // Back on a keyboard, the keyboard runs count again, without the touch misses.
+  assert.deepEqual(tally([...keys, missedRun('t1', ['the'], { conditions: touch }), missedRun('k4', ['of'], { conditions: keyboard })]), ['physical-keyboard', 4, [['and', 2], ['the', 2]]]);
 });

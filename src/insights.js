@@ -26,14 +26,20 @@ export function runRecord(attempt, at = attempt.at || null) {
   return record;
 }
 
-// Pattern counts and missed words stay only on the newest 120 summaries, so the profile stays small.
+// Pattern counts stay only on the newest 120 summaries, and missed words only on the newest 120 runs
+// the list counts, so the profile stays small. Counting those from the end means word practice and
+// drills between them never push counted runs out of the list's window.
 export function retainRuns(runs) {
   const kept = runs.slice(-MAX_RUN_SUMMARIES);
+  const keepWords = new Set();
+  for (let i = kept.length - 1; i >= 0 && keepWords.size < MAX_PATTERN_RUNS; i -= 1) if (missedWordsRun(kept[i])) keepWords.add(i);
   return kept.map((run, i) => {
-    if (i >= kept.length - MAX_PATTERN_RUNS || (!run.patterns && !run.missedWords)) return run;
-    // Drop the field rather than empty it: an empty list would read as a run with no misses.
-    const { missedWords, ...older } = run;
-    return run.patterns ? { ...older, patterns: [] } : older;
+    const trimPatterns = i < kept.length - MAX_PATTERN_RUNS && run.patterns;
+    const trimWords = 'missedWords' in run && !keepWords.has(i);
+    if (!trimPatterns && !trimWords) return run;
+    // Drop missed words rather than empty them: an empty list would read as a run with no misses.
+    const { missedWords, ...rest } = run;
+    return { ...(trimWords ? rest : run), ...(trimPatterns ? { patterns: [] } : {}) };
   });
 }
 
@@ -43,6 +49,9 @@ export const trendRun = (run) => validRun(run) && ['test', 'retest'].includes(ru
 // shown before. Drills, word practice, races and interrupted runs are left out.
 export const patternRun = (run) => validRun(run) && ['test', 'retest', 'daily'].includes(run.kind)
   && (run.kind !== 'daily' || run.fresh !== false);
+// The runs "words you keep missing" counts: those pattern memory reads that recorded missed words.
+const missedWordsRun = (run) => patternRun(run) && Array.isArray(run.missedWords);
+const inputClassOf = (run) => run?.conditions?.inputClass || 'physical-keyboard';
 
 export function filterRuns(runs, key, days = 'all', date = new Date()) {
   const cutoff = days === 'all' ? null : date.getTime() - Number(days) * 86400000;
@@ -102,11 +111,14 @@ export function recurringTargets(runs, loops, compatibleConditions) {
 }
 
 // Words missed on the first try in at least two of the newest 120 runs that recorded missed words,
-// across all test conditions. `runs` is how many runs were counted, so a row can say "missed in 3
-// of the last 41 runs". Ranked by the number of runs missed in, then the most recent miss (by run
-// order, since older summaries can lack a date).
+// on one input class (the newest such run's: touch is never pooled with a physical keyboard) and
+// across all other test conditions. `runs` is how many runs were counted, so a row can say "missed
+// in 3 of the last 41 runs". Ranked by the number of runs missed in, then the most recent miss (by
+// run order, since older summaries can lack a date).
 export function recurringMissedWords(runs, limit = 8) {
-  const counted = runs.filter((run) => patternRun(run) && Array.isArray(run.missedWords)).slice(-MAX_PATTERN_RUNS);
+  const recent = runs.filter(missedWordsRun).slice(-MAX_PATTERN_RUNS);
+  const inputClass = inputClassOf(recent.at(-1));
+  const counted = recent.filter((run) => inputClassOf(run) === inputClass);
   const words = new Map();
   counted.forEach((run, index) => {
     for (const word of new Set(run.missedWords)) {
@@ -118,7 +130,7 @@ export function recurringMissedWords(runs, limit = 8) {
   });
   const recurring = [...words.values()].filter((item) => item.runs >= 2)
     .sort((a, b) => b.runs - a.runs || b.lastIndex - a.lastIndex || a.word.localeCompare(b.word));
-  return { runs: counted.length, recurring: recurring.length, words: recurring.slice(0, limit) };
+  return { runs: counted.length, inputClass, recurring: recurring.length, words: recurring.slice(0, limit) };
 }
 
 // Stable UTC selection from a frozen text pool: preferences and seen history never change it.
