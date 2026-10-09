@@ -239,7 +239,6 @@ export function cacheProfileText(userId, text) {
 // syncing merges rather than letting one whole copy replace another.
 
 export const MAX_STORED_ATTEMPTS = 24;
-const MAX_UNDONE_CLEARS = 20;
 
 // Every history collection in a profile: the timestamp it is ordered and cleared by, and the cap kept
 // after a save or merge. Items are never edited once stored, so an id names one record everywhere.
@@ -251,19 +250,38 @@ export const HISTORY = {
 };
 
 const list = (value) => (Array.isArray(value) ? value.filter((item) => item !== null && item !== undefined) : []);
+const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+const recordId = (item) => String(item.id ?? JSON.stringify(item));
 
 export function capHistory(profile) {
   for (const [name, { keep }] of Object.entries(HISTORY)) profile[name] = keep(list(profile[name]));
   return profile;
 }
 
-// The marker a clear leaves: after now, after everything it removes and after any earlier marker (an
-// undone one included), so a copy elsewhere drops the same items by date even when this device's clock
-// runs behind the one that recorded them.
-export function clearMarker(profile) {
-  const stamps = Object.entries(HISTORY).flatMap(([name, { at }]) => list(profile[name]).map((item) => item[at]));
-  for (const best of Object.values(profile.bests || {})) stamps.push(best?.at);
-  return stampAfter(profile.historyClearedAt, ...list(profile.undoneClears), ...stamps);
+// Whether best `a` beats `b`: the higher wpm, then the earlier record (a later run has to beat a best,
+// not match it), then the attempt id. A total order, so every copy keeps the same best for a tie
+// whichever side merged first, and copies settle instead of rewriting the row on every load.
+export const beatsBest = (a, b) => !b || a.wpm > b.wpm || (a.wpm === b.wpm
+  && (compare(a.at || '', b.at || '') || compare(String(a.attemptId ?? ''), String(b.attemptId ?? ''))) < 0);
+
+// Clear history: every HISTORY collection, the bests and the seen passages (preferences stay). The
+// marker it leaves is this clock's now, moved past any earlier marker (an undone one included, so a new
+// clear never matches an old one). Copies elsewhere drop what they hold from at or before it. A record
+// stamped after it, by a clock running ahead of this one, is named by id instead: taking the latest
+// stamp as the marker would move the marker into the future, where it would also take runs made
+// elsewhere after the clear.
+export function clearProfile(profile) {
+  const marker = stampAfter(profile.historyClearedAt, ...list(profile.undoneClears));
+  const ahead = new Set(list(profile.historyClearedIds));
+  for (const [name, { at }] of Object.entries(HISTORY)) {
+    for (const item of list(profile[name])) if ((item[at] || '') > marker && item.id) ahead.add(item.id);
+  }
+  for (const best of Object.values(profile.bests || {})) if ((best?.at || '') > marker && best.attemptId) ahead.add(best.attemptId);
+  const cleared = { ...profile, historyClearedAt: marker, bests: {}, seenTextIds: [] };
+  for (const name of Object.keys(HISTORY)) cleared[name] = [];
+  if (ahead.size) cleared.historyClearedIds = [...ahead].sort();
+  else delete cleared.historyClearedIds;
+  return cleared;
 }
 
 const stampsOf = (side) => (side.preferencesAt && typeof side.preferencesAt === 'object' ? side.preferencesAt : {});
@@ -297,32 +315,38 @@ const fuller = (held, other) => ((other.patterns?.length || 0) > (held.patterns?
 
 // Merges another copy of this account's profile (`cloud`: the account row, or another tab's cache) into
 // this device's (`local`). Field by field:
-// - attempts, runs, loops (HISTORY): union by id, ordered by date, then the usual caps.
-// - bests: the higher wpm per condition key, so a merge never lowers a best; a tie keeps this device's.
+// - attempts, runs, loops (HISTORY): union by id, ordered by date, then the usual caps. Equal dates
+//   (undated records from older builds) order by id, so both sides list them the same way.
+// - bests: per condition key the best by beatsBest (the higher wpm), so a merge never lowers a best.
 // - seenTextIds: union, so a passage once shown is never offered as fresh again.
 // - preferences and preferencesAt: setting by setting, from mergePreferences above.
-// - historyClearedAt: the newest clear that hasn't been undone. A side that hasn't applied it yet
-//   (an older marker of its own) may still hold what that clear removed: its history and bests
-//   dated at or before the marker are dropped, and its seen ids are kept only where its surviving
-//   history shows the passage after the clear. Seen ids carry no date, so this is the one place a
-//   seen id can go: one only displayed, never run, on a device that hadn't yet heard of the clear.
-//   That side's surviving practice runs then set any best the old one had blocked.
-// - undoneClears: union of clears that were undone (newest 20), which never apply again.
+// - historyClearedAt: the newest clear that hasn't been undone, with historyClearedIds (records it
+//   named because they were stamped after it). A side that hasn't applied it yet (an older marker of
+//   its own) may still hold what that clear removed: its history and bests dated at or before the
+//   marker, or named by it, are dropped, and its seen ids are kept only where its surviving history
+//   shows the passage after the clear. Seen ids carry no date, so this is the one place a seen id can
+//   go: one only displayed, never run, on a device that hadn't yet heard of the clear. That side's
+//   surviving practice runs then set any best the old one had blocked.
+// - undoneClears: union of clears that were undone, which never apply again. Never trimmed: a copy
+//   that applied an old clear and missed its undo must still find it here, and each entry takes a
+//   typed confirmation and an Undo within seconds, so the list stays tiny.
 // - updatedAt: the later of the two (the time of the last saved edit anywhere).
 // - profileId: the smaller id, so every copy settles on the same one whichever merges first.
 // - version and any field this build doesn't know: this device's copy, filled from the other side, so
 //   a field written by a newer build survives a merge made by an older one.
 export function mergeSynced(local, cloud) {
-  const undone = [...new Set([...list(local.undoneClears), ...list(cloud.undoneClears)])].sort().slice(-MAX_UNDONE_CLEARS);
+  const undone = [...new Set([...list(local.undoneClears), ...list(cloud.undoneClears)])].sort();
   const live = (marker) => (marker && !undone.includes(marker) ? marker : '');
   const clearedAt = [live(local.historyClearedAt), live(cloud.historyClearedAt)].sort().at(-1);
+  const clearedIds = new Set([local, cloud].filter((side) => clearedAt && side.historyClearedAt === clearedAt)
+    .flatMap((side) => list(side.historyClearedIds)));
 
   const surviving = (side) => {
     const stale = (side.historyClearedAt || '') < clearedAt;
-    const after = (stamp) => !stale || (stamp || '') > clearedAt;
+    const after = (stamp, id) => !stale || ((stamp || '') > clearedAt && !clearedIds.has(id));
     const kept = {};
-    for (const [name, { at }] of Object.entries(HISTORY)) kept[name] = list(side[name]).filter((item) => after(item[at]));
-    kept.bests = Object.fromEntries(Object.entries(side.bests || {}).filter(([, best]) => best && after(best.at)));
+    for (const [name, { at }] of Object.entries(HISTORY)) kept[name] = list(side[name]).filter((item) => after(item[at], item.id));
+    kept.bests = Object.fromEntries(Object.entries(side.bests || {}).filter(([, best]) => best && after(best.at, best.attemptId)));
     const shown = new Set();
     for (const name of Object.keys(HISTORY)) {
       for (const item of kept[name]) {
@@ -341,23 +365,21 @@ export function mergeSynced(local, cloud) {
   for (const [name, { at, keep }] of Object.entries(HISTORY)) {
     const byId = new Map();
     for (const item of [...mine[name], ...theirs[name]]) {
-      const id = item.id ?? JSON.stringify(item);
+      const id = recordId(item);
       byId.set(id, byId.has(id) ? fuller(byId.get(id), item) : item);
     }
-    // Stable sort: undated records (older builds) first, in the order each side kept them.
-    merged[name] = keep([...byId.values()].sort((a, b) => ((a[at] || '') < (b[at] || '') ? -1 : (a[at] || '') > (b[at] || '') ? 1 : 0)));
+    merged[name] = keep([...byId.values()].sort((a, b) => compare(a[at] || '', b[at] || '') || compare(recordId(a), recordId(b))));
   }
   merged.bests = { ...theirs.bests };
   for (const [key, best] of Object.entries(mine.bests)) {
-    if (!(merged.bests[key]?.wpm > best.wpm)) merged.bests[key] = best;
+    if (beatsBest(best, merged.bests[key])) merged.bests[key] = best;
   }
   // On a side that hadn't heard of the clear, an old best may have kept a later run from becoming one.
   // With the old best gone, that run is the best it would have been: the same rule storeAttempt uses.
   for (const run of [mine, theirs].filter((kept) => kept.stale).flatMap((kept) => kept.runs)) {
     const key = conditionKey(run.conditions);
-    if (trendRun(run) && Number.isFinite(run.score?.wpm) && !(merged.bests[key]?.wpm >= run.score.wpm)) {
-      merged.bests[key] = { wpm: run.score.wpm, attemptId: run.id, at: run.at };
-    }
+    const best = { wpm: run.score?.wpm, attemptId: run.id, at: run.at };
+    if (trendRun(run) && Number.isFinite(best.wpm) && beatsBest(best, merged.bests[key])) merged.bests[key] = best;
   }
   merged.seenTextIds = [...new Set([...mine.seenTextIds, ...theirs.seenTextIds])];
 
@@ -367,6 +389,8 @@ export function mergeSynced(local, cloud) {
   else delete merged.preferencesAt;
   if (clearedAt) merged.historyClearedAt = clearedAt;
   else delete merged.historyClearedAt;
+  if (clearedIds.size) merged.historyClearedIds = [...clearedIds].sort();
+  else delete merged.historyClearedIds;
   if (undone.length) merged.undoneClears = undone;
   else delete merged.undoneClears;
   const updatedAt = [local.updatedAt, cloud.updatedAt].filter(Boolean).sort().at(-1);
@@ -382,6 +406,29 @@ export function mergeSynced(local, cloud) {
 export function revokeClear(current, before, marker) {
   const undone = [...list(before.undoneClears), ...list(current.undoneClears), ...(marker ? [marker] : [])];
   return mergeSynced({ ...before, undoneClears: undone }, current);
+}
+
+// mergeSynced for a tab that keeps what a clear removed, so an Undo restores history from every copy
+// and not only from the clearing tab's own. A clear can reach a copy before its Undo does: the account
+// row, another tab, or another device holding runs the clearing tab never saw. `held` is
+// { marker, before } or null: every copy merged here that the newest live clear removed history from,
+// as it was before that. When a copy arrives with that clear undone, what was held comes back.
+// Returns { merged, held }; the caller keeps `held` in memory.
+export function mergeAndHold(held, local, cloud) {
+  let merged = mergeSynced(local, cloud);
+  const marker = merged.historyClearedAt;
+  if (marker) {
+    let before = held?.marker === marker ? held.before : null;
+    for (const side of [local, cloud]) {
+      if (side.historyClearedAt !== marker) before = before ? mergeSynced(before, side) : side;
+    }
+    if (before) held = { marker, before };
+  }
+  if (held && list(merged.undoneClears).includes(held.marker)) {
+    merged = revokeClear(merged, held.before, held.marker);
+    held = null;
+  }
+  return { merged, held };
 }
 
 // A digest of everything a merge can change, without walking every keystroke: two profiles with the

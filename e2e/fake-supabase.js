@@ -38,6 +38,8 @@ export class FakeSupabase {
     this.googleCodes = new Map();
     // Routed requests bypass context.setOffline, so offline tests flip this too.
     this.offline = false;
+    // How long issued access tokens last. Under a minute, every request refreshes first.
+    this.sessionSeconds = 3600;
     this.races = new FakeRaces(this);
   }
 
@@ -67,8 +69,8 @@ export class FakeSupabase {
       access_token: access,
       token_type: 'bearer',
       refresh_token: refresh,
-      expires_in: 3600,
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: this.sessionSeconds,
+      expires_at: Math.floor(Date.now() / 1000) + this.sessionSeconds,
       user: { id: user.id, email: user.email },
     };
   }

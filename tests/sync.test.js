@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HISTORY, MAX_STORED_ATTEMPTS, capHistory, clearMarker, insertCloudProfile, mergeSynced, revokeClear,
+  HISTORY, MAX_STORED_ATTEMPTS, capHistory, clearProfile, insertCloudProfile, mergeAndHold, mergeSynced, revokeClear,
   sameProfile, stampAfter, updateCloudProfile,
 } from '../src/account.js';
 import { MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
@@ -44,7 +44,7 @@ test('history is a union by id, ordered by date, before the caps apply', () => {
   assert.ok(runs.slice(-MAX_PATTERN_RUNS).every((r) => r.patterns.length === 1));
 });
 
-test('undated records from older builds sort first, and the fuller copy of a run is kept', () => {
+test('undated records from older builds sort first (by id), and the fuller copy of a run is kept', () => {
   const merged = mergeSynced(
     profile({ runs: [item('old-a', null), item('new', 5, { patterns: [] })] }),
     profile({ runs: [item('old-b', null), item('new', 5, { patterns: [['th', 2, 1, 0, null, null]] })] }),
@@ -59,9 +59,25 @@ test('a merge never lowers a best', () => {
   for (const merged of [mergeSynced(local, cloud), mergeSynced(cloud, local)]) {
     assert.deepEqual(Object.fromEntries(Object.entries(merged.bests).map(([key, best]) => [key, best.wpm])), { time30: 80, words25: 90, quote: 50 });
   }
-  // A tie keeps this device's record.
-  const tie = mergeSynced(profile({ bests: { k: { wpm: 70, attemptId: 'mine' } } }), profile({ bests: { k: { wpm: 70, attemptId: 'theirs' } } }));
-  assert.equal(tie.bests.k.attemptId, 'mine');
+});
+
+test('ties settle the same way whichever side merges, so copies stop rewriting the row', () => {
+  // The same best speed from two runs: the earlier record stands, as a later run must beat a best.
+  const laptop = profile({ bests: { k: { wpm: 72, attemptId: 'laptop-run', at: minute(3) } }, runs: [item('b', null), item('x', 2)] });
+  const phone = profile({ bests: { k: { wpm: 72, attemptId: 'phone-run', at: minute(1) } }, runs: [item('a', null), item('y', 2)] });
+  const merged = mergeSynced(laptop, phone);
+  assert.ok(sameProfile(merged, mergeSynced(phone, laptop)));
+  assert.equal(merged.bests.k.attemptId, 'phone-run');
+  // Undated records, and records with the same date, order by id.
+  assert.deepEqual(ids(merged.runs), ['a', 'b', 'x', 'y']);
+  // With nothing else to tell them apart, the attempt id decides.
+  const mine = profile({ bests: { k: { wpm: 70, attemptId: 'mine' } } });
+  const theirs = profile({ bests: { k: { wpm: 70, attemptId: 'theirs' } } });
+  assert.equal(mergeSynced(mine, theirs).bests.k.attemptId, 'mine');
+  assert.equal(mergeSynced(theirs, mine).bests.k.attemptId, 'mine');
+  // Each side merging the other's result changes nothing, so neither pushes again.
+  assert.ok(sameProfile(mergeSynced(laptop, merged), merged));
+  assert.ok(sameProfile(mergeSynced(phone, merged), merged));
 });
 
 test('seen passages are a union, so nothing seen is offered as fresh again', () => {
@@ -148,9 +164,12 @@ test('a run the cleared best had blocked becomes the best once that best is drop
 
 test('undo restores history even after the clear has synced, and a later clear still works', () => {
   const history = profile({ runs: [item('r1', 1, { textId: 'q1' })], attempts: [item('r1', 1)], seenTextIds: ['q1'], bests: { k: { wpm: 80, at: minute(1) } } });
-  const marker = clearMarker(history);
+  const cleared = clearProfile(history);
+  const marker = cleared.historyClearedAt;
   assert.ok(marker > minute(1));
-  const cleared = { ...profile(), historyClearedAt: marker };
+  assert.deepEqual([cleared.attempts, cleared.runs, cleared.loops, cleared.seenTextIds, cleared.bests], [[], [], [], [], {}]);
+  assert.deepEqual(cleared.preferences, history.preferences);
+  assert.equal(cleared.historyClearedIds, undefined);
   // The clear reaches the account row and another device that had the same history.
   const row = mergeSynced(cleared, history);
   const otherDevice = mergeSynced(profile({ ...history, runs: [...history.runs, item('r2', 2)] }), row);
@@ -173,10 +192,90 @@ test('undo restores history even after the clear has synced, and a later clear s
   assert.deepEqual(ids(revokeClear(sinceClear, history, marker).runs), ['r1', 'r3']);
 
   // The undone marker never applies again, but a new clear does.
-  const again = revokeClear(cleared, history, marker);
-  const second = clearMarker(again);
-  const clearedAgain = { ...profile(), undoneClears: again.undoneClears, historyClearedAt: second };
+  const clearedAgain = clearProfile(revokeClear(cleared, history, marker));
+  assert.ok(clearedAgain.historyClearedAt > marker);
   assert.deepEqual(ids(mergeSynced(clearedAgain, mergeSynced(restored, row)).runs), []);
+});
+
+test('undo restores what the clear removed from copies the clearing tab never saw', () => {
+  // The phone ran d1 and pushed it; the laptop never pulled it. The phone also holds d2, which never
+  // reached the account (it was offline).
+  const laptopBefore = profile({ runs: [item('l1', 1, { textId: 'ql' })], seenTextIds: ['ql'] });
+  let row = profile({ runs: [item('l1', 1, { textId: 'ql' }), item('d1', 2, { textId: 'qd' })], seenTextIds: ['ql', 'qd'] });
+  let phone = profile({ runs: [...row.runs, item('d2', 3, { textId: 'q2' })], seenTextIds: [...row.seenTextIds, 'q2'] });
+
+  // The laptop clears, and its push merges the row and writes the result.
+  let laptop = clearProfile(laptopBefore);
+  let laptopHeld = { marker: laptop.historyClearedAt, before: laptopBefore };
+  ({ merged: laptop, held: laptopHeld } = mergeAndHold(laptopHeld, laptop, row));
+  row = laptop;
+  assert.deepEqual(ids(row.runs), []);
+  assert.deepEqual(ids(laptopHeld.before.runs), ['l1', 'd1']);
+
+  // The phone comes back online before the undo: it hears of the clear and drops its copies.
+  let phoneHeld = null;
+  ({ merged: phone, held: phoneHeld } = mergeAndHold(phoneHeld, phone, row));
+  row = phone;
+  assert.deepEqual(ids(phone.runs), []);
+
+  // Undo on the laptop, from what it held, reaches the row; the phone then gives back what it held.
+  laptop = revokeClear(laptop, laptopHeld.before, laptopHeld.marker);
+  ({ merged: row } = mergeAndHold(null, laptop, row));
+  assert.deepEqual(ids(row.runs), ['l1', 'd1']);
+  ({ merged: phone, held: phoneHeld } = mergeAndHold(phoneHeld, phone, row));
+  assert.equal(phoneHeld, null);
+  assert.deepEqual(ids(phone.runs), ['l1', 'd1', 'd2']);
+  assert.deepEqual([...phone.seenTextIds].sort(), ['q2', 'qd', 'ql']);
+  assert.equal(phone.historyClearedAt, undefined);
+  // And the laptop's next merge with the phone's copy brings d2 there too.
+  assert.deepEqual(ids(mergeAndHold(null, laptop, phone).merged.runs), ['l1', 'd1', 'd2']);
+
+  // A clear that is never undone keeps everything it removed out, held or not.
+  const kept = mergeAndHold(null, profile({ runs: [item('old', 1)] }), clearProfile(profile()));
+  assert.deepEqual(ids(kept.merged.runs), []);
+  assert.deepEqual(ids(kept.held.before.runs), ['old']);
+  assert.deepEqual(ids(mergeAndHold(kept.held, kept.merged, profile({ historyClearedAt: kept.merged.historyClearedAt })).merged.runs), []);
+});
+
+test('a clock running ahead elsewhere can’t move a clear into the future', () => {
+  const hours = (n) => new Date(Date.now() + n * 3600000).toISOString();
+  // The laptop holds a run (and best) from a tablet whose clock runs 6 h fast.
+  const tablet = { id: 'tablet', at: hours(5), textId: 'q-tablet' };
+  const laptop = profile({ runs: [item('mine', 1), tablet], seenTextIds: ['q-tablet'], bests: { k: { wpm: 90, attemptId: 'tablet', at: hours(5) } } });
+  const cleared = clearProfile(laptop);
+  assert.ok(Date.parse(cleared.historyClearedAt) <= Date.now() + 1000);
+  assert.deepEqual(cleared.historyClearedIds, ['tablet']);
+
+  // A phone with a right clock hadn't heard of the clear: it still holds both, and ran again 2 h later.
+  const later = { id: 'later', at: hours(2), textId: 'q-later' };
+  const phone = profile({ runs: [item('mine', 1), tablet, later], seenTextIds: ['q-tablet', 'q-later'], bests: { k: { wpm: 90, attemptId: 'tablet', at: hours(5) } } });
+  for (const merged of [mergeSynced(cleared, phone), mergeSynced(phone, cleared)]) {
+    assert.deepEqual(ids(merged.runs), ['later']);
+    assert.deepEqual(merged.seenTextIds, ['q-later']);
+    assert.deepEqual(merged.bests, {});
+    assert.deepEqual(merged.historyClearedIds, ['tablet']);
+  }
+  // Undone, the named records come back like any other.
+  const restored = mergeSynced(revokeClear(cleared, laptop, cleared.historyClearedAt), phone);
+  assert.deepEqual(ids(restored.runs), ['mine', 'later', 'tablet']);
+  assert.equal(restored.historyClearedIds, undefined);
+});
+
+test('an undone clear stays undone however many clears follow it', () => {
+  // A device applies the first clear and goes offline; elsewhere it is undone, then cleared and
+  // undone 25 more times.
+  const history = profile({ runs: [item('r1', 1)] });
+  const first = clearProfile(history);
+  let row = revokeClear(first, history, first.historyClearedAt);
+  for (let n = 0; n < 25; n += 1) {
+    const cleared = clearProfile(row);
+    row = revokeClear(cleared, row, cleared.historyClearedAt);
+  }
+  assert.equal(row.undoneClears.length, 26);
+  for (const back of [mergeSynced(first, row), mergeSynced(row, first)]) {
+    assert.deepEqual(ids(back.runs), ['r1']);
+    assert.equal(back.historyClearedAt, undefined);
+  }
 });
 
 test('fields this build does not know, and profiles from older builds, survive a merge', () => {

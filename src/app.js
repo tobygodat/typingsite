@@ -141,6 +141,9 @@ let resultBestBefore = null;
 let clearSnapshot = null;
 let clearedAt = null;
 let clearTimer = null;
+// What the newest clear removed from each copy merged here, so an Undo from any tab brings all of it
+// back (account.mergeAndHold): { marker, before } or null. In memory only.
+let heldClear = null;
 
 let race = {
   passage: null,
@@ -174,9 +177,13 @@ function saveProfile() {
 // The device cache is shared by every tab signed in to this account. Whatever another tab wrote since
 // this one last read it is merged in first, so no tab overwrites another's runs or settings.
 function storeLocally() {
-  // Signed out (or in as someone else) in another tab: this tab's copy must not come back.
-  if (!signedInAs(session.user.id)) return false;
-  const stored = account.loadCachedProfileText(session.user.id);
+  const userId = session.user.id;
+  const stored = account.loadCachedProfileText(userId);
+  // Signed out here (the sign-out removed the copy this tab had read), or someone else signed in: this
+  // tab's copy must not come back. A session that only ended (its refresh was refused) keeps caching,
+  // as before, so the next sign-in on this device merges these runs into the account.
+  const current = account.loadSession()?.user.id;
+  if ((current && current !== userId) || (stored === null && cacheText !== null)) return false;
   if (stored && stored !== cacheText) {
     try {
       absorb(JSON.parse(stored));
@@ -185,22 +192,30 @@ function storeLocally() {
     } catch {}
   }
   const text = JSON.stringify(profile);
-  const saved = account.cacheProfileText(session.user.id, text);
+  const saved = account.cacheProfileText(userId, text);
   if (saved) cacheText = text;
   return saved;
 }
 
 // Records preference edits made in this tab (only the settings that changed, on top of the stored ones,
-// which may already hold a newer change from elsewhere) and stamps each for syncing.
-function commitPreferences() {
+// which may already hold a newer change from elsewhere) and stamps each for syncing. `chosen` names
+// settings the person just picked: stamped even when the pick matches what is shown, so it outranks a
+// different value from another tab or device that was waiting to apply.
+function commitPreferences(chosen = []) {
   const json = JSON.stringify(prefs);
-  if (json === livePreferences) return;
+  if (json === livePreferences && !chosen.length) return;
   const before = JSON.parse(livePreferences);
-  const edited = Object.keys(prefs).filter((key) => prefs[key] !== before[key]);
+  const edited = Object.keys(prefs).filter((key) => prefs[key] !== before[key] || chosen.includes(key));
   const stamps = profile.preferencesAt || {};
   profile.preferences = { ...profile.preferences, ...Object.fromEntries(edited.map((key) => [key, prefs[key]])) };
   profile.preferencesAt = { ...stamps, ...Object.fromEntries(edited.map((key) => [key, account.stampAfter(stamps[key])])) };
   livePreferences = json;
+}
+
+// Saves after the person picks settings, stamping the ones picked (see commitPreferences).
+function saveChoice(...keys) {
+  commitPreferences(keys);
+  return saveProfile();
 }
 
 // Settings that only change how things look. Everything else is a test condition.
@@ -208,6 +223,9 @@ const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'fo
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
+// A practice passage nobody has started typing. Newer test conditions from elsewhere replace it, as a
+// change of conditions here would; retests, drills and the daily keep the conditions they started with.
+const untouchedPractice = () => sessionKind === 'practice' && attempt?.status === 'ready' && !attempt.events.length;
 
 // Brings the preferences in use up to the stored ones once that can't disturb a run: nothing changes
 // mid-run, and test conditions wait while a passage is prepared, so the passage on screen always
@@ -295,12 +313,27 @@ function setRunning(running) {
   if (runActive !== running) {
     runActive = running;
     inbox?.runChanged();
-    // Changes that arrived from elsewhere mid-run apply once the run is over.
-    if (!running && preferencesWaiting) followStoredPreferences();
-    if (!running && cacheWaiting) setTimeout(absorbCache);
   }
+  if (!running) flushDeferredSync();
   showChrome(!running);
 }
+
+// Changes from other tabs and devices held back while a run was in progress, taken in as soon as none
+// is: when a run, race turn or race ends, is interrupted or restarts, or the view changes. The data merges
+// at once, so the run that just ended is labelled and stored against it and the next passage is drawn
+// from it; the screen catches up just after.
+function flushDeferredSync() {
+  if (runInProgress()) return;
+  if (cacheWaiting && absorbCache()) setTimeout(showMerged);
+  if (preferencesWaiting) followStoredPreferences();
+}
+
+// A one-keyboard race never sets runActive; its turns start, end and restart here.
+function raceRunChanged() {
+  inbox?.runChanged();
+  flushDeferredSync();
+}
+
 // Skip no-op writes on every keystroke.
 function showChrome(shown) {
   const value = String(!shown);
@@ -550,8 +583,10 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
-  // The next passage is prepared with the newest stored preferences, including any from elsewhere.
-  followStoredPreferences({ conditions: true });
+  // The next passage is prepared with the newest stored preferences, including any from elsewhere. A
+  // retest or drill keeps its baseline's conditions (restoreConditions), through a restart too; newer
+  // ones from elsewhere wait until it is over.
+  followStoredPreferences({ conditions: kind !== 'retest' && kind !== 'drill' });
   primaryNotice = '';
   sessionKind = kind;
   passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
@@ -653,7 +688,7 @@ function startAttempt(targetAttempt, type = 'primary') {
     race.startTime = stamp;
     race.attempt.status = 'running';
     race.attempt.startedAt = 0;
-    inbox?.runChanged();
+    raceRunChanged();
   }
 }
 
@@ -1083,7 +1118,8 @@ function switchView(view) {
 
 function navigate(view) {
   if (view === 'practice') {
-    if (!attempt || sessionKind !== 'practice' || ['complete', 'interrupted'].includes(attempt.status)) resetSession('practice');
+    if (!attempt || sessionKind !== 'practice' || ['complete', 'interrupted'].includes(attempt.status)
+      || (preferencesWaiting && untouchedPractice())) resetSession('practice');
     switchView('practice');
     return;
   }
@@ -1109,7 +1145,7 @@ function markRaceInterrupted() {
   race.attempt.interrupted = true;
   race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
   showInputNotice('race', NOTICES.raceFocusLost, { speak: false });
-  inbox?.runChanged();
+  raceRunChanged();
 }
 
 // A one-keyboard race keeps the chrome, but its passage is still being typed.
@@ -1367,7 +1403,7 @@ function startRace() {
 function setupRacePlayer() {
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
-  inbox?.runChanged();
+  raceRunChanged();
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
   $('race-status').textContent = `Player ${race.player + 1} of 2`;
@@ -1393,7 +1429,7 @@ function finishRacePlayer() {
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
   race.attempt = completed;
-  inbox?.runChanged();
+  raceRunChanged();
   race.results.push({ name: race.names[race.player], attempt: completed });
   $('race-input').disabled = true;
   $('race-stage').hidden = true;
@@ -1444,13 +1480,11 @@ function renderRaceResults() {
 
 function clearHistory() {
   clearSnapshot = JSON.stringify(profile);
-  // Copies elsewhere drop what they hold from before this moment when they merge with this one.
-  profile.historyClearedAt = clearedAt = account.clearMarker(profile);
-  profile.attempts = [];
-  profile.runs = [];
-  profile.loops = [];
-  profile.seenTextIds = [];
-  profile.bests = {};
+  // Copies elsewhere drop what they hold from before this moment when they merge with this one. What
+  // they held is kept here as this tab merges them (account.mergeAndHold), for Undo.
+  profile = account.clearProfile(profile);
+  clearedAt = profile.historyClearedAt;
+  heldClear = { marker: clearedAt, before: normalizeProfile(JSON.parse(clearSnapshot)) };
   baselineAttempt = null;
   trainingContext = null;
   selectedTarget = null;
@@ -1485,8 +1519,10 @@ function clearHistory() {
 function undoClear() {
   if (!clearSnapshot) return;
   let before;
-  try { before = normalizeProfile(JSON.parse(clearSnapshot)); } catch { return; }
-  // Restores the history even if the clear has already synced, keeping anything added since.
+  try { before = heldClear?.marker === clearedAt ? heldClear.before : normalizeProfile(JSON.parse(clearSnapshot)); } catch { return; }
+  heldClear = null;
+  // Restores the history even if the clear has already synced, keeping anything added since: this tab's
+  // own, and whatever the clear removed from the account row or another tab as they merged here.
   profile = account.revokeClear(profile, before, clearedAt);
   saveProfile();
   clearSnapshot = null;
@@ -1540,7 +1576,7 @@ function signedInAs(userId) {
 function absorb(data) {
   if (data?.version !== 2) return false;
   const before = account.syncSignature(profile);
-  profile = account.mergeSynced(profile, normalizeProfile(data));
+  ({ merged: profile, held: heldClear } = account.mergeAndHold(heldClear, profile, normalizeProfile(data)));
   return account.syncSignature(profile) !== before;
 }
 
@@ -1550,6 +1586,10 @@ function absorb(data) {
 function showMerged() {
   followStoredPreferences();
   if (runInProgress()) return;
+  // Newer test conditions wait while a passage is prepared; one nobody has started is prepared again
+  // with them, as a page load did before merging (the practice screen only; navigate does it on the
+  // way back). Focus stays where it is.
+  if (preferencesWaiting && untouchedPractice() && document.body.dataset.view === 'practice') resetSession('practice');
   showBest();
   const view = document.body.dataset.view;
   const screen = document.querySelector(`[data-screen="${view}"]`);
@@ -1559,15 +1599,19 @@ function showMerged() {
 }
 
 // Merges the device cache if another tab has written it since this tab last read it. Never writes.
+// Only the data: returns whether it changed, and the caller shows it (showMerged).
 function absorbCache() {
   cacheWaiting = false;
-  if (!session || !signedInAs(session.user.id)) return;
+  if (!session || !signedInAs(session.user.id)) return false;
   const text = account.loadCachedProfileText(session.user.id);
-  if (!text || text === cacheText) return;
+  if (!text || text === cacheText) return false;
   try {
-    if (absorb(JSON.parse(text))) showMerged();
+    const changed = absorb(JSON.parse(text));
     cacheText = text;
-  } catch {}
+    return changed;
+  } catch {
+    return false;
+  }
 }
 
 function noteCloudAt(updatedAt) {
@@ -1614,17 +1658,21 @@ async function pushOnce({ cloud: known } = {}) {
       }
       const edits = localEdits;
       const theirs = cloud?.data?.version === 2 ? normalizeProfile(cloud.data) : null;
-      const merged = theirs ? account.mergeSynced(profile, theirs) : profile;
+      const { merged, held } = theirs ? account.mergeAndHold(heldClear, profile, theirs) : { merged: profile, held: heldClear };
       let written;
       if (theirs && account.sameProfile(merged, theirs)) written = cloud.updated_at;
       else if (cloud) written = await account.updateCloudProfile(session, merged, cloud.updated_at);
       else written = await account.insertCloudProfile(session, merged);
       if (!signedInAs(userId)) return false;
       if (written) {
+        heldClear = held;
         noteCloudAt(written);
         absorb(merged);
-        if (edits === localEdits) unsynced = false;
         storeLocally();
+        // Done unless this tab saved again, or took in another tab's save, while the write was out:
+        // that goes up with the next push.
+        if (edits === localEdits && account.sameProfile(profile, merged)) unsynced = false;
+        else if (!syncTimer) syncTimer = setTimeout(pushWhenIdle, 1500);
         showMerged();
         setSyncState(unsynced ? 'syncing' : 'synced');
         return !unsynced;
@@ -1757,9 +1805,20 @@ async function signOutAccount() {
   closeAccountMenu();
   await onlineRace?.leave();
   inbox?.forget();
-  const synced = !unsynced || await pushProfile();
-  // Unsynced edits stay on this device and go up the next time this account signs in here.
-  await account.signOut(session, { keepCache: !synced });
+  const userId = session.user.id;
+  // Every tab signed in here shares the device cache, and another tab's latest save may not have reached
+  // the account yet (its push still waiting, or failing). So the cache is merged and pushed before it
+  // goes; the push reads the row and writes only what the row lacks. A second round covers a save that
+  // lands during the first. If the account can't be reached, or the cache changes again, the cache stays
+  // and goes up the next time this account signs in here.
+  let synced = false;
+  for (let round = 0; round < 2 && !synced; round += 1) {
+    absorbCache();
+    unsynced = true;
+    synced = await pushProfile();
+  }
+  const settled = synced && account.loadCachedProfileText(userId) === cacheText;
+  await account.signOut(session, { keepCache: !settled });
   location.reload();
 }
 
@@ -1880,7 +1939,7 @@ function bindAccount() {
   addEventListener('storage', (event) => {
     if (!session || event.key !== account.profileKey(session.user.id) || event.newValue === null) return;
     if (runInProgress()) cacheWaiting = true;
-    else absorbCache();
+    else if (absorbCache()) showMerged();
   });
 }
 
@@ -1962,7 +2021,7 @@ function bindEvents() {
   document.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => {
     prefs.mode = button.dataset.mode;
     setModeControls();
-    saveProfile();
+    saveChoice('mode');
     resetSession('practice', { focus: true });
   }));
   $('duration-options').addEventListener('click', (event) => {
@@ -1971,7 +2030,7 @@ function bindEvents() {
     if (prefs.mode === 'time') prefs.duration = Number(button.dataset.length);
     else prefs.count = Number(button.dataset.length);
     setModeControls();
-    saveProfile();
+    saveChoice('mode', prefs.mode === 'time' ? 'duration' : 'count');
     resetSession('practice', { focus: true });
   });
   $('punctuation-toggle').addEventListener('change', (event) => {
@@ -2128,7 +2187,7 @@ function setTestShape(mode, length) {
   if (mode === 'time' && length) prefs.duration = length;
   if (mode === 'words' && length) prefs.count = length;
   setModeControls();
-  saveProfile();
+  saveChoice('mode', ...(length && mode !== 'quote' ? [mode === 'time' ? 'duration' : 'count'] : []));
   resetSession('practice', { focus: true });
 }
 
@@ -2150,7 +2209,7 @@ function setStopOnError(enabled) {
 function setWordList(id) {
   prefs.wordList = id;
   applyPreferences();
-  saveProfile();
+  saveChoice('wordList');
   resetSession('practice', { focus: true });
 }
 
@@ -2169,8 +2228,8 @@ function paletteCommands(query) {
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
-    ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
-    ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
+    ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
+    ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
