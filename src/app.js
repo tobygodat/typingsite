@@ -21,7 +21,7 @@ import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
-import { boardSummary, createFriendsBoard } from './friends-board.js';
+import { createFriendsBoard } from './friends-board.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
@@ -1506,6 +1506,8 @@ async function syncOnLoad() {
     } else {
       setSyncState('synced');
     }
+    // A run finished before the check is sent now that this copy is known to be current.
+    friendsBoard?.resume();
   } catch {
     // Offline or unreachable: edits stay on the device, unstamped, until a check succeeds.
     setSyncState(account.loadSession() ? 'offline' : 'expired');
@@ -1641,6 +1643,7 @@ function bindAccount() {
     if (!session) return;
     if (!cloudChecked) syncOnLoad();
     else if (unsynced) pushProfile();
+    if (cloudChecked) friendsBoard?.resume();
   });
 }
 
@@ -2034,11 +2037,12 @@ inbox = createInbox({
     result: { label: 'Race again', run: (entry) => onlineRace.rematchRoom(entry.roomId, entry.conditions) },
   },
 });
-// Publishing waits for the account check, so a stale device copy never overwrites a newer summary.
+// Publishing waits for the account check (syncOnLoad resumes it), and only this tab's own changes are sent.
 friendsBoard = createFriendsBoard({
   getSession: () => session,
   canPublish: () => cloudChecked,
-  summary: () => boardSummary(profile.runs, conditionKey(dailyConditions())),
+  runs: () => profile.runs,
+  dailyKey: () => conditionKey(dailyConditions()),
   isRunning: () => runActive || localRaceRunning(),
   signIn: () => openAccountDialog('signin'),
   // The button that asks for this disappears with the board, so focus lands on the Online selector.

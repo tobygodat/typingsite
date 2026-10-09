@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
-import { boardSummary, dailyOrder, practiceTime, publishSummary, readBoard, weekOrder, weekStart } from '../src/friends-board.js';
+import { boardSummary, dailyOrder, dailyVersion, practiceTime, publishSummary, readBoard, weekOrder, weekStart } from '../src/friends-board.js';
+import { dailyPassage } from '../src/insights.js';
 
 const daily = { mode: 'quote', duration: null, count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any',
   wordList: null, inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
@@ -34,8 +35,17 @@ test('the daily result is today’s best completed physical-keyboard attempt, wi
     dailyRun('impossible', 900, 100),
     run('practice', { score: { wpm: 130, accuracy: 100 } }),
   ];
-  assert.deepEqual(boardSummary(runs, dailyKey, now).daily, { date: '2026-10-09', wpm: 78, accuracy: 97, attempts: 3 });
+  assert.deepEqual(boardSummary(runs, dailyKey, now).daily, { date: '2026-10-09', version: dailyVersion(dailyKey, now), wpm: 78, accuracy: 97, attempts: 3 });
   assert.equal(boardSummary([run('practice')], dailyKey, now).daily, null);
+});
+
+test('a daily result carries its version: the conditions key (corpus and metric version) and the passage', () => {
+  const version = dailyVersion(dailyKey, now);
+  assert.equal(version, `${dailyKey}|${dailyPassage(now).textVersion}`);
+  assert.ok(version.includes(METRIC_VERSION) && version.includes(CORPUS_VERSION));
+  assert.match(version, /^[ -~]{1,200}$/, 'the service accepts printable ASCII up to 200 characters');
+  assert.notEqual(dailyVersion(conditionKey({ ...daily, metricVersion: 'stilltype-metrics-v0' }), now), version);
+  assert.notEqual(dailyVersion(dailyKey, new Date('2026-10-10T15:00:00Z')), version, 'another day is another passage');
 });
 
 test('practice time counts completed, uninterrupted runs since Monday, and nothing undated', () => {
@@ -86,7 +96,7 @@ test('the board sends only the signed-in summary, as that account', async () => 
     assert.match(calls[0].url, /\/rest\/v1\/rpc\/friends_board$/);
     assert.equal(calls[0].headers.Authorization, 'Bearer account-token');
     assert.deepEqual(calls[0].data, { p_action: 'publish', p_data: summary });
-    assert.deepEqual(Object.keys(calls[0].data.p_data.daily).sort(), ['accuracy', 'attempts', 'date', 'wpm']);
+    assert.deepEqual(Object.keys(calls[0].data.p_data.daily).sort(), ['accuracy', 'attempts', 'date', 'version', 'wpm']);
     assert.deepEqual(calls[1].data, { p_action: 'board', p_data: {} });
   } finally { globalThis.fetch = original; }
 });

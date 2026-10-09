@@ -4,7 +4,7 @@
 // publishes its own owner's summary, so the numbers are friendly and unverified. Guests publish nothing.
 import { request, freshSession, loadSession, AuthError } from './account.js';
 import { conditionKey } from './typing.js';
-import { validRun } from './insights.js';
+import { dailyPassage, validRun } from './insights.js';
 
 const DAY_MS = 86400000;
 // The service refuses anything outside these, so they never travel.
@@ -21,6 +21,10 @@ export function weekStart(date = new Date()) {
   return utcDay(new Date(midnight - ((date.getUTCDay() + 6) % 7) * DAY_MS));
 }
 
+// Which daily a result belongs to: its conditions (corpus and metric version included) and its passage.
+// A reader compares only results whose version matches its own, so two builds never share one ranking.
+export const dailyVersion = (dailyKey, date = new Date()) => `${dailyKey}|${dailyPassage(date).textVersion}`;
+
 // What an account publishes about itself. The daily result is today's best completed attempt at the
 // daily conditions on a physical keyboard, as the Daily panel counts it, with the number of completed
 // attempts beside it. Practice time is every completed, uninterrupted run since Monday 00:00 UTC.
@@ -34,7 +38,7 @@ export function boardSummary(runs, dailyKey, date = new Date()) {
   const week = runs.filter((run) => validRun(run) && run.at && Date.parse(run.at) >= from && Date.parse(run.at) < from + 7 * DAY_MS);
   const ms = week.reduce((sum, run) => sum + Math.max(0, Number(run.elapsedMs) || 0), 0);
   return {
-    daily: best ? { date: day, wpm: best.score.wpm, accuracy: best.score.accuracy, attempts: Math.min(daily.length, MAX_ATTEMPTS) } : null,
+    daily: best ? { date: day, version: dailyVersion(dailyKey, date), wpm: best.score.wpm, accuracy: best.score.accuracy, attempts: Math.min(daily.length, MAX_ATTEMPTS) } : null,
     week: { start, seconds: Math.min(Math.round(ms / 1000), 7 * DAY_MS / 1000), runs: Math.min(week.length, MAX_RUNS) },
   };
 }
@@ -79,7 +83,7 @@ async function call(session, action, data = {}) {
 export const readBoard = (session) => call(session, 'board');
 export const publishSummary = (session, summary) => call(session, 'publish', summary);
 
-export function createFriendsBoard({ getSession, canPublish, summary, isRunning, signIn, openOnline }) {
+export function createFriendsBoard({ getSession, canPublish, runs, dailyKey, isRunning, signIn, openOnline }) {
   let visible = false;
   let loading = false;
   let board = null;
@@ -87,6 +91,26 @@ export function createFriendsBoard({ getSession, canPublish, summary, isRunning,
   // The last summary the service accepted in this tab, so an unchanged one is not sent again.
   let published = '';
   let publishTimer = 0;
+  // A run, clear or undo in this tab that the service has not accepted yet. Only such a change is
+  // published: this tab's copy of the profile can be older than another tab's or device's.
+  let pending = false;
+  const summary = () => boardSummary(runs(), dailyKey());
+
+  // The service's reply, or null when the summary is unchanged. A failure leaves the change pending.
+  async function publishChange(session) {
+    const value = summary();
+    const key = JSON.stringify(value);
+    pending = false;
+    if (key === published) return null;
+    try {
+      const result = await publishSummary(session, value);
+      published = key;
+      return result;
+    } catch (error) {
+      pending = true;
+      throw error;
+    }
+  }
 
   function row(entry, value, unit, detail) {
     const item = document.createElement('li');
@@ -108,7 +132,7 @@ export function createFriendsBoard({ getSession, canPublish, summary, isRunning,
       measure.append(' ', suffix);
     }
     const note = document.createElement('span');
-    note.className = 'board-detail';
+    note.className = 'board-detail num';
     note.textContent = detail;
     // The spaces keep the row reading as words ("Lin 78 wpm 96% accuracy"); a grid ignores them.
     item.append(name, ' ', measure, ' ', note);
@@ -120,7 +144,11 @@ export function createFriendsBoard({ getSession, canPublish, summary, isRunning,
     $('friends-board-guest').hidden = signedIn;
     $('refresh-friends-board').hidden = !signedIn;
     $('friends-board-status').textContent = signedIn ? status : '';
-    const rows = signedIn && board?.rows ? board.rows : null;
+    // A daily result from another build (another passage, corpus or scoring) is not compared; its row says so.
+    const version = board?.date && dailyVersion(dailyKey(), new Date(`${board.date}T00:00:00Z`));
+    const rows = signedIn && board?.rows
+      ? board.rows.map((entry) => (entry.daily && entry.daily.version !== version ? { ...entry, daily: null, otherVersion: true } : entry))
+      : null;
     $('friends-board-lists').hidden = !rows;
     $('friends-board-empty').hidden = !rows || rows.some((entry) => !entry.self);
     if (!rows) return;
@@ -128,7 +156,7 @@ export function createFriendsBoard({ getSession, canPublish, summary, isRunning,
     $('board-week-meta').textContent = `since monday ${board.weekStart}, 00:00 utc · completed runs`;
     $('board-daily').replaceChildren(...dailyOrder(rows).map((entry) => (entry.daily
       ? row(entry, String(entry.daily.wpm), 'wpm', `${entry.daily.accuracy}% accuracy · ${entry.daily.attempts === 1 ? '1 attempt' : `best of ${entry.daily.attempts}`}`)
-      : row(entry, '—', '', 'no completed attempt yet'))));
+      : row(entry, '—', '', entry.otherVersion ? 'another version of the daily · not compared' : 'no completed attempt yet'))));
     $('board-week').replaceChildren(...weekOrder(rows).map((entry) => {
       if (!entry.week) return row(entry, '—', '', 'nothing yet this week');
       const time = practiceTime(entry.week.seconds);
@@ -136,56 +164,57 @@ export function createFriendsBoard({ getSession, canPublish, summary, isRunning,
     }));
   }
 
-  // Opening the board sends this tab's summary first, if it changed, so your own row is current.
-  async function refresh() {
+  // Opening the board reads it, sending this tab's unsent change first so your own row is current.
+  // aria-disabled, not disabled, while loading: a disabled button would drop keyboard focus.
+  async function refresh({ manual = false } = {}) {
     const session = getSession();
     if (!session) { render(); return; }
     const current = ++generation;
     loading = true;
-    $('refresh-friends-board').disabled = true;
+    $('refresh-friends-board').setAttribute('aria-disabled', 'true');
     render(board ? '' : 'Loading the board…');
     try {
-      const value = canPublish() ? summary() : null;
-      const key = value && JSON.stringify(value);
-      const result = value && key !== published ? await publishSummary(session, value) : await readBoard(session);
-      if (value && key !== published) published = key;
+      let result = (pending && canPublish() && await publishChange(session)) || await readBoard(session);
+      // Nothing from any device yet this week (a new week, or runs from before the board existed):
+      // no newer summary can be lost, so this tab's fills your row in.
+      if (canPublish() && !result?.rows?.find((entry) => entry.self)?.week) result = await publishChange(session).catch(() => null) || result;
       if (current !== generation) return;
       board = result;
-      render();
+      render(manual ? 'Updated.' : '');
     } catch (failure) {
       if (current !== generation) return;
       render(failure.message || 'The friends board is unavailable. Try again.');
     } finally {
-      if (current === generation) { loading = false; $('refresh-friends-board').disabled = false; }
+      if (current === generation) { loading = false; $('refresh-friends-board').removeAttribute('aria-disabled'); }
     }
   }
 
-  // After a run, a clear or an undo. Nothing is sent mid-run, and a failure waits for the next change.
+  // After a run, a clear or an undo. Nothing is sent mid-run. A change sent before the account check,
+  // or one that failed, stays pending until resume() (the check, or the browser coming back online).
   function schedulePublish(delay = 1500) {
+    pending = true;
     clearTimeout(publishTimer);
     publishTimer = setTimeout(async () => {
       const session = getSession();
       if (!session || !canPublish()) return;
       if (isRunning()) { schedulePublish(delay); return; }
-      const value = summary();
-      const key = JSON.stringify(value);
-      if (key === published) return;
       try {
-        const result = await publishSummary(session, value);
-        published = key;
+        const result = await publishChange(session);
+        if (!result) return;
         board = result;
         if (visible) render();
       } catch {}
     }, delay);
   }
 
-  $('refresh-friends-board').addEventListener('click', refresh);
+  $('refresh-friends-board').addEventListener('click', () => { if (!loading) refresh({ manual: true }); });
   $('friends-board-signin').addEventListener('click', signIn);
   $('friends-board-online').addEventListener('click', openOnline);
   render();
 
   return {
     schedulePublish,
+    resume() { if (pending) schedulePublish(); },
     // Switching to the board and arriving on the screen can both ask at once; one request answers both.
     show() { if (visible && loading) return; visible = true; refresh(); },
     hide() { visible = false; },

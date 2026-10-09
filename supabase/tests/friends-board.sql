@@ -15,6 +15,8 @@ declare
   today date := (clock_timestamp() at time zone 'utc')::date;
   monday date := (clock_timestamp() at time zone 'utc')::date - (extract(isodow from (clock_timestamp() at time zone 'utc')::date)::integer - 1);
   week jsonb;
+  -- A daily version as the browser sends it: the conditions key, then the passage.
+  v text := 'quote:::punctuation:medium:any::physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1|daily-abc123@1';
   board jsonb;
   friends jsonb;
   lin_row text;
@@ -44,21 +46,26 @@ begin
 
   -- An account publishes its own summary and sees only itself until a friend chooses it back.
   perform set_config('request.jwt.claim.sub',ada::text,true);
-  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',84,'accuracy',97,'attempts',2),'week',week));
+  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',2),'week',week));
   if board->>'date' <> today::text or board->>'weekStart' <> monday::text or jsonb_array_length(board->'rows') <> 1
     or not (board->'rows'->0->>'self')::boolean or board->'rows'->0->'daily'->>'wpm' <> '84'
+    or board->'rows'->0->'daily'->>'version' <> v
     or board->'rows'->0->'daily'->>'attempts' <> '2' or board->'rows'->0->'week'->>'seconds' <> '1830' then
     raise exception 'Own summary was not stored: %', board;
   end if;
 
   -- Impossible or stale summaries are refused, and the stored row is left as it was.
   foreach bad in array array[
-    jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',401,'accuracy',97,'attempts',1),'week',week),
-    jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',84,'accuracy',101,'attempts',1),'week',week),
-    jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',84.5,'accuracy',97,'attempts',1),'week',week),
-    jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',84,'accuracy',97,'attempts',0),'week',week),
-    jsonb_build_object('daily',jsonb_build_object('date',today - 3,'wpm',84,'accuracy',97,'attempts',1),'week',week),
-    jsonb_build_object('daily',jsonb_build_object('wpm',84,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',401,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',101,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84.5,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',84,'accuracy',97,'attempts',0),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today - 3,'version',v,'wpm',84,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('wpm',84,'version',v,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',84,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',7,'wpm',84,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',repeat('x',201),'wpm',84,'accuracy',97,'attempts',1),'week',week),
+    jsonb_build_object('daily',jsonb_build_object('date',today,'version',E'v1\n','wpm',84,'accuracy',97,'attempts',1),'week',week),
     jsonb_build_object('daily','84 wpm','week',week),
     jsonb_build_object('daily',null),
     jsonb_build_object('daily',null,'week',jsonb_build_object('start',monday + 1,'seconds',60,'runs',1)),
@@ -81,7 +88,7 @@ begin
   -- Lin has Ada on her list, but Ada has not chosen Lin: neither sees the other.
   perform set_config('request.jwt.claim.sub',lin::text,true);
   perform public.race_action('befriend',null,jsonb_build_object('email',ada_email,'name','Ada'),null);
-  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'wpm',72,'accuracy',96,'attempts',1),
+  board := public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today,'version',v,'wpm',72,'accuracy',96,'attempts',1),
     'week',jsonb_build_object('start',monday,'seconds',754,'runs',12)));
   if jsonb_array_length(board->'rows') <> 1 then raise exception 'A one-way friend appeared on the board.'; end if;
   perform set_config('request.jwt.claim.sub',ada::text,true);
@@ -128,7 +135,7 @@ begin
   -- Yesterday's daily and last week's practice read as nothing yet, whatever the session time zone.
   perform set_config('TimeZone','Pacific/Kiritimati',true);
   perform set_config('request.jwt.claim.sub',lin::text,true);
-  perform public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today - 1,'wpm',75,'accuracy',95,'attempts',1),
+  perform public.friends_board('publish',jsonb_build_object('daily',jsonb_build_object('date',today - 1,'version',v,'wpm',75,'accuracy',95,'attempts',1),
     'week',jsonb_build_object('start',monday,'seconds',800,'runs',13)));
   perform set_config('request.jwt.claim.sub',ada::text,true);
   board := public.friends_board('board','{}');

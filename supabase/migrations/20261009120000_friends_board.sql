@@ -11,6 +11,9 @@ create table race_private.summaries (
   user_id uuid primary key references auth.users(id) on delete cascade,
   -- Today's best completed physical-keyboard daily attempt, and how many completed attempts there were.
   daily_date date,
+  -- Which daily it was (conditions with corpus and metric version, and the passage), so a reader
+  -- compares only results made under its own version.
+  daily_version text check (daily_version ~ '^[ -~]{1,200}$'),
   daily_wpm integer check (daily_wpm between 0 and 400),
   daily_accuracy integer check (daily_accuracy between 0 and 100),
   daily_attempts integer check (daily_attempts between 1 and 1000),
@@ -19,7 +22,7 @@ create table race_private.summaries (
   week_seconds integer not null check (week_seconds between 0 and 604800),
   week_runs integer not null check (week_runs between 0 and 10000),
   updated_at timestamptz not null default now(),
-  check (num_nulls(daily_date, daily_wpm, daily_accuracy, daily_attempts) in (0, 4))
+  check (num_nulls(daily_date, daily_version, daily_wpm, daily_accuracy, daily_attempts) in (0, 5))
 );
 alter table race_private.summaries enable row level security;
 revoke all on race_private.summaries from public, anon, authenticated;
@@ -57,7 +60,7 @@ returns jsonb language sql set search_path = '' as $$
   )
   select jsonb_build_object('date', c.today, 'weekStart', c.week_start, 'rows',
     (select jsonb_agg(jsonb_build_object('self', p.self, 'id', p.friend_row, 'name', p.name,
-        'daily', case when s.daily_date = c.today then jsonb_build_object('wpm', s.daily_wpm,
+        'daily', case when s.daily_date = c.today then jsonb_build_object('version', s.daily_version, 'wpm', s.daily_wpm,
           'accuracy', s.daily_accuracy, 'attempts', s.daily_attempts) end,
         'week', case when s.week_start = c.week_start then jsonb_build_object('seconds', s.week_seconds,
           'runs', s.week_runs) end)
@@ -88,6 +91,7 @@ begin
     v_practice := p_data->'week';
     if v_daily is not null then
       if jsonb_typeof(v_daily) <> 'object' or coalesce(v_daily->>'date','') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        or jsonb_typeof(v_daily->'version') is distinct from 'string' or v_daily->>'version' !~ '^[ -~]{1,200}$'
         or coalesce(v_daily->>'wpm','') !~ '^[0-9]{1,3}$' or coalesce(v_daily->>'accuracy','') !~ '^[0-9]{1,3}$'
         or coalesce(v_daily->>'attempts','') !~ '^[0-9]{1,4}$' then raise exception 'Invalid daily result.'; end if;
       v_date := (v_daily->>'date')::date;
@@ -102,11 +106,12 @@ begin
     v_start := (v_practice->>'start')::date;
     if extract(isodow from v_start) <> 1 or abs(v_start - v_week) > 7 or (v_practice->>'seconds')::integer > 604800
       or (v_practice->>'runs')::integer > 10000 then raise exception 'That practice time is outside the board limits.'; end if;
-    insert into race_private.summaries(user_id, daily_date, daily_wpm, daily_accuracy, daily_attempts,
+    insert into race_private.summaries(user_id, daily_date, daily_version, daily_wpm, daily_accuracy, daily_attempts,
         week_start, week_seconds, week_runs, updated_at)
-      values (v_uid, v_date, (v_daily->>'wpm')::integer, (v_daily->>'accuracy')::integer, (v_daily->>'attempts')::integer,
+      values (v_uid, v_date, v_daily->>'version', (v_daily->>'wpm')::integer, (v_daily->>'accuracy')::integer, (v_daily->>'attempts')::integer,
         v_start, (v_practice->>'seconds')::integer, (v_practice->>'runs')::integer, clock_timestamp())
-      on conflict (user_id) do update set daily_date = excluded.daily_date, daily_wpm = excluded.daily_wpm,
+      on conflict (user_id) do update set daily_date = excluded.daily_date, daily_version = excluded.daily_version,
+        daily_wpm = excluded.daily_wpm,
         daily_accuracy = excluded.daily_accuracy, daily_attempts = excluded.daily_attempts,
         week_start = excluded.week_start, week_seconds = excluded.week_seconds, week_runs = excluded.week_runs,
         updated_at = excluded.updated_at;

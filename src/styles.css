@@ -577,7 +577,7 @@ kbd {
 }
 
 .btn:active:not(:disabled) { transform: scale(0.98); }
-.btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.38; cursor: not-allowed; }
 
 .btn-primary {
   background: var(--accent);
@@ -1496,8 +1496,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 #online-connection:not(:empty) { color: var(--warning); }
 #online-help { min-height: var(--space-6); }
 
-/* Friends board: two ruled lists, today's daily and this week's practice. Your own name is the
-   "you are here" mark, so it takes the accent; nothing else on the board is coloured. */
+/* Friends board: two ruled lists, today's daily and this week's practice. Nothing on the board is
+   coloured: your row is marked by the word "You". */
 .friends-board { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
 .friends-board-copy { max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
 .friends-board-guest { display: grid; justify-items: start; gap: var(--space-4); margin: var(--space-6) 0; }
@@ -1508,10 +1508,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .board-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--hairline); }
 .board-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline); }
 .board-name { overflow-wrap: anywhere; }
-.board-row[data-self] .board-name { color: var(--accent); }
 .board-value { grid-column: 2; grid-row: 1 / span 2; align-self: center; white-space: nowrap; }
 .board-value strong { font-size: var(--text-title); font-weight: 300; line-height: 1; letter-spacing: -0.015em; }
-.board-unit, .board-detail { color: var(--muted); font: var(--text-mono)/1.5 var(--font-mono); }
+.board-unit { color: var(--muted); font: var(--text-mono)/1.5 var(--font-mono); }
+.board-detail { color: var(--muted); font-size: var(--text-small); }
 .friends-board-empty { margin-bottom: var(--space-6); }
 .friends-board-empty p { margin: 0 0 var(--space-3); max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
 

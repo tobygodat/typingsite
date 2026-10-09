@@ -38,7 +38,8 @@ export class FakeBoard {
     const row = (account, fields) => {
       const summary = this.summaries.get(account);
       return { ...fields,
-        daily: summary?.daily?.date === date ? { wpm: summary.daily.wpm, accuracy: summary.daily.accuracy, attempts: summary.daily.attempts } : null,
+        daily: summary?.daily?.date === date
+          ? { version: summary.daily.version, wpm: summary.daily.wpm, accuracy: summary.daily.accuracy, attempts: summary.daily.attempts } : null,
         week: summary?.week?.start === weekStart ? { seconds: summary.week.seconds, runs: summary.week.runs } : null };
     };
     const mutual = [...this.listed(viewer)].filter(([account]) => (this.auth.races.friends.get(account) || [])

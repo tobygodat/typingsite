@@ -1,8 +1,9 @@
 // The friends board: today's daily result and this week's practice time among mutual friends.
 import { randomUUID } from 'node:crypto';
-import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
+import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
 import { dailyPassage } from '../src/insights.js';
-import { test, expect, openApp, openView, signInWithEmail, chooseWords, completePassage, passageText } from './fixtures.js';
+import { dailyVersion } from '../src/friends-board.js';
+import { test, expect, openApp, openView, signInWithEmail, chooseWords, completePassage, passageText, typeInto } from './fixtures.js';
 import { mondayOf, utcDay } from './fake-board.js';
 
 test.setTimeout(120000);
@@ -10,6 +11,7 @@ test.setTimeout(120000);
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const DAILY = { mode: 'quote', duration: null, count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any', wordList: null,
   inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+const VERSION = dailyVersion(conditionKey(DAILY));
 const SHAPES = [
   [{ mode: 'time', duration: 60, count: null, wordList: '200' }, 60000],
   [{ mode: 'time', duration: 30, count: null, wordList: '200' }, 30000],
@@ -54,7 +56,7 @@ function befriend(supabase, owner, friend, name, { fromRace = false } = {}) {
 }
 
 const publish = (supabase, user, daily, seconds, runs) => supabase.board.summaries.set(user.id, {
-  daily: daily && { date: utcDay(), ...daily }, week: { start: mondayOf(), seconds, runs } });
+  daily: daily && { date: utcDay(), version: VERSION, ...daily }, week: { start: mondayOf(), seconds, runs } });
 
 // Ada has chosen Lin, Mara and Sam, and they chose her. Ada also has Ola, who never added her back,
 // and Kai has added Ada without Ada adding Kai. Neither of those two may ever appear.
@@ -135,7 +137,7 @@ test('a daily run is published, and only mutual friends share the board', async 
   await expect.poll(() => supabase.board.published.length).toBe(1);
   const sent = supabase.board.published[0];
   expect(sent.caller).toBe(ada.id);
-  expect(sent.daily).toEqual({ date: dailyPassage().day, wpm, accuracy, attempts: 1 });
+  expect(sent.daily).toEqual({ date: dailyPassage().day, version: VERSION, wpm, accuracy, attempts: 1 });
   expect(sent.week.start).toBe(mondayOf());
   expect(sent.week.runs).toBe(25);
   expect(sent.week.seconds).toBeGreaterThan(880);
@@ -185,6 +187,13 @@ test('a daily run is published, and only mutual friends share the board', async 
     await lin.locator('#challenge-friends').click();
     await expect(lin.locator('#board-daily')).toContainText(`Ada ${wpm} wpm`);
     expect(await rowTexts(lin, 'board-daily')).toHaveLength(2);
+    // A result scored by another build of the daily is not compared, and Refresh keeps keyboard focus.
+    supabase.board.summaries.get(ada.id).daily.version = VERSION.replace(METRIC_VERSION, 'stilltype-metrics-v0');
+    await lin.locator('#refresh-friends-board').focus();
+    await lin.keyboard.press('Enter');
+    await expect(lin.locator('#friends-board-status')).toHaveText('Updated.');
+    await expect(lin.locator('#refresh-friends-board')).toBeFocused();
+    expect(await rowTexts(lin, 'board-daily')).toContain('Ada — another version of the daily · not compared');
   } finally { await context.close(); }
 });
 
@@ -203,7 +212,7 @@ test('practice time is published after a practice run, and a board not yet set u
   supabase.board.missing = false;
   await page.locator('#refresh-friends-board').click();
   await expect(page.locator('#friends-board-lists')).toBeVisible();
-  await expect(page.locator('#friends-board-status')).toHaveText('');
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
   const sent = supabase.board.published.at(-1);
   expect(sent.daily).toBeNull();
   expect(sent.week.runs).toBe(1);
@@ -215,6 +224,84 @@ test('practice time is published after a practice run, and a board not yet set u
   await expect(page.locator('#online-challenge')).toBeVisible();
   await expect(page.locator('#friends-board')).toBeHidden();
   await expect(page.locator('#challenge-online')).toBeFocused();
+});
+
+test('opening the board in an older tab leaves another tab’s newer result alone', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  // A second tab of the same account finishes today's daily; the first tab's copy never gets that run.
+  const second = await page.context().newPage();
+  await supabase.attach(second);
+  await openApp(second);
+  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openView(second, 'Challenge');
+  await second.locator('#challenge-daily').click();
+  await second.locator('#start-daily').click();
+  await expect(second.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
+  await typeInto(second, await passageText(second), '#typing-input', { delay: 60 });
+  await expect(second.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect.poll(() => supabase.board.published.length).toBe(1);
+  const { wpm } = supabase.board.published[0].daily;
+
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-friends').click();
+  await expect(page.locator('#board-daily')).toContainText(`You ${wpm} wpm`);
+  // Opening only read the board: the older tab sent nothing over the newer result.
+  expect(supabase.board.published.length).toBe(1);
+  expect(supabase.board.summaries.get(ada.id).daily.wpm).toBe(wpm);
+});
+
+test('a run finished offline reaches the board once the browser is back online', async ({ page, context, supabase }) => {
+  supabase.addUser('ada@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  supabase.offline = true;
+  await context.setOffline(true);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.waitForTimeout(2500);
+  expect(supabase.board.published).toEqual([]);
+  supabase.offline = false;
+  await context.setOffline(false);
+  await expect.poll(() => supabase.board.published.length).toBe(1);
+  expect(supabase.board.published[0].week.runs).toBe(1);
+});
+
+test('nothing is sent mid-run, and an undone clear ends on the restored summary', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await chooseWords(page, 10);
+  await completePassage(page);
+  // Straight into another run, usually before the first summary goes out; it waits for the run.
+  await page.locator('#run-again').click();
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 3));
+  const before = supabase.board.published.length;
+  await page.waitForTimeout(2500);
+  expect(supabase.board.published.length).toBe(before);
+  await page.keyboard.type(text.slice(3));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect.poll(() => supabase.board.summaries.get(ada.id)?.week.runs).toBe(2);
+  expect(supabase.board.published.length).toBe(before + 1);
+
+  // Clear, then undo at once: whatever went out in between, the board ends on the restored history.
+  await openView(page, 'Progress');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await page.locator('#undo-clear').click();
+  await expect(page.locator('#history-feedback')).toHaveText('History restored.');
+  await page.waitForTimeout(2500);
+  expect(supabase.board.summaries.get(ada.id).week.runs).toBe(2);
+  expect(supabase.board.published.at(-1).week.runs).toBe(2);
+
+  // A clear that stays cleared reaches the board too.
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect.poll(() => supabase.board.summaries.get(ada.id).week.runs).toBe(0);
 });
 
 test.describe('phone', () => {
@@ -233,7 +320,8 @@ test.describe('phone', () => {
     await openView(page, 'Challenge');
     await page.locator('#challenge-friends').click();
     await expect(page.locator('#board-daily')).toContainText('You 84 wpm');
-    expect(supabase.board.published.at(-1).daily).toEqual({ date: day.day, wpm: 84, accuracy: 97, attempts: 1 });
+    // Nothing from any device this week yet, so opening the board fills Ada's row in from this one.
+    expect(supabase.board.published.at(-1).daily).toEqual({ date: day.day, version: VERSION, wpm: 84, accuracy: 97, attempts: 1 });
     const daily = await page.locator('#board-daily').boundingBox();
     const week = await page.locator('#board-week').boundingBox();
     expect(week.y).toBeGreaterThan(daily.y + daily.height);
