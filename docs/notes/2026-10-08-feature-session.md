@@ -173,3 +173,122 @@ These are flags and ideas collected while building the Tier 1–2 features from 
   - Decide whether quick end applies under no-backspace, and whether fail-on-word fires on a held last word.
 - **Speed unit (#40):** it touches about 20 files and conflicts broadly, so merge it late. It also makes online-race results always store their text in wpm, whatever the display unit.
 - **Repeat quotes (#43):** `trendRun` now requires fresh text, and bests are recomputed through `freshBests`. A best that master set from its exhausted-pool fallback (repeated text) is replaced by the best fresh run. That changes the metric contract on existing data, so it needs your sign-off. **Merge rule:** #28's `NON_COMPARABLE_KINDS` excludes runs by kind; #43's freshness gate excludes them by text. Keep both, and have `trendRun` check both.
+- **Double reset (#43):** `resetSession` now records seen ids through `recordSeenOnDisplay` in a microtask, so a second reset in the same task replaces what gets recorded and doesn't consume a quote. This covers the palette's "restart test" and "word list" commands and master's restart from the result card. Master's palette `navigate('practice')` + `resetSession` line is left alone so #19 can swap in `restartTest()` without a conflict.
+- **View jumps (#42):** rule toggles no longer move you off Progress or the challenge screen; master's `resetSession` always switches view. Other settings that reset (word list, #21 numbers, #32 error modes) probably jump the same way. Check when merging.
+- **Conditions builder (#42):** `sessionConditions(kind)` and `ruleLimits(ruleSession())` are the start of cross-cutting item 3. The handoff's merge rules list the session kinds to route through them.
+
+### From the round-2 feature PRs (#44–#55)
+The handoff carries the migrations, the bugs found on master, the merge rules and the decisions for these PRs. These are the remaining flags, ideas and follow-ups.
+
+**#44 standard test**
+- **Dead-key `"`:** on layouts where `"` is a dead key (for example US-International), the browser fires composition, the app treats it as IME input and marks the run interrupted. Those typists can't complete a standard run; quote mode has the same problem on its 7 quotes that contain `"`. Fix it in the shared input layer: accept a dead-key composition that resolves to one printable character. `docs/ui-contract.md` records the limitation.
+- **Locked settings:** in standard mode, lock #32's `#correction-select` and its palette commands, and #21's numbers toggle, in `syncLockedSettings` and `fixedText` (`src/app.js`), as stop on error is. Standard stays `correctionPolicy: 'mandatory'`.
+- Locked commands disappear from the palette in standard and quote mode, because `src/palette.js` filters out disabled commands. Showing them with a "fixed" hint would explain the lock.
+- `tests/typing.test.js` pins the text id of `standardPassage(1)`. When it fails after a generator or word-list change, bump `STANDARD_VERSION` or `CORPUS_VERSION`.
+- The Progress headline shows the input class with more completed standard runs (physical keyboard on a tie). The other class is reachable through the Test conditions filter; someone who uses both may want a switch.
+- **Sticky run card (on master today):** the `@media (max-height: 720px)` block un-sticks the run card, but the card is about 645–663px tall at `top: 104px`. At viewport heights from 721px to about 767px its foot (the conditions line) is clipped while stuck; #47 found the same. Raise the breakpoint to about 800px, or cap the card with `max-height: calc(100svh - 104px)`. Related: the #23 sticky-card note above.
+- **Copy (on master today):** `renderHistory` says "This week: 1 matching runs." Reuse #44's `plural()` helper.
+
+**#45 tape mode**
+- Restart, resize and settings re-layouts now jump the passage into place in both layouts. On master a restart slid the new passage in over 150 ms.
+- Tape is a display preference, not a condition. One line gives less lookahead (1–2 words at 320px with large text), so it could affect wpm. Making it a condition later needs the default condition key to stay byte-identical.
+- Races keep three lines.
+- `TAPE_LEAD`, `TAPE_REACH` and `TAPE_BACK` in `src/tape.js` need a feel check on a real keyboard.
+- The `.app-shell` workaround, `contain: inline-size`, needs Safari 15.4+ or Firefox 101+.
+
+**#46 keyboard layouts**
+- The layout is never restored from a baseline. A baseline on another layout refuses a retest, and its drills run on their own (`layoutMismatch` in `startDrill` and `startRetest`).
+- Online races carry no layout; the one-keyboard race uses the host's. Touch runs reset `conditions.layout` to the default, so they keep master's condition key.
+- The finger map's cue is a mono finger initial on each key, generated in CSS with `content: x / ""` (Chrome 77+, Firefox 128+, Safari 17.4+). One `--finger-band` token shades alternate fingers.
+- `#layout-select` is 128px wide while the other settings selects are 104px, so their left edges don't line up. Widen them all in a follow-up.
+- The palette "word list" command calls `navigate('practice')` and then `setWordList`, which can reset twice and mark an unseen quote as seen; #50 found the same. #43's microtask fix covers it (see the #35–#43 section). The layout and book commands reset once.
+- The keyboard and finger-map palette commands still appear on phones, where the keyboard is hidden.
+- `#keyboard` has an `aria-label` on a div with no role (`index.html:221`), so screen readers don't announce it reliably. Use `role="img"` with a label naming the layout and finger map, or `aria-hidden` plus a text summary.
+- The keydown highlight uses `event.key.toLowerCase()`, so it lights the key that carries the produced character, not the physical key. They match when the legend matches the OS layout.
+- Idea: a home-row-only finger label mode, or showing the finger for the current target pair in drills. Both use the existing `keyboardRows()` data.
+- Merge risk: `e2e/chrome.spec.js` now expects 31 keys, not 27, and the ≤760px block in `src/styles.css` hides `label[for=keyboard-toggle]`.
+
+**#47 race your best**
+- A ghost race keeps only its run summary, no trace, so racing repeatedly can't push the best's own trace out of the 24 kept.
+- A race on a different input class from the best reads "Race complete · not compared".
+- After a race, Train's Start drill and Skip to retest stay on `baselineAttempt`'s conditions. Without a baseline the drill runs on its own at the race's conditions.
+- The palette now passes the activating event to every command (`command.run(event)`). Wrap any command that takes optional parameters in an arrow function, or it receives the event. #19's `run: restartTest` takes none, so it's safe.
+- **#47 + #25:** expect a text conflict in `src/motion.js` (`ghost.arm` against `run()` and `follow()`). Both fix the same `reset()` bug that re-showed a disarmed ghost; keep one fix. #47's reduced-motion listener restarts the ghost from its recorded start, which fits #25's join-in-progress path.
+- **Input class (master-wide fix):** classify every session from the activating event of whatever started it (`startedBy`), or from `(pointer: coarse)` when no hardware-keyboard events arrive.
+- **Exhausted quotes (on master today):** a practice run on an exhausted quote filter (`fresh: false`) can still become a best and pattern evidence, against PRODUCT.md's rule that seen text is never fresh evidence. #43 fixes this: it gates bests, trends and pattern evidence on fresh text.
+- Ideas: after a race, draw the best's speed series as a muted dotted second line on the run-card graph (`speedSeries` in `src/graph.js` works on any trace). Offer "race this run" from any Progress row whose trace is still kept.
+
+**#48 composing practice**
+- Active time counts each gap over 2 s as the average of the shorter gaps instead of dropping it, which overstated bursty writers. Active time can't exceed elapsed time.
+- The backspace rate counts every auto-repeat of a held Backspace or Delete.
+- While composing, a `resetSession('practice')` from settings, sync, the dock or the ghost toggle waits and keeps you in compose, so no hidden quote is marked seen. Mode buttons, palette test shapes, Run again, drills, retests and the daily end composing.
+- **Input rules:** only single-character inserts, line breaks and Backspace or Delete at a collapsed caret count. Cut, line deletes, autocorrect replacements and any key over a selection are refused with a notice; IME composition goes through, marked "not measured". On a phone with predictive text every suggested word is refused, so touch composing works only key by key. Check on a real phone before calling it touch-ready.
+- Window blur marks composing interrupted, as it does copy tests. Free writers often tab away to think, so this may feel strict; it's a product call.
+- The writing field uses the native caret held solid with `caret-animation: manual` (Chromium 139+). Other browsers still blink it, and DESIGN.md says so.
+- To count composing toward #27's goal, read `profile.compositions[].activeMs`.
+- The mode group's label changed from "Test mode" to "Practice mode".
+- At 1280×800 the result just fits at the medium text size; the large size needs a small scroll.
+- Follow-up: the Progress composing list shows the newest 10 of up to 100, with no way to expand it.
+- `COMPOSE_VERSION` stays `stilltype-compose-v1` although the active-time rule changed, because v1 has never shipped.
+- Tooling: full-page screenshots on mobile draw fixed elements at the scroll offset, so #48's mobile shot is a viewport shot.
+
+**#49 beginner path**
+- Lesson runs aren't in `profile.runs`, and `profile.lessons` keeps tries, the last run and the passing run, not elapsed time. To count lessons as practice time, store a per-day time log in `recordLessonRun` (`src/lessons.js`).
+- `#restart-button` and the palette ghost command take a lesson's input class from the activating event.
+- Clear history also clears lesson progress (Undo restores it), and the dialog says so. Reviewers may prefer to keep lesson progress separate.
+- Layout: the largest text size overflows by about 10px at 1280×721, and a viewport about 650px tall cuts off the thumbs row.
+- The finger map lays keys out in straight columns, one finger per column, not staggered. A staggered `FINGER_ROWS` would look closer to a real keyboard.
+- The 10k word list has informal words such as "biz" (`src/words.js:363` and `:743`), and the z lesson can pick them.
+- The full-accent target edge is 4.48:1 in light now and 5.24:1 after #35.
+
+**#50 book mode**
+- The proxy blocked curl to gutenberg.org, so the text came from the same gutenberg.org URLs through a scraping tool. To check it, re-fetch and run `node scripts/build-book-texts.mjs <dir>`; the output is byte-identical for the same inputs.
+- Book runs stay out of pattern evidence, keep no trace and take no pattern slot, but they count toward the 1,000-summary cap. A full pass of all four books is 288 pages; exempt them if that matters.
+- Edge case: after a non-book run with no baseline, switching to book mode and starting a manual drill from Train uses book conditions (`prefs.mode` stays `book`). A full fix needs a "last practice condition".
+- Clearing history resets `profile.books`. A book page already on screen isn't re-rendered, so finishing it sets the place to that page + 1.
+- At ≤760px book sessions hide `#session-title` and `#condition-line` visually; assistive technology still reads them.
+- Follow-up: a chapter jump. Sherlock's two parts are 135 pages, and today you can only go forward, retry a page or restart a finished book.
+
+**#51 friends board**
+- Privacy: rows show only to mutual friends, so adding an email never reveals whether it has an account. For one-way visibility, drop the `exists()` clause in the `mutual` CTE; the one-way section of `supabase/tests/friends-board.sql` then fails by design.
+- Rows store no display name; each reader sees their own name for that friend.
+- The board shows each person's best daily attempt and the attempt count, as the Daily panel does. "First attempt only" would be stricter.
+- No opt-out: two people on each other's lists share automatically, including pairs that existed before the migration (from their next run). A "pause sharing" control would need a preference and a palette command.
+- Publishing: only this tab's own runs, clears and undos are sent, about 1.5 s later and never mid-run. Publishes from one tab go out in order, queued changes collapse, and a replace waits for an in-flight publish.
+- The server merges each publish: the later or better daily is kept, and the week keeps the maximum attempts, minutes and runs. A daily from another build replaces. Clear and undo send an explicit `replace`.
+- Daily results carry `daily_version` (the daily condition key plus the passage text version). A result from another build reads "another version of the daily · not compared".
+- The board doesn't poll. It refreshes on open, on Refresh and after this tab publishes.
+- The #51 fixer first flagged the profile-sync data loss, now confirmed; see the handoff's "Bugs found on master" and its #51 merge rule.
+- **On master today:** `#challenge-online` keeps `btn-secondary` while the other mode buttons are `btn-ghost`, so Online always looks bordered.
+
+**#52 still progress line**
+- `.impeccable/design.json`'s progress-line entry now says "none".
+- #48 avoids the pointer-nudge problem for the composing bar with an unconditional `transition: none`. A separate `data-attempt="running"` state that pointer movement doesn't clear would fix it for every still-run rule.
+
+**#53 account deletion**
+- Any 5xx from the delete function, including a gateway 502, 503 or 504 and Supabase's 546, counts as ambiguous and is checked against Auth within the same 30 s deadline. `handler.ts` also re-checks with `admin.getUserById` after `deleteUser` errors.
+- If the 30 s timeout fires while the account still exists, the user sees "nothing was deleted". If the function finishes later, the next attempt resolves as deleted.
+- Not checked on the real platform: whether Supabase's 404 for an undeployed function carries CORS headers (both cases are handled), and creating the `AFTER DELETE` trigger on `auth.users`.
+- The `storage` listener reloads other open tabs as guests after any sign-out, deletion or rejected token refresh. A run in progress in another tab is lost. Tabs frozen in the background (bfcache) weren't tested.
+- The light `--danger-soft` change (0.12 to 0.10) is app-wide: it also lightens the coral tint behind mistyped letters and the clear-history hover.
+- Product decision: the `invited_id` cascade means deleting an account also deletes rooms someone else hosted and invited it to (`supabase/migrations/20260930085227_online_races.sql:10`).
+- An email that another user typed into their friend list stays on their list; it no longer matches an account.
+- Opening the delete dialog mid-run marks the run interrupted. The sign-in and create-account dialogs still don't.
+- `.field-error` keeps an empty 1.4em row under the confirm input. At 320px the actions stack Cancel above Delete account.
+- **Probable bug on master (not run in a browser):** the clear-history label is a direct grid child (`.dialog-content > label`), so its text may split across lines. Wrap it in one `<span>`, as the delete dialog does.
+- **On master today:** the account toast's status dot uses `--warning` for every account problem, but `--warning` is reserved for interrupted runs and mixed results. Move the error tone to `--danger`.
+
+**#55 async ghost challenge**
+- **List rule:** the service's `list` returns, in order:
+  - every open challenge, never cut;
+  - every result answered in the last 7 days, never cut;
+  - then the newest 50 other rows.
+  - Known gap, not fixed: more than 30 open invitations and challenges at once make the overflow swap in and out of the 30-entry inbox, re-marking them unread. Normal use can't reach it (the limit is 30 waiting per sender), but many senders together could.
+- The inbox dedupes ids, and the delivered-results memory keeps only ids the service still lists.
+- The server can't verify input class, so it trusts the client, as it does for all trace data. The client sends a reply only when it was made on the sender's kind of input.
+- Starting a ghost race ends any drill-and-retest cycle in progress, as the daily does.
+- The "Name they see" field defaults to the email's local part, so part of the sender's email reaches the friend unless they edit it.
+- The inbox orders entries by arrival, not by their `at` time, so a month-old result fetched on a new device lands above newer ones. Toasts are limited to results from the last 24 hours, and an open inbox refreshes its time labels only when reopened.
+- A run with an emoji or another astral character can't be sent, and the sender sees no reason. A reply with one shows "A character a ghost race can’t replay, so not sent."
+- #55's tests hit master's speed-graph overflow (see the #35–#43 section); #36 fixes it.
+- Ideas: list sent and received ghost races on Challenge → Online; keep the reply trace so the sender can watch the friend's run; add a palette command to challenge a friend with this run.
