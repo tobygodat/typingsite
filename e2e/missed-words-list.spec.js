@@ -89,8 +89,8 @@ test('words missed across runs build a list in Training that starts an uncounted
   const listTop = await page.locator('section.missed-words').evaluate((node) => node.getBoundingClientRect().top);
   expect(listTop - patternsEnd).toBe(0);
 
-  // The list below the end of the recurring patterns, with the run card beside it.
-  await page.evaluate(() => window.scrollTo(0, document.querySelector('section.missed-words').getBoundingClientRect().top + window.scrollY - 240));
+  // The whole list down to its button, 32px above the fold, with the run card beside it.
+  await action.evaluate((button) => window.scrollTo(0, button.getBoundingClientRect().bottom + window.scrollY + 32 - window.innerHeight));
   await page.mouse.move(1270, 790);
   await page.screenshot({ path: shot(testInfo, 'training-list-dark') });
   await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
