@@ -30,7 +30,7 @@ import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
-import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, speedDefinition, speedValue } from './units.js';
+import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, speedDefinition, speedValue, wpmFromSpeed } from './units.js';
 
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
@@ -58,7 +58,9 @@ const defaultPreferences = {
 };
 
 const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
-const clampPace = (value) => Math.min(300, Math.max(10, Math.round(Number(value) || 80)));
+const PACE_MIN_WPM = 10;
+const PACE_MAX_WPM = 300;
+const clampPace = (value) => Math.min(PACE_MAX_WPM, Math.max(PACE_MIN_WPM, Math.round(Number(value) || 80)));
 
 function emptyProfile() {
   return {
@@ -780,7 +782,13 @@ function showPace() {
   $('pace-label').hidden = !on;
   $('pace-label').textContent = on ? `pace ${speed(pace.wpm)}` : '';
   $('pace-select').value = prefs.paceCaret;
-  $('pace-wpm').value = prefs.paceWpm;
+  // The custom pace is kept in wpm and edited in the chosen unit: its value, range and step.
+  const input = $('pace-wpm');
+  input.value = speedNumber(prefs.paceWpm);
+  input.min = speedNumber(PACE_MIN_WPM);
+  input.max = speedNumber(PACE_MAX_WPM);
+  input.step = speedNumber(1);
+  $('pace-range').textContent = `${speedNumber(PACE_MIN_WPM)}–${speed(PACE_MAX_WPM)}`;
   $('pace-custom').hidden = prefs.paceCaret !== 'custom';
   $('pace-note').textContent = on && prefs.paceCaret !== 'custom' ? (pace.fallback ? `no runs yet — ${speed(pace.wpm)}` : speed(pace.wpm)) : '';
   document.body.dataset.ghost = on ? 'on' : 'off';
@@ -1934,7 +1942,7 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
-  $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(event.target.value); setPaceCaret('custom'); });
+  $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(wpmFromSpeed(event.target.value, prefs.speedUnit)); setPaceCaret('custom'); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;

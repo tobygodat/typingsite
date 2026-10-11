@@ -16,6 +16,12 @@ export function speedValue(wpm, unit) {
   return normalizeSpeedUnit(unit) === 'cpm' ? wpm * CHARS_PER_WORD : wpm;
 }
 
+// A figure entered in the chosen unit, back in wpm. Unrounded: the caller keeps whole wpm, so an
+// entered cpm lands on the nearest step of five.
+export function wpmFromSpeed(value, unit) {
+  return Number(value) / speedValue(1, unit);
+}
+
 export function formatSpeed(wpm, unit) {
   return `${speedValue(wpm, unit)} ${normalizeSpeedUnit(unit)}`;
 }

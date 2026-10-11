@@ -175,6 +175,70 @@ test('live speed and the ghost pacer read in the chosen unit', async ({ page }) 
   await expect(page.locator('#typing-status')).toHaveText('In progress');
 });
 
+test('the custom pace is entered in cpm, kept in wpm, and the caret runs at the cpm entered', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 25);
+  await command(page, 'speed unit · cpm');
+  await openSettings(page);
+  await page.locator('#pace-select').selectOption('custom');
+  const input = page.locator('#pace-wpm');
+  const range = page.locator('#pace-custom .pace-note');
+  // The default 80 wpm reads as 400 cpm, inside a range and step given in cpm.
+  await expect(input).toHaveValue('400');
+  await expect(range).toHaveText('50–1500 cpm');
+  await expect(input).toHaveAttribute('min', '50');
+  await expect(input).toHaveAttribute('max', '1500');
+  await expect(input).toHaveAttribute('step', '5');
+  await expect(page.locator('#pace-label')).toHaveText('pace 400 cpm');
+
+  // Kept as whole wpm, like every other speed: 333 cpm is 67 wpm, which reads back as 335 cpm.
+  await input.fill('333');
+  await input.press('Tab');
+  await expect(input).toHaveValue('335');
+  await expect(page.locator('#pace-label')).toHaveText('pace 335 cpm');
+
+  // The caret's own animation clock: the characters it passes between two frames two seconds apart.
+  await page.keyboard.press('Escape');
+  await typeInto(page, (await passageText(page)).slice(0, 1));
+  const cpm = await page.locator('#text-display').evaluate(async (display) => {
+    const ghost = display.querySelector('.ghost-caret');
+    const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 60;
+    // Where src/motion.js would place the ghost on each character; it sits on the first one not behind it.
+    const place = (char) => {
+      let left = 0;
+      let top = 0;
+      for (let node = char; node && node !== display; node = node.offsetParent) {
+        left += node.offsetLeft;
+        top += node.offsetTop;
+      }
+      return { left, row: Math.floor((top + lineHeight * 0.25) / lineHeight) * lineHeight };
+    };
+    const index = () => {
+      const [x, y] = ghost.style.transform.match(/-?[\d.]+(?=px)/g).map(Number);
+      return [...display.querySelectorAll('.char')].map(place).filter(({ left, row }) => row < y || (row === y && left < x)).length;
+    };
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const t1 = await frame();
+    const i1 = index();
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const t2 = await frame();
+    const i2 = index();
+    return ((i2 - i1) / (t2 - t1)) * 60000;
+  });
+  expect(Math.abs(cpm - 335), `${Math.round(cpm)} cpm`).toBeLessThanOrEqual(60);
+
+  // Back in wpm, the same saved pace reads as 67 wpm in the original range.
+  await page.keyboard.press('Escape');
+  await command(page, 'speed unit · wpm');
+  await openSettings(page);
+  await expect(input).toHaveValue('67');
+  await expect(range).toHaveText('10–300 wpm');
+  await expect(input).toHaveAttribute('min', '10');
+  await expect(input).toHaveAttribute('max', '300');
+  await expect(input).toHaveAttribute('step', '1');
+  await expect(page.locator('#pace-label')).toHaveText('pace 67 wpm');
+});
+
 test('a retest comparison and the drills and retests list read in cpm', async ({ page }) => {
   await openApp(page);
   await freshTextCheck(page);

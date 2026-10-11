@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CHARS_PER_WORD, CORPUS_VERSION, METRIC_VERSION, conditionKey, metrics } from '../src/typing.js';
-import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, speedDefinition, speedValue } from '../src/units.js';
+import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, speedDefinition, speedValue, wpmFromSpeed } from '../src/units.js';
 import { describeSeries } from '../src/graph.js';
 import { raceResultText } from '../src/race-result.js';
 
@@ -30,6 +30,17 @@ test('scores, bests, medians and differences convert the same way', () => {
   assert.equal(speedValue(-3, 'cpm'), -15);
   assert.equal(speedValue(2.5, 'cpm'), 12.5);
   assert.equal(formatSpeed(64, undefined), '64 wpm');
+});
+
+test('a figure entered in the chosen unit goes back to wpm, the inverse of the display', () => {
+  assert.equal(wpmFromSpeed(400, 'cpm'), 80);
+  assert.equal(wpmFromSpeed('400', 'cpm'), 80);
+  assert.equal(wpmFromSpeed(80, 'wpm'), 80);
+  assert.equal(wpmFromSpeed(80, undefined), 80);
+  // Unrounded: the caller keeps whole wpm, so 333 cpm becomes 67 wpm and reads back as 335 cpm.
+  assert.equal(wpmFromSpeed(333, 'cpm'), 66.6);
+  assert.equal(speedValue(Math.round(wpmFromSpeed(333, 'cpm')), 'cpm'), 335);
+  for (const wpm of [10, 67, 300]) assert.equal(wpmFromSpeed(speedValue(wpm, 'cpm'), 'cpm'), wpm);
 });
 
 test('the metric note names the unit and how it is derived', () => {
