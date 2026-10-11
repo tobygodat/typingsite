@@ -63,6 +63,8 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   expect(first).toBeLessThanOrEqual(110);
   await expect(page.locator('.run-card-unit')).toHaveText('wpm');
   await expect(page.locator('#best')).toHaveText(`Best · ${first} wpm`);
+  const raw = Number(await page.locator('#result-raw').textContent());
+  await expect(page.locator('#result-word-detail')).toContainText(/^fastest “.+” \d+ wpm · slowest/);
 
   await openSettings(page);
   await expect(page.locator('#speed-unit')).toHaveValue('wpm');
@@ -73,6 +75,11 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('#best')).toHaveText(`Best · ${first * 5} cpm`);
   await expect(page.locator('#speed-definition')).toHaveText('cpm counts correct characters kept (wpm × 5)');
   await expect(page.locator('.legend-speed')).toHaveText('speed · cpm');
+  // The run card's secondary stats read in the unit too: raw speed and each word's pace.
+  await expect(page.locator('#result-raw')).toHaveText(String(raw * 5));
+  await expect(page.locator('.run-card-more dt').first()).toHaveText('raw cpm');
+  await expect(page.locator('#result-word-detail')).toContainText(/^fastest “.+” \d+ cpm · slowest “.+” \d+ cpm/);
+  await expect(page.locator('#result-words [role="option"]').first()).toHaveAttribute('aria-label', /, (\d+ cpm|no pace)/);
   await expect(page.locator('#speed-graph')).toHaveAttribute('aria-label', new RegExp(`^Speed over time: average ${first * 5} cpm, peak \\d+ cpm, lowest \\d+ cpm\\.`));
   // The axis is drawn in cpm: its top gridline sits above the run's own average.
   const labels = await page.locator('#speed-graph text.graph-label').allTextContents();
@@ -144,9 +151,11 @@ test('live speed and the ghost pacer read in the chosen unit', async ({ page }) 
   // The ghost's pace is 60 wpm without a best: 300 cpm.
   await command(page, 'ghost');
   await expect(page.locator('#egg-feedback')).toHaveText('Ghost pacer · 300 cpm');
-  // A toast already showing is reworded with the unit.
+  await expect(page.locator('#pace-label')).toHaveText('pace 300 cpm');
+  // A toast already showing is reworded with the unit, and so is the pace caret's label.
   await command(page, 'speed unit · wpm');
   await expect(page.locator('#egg-feedback')).toHaveText('Ghost pacer · 60 wpm');
+  await expect(page.locator('#pace-label')).toHaveText('pace 60 wpm');
   await command(page, 'speed unit · cpm');
   await command(page, 'ghost');
 
@@ -421,7 +430,10 @@ test.describe('short phone 375×553', () => {
     expect(hit).toBe('theme-select');
     const popover = page.locator('.preferences-popover');
     expect(await popover.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeLessThanOrEqual(0);
-    for (const height of await popover.locator('.preference-row').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height))) {
+    // Every row on screen; the collapsed test content rows and the hidden custom pace row aren't drawn.
+    const heights = await popover.locator('.preference-row:visible').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+    expect(heights.length).toBeGreaterThanOrEqual(8);
+    for (const height of heights) {
       expect(height).toBeGreaterThanOrEqual(44);
     }
   });
