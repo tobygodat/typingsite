@@ -284,16 +284,23 @@ export const beatsBest = (a, b) => !b || a.wpm > b.wpm || (a.wpm === b.wpm
 // drops exactly the ids its own clear named. Every clear that hasn't been undone keeps its pairs: two
 // devices can clear independently, and the newer marker alone would let a stale copy bring back a
 // record the older clear named. Earlier copies of this field hold ids alone, named by the copy's
-// historyClearedAt. Only records stamped ahead of a clear are named, so there are few; the newest
-// MAX_CLEARED_IDS pairs (by clear, then id) are kept, enough for one clear to name every run summary.
+// historyClearedAt. Only records stamped ahead of a clear are named, so there are usually few. The
+// newest clear keeps all of its pairs: they can't outnumber the records it removed, even after a clock
+// corrected far backward (every run and loop then named). Older clears keep their newest
+// MAX_CLEARED_IDS pairs (by clear, then id) between them.
 export const MAX_CLEARED_IDS = MAX_RUN_SUMMARIES;
 const namedPairs = (side) => list(side.historyClearedIds).flatMap((entry) => {
   const [marker, id] = typeof entry === 'string' ? [side.historyClearedAt, entry] : Array.isArray(entry) ? entry : [];
   return marker && typeof marker === 'string' && id && typeof id === 'string' ? [[marker, id]] : [];
 });
-const liveNamed = (pairs, undone) => [...new Map(pairs.filter(([marker]) => !undone.includes(marker))
-  .map((pair) => [JSON.stringify(pair), pair])).values()]
-  .sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1])).slice(-MAX_CLEARED_IDS);
+const liveNamed = (pairs, undone, newest) => {
+  const live = [...new Map(pairs.filter(([marker]) => !undone.includes(marker))
+    .map((pair) => [JSON.stringify(pair), pair])).values()]
+    .sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]));
+  const older = live.filter(([marker]) => marker !== newest);
+  const dropped = new Set(older.slice(0, Math.max(0, older.length - MAX_CLEARED_IDS)));
+  return live.filter((pair) => !dropped.has(pair));
+};
 // The ids a copy's clears named (a merged or cleared copy holds only clears not undone).
 export const clearedIds = (profile) => new Set(namedPairs(profile).map(([, id]) => id));
 
@@ -310,7 +317,7 @@ export function clearProfile(profile) {
     for (const item of list(profile[name])) if ((item[at] || '') > marker && item.id) ahead.add(String(item.id));
   }
   for (const best of Object.values(profile.bests || {})) if ((best?.at || '') > marker && best.attemptId) ahead.add(String(best.attemptId));
-  const named = liveNamed([...namedPairs(profile), ...[...ahead].map((id) => [marker, id])], list(profile.undoneClears));
+  const named = liveNamed([...namedPairs(profile), ...[...ahead].map((id) => [marker, id])], list(profile.undoneClears), marker);
   const cleared = { ...profile, historyClearedAt: marker, bests: {}, seenTextIds: [] };
   for (const name of Object.keys(HISTORY)) cleared[name] = [];
   if (named.length) cleared.historyClearedIds = named;
@@ -378,7 +385,7 @@ export function mergeSynced(local, cloud) {
   const undone = [...new Set([...list(local.undoneClears), ...list(cloud.undoneClears)])].sort();
   const live = (marker) => (marker && !undone.includes(marker) ? marker : '');
   const clearedAt = [live(local.historyClearedAt), live(cloud.historyClearedAt)].sort().at(-1);
-  const named = liveNamed([...namedPairs(local), ...namedPairs(cloud)], undone);
+  const named = liveNamed([...namedPairs(local), ...namedPairs(cloud)], undone, clearedAt);
   const namedIds = new Set(named.map(([, id]) => id));
 
   const surviving = (side) => {

@@ -346,14 +346,31 @@ test('every clear not undone keeps out the records it named, after a newer clear
     assert.ok(sameProfile(mergeSynced(merged, merged), merged));
   }
 
-  // The pairs are capped, keeping the newest clears'.
-  const older = profile({ historyClearedAt: minute(1), historyClearedIds: Array.from({ length: MAX_CLEARED_IDS }, (_, n) => `o${String(n).padStart(4, '0')}`) });
+  // Older clears' pairs are capped, keeping the newest; the newest clear keeps all of its own.
+  const older = profile({ historyClearedAt: minute(1), historyClearedIds: Array.from({ length: MAX_CLEARED_IDS + 2 }, (_, n) => `o${String(n).padStart(4, '0')}`) });
   const newer = profile({ historyClearedAt: minute(2), historyClearedIds: [[minute(2), 'n1'], [minute(2), 'n2']] });
+  assert.equal(mergeSynced(older, older).historyClearedIds.length, MAX_CLEARED_IDS + 2);
   const capped = mergeSynced(older, newer);
   assert.ok(sameProfile(mergeSynced(newer, older), capped));
-  assert.equal(capped.historyClearedIds.length, MAX_CLEARED_IDS);
+  assert.equal(capped.historyClearedIds.length, MAX_CLEARED_IDS + 2);
   assert.deepEqual(capped.historyClearedIds[0], [minute(1), 'o0002']);
   assert.deepEqual(capped.historyClearedIds.slice(-2), [[minute(2), 'n1'], [minute(2), 'n2']]);
+});
+
+test('a clear keeps out every record it named, more than the cap included', () => {
+  // A clock that ran a year ahead was corrected back before the clear: every run summary kept, and
+  // more loops, are stamped after it.
+  const ahead = (n) => new Date(Date.now() + 365 * 86400000 + n * 60000).toISOString();
+  const runs = Array.from({ length: MAX_RUN_SUMMARIES }, (_, n) => ({ id: `r${String(n).padStart(4, '0')}`, at: ahead(n) }));
+  const loops = Array.from({ length: 30 }, (_, n) => ({ id: `l${String(n).padStart(2, '0')}`, at: ahead(n) }));
+  const cleared = clearProfile(profile({ runs, loops }));
+  // A copy that hadn't heard of the clear still holds all of them.
+  const stale = profile({ runs, loops });
+  for (const merged of [mergeSynced(cleared, stale), mergeSynced(stale, cleared)]) {
+    assert.deepEqual([merged.runs.length, merged.loops.length], [0, 0]);
+    assert.ok(sameProfile(mergeSynced(merged, stale), merged));
+  }
+  assert.equal(cleared.historyClearedIds.length, MAX_RUN_SUMMARIES + 30);
 });
 
 test('an undone clear stays undone however many clears follow it', () => {
