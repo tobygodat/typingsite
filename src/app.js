@@ -39,6 +39,7 @@ const defaultPreferences = {
   duration: 30,
   count: 25,
   punctuation: false,
+  numbers: false,
   quoteLength: 'medium',
   difficulty: 'any',
   wordList: DEFAULT_WORD_LIST,
@@ -191,6 +192,7 @@ function conditions(inputClass = 'physical-keyboard') {
     duration: prefs.mode === 'time' ? prefs.duration : null,
     count: prefs.mode === 'words' ? prefs.count : null,
     punctuation: prefs.punctuation,
+    numbers: prefs.mode === 'quote' ? false : Boolean(prefs.numbers),
     quoteLength: prefs.mode === 'quote' ? prefs.quoteLength : null,
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
     wordList: prefs.mode === 'quote' ? null : prefs.wordList,
@@ -204,7 +206,7 @@ function conditions(inputClass = 'physical-keyboard') {
 
 function describeConditions(value = conditions()) {
   const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
-  const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : value.punctuation ? 'punctuation' : 'plain';
+  const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`;
   const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
   const correction = value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error';
   const language = value.wordList ? `english ${value.wordList}` : 'english';
@@ -307,6 +309,7 @@ function applyPreferences() {
   $('keyboard').hidden = !prefs.keyboard;
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
+  $('numbers-toggle').checked = Boolean(prefs.numbers);
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
@@ -322,6 +325,7 @@ function setModeControls() {
   });
   $('quote-options').hidden = prefs.mode !== 'quote';
   $('punctuation-toggle').disabled = prefs.mode === 'quote';
+  $('numbers-toggle').disabled = prefs.mode === 'quote';
   $('word-list').disabled = prefs.mode === 'quote';
   $('duration-options').hidden = prefs.mode === 'quote';
   const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
@@ -454,6 +458,7 @@ function choosePassage(extraSeen = []) {
     mode: prefs.mode,
     count: prefs.count,
     punctuation: prefs.punctuation,
+    numbers: Boolean(prefs.numbers),
     quoteLength: prefs.quoteLength,
     difficulty: prefs.difficulty,
     wordList: prefs.wordList,
@@ -1031,6 +1036,7 @@ function restoreConditions(source) {
     duration: source.duration || prefs.duration,
     count: source.count || prefs.count,
     punctuation: Boolean(source.punctuation),
+    numbers: Boolean(source.numbers),
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
@@ -1329,7 +1335,7 @@ function renderHistory() {
 }
 
 function dailyConditions() {
-  return { ...conditions(), mode: 'quote', duration: null, count: null, punctuation: true,
+  return { ...conditions(), mode: 'quote', duration: null, count: null, punctuation: true, numbers: false,
     quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
 }
 
@@ -1865,6 +1871,12 @@ function bindEvents() {
     saveProfile();
     resetSession('practice', { focus: true });
   });
+  $('numbers-toggle').addEventListener('change', (event) => {
+    prefs.numbers = event.target.checked;
+    showBest();
+    saveProfile();
+    resetSession('practice', { focus: true });
+  });
   $('quote-length').addEventListener('change', (event) => { prefs.quoteLength = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
@@ -2067,6 +2079,7 @@ function paletteCommands(query) {
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
+    { group: 'test', label: 'numbers', keywords: 'digits figures', hint: onOff(prefs.numbers), on: Boolean(prefs.numbers), disabled: prefs.mode === 'quote', run: () => { prefs.numbers = !prefs.numbers; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => { navigate('practice'); setWordList(id); } })),
     ...[['off', 'off'], ['best', 'personal best'], ['average', 'average'], ['last', 'last run'], ['custom', 'custom']].map(([mode, name]) => (
       { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: prefs.paceCaret === mode ? 'on' : '', on: prefs.paceCaret === mode, run: () => setPaceCaret(mode) })),

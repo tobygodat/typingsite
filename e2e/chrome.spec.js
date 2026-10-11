@@ -58,7 +58,7 @@ test('settings apply their display preferences', async ({ page }) => {
   // Escape closes the popover and returns focus to its toggle.
   await page.keyboard.press('Escape');
   await expect(page.locator('.preferences-popover')).toBeHidden();
-  await expect(page.locator('details.preferences summary')).toBeFocused();
+  await expect(page.locator('details.preferences > summary')).toBeFocused();
 });
 
 test('focus mode has an explicit exit and answers Escape', async ({ page }) => {
