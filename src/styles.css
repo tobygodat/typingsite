@@ -791,6 +791,7 @@ kbd {
 .shortcut-row { width: 100%; }
 
 .measure-row {
+  position: relative;
   padding-bottom: var(--space-6);
   margin-bottom: var(--space-6);
   border-bottom: 1px solid var(--hairline);
@@ -882,6 +883,32 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 
 body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
 body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
+
+/* Caps Lock warning: sits in the gap under the measure rule, so showing it moves nothing.
+   It is a warning, not chrome, so the running fade leaves it alone; it is a readable
+   sentence, so it is set in Literata. */
+.caps-warning {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-small)/1.5 var(--font-serif);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--dur-base) var(--ease-out), visibility 0s linear var(--dur-base);
+}
+
+.caps-warning[data-on="true"] {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--dur-base) var(--ease-out), visibility 0s;
+}
+
+/* Still run: next to the passage mid-run, the warning appears and leaves instantly. */
+body[data-running="true"] .caps-warning { transition: none; }
 
 /* ── Typing zone ────────────────────────────────────────────────────────── */
 
