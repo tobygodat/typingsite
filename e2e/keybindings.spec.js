@@ -197,6 +197,9 @@ for (const width of [1280, 320]) {
     await editBindings(page, {});
     await page.locator('#keybinding-commands').scrollIntoViewIfNeeded();
     await expect(page.locator('#keybinding-commands')).toBeVisible();
+    for (const height of await page.locator('.keybindings-category .btn').evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height))) {
+      expect(height).toBeGreaterThanOrEqual(44);
+    }
     const bounds = await page.locator('.preferences-popover').boundingBox();
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
@@ -216,3 +219,26 @@ for (const keybindings of [{ restart: 'Ctrl+K' }, { restart: 'a', commands: '__p
     await expect(page.locator('#palette')).toBeVisible();
   });
 }
+
+test('held printable input is ignored and a held Escape exits focus without restarting the run', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page);
+  const text = await passageText(page);
+  await page.locator('#typing-input').focus();
+  await page.keyboard.down(text[0]);
+  await page.keyboard.down(text[0]);
+  await page.keyboard.up(text[0]);
+  await expect(page.locator('#typing-input')).toHaveValue(text[0]);
+  await expect(page.locator('#input-help')).toHaveText('Key repeat ignored.');
+  await page.mouse.move(5, 5); await page.mouse.move(40, 40);
+  await openSettings(page);
+  await page.locator('#focus-toggle').check();
+  await page.locator('#typing-input').click();
+  await page.keyboard.down('Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'false');
+  await page.keyboard.down('Escape');
+  await page.keyboard.up('Escape');
+  await expect(page.locator('#typing-input')).toHaveValue(text[0]);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#typing-input')).toHaveValue('');
+});
