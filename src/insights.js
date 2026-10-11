@@ -161,19 +161,22 @@ const DAILY_TEXTS = [
 
 // The bare word: a word without the punctuation around it, lowercased ("Table," → "table").
 // Punctuation inside stays ("9:30", "don't"), so no merged, made-up tokens. `same[k]` is true where
-// the bare word keeps the written character at k unchanged (not a dropped comma, not a capital).
+// the bare word keeps the written character at k unchanged (not a dropped comma, not a capital), and
+// `lead` is where the bare word starts in `raw`.
 function bareWord(raw) {
   const lead = raw.search(/[\p{L}\p{N}]/u);
   const word = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
   const same = Array.from({ length: raw.length }, (_, k) => lead >= 0 && k >= lead && word[k - lead] === raw[k]);
-  return { word, same };
+  return { word, same, lead };
 }
 
 // The token that practises these misses: the bare word when every miss was on a character it keeps
-// as typed, else the word as written ("table," for a missed comma, "The" for a missed capital).
+// as typed, else the word as written ("table," for a missed comma, "The" for a missed capital). A
+// miss on the space after the word goes with the character before it, since the practice passage
+// puts a space after every word: "the" for "The ", "table," for "table, ".
 function missedToken(raw, misses) {
   const { word, same } = bareWord(raw);
-  return word && misses.every((k) => same[k]) ? word : raw;
+  return word && misses.every((k) => same[Math.min(k, raw.length - 1)]) ? word : raw;
 }
 
 // When each letter kept at the finish was typed, mirroring replayAttempt's kept text: a mistyped
@@ -195,15 +198,18 @@ function keptOffsets(attempt) {
   return times;
 }
 
-// Missed words had any wrong first try. The slowest are this run's slowest clean words by per-word
+// Missed words had any wrong first try, counting the space after the word as the run card's word
+// history does (the last word has none). The slowest are this run's slowest clean words by per-word
 // wpm: one timing each, so they carry their speed and the run's median for comparison, not a verdict.
 //
 // Per-word pace, one rule for every word: each counted character's interval is the time since the
 // previous kept keystroke, and wpm = (counted characters / 5) / (sum of their intervals). A word
 // counts only the characters its bare word keeps as written, so "table," is timed on t-a-b-l-e (the
-// comma's interval is left out) and "The" on h-e, matching what is reported and drilled. The run's
-// first character has no previous keystroke, so it is never counted: a first word is timed from its
-// second letter, and a word left with no counted characters (a one-letter first word) isn't timed.
+// comma's interval is left out) and "The" on h-e, matching what is reported and drilled. A dropped
+// leading quote takes the next interval with it, so '"the' is timed on h-e too: the drill never types
+// the quote-to-t step. The run's first character has no previous keystroke, so it is never counted: a
+// first word is timed from its second letter, and a word left with no counted characters (a one-letter
+// first word) isn't timed.
 export function missedAndSlowWords(attempt, slowLimit = 5) {
   const replay = attempt.summary || replayAttempt(attempt);
   const first = new Map(replay.firstAttempts.map((item) => [item.position, item]));
@@ -213,10 +219,12 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
   let start = 0;
   for (const raw of attempt.text.split(' ')) {
     const end = start + raw.length;
-    const { word, same } = bareWord(raw);
+    const { word, same, lead } = bareWord(raw);
     const tries = [];
     for (let i = start; i < end; i += 1) if (first.has(i)) tries.push(first.get(i));
     const misses = tries.filter((item) => !item.correct).map((item) => item.position - start);
+    // The spaces after a word are part of typing it: a wrong first try there marks the word.
+    for (let i = end; raw && attempt.text[i] === ' '; i += 1) if (first.get(i)?.correct === false) misses.push(i - start);
     if (misses.length) {
       const token = missedToken(raw, misses);
       if (!missed.includes(token)) missed.push(token);
@@ -224,7 +232,7 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
       let count = 0;
       let ms = 0;
       for (let k = 0; k < raw.length; k += 1) {
-        if (!same[k] || start + k === 0) continue;
+        if (!same[k] || (k === lead && k > 0) || start + k === 0) continue;
         count += 1;
         ms += kept[start + k] - kept[start + k - 1];
       }
