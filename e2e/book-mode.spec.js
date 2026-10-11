@@ -34,6 +34,7 @@ test('book mode loads its text on demand and types page by page, keeping the pla
   await expect(page.locator('#condition-line')).toHaveText('english · book · physical keyboard · continue on error · gutenberg v1 · metric v1');
   await expect(page.locator('#duration-options')).toBeHidden();
   await expect(page.locator('#punctuation-toggle')).toBeDisabled();
+  await expect(page.locator('#numbers-toggle')).toBeDisabled();
   await expect(page.locator('#best')).toHaveText('Book pages keep no best');
   const first = await passageText(page);
   expect(first).toMatch(/^Alice was beginning to get very tired of sitting by her sister/);
