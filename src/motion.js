@@ -181,7 +181,7 @@ export function createTypingFx(wrap, display, options = {}) {
       ghost.cursor = 0;
       display.append(ghostCaret, caret);
       ghostCaret.classList.toggle('is-hidden', !ghost.armed);
-      if (ghost.armed) requestAnimationFrame(() => placeGhost(0));
+      if (ghost.armed) requestAnimationFrame(() => { if (ghost.armed) placeGhost(0); });
       setState('idle');
       snapNext = true;
       needsMeasure = true;
@@ -208,16 +208,24 @@ export function createTypingFx(wrap, display, options = {}) {
 
     // Ghost pacer: moves at a fixed characters-per-second from the first keystroke.
     ghost: {
-      arm(cps) {
+      // startTime joins a run already in progress: the next frame places the caret where the
+      // pace has reached, so it never jumps back to the start.
+      arm(cps, startTime = 0) {
         ghost.armed = cps > 0;
         ghost.cps = cps;
         ghost.points = null;
         ghost.cursor = 0;
         ghost.index = -1;
         ghostCaret.removeAttribute('data-replay');
-        ghostCaret.classList.toggle('is-hidden', !ghost.armed);
-        if (ghost.armed) placeGhost(0);
-        else stopGhost();
+        if (!ghost.armed) {
+          stopGhost();
+          ghostCaret.classList.add('is-hidden');
+        } else if (startTime && !reducedMotion.matches) {
+          ghost.start = startTime;
+          if (!ghost.frame) ghost.frame = requestAnimationFrame(ghostTick);
+        } else {
+          placeGhost(0);
+        }
       },
       // A friend's recorded run: the ghost jumps to where their caret was at each of their keys.
       replay(points) {

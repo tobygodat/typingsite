@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { test, expect, openApp, signInWithEmail, chooseWords, passageText, typeInto } from './fixtures.js';
+import { test, expect, openApp, signInWithEmail, chooseWords, passageText, typeInto, openSettings } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -288,6 +288,39 @@ test('a timed ghost race runs on the sender’s clock and is led by the text kep
   await expect(page.locator('#ghost-result-rule')).toHaveText('Same 15 s clock: more correct text kept leads. wpm counts correct characters kept.');
   await expect(page.locator('#ghost-result-rows')).toContainText('15.0 s');
   await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Ada sees this result in their inbox too.');
+});
+
+test('with the pace caret on, a ghost race keeps the friend’s run as its ghost and their numbers in its conditions', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  const passage = 'still water 42 over light 7 time still water over';
+  supabase.challenges.seed(ada.id, lin.id, { name: 'Ada', passage,
+    conditions: { mode: 'words', count: 10, punctuation: false, numbers: true, wordList: '200', correctionPolicy: 'relaxed' },
+    trace: steadyTrace(passage, 120) });
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await openSettings(page);
+  await page.locator('#pace-select').selectOption('custom');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#pace-label')).toHaveText('pace 80 wpm');
+
+  await page.locator('#challenge-toast').getByRole('button', { name: 'Race' }).click({ timeout: 12000 });
+  await expect(page.locator('#session-title')).toHaveText('Race Ada’s run');
+  const ghost = page.locator('#text-display .ghost-caret');
+  // The ghost is Ada's recorded run, not the pacer, and the pace isn't labelled over it.
+  await expect(ghost).toHaveAttribute('data-replay', '');
+  await expect(ghost).not.toHaveClass(/is-hidden/);
+  await expect(page.locator('#pace-label')).toBeHidden();
+  await expect(page.locator('#condition-line')).toContainText('10 words · plain · numbers');
+  // Changing the pace mid-race leaves the replay in place.
+  await openSettings(page);
+  await page.locator('#pace-select').selectOption('best');
+  await page.keyboard.press('Escape');
+  await expect(ghost).toHaveAttribute('data-replay', '');
+  await expect(page.locator('#pace-label')).toBeHidden();
+  await typeInto(page, passage.slice(0, 14), '#typing-input', { delay: 120 });
+  await expect.poll(() => ghostX(page)).toBeGreaterThan(40);
+  await expect(ghost).toHaveAttribute('data-replay', '');
 });
 
 test('an older open ghost race still reaches a new device behind more than fifty newer answered ones', async ({ page, supabase }) => {
