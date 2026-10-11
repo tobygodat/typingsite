@@ -258,6 +258,41 @@ test('signing out in one tab first sends a run another tab saved but could not s
   expect(errors).toEqual([]);
 });
 
+test('a run another tab finishes after a sign-out that kept unsent edits never reaches the account', async ({ page, context, supabase }) => {
+  supabase.addUser(EMAIL);
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openView(other, 'Practice');
+  await chooseWords(other, 10);
+  const text = await passageText(other);
+  await typeInto(other, text.slice(0, 3));
+
+  // This tab's run can't be sent, so the sign-out keeps it on the device for the next sign-in.
+  await page.route(/\/rest\/v1\/profiles/, (route) => route.abort());
+  await finishRun(page);
+  const kept = (await cachedProfile(page)).runs.map((run) => run.id);
+  expect(kept).toHaveLength(1);
+  await page.locator('#account-trigger').click();
+  await Promise.all([page.waitForEvent('load'), page.locator('#account-signout').click()]);
+  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+
+  // The other tab's run, finished after the sign-out, is a guest's: the next sign-in sends only what
+  // was kept, and the other tab then starts again as a guest.
+  await other.keyboard.type(text.slice(3));
+  await page.unroute(/\/rest\/v1\/profiles/);
+  await signInWithEmail(page, EMAIL);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await expect.poll(() => runIds(cloud(supabase)).length).toBeGreaterThan(0);
+  expect(runIds(cloud(supabase))).toEqual(kept);
+  expect((await storageKeys(page)).filter((key) => key.startsWith('stilltype-signed-out:'))).toEqual([]);
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+  expect(errors).toEqual([]);
+});
+
 test('runs made after the session ends stay on the device and reach the account at the next sign-in', async ({ page, supabase }) => {
   supabase.addUser(EMAIL);
   // Short-lived tokens, so every push refreshes the session first.

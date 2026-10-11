@@ -191,9 +191,24 @@ export async function freshSession(session = loadSession()) {
   }
 }
 
+// Left by a sign-out that keeps unsent edits for the next sign-in, until that user signs in again: a tab
+// still holding the account must stop caching runs under it, though the cache stays. (A sign-out that
+// sent everything removes the cache, which stops those tabs already.) A session that only expired
+// leaves none, so its tabs keep caching for the next sign-in.
+export const signedOutKey = (userId) => `stilltype-signed-out:${userId}`;
+export function signedOut(userId) {
+  try { return localStorage.getItem(signedOutKey(userId)) !== null; } catch { return false; }
+}
+export const clearSignedOut = (userId) => remove(signedOutKey(userId));
+
 export async function signOut(session, { keepCache = false } = {}) {
+  // Written before the session goes, so a tab that hears of the sign-out finds it.
+  if (session && keepCache) writeJson(signedOutKey(session.user.id), true);
   remove(SESSION_KEY);
-  if (session && !keepCache) remove(profileKey(session.user.id));
+  if (session && !keepCache) {
+    remove(profileKey(session.user.id));
+    clearSignedOut(session.user.id);
+  }
   try { await request('/auth/v1/logout', { method: 'POST', token: session?.access_token }); } catch {}
 }
 

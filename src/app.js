@@ -84,6 +84,9 @@ let lastCloudAt = null;
 let cacheText = null;
 let lastPull = 0;
 let cacheWaiting = false;
+// Another tab signed this account out and kept unsent edits for the next sign-in (account.signedOut):
+// this tab saves nothing more for it, and starts again as a guest once no run is in progress.
+let signedOutElsewhere = false;
 const PULL_INTERVAL_MS = 15000;
 
 function validPreferences(value) {
@@ -176,7 +179,7 @@ let race = {
 function saveProfile() {
   commitPreferences();
   account.capHistory(profile);
-  if (!session) return true;
+  if (!session || signedOutElsewhere) return true;
   unsynced = true;
   localEdits += 1;
   if (cloudChecked) {
@@ -193,11 +196,13 @@ function saveProfile() {
 function storeLocally() {
   const userId = session.user.id;
   const stored = account.loadCachedProfileText(userId);
-  // Signed out here (the sign-out removed the copy this tab had read), or someone else signed in: this
-  // tab's copy must not come back. A session that only ended (its refresh was refused) keeps caching,
-  // as before, so the next sign-in on this device merges these runs into the account.
+  // Signed out here (the sign-out removed the copy this tab had read, or kept it and left its marker), or
+  // someone else signed in: this tab's copy must not come back. A session that only ended (its refresh
+  // was refused) keeps caching, as before, so the next sign-in on this device merges these runs into the
+  // account.
   const current = account.loadSession()?.user.id;
   if ((current && current !== userId) || (stored === null && cacheText !== null)) return false;
+  if (signedOutElsewhere || account.signedOut(userId)) return false;
   if (stored && stored !== cacheText) {
     try {
       absorb(JSON.parse(stored));
@@ -352,6 +357,10 @@ function setRunning(running) {
 // from it; the screen catches up just after.
 function flushDeferredSync() {
   if (runInProgress()) return;
+  if (signedOutElsewhere) {
+    location.reload();
+    return;
+  }
   if (cacheWaiting && absorbCache()) setTimeout(showMerged);
   if (preferencesWaiting) followStoredPreferences();
   forgetClearedTraining();
@@ -2003,6 +2012,7 @@ async function syncOnLoad() {
 // Puts the account's profile in the device cache, then starts over as that user. A device copy kept
 // at sign-out (edits that hadn't synced) is merged with the row rather than replaced.
 async function enterAccount(newSession) {
+  account.clearSignedOut(newSession.user.id);
   try {
     const cloud = await account.fetchCloudProfile(newSession);
     const cached = account.loadCachedProfile(newSession.user.id);
@@ -2152,8 +2162,18 @@ function bindAccount() {
   // Another tab signed in to this account saved: merge its copy. A removed key (sign-out, or a switch
   // of account) is ignored, and only what the copy lacks is written back (absorbCache), so tabs settle
   // rather than echo each other. Mid-run the merge waits; the save at the end of the run merges it then.
+  // Another tab signed out keeping unsent edits (account.signedOutKey): this tab starts again as a guest,
+  // as that tab did, once any run in progress ends (flushDeferredSync); that run is kept in memory only.
   addEventListener('storage', (event) => {
-    if (!session || event.key !== account.profileKey(session.user.id) || event.newValue === null) return;
+    if (!session) return;
+    if (event.key === account.signedOutKey(session.user.id) && event.newValue !== null) {
+      signedOutElsewhere = true;
+      clearTimeout(syncTimer);
+      syncTimer = 0;
+      if (!runInProgress()) location.reload();
+      return;
+    }
+    if (event.key !== account.profileKey(session.user.id) || event.newValue === null) return;
     if (runInProgress()) cacheWaiting = true;
     else if (absorbCache()) showMerged();
   });
