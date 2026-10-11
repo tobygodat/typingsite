@@ -22,6 +22,12 @@ test('the app installs, reloads offline and still types', async ({ page, context
   const text = await passageText(page);
   await typeInto(page, text.slice(0, 5));
   await expect(page.locator('#text-display .char.correct')).toHaveCount(5);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#typing-input')).toHaveValue('');
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('#palette')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#palette')).toBeHidden();
   await context.setOffline(false);
 });
 
