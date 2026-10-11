@@ -161,6 +161,19 @@ function saveProfile() {
   return storageAvailable;
 }
 
+// Caps Lock warning: read from the modifier state on each key event in the typing field.
+function setCapsWarning(on) {
+  const warning = $('caps-warning');
+  if ((warning.dataset.on === 'true') === on) return;
+  warning.dataset.on = String(on);
+  if (on) announce('Caps Lock is on');
+}
+
+function syncCapsLock(event) {
+  if (typeof event.getModifierState !== 'function') return;
+  setCapsWarning(event.getModifierState('CapsLock'));
+}
+
 function announce(message) {
   $('announcement').textContent = '';
   requestAnimationFrame(() => { $('announcement').textContent = message; });
@@ -1764,6 +1777,8 @@ function bindEvents() {
   $('typing-input').addEventListener('keydown', (event) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
   });
+  for (const type of ['keydown', 'keyup']) $('typing-input').addEventListener(type, syncCapsLock);
+  $('typing-input').addEventListener('blur', () => setCapsWarning(false));
   $('typing-input').addEventListener('paste', (event) => { event.preventDefault(); refusePaste('primary'); });
   $('typing-input').addEventListener('drop', (event) => event.preventDefault());
   $('typing-input').addEventListener('pointerdown', (event) => {
