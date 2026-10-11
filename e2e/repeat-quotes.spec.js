@@ -23,8 +23,16 @@ async function shortGentleQuotes(page) {
   return passageText(page);
 }
 
-async function setRepeats(page, on) {
+// Repeat quotes sits in the collapsed test content category of settings.
+async function openTestContent(page) {
   await openSettings(page);
+  const category = page.locator('#test-content-settings');
+  if (!(await category.evaluate((node) => node.open))) await category.locator('summary').click();
+  await expect(page.locator('#repeat-quotes-toggle')).toBeVisible();
+}
+
+async function setRepeats(page, on) {
+  await openTestContent(page);
   await page.locator('#repeat-quotes-toggle').setChecked(on);
 }
 
@@ -54,7 +62,7 @@ test('off by default: unseen quotes come first, and an exhausted pool says it is
   await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).toHaveText('off');
   await page.keyboard.press('Enter');
   await expect(page.locator('#palette')).toBeHidden();
-  await openSettings(page);
+  await openTestContent(page);
   await expect(page.locator('#repeat-quotes-toggle')).toBeChecked();
   await expect(page.locator('#input-help')).toHaveText('Repeated text · doesn’t count toward your best.');
   await page.keyboard.press('Escape');
@@ -65,7 +73,7 @@ test('off by default: unseen quotes come first, and an exhausted pool says it is
   // Generated text never repeats, so outside quote mode the switch and the command are off limits.
   await page.keyboard.press('Escape');
   await page.locator('#mode-words').click();
-  await openSettings(page);
+  await openTestContent(page);
   await expect(page.locator('#repeat-quotes-toggle')).toBeDisabled();
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+k');
@@ -194,7 +202,7 @@ test('stop on error: a blocked letter swaps the notice for its hint without movi
   await page.setViewportSize({ width: 320, height: 640 });
   await openApp(page);
   await shortGentleQuotes(page);
-  await openSettings(page);
+  await openTestContent(page);
   await page.locator('#stop-on-error-toggle').setChecked(true);
   await page.locator('#repeat-quotes-toggle').setChecked(true);
   await page.keyboard.press('Escape');
