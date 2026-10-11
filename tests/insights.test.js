@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
+import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage, wordHistory } from '../src/typing.js';
 import { dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 test('missed and slowest words come from first tries and per-word speed', () => {
@@ -42,18 +42,20 @@ test('a corrected space does not charge its correction to the next word', () => 
   // follows quickly. Timed from the deleted keystroke, "sat" would read as 15 wpm and slowest.
   events.push(at('x', 7, 800), { type: 'delete', count: 1, offsetMs: 900 }, at(' ', 7, 2900));
   events.push(at('s', 8, 2980), at('a', 9, 3060), at('t', 10, 3140));
-  const { missed, slow, timedCount } = missedAndSlowWords({ text, events }, 3);
-  assert.deepEqual(missed, []);
-  assert.equal(timedCount, 3);
+  const { missed, slow, timedCount, medianWpm } = missedAndSlowWords({ text, events }, 3);
+  // The mistyped space is "cat"'s miss, so "cat" isn't clean: not timed, not in the median.
+  assert.deepEqual(missed, ['cat']);
+  assert.equal(timedCount, 2);
   // "sat" is timed from the kept space: 3 letters in 240 ms is 150 wpm. "the" counts h-e only.
-  assert.deepEqual(Object.fromEntries(slow.map((item) => [item.word, item.wpm])), { the: 120, cat: 120, sat: 150 });
+  assert.deepEqual(Object.fromEntries(slow.map((item) => [item.word, item.wpm])), { the: 120, sat: 150 });
+  assert.equal(medianWpm, 135);
 });
 
 test('per-word pace counts one interval per character, since the previous kept keystroke', () => {
   const text = 'to table, a cat sat';
   const at = (char, position, offsetMs) => ({ type: 'insert', text: char, position, offsetMs });
   // [character, ms since the previous keystroke]; the space before "cat" is mistyped, deleted and
-  // retyped, so "cat" starts from the kept space at 5600 ms.
+  // retyped, so "cat" starts from the kept space at 5600 ms, and "a" is missed for its space.
   const keys = [['t', 1000], ['o', 100], [' ', 100], ['t', 200], ['a', 200], ['b', 200], ['l', 200], ['e', 200],
     [',', 1000], [' ', 100], ['a', 300]];
   const events = [];
@@ -67,16 +69,48 @@ test('per-word pace counts one interval per character, since the previous kept k
   for (const [word, wpm, why] of [
     ['to', 120, 'first word: its first key has no interval, so only "o" counts (1 char in 100 ms)'],
     ['table', 60, 'trailing comma left out: t-a-b-l-e, 5 chars in 1000 ms, not 6 in 2000 ms'],
-    ['a', 40, 'one-letter word mid-run: 1 char in 300 ms since its space'],
     ['cat', 80, 'after a corrected space: 3 chars in 450 ms from the kept space'],
     ['sat', 120, 'plain mid word: 3 chars in 300 ms'],
   ]) assert.equal(pace[word], wpm, why);
-  assert.equal(result.timedCount, 5);
-  assert.equal(result.medianWpm, 80);
-  // A one-letter first word has no interval at all, so it isn't timed.
-  const short = missedAndSlowWords({ text: 'a go', events: [at('a', 0, 0), at(' ', 1, 100), at('g', 2, 200), at('o', 3, 300)] });
-  assert.deepEqual(short.slow, [{ word: 'go', wpm: 120 }]);
-  assert.equal(short.timedCount, 1);
+  assert.deepEqual(result.missed, ['a']);
+  assert.equal(result.timedCount, 4);
+  assert.equal(result.medianWpm, 100, 'clean words only: 60, 80, 120, 120');
+  // A one-letter first word has no interval at all, so it isn't timed; one mid-run is timed from its
+  // space (1 char in 300 ms).
+  const short = missedAndSlowWords({ text: 'a go a', events: [at('a', 0, 0), at(' ', 1, 100), at('g', 2, 200),
+    at('o', 3, 300), at(' ', 4, 400), at('a', 5, 700)] });
+  assert.deepEqual(short.slow, [{ word: 'a', wpm: 40 }, { word: 'go', wpm: 120 }]);
+  assert.equal(short.timedCount, 2);
+});
+
+test('a dropped leading quote takes its interval with it: "the is timed on h-e', () => {
+  const at = (char, position, offsetMs) => ({ type: 'insert', text: char, position, offsetMs });
+  // 100 ms a key, with a 1 s pause before the key at `pause`.
+  const typed = (text, pause) => {
+    let t = 0;
+    return { text, events: [...text].map((char, i) => at(char, i, (t += i === pause ? 1000 : 100))) };
+  };
+  const pace = (result) => Object.fromEntries(result.slow.map((item) => [item.word, item.wpm]));
+  // A pause between the quote and "t" is a transition the drilled "the" never types: 2 / 5 in 200 ms.
+  const quoted = missedAndSlowWords(typed('say "the cat', 5), 10);
+  assert.deepEqual(pace(quoted), { say: 120, the: 120, cat: 120 });
+  assert.equal(quoted.medianWpm, 120);
+  // Control: a pause before a plain word's first letter still counts, 3 / 5 in 1.2 s.
+  assert.deepEqual(pace(missedAndSlowWords(typed('say the cat', 4), 10)), { the: 30, say: 120, cat: 120 });
+});
+
+test('a mistyped space marks the word before it, as the run card does', () => {
+  const text = 'the cat sat';
+  const missedSpace = typedWithMisses(text, [7]); // the space after "cat"; the last word has none
+  const result = missedAndSlowWords(missedSpace, 10);
+  assert.deepEqual(result.missed, ['cat']);
+  assert.deepEqual(wordHistory(missedSpace).filter((word) => word.wrong).map((word) => word.word), ['cat']);
+  // Missed, so not clean: not listed as slow and not in the median's sample.
+  assert.deepEqual(result.slow.map((item) => item.word), ['the', 'sat']);
+  assert.equal(result.timedCount, 2);
+  // Practised as the bare word unless the space followed punctuation it drops.
+  assert.deepEqual(missedAndSlowWords(typedWithMisses('The table, is set', [3])).missed, ['the']);
+  assert.deepEqual(missedAndSlowWords(typedWithMisses('The table, is set', [10])).missed, ['table,']);
 });
 
 test('missed-word run records leave out pattern counts nothing reads', () => {
