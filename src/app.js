@@ -267,7 +267,7 @@ function resolvedTheme() {
 function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f4f1eb' : '#0f0f0e';
+  for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = theme === 'light' ? '#f4f1eb' : '#0f0f0e';
   $('theme-select').value = prefs.theme;
 }
 
@@ -2275,3 +2275,9 @@ setInterval(() => { if (document.body.dataset.view === 'compete') renderDaily();
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) renderDaily();
 });
+
+// Offline shell (sw.js): installable and playable without a connection. Skipped on localhost so local
+// edits are never served stale; Supabase and other origins are never cached.
+if ('serviceWorker' in navigator && location.hostname !== 'localhost') {
+  Promise.resolve(navigator.serviceWorker.register('/sw.js')).catch(() => {});
+}

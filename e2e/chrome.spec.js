@@ -2,7 +2,8 @@
 import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings } from './fixtures.js';
 
 const html = (page) => page.locator('html');
-const themeColor = (page) => page.locator('meta[name="theme-color"]');
+// index.html carries a light and a dark theme-color meta; the app sets both to the resolved theme.
+const themeColor = (page) => page.locator('meta[name="theme-color"]').first();
 
 test.describe('theme', () => {
   test('follows the system until the user picks one', async ({ page }) => {
