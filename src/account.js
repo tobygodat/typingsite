@@ -384,11 +384,11 @@ const fuller = (held, other) => ((other.patterns?.length || 0) > (held.patterns?
 // - historyClearedIds: union of both sides' pairs from clears not undone. A record any of them names is
 //   dropped from either side: no copy can hold it legitimately while that clear stands.
 // - historyClearedAt: the newest clear that hasn't been undone. A side that hasn't applied it yet (an
-//   older marker of its own) may still hold what that clear removed: its history and bests dated at or
-//   before the marker are dropped, and its seen ids are kept only where its surviving history
-//   shows the passage after the clear. Seen ids carry no date, so this is the one place a seen id can
-//   go: one only displayed, never run, on a device that hadn't yet heard of the clear. That side's
-//   surviving practice runs then set any best the old one had blocked.
+//   older marker of its own, or only a later one undone since) may still hold what that clear removed:
+//   its history and bests dated at or before the marker are dropped, and its seen ids are kept only
+//   where its surviving history shows the passage after the clear. Seen ids carry no date, so this is
+//   the one place a seen id can go: one only displayed, never run, on a device that hadn't yet heard of
+//   the clear. That side's surviving practice runs then set any best the old one had blocked.
 // - undoneClears: union of clears that were undone, which never apply again. Never trimmed: a copy
 //   that applied an old clear and missed its undo must still find it here, and each entry takes a
 //   typed confirmation and an Undo within seconds, so the list stays tiny.
@@ -404,7 +404,9 @@ export function mergeSynced(local, cloud) {
   const namedIds = new Set(named.map(([, id]) => id));
 
   const surviving = (side) => {
-    const stale = (side.historyClearedAt || '') < clearedAt;
+    // Judged by the newest clear this side applied that still stands. One undone since doesn't count, even
+    // if it is later: the side never applied the older clear now in force.
+    const stale = live(side.historyClearedAt) < clearedAt;
     const after = (stamp, id) => !namedIds.has(String(id ?? '')) && (!stale || (stamp || '') > clearedAt);
     const kept = {};
     for (const [name, { at }] of Object.entries(HISTORY)) kept[name] = list(side[name]).filter((item) => after(item[at], item.id));
@@ -477,19 +479,27 @@ export function revokeClear(current, before, marker) {
 // { marker, before } or null: every copy merged here that the newest live clear removed history from,
 // as it was before that. When a copy arrives with that clear undone, what was held comes back.
 // Returns { merged, held }; the caller keeps `held` in memory.
+// The undo is checked first: it can arrive with an older clear still in force (another device's, made
+// independently), which then becomes the newest live clear. What the undone clear held comes back as far
+// as that older clear allows, and is held in turn for that clear's own undo.
 export function mergeAndHold(held, local, cloud) {
   let merged = mergeSynced(local, cloud);
-  const marker = merged.historyClearedAt;
-  if (marker) {
-    let before = held?.marker === marker ? held.before : null;
-    for (const side of [local, cloud]) {
-      if (side.historyClearedAt !== marker) before = before ? mergeSynced(before, side) : side;
-    }
-    if (before) held = { marker, before };
-  }
+  const sides = [local, cloud];
   if (held && list(merged.undoneClears).includes(held.marker)) {
     merged = revokeClear(merged, held.before, held.marker);
+    sides.push(held.before);
     held = null;
+  }
+  const marker = merged.historyClearedAt;
+  if (marker) {
+    // Each copy is held knowing every undo seen here, so a clear undone since takes nothing from another.
+    const undone = list(merged.undoneClears);
+    const knowing = (side) => (undone.length ? { ...side, undoneClears: undone } : side);
+    let before = held?.marker === marker ? held.before : null;
+    for (const side of sides) {
+      if (side.historyClearedAt !== marker) before = before ? mergeSynced(before, knowing(side)) : knowing(side);
+    }
+    if (before) held = { marker, before };
   }
   return { merged, held };
 }

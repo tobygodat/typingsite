@@ -84,8 +84,9 @@ let lastCloudAt = null;
 let cacheText = null;
 let lastPull = 0;
 let cacheWaiting = false;
-// Another tab signed this account out and kept unsent edits for the next sign-in (account.signedOut):
-// this tab saves nothing more for it, and starts again as a guest once no run is in progress.
+// Another tab signed this account out, or the device is now signed in as someone else
+// (followSessionElsewhere): this tab saves and sends nothing more for it, and starts again as the device
+// now is once no run is in progress.
 let signedOutElsewhere = false;
 const PULL_INTERVAL_MS = 15000;
 
@@ -1768,9 +1769,10 @@ function renderAccount() {
 const authRedirectTarget = () => `${location.origin}/`;
 
 // Whether this tab still belongs to the user a sync started for. Another tab can sign out, or in as
-// someone else, while a request is out; the sync then stops and writes nothing here.
+// someone else, while a request is out; the sync then stops and writes nothing here. A tab that heard of
+// a sign-out elsewhere stays out even if the same account has signed in again since: it reloads first.
 function signedInAs(userId) {
-  return session?.user.id === userId && account.loadSession()?.user.id === userId;
+  return !signedOutElsewhere && session?.user.id === userId && account.loadSession()?.user.id === userId;
 }
 
 // Folds another copy of this account's profile (the account row, or another tab's cache) into memory.
@@ -2027,6 +2029,11 @@ async function enterAccount(newSession) {
 
 async function signOutAccount() {
   closeAccountMenu();
+  // Already signed out in another tab: whatever the device holds now (another session included) stays.
+  if (signedOutElsewhere) {
+    location.reload();
+    return;
+  }
   await onlineRace?.leave();
   inbox?.forget();
   const userId = session.user.id;
@@ -2159,24 +2166,37 @@ function bindAccount() {
     if (!cloudChecked) syncOnLoad();
     else pullProfile({ force: true });
   });
-  // Another tab signed in to this account saved: merge its copy. A removed key (sign-out, or a switch
-  // of account) is ignored, and only what the copy lacks is written back (absorbCache), so tabs settle
-  // rather than echo each other. Mid-run the merge waits; the save at the end of the run merges it then.
-  // Another tab signed out keeping unsent edits (account.signedOutKey): this tab starts again as a guest,
-  // as that tab did, once any run in progress ends (flushDeferredSync); that run is kept in memory only.
+  // Another tab signed in to this account saved: merge its copy. Only what the copy lacks is written back
+  // (absorbCache), so tabs settle rather than echo each other. Mid-run the merge waits; the save at the
+  // end of the run merges it then.
   addEventListener('storage', (event) => {
-    if (!session) return;
-    if (event.key === account.signedOutKey(session.user.id) && event.newValue !== null) {
-      signedOutElsewhere = true;
-      clearTimeout(syncTimer);
-      syncTimer = 0;
-      if (!runInProgress()) location.reload();
-      return;
-    }
-    if (event.key !== account.profileKey(session.user.id) || event.newValue === null) return;
+    if (!session || signedOutElsewhere || followSessionElsewhere(event)) return;
+    if (event.key !== account.profileKey(session.user.id)) return;
     if (runInProgress()) cacheWaiting = true;
     else if (absorbCache()) showMerged();
   });
+}
+
+// Another tab signed this account out, either way: keeping unsent edits leaves its marker
+// (account.signedOutKey), and sending everything first removes the device cache (any other removal of
+// the cache, such as cleared site data, counts the same). Or the device now holds another account's
+// session. This tab then starts again as the device now is, once any run in progress ends
+// (flushDeferredSync): as a guest, or as whoever has signed in since, the same account included. The run
+// is kept in memory only. A session that only expired (a refused refresh removes the session and nothing
+// else) is not followed: this tab keeps caching for the next sign-in. Returns whether it followed.
+function followSessionElsewhere(event) {
+  const userId = session.user.id;
+  const current = account.loadSession()?.user.id;
+  const signedOut = event.key === null
+    || (event.key === account.signedOutKey(userId) && event.newValue !== null)
+    || (event.key === account.profileKey(userId) && event.newValue === null)
+    || (event.key === account.SESSION_KEY && (current ? current !== userId : account.signedOut(userId)));
+  if (!signedOut) return false;
+  signedOutElsewhere = true;
+  clearTimeout(syncTimer);
+  syncTimer = 0;
+  if (!runInProgress()) location.reload();
+  return true;
 }
 
 // Finishes a Google or email-confirmation return; the page reloads as the signed-in user.

@@ -869,8 +869,8 @@ test('an old tab of a signed-out account leaves the account signed in since alon
   await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
   await signInWithEmail(other, 'second@stilltype.test');
 
-  // The first tab still holds the old account, whose refresh token the sign-out ended. Coming back to it
-  // must not end the other account's session.
+  // The first tab held the old account, whose refresh token the sign-out ended (it starts again as a
+  // guest once it hears of the sign-out). Coming back to it must not end the other account's session.
   await page.evaluate(() => dispatchEvent(new Event('online')));
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   // Whatever the first tab does in the background happens within a few round trips.
@@ -882,3 +882,94 @@ test('an old tab of a signed-out account leaves the account signed in since alon
   await expect(other.locator('#account-email')).toHaveText('second@stilltype.test');
   expect(errors).toEqual([]);
 });
+
+// Requests a page sends to the account service with a signed-in user's token.
+function memberCalls(page) {
+  const calls = [];
+  page.on('request', (request) => {
+    if (/supabase\.co/.test(request.url()) && request.headers().authorization) calls.push(`${request.method()} ${new URL(request.url()).pathname}`);
+  });
+  return calls;
+}
+
+// A guest tab sends nothing for an account, whatever brings it back into use.
+async function expectNoMemberCalls(page, calls) {
+  calls.length = 0;
+  await page.evaluate(() => {
+    dispatchEvent(new Event('online'));
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await finishRun(page);
+  // Whatever the tab does in the background happens within a few round trips.
+  await page.waitForTimeout(2000);
+  expect(calls).toEqual([]);
+  expect(await storageKeys(page)).toEqual([]);
+}
+
+test('a tab open when another signs out having sent everything starts again as a guest', async ({ page, context, supabase }) => {
+  supabase.addUser(EMAIL);
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  const other = await extraPage(context, supabase, errors);
+  const calls = memberCalls(other);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  expect(calls.length).toBeGreaterThan(0);
+
+  await page.locator('#account-trigger').click();
+  await Promise.all([page.waitForEvent('load'), page.locator('#account-signout').click()]);
+  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+  // Everything had reached the account, so the sign-out left no marker, only a removed cache.
+  expect(await storageKeys(page)).toEqual([]);
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+  await expectNoMemberCalls(other, calls);
+  expect(runIds(cloud(supabase))).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+for (const next of [null, EMAIL, 'second@stilltype.test']) {
+  const then = !next ? 'as a guest' : next === EMAIL ? 'as the same account, signed in again' : 'as the account signed in since';
+  test(`a tab mid-run when another signs out having sent everything finishes the run, then starts again ${then}`, async ({ page, context, supabase }) => {
+    supabase.addUser(EMAIL);
+    if (next && next !== EMAIL) supabase.addUser(next);
+    const errors = [];
+    await openApp(page);
+    await signInWithEmail(page, EMAIL);
+    const other = await extraPage(context, supabase, errors);
+    const calls = memberCalls(other);
+    await openApp(other);
+    await openView(other, 'Practice');
+    await chooseWords(other, 10);
+    await expect.poll(() => cloud(supabase)?.preferences.count).toBe(10);
+    await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    const text = await passageText(other);
+    await typeInto(other, text.slice(0, 3));
+
+    await page.locator('#account-trigger').click();
+    await Promise.all([page.waitForEvent('load'), page.locator('#account-signout').click()]);
+    await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+    expect(await storageKeys(page)).toEqual([]);
+    if (next) await signInWithEmail(page, next);
+
+    // The run goes on undisturbed and ends as usual; the tab then follows the device's session.
+    await expect(other.locator('body')).toHaveAttribute('data-running', 'true');
+    await other.keyboard.type(text.slice(3));
+    if (next) {
+      await expect(other.locator('#account')).toHaveAttribute('data-state', 'member');
+      await expect(other.locator('#account-email')).toHaveText(next);
+      await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+      // The tab started again from the account: the run, kept in memory only, went with the old page.
+      await openView(other, 'Progress');
+      await expect(other.locator('#run-history .run-row')).toHaveCount(0);
+      expect((await cachedProfile(other)).runs).toEqual([]);
+    } else {
+      await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+      await expectNoMemberCalls(other, calls);
+    }
+    // A run finished after the sign-out reaches no account.
+    expect(runIds(supabase.profileFor(EMAIL))).toEqual([]);
+    if (next) expect(runIds(supabase.profileFor(next))).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}
