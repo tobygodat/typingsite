@@ -548,6 +548,10 @@
     <footer class="site-footer">
       <span id="best" class="personal-best num">No best yet</span>
       <span id="guest-note" class="guest-note">guest · runs aren’t saved</span>
+      <button id="release-trigger" class="footer-link release-trigger" type="button" aria-haspopup="dialog" aria-controls="release-dialog" hidden>
+        <span id="app-version" class="num"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7" r="0.5"/></svg>
+      </button>
       <button id="suggest-trigger" class="footer-link" type="button" aria-haspopup="dialog" aria-controls="suggest-dialog">suggest a feature</button>
     </footer>
   </div>
@@ -565,6 +569,19 @@
         <span class="palette-highlight" aria-hidden="true"></span>
         <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
         <p id="palette-empty" class="palette-empty" hidden>No matches</p>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="release-dialog" aria-labelledby="release-title">
+    <div class="dialog-content">
+      <div>
+        <h2 id="release-title">What’s new</h2>
+        <h3 id="release-version" class="num"></h3>
+      </div>
+      <ul id="release-notes" class="release-notes"></ul>
+      <div class="dialog-actions">
+        <button id="release-close" class="btn btn-secondary" type="button" autofocus>Close</button>
       </div>
     </div>
   </dialog>

@@ -1813,7 +1813,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 #clear-dialog,
 #account-dialog,
-#suggest-dialog {
+#suggest-dialog,
+#release-dialog {
   width: min(460px, calc(100% - 32px));
   padding: 0;
   border: 1px solid var(--hairline-strong);
@@ -1825,11 +1826,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 #clear-dialog[open],
 #account-dialog[open],
-#suggest-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
+#suggest-dialog[open],
+#release-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
-#suggest-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
-:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
+#suggest-dialog::backdrop,
+#release-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #suggest-dialog, #release-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
 
 .account-fields { display: grid; gap: var(--space-3); }
 .account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
@@ -2046,4 +2049,41 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .run-card-facts dd { font-size: var(--text-lead); }
   .run-card-more { grid-template-columns: repeat(2, 1fr); }
   .run-card-more div:last-child { grid-column: 1 / -1; }
+}
+
+/* Release information shares the quiet footer and native modal surfaces. */
+.release-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control);
+  text-decoration: none;
+}
+.release-trigger[hidden] { display: none; }
+.release-trigger svg {
+  width: var(--space-4);
+  height: var(--space-4);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+#release-dialog {
+  max-height: calc(100dvh - var(--space-8));
+  overflow-y: auto;
+}
+#release-dialog h2 { font-size: var(--text-lead); }
+#release-dialog h3 {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-title);
+  font-weight: 700;
+}
+.release-notes {
+  margin: 0;
+  padding-left: var(--space-6);
+  font-size: var(--text-small);
+}
+.release-notes li + li { margin-top: var(--space-3); }
+@media (max-width: 760px) {
+  #release-dialog .dialog-content { padding: var(--space-6); }
 }

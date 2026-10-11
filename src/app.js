@@ -21,6 +21,7 @@ import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
+import { initReleasePanel } from './release-panel.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
@@ -1989,7 +1990,7 @@ function bindEvents() {
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open || $('suggest-dialog').open) return;
+    if (document.querySelector('dialog[open]')) return;
     if (event.key === 'Escape' && preferences.open) {
       event.preventDefault();
       preferences.open = false;
@@ -2173,6 +2174,7 @@ setModeControls();
 bindEvents();
 bindAccount();
 bindPalette();
+initReleasePanel();
 renderAccount();
 setRunning(false);
 renderHistory();

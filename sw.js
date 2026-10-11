@@ -23,6 +23,8 @@ const SHELL = [
   '/src/online-race.js',
   '/src/palette.js',
   '/src/progress-view.js',
+  '/src/release.js',
+  '/src/release-panel.js',
   '/src/typing.js',
   '/src/words.js',
   '/src/fonts/literata-roman.woff2',

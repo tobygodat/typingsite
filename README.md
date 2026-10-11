@@ -43,6 +43,10 @@ The backend migration is in `supabase/migrations/20260930085227_online_races.sql
 
 GitHub Actions runs unit tests, the static build and Chromium browser checks on pull requests and pushes to `master`. Browser failure traces are retained for seven days.
 
+## Versions and release notes
+
+The footer’s version and circled information icon open What’s new for the loaded app artifact. Product version metadata and release-note maintenance are described in [docs/releases.md](docs/releases.md); proposed PR versions are not proof of production deployment.
+
 ## Measurement and implementation
 
 Corrected WPM counts correct retained characters divided by five and elapsed minutes. Input accuracy counts correct printable insertions out of all printable insertions, preserving errors after correction. First-attempt errors and clean pair timings are retained separately. Timing uses a monotonic clock; interruptions exclude a run from comparable results. See [PRODUCT.md](PRODUCT.md) for the contract.

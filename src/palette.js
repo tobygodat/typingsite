@@ -144,6 +144,7 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
   trigger?.addEventListener('click', open);
   document.addEventListener('keydown', (event) => {
     if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+      if (!dialog.open && document.querySelector('dialog[open]')) return;
       event.preventDefault();
       if (dialog.open) close();
       else open();
