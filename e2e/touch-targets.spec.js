@@ -18,6 +18,10 @@ const EXEMPT = [
   // its neighbours and a 44px height, so a tap opens the point under it; the dense chart test
   // checks that instead.
   { selector: '.trend-dense .trend-dot', reason: 'equivalent: its run history row' },
+  // The run card's typed words (the "inline" exception): each word is a target inside a block of
+  // text, sized by its line. A tap or the arrow keys from its single tab stop show the word's pace
+  // in the line below, which already names the fastest and slowest words.
+  { selector: '.run-card-words [role="option"]', reason: 'inline: words in a block of text' },
 ];
 
 // Runs in the page. Returns every visible control under `root` and its hit area.
