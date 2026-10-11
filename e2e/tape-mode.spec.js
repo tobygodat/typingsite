@@ -201,6 +201,9 @@ test.describe('narrow phone with large text', () => {
     await openApp(page);
     await openSettings(page);
     await page.locator('#font-size').selectOption('36');
+    // The word list sits in the collapsed test content category.
+    const testContent = page.locator('#test-content-settings');
+    if (!(await testContent.evaluate((node) => node.open))) await testContent.locator('summary').click();
     await page.locator('#word-list').selectOption('10k');
     await page.locator('#tape-toggle').check();
     await page.keyboard.press('Escape');
