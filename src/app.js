@@ -1536,19 +1536,21 @@ function forgetTraining() {
   $('skip-to-retest').disabled = true;
 }
 
-// A clear made in another tab or on another device arrives as stored data only. When a new one covers
-// the baseline or the run on show (dated at or before it, or named by it, as a merge into a copy that
-// hadn't heard of it decides), this tab forgets them as the clearing tab did. Only a newly arrived
-// clear is checked, so a run made here after this tab knew of it is never taken for a cleared one.
+// A clear made in another tab or on another device arrives as stored data only. When it covers the
+// baseline or the run on show, as a merge into a copy that hadn't heard of it decides, this tab forgets
+// them as the clearing tab did. Dates are checked against a newly arrived marker only, so a run made here
+// after this tab knew of it is never taken for a cleared one. Named records are checked on every merge:
+// no copy keeps one, and an older clear's names can arrive while the newest marker stays the same.
 // Never mid-run: flushDeferredSync checks again when the run ends, so a drill then stands alone and a
 // retest makes no comparison with the cleared run.
 function forgetClearedTraining() {
+  if (runInProgress()) return;
   const marker = profile.historyClearedAt || null;
-  if (marker === trainingClear || runInProgress()) return;
+  const arrived = marker !== trainingClear ? marker : null;
   trainingClear = marker;
-  if (!marker) return;
+  if (!baselineAttempt && !lastCompleted) return;
   const named = account.clearedIds(profile);
-  const cleared = (record) => Boolean(record) && ((record.at || '') <= marker || named.has(record.id));
+  const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id));
   if (!cleared(baselineAttempt) && !cleared(lastCompleted)) return;
   forgetTraining();
   renderTraining();

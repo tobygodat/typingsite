@@ -663,6 +663,46 @@ test('a clear in another tab withdraws the drill and retest offered for a cleare
   expect(errors).toEqual([]);
 });
 
+test('an older clear that names the run on show withdraws its drill and retest under an unchanged newer clear', async ({ page, supabase }) => {
+  const user = supabase.addUser(EMAIL);
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await finishRun(page);
+  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
+  const row = supabase.profiles.get(user.id);
+  const [run] = row.data.runs;
+  const stamps = [...row.data.runs, ...row.data.attempts].map((record) => Date.parse(record.at)).filter(Number.isFinite);
+  const newer = new Date(Math.min(...stamps) - 5000).toISOString();
+  const older = new Date(Math.min(...stamps) - 60000).toISOString();
+  const pull = async (data) => {
+    row.data = data;
+    row.updated_at = new Date().toISOString().replace('Z', '+00:00');
+    await page.evaluate(() => dispatchEvent(new Event('online')));
+  };
+
+  // A device that never held the run cleared just before it was stamped: the run is after that clear.
+  await pull({ ...row.data, historyClearedAt: newer });
+  await expect.poll(async () => (await cachedProfile(page))?.historyClearedAt).toBe(newer);
+  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+
+  // A device whose clock runs behind held the run and cleared earlier, naming it. Its merge with the
+  // row keeps the newer marker and drops the run.
+  const named = (record) => record.id === run.id;
+  await pull({
+    ...row.data,
+    runs: row.data.runs.filter((record) => !named(record)),
+    attempts: row.data.attempts.filter((record) => !named(record)),
+    bests: Object.fromEntries(Object.entries(row.data.bests).filter(([, best]) => best.attemptId !== run.id)),
+    historyClearedIds: [[older, run.id]],
+  });
+  await expect.poll(async () => (await cachedProfile(page))?.historyClearedIds).toEqual([[older, run.id]]);
+  expect((await cachedProfile(page)).historyClearedAt).toBe(newer);
+  await expect(page.locator('#skip-to-retest')).toBeDisabled();
+  await expect(page.locator('#start-drill')).toBeDisabled();
+  await expect(page.locator('#result-delta')).toHaveText('No run yet.');
+});
+
 test('a clear in another tab during a retest applies when it ends, with no comparison to the cleared run', async ({ page, context, supabase }) => {
   supabase.addUser(EMAIL);
   const errors = [];
