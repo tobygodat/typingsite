@@ -92,7 +92,13 @@ test('a word list change keeps a custom passage, from settings or the palette', 
   await page.locator('#custom-use').click();
 
   await openSettings(page);
+  // The word list and numbers sit under "test content" in settings.
+  await page.locator('#test-content-settings > summary').click();
   await page.locator('#word-list').selectOption('1k');
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(TEXT);
+  // Numbers, beside it, keeps the custom passage too, with no digits mixed into it.
+  await page.locator('#numbers-toggle').check();
   await expect(page.locator('#condition-line')).toContainText('custom text');
   expect(await passageText(page)).toBe(TEXT);
   await page.keyboard.press('Escape');
