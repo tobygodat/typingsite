@@ -37,7 +37,7 @@ test('a corrected mistake keeps its first-try error and visible tint', async ({ 
 
 test('stop on error blocks the next letter until the miss is fixed', async ({ page }) => {
   await openApp(page);
-  await page.locator('details.preferences summary').click();
+  await page.locator('details.preferences > summary').click();
   await page.locator('#correction-select').selectOption('mandatory');
   await expect(page.locator('#condition-line')).toContainText('stop on error');
   const text = await passageText(page);

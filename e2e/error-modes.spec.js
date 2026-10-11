@@ -4,9 +4,9 @@ import { test, expect, chooseWords, openApp, openView, passageText, typeInto } f
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/error-modes/${name}` : testInfo.outputPath(name));
 
 async function chooseCorrection(page, policy) {
-  await page.locator('details.preferences summary').click();
+  await page.locator('details.preferences > summary').click();
   await page.locator('#correction-select').selectOption(policy);
-  await page.locator('details.preferences summary').click();
+  await page.locator('details.preferences > summary').click();
 }
 
 test('fail on any error ends the run as failed on the first wrong key', async ({ page }, testInfo) => {
@@ -84,7 +84,7 @@ for (const scheme of ['dark', 'light']) {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);
-    await page.locator('details.preferences summary').click();
+    await page.locator('details.preferences > summary').click();
     await page.locator('#correction-select').selectOption('fail-word');
     await expect(page.locator('#correction-select')).toHaveValue('fail-word');
     await page.screenshot({ path: shot(testInfo, `settings-${scheme}.png`) });
