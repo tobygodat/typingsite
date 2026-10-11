@@ -16,7 +16,8 @@ const MAX_WPM = 400;
 const MAX_ATTEMPTS = 1000;
 const MAX_RUNS = 10000;
 export const MAX_SHAPES = 16;
-const KEY_PATTERN = /^[A-Za-z0-9:._-]{1,200}$/;
+// A plus joins the text part's settings (`plain+numbers`), so it is allowed too.
+const KEY_PATTERN = /^[A-Za-z0-9:._+-]{1,200}$/;
 // A best's date: none before Stilltype existed, and none later than tomorrow on the service's clock.
 const FIRST_DAY = Date.parse('2026-01-01T00:00:00Z');
 // The app's own test shapes: timed, word-count and quote tests.
@@ -98,21 +99,24 @@ export function boardSummary(runs, dailyKey, date = new Date(), offset = 0) {
 
 // The test shape a condition key names, as conditions, when this build writes that key: one of its own
 // test modes with only that mode's parts filled in, each a value the app offers (a length from its own
-// list, a word list, or a quote's length and difficulty; an input and a correction policy it records),
-// its corpus and metric version, and the key read back exactly. Otherwise null: a key from another
-// build, or one no copy of this build writes, which the board never lists or compares.
+// list, a word list and whether numbers are on, or a quote's length and difficulty; an input and a
+// correction policy it records), its corpus and metric version, and the key read back exactly. Otherwise
+// null: a key from another build, or one no copy of this build writes, which the board never lists or compares.
 export function shapeOf(key) {
   const parts = typeof key === 'string' ? key.split(':') : [];
   if (parts.length !== 11) return null;
-  const [mode, duration, count, punctuation, quoteLength, difficulty, wordList, inputClass, correctionPolicy, corpus, metricVersion] = parts;
+  const [mode, duration, count, text, quoteLength, difficulty, wordList, inputClass, correctionPolicy, corpus, metricVersion] = parts;
+  // Numbers ride on the text part (`plain+numbers`), and only on generated tests; a quote ignores them.
+  const numbers = text.endsWith('+numbers');
+  const punctuation = numbers ? text.slice(0, -'+numbers'.length) : text;
   const conditions = { mode, duration: Number(duration) || null, count: Number(count) || null, punctuation: punctuation === 'punctuation',
-    quoteLength: quoteLength || null, difficulty: difficulty || null, wordList: wordList || null, inputClass, correctionPolicy,
+    numbers, quoteLength: quoteLength || null, difficulty: difficulty || null, wordList: wordList || null, inputClass, correctionPolicy,
     language: 'en', corpus, metricVersion };
   const quote = mode === 'quote';
   const written = SHAPE_MODES.includes(mode)
     && (mode === 'time' ? TEST_DURATIONS.includes(conditions.duration) : !duration)
     && (mode === 'words' ? TEST_COUNTS.includes(conditions.count) : !count)
-    && (quote ? QUOTE_LENGTHS.includes(quoteLength) && QUOTE_DIFFICULTIES.includes(difficulty) && !wordList
+    && (quote ? QUOTE_LENGTHS.includes(quoteLength) && QUOTE_DIFFICULTIES.includes(difficulty) && !wordList && !numbers
       : !quoteLength && !difficulty && wordListIds.includes(wordList))
     && INPUT_CLASSES.includes(inputClass) && CORRECTION_POLICIES.includes(correctionPolicy)
     && corpus === CORPUS_VERSION && metricVersion === METRIC_VERSION;
@@ -122,12 +126,13 @@ export function shapeOf(key) {
 const shapePart = (key) => String(key).split(':').slice(0, 9).join(':');
 
 // The shapes the board can compare: every key this build writes that anyone on the board has a best
-// on. Timed tests first, then word counts, then quotes, shortest first.
+// on. Timed tests first, then word counts, then quotes, shortest first, and without numbers before with.
 export function boardShapes(rows) {
   const keys = new Set(rows.flatMap((row) => Object.keys(row.bests || {})).filter((key) => shapeOf(key)));
   const length = (shape) => shape.duration || shape.count || 0;
   return [...keys].map((key) => ({ key, conditions: shapeOf(key) })).sort((a, b) => SHAPE_MODES.indexOf(a.conditions.mode) - SHAPE_MODES.indexOf(b.conditions.mode)
-    || length(a.conditions) - length(b.conditions) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    || length(a.conditions) - length(b.conditions) || Number(a.conditions.numbers) - Number(b.conditions.numbers)
+    || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
 // A shape's description in parts: the app's own (`parts`), and for a quote the punctuation setting its

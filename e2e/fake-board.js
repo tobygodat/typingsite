@@ -24,7 +24,7 @@ export function invalidBests(bests, today) {
   if (entries.length > 16) return 'Too many bests for the board.';
   const tomorrow = utcDay(new Date(Date.parse(`${today}T00:00:00Z`) + DAY_MS));
   for (const [key, best] of entries) {
-    if (!/^[A-Za-z0-9:._-]{1,200}$/.test(key) || !best || typeof best !== 'object' || Array.isArray(best)
+    if (!/^[A-Za-z0-9:._+-]{1,200}$/.test(key) || !best || typeof best !== 'object' || Array.isArray(best)
       || Object.keys(best).some((field) => !['wpm', 'accuracy', 'date'].includes(field))
       || !Number.isInteger(best.wpm) || best.wpm < 0 || !Number.isInteger(best.accuracy) || best.accuracy < 0
       || typeof best.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(best.date)) return 'Invalid bests.';

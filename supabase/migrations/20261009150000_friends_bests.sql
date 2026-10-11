@@ -12,14 +12,14 @@
 -- the row counts from is kept. They stay until a clear, turning sharing off, or the account goes.
 
 -- Whether a stored set of bests is well formed: an object of at most 16 shapes, each keyed by a
--- condition key (letters, digits, colons, dots, underscores and hyphens, at most 200 characters) and
+-- condition key (letters, digits, colons, dots, underscores, pluses and hyphens, at most 200 characters) and
 -- holding exactly a whole wpm of 0-400, a whole accuracy of 0-100 and a date.
 create function race_private.valid_bests(p_bests jsonb)
 returns boolean language sql immutable set search_path = '' as $$
   select case when jsonb_typeof(p_bests) = 'object' then
     (select count(*) from jsonb_object_keys(p_bests)) <= 16
     and not exists(select 1 from jsonb_each(p_bests) e where not coalesce(
-      e.key ~ '^[A-Za-z0-9:._-]{1,200}$'
+      e.key ~ '^[A-Za-z0-9:._+-]{1,200}$'
       and case when jsonb_typeof(e.value) = 'object' then
         e.value - 'wpm' - 'accuracy' - 'date' = '{}'::jsonb
         and jsonb_typeof(e.value->'wpm') = 'number' and jsonb_typeof(e.value->'accuracy') = 'number'
@@ -52,7 +52,7 @@ begin
   if jsonb_typeof(p_bests) <> 'object' then raise exception 'Invalid bests.'; end if;
   if (select count(*) from jsonb_object_keys(p_bests)) > 16 then raise exception 'Too many bests for the board.'; end if;
   for v_key, v_best in select key, value from jsonb_each(p_bests) loop
-    if v_key !~ '^[A-Za-z0-9:._-]{1,200}$' or jsonb_typeof(v_best) <> 'object' then raise exception 'Invalid bests.'; end if;
+    if v_key !~ '^[A-Za-z0-9:._+-]{1,200}$' or jsonb_typeof(v_best) <> 'object' then raise exception 'Invalid bests.'; end if;
     if v_best - 'wpm' - 'accuracy' - 'date' <> '{}'::jsonb
       or jsonb_typeof(v_best->'wpm') is distinct from 'number' or v_best->>'wpm' !~ '^[0-9]{1,3}$'
       or jsonb_typeof(v_best->'accuracy') is distinct from 'number' or v_best->>'accuracy' !~ '^[0-9]{1,3}$'

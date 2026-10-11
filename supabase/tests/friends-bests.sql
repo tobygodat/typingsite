@@ -166,6 +166,11 @@ begin
       is distinct from jsonb_build_object(k60,pg_temp.best(84,97,date '2026-01-01')) then
     raise exception 'Refused a best dated on the first day of 2026.';
   end if;
+  -- A numbers test's key carries a plus on its text part (plain+numbers), which the service accepts.
+  if race_private.sent_bests(jsonb_build_object(replace(k60,':plain:',':plain+numbers:'),pg_temp.best(84,97,today)),today)
+      is distinct from jsonb_build_object(replace(k60,':plain:',':plain+numbers:'),pg_temp.best(84,97,today)) then
+    raise exception 'Refused a best on a numbers test.';
+  end if;
   if pg_temp.stored(ada) is distinct from jsonb_build_object(k60,pg_temp.best(84,97,today - 2),k30,pg_temp.best(88,96,today - 1)) then
     raise exception 'Refused bests changed the row: %', pg_temp.stored(ada);
   end if;

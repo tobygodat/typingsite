@@ -7,7 +7,7 @@ import { wordListIds } from '../src/words.js';
 import { MAX_SHAPES, bestsOrder, boardShapes, boardSummary, defaultShape, runsSince, shapeBests, shapeDescription, shapeLabels, shapeOf } from '../src/friends-board.js';
 import { bestsSince, foldBests, invalidBests } from '../e2e/fake-board.js';
 
-const base = { mode: 'time', duration: 60, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
+const base = { mode: 'time', duration: 60, count: null, punctuation: false, numbers: false, quoteLength: null, difficulty: null, wordList: '200',
   inputClass: 'physical-keyboard', correctionPolicy: 'mandatory', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
 const time60 = base;
 const time30 = { ...base, duration: 30 };
@@ -24,21 +24,22 @@ const utcDayOf = (date) => date.toISOString().slice(0, 10);
 const parts = (value) => ({
   language: value.wordList ? `english ${value.wordList}` : 'english',
   length: value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength} quote`,
-  text: value.mode === 'quote' ? value.difficulty : value.punctuation ? 'punctuation' : 'plain',
+  text: value.mode === 'quote' ? value.difficulty : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`,
   input: value.inputClass === 'touch' ? 'touch input' : 'physical keyboard',
   correction: value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error',
   corpus: 'corpus v5',
   metric: 'metric v1',
 });
 // Every test shape this build can write, as src/app.js conditions() writes them from the app's own
-// option lists: each mode with its own fields, and none of the others'.
+// option lists: each mode with its own fields, and none of the others'. Numbers apply to generated
+// tests only; a quote always records them off.
 function writtenShapes() {
   const shapes = [];
   for (const inputClass of INPUT_CLASSES) for (const correctionPolicy of CORRECTION_POLICIES) for (const punctuation of [false, true]) {
-    const common = { punctuation, quoteLength: null, difficulty: null, inputClass, correctionPolicy, language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
-    for (const wordList of wordListIds) {
-      for (const duration of TEST_DURATIONS) shapes.push({ ...common, mode: 'time', duration, count: null, wordList });
-      for (const count of TEST_COUNTS) shapes.push({ ...common, mode: 'words', duration: null, count, wordList });
+    const common = { punctuation, numbers: false, quoteLength: null, difficulty: null, inputClass, correctionPolicy, language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+    for (const numbers of [false, true]) for (const wordList of wordListIds) {
+      for (const duration of TEST_DURATIONS) shapes.push({ ...common, numbers, mode: 'time', duration, count: null, wordList });
+      for (const count of TEST_COUNTS) shapes.push({ ...common, numbers, mode: 'words', duration: null, count, wordList });
     }
     for (const quoteLength of QUOTE_LENGTHS) {
       for (const difficulty of QUOTE_DIFFICULTIES) shapes.push({ ...common, mode: 'quote', duration: null, count: null, quoteLength, difficulty, wordList: null });
@@ -97,7 +98,7 @@ test('at most 16 shapes are shared: the ones with the most runs, then the most r
   assert.ok(key(shape(17)) in bests && key(shape(16)) in bests);
   for (const number of [15, 18, 19, 20]) assert.ok(!(key(shape(number)) in bests));
   for (const value of Object.values(bests)) assert.equal(invalidBests({ x: value }, '2026-10-09'), null);
-  for (const shape of Object.keys(bests)) assert.match(shape, /^[A-Za-z0-9:._-]{1,200}$/, 'the service accepts the key');
+  for (const shape of Object.keys(bests)) assert.match(shape, /^[A-Za-z0-9:._+-]{1,200}$/, 'the service accepts the key');
 });
 
 test('a run dated outside the service’s limits never travels, so it can’t get a write refused', () => {
@@ -145,9 +146,21 @@ test('a summary’s bests count only runs since the board’s clear, so cleared 
 });
 
 test('a condition key is compared only when this build writes it the same way', () => {
-  for (const conditions of [time60, time30, words25, quote, touch60, { ...time60, punctuation: true }]) {
+  for (const conditions of [time60, time30, words25, quote, touch60, { ...time60, punctuation: true },
+    { ...time60, numbers: true }, { ...words25, punctuation: true, numbers: true }]) {
     assert.deepEqual(shapeOf(key(conditions)) && key(shapeOf(key(conditions))), key(conditions));
   }
+  // Numbers ride on the text part, and keys without them stay as they were before the toggle.
+  assert.equal(key({ ...time60, numbers: true }), key(time60).replace(':plain:', ':plain+numbers:'));
+  assert.equal(shapeOf(key({ ...time60, numbers: true })).numbers, true);
+  // A quote never records numbers, and the text part takes no other addition.
+  assert.equal(shapeOf(key({ ...quote, numbers: true })), null);
+  assert.equal(shapeOf(key(time60).replace(':plain:', ':plain+symbols:')), null);
+  assert.equal(shapeOf(key(time60).replace(':plain:', ':numbers:')), null);
+  // A numbers test's best travels under its own key, which the service accepts.
+  const numbersBests = shapeBests([run('numbers', { conditions: { ...time60, numbers: true } })], 0, now);
+  assert.deepEqual(Object.keys(numbersBests), [key({ ...time60, numbers: true })]);
+  assert.equal(invalidBests(numbersBests, '2026-10-09'), null);
   assert.equal(shapeOf(key({ ...time60, metricVersion: 'stilltype-metrics-v0' })), null);
   assert.equal(shapeOf(key({ ...time60, corpus: 'original-en-v4' })), null);
   assert.equal(shapeOf(`${key(time60)}:extra-field`), null);
@@ -228,6 +241,9 @@ test('the picker lists comparable shapes in order and names each by what tells i
   // When the shapes differ only in length and text, that is all the picker says.
   assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time30)]: {}, [key(time60)]: {} } }]), parts), ['30 s · plain', '60 s · plain']);
   assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key(touch60)]: {} } }]), parts), ['60 s · plain · physical keyboard', '60 s · plain · touch input']);
+  // A numbers test is told apart by its text part, as the app describes it.
+  const numbers60 = { ...time60, numbers: true };
+  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key(numbers60)]: {} } }]), parts), ['60 s · plain', '60 s · plain · numbers']);
   assert.deepEqual(boardShapes([{ bests: {} }, { bests: undefined }]), []);
 });
 
