@@ -108,6 +108,18 @@ test('interrupted races and races on other input are never compared with the bes
   assert.match(raceDetail(touch), /aren’t compared/);
 });
 
+test('a race whose best was replaced mid-race by newer account history is not compared with it', () => {
+  const best = trace('best', { step: 100 });
+  const race = trace('race', { step: 90, kind: GHOST_RACE });
+  const replaced = raceOutcome(best, race, { replaced: true });
+  assert.deepEqual(replaced, { comparable: false, replaced: true });
+  assert.equal(raceHeadline(replaced), 'Race complete · not compared');
+  assert.equal(raceDetail(replaced), 'Your account’s newer history arrived during the race, and the run its ghost replayed is no longer your best here, so the two aren’t compared.');
+  // Interrupted stays interrupted, and without the flag the same race is compared as before.
+  assert.equal(raceOutcome(best, { ...race, status: 'interrupted', interrupted: true }, { replaced: true }), null);
+  assert.equal(raceOutcome(best, race).comparable, true);
+});
+
 test('races stay out of bests, trends, fresh comparisons and pattern evidence', () => {
   const best = trace('best');
   const race = { ...trace('race', { kind: GHOST_RACE, typoAt: 2 }), fresh: false };

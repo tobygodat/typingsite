@@ -29,6 +29,32 @@ function seedBest(supabase, email, best, { traceKept = true } = {}) {
 }
 
 const cachedProfile = (page, id) => page.evaluate((key) => JSON.parse(localStorage.getItem(key)), `stilltype-profile-v2:${id}`);
+
+// Another device wrote the account row after this one cached it: a different best, or no history at all.
+async function newerAccountRow(page, supabase, user, best = null) {
+  const cachedAt = (await cachedProfile(page, user.id)).updatedAt;
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: best ? [best] : [],
+    runs: best ? [runRecord(best)] : [], loops: [], seenTextIds: best ? [best.textId] : [],
+    bests: best ? { [conditionKey(best.conditions)]: { wpm: best.summary.score.wpm, attemptId: best.id, at: best.at } } : {},
+    updatedAt: new Date(Date.parse(cachedAt) + 60000).toISOString() } });
+}
+
+// Reloads with the account row's fetch held, so a race can start on this device's cached copy before
+// the sync on load finishes. Returns the function that lets the fetch through.
+async function reloadHoldingAccountRow(page) {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route(/\.supabase\.co\/rest\/v1\/profiles/, async (route) => {
+    if (route.request().method() === 'GET') await gate;
+    await route.fallback();
+  });
+  await page.reload();
+  await expect(page.locator('#text-display .char').first()).toBeVisible();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'syncing');
+  return release;
+}
+
+const OTHER_TEXT = 'a red fox ran up the hill to see me';
 const left = (locator) => locator.evaluate((node) => node.getBoundingClientRect().left);
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -257,6 +283,100 @@ test('without the best’s keystrokes the race says plainly why it is unavailabl
   await page.keyboard.press('Enter');
   await expect(page.locator('#race-feedback')).toHaveText(`Your ${best.summary.score.wpm} wpm best can’t be raced: its keystrokes are no longer kept (only your newest 24 runs keep them). Set a new best to race it.`);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'progress');
+});
+
+test('a newer account row arriving before the first key prepares the race again against the best it holds', async ({ page, supabase }) => {
+  const cached = bestTrace('best-a');
+  const user = seedBest(supabase, 'stale@stilltype.test', cached);
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  const newer = bestTrace('best-b', { text: OTHER_TEXT, step: 150 });
+  await newerAccountRow(page, supabase, user, newer);
+  const release = await reloadHoldingAccountRow(page);
+
+  // The race starts on this device's cached best while the account row is still on its way.
+  await openView(page, 'Progress');
+  await page.locator('#progress-race-start').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
+  await expect(page.locator('#accessible-passage')).toHaveText(TEXT);
+  release();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  // Nobody has typed yet, so it is prepared again on the adopted best's own passage, and a note says so.
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
+  await expect(page.locator('#accessible-passage')).toHaveText(OTHER_TEXT);
+  await expect(page.locator('#session-description')).toContainText(`your ${newer.summary.score.wpm} wpm best`);
+  await expect(page.locator('#race-feedback')).toHaveText(`Your account’s newer history has a different best here, so this race is now against your ${newer.summary.score.wpm} wpm best.`);
+  await expect(page.locator('#text-display .ghost-caret')).not.toHaveClass(/is-hidden/);
+
+  await typeInto(page, OTHER_TEXT);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText(/^Finished .*your best$/);
+  await expect(page.locator('#result-comparison-note')).toContainText(`vs ${newer.summary.score.wpm} wpm`);
+  // Only a race of the adopted best lands in the adopted profile, here and in the account row.
+  const races = (profile) => profile.runs.filter((run) => run.kind === 'ghost-race').map((run) => run.textId);
+  expect(races(await cachedProfile(page, user.id))).toEqual([newer.textId]);
+  await expect.poll(() => races(supabase.profileFor(user.email))).toEqual([newer.textId]);
+  expect(supabase.profileFor(user.email).bests[conditionKey(words10)].attemptId).toBe('best-b');
+});
+
+test('a newer account row with no best cancels a race nobody has started, with a note', async ({ page, supabase }) => {
+  const user = seedBest(supabase, 'cleared@stilltype.test', bestTrace('best-a'));
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  // History cleared on another device.
+  await newerAccountRow(page, supabase, user);
+  const release = await reloadHoldingAccountRow(page);
+
+  await openView(page, 'Progress');
+  await page.locator('#progress-race-start').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
+  await expect(page.locator('#accessible-passage')).toHaveText(TEXT);
+  release();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
+  await expect(page.locator('#race-toast')).toBeVisible();
+  await expect(page.locator('#race-feedback')).toHaveText('Race cancelled: your account’s newer history has no best at these conditions.');
+  await expect(page.locator('#text-display .ghost-caret')).toHaveClass(/is-hidden/);
+  await expect(page.locator('#accessible-passage')).not.toHaveText(TEXT);
+  const saved = await cachedProfile(page, user.id);
+  expect(saved.bests).toEqual({});
+  expect(saved.runs.filter((run) => run.kind === 'ghost-race')).toEqual([]);
+});
+
+test('a race under way when a newer account row arrives runs on unchanged and is not compared with a replaced best', async ({ page, supabase }) => {
+  const user = seedBest(supabase, 'midrace@stilltype.test', bestTrace('best-a'));
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  const newer = bestTrace('best-b', { text: OTHER_TEXT, step: 150 });
+  await newerAccountRow(page, supabase, user, newer);
+  const release = await reloadHoldingAccountRow(page);
+
+  await openView(page, 'Progress');
+  await page.locator('#progress-race-start').click();
+  await typeInto(page, TEXT.slice(0, 4));
+  release();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  // Still run: nothing about the race in progress changes.
+  await expect(page.locator('#accessible-passage')).toHaveText(TEXT);
+  await expect(page.locator('#typing-input')).toHaveValue(TEXT.slice(0, 4));
+  await expect(page.locator('#race-toast')).toBeHidden();
+
+  await typeInto(page, TEXT.slice(4));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('Race complete · not compared');
+  await expect(page.locator('#result-comparison-note')).toHaveText('Your account’s newer history arrived during the race, and the run its ghost replayed is no longer your best here, so the two aren’t compared. Not counted: you’ve typed this passage before, so it can’t set a best or count as fresh evidence.');
+  // Race again races the best the account holds now.
+  await page.locator('#run-again').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
+  await expect(page.locator('#accessible-passage')).toHaveText(OTHER_TEXT);
+  // Kept as a race summary, as any race that can't be compared is: real typing on repeated text that
+  // sets no best. It stores no comparison, so it claims nothing about the replaced best.
+  const saved = await cachedProfile(page, user.id);
+  expect(saved.runs.filter((run) => run.kind === 'ghost-race')).toHaveLength(1);
+  expect(saved.bests[conditionKey(words10)].attemptId).toBe('best-b');
+  expect(saved.attempts.map((attempt) => attempt.id)).toEqual(['best-b']);
 });
 
 test('under reduced motion the ghost stays hidden and the finish is still compared', async ({ page }) => {

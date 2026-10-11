@@ -56,9 +56,11 @@ export function ghostPosition(track, ms) {
 }
 
 // The race against the best, from both event logs. Interrupted races get no comparison, and a
-// race on other conditions (touch against a keyboard best) is never compared.
-export function raceOutcome(bestTrace, race) {
+// race on other conditions (touch against a keyboard best) is never compared. replaced: the run the
+// ghost replayed is no longer the best (newer history from the account arrived mid-race), so it isn't either.
+export function raceOutcome(bestTrace, race, { replaced = false } = {}) {
   if (!race || race.status !== 'complete' || race.interrupted) return null;
+  if (replaced) return { comparable: false, replaced: true };
   if (!bestTrace || race.text !== bestTrace.text || conditionKey(race.conditions) !== conditionKey(bestTrace.conditions)) {
     return { comparable: false };
   }
@@ -91,6 +93,7 @@ export function raceHeadline(outcome) {
 
 export function raceDetail(outcome) {
   if (!outcome) return '';
+  if (outcome.replaced) return 'Your account’s newer history arrived during the race, and the run its ghost replayed is no longer your best here, so the two aren’t compared.';
   if (!outcome.comparable) return 'Your input or conditions differed from your best’s, so the two aren’t compared.';
   return `${outcome.wpm} vs ${outcome.bestWpm} wpm · ${outcome.accuracy}% vs ${outcome.bestAccuracy}% accuracy, same passage and conditions.`;
 }

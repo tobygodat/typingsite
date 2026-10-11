@@ -504,6 +504,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   ticker = null;
   setRunning(false);
   primaryNotice = '';
+  if (kind === GHOST_RACE) refreshRaceTarget();
   if (kind === GHOST_RACE && !raceTarget) kind = 'practice';
   sessionKind = kind;
   passage = selectedPassage || (kind === GHOST_RACE ? racePassage() : kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
@@ -914,7 +915,7 @@ function renderCard(completed) {
 
 function resultHeadline(completed) {
   if (completed.status !== 'complete') return 'Interrupted · not counted';
-  if (completed.kind === GHOST_RACE) return raceHeadline(raceOutcome(raceTarget?.trace, completed));
+  if (completed.kind === GHOST_RACE) return raceHeadline(raceResult(completed));
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
   if (!resultBestBefore) return 'First run at these settings';
@@ -941,7 +942,7 @@ function renderResults(completed, saved) {
   renderSecondaryStats(completed);
   $('result-conditions').textContent = describeRun(completed);
   $('result-delta').textContent = resultHeadline(completed);
-  const raced = completed.kind === GHOST_RACE && counted ? raceOutcome(raceTarget?.trace, completed) : null;
+  const raced = completed.kind === GHOST_RACE && counted ? raceResult(completed) : null;
   // A retest reports a failed save once, in the comparison caveat.
   $('result-comparison-note').textContent = [
     counted ? '' : 'Focus or input changed during the run, so it isn’t counted.',
@@ -1457,6 +1458,33 @@ function showRaceNotice(message) {
   announce(message);
 }
 
+// Whether the run the ghost replays is still the best for its conditions. A race never sets a best, so
+// only newer history from the account (adoptProfile) can change that once a race is chosen.
+function raceStillBest() {
+  return Boolean(raceTarget) && profile.bests[raceTarget.key]?.attemptId === raceTarget.trace.id;
+}
+
+// Before a race is prepared (again): when newer history from the account has replaced its best, it races
+// the best that history holds for those conditions, or goes back to practice if there is none it can
+// race, with a note either way. A race under way is never changed (still run); see raceResult.
+function refreshRaceTarget() {
+  if (!raceTarget || raceStillBest()) return;
+  const option = raceableBest(profile, raceTarget.key);
+  if (option.available) {
+    raceTarget = { ...raceTarget, best: option.best, trace: option.trace, track: ghostTrack(option.trace) };
+    showRaceNotice(`Your account’s newer history has a different best here, so this race is now against your ${option.best.wpm} wpm best.`);
+    return;
+  }
+  raceTarget = null;
+  showRaceNotice(`Race cancelled: your account’s newer history ${option.reason === 'no-best' ? 'has no best at these conditions' : `has a ${option.best.wpm} wpm best here whose keystrokes are no longer kept`}.`);
+}
+
+// The finish against the raced best. If newer history from the account replaced that best mid-race,
+// the race ran on unchanged, but it isn't compared with a run that is no longer your best.
+function raceResult(completed) {
+  return raceOutcome(raceTarget?.trace, completed, { replaced: Boolean(raceTarget) && !raceStillBest() });
+}
+
 function startRaceBest(key, inputClass = 'physical-keyboard') {
   const option = raceableBest(profile, key);
   if (!option.available) {
@@ -1728,6 +1756,9 @@ function adoptProfile(data) {
   setModeControls();
   renderHistory();
   if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice');
+  // A race nobody has started is prepared again against the adopted best (resetSession checks it). One
+  // under way runs on (raceResult); one left on another screen gives way to practice on the way back.
+  else if (sessionKind === GHOST_RACE && attempt?.status === 'ready' && document.body.dataset.view === 'practice' && !raceStillBest()) resetSession(GHOST_RACE);
 }
 
 // The newer of the device cache and the account row wins; the other side is brought up to date.
