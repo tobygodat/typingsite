@@ -2014,26 +2014,32 @@ function bindEvents() {
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.getModifierState?.('AltGraph')) return;
-    if (document.querySelector('dialog[open]') || preferences.open || $('account').open || $('inbox').open) {
-      if (event.key === 'Escape' && preferences.open && !keybindingEditor.isRecording()) {
+    if (document.querySelector('dialog[open]')) {
+      if (palette?.isOpen() && matchesBinding(event, prefs.keybindings.commands)) {
+        event.preventDefault();
+        if (!event.repeat) palette.close();
+      }
+      return;
+    }
+    const menuOpen = preferences.open || $('account').open || $('inbox').open;
+    if (menuOpen && event.key === 'Escape') {
+      if (preferences.open && !keybindingEditor.isRecording()) {
         event.preventDefault();
         keybindingEditor.stopRecording();
         preferences.open = false;
-        preferences.querySelector('summary').focus();
-      } else if (palette?.isOpen() && matchesBinding(event, prefs.keybindings.commands)) {
-        event.preventDefault();
-        if (!event.repeat) palette.close();
+        preferences.querySelector(':scope > summary').focus();
       }
       return;
     }
     const active = document.activeElement;
     const onTypingSurface = ['typing-input', 'race-input', 'online-input'].includes(active?.id);
     const editable = active?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
-    if ((!editable || onTypingSurface) && matchesBinding(event, prefs.keybindings.commands)) {
+    if (!keybindingEditor.isRecording() && (!editable || onTypingSurface) && matchesBinding(event, prefs.keybindings.commands)) {
       event.preventDefault();
       if (!event.repeat) palette.open();
       return;
     }
+    if (menuOpen) return;
     if (prefs.focusMode && (!editable || onTypingSurface) && matchesBinding(event, prefs.keybindings.exitFocus)) {
       event.preventDefault();
       if (!event.repeat) {
@@ -2191,6 +2197,7 @@ function bindPalette() {
     onOpen: () => {
       document.querySelector('.preferences')?.removeAttribute('open');
       closeAccountMenu();
+      $('inbox').open = false;
       markInterrupted(NOTICES.paletteOpened);
       markRaceInterrupted();
     },

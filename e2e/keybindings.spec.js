@@ -109,7 +109,6 @@ test('custom commands / exit focus and menu dismissal have distinct priority', a
   await page.locator('#account-trigger').click();
   await page.locator('#account-signin').focus();
   await page.keyboard.press('F2');
-  await page.keyboard.press('Control+Shift+k');
   await expect(page.locator('#account')).toHaveAttribute('open', '');
   await expect(page.locator('#palette')).toBeHidden();
   await page.keyboard.press('Escape');
@@ -241,4 +240,34 @@ test('held printable input is ignored and a held Escape exits focus without rest
   await expect(page.locator('#typing-input')).toHaveValue(text[0]);
   await page.keyboard.press('Escape');
   await expect(page.locator('#typing-input')).toHaveValue('');
+});
+
+
+test('test content and keybindings coexist, and resetting bindings preserves numbers', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page);
+  await editBindings(page, { restart: 'F2', commands: 'F8' });
+  await saveBindings(page);
+  await openSettings(page);
+  await page.locator('#test-content-settings > summary').click();
+  await page.locator('#numbers-toggle').check();
+  await page.locator('#typing-input').click();
+  await typeInto(page, (await passageText(page)).slice(0, 3));
+  await page.keyboard.press('F2');
+  await expect(page.locator('#typing-input')).toHaveValue('');
+  await expect(page.locator('#condition-line')).toContainText('numbers');
+  expect(await passageText(page)).toMatch(/\d/);
+  await editBindings(page, {});
+  await page.getByRole('button', { name: 'Reset defaults', exact: true }).click();
+  await expect(page.locator('#numbers-toggle')).toBeChecked();
+  await expect(page.locator('#condition-line')).toContainText('numbers');
+  // Commands remain accessible from a settings category, without taking over its text fields.
+  await page.locator('.keybindings-category > summary').focus();
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('#palette')).toBeVisible();
+  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await page.locator('#palette-input').fill('numbers');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#condition-line')).not.toContainText('numbers');
+  await expect(page.locator('#restart-key-hint')).toHaveText('esc');
 });
