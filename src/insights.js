@@ -201,6 +201,10 @@ function keptOffsets(attempt) {
 // Missed words had any wrong first try, counting the space after the word as the run card's word
 // history does (the last word has none). The slowest are this run's slowest clean words by per-word
 // wpm: one timing each, so they carry their speed and the run's median for comparison, not a verdict.
+// Clean means right on every first try and still right at the finish, the spaces after it included,
+// as the run card's word list reads it. With continue on error, a right letter can be deleted and
+// replaced by a wrong one: its first try stays right, so the word isn't a first-try miss, but it isn't
+// clean either, and its kept keystrokes would time the wrong letter, so it is left out of the timing.
 //
 // Per-word pace, one rule for every word: each counted character's interval is the time since the
 // previous kept keystroke, and wpm = (counted characters / 5) / (sum of their intervals). A word
@@ -214,6 +218,7 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
   const replay = attempt.summary || replayAttempt(attempt);
   const first = new Map(replay.firstAttempts.map((item) => [item.position, item]));
   const kept = keptOffsets(attempt);
+  const { typed } = replay;
   const missed = [];
   const timed = [];
   let start = 0;
@@ -225,10 +230,13 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
     const misses = tries.filter((item) => !item.correct).map((item) => item.position - start);
     // The spaces after a word are part of typing it: a wrong first try there marks the word.
     for (let i = end; raw && attempt.text[i] === ' '; i += 1) if (first.get(i)?.correct === false) misses.push(i - start);
+    // Still right at the finish: the word as typed, and each space after it that was typed.
+    let right = typed.slice(start, end) === raw;
+    for (let i = end; right && raw && attempt.text[i] === ' ' && i < typed.length; i += 1) right = typed[i] === ' ';
     if (misses.length) {
       const token = missedToken(raw, misses);
       if (!missed.includes(token)) missed.push(token);
-    } else if (word && tries.length === raw.length) {
+    } else if (word && tries.length === raw.length && right) {
       let count = 0;
       let ms = 0;
       for (let k = 0; k < raw.length; k += 1) {
