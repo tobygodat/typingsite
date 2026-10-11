@@ -217,15 +217,26 @@ export function createTypingFx(wrap, display, options = {}) {
 
     // Ghost pacer: moves at a fixed characters-per-second from the first keystroke.
     ghost: {
-      arm(cps) {
+      // startTime joins a run already in progress: the next frame places the caret where the
+      // pace has reached, so it never jumps back to the start.
+      arm(cps, startTime = 0) {
         ghost.armed = cps > 0;
         ghost.cps = cps;
         ghost.track = null;
         ghost.index = -1;
         ghostCaret.classList.remove('is-recorded');
-        ghostCaret.classList.toggle('is-hidden', !ghost.armed);
-        if (ghost.armed) placeGhost(0);
-        else stopGhost();
+        if (!ghost.armed) {
+          stopGhost();
+          ghostCaret.classList.add('is-hidden');
+        } else if (startTime) {
+          // As in run(), the clock starts under reduced motion too, so the caret can rejoin the run
+          // if that is turned off; until then it stands still at the start.
+          ghost.start = startTime;
+          if (reducedMotion.matches) placeGhost(0);
+          else if (!ghost.frame) ghost.frame = requestAnimationFrame(ghostTick);
+        } else {
+          placeGhost(0);
+        }
       },
       // A recorded ghost: track.at(ms) is its caret position that long after the first keystroke.
       // It steps letter to letter with no easing and is drawn at full opacity (3:1 on both grounds).
