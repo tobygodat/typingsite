@@ -113,6 +113,36 @@ test('a mistyped space marks the word before it, as the run card does', () => {
   assert.deepEqual(missedAndSlowWords(typedWithMisses('The table, is set', [10])).missed, ['table,']);
 });
 
+test('a right letter deleted and replaced by a wrong one leaves the word out of the timing', () => {
+  const at = (char, position, offsetMs) => ({ type: 'insert', text: char, position, offsetMs });
+  const text = 'the cat sat';
+  // Continue on error: "cat"'s "t" is typed right, deleted, and replaced by an "x" two seconds later.
+  // Its first try stays right, so it isn't a first-try miss; timed from the kept "x", "cat" would read
+  // as 16 wpm and the slowest clean word.
+  const events = [...'the ca'].map((char, i) => at(char, i, (i + 1) * 100));
+  events.push(at('t', 6, 700), { type: 'delete', count: 1, offsetMs: 800 }, at('x', 6, 2700));
+  [...' sat'].forEach((char, i) => events.push(at(char, 7 + i, 2800 + i * 100)));
+  const replaced = { text, conditions: { correctionPolicy: 'relaxed' }, events };
+  const result = missedAndSlowWords(replaced, 10);
+  assert.deepEqual(result.missed, []);
+  assert.deepEqual(result.slow, [{ word: 'the', wpm: 120 }, { word: 'sat', wpm: 120 }]);
+  assert.equal(result.timedCount, 2);
+  assert.equal(result.medianWpm, 120);
+  // The run card's word list reads the same finish: "cax" is mistyped.
+  assert.deepEqual(wordHistory(replaced).filter((word) => word.wrong).map((word) => word.word), ['cax']);
+
+  // The same for the space after a word: "the" ends as "thex", so it isn't clean or timed either.
+  const spaceEvents = [...'the'].map((char, i) => at(char, i, (i + 1) * 100));
+  spaceEvents.push(at(' ', 3, 400), { type: 'delete', count: 1, offsetMs: 500 }, at('x', 3, 600));
+  [...'cat sat'].forEach((char, i) => spaceEvents.push(at(char, 4 + i, 700 + i * 100)));
+  const space = { text, conditions: { correctionPolicy: 'relaxed' }, events: spaceEvents };
+  const spaced = missedAndSlowWords(space, 10);
+  assert.deepEqual(spaced.missed, []);
+  assert.deepEqual(spaced.slow.map((item) => item.word), ['cat', 'sat']);
+  assert.equal(spaced.timedCount, 2);
+  assert.deepEqual(wordHistory(space).filter((word) => word.wrong).map((word) => word.word), ['thex']);
+});
+
 test('missed-word run records leave out pattern counts nothing reads', () => {
   const typed = { id: 'm', kind: 'missed', status: 'complete', conditions: {}, text: 'the cat', events: [...'the cat'].map((char, i) => ({ type: 'insert', text: char, position: i, offsetMs: i * 100 })) };
   const record = runRecord(typed);
