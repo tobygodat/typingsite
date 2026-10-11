@@ -1,10 +1,10 @@
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
-import { test, expect, openApp, chooseWords, completePassage, openView, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, chooseWords, completePassage, openView, openSettings, signInWithEmail } from './fixtures.js';
 
 test('daily goal line and practice calendar render on Progress', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openApp(page);
-  await page.locator('.preferences summary').click();
+  await openSettings(page);
   await page.locator('#daily-goal').selectOption('5');
   await page.keyboard.press('Escape');
   await chooseWords(page, 10);
@@ -80,7 +80,7 @@ test('Progress screenshots with ten weeks of seeded history', async ({ page, sup
     seenTextIds: runs.map((r) => r.textId), bests: {}, updatedAt: runs.at(-1).at } });
   await openApp(page);
   await signInWithEmail(page, user.email);
-  await page.locator('.preferences summary').click();
+  await openSettings(page);
   await page.locator('#daily-goal').selectOption('10');
   await page.keyboard.press('Escape');
   await openView(page, 'Progress');
