@@ -1547,7 +1547,7 @@ function forgetClearedTraining() {
   if (marker === trainingClear || runInProgress()) return;
   trainingClear = marker;
   if (!marker) return;
-  const named = new Set(profile.historyClearedIds || []);
+  const named = account.clearedIds(profile);
   const cleared = (record) => Boolean(record) && ((record.at || '') <= marker || named.has(record.id));
   if (!cleared(baselineAttempt) && !cleared(lastCompleted)) return;
   forgetTraining();
