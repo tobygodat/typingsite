@@ -9,6 +9,14 @@ const RECIPE = 'standard v1 · 60 s · english 1k–10k mix · punctuation, numb
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const screenOverflow = (page) => page.locator('#typing-screen').evaluate((node) => node.scrollWidth - node.clientWidth);
 
+// Settings, with the collapsed test content category (word list and numbers) open.
+async function openTestContent(page) {
+  await openSettings(page);
+  const category = page.locator('#test-content-settings');
+  if (!(await category.evaluate((node) => node.open))) await category.locator('summary').click();
+  await expect(page.locator('#word-list')).toBeVisible();
+}
+
 // Saved standard runs at realistic speeds, one a day up to yesterday, plus an interrupted one that must not count.
 function seededProfile(speeds) {
   const conditions = standardConditions();
@@ -58,12 +66,16 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   expect(first.split('"')).toHaveLength(3);
   expect(first).toMatch(/\d/);
 
-  await openSettings(page);
+  await openTestContent(page);
   await expect(page.locator('#word-list')).toBeDisabled();
   await expect(page.locator('#word-list')).toHaveValue('standard');
+  // The recipe always has numbers; the numbers switch shows that and stays locked.
+  await expect(page.locator('#numbers-toggle')).toBeDisabled();
+  await expect(page.locator('#numbers-toggle')).toBeChecked();
   await expect(page.locator('#stop-on-error-toggle')).toBeDisabled();
   await expect(page.locator('#stop-on-error-toggle')).toBeChecked();
   await expect(page.getByRole('combobox', { name: 'word list fixed for standard' })).toBeDisabled();
+  await expect(page.getByRole('checkbox', { name: 'numbers fixed for standard' })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'stop on error fixed for standard' })).toBeChecked();
   await page.keyboard.press('Escape');
 
@@ -83,8 +95,10 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   await expect(page.locator('#punctuation-toggle')).toBeEnabled();
   await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
   await expect(page.locator('#condition-line')).toContainText('english 200 · 30 s · plain · physical keyboard · continue on error');
-  await openSettings(page);
+  await openTestContent(page);
   await expect(page.locator('#word-list')).toHaveValue('200');
+  await expect(page.locator('#numbers-toggle')).toBeEnabled();
+  await expect(page.locator('#numbers-toggle')).not.toBeChecked();
   await expect(page.locator('#stop-on-error-toggle')).toBeEnabled();
   await expect(page.locator('#stop-on-error-toggle')).not.toBeChecked();
   await expect(page.locator('.preference-lock').first()).toBeHidden();
@@ -265,7 +279,7 @@ test('screenshots', async ({ page, supabase }, testInfo) => {
   }
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  await openSettings(page);
+  await openTestContent(page);
   await page.screenshot({ path: shot(testInfo, 'settings-locked-dark.png') });
   await page.keyboard.press('Escape');
 
