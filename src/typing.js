@@ -51,11 +51,31 @@ function punctuate(words) {
   });
 }
 
-export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST) {
+// Roughly 1 word in 8 becomes a 1–4 digit number, drawn from the same random source so a
+// seeded passage stays reproducible. A passage that drew none still gets one, so short
+// tests with numbers on always contain a number.
+function numberize(words, random) {
+  const number = () => {
+    const digits = 1 + Math.floor(random() * 4);
+    const low = digits === 1 ? 0 : 10 ** (digits - 1);
+    return String(low + Math.floor(random() * (10 ** digits - low)));
+  };
+  let drawn = false;
+  const result = words.map((word) => {
+    if (random() >= 1 / 8) return word;
+    drawn = true;
+    return number();
+  });
+  if (!drawn && result.length) result[Math.floor(random() * result.length)] = number();
+  return result;
+}
+
+export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST, numbers = false) {
   if (mode === 'quote') return quoteCorpus[Math.floor(random() * quoteCorpus.length)].text;
   const bank = wordList(list);
   // 1,600 words keeps even a 300 WPM typist supplied for the longest 120 s mode.
-  const words = Array.from({ length: mode === 'time' ? 1600 : count }, () => bank[Math.floor(random() * bank.length)]);
+  let words = Array.from({ length: mode === 'time' ? 1600 : count }, () => bank[Math.floor(random() * bank.length)]);
+  if (numbers) words = numberize(words, random);
   return (punctuation ? punctuate(words) : words).join(' ');
 }
 
@@ -68,7 +88,7 @@ export function textId(text) {
   return `generated-${(hash >>> 0).toString(36)}`;
 }
 
-export function selectPassage({ mode = 'time', count = 25, punctuation = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
+export function selectPassage({ mode = 'time', count = 25, punctuation = false, numbers = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
   const seen = new Set(seenIds);
   if (mode === 'quote') {
     const candidates = quoteCorpus.filter((item) => {
@@ -91,11 +111,11 @@ export function selectPassage({ mode = 'time', count = 25, punctuation = false, 
   }
 
   for (let i = 0; i < 12; i += 1) {
-    const text = makePassage(mode, count, punctuation, random, list);
+    const text = makePassage(mode, count, punctuation, random, list, numbers);
     const id = textId(text);
     if (!seen.has(id)) return { id, textVersion: `${id}@1`, text, corpus: CORPUS_VERSION, difficulty: 'generated', fresh: true, exhausted: false };
   }
-  const text = makePassage(mode, count, punctuation, random, list);
+  const text = makePassage(mode, count, punctuation, random, list, numbers);
   const id = textId(text);
   return { id, textVersion: `${id}@1`, text, corpus: CORPUS_VERSION, difficulty: 'generated', fresh: !seen.has(id), exhausted: seen.has(id) };
 }
@@ -311,7 +331,8 @@ export function conditionKey(conditions = {}) {
     conditions.mode,
     conditions.duration || '',
     conditions.count || '',
-    conditions.punctuation ? 'punctuation' : 'plain',
+    // Numbers ride on the same segment so keys saved before the toggle existed stay unchanged.
+    `${conditions.punctuation ? 'punctuation' : 'plain'}${conditions.numbers ? '+numbers' : ''}`,
     conditions.quoteLength || '',
     conditions.difficulty || '',
     conditions.wordList || '',
