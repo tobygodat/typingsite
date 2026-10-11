@@ -901,11 +901,16 @@ function renderPracticeWords(completed) {
   const evidence = $('practice-words-evidence');
   button.hidden = evidence.hidden = !words.length;
   if (!words.length) return;
-  evidence.textContent = [
+  // Sentences about this run's words, set in Literata like the word pace line, and each number is a
+  // book-face figure (.num), never the mono of the conditions line.
+  const figure = (value) => element('span', String(value), 'num');
+  const lines = [
     // Quote a token that carries punctuation, so "table," reads as the word typed.
-    missed.length ? `missed first try: ${missed.map((word) => /[^\p{L}\p{N}]/u.test(word) ? `“${word}”` : word).join(', ')}` : '',
-    slow.length ? `slowest in this run: ${slow.map((item) => `${item.word} ${item.wpm} wpm`).join(', ')} · median ${medianWpm} wpm over ${timedCount} clean words` : '',
-  ].filter(Boolean).join('\n');
+    missed.length && [`missed first try: ${missed.map((word) => /[^\p{L}\p{N}]/u.test(word) ? `“${word}”` : word).join(', ')}`],
+    slow.length && ['slowest in this run: ', ...slow.flatMap((item, index) => [`${index ? ', ' : ''}${item.word} `, figure(item.wpm), ' wpm']),
+      ' · median ', figure(medianWpm), ' wpm over ', figure(timedCount), ' clean words'],
+  ].filter(Boolean);
+  evidence.replaceChildren(...lines.flatMap((parts, index) => (index ? ['\n', ...parts] : parts)));
   const text = practiceWordsPassage(words);
   button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
   button.onclick = () => {

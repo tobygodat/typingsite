@@ -38,6 +38,17 @@ test('missed and slowest words become their own uncounted practice run', async (
   const evidence = page.locator('#practice-words-evidence');
   await expect(evidence).toContainText(`missed first try: ${missed.join(', ')}`);
   await expect(evidence).toContainText(/slowest in this run: .+ \d+ wpm .*· median \d+ wpm over \d+ clean words/);
+  // A sentence, not a conditions line: Literata throughout, and every number a book-face figure.
+  await expect(evidence).toHaveCSS('font-family', /^"?Literata/);
+  const figures = evidence.locator('.num');
+  expect(await figures.count()).toBeGreaterThanOrEqual(3);
+  for (const figure of await figures.all()) {
+    await expect(figure).toHaveText(/^\d+$/);
+    await expect(figure).toHaveCSS('font-family', /^"?Literata/);
+    await expect(figure).toHaveCSS('font-variant-numeric', 'lining-nums tabular-nums');
+  }
+  const bare = await evidence.evaluate((node) => [...node.childNodes].filter((child) => child.nodeType === Node.TEXT_NODE).map((child) => child.textContent).join(''));
+  expect(bare).not.toMatch(/\d/);
 
   await button.click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
@@ -134,7 +145,9 @@ test('screenshots', async ({ page }, testInfo) => {
     await finishWithTwoMisses(page, 130);
     await expect(page.locator('#practice-words')).toBeVisible();
     await page.mouse.move(1270, 990);
-    await page.evaluate(() => window.scrollTo(0, 0));
+    // The card runs past the fold; show its foot, where the evidence and the offer sit.
+    await page.locator('#run-card').evaluate((card) => card.scrollIntoView({ block: 'end', behavior: 'instant' }));
+    await page.evaluate(() => window.scrollBy(0, 24));
     await page.screenshot({ path: shot(testInfo, `run-card-${scheme}`) });
     if (scheme === 'dark') {
       await page.locator('#practice-words').click();
