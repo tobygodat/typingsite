@@ -1067,14 +1067,18 @@ function startRetest() {
   resetSession('retest', { focus: true });
 }
 
+// Restores only what the source's mode varies. Fields a mode fixes in conditions() (code's punctuation,
+// numbers and word list; quote's numbers) keep the person's own prose preferences.
 function restoreConditions(source) {
+  const code = source.mode === 'code';
+  const prose = !['quote', 'code'].includes(source.mode);
   prefs = {
     ...prefs,
     mode: source.mode,
     duration: source.duration || prefs.duration,
     count: source.count || prefs.count,
-    punctuation: Boolean(source.punctuation),
-    numbers: Boolean(source.numbers),
+    punctuation: code ? prefs.punctuation : Boolean(source.punctuation),
+    numbers: prose ? Boolean(source.numbers) : prefs.numbers,
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,

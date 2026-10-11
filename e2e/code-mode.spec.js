@@ -1,4 +1,20 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage } from './fixtures.js';
+import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
+import { runRecord } from '../src/insights.js';
+import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage, signInWithEmail } from './fixtures.js';
+
+const codeConditions = { mode: 'code', codeLanguage: 'js', duration: null, count: null, punctuation: true, numbers: false,
+  quoteLength: null, difficulty: null, wordList: null, inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
+  language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
+// A finished code run that mistypes every "th", so two of them make a recurring target.
+function codeErrorTrace(id, at) {
+  const text = Array(25).fill('the').join(' ');
+  const attempt = createAttempt({ id, text, textId: id, conditions: codeConditions });
+  attempt.startedAt = 0;
+  attempt.events = [...text].map((char, position) => ({ type: 'insert', text: position % 4 === 1 ? 'x' : char,
+    position, offsetMs: position * 100, accepted: true }));
+  return { ...completeAttempt(attempt, { endedAt: text.length * 100 }), at, fresh: true };
+}
 
 test('code mode serves a python snippet and keeps the run out of bests', async ({ page }) => {
   await openApp(page);
@@ -53,6 +69,33 @@ test('a code run clears the earlier practice baseline', async ({ page }) => {
   await expect(page.locator('#result-delta')).toHaveText('Code run complete · not counted toward your best');
   await expect(page.locator('#skip-to-retest')).toBeDisabled();
   await expect(page.locator('#recommendation-meta')).toHaveText('A standalone drill. Code runs have no fresh-text retest.');
+});
+
+test('practising a code target keeps the prose punctuation, numbers and word list', async ({ page, supabase }) => {
+  const user = supabase.addUser('code-target@stilltype.test');
+  const traces = [codeErrorTrace('code-a', '2026-09-28T12:00:00Z'), codeErrorTrace('code-b', '2026-09-29T12:00:00Z')];
+  supabase.profiles.set(user.id, { data: { version: 2,
+    preferences: { mode: 'time', duration: 30, punctuation: false, numbers: true, wordList: '5k', codeLanguage: 'js' },
+    attempts: traces, runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {},
+    updatedAt: '2026-09-29T12:00:00Z' } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
+  await expect(page.locator('#numbers-toggle')).toBeChecked();
+
+  await openView(page, 'Train');
+  await expect(page.locator('#training-conditions')).toContainText('code · js');
+  await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
+  await expect(page.locator('#session-title')).toHaveText('Practice “th”');
+  await expect(page.locator('#session-description')).toHaveText('A standalone drill. Code runs have no fresh-text retest.');
+
+  // Back to prose: code's locked punctuation and numbers never become the person's own settings.
+  await openView(page, 'Practice');
+  await page.locator('#mode-time').click();
+  await expect(page.locator('#condition-line')).toContainText('english 5k · 30 s · plain · numbers');
+  await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
+  await expect(page.locator('#numbers-toggle')).toBeChecked();
+  await expect(page.locator('#word-list')).toHaveValue('5k');
 });
 
 test('the palette hides punctuation, numbers and word lists in code mode', async ({ page }) => {
