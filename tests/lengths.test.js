@@ -112,13 +112,17 @@ test('presets keep the same 1,600-word timed passage; long custom times get enou
   assert.equal(timedWordSupply(321), 1605);
   assert.equal(timedWordSupply(600), 3000);
   // Same random draws, same text: nothing changes for a preset.
-  assert.equal(makePassage('time', 0, false, seeded(), '200', 120), makePassage('time', 0, false, seeded(), '200'));
-  const long = makePassage('time', 0, false, seeded(), '200', 600);
+  assert.equal(makePassage('time', 0, false, seeded(), '200', false, 120), makePassage('time', 0, false, seeded(), '200'));
+  const long = makePassage('time', 0, false, seeded(), '200', false, 600);
   assert.equal(long.split(' ').length, 3000);
   // 300 wpm for ten minutes is 3,000 five-character words.
   assert.ok(long.length >= 300 * 5 * 10, `${long.length} characters`);
   assert.equal(selectPassage({ mode: 'time', duration: 600, random: seeded() }).text.split(' ').length, 3000);
   assert.equal(selectPassage({ mode: 'words', count: 500, random: seeded() }).text.split(' ').length, 500);
+  // Numbers ride on the same supply: a long custom time with numbers on keeps every word slot.
+  const numbered = selectPassage({ mode: 'time', duration: 600, numbers: true, random: seeded() }).text.split(' ');
+  assert.equal(numbered.length, 3000);
+  assert.ok(numbered.some((word) => /^\d+$/.test(word)));
 });
 
 // A finished trace as the app stores it: every keystroke an event, one error in 33 corrected.
