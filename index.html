@@ -272,6 +272,10 @@
                 <span class="legend-miss">mistake</span>
               </figcaption>
             </figure>
+            <div class="run-card-wordlist">
+              <div id="result-words" class="run-card-words" role="listbox" aria-label="Words typed; mistyped words are marked. Arrow keys move between words."></div>
+              <p id="result-word-detail" class="word-detail"></p>
+            </div>
             <div class="run-card-score">
               <strong id="result-wpm" class="num">—</strong>
               <span class="run-card-unit">wpm</span>
@@ -281,7 +285,13 @@
               <div><dt>first-try errors</dt><dd id="result-errors" class="num">—</dd></div>
               <div><dt>time</dt><dd id="result-time" class="num">—</dd></div>
             </dl>
+            <dl class="run-card-facts run-card-more">
+              <div title="Every character typed, mistakes included, per five characters per minute"><dt>raw wpm</dt><dd id="result-raw" class="num">—</dd></div>
+              <div title="100 minus the variation of your per-second raw speed; needs 3 seconds"><dt>consistency</dt><dd><strong id="result-consistency" class="num">—</strong><b>%</b></dd></div>
+              <div title="The finished text: correct / still wrong / extra / missed characters. Slips you fixed count as first-try errors"><dt>final c/i/e/m</dt><dd id="result-chars" class="num">—</dd></div>
+            </dl>
             <p class="metric-note">wpm counts correct characters kept · accuracy counts every character typed, corrected ones included</p>
+            <p class="metric-note">raw counts every character typed, mistakes included · consistency is 100 minus the variation of per-second speed · final c/i/e/m: correct, still wrong, extra past the end, missed; fixed slips are first-try errors</p>
             <p class="condition-copy" id="result-conditions">english · common words · corpus v3 · metric v1</p>
           </article>
 
