@@ -18,6 +18,10 @@ import {
   replayAttempt,
   selectPassage,
   summarizePatterns,
+  rawWpm,
+  consistency,
+  characterBreakdown,
+  wordHistory,
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
@@ -52,6 +56,8 @@ const defaultPreferences = {
   theme: 'system',
   customText: '',
   customOrder: 'as-written',
+  paceCaret: 'off',
+  paceWpm: 80,
 };
 
 const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
@@ -64,6 +70,9 @@ function customPassage() {
 }
 
 const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
+
+const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
+const clampPace = (value) => Math.min(300, Math.max(10, Math.round(Number(value) || 80)));
 
 function emptyProfile() {
   return {
@@ -92,6 +101,8 @@ function validPreferences(value) {
   const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
   value.customText = customTextProblem(customText) ? '' : customText;
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
+  if (!PACE_MODES.includes(value.paceCaret)) value.paceCaret = 'off';
+  value.paceWpm = clampPace(value.paceWpm);
   return value;
 }
 
@@ -137,7 +148,7 @@ const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('ra
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let lastCompleted = null;
-let ghostOn = false;
+const ghostOn = () => prefs.paceCaret !== 'off';
 let palette = null;
 let onlineRace = null;
 let inbox = null;
@@ -176,6 +187,19 @@ function saveProfile() {
   }
   storageAvailable = account.cacheProfile(session.user.id, profile);
   return storageAvailable;
+}
+
+// Caps Lock warning: read from the modifier state on each key event in the typing field.
+function setCapsWarning(on) {
+  const warning = $('caps-warning');
+  if ((warning.dataset.on === 'true') === on) return;
+  warning.dataset.on = String(on);
+  if (on) announce('Caps Lock is on');
+}
+
+function syncCapsLock(event) {
+  if (typeof event.getModifierState !== 'function') return;
+  setCapsWarning(event.getModifierState('CapsLock'));
 }
 
 function announce(message) {
@@ -270,7 +294,7 @@ function resolvedTheme() {
 function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f4f1eb' : '#0f0f0e';
+  for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = theme === 'light' ? '#f4f1eb' : '#0f0f0e';
   $('theme-select').value = prefs.theme;
 }
 
@@ -318,6 +342,7 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  armPace();
   showBest();
 }
 
@@ -569,7 +594,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   primaryTextView = renderText($('text-display'), passage.text);
   primaryCharacters = primaryTextView.characters;
   primaryFx.reset(primaryCharacters);
-  primaryFx.ghost.arm(ghostOn ? ghostPace().cps : 0);
+  armPace();
   markKeyboardTargets(kind === 'drill' ? selectedTarget : null);
   $('typing-status').className = 'badge badge-info';
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
@@ -747,12 +772,51 @@ function refreshAfterInput(type, previousLength, blocked = false) {
   }
 }
 
-// The ghost runs at the personal best for these exact conditions, or a gentle 60 wpm without one.
-function ghostPace() {
+// The pace caret is presentational and never scored. It runs at the personal best, the average of
+// the last 10 comparable runs, the last comparable run, or a custom pace; with no runs, a gentle 60 wpm.
+function ghostPace(mode = prefs.paceCaret) {
   // The active attempt knows its real input class (touch is detected after reset).
-  const best = profile.bests[conditionKey(attempt?.conditions || conditions())];
-  const wpm = best?.wpm || 60;
-  return { wpm, cps: (wpm * 5) / 60, fromBest: Boolean(best) };
+  const key = conditionKey(attempt?.conditions || conditions());
+  let wpm = null;
+  if (mode === 'custom') wpm = prefs.paceWpm;
+  else if (mode === 'best') wpm = profile.bests[key]?.wpm || null;
+  else if (mode === 'average' || mode === 'last') {
+    // Only test and retest runs are comparable, as for trends and bests: drills would skew the pace.
+    const runs = filterRuns(profile.runs.filter(trendRun), key).filter((run) => run.score?.wpm);
+    const recent = runs.slice(mode === 'last' ? -1 : -10);
+    if (recent.length) wpm = Math.round(recent.reduce((sum, run) => sum + run.score.wpm, 0) / recent.length);
+  }
+  const fromBest = mode === 'best' && Boolean(wpm);
+  const fallback = !wpm;
+  wpm = wpm || 60;
+  return { wpm, cps: (wpm * 5) / 60, fromBest, fallback };
+}
+
+function showPace() {
+  const on = ghostOn();
+  const pace = ghostPace();
+  $('pace-label').hidden = !on;
+  $('pace-label').textContent = on ? `pace ${pace.wpm} wpm` : '';
+  $('pace-select').value = prefs.paceCaret;
+  $('pace-wpm').value = prefs.paceWpm;
+  $('pace-custom').hidden = prefs.paceCaret !== 'custom';
+  $('pace-note').textContent = on && prefs.paceCaret !== 'custom' ? (pace.fallback ? 'no runs yet — 60 wpm' : `${pace.wpm} wpm`) : '';
+  document.body.dataset.ghost = on ? 'on' : 'off';
+}
+
+// Arms the caret on the current attempt in place: a ready run keeps its passage, and a run in
+// progress joins the caret to its own clock. Called whenever the mode or the history behind it changes.
+function armPace() {
+  const running = attempt?.status === 'running' && startTime !== null;
+  const live = running || attempt?.status === 'ready';
+  primaryFx.ghost.arm(ghostOn() && live ? ghostPace().cps : 0, running ? startTime : 0);
+  showPace();
+}
+
+function setPaceCaret(mode) {
+  prefs.paceCaret = mode;
+  saveProfile();
+  armPace();
 }
 
 function markKeyboardTargets(target) {
@@ -900,6 +964,7 @@ function renderResults(completed, saved) {
   $('result-accuracy').textContent = replay.score.accuracy;
   $('result-errors').textContent = firstErrors;
   $('result-time').textContent = `${(replay.elapsedMs / 1000).toFixed(1)} s`;
+  renderSecondaryStats(completed);
   $('result-conditions').textContent = describeRun(completed);
   $('result-delta').textContent = resultHeadline(completed);
   // A retest reports a failed save once, in the comparison caveat.
@@ -1108,6 +1173,70 @@ function conditionOptions(select, sources, fallback = null) {
   if (groups.has(prior)) select.value = prior;
   select.disabled = !groups.size;
   return groups.get(select.value);
+}
+
+// Raw speed, consistency, the character breakdown and the static words list. Display only.
+function renderSecondaryStats(completed) {
+  const replay = completed.summary;
+  const steady = consistency(completed, replay);
+  const chars = characterBreakdown(completed, replay);
+  // Raw speed is a rate too, so a custom run that ends inside a second shows none, as for net wpm.
+  $('result-raw').textContent = rateShown(completed) ? rawWpm(completed, replay) : '—';
+  $('result-consistency').textContent = steady ?? '—';
+  // A break opportunity after each slash, so a long breakdown wraps instead of widening the card.
+  $('result-chars').replaceChildren(...[chars.correct, chars.incorrect, chars.extra, chars.missed]
+    .flatMap((value, i) => (i ? ['/', document.createElement('wbr'), String(value)] : [String(value)])));
+  renderWords(completed, replay);
+}
+
+// Words reached: one tab stop. Arrow keys, Home and End move between words, and focus or a tap
+// shows that word's pace in the line below, so the numbers never depend on a hover tooltip.
+let wordItems = [];
+let wordIndex = null;
+const wordPace = (item) => (item.wpm === null ? 'no pace' : `${item.wpm} wpm`);
+
+function renderWords(completed, replay) {
+  wordItems = wordHistory(completed, replay);
+  $('result-words').replaceChildren(...wordItems.flatMap((item, i) => {
+    const word = element('span', item.word, item.wrong ? 'word-miss' : '');
+    word.setAttribute('role', 'option');
+    word.setAttribute('aria-label', `${item.word}, ${wordPace(item)}${item.wrong ? ', mistyped' : ''}`);
+    word.dataset.index = String(i);
+    word.title = wordPace(item);
+    return i ? [' ', word] : [word];
+  }));
+  selectWord(null);
+}
+
+// Before any choice the first word is the tab stop and the line names the fastest and slowest words.
+function wordSummary() {
+  const paced = wordItems.filter((item) => item.wpm !== null);
+  if (paced.length < 2) return wordItems.length ? 'select a word for its pace' : '';
+  const fastest = paced.reduce((best, item) => (item.wpm > best.wpm ? item : best));
+  const slowest = paced.reduce((low, item) => (item.wpm < low.wpm ? item : low));
+  return `fastest “${fastest.word}” ${fastest.wpm} wpm · slowest “${slowest.word}” ${slowest.wpm} wpm · select a word for its pace`;
+}
+
+function selectWord(index, { focus = false } = {}) {
+  const words = [...$('result-words').querySelectorAll('[role="option"]')];
+  wordIndex = index === null || !words.length ? null : Math.max(0, Math.min(index, words.length - 1));
+  words.forEach((word, i) => {
+    word.tabIndex = i === (wordIndex ?? 0) ? 0 : -1;
+    word.setAttribute('aria-selected', String(i === wordIndex));
+  });
+  const item = wordItems[wordIndex];
+  $('result-word-detail').textContent = item ? `“${item.word}” · ${wordPace(item)}${item.wrong ? ' · mistyped' : ''}` : wordSummary();
+  if (focus && item) words[wordIndex].focus();
+}
+
+function moveWordFocus(event) {
+  const word = event.target.closest?.('[role="option"]');
+  if (!word) return;
+  const at = Number(word.dataset.index);
+  const next = { ArrowLeft: at - 1, ArrowUp: at - 1, ArrowRight: at + 1, ArrowDown: at + 1, Home: 0, End: wordItems.length - 1 }[event.key];
+  if (next === undefined) return;
+  event.preventDefault();
+  selectWord(next, { focus: true });
 }
 
 function element(tag, text, className = '') {
@@ -1430,7 +1559,10 @@ function clearHistory() {
   trainingContext = null;
   selectedTarget = null;
   activeRecommendation = null;
-  for (const id of ['result-wpm', 'result-accuracy', 'result-errors', 'result-time']) $(id).textContent = '—';
+  for (const id of ['result-wpm', 'result-accuracy', 'result-errors', 'result-time', 'result-raw', 'result-consistency', 'result-chars']) $(id).textContent = '—';
+  $('result-words').replaceChildren();
+  wordItems = [];
+  selectWord(null);
   $('result-delta').textContent = 'No run yet.';
   $('result-comparison-note').textContent = '';
   $('run-card-stamp').textContent = 'no run yet';
@@ -1455,6 +1587,7 @@ function clearHistory() {
   renderTraining();
   renderDaily();
   showBest();
+  armPace();
 }
 
 function undoClear() {
@@ -1810,6 +1943,8 @@ function bindEvents() {
   $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
+  $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
+  $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(event.target.value); setPaceCaret('custom'); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
@@ -1823,13 +1958,15 @@ function bindEvents() {
   $('typing-input').addEventListener('keydown', (event) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
   });
+  for (const type of ['keydown', 'keyup']) $('typing-input').addEventListener(type, syncCapsLock);
+  $('typing-input').addEventListener('blur', () => setCapsWarning(false));
   $('typing-input').addEventListener('paste', (event) => { event.preventDefault(); refusePaste('primary'); });
   $('typing-input').addEventListener('drop', (event) => event.preventDefault());
   $('typing-input').addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'touch' && attempt?.status === 'ready') {
       attempt.conditions.inputClass = 'touch';
       $('condition-line').textContent = describeRun(attempt);
-      if (ghostOn) primaryFx.ghost.arm(ghostPace().cps);
+      armPace();
     }
   });
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
@@ -1844,6 +1981,16 @@ function bindEvents() {
   });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(restartKind(), { focus: true }));
+  $('result-words').addEventListener('keydown', moveWordFocus);
+  $('result-words').addEventListener('focusin', (event) => {
+    const word = event.target.closest('[role="option"]');
+    if (word && Number(word.dataset.index) !== wordIndex) selectWord(Number(word.dataset.index));
+  });
+  // A tap selects the word too, so touch shows the same line as the keyboard.
+  $('result-words').addEventListener('click', (event) => {
+    const word = event.target.closest('[role="option"]');
+    if (word) selectWord(Number(word.dataset.index), { focus: true });
+  });
   $('progress-conditions').addEventListener('change', renderHistory);
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
@@ -2057,6 +2204,8 @@ function paletteCommands(query) {
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => inPractice((kind) => setWordList(id, kind)) })),
+    ...[['off', 'off'], ['best', 'personal best'], ['average', 'average'], ['last', 'last run'], ['custom', 'custom']].map(([mode, name]) => (
+      { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: prefs.paceCaret === mode ? 'on' : '', on: prefs.paceCaret === mode, run: () => setPaceCaret(mode) })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
@@ -2074,7 +2223,7 @@ function paletteCommands(query) {
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.runs.length === 0 && profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
   // Only an exact word finds this one.
-  if (query === 'ghost') commands.unshift({ group: 'secret', secret: true, label: 'ghost pacer', hint: onOff(ghostOn), on: ghostOn, run: toggleGhost });
+  if (query === 'ghost') commands.unshift({ group: 'secret', secret: true, label: 'ghost pacer', hint: onOff(ghostOn()), on: ghostOn(), run: toggleGhost });
   return commands;
 }
 
@@ -2098,21 +2247,23 @@ function bindPalette() {
 
 // ↑ ↑ ↓ ↓ ← → ← → b a, or "ghost" in the palette: a pacer caret at your best pace for these conditions.
 function toggleGhost() {
-  ghostOn = !ghostOn;
-  document.body.dataset.ghost = ghostOn ? 'on' : 'off';
-  const pace = ghostPace();
-  const message = ghostOn ? `Ghost pacer · ${pace.wpm} wpm${pace.fromBest ? ' (your best)' : ''}` : 'Ghost off';
+  const on = !ghostOn();
+  const pace = ghostPace('best');
+  const message = on ? `Ghost pacer · ${pace.wpm} wpm${pace.fromBest ? ' (your best)' : ''}` : 'Ghost off';
   $('egg-feedback').textContent = message;
   $('egg-toast').hidden = false;
   $('egg-toast').classList.toggle('is-solo', $('history-toast').hidden);
   clearTimeout(toggleGhost.timer);
   toggleGhost.timer = setTimeout(() => { $('egg-toast').hidden = true; }, 3000);
   announce(message);
-  if (document.body.dataset.view === 'practice' && sessionKind !== 'retest') resetSession(sessionKind, { focus: true });
-  else primaryFx.ghost.arm(ghostOn ? pace.cps : 0);
+  setPaceCaret(on ? 'best' : 'off');
 }
 
-listenForSequence(toggleGhost);
+// A focused input takes the sequence's "b" and starts the run; restart the same passage clean.
+listenForSequence(() => {
+  toggleGhost();
+  if (attempt?.status === 'running' && document.body.dataset.view === 'practice') resetSession(sessionKind, { focus: true, selectedPassage: passage });
+});
 
 let resizeFrame = 0;
 addEventListener('resize', () => {
@@ -2187,3 +2338,9 @@ setInterval(() => { if (document.body.dataset.view === 'compete') renderDaily();
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) renderDaily();
 });
+
+// Offline shell (sw.js): installable and playable without a connection. Skipped on localhost so local
+// edits are never served stale; Supabase and other origins are never cached.
+if ('serviceWorker' in navigator && location.hostname !== 'localhost') {
+  Promise.resolve(navigator.serviceWorker.register('/sw.js')).catch(() => {});
+}

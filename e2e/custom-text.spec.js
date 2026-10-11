@@ -160,6 +160,7 @@ test('text too short to time is refused, and a short phrase is accepted', async 
   const seconds = parseFloat(await page.locator('#result-time').textContent());
   if (seconds < 1) {
     await expect(page.locator('#result-wpm')).toHaveText('—');
+    await expect(page.locator('#result-raw')).toHaveText('—');
     await expect(page.locator('.run-card-graph')).toBeHidden();
     await expect(page.locator('#announcement')).toContainText('Too quick to time');
   } else {
