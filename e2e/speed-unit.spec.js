@@ -64,6 +64,8 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('.run-card-unit')).toHaveText('wpm');
   await expect(page.locator('#best')).toHaveText(`Best · ${first} wpm`);
   const raw = Number(await page.locator('#result-raw').textContent());
+  const rawRow = page.locator('.run-card-more > div', { has: page.locator('#result-raw') });
+  await expect(rawRow).toHaveAttribute('title', 'Every character typed, mistakes included: characters ÷ 5 per minute');
   await expect(page.locator('#result-word-detail')).toContainText(/^fastest “.+” \d+ wpm · slowest/);
 
   await openSettings(page);
@@ -78,6 +80,8 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   // The run card's secondary stats read in the unit too: raw speed and each word's pace.
   await expect(page.locator('#result-raw')).toHaveText(String(raw * 5));
   await expect(page.locator('.run-card-more dt').first()).toHaveText('raw cpm');
+  // Its tooltip defines the unit shown, not five-character words.
+  await expect(rawRow).toHaveAttribute('title', 'Every character typed, mistakes included: characters per minute');
   await expect(page.locator('#result-word-detail')).toContainText(/^fastest “.+” \d+ cpm · slowest “.+” \d+ cpm/);
   await expect(page.locator('#result-words [role="option"]').first()).toHaveAttribute('aria-label', /, (\d+ cpm|no pace)/);
   await expect(page.locator('#speed-graph')).toHaveAttribute('aria-label', new RegExp(`^Speed over time: average ${first * 5} cpm, peak \\d+ cpm, lowest \\d+ cpm\\.`));
@@ -116,6 +120,7 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('#result-wpm')).toHaveText(String(second / 5));
   await expect(page.locator('.run-card-unit')).toHaveText('wpm');
   await expect(page.locator('#speed-graph')).toHaveAttribute('aria-label', /average \d+ wpm/);
+  await expect(rawRow).toHaveAttribute('title', 'Every character typed, mistakes included: characters ÷ 5 per minute');
 });
 
 test('light theme: the run card and the palette command in cpm', async ({ page }, testInfo) => {

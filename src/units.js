@@ -32,3 +32,10 @@ export function speedDefinition(unit) {
     ? `cpm counts correct characters kept (wpm × ${CHARS_PER_WORD})`
     : 'wpm counts correct characters kept';
 }
+
+// The raw speed's tooltip on the run card: wpm divides the characters into five-character words.
+export function rawSpeedDefinition(unit) {
+  return normalizeSpeedUnit(unit) === 'cpm'
+    ? 'Every character typed, mistakes included: characters per minute'
+    : `Every character typed, mistakes included: characters ÷ ${CHARS_PER_WORD} per minute`;
+}

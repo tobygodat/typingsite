@@ -30,7 +30,7 @@ import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
-import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, speedDefinition, speedValue, wpmFromSpeed } from './units.js';
+import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, rawSpeedDefinition, speedDefinition, speedValue, wpmFromSpeed } from './units.js';
 
 const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
@@ -339,6 +339,7 @@ function applySpeedUnit() {
   $('speed-unit').value = unit;
   document.querySelectorAll('[data-speed-unit]').forEach((node) => { node.textContent = (node.dataset.speedUnit || '%').replace('%', unit); });
   $('speed-definition').textContent = speedDefinition(unit);
+  $('result-raw-row').title = rawSpeedDefinition(unit);
 }
 
 function setModeControls() {

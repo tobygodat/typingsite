@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CHARS_PER_WORD, CORPUS_VERSION, METRIC_VERSION, conditionKey, metrics } from '../src/typing.js';
-import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, speedDefinition, speedValue, wpmFromSpeed } from '../src/units.js';
+import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, rawSpeedDefinition, speedDefinition, speedValue, wpmFromSpeed } from '../src/units.js';
 import { describeSeries } from '../src/graph.js';
 import { raceResultText } from '../src/race-result.js';
 
@@ -46,6 +46,12 @@ test('a figure entered in the chosen unit goes back to wpm, the inverse of the d
 test('the metric note names the unit and how it is derived', () => {
   assert.equal(speedDefinition('wpm'), 'wpm counts correct characters kept');
   assert.equal(speedDefinition('cpm'), 'cpm counts correct characters kept (wpm × 5)');
+});
+
+test('the raw speed tooltip defines the unit it is shown in', () => {
+  assert.equal(rawSpeedDefinition('wpm'), 'Every character typed, mistakes included: characters ÷ 5 per minute');
+  assert.equal(rawSpeedDefinition('cpm'), 'Every character typed, mistakes included: characters per minute');
+  assert.equal(rawSpeedDefinition(undefined), rawSpeedDefinition('wpm'));
 });
 
 test('the speed unit is not a test condition, so bests and retests keep matching', () => {
