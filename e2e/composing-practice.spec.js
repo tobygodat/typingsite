@@ -361,8 +361,11 @@ test('keyless input, focus loss and an emptied field are never saved, and settin
 
   // A setting that would draw a new passage waits until composing ends.
   await openSettings(page);
+  // The word list sits in the collapsed test content group.
+  const content = page.locator('#test-content-settings');
+  if (!(await content.evaluate((node) => node.open))) await content.locator('summary').click();
   await page.locator('#word-list').selectOption('1k');
-  await page.locator('details.preferences summary').click();
+  await page.locator('details.preferences > summary').click();
   await expect(page.locator('#compose-form')).toBeVisible();
   expect(await passageText(page)).toBe(hidden);
 
