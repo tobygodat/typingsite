@@ -2,7 +2,8 @@
 import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings } from './fixtures.js';
 
 const html = (page) => page.locator('html');
-const themeColor = (page) => page.locator('meta[name="theme-color"]');
+// index.html carries a light and a dark theme-color meta; the app sets both to the resolved theme.
+const themeColor = (page) => page.locator('meta[name="theme-color"]').first();
 
 test.describe('theme', () => {
   test('follows the system until the user picks one', async ({ page }) => {
@@ -57,7 +58,7 @@ test('settings apply their display preferences', async ({ page }) => {
   // Escape closes the popover and returns focus to its toggle.
   await page.keyboard.press('Escape');
   await expect(page.locator('.preferences-popover')).toBeHidden();
-  await expect(page.locator('details.preferences summary')).toBeFocused();
+  await expect(page.locator('details.preferences > summary')).toBeFocused();
 });
 
 test('focus mode has an explicit exit and answers Escape', async ({ page }) => {

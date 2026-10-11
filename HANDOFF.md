@@ -80,6 +80,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `src/account.js`: Supabase Auth (email/password, Google via PKCE), session refresh and the `profiles` row, over `fetch`.
 - `supabase/migrations/`: the `profiles` table and its owner-only row-level security, as applied to the `typingsite` project.
 - `src/egg.js`: the ↑↑↓↓←→←→ b a key sequence.
+- `sw.js`, `manifest.webmanifest`, `icons/`: the installable offline shell. `sw.js` precaches exactly the served files (`tests/sw.test.js` checks the list), serves them cache-first, fetches navigations network-first, and never caches Supabase or other origins. `npm run build` stamps its cache name with a content hash. Registered from `src/app.js` everywhere except `localhost`; e2e blocks service workers except in `e2e/pwa-offline.spec.js`.
 - `docs/ui-contract.md`: DOM integration contract.
 - `server.mjs` / `scripts/build-static.mjs`: serve / copy exactly `index.html`, `src/*.js`, `src/*.css`, `src/fonts/*.ttf`, `src/fonts/*.woff2` and the `OFL*.txt` licences. `design/`, canvas artboards and project documents are not served or built.
 
