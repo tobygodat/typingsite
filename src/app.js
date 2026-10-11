@@ -1825,6 +1825,7 @@ function bindEvents() {
   });
   $('numbers-toggle').addEventListener('change', (event) => {
     prefs.numbers = event.target.checked;
+    showBest();
     saveProfile();
     resetSession('practice', { focus: true });
   });

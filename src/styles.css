@@ -349,7 +349,7 @@ kbd {
 .preferences { flex: none; }
 .preferences summary { list-style: none; }
 .preferences summary::-webkit-details-marker { display: none; }
-.preferences[open] summary { color: var(--text); background: var(--raised-2); }
+.preferences[open] > summary { color: var(--text); background: var(--raised-2); }
 
 .preferences-popover {
   position: absolute;
@@ -383,6 +383,11 @@ kbd {
 .preference-row > span { min-width: 0; display: grid; gap: 2px; }
 .preference-row strong { font-size: 15px; font-weight: 600; }
 .preference-row .select { width: 104px; height: 36px; font-size: 14px; }
+
+.preference-category > summary { color: var(--muted); }
+.preference-category > summary::after { content: '+'; }
+.preference-category[open] > summary::after { content: '−'; }
+.preference-category > label { margin-left: var(--space-3); }
 
 .site-footer {
   padding: var(--space-8) 0 var(--space-6);
