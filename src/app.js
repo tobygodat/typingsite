@@ -1205,6 +1205,8 @@ const wordPace = (item) => (item.wpm === null ? 'no pace' : `${item.wpm} wpm`);
 
 function renderWords(completed, replay) {
   wordItems = wordHistory(completed, replay);
+  // A run too quick to time shows no rate, so no word shows a pace from the same sub-second timestamps.
+  if (!rateShown(completed)) wordItems = wordItems.map((item) => ({ ...item, wpm: null }));
   $('result-words').replaceChildren(...wordItems.flatMap((item, i) => {
     const word = element('span', item.word, item.wrong ? 'word-miss' : '');
     word.setAttribute('role', 'option');

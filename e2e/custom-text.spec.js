@@ -216,6 +216,39 @@ test('text too short to time is refused, and a short phrase is accepted', async 
   }
 });
 
+test('a run too quick to time shows no word pace either, but still marks the missed word', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill('hello world');
+  await page.locator('#custom-use').click();
+  // 40 ms a key on a paused clock: the whole run takes 400 ms, so every word has a sub-second pace to leak.
+  await page.clock.pauseAt(new Date('2026-10-01T12:10:00Z'));
+  await page.locator('#typing-input').focus();
+  for (const key of 'hellp world') {
+    await page.keyboard.type(key);
+    await page.clock.runFor(40);
+  }
+  await page.clock.resume();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-wpm')).toHaveText('—');
+  await expect(page.locator('#announcement')).toContainText('Too quick to time');
+
+  const history = page.locator('#result-words [role="option"]');
+  await expect(history).toHaveCount(2);
+  await expect(page.locator('#result-words .word-miss')).toHaveText('hellp');
+  await expect(history.first()).toHaveAttribute('aria-label', 'hellp, no pace, mistyped');
+  await expect(history.nth(1)).toHaveAttribute('aria-label', 'world, no pace');
+  const detail = page.locator('#result-word-detail');
+  await expect(detail).not.toContainText('wpm');
+  await history.first().focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(detail).toHaveText('“world” · no pace');
+  const shown = await page.locator('#result-words').evaluate((node) => [node.textContent,
+    ...[...node.querySelectorAll('[role="option"]')].flatMap((word) => [word.title, word.getAttribute('aria-label')])].join(' '));
+  expect(shown).not.toContain('wpm');
+});
+
 test('smart punctuation is normalised to typeable characters', async ({ page }) => {
   await openApp(page);
   await page.locator('#mode-custom').click();
