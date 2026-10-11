@@ -78,6 +78,20 @@
               <span><strong>stop on error</strong></span>
               <input class="switch" id="stop-on-error-toggle" type="checkbox">
             </label>
+            <label class="preference-row" for="pace-select">
+              <span><strong>pace caret</strong><small id="pace-note" class="pace-note"></small></span>
+              <select class="input select" id="pace-select">
+                <option value="off" selected>off</option>
+                <option value="best">personal best</option>
+                <option value="average">average</option>
+                <option value="last">last run</option>
+                <option value="custom">custom</option>
+              </select>
+            </label>
+            <label id="pace-custom" class="preference-row" for="pace-wpm" hidden>
+              <span><strong>custom pace</strong><small class="pace-note">10–300 wpm</small></span>
+              <input class="input pace-wpm num" id="pace-wpm" type="number" min="10" max="300" step="1" value="80" inputmode="numeric">
+            </label>
             <label class="preference-row" for="focus-toggle">
               <span><strong>focus mode</strong></span>
               <input class="switch" id="focus-toggle" type="checkbox">
@@ -191,6 +205,7 @@
               <div class="live-stat">
                 <strong id="live-accuracy" class="num">—</strong><span>%<span class="sr-only"> input accuracy</span></span>
               </div>
+              <small id="pace-label" class="pace-label" hidden></small>
             </div>
             <p id="caps-warning" class="caps-warning" aria-hidden="true">Caps Lock is on</p>
           </div>

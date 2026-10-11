@@ -383,6 +383,10 @@ kbd {
 .preference-row > span { min-width: 0; display: grid; gap: 2px; }
 .preference-row strong { font-size: 15px; font-weight: 600; }
 .preference-row .select { width: 104px; height: 36px; font-size: 14px; }
+.preference-row[hidden] { display: none; }
+.pace-note { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); }
+.pace-note:empty { display: none; }
+.preference-row .pace-wpm { width: 104px; height: 36px; font-size: 14px; }
 
 .site-footer {
   padding: var(--space-8) 0 var(--space-6);
@@ -844,6 +848,7 @@ body[data-session="retest"] .practice-controls,
 body[data-session="retest"] .quote-options { display: none; }
 
 .live-stats {
+  position: relative;
   flex: none;
   display: flex;
   align-items: flex-end;
@@ -869,6 +874,18 @@ body[data-session="retest"] .quote-options { display: none; }
 }
 
 .timer-stat strong { color: var(--accent); }
+
+/* Pace caret label: positioned out of flow so showing it never moves the passage. */
+.pace-label {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: var(--space-1);
+  color: var(--muted);
+  font: var(--text-mono)/1 var(--font-mono);
+  white-space: nowrap;
+}
+.pace-label[hidden] { display: none; }
 
 body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden; }
 
