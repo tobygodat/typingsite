@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_KEYBINDINGS, parseBinding, validateKeybindings, normalizeKeybindings, matchesBinding, ariaShortcuts } from '../src/keybindings.js';
 
 test('binding validation preserves typing and native navigation', () => {
-  for (const value of ['a', 'Space', 'Backspace', 'Delete', 'ArrowLeft', 'Shift+A', 'Alt+E', 'Shift+Tab', 'Ctrl+Tab', 'Ctrl+Alt+E', 'Ctrl+R', 'Mod+Shift+T', 'F5', 'Alt+F4', 'Ctrl+Ctrl+E', 'Mod+Meta+E', 'Ctrl+', '__proto__']) {
+  for (const value of ['a', 'Space', 'Backspace', 'Delete', 'ArrowLeft', 'Shift+A', 'Alt+E', 'Shift+Tab', 'Ctrl+Tab', 'Ctrl+Alt+E', 'Ctrl+R', 'Mod+Shift+T', 'F5', 'F7', 'F10', 'Alt+F4', 'Ctrl+F4', 'Meta+Q', 'Ctrl+Shift+I', 'Ctrl+E', 'Ctrl+Ctrl+E', 'Mod+Meta+E', 'Ctrl+', '__proto__', 'Ctrl+__proto__', 'Ctrl+toString', 'Ctrl+constructor']) {
     assert.ok(parseBinding(value, 'restart').error, value);
   }
   for (const value of ['Ctrl+Shift+E', 'Meta+K', 'Mod+K', 'Alt+Shift+R', 'F2', 'Escape', 'Tab', 'Enter']) {

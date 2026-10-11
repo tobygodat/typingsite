@@ -3,14 +3,15 @@ export const DEFAULT_KEYBINDINGS = Object.freeze({ restart: 'Escape', commands: 
 export const KEYBINDING_LABELS = Object.freeze({ restart: 'restart test / local challenge', commands: 'commands', exitFocus: 'exit focus mode' });
 const modifiers = ['Ctrl', 'Meta', 'Mod', 'Alt', 'Shift'];
 const aliases = { control: 'Ctrl', ctrl: 'Ctrl', cmd: 'Meta', command: 'Meta', meta: 'Meta', mod: 'Mod', alt: 'Alt', shift: 'Shift', esc: 'Escape', escape: 'Escape', tab: 'Tab', enter: 'Enter' };
+const alias = (value) => Object.hasOwn(aliases, value.toLowerCase()) ? aliases[value.toLowerCase()] : null;
 
 export function parseBinding(value, action) {
   if (typeof value !== 'string') return { error: 'Enter a key combination.' };
   if (!value.trim() || value.trim().toLowerCase() === 'none') return { binding: '' };
   const parts = value.trim().split('+').map((part) => part.trim());
   const rawKey = parts.pop();
-  const key = aliases[rawKey.toLowerCase()] || (/^[a-z0-9]$/i.test(rawKey) ? rawKey.toUpperCase() : /^f(?:[1-9]|1[0-2])$/i.test(rawKey) ? rawKey.toUpperCase() : null);
-  const mods = parts.map((part) => aliases[part.toLowerCase()]);
+  const key = alias(rawKey) || (/^[a-z0-9]$/i.test(rawKey) ? rawKey.toUpperCase() : /^f(?:[1-9]|1[0-2])$/i.test(rawKey) ? rawKey.toUpperCase() : null);
+  const mods = parts.map(alias);
   if (!key || modifiers.includes(key) || mods.some((mod) => !modifiers.includes(mod)) || new Set(mods).size !== mods.length
     || (mods.includes('Mod') && (mods.includes('Ctrl') || mods.includes('Meta')))) return { error: 'Use a key such as Escape, Tab, Enter, F2 or Ctrl+Shift+E.' };
   if (mods.includes('Ctrl') && mods.includes('Alt')) return { error: 'Ctrl+Alt is reserved for AltGr typing.' };
@@ -20,8 +21,9 @@ export function parseBinding(value, action) {
   const primary = mods.some((mod) => ['Ctrl', 'Meta', 'Mod'].includes(mod));
   if (!mods.length && !['Escape', 'Tab', 'Enter', 'F2', 'F4', 'F7', 'F8', 'F9', 'F10'].includes(key)) return { error: 'Printable keys need Ctrl, Meta, Mod or Alt+Shift to preserve typing.' };
   if (mods.length && !primary && !(mods.includes('Alt') && mods.includes('Shift'))) return { error: 'Use Ctrl, Meta, Mod or Alt+Shift with the key.' };
-  if (['F1', 'F3', 'F5', 'F6', 'F11', 'F12'].includes(key)
-    || (primary && (/^[0-9]$/.test(key) || ['A', 'C', 'V', 'X', 'Z', 'Y', 'W', 'T', 'N', 'R', 'L', 'P', 'S', 'F', 'D', 'H', 'J', 'U', 'O'].includes(key)))
+  if (['F1', 'F3', 'F4', 'F5', 'F6', 'F7', 'F10', 'F11', 'F12'].includes(key)
+    || (primary && (/^[0-9]$/.test(key) || ['A', 'B', 'C', 'V', 'X', 'Z', 'Y', 'W', 'T', 'N', 'R', 'L', 'P', 'S', 'F', 'D', 'G', 'H', 'I', 'J', 'M', 'Q', 'U', 'O'].includes(key)))
+    || (primary && key === 'E' && !mods.includes('Shift'))
     || (mods.includes('Alt') && ['F4', 'F10'].includes(key))) return { error: 'That combination is reserved for the browser or system.' };
   if (action !== 'restart' && ['Tab', 'Enter'].includes(key)) return { error: 'Tab and Enter are available only for restart; other actions must preserve navigation.' };
   return { binding: [...modifiers.filter((mod) => mods.includes(mod)), key].join('+') };
