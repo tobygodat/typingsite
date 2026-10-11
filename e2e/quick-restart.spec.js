@@ -1,10 +1,17 @@
 import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, signInWithEmail } from './fixtures.js';
 
-test('tab as the restart key resets the passage, and esc still works', async ({ page }) => {
+async function setRestart(page, binding) {
+  await page.locator('.keybindings-category > summary').click();
+  await page.locator('#keybinding-restart').fill(binding);
+  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
+  await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
+}
+
+test('tab as the restart key resets the passage, and escape no longer restarts', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
-  await page.locator('#restart-key').selectOption('Tab');
+  await setRestart(page, 'Tab');
   await expect(page.locator('#restart-key-hint')).toHaveText('tab');
   await page.keyboard.press('Escape');
   await expect(page.locator('.preferences-popover')).toBeHidden();
@@ -24,17 +31,17 @@ test('tab as the restart key resets the passage, and esc still works', async ({ 
   await expect(page.locator('#typing-input')).toHaveValue('');
   await expect(page.locator('body')).not.toHaveAttribute('data-running', 'true');
 
-  // Esc keeps working alongside the chosen key.
+  // Escape remains a dismissal key but does not override a custom restart binding.
   await typeInto(page, (await passageText(page)).slice(0, 2));
   await page.keyboard.press('Escape');
-  await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
+  await expect(page.locator('#text-display .char.correct')).toHaveCount(2);
 });
 
 test('with tab as the key, tab from run again moves focus on and enter runs again', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
-  await page.locator('#restart-key').selectOption('Tab');
+  await setRestart(page, 'Tab');
   await page.keyboard.press('Escape');
 
   await completePassage(page);
@@ -89,7 +96,7 @@ test('holding the restart key restarts once, not on every repeat', async ({ page
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
-  await page.locator('#restart-key').selectOption('Tab');
+  await setRestart(page, 'Tab');
   await page.keyboard.press('Escape');
 
   await typeInto(page, (await passageText(page)).slice(0, 3));
@@ -107,10 +114,10 @@ test('holding the restart key restarts once, not on every repeat', async ({ page
 test('tab still moves focus inside the settings popover', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
-  await page.locator('#restart-key').selectOption('Tab');
-  await page.locator('#restart-key').focus();
+  await setRestart(page, 'Tab');
+  await page.locator('#keybinding-restart').focus();
   await page.keyboard.press('Tab');
-  await expect(page.locator('#live-toggle')).toBeFocused();
+  await expect(page.locator('[data-record=restart]')).toBeFocused();
   await expect(page.locator('.preferences-popover')).toBeVisible();
 });
 
@@ -118,7 +125,7 @@ test('enter restarts from the result card but not mid-run', async ({ page }) => 
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
-  await page.locator('#restart-key').selectOption('Enter');
+  await setRestart(page, 'Enter');
   await expect(page.locator('#restart-key-hint')).toHaveText('enter');
   await page.keyboard.press('Escape');
 
@@ -127,7 +134,7 @@ test('enter restarts from the result card but not mid-run', async ({ page }) => 
   await page.keyboard.press('Enter');
   await expect(page.locator('#text-display .char.correct')).toHaveCount(3);
 
-  await page.keyboard.press('Escape');
+  await page.locator('#restart-button').click({ force: true });
   await completePassage(page);
   await expect(page.locator('#run-again')).toBeFocused();
   await page.keyboard.press('Enter');
@@ -140,7 +147,7 @@ test('enter stays inert mid-run after the chrome returns via the practice nav', 
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
-  await page.locator('#restart-key').selectOption('Enter');
+  await setRestart(page, 'Enter');
   await page.keyboard.press('Escape');
 
   await typeInto(page, (await passageText(page)).slice(0, 3));
@@ -159,12 +166,12 @@ test('enter restarts from the bare page while the run is ready, but not mid-run'
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
-  await page.locator('#restart-key').selectOption('Enter');
+  await setRestart(page, 'Enter');
   await page.keyboard.press('Escape');
 
   // Enter on a control activates that control and never restarts: here it opens settings.
   const first = await passageText(page);
-  await expect(page.locator('details.preferences summary')).toBeFocused();
+  await expect(page.locator('details.preferences > summary')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('.preferences-popover')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -198,7 +205,7 @@ for (const stored of ['toString', '__proto__']) {
       seenTextIds: [], bests: {}, updatedAt: new Date(Date.now() + 60000).toISOString() } });
     await openApp(page);
     await signInWithEmail(page, user.email);
-    await expect(page.locator('#restart-key')).toHaveValue('Escape');
+    await expect(page.locator('#keybinding-restart')).toHaveValue('Escape');
     await expect(page.locator('#restart-key-hint')).toHaveText('esc');
   });
 }
@@ -209,7 +216,7 @@ test('screenshots', async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);
     await openSettings(page);
-    await page.locator('#restart-key').selectOption('Tab');
+    await setRestart(page, 'Tab');
     const name = `settings-${scheme}.png`;
     await page.screenshot({ path: process.env.SCREENSHOTS ? `docs/screenshots/quick-restart/${name}` : testInfo.outputPath(name) });
   }

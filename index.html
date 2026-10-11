@@ -66,14 +66,6 @@
                 <option value="10k">top 10k</option>
               </select>
             </label>
-            <label class="preference-row" for="restart-key">
-              <span><strong>restart key</strong></span>
-              <select class="input select" id="restart-key">
-                <option value="Escape" selected>esc</option>
-                <option value="Tab">tab</option>
-                <option value="Enter">enter</option>
-              </select>
-            </label>
             <label class="preference-row" for="live-toggle">
               <span><strong>live wpm and accuracy</strong></span>
               <input class="switch" id="live-toggle" type="checkbox">
@@ -90,6 +82,41 @@
               <span><strong>focus mode</strong></span>
               <input class="switch" id="focus-toggle" type="checkbox">
             </label>
+            <details class="keybindings-category">
+              <summary>keybindings</summary>
+              <p id="keybindings-help">Enter a combination or record it. Mod means Ctrl or ⌘. Leave blank to disable. Escape still closes menus; Tab and Shift+Tab navigate controls. Restart applies to solo tests and the local challenge, not online races. Enter restarts only before or after a run.</p>
+              <form id="keybindings-form">
+                <div class="keybinding-row">
+                  <label for="keybinding-restart">restart test / local challenge</label>
+                  <div class="keybinding-controls">
+                    <input class="input" id="keybinding-restart" name="restart" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-restart-error">
+                    <button class="btn btn-secondary btn-sm" type="button" data-record="restart" aria-label="Record restart test / local challenge binding" aria-pressed="false">Record</button>
+                  </div>
+                  <p class="keybinding-error" id="keybinding-restart-error"></p>
+                </div>
+                <div class="keybinding-row">
+                  <label for="keybinding-commands">commands</label>
+                  <div class="keybinding-controls">
+                    <input class="input" id="keybinding-commands" name="commands" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-commands-error">
+                    <button class="btn btn-secondary btn-sm" type="button" data-record="commands" aria-label="Record commands binding" aria-pressed="false">Record</button>
+                  </div>
+                  <p class="keybinding-error" id="keybinding-commands-error"></p>
+                </div>
+                <div class="keybinding-row">
+                  <label for="keybinding-exitFocus">exit focus mode</label>
+                  <div class="keybinding-controls">
+                    <input class="input" id="keybinding-exitFocus" name="exitFocus" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-exitFocus-error">
+                    <button class="btn btn-secondary btn-sm" type="button" data-record="exitFocus" aria-label="Record exit focus mode binding" aria-pressed="false">Record</button>
+                  </div>
+                  <p class="keybinding-error" id="keybinding-exitFocus-error"></p>
+                </div>
+                <div class="keybinding-actions">
+                  <button class="btn btn-primary btn-sm" type="submit">Save keybindings</button>
+                  <button class="btn btn-ghost btn-sm" type="button" data-reset-bindings>Reset defaults</button>
+                </div>
+                <p id="keybindings-status" role="status" aria-live="polite"></p>
+              </form>
+            </details>
           </div>
         </details>
 
@@ -227,7 +254,7 @@
 
         <div class="shortcut-row" aria-hidden="true">
           <span><kbd id="restart-key-hint">esc</kbd> restart</span>
-          <span><kbd class="mod-key">ctrl</kbd><kbd>k</kbd> commands</span>
+          <span><kbd class="mod-key">mod+k</kbd> commands</span>
         </div>
       </section>
 
@@ -524,7 +551,7 @@
     </footer>
   </div>
 
-  <button id="exit-focus" class="btn btn-secondary exit-focus" type="button"><kbd>esc</kbd> exit focus</button>
+  <button id="exit-focus" class="btn btn-secondary exit-focus" type="button"><kbd id="exit-focus-hint">esc</kbd> exit focus</button>
 
   <dialog id="palette" class="palette" aria-label="Command palette">
     <div class="palette-box">

@@ -142,13 +142,6 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
   dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
   dialog.addEventListener('click', (event) => { if (event.target === dialog) close(); });
   trigger?.addEventListener('click', open);
-  document.addEventListener('keydown', (event) => {
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'k') {
-      event.preventDefault();
-      if (dialog.open) close();
-      else open();
-    }
-  }, true);
 
   return { open, close, isOpen: () => dialog.open };
 }

@@ -17,6 +17,7 @@ import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
+import { normalizeKeybindings, matchesBinding, bindingLabel, ariaShortcuts, createKeybindingEditor } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
@@ -44,17 +45,14 @@ const defaultPreferences = {
   stopOnError: false,
   focusMode: false,
   theme: 'system',
-  restartKey: 'Escape',
+  keybindings: normalizeKeybindings(),
 };
-const restartKeys = { Escape: 'esc', Tab: 'tab', Enter: 'enter' };
-// Own keys only, so a stored "toString" or "__proto__" can't pass as a restart key.
-const isRestartKey = (key) => Object.hasOwn(restartKeys, key);
 
 function emptyProfile() {
   return {
     version: 2,
     profileId: uid(),
-    preferences: { ...defaultPreferences },
+    preferences: { ...defaultPreferences, keybindings: normalizeKeybindings() },
     attempts: [],
     runs: [],
     loops: [],
@@ -74,7 +72,8 @@ let unsynced = false;
 
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
-  if (!isRestartKey(value.restartKey)) value.restartKey = 'Escape';
+  value.keybindings = normalizeKeybindings(value.keybindings, value.restartKey);
+  delete value.restartKey;
   return value;
 }
 
@@ -90,7 +89,7 @@ function normalizeProfile(parsed) {
   return {
     ...emptyProfile(),
     ...parsed,
-    preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences }),
+    preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences, keybindings: parsed.preferences?.keybindings }),
     attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
     runs: retainRuns(records),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
@@ -122,6 +121,7 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let lastCompleted = null;
 let ghostOn = false;
 let palette = null;
+let keybindingEditor = null;
 let onlineRace = null;
 let inbox = null;
 let baselineAttempt = null;
@@ -304,9 +304,16 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
-  $('restart-key').value = prefs.restartKey;
-  $('restart-key-hint').textContent = restartKeys[prefs.restartKey];
-  $('restart-button').title = `Restart test (${prefs.restartKey === 'Escape' ? 'Escape' : `${prefs.restartKey} or Escape`})`;
+  keybindingEditor?.refresh();
+  $('restart-key-hint').textContent = bindingLabel(prefs.keybindings.restart);
+  $('restart-button').title = prefs.keybindings.restart ? `Restart test (${bindingLabel(prefs.keybindings.restart)})` : 'Restart test';
+  $('exit-focus-hint').textContent = bindingLabel(prefs.keybindings.exitFocus);
+  for (const [id, action] of [['restart-button', 'restart'], ['palette-trigger', 'commands'], ['exit-focus', 'exitFocus']]) {
+    const shortcuts = ariaShortcuts(prefs.keybindings[action]);
+    if (shortcuts) $(id).setAttribute('aria-keyshortcuts', shortcuts);
+    else $(id).removeAttribute('aria-keyshortcuts');
+  }
+  document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.commands); });
   showBest();
 }
 
@@ -682,6 +689,10 @@ const NOTICES = {
 };
 
 function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
+  if (prefs.keybindings.restart !== 'Escape') {
+    const hint = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} to restart` : 'Restart shortcut is disabled';
+    message = message.replace('Esc to restart', hint);
+  }
   if (type === 'primary') {
     $('input-help').textContent = message;
     if (sticky) primaryNotice = message;
@@ -1312,7 +1323,7 @@ function setupRacePlayer() {
   raceFx.reset(race.characters);
   $('race-accessible-passage').textContent = race.passage.text;
   updateRaceProgress(replayAttempt(race.attempt));
-  $('race-help').textContent = 'Esc restarts.';
+  $('race-help').textContent = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.';
   $('race-input').focus({ preventScroll: true });
 }
 
@@ -1758,7 +1769,11 @@ function bindEvents() {
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
-  $('restart-key').addEventListener('change', (event) => setRestartKey(event.target.value));
+  keybindingEditor = createKeybindingEditor({
+    form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => prefs.keybindings,
+    onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveProfile(); },
+  });
+  keybindingEditor.refresh();
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
   $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
@@ -1855,34 +1870,45 @@ function bindEvents() {
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open || $('suggest-dialog').open) return;
-    if (event.key === 'Escape' && preferences.open) {
-      event.preventDefault();
-      preferences.open = false;
-      preferences.querySelector('summary').focus();
+    if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.getModifierState?.('AltGraph')) return;
+    if (document.querySelector('dialog[open]') || preferences.open || $('account').open || $('inbox').open) {
+      if (event.key === 'Escape' && preferences.open && !keybindingEditor.isRecording()) {
+        event.preventDefault();
+        keybindingEditor.stopRecording();
+        preferences.open = false;
+        preferences.querySelector('summary').focus();
+      } else if (palette?.isOpen() && matchesBinding(event, prefs.keybindings.commands)) {
+        event.preventDefault();
+        if (!event.repeat) palette.close();
+      }
       return;
     }
-    if (event.repeat && event.key.length === 1 && (document.activeElement === $('typing-input') || document.activeElement === $('race-input'))) {
+    const active = document.activeElement;
+    const onTypingSurface = ['typing-input', 'race-input', 'online-input'].includes(active?.id);
+    const editable = active?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+    if ((!editable || onTypingSurface) && matchesBinding(event, prefs.keybindings.commands)) {
       event.preventDefault();
-      showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
+      if (!event.repeat) palette.open();
+      return;
+    }
+    if (prefs.focusMode && (!editable || onTypingSurface) && matchesBinding(event, prefs.keybindings.exitFocus)) {
+      event.preventDefault();
+      if (!event.repeat) {
+        prefs.focusMode = false;
+        applyPreferences();
+        saveProfile();
+        $('typing-input').focus({ preventScroll: true });
+      }
       return;
     }
     if (quickRestart(event)) return;
-    if (event.key === 'Escape' && prefs.focusMode) {
+    if (event.repeat && event.key.length === 1 && (active === $('typing-input') || active === $('race-input'))) {
       event.preventDefault();
-      prefs.focusMode = false;
-      applyPreferences();
-      saveProfile();
-      $('typing-input').focus({ preventScroll: true });
-    } else if (event.key === 'Escape' && document.activeElement === $('typing-input')) {
-      event.preventDefault();
-      resetSession(sessionKind, { focus: true });
-    } else if (event.key === 'Escape' && document.activeElement === $('race-input')) {
-      event.preventDefault();
-      setupRacePlayer();
+      showInputNotice(active === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
+      return;
     }
     document.querySelectorAll('.key').forEach((key) => key.classList.toggle('active', key.dataset.key === event.key.toLowerCase()));
-  });
+  }, true);
   document.addEventListener('keyup', () => document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active')));
   window.addEventListener('blur', () => {
     document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active'));
@@ -1890,7 +1916,7 @@ function bindEvents() {
     markRaceInterrupted();
   });
   document.addEventListener('pointerdown', (event) => {
-    if (preferences.open && !preferences.contains(event.target)) preferences.open = false;
+    if (preferences.open && !preferences.contains(event.target)) { preferences.open = false; keybindingEditor.stopRecording(); }
   });
 
   // The chrome fades while typing; a real mouse nudge (not layout-induced jitter) brings it back.
@@ -1926,36 +1952,23 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession('practice');
 }
 
-function setRestartKey(key) {
-  prefs.restartKey = isRestartKey(key) ? key : 'Escape';
-  applyPreferences();
-  saveProfile();
-}
-
-// The restart keys (esc, plus tab or enter when chosen) only act from the typing input or the bare
-// page. Esc and enter also act from the result card's run-again button (focused on finish); tab
-// never does, so it keeps moving focus through every control, including run-again on to the rest
-// of the result screen, where enter or space runs again as the button's own activation. Open
-// dialogs, settings and menus have already claimed esc by now, and esc leaves focus mode before
-// it restarts anything.
+// Restart only owns the typing surfaces, bare practice/results page, and run-again.
+// Controls retain their native activation and Tab navigation; online rooms cannot restart.
 function quickRestart(event) {
-  const key = event.key;
-  if ((key !== prefs.restartKey && key !== 'Escape') || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return false;
-  if (key === 'Escape' && prefs.focusMode) return false;
+  if (!matchesBinding(event, prefs.keybindings.restart)) return false;
   const view = document.body.dataset.view;
   const active = document.activeElement;
   const onInput = active === $('typing-input');
+  const onLocalRace = active === $('race-input');
   const onPage = !active || active === document.body || active === document.documentElement;
-  const onRunAgain = key !== 'Tab' && view === 'results' && active === $('run-again');
-  if (!onInput && !onRunAgain && !(onPage && (view === 'practice' || view === 'results'))) return false;
-  // Enter never restarts mid-run; before a run starts or once it has finished it acts from the same
-  // places as the other keys, including the bare page (touch startup leaves the input unfocused).
-  // The attempt's own status decides: runActive only tracks the faded chrome, which a nav click can
-  // bring back.
-  if (key === 'Enter' && attempt?.status === 'running') return false;
+  const onRunAgain = event.key !== 'Tab' && view === 'results' && active === $('run-again');
+  if (!onInput && !onLocalRace && !onRunAgain && !(onPage && (view === 'practice' || view === 'results'))) return false;
+  if (event.key === 'Enter' && (onLocalRace ? race.attempt : attempt)?.status === 'running') return false;
   event.preventDefault();
-  // A held key restarts once; its repeats would otherwise burn through fresh passages.
-  if (!event.repeat) restartTest();
+  if (!event.repeat) {
+    if (onLocalRace) setupRacePlayer();
+    else restartTest();
+  }
   return true;
 }
 
@@ -1974,7 +1987,7 @@ function runAgain() {
 // The key that restarts from where focus sits. On the result card that is the focused run-again
 // button (the palette hands focus back to it), which tab moves past and enter activates.
 function restartHint() {
-  return document.body.dataset.view === 'results' && prefs.restartKey === 'Tab' ? 'enter' : restartKeys[prefs.restartKey];
+  return document.body.dataset.view === 'results' && prefs.keybindings.restart === 'Tab' ? 'enter' : bindingLabel(prefs.keybindings.restart);
 }
 
 function setWordList(id) {
@@ -1992,7 +2005,6 @@ function paletteCommands(query) {
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartHint(), run: restartTest },
-    ...Object.entries(restartKeys).map(([key, name]) => ({ group: 'test', label: `restart key · ${name}`, keywords: 'quick restart tab enter escape shortcut', hint: prefs.restartKey === key ? 'current' : '', on: prefs.restartKey === key, run: () => setRestartKey(key) })),
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
@@ -2012,6 +2024,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'sign in…', keywords: 'log in login account', run: () => openAccountDialog('signin') },
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
+    { group: 'help', label: 'keybindings…', keywords: 'settings shortcuts restart keyboard', run: () => { const settings = document.querySelector('.preferences'); settings.open = true; document.querySelector('.keybindings-category').open = true; $('keybinding-restart').focus(); } },
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.runs.length === 0 && profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
@@ -2079,8 +2092,6 @@ new ResizeObserver(() => {
   trendWidth = container.clientWidth;
   renderTrend(container, filterRuns(profile.runs.filter(trendRun), $('progress-conditions').value, $('progress-period').value), openHistoryRun);
 }).observe($('progress-trend'));
-const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
-document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
 buildKeyboard();
 applyPreferences();
 setModeControls();

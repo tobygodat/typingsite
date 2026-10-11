@@ -19,7 +19,7 @@ Open [localhost:5173](http://localhost:5173). The interface and solo practice ru
 
 ## Use it
 
-1. Pick time, words or quote. Typing starts the clock; Backspace corrects mistakes and Escape restarts. Errors must be corrected before advancing.
+1. Pick time, words or quote. Typing starts the clock; Backspace corrects mistakes and Escape restarts by default. Errors must be corrected before advancing.
 2. Finish a run to see corrected WPM, input accuracy and observed pattern evidence. Small samples get a general drill, not a confident diagnosis.
 3. Start the one-minute drill, or enter your own target. Manual drills also work before a baseline exists.
 4. With a baseline, the drill opens an unseen retest under the original conditions. Results show changes, sample limits and whether the comparison is valid. A depleted quote pool does not reuse a quote as a fresh retest.
@@ -31,7 +31,7 @@ Clear history requires typing `clear` and offers an immediate Undo. It includes 
 
 Press ⌘K (Ctrl-K on Windows and Linux) for commands: go to a view, restart, change the test mode or length, toggle punctuation, switch theme or text size, toggle live metrics, the keyboard or focus mode, and clear local history. Opening it mid-run takes that run out of comparisons.
 
-The settings control changes theme (system, dark or light), passage size, live metrics, the keyboard display and focus mode. Preferences survive reload. Focus mode has an explicit exit; Escape also leaves it.
+The settings control changes theme (system, dark or light), passage size, live metrics, the keyboard display and focus mode. The **keybindings** category configures restart (solo and local challenge), commands and exit focus mode. Type a combination (for example `Ctrl+Shift+E`, `Alt+Shift+R` or `F2`), or use Record; `Mod` accepts either Ctrl or ⌘. Save applies all bindings together, blank disables an action, and Reset defaults restores Escape / Mod+K / Escape. Conflicts and combinations that interfere with typing, focus navigation or common browser actions are rejected. Escape always dismisses menus and dialogs; by default it leaves focus mode before restarting. Tab restart acts only on the typing surface or bare practice/results page; Shift+Tab and Tab on controls still navigate. Enter restart acts only before or after a run. Signed-in preferences survive reload and sync to the account; guest preferences last for the tab. Focus mode has an explicit exit button.
 
 Choose **Daily** in Challenge for a passage shared by every visitor, selected by the UTC date from a frozen pool of 14 original texts. It resets at midnight UTC and uses the same continue-on-error rule for everyone. The daily run leaves your practice settings intact. Results label first and repeat attempts, show a personal daily best for matching physical-keyboard conditions, and sync to a signed-in account. When a passage returns after 14 days, it keeps its identity and is labelled previously displayed; a first attempt today does not make old text fresh training evidence. Daily scores stay separate from practice trends and bests; a result can still lead into a drill and fresh quote retest.
 
