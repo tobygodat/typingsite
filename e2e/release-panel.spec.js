@@ -1,6 +1,8 @@
 import { test, expect, openApp } from './fixtures.js';
 import { release } from '../src/release.js';
 
+test.use({ serviceWorkers: 'allow' });
+
 const trigger = (page) => page.getByRole('button', { name: `What’s new in Stilltype version ${release.version}`, exact: true });
 const panel = (page) => page.getByRole('dialog', { name: 'What’s new', exact: true });
 
@@ -72,7 +74,8 @@ for (const theme of ['dark', 'light']) {
 test('version panel is included in the offline shell', async ({ page, context }) => {
   await openApp(page);
   // Explicitly await registration before readiness to avoid racing startup registration.
-  await page.evaluate(() => navigator.serviceWorker.register('/sw.js').then(() => navigator.serviceWorker.ready).then(() => undefined));
+  await page.evaluate(() => navigator.serviceWorker.register('/sw.js').then(() => undefined));
+  await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.active?.state), { timeout: 10000 }).toBe('activated');
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
   await context.setOffline(true);
   await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);

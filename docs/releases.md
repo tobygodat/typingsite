@@ -12,7 +12,7 @@ For each substantive feature PR, include a short proposed user-facing bullet and
 
 The panel shows the current release’s additions/changes, not a sprint log. Use short sentences a typist can understand. Include only changes in that artifact: merged base changes plus the feature proposed by the PR. Reconcile again if master moves or scope changes. Never copy unmerged feature claims, held PRs, implementation chores or aspirational roadmap items. Keep older release details in Git history or a separate release record so the panel stays concise.
 
-The proposed 0.2.0 bullets describe the pace cursor (PR25), offline/installable app (PR26), and this footer panel. PR19 and PR21 need their own bullets only if included in the eventual release. PR23/24/27/28 and docs-only PR29 are excluded.
+The proposed 0.2.0 bullets describe the numbers in generated tests (PR21), pace cursor (PR25), offline/installable app (PR26), and this footer panel. PR19 needs its own bullet only if included in the eventual release. PR23/24/27/28 and docs-only PR29 are excluded.
 
 ## Checks
 

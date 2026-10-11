@@ -4,6 +4,7 @@
 export const release = Object.freeze({
   version: '0.2.0',
   notes: Object.freeze([
+    'Include numbers in generated typing tests from Settings → test content.',
     'Choose a pace cursor based on your best, recent average, last run, or a custom WPM.',
     'Install Stilltype and practise offline after an initial online visit. Accounts and online races need a connection.',
     'Open the version in the footer to see what’s new.',
