@@ -541,6 +541,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   const kindChanged = sessionKind !== kind;
   sessionKind = kind;
   // The mode bar marks Custom while a custom session is loaded, so it is redrawn whenever the kind changes.
+  // Changing to any session but custom also closes the custom editor, or Custom would stay marked over it.
+  if (kindChanged && kind !== 'custom') customOpen = false;
   if (kindChanged) setModeControls();
   passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : kind === 'custom' ? customPassage() : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
@@ -1913,8 +1915,13 @@ function bindEvents() {
       navigate(nav.dataset.nav);
       return;
     }
+    // "Start practicing" begins a normal test, so it closes the custom editor as a mode button does.
     const practice = event.target.closest('[data-action="go-practice"]');
-    if (practice) resetSession('practice', { focus: true });
+    if (practice) {
+      customOpen = false;
+      setModeControls();
+      resetSession('practice', { focus: true });
+    }
   });
   $('mode-custom').addEventListener('click', () => openCustom(!customOpen));
   $('custom-text').addEventListener('input', updateCustomState);

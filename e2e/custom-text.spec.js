@@ -1,4 +1,4 @@
-import { test, expect, chooseWords, completePassage, openApp, openSettings, passageText, typeInto } from './fixtures.js';
+import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto } from './fixtures.js';
 
 const TEXT = 'the quick brown fox jumps over the lazy dog';
 
@@ -76,6 +76,48 @@ test('leaving custom for practice restores the test controls', async ({ page }) 
   await page.locator('#mode-time').click();
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('#duration-options')).toBeVisible();
+});
+
+// A normal practice passage under the default 30-second test, with the custom editor shut.
+async function expectNormalPractice(page) {
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#custom-options')).toBeHidden();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#mode-time')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#duration-options')).toBeVisible();
+  await expect(page.locator('#condition-line')).toHaveText(/^english( \w+)? · 30 s · plain · /);
+  expect(await passageText(page)).not.toBe(TEXT);
+}
+
+test('going back to practice closes the custom editor', async ({ page }) => {
+  await openApp(page);
+  // A custom session with its editor reopened; Progress is still empty, since custom runs are not counted.
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(TEXT);
+  await page.locator('#custom-use').click();
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await openView(page, 'Progress');
+  await page.locator('#progress-empty [data-action="go-practice"]').click();
+  await expectNormalPractice(page);
+
+  // The editor opened over a normal test closes the same way.
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await openView(page, 'Progress');
+  await page.locator('#progress-empty [data-action="go-practice"]').click();
+  await expectNormalPractice(page);
+
+  // A custom run finished with the editor open, then Practice in the dock.
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(TEXT);
+  await page.locator('#custom-use').click();
+  await page.locator('#mode-custom').click();
+  await typeInto(page, TEXT);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await openView(page, 'Practice');
+  await expectNormalPractice(page);
 });
 
 async function paletteRun(page, label) {
