@@ -18,7 +18,152 @@ import {
   passageComplete,
   recommendTarget,
   replayAttempt,
+  rawWpm,
+  consistency,
+  characterBreakdown,
+  wordHistory,
 } from '../src/typing.js';
+
+function evenRun(text, msPerChar, misses = {}) {
+  const attempt = createAttempt({ id: 'r', text, textId: 't', conditions: {} });
+  attempt.events = [...text].map((char, i) => ({ type: 'insert', text: misses[i] ?? char, offsetMs: i * msPerChar }));
+  attempt.startedAt = 0;
+  attempt.endedAt = (text.length - 1) * msPerChar;
+  return attempt;
+}
+
+test('raw wpm counts every key typed, errors and stop-on-error blocked keys included', () => {
+  const attempt = createAttempt({ id: 'w', text: 'a'.repeat(45), textId: 't', conditions: {} });
+  attempt.events = [
+    ...Array.from({ length: 45 }, (_, i) => ({ type: 'insert', text: 'a', position: i, accepted: true, offsetMs: i * 1000 })),
+    ...Array.from({ length: 5 }, () => ({ type: 'blocked-insert', text: 'b', position: 44, offsetMs: 44500 })),
+  ];
+  attempt.startedAt = 0;
+  attempt.endedAt = 60000;
+  // 50 keys in a minute = 10 wpm; the metric's insertions ignore the 5 blocked keys.
+  assert.equal(replayAttempt(attempt).insertions, 45);
+  assert.equal(rawWpm(attempt), 10);
+  assert.equal(rawWpm(createAttempt({ id: 'e', text: 'a', textId: 't', conditions: {} })), 0);
+});
+
+test('consistency is 100 minus the CV of per-second speed, and empty under three seconds', () => {
+  const steady = evenRun('a'.repeat(41), 100);
+  assert.equal(consistency(steady), 100);
+  assert.equal(consistency(evenRun('abcde', 100)), null);
+  const uneven = createAttempt({ id: 'u', text: 'a'.repeat(8), textId: 't', conditions: {} });
+  // 6 chars in second 0, 0 in second 1, 2 in second 2 → mean 8/3, sd ≈ 2.49, cv ≈ 93.5%.
+  uneven.events = [0, 100, 200, 300, 400, 500, 2100, 2200].map((offsetMs) => ({ type: 'insert', text: 'a', offsetMs }));
+  uneven.startedAt = 0;
+  uneven.endedAt = 3000;
+  assert.equal(consistency(uneven), 6);
+  // Keys held back by stop-on-error are still typing: a steady hand stays steady.
+  const stalled = evenRun('a'.repeat(41), 100);
+  for (let i = 20; i < 30; i += 1) stalled.events[i].type = 'blocked-insert';
+  assert.equal(consistency(stalled), 100);
+});
+
+test('character breakdown separates correct, incorrect, extra and missed', () => {
+  const attempt = createAttempt({ id: 'b', text: 'the cat', textId: 't', conditions: {} });
+  attempt.events = [
+    { type: 'insert', text: 't', offsetMs: 0 },
+    { type: 'insert', text: 'x', offsetMs: 100 },
+    { type: 'insert', text: 'e', offsetMs: 200 },
+    { type: 'insert', text: ' ', offsetMs: 300 },
+    { type: 'insert', text: 'c', offsetMs: 400 },
+  ];
+  assert.deepEqual(characterBreakdown(attempt), { correct: 4, incorrect: 1, extra: 0, missed: 2 });
+  const over = evenRun('ab', 100);
+  over.events.push({ type: 'insert', text: 'z', offsetMs: 300 });
+  assert.equal(characterBreakdown(over).extra, 1);
+});
+
+test('word history flags mistyped words and paces each word', () => {
+  const words = wordHistory(evenRun('the cat sat', 200, { 5: 'x' }));
+  // A slip left in (continue on error) shows as typed: "cxt", marked, never the target's "cat".
+  assert.deepEqual(words.map((item) => item.word), ['the', 'cxt', 'sat']);
+  assert.deepEqual(words.map((item) => item.wrong), [false, true, false]);
+  // 4 characters (space + word) in 800 ms = 60 wpm.
+  assert.equal(words[2].wpm, 60);
+  const partial = createAttempt({ id: 'p', text: 'the cat sat', textId: 't', conditions: {} });
+  partial.events = [{ type: 'insert', text: 'the c', offsetMs: 0 }];
+  assert.equal(wordHistory(partial).length, 2);
+});
+
+test('word pace runs to the kept last letter, so a fixed final slip slows the word', () => {
+  const attempt = createAttempt({ id: 'f', text: 'the cat', textId: 't', conditions: {} });
+  attempt.events = [...'the ca'].map((char, i) => ({ type: 'insert', text: char, offsetMs: i * 100 }));
+  attempt.events.push(
+    { type: 'insert', text: 'x', offsetMs: 600 },
+    { type: 'delete', count: 1, offsetMs: 1500 },
+    { type: 'insert', text: 't', offsetMs: 1600 },
+  );
+  const [, cat] = wordHistory(attempt);
+  // Fixed, so the kept letters read "cat"; the first-try miss still marks it.
+  assert.equal(cat.word, 'cat');
+  assert.equal(cat.wrong, true);
+  // Space at 300 ms to the kept "t" at 1600 ms: 3 characters in 1.3 s ≈ 28 wpm, not 120 from the slip.
+  assert.equal(cat.wpm, 28);
+});
+
+test('a run that stops inside a word lists only the letters typed', () => {
+  const attempt = createAttempt({ id: 'm', text: 'the cat sat', textId: 't', conditions: {} });
+  attempt.events = [...'the c'].map((char, i) => ({ type: 'insert', text: char, offsetMs: i * 100 }));
+  const words = wordHistory(attempt);
+  // "c", not "cat": the untyped "at" is counted as missed, never shown as typed.
+  assert.deepEqual(words.map((item) => item.word), ['the', 'c']);
+  assert.equal(words[1].wrong, false);
+  // The pace covers what was typed: space at 300 ms to "c" at 400 ms, 1 letter in 100 ms = 120 wpm.
+  assert.equal(words[1].wpm, 120);
+  assert.equal(characterBreakdown(attempt).missed, 2);
+});
+
+test('a mistyped space marks the word before it, and shows when left in', () => {
+  const view = (attempt) => wordHistory(attempt).map(({ word, wrong, wpm }) => ({ word, wrong, wpm }));
+  // Control: clean spaces leave both words clean, each at 120 wpm.
+  const clean = evenRun('the cat', 100);
+  assert.deepEqual(view(clean), [{ word: 'the', wrong: false, wpm: 120 }, { word: 'cat', wrong: false, wpm: 120 }]);
+  assert.deepEqual(characterBreakdown(clean), { correct: 7, incorrect: 0, extra: 0, missed: 0 });
+
+  // Left in under continue on error: "thexcat" shows "thex" in the miss style; "cat" stays clean.
+  const leftIn = evenRun('the cat', 100, { 3: 'x' });
+  assert.deepEqual(view(leftIn), [{ word: 'thex', wrong: true, wpm: 120 }, { word: 'cat', wrong: false, wpm: 120 }]);
+  assert.deepEqual(characterBreakdown(leftIn), { correct: 6, incorrect: 1, extra: 0, missed: 0 });
+
+  // First try wrong, then fixed: "the" is marked but reads as typed; the pace is the control's.
+  const fixed = createAttempt({ id: 's', text: 'the cat', textId: 't', conditions: {} });
+  fixed.events = [
+    ...[...'the'].map((char, i) => ({ type: 'insert', text: char, offsetMs: i * 100 })),
+    { type: 'insert', text: 'x', offsetMs: 300 },
+    { type: 'delete', count: 1, offsetMs: 350 },
+    ...[...' cat'].map((char, i) => ({ type: 'insert', text: char, offsetMs: 400 + i * 100 })),
+  ];
+  assert.deepEqual(view(fixed), [{ word: 'the', wrong: true, wpm: 120 }, { word: 'cat', wrong: false, wpm: 120 }]);
+  assert.deepEqual(characterBreakdown(fixed), { correct: 7, incorrect: 0, extra: 0, missed: 0 });
+});
+
+test('first-word pace starts at the first key, so a fixed first-letter slip slows the word', () => {
+  const attempt = createAttempt({ id: 'g', text: 'the cat', textId: 't', conditions: {} });
+  attempt.events = [
+    { type: 'insert', text: 'x', position: 0, accepted: true, offsetMs: 0 },
+    { type: 'delete', count: 1, offsetMs: 1000 },
+    { type: 'insert', text: 't', position: 0, accepted: true, offsetMs: 1100 },
+    { type: 'insert', text: 'h', position: 1, accepted: true, offsetMs: 1200 },
+    { type: 'insert', text: 'e', position: 2, accepted: true, offsetMs: 1300 },
+  ];
+  const [the] = wordHistory(attempt);
+  assert.equal(the.wrong, true);
+  // Slip at 0 ms to the kept "e" at 1300 ms: 3 kept letters in 1.3 s ≈ 28 wpm, not 120 from "t".
+  assert.equal(the.wpm, 28);
+  // A clean first word still paces from its own first letter: 2 letters in 200 ms = 120 wpm.
+  assert.equal(wordHistory(evenRun('the cat', 100))[0].wpm, 120);
+});
+
+test('the new stats leave the versioned metrics untouched', () => {
+  const attempt = evenRun('the cat sat', 200, { 5: 'x' });
+  const before = JSON.stringify(replayAttempt(attempt).score);
+  rawWpm(attempt); consistency(attempt); characterBreakdown(attempt); wordHistory(attempt);
+  assert.equal(JSON.stringify(replayAttempt(attempt).score), before);
+});
 test('speed counts correct characters at five characters per word', () => {
   assert.deepEqual(metrics('hello world', 'hello worxd', 11, 1, 30000), {wpm:4, accuracy:91});
 });
