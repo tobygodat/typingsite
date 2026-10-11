@@ -384,15 +384,23 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
         const box = await page.locator(id).boundingBox();
         expect(box.x + box.width, id).toBeLessThanOrEqual(popover.x + popover.width);
       }
-      // Both minimums share one row, so focus mode stays in view without scrolling the popover.
-      const focusRow = await page.locator('label[for="focus-toggle"]').boundingBox();
-      expect(focusRow.y + focusRow.height).toBeLessThanOrEqual(popover.y + popover.height);
+      // Both minimums share one row, so the popover grows by one row, not two.
+      const [accuracyBox, wpmBox] = [await page.locator('#min-accuracy').boundingBox(), await page.locator('#min-wpm').boundingBox()];
+      expect(Math.abs(accuracyBox.y - wpmBox.y)).toBeLessThanOrEqual(1);
+      // At 390 × 844 focus mode stays in view without scrolling the popover. At 320 × 568 the popover
+      // scrolls now that the pace caret has a row too, so there focus mode only has to be reachable in it.
+      const focus = page.locator('label[for="focus-toggle"]');
+      if (viewport.width === 320) await focus.scrollIntoViewIfNeeded();
+      const focusRow = await focus.boundingBox();
+      const shown = await page.locator('.preferences-popover').boundingBox();
+      expect(focusRow.y).toBeGreaterThanOrEqual(shown.y);
+      expect(focusRow.y + focusRow.height).toBeLessThanOrEqual(shown.y + shown.height);
       // The label sits under every control, lengths included, never between the rows.
       const lengths = await page.locator('#duration-options').boundingBox();
       const note = await page.locator('#minimum-note').boundingBox();
       expect(note.y).toBeGreaterThanOrEqual(lengths.y + lengths.height);
       if (viewport.width === 390) await shot(page, testInfo, 'settings-mobile');
-      await page.locator('details.preferences summary').click();
+      await page.locator('details.preferences > summary').click();
       await expect(page.locator('.preferences-popover')).toBeHidden();
       expect(await overflow()).toBeLessThanOrEqual(0);
     });
@@ -408,7 +416,7 @@ test('desktop settings and the practice label, dark and light', async ({ page },
     await page.locator('#min-wpm').selectOption('40');
     await page.locator('#min-wpm').focus();
     await shot(page, testInfo, `settings-${scheme}`);
-    await page.locator('details.preferences summary').click();
+    await page.locator('details.preferences > summary').click();
     await expect(page.locator('.preferences-popover')).toBeHidden();
     await expect(page.locator('#minimum-note')).toBeVisible();
     // The label takes its own line, so the controls stay centred under the dock.
