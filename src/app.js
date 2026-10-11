@@ -1723,6 +1723,7 @@ function undoClear() {
   $('undo-clear').hidden = true;
   followStoredPreferences();
   showBest();
+  armPace();
   renderHistory();
   renderTraining();
   renderDaily();
@@ -1784,6 +1785,8 @@ function showMerged() {
   // way back). Focus stays where it is.
   if (preferencesWaiting && untouchedPractice() && document.body.dataset.view === 'practice') resetSession('practice');
   showBest();
+  // A best, average or last-run pace follows the merged history, as it follows a clear here.
+  armPace();
   const view = document.body.dataset.view;
   const screen = document.querySelector(`[data-screen="${view}"]`);
   const inUse = screen?.contains(document.activeElement) || screen?.querySelector('details[open]');

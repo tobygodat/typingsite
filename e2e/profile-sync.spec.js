@@ -663,6 +663,25 @@ test('a clear in another tab withdraws the drill and retest offered for a cleare
   expect(errors).toEqual([]);
 });
 
+test('a run another tab finishes moves a last-run pace caret here', async ({ page, context, supabase }) => {
+  supabase.addUser(EMAIL);
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await chooseWords(page, 10);
+  await openSettings(page);
+  await page.locator('#pace-select').selectOption('last');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#pace-label')).toHaveText('pace 60 wpm');
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  const wpm = await finishRun(other);
+  await expect(page.locator('#pace-label')).toHaveText(`pace ${wpm} wpm`);
+  expect(errors).toEqual([]);
+});
+
 test('an older clear that names the run on show withdraws its drill and retest under an unchanged newer clear', async ({ page, supabase }) => {
   const user = supabase.addUser(EMAIL);
   await openApp(page);
