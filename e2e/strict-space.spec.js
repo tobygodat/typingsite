@@ -16,7 +16,7 @@ async function setSwitch(page, id, on) {
   const toggle = page.locator(`#${id}`);
   if (on) await toggle.check();
   else await toggle.uncheck();
-  await page.locator('details.preferences summary').click();
+  await page.locator('details.preferences > summary').click();
   await expect(page.locator('.preferences-popover')).toBeHidden();
 }
 
@@ -99,7 +99,7 @@ test('quick end is on by default: a wrong last letter still ends a words run', a
   await openSettings(page);
   await expect(page.locator('#quick-end-toggle')).toBeEnabled();
   await expect(page.locator('#quick-end-toggle')).toBeChecked();
-  await page.locator('details.preferences summary').click();
+  await page.locator('details.preferences > summary').click();
   const text = await passageText(page);
   await typeInto(page, text.slice(0, -1) + wrongFor(text.at(-1)));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
@@ -190,7 +190,7 @@ test('quick end is disabled where it changes nothing, and the palette follows', 
   await expect(page.locator('#quick-end-toggle')).toBeChecked();
   await expect(page.locator('#quick-end-note')).toBeVisible();
   await expect(page.locator('#quick-end-toggle')).toHaveAccessibleDescription(TIMED_NOTE);
-  await page.locator('details.preferences summary').click();
+  await page.locator('details.preferences > summary').click();
   await page.keyboard.press('Control+k');
   await page.locator('#palette-input').fill('quick end');
   await expect(page.locator('#palette-list [role="option"]', { hasText: 'quick end' })).toHaveCount(0);
@@ -210,7 +210,7 @@ test('quick end is disabled where it changes nothing, and the palette follows', 
   await page.locator('#stop-on-error-toggle').uncheck();
   await expect(page.locator('#quick-end-toggle')).toBeEnabled();
   await expect(page.locator('#quick-end-toggle')).toBeChecked();
-  await page.locator('details.preferences summary').click();
+  await page.locator('details.preferences > summary').click();
 
   await page.keyboard.press('Control+k');
   await page.locator('#palette-input').fill('quick end');
@@ -308,7 +308,7 @@ test('a drill from a words baseline is timed: quick end is disabled and a rule c
   await expect(page.locator('#rules-note')).toBeHidden();
   await settle(page);
   await page.screenshot({ path: shot(testInfo, 'drill-note-dark.png') });
-  await page.locator('details.preferences summary').click();
+  await page.locator('details.preferences > summary').click();
   await page.keyboard.press('Control+k');
   await page.locator('#palette-input').fill('quick end');
   await expect(page.locator('#palette-list [role="option"]', { hasText: 'quick end' })).toHaveCount(0);
@@ -348,7 +348,7 @@ test('a rule changed during a retest keeps the retest on its baseline’s rules'
   await expect(page.locator('#strict-space-toggle')).toHaveAccessibleDescription(RETEST_NOTE);
   await settle(page);
   await page.screenshot({ path: shot(testInfo, 'retest-note-light.png') });
-  await page.locator('details.preferences summary').click();
+  await page.locator('details.preferences > summary').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
   await expect(page.locator('#condition-line')).not.toContainText('strict space');
   // Esc restarts the retest under the baseline's rules too, so it stays comparable.

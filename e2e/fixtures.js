@@ -71,7 +71,7 @@ export async function openView(page, label) {
 
 export async function openSettings(page) {
   const settings = page.locator('details.preferences');
-  if ((await settings.getAttribute('open')) === null) await settings.locator('summary').click();
+  if ((await settings.getAttribute('open')) === null) await settings.locator(':scope > summary').click();
   await expect(page.locator('.preferences-popover')).toBeVisible();
 }
 

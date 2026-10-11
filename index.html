@@ -3,7 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0f0f0e">
+  <meta name="theme-color" content="#0f0f0e" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f4f1eb" media="(prefers-color-scheme: light)">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <meta name="description" content="Focused typing practice that finds weak patterns, drills them, and measures the change on fresh text.">
   <title>Stilltype — focused typing practice</title>
   <script>
@@ -57,15 +61,22 @@
                 <option value="36">large</option>
               </select>
             </label>
-            <label class="preference-row" for="word-list">
-              <span><strong>word list</strong></span>
-              <select class="input select" id="word-list">
-                <option value="200" selected>top 200</option>
-                <option value="1k">top 1k</option>
-                <option value="5k">top 5k</option>
-                <option value="10k">top 10k</option>
-              </select>
-            </label>
+            <details class="preference-category" id="test-content-settings">
+              <summary class="preference-row"><span><strong>test content</strong></span></summary>
+              <label class="preference-row" for="word-list">
+                <span><strong>word list</strong></span>
+                <select class="input select" id="word-list">
+                  <option value="200" selected>top 200</option>
+                  <option value="1k">top 1k</option>
+                  <option value="5k">top 5k</option>
+                  <option value="10k">top 10k</option>
+                </select>
+              </label>
+              <label class="preference-row" for="numbers-toggle">
+                <span><strong>numbers</strong></span>
+                <input id="numbers-toggle" class="switch" type="checkbox">
+              </label>
+            </details>
             <label class="preference-row" for="live-toggle">
               <span><strong>live wpm and accuracy</strong></span>
               <input class="switch" id="live-toggle" type="checkbox">
@@ -85,6 +96,20 @@
             <label class="preference-row" for="quick-end-toggle">
               <span><strong>quick end</strong><small class="preference-note" id="quick-end-note" hidden></small></span>
               <input class="switch" id="quick-end-toggle" type="checkbox" checked aria-describedby="quick-end-note rules-note">
+            </label>
+            <label class="preference-row" for="pace-select">
+              <span><strong>pace caret</strong><small id="pace-note" class="pace-note"></small></span>
+              <select class="input select" id="pace-select">
+                <option value="off" selected>off</option>
+                <option value="best">personal best</option>
+                <option value="average">average</option>
+                <option value="last">last run</option>
+                <option value="custom">custom</option>
+              </select>
+            </label>
+            <label id="pace-custom" class="preference-row" for="pace-wpm" hidden>
+              <span><strong>custom pace</strong><small class="pace-note">10–300 wpm</small></span>
+              <input class="input pace-wpm num" id="pace-wpm" type="number" min="10" max="300" step="1" value="80" inputmode="numeric">
             </label>
             <label class="preference-row" for="focus-toggle">
               <span><strong>focus mode</strong></span>
@@ -199,7 +224,9 @@
               <div class="live-stat">
                 <strong id="live-accuracy" class="num">—</strong><span>%<span class="sr-only"> input accuracy</span></span>
               </div>
+              <small id="pace-label" class="pace-label" hidden></small>
             </div>
+            <p id="caps-warning" class="caps-warning" aria-hidden="true">Caps Lock is on</p>
           </div>
 
           <div id="typing-wrap" class="typing-wrap">
@@ -244,6 +271,10 @@
                 <span class="legend-miss">mistake</span>
               </figcaption>
             </figure>
+            <div class="run-card-wordlist">
+              <div id="result-words" class="run-card-words" role="listbox" aria-label="Words typed; mistyped words are marked. Arrow keys move between words."></div>
+              <p id="result-word-detail" class="word-detail"></p>
+            </div>
             <div class="run-card-score">
               <strong id="result-wpm" class="num">—</strong>
               <span class="run-card-unit">wpm</span>
@@ -253,7 +284,13 @@
               <div><dt>first-try errors</dt><dd id="result-errors" class="num">—</dd></div>
               <div><dt>time</dt><dd id="result-time" class="num">—</dd></div>
             </dl>
+            <dl class="run-card-facts run-card-more">
+              <div title="Every character typed, mistakes included, per five characters per minute"><dt>raw wpm</dt><dd id="result-raw" class="num">—</dd></div>
+              <div title="100 minus the variation of your per-second raw speed; needs 3 seconds"><dt>consistency</dt><dd><strong id="result-consistency" class="num">—</strong><b>%</b></dd></div>
+              <div title="The finished text: correct / still wrong / extra / missed characters. Slips you fixed count as first-try errors"><dt>final c/i/e/m</dt><dd id="result-chars" class="num">—</dd></div>
+            </dl>
             <p class="metric-note">wpm counts correct characters kept · accuracy counts every character typed, corrected ones included</p>
+            <p class="metric-note">raw counts every character typed, mistakes included · consistency is 100 minus the variation of per-second speed · final c/i/e/m: correct, still wrong, extra past the end, missed; fixed slips are first-try errors</p>
             <p class="condition-copy" id="result-conditions">english · common words · corpus v3 · metric v1</p>
           </article>
 
