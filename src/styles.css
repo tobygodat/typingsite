@@ -796,6 +796,24 @@ kbd {
 
 .quote-options .input { width: 128px; height: 38px; font-size: 14px; }
 
+/* Bring your own text: an open section on a hairline rule, not a box (only floating objects are raised).
+   It sits beside the passage, so it appears instantly, without a fade. */
+.custom-options {
+  width: min(560px, 100%);
+  margin: calc(var(--space-10) * -1) auto var(--space-10);
+  padding-top: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid var(--hairline);
+}
+.custom-options .field-error { margin: 0; }
+.custom-label { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: var(--text-label); }
+.custom-count { font: var(--text-fine)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.custom-textarea { width: 100%; min-height: 96px; height: auto; padding: var(--space-2); resize: vertical; font-size: var(--text-label); line-height: 1.5; }
+.custom-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.custom-actions label { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
+.custom-actions .input { width: 160px; height: 38px; font-size: var(--text-label); }
+
 .typing-form,
 .shortcut-row { width: 100%; }
 
@@ -900,12 +918,13 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 .corner,
 .practice-controls,
 .quote-options,
+.custom-options,
 .shortcut-row,
 .site-footer,
 .compose-another { transition: opacity var(--dur-base) var(--ease-out); }
 
-body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
-body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { pointer-events: none; }
+body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
+body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { pointer-events: none; }
 
 /* Caps Lock warning: sits in the gap under the measure rule, so showing it moves nothing.
    It is a warning, not chrome, so the running fade leaves it alone; it is a readable
@@ -2122,7 +2141,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   /* Two rows at most: mode and punctuation, then lengths. */
   .practice-controls { margin-bottom: var(--space-6); gap: var(--space-2); }
   #duration-options { order: 1; }
-  .segmented button { height: 40px; padding: 0 12px; }
+  .segmented button { height: 40px; padding: 0 var(--space-2); }
   .segmented.compact button { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
   .quote-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
@@ -2156,6 +2175,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (max-width: 360px) {
+  /* Five modes fit the 288px column. */
+  .segmented button { padding: 0 var(--space-1); font-size: var(--text-label); }
   .nav-item { padding: 0 2px; font-size: 13px; }
   .nav-label-full { display: none; }
   .nav-label-short { display: inline; }

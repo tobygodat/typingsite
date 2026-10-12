@@ -423,6 +423,48 @@ test('keyless input, focus loss and an emptied field are never saved, and settin
   expect(await passageText(page)).not.toBe(hidden);
 });
 
+test('composing and custom text replace each other in the mode row', async ({ page }) => {
+  const text = 'the quick brown fox jumps over the lazy dog';
+  await startPausedClock(page);
+  // A custom passage, then composing: Custom is no longer marked and its editor stays shut.
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
+  await openCompose(page);
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#mode-compose')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#custom-options')).toBeHidden();
+
+  // Custom from composing leaves it: the passage is back, under the open editor.
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('body')).toHaveAttribute('data-compose', 'false');
+  await expect(page.locator('#compose-form')).toBeHidden();
+  await expect(page.locator('#typing-form')).toBeVisible();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#mode-compose')).toHaveAttribute('aria-pressed', 'false');
+
+  // The open editor closes when composing starts, and the palette calls no test shape current.
+  await openCompose(page);
+  await expect(page.locator('#custom-options')).toBeHidden();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-expanded', 'false');
+  await page.keyboard.press('Control+k');
+  const option = (label) => page.locator('#palette-list [role="option"]').filter({ hasText: label }).first();
+  await expect(option('composing practice')).toContainText('current');
+  await expect(option('custom text')).not.toContainText('current');
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(200);
+  await expect(page.locator('#palette')).toBeHidden();
+
+  // Using the text from composing starts the custom passage and ends composing.
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-use').click();
+  await expect(page.locator('body')).toHaveAttribute('data-compose', 'false');
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(text);
+});
+
 test('signed in, only the numbers reach the account', async ({ page, supabase }) => {
   supabase.addUser('ada@stilltype.test');
   await openApp(page);
