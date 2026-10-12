@@ -148,6 +148,20 @@ function printable(text) {
   return typeof text === 'string' && text.length > 0 && !/[\r\n]/u.test(text);
 }
 
+// Accent (dead) keys reach the page as a short composition: the mark shows, then the next key commits
+// one character (ä, or " after space) or, where the pair has no composed form, the mark and that key ("h).
+// Anything longer, East Asian or full-width is IME text, which isn't keyboard input: null.
+const DEAD_MARKS = new Set([...'\'"`~^´¨ˆ˜ˇ˘˚°¸˛˝˙¯']);
+const IME_TEXT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Bopomofo}　-〿＀-￯\r\n]/u;
+const deadMark = (char) => DEAD_MARKS.has(char) || /^[̀-ͯ]$/u.test(char);
+
+export function composedKeys(text) {
+  const chars = [...(text ?? '').normalize('NFC')];
+  if (chars.length > 2 || IME_TEXT.test(chars.join(''))) return null;
+  if (chars.length === 2 && !deadMark(chars[0])) return null;
+  return chars;
+}
+
 export function replayAttempt(attempt) {
   let typed = '';
   let insertions = 0;

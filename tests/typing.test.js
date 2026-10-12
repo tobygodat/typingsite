@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  EVENT_VERSION,
+  METRIC_VERSION,
   compareAttempts,
   completeAttempt,
+  composedKeys,
   conditionKey,
   createAttempt,
   editStats,
@@ -224,6 +227,43 @@ test('relaxed correction completes with retained errors and a distinct compariso
   assert.equal(passageComplete(relaxed, replay.typed), true);
   assert.equal(passageComplete({ ...relaxed, conditions: { correctionPolicy: 'mandatory' } }, replay.typed), false);
   assert.notEqual(conditionKey(relaxed.conditions), conditionKey({ correctionPolicy: 'mandatory' }));
+});
+
+test('an accent-key commit is one or two typed keys; IME text is not', () => {
+  for (const [text, keys] of [
+    ['"', ['"']], [' ', [' ']], ['ä', ['ä']], ['ä', ['ä']],
+    ['"h', ['"', 'h']], ["'t", ["'", 't']], ['´q', ['´', 'q']], ['́q', ['́', 'q']], ['""', ['"', '"']],
+    ['', []],
+  ]) assert.deepEqual(composedKeys(text), keys, JSON.stringify(text));
+  for (const text of ['ab', 'ni', '"hi', '你', 'あ', 'ㅎ', '한', 'ａ', '。', '\n', '"\n']) {
+    assert.equal(composedKeys(text), null, JSON.stringify(text));
+  }
+});
+
+test('a mark and letter committed together replay like two key presses', () => {
+  const run = (offsets) => {
+    const attempt = createAttempt({ id: 'q', text: 'say "hi"', textId: 'q', conditions: {} });
+    attempt.events = [...'say "hi"'].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: offsets[position] }));
+    attempt.startedAt = 0;
+    return completeAttempt(attempt, { endedAt: 1000 });
+  };
+  // Typed as separate keys, then with the mark and "h" committed together at 480 ms.
+  const keys = run([0, 80, 160, 240, 320, 400, 560, 640]).summary;
+  const commit = run([0, 80, 160, 240, 480, 480, 560, 640]).summary;
+  for (const field of ['typed', 'insertions', 'correctInsertions', 'mistakes', 'score']) assert.deepEqual(commit[field], keys[field], field);
+  assert.deepEqual(commit.firstAttempts.map((entry) => entry.correct), keys.firstAttempts.map((entry) => entry.correct));
+  const letterPairs = (replay) => replay.pairTimings.filter((entry) => /^[a-z]{2}$/.test(entry.pair)).map((entry) => entry.pair);
+  assert.deepEqual(letterPairs(commit), letterPairs(keys));
+  assert.equal(letterPairs(commit).includes('"h'), false);
+
+  // A composed vowel where the mark belongs is one insertion and one mistake.
+  const wrong = createAttempt({ id: 'w', text: '"a', textId: 'w', conditions: {} });
+  wrong.events = [{ type: 'insert', text: 'ä', position: 0, accepted: true, offsetMs: 0 }];
+  const replay = replayAttempt(wrong);
+  assert.equal(replay.insertions, 1);
+  assert.equal(replay.mistakes, 1);
+  assert.equal(METRIC_VERSION, 'stilltype-metrics-v1');
+  assert.equal(EVENT_VERSION, 'stilltype-events-v1');
 });
 
 test('recommendations stay general below the evidence threshold', () => {

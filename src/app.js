@@ -3,6 +3,7 @@ import {
   METRIC_VERSION,
   compareAttempts,
   completeAttempt,
+  composedKeys,
   conditionKey,
   createAttempt,
   makeDrill,
@@ -122,6 +123,8 @@ let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
+// The open composition (an accent key's mark, or IME text): { type, attempt, refused }.
+let composition = null;
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
@@ -491,6 +494,8 @@ function configureSessionCopy() {
 }
 
 function resetSession(kind = sessionKind, { focus = false, selectedPassage = null } = {}) {
+  // Setting the field ends a composition without compositionend, so forget it first.
+  if (composition?.type === 'primary') composition = null;
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
@@ -579,8 +584,7 @@ function showUnavailableRetest(reason) {
   announce(reason);
 }
 
-function startAttempt(targetAttempt, type = 'primary') {
-  const stamp = now();
+function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
   if (type === 'primary') {
     if (startTime !== null) return;
     startTime = stamp;
@@ -599,25 +603,25 @@ function startAttempt(targetAttempt, type = 'primary') {
   }
 }
 
-function offsetFor(type = 'primary') {
+function offsetFor(type = 'primary', at = now()) {
   const origin = type === 'primary' ? startTime : race.startTime;
-  return origin === null ? 0 : Math.max(0, now() - origin);
+  return origin === null ? 0 : Math.max(0, at - origin);
 }
 
 function currentReplay(type = 'primary') {
   return replayAttempt(type === 'primary' ? attempt : race.attempt);
 }
 
-function pushInsert(char, type = 'primary') {
+function pushInsert(char, type = 'primary', at = now()) {
   const targetAttempt = type === 'primary' ? attempt : race.attempt;
-  startAttempt(targetAttempt, type);
+  startAttempt(targetAttempt, type, at);
   const replay = replayAttempt(targetAttempt);
   const unresolved = targetAttempt.conditions.correctionPolicy !== 'relaxed'
     && replay.typed.length > 0
     && replay.typed.at(-1) !== targetAttempt.text[replay.typed.length - 1];
   targetAttempt.events.push(unresolved
-    ? { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs: offsetFor(type) }
-    : { type: 'insert', text: char, position: replay.typed.length, accepted: true, offsetMs: offsetFor(type) });
+    ? { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs: offsetFor(type, at) }
+    : { type: 'insert', text: char, position: replay.typed.length, accepted: true, offsetMs: offsetFor(type, at) });
   return { previousLength: replay.typed.length, blocked: unresolved };
 }
 
@@ -629,15 +633,43 @@ function pushDelete(type = 'primary') {
   return replay.typed.length;
 }
 
-function beforeTypingInput(event, type = 'primary') {
-  const targetAttempt = type === 'primary' ? attempt : race.attempt;
-  if (!targetAttempt || ['complete', 'interrupted'].includes(targetAttempt.status)) {
-    event.preventDefault();
-    return;
-  }
+const inputAttempt = (type) => (type === 'primary' ? attempt : race.attempt);
+
+// The checks every typed key passes first; false means the input is ignored (it may finish a timed run).
+function acceptingInput(type) {
+  const target = inputAttempt(type);
+  if (!target || ['complete', 'interrupted'].includes(target.status)) return false;
   if (type === 'primary' && startTime !== null && sessionDurationMs() && now() - startTime >= sessionDurationMs()) {
-    event.preventDefault();
     finishPrimary(sessionDurationMs());
+    return false;
+  }
+  return true;
+}
+
+// IME text isn't keyboard input: the run stops counting, as before.
+function refuseComposition(type) {
+  const target = inputAttempt(type);
+  if (type === 'primary' && target.status === 'ready') startAttempt(target);
+  target.unsupportedInput = true;
+  target.interrupted = true;
+  target.events.push({ type: 'composition', offsetMs: offsetFor(type) });
+  showInputNotice(type, NOTICES.composition, { sticky: true });
+}
+
+// Each key takes the same path as a key press, so replay can't tell them apart. A mark and letter
+// committed together arrive with the second key press, and share its time.
+function typeKeys(keys, type) {
+  const at = now();
+  for (const key of keys) {
+    if (!acceptingInput(type)) return; // the first of two may finish the passage or the clock
+    const change = pushInsert(key, type, at);
+    refreshAfterInput(type, change.previousLength, change.blocked);
+  }
+}
+
+function beforeTypingInput(event, type = 'primary') {
+  if (!acceptingInput(type)) {
+    event.preventDefault();
     return;
   }
   if (event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop') {
@@ -645,14 +677,13 @@ function beforeTypingInput(event, type = 'primary') {
     refusePaste(type);
     return;
   }
-  if (event.inputType?.includes('Composition') || event.isComposing) {
-    event.preventDefault();
-    targetAttempt.unsupportedInput = true;
-    targetAttempt.interrupted = true;
-    targetAttempt.events.push({ type: 'composition', offsetMs: offsetFor(type) });
-    showInputNotice(type, NOTICES.composition, { sticky: true });
-    return;
-  }
+  const compositionInput = event.inputType?.includes('Composition');
+  // A plain key with isComposing false means the composition ended without compositionend
+  // (the field changed under it, or the browser dropped the event): let this key through.
+  if (composition?.type === type && !event.isComposing && !compositionInput
+    && (event.inputType === 'insertText' || event.inputType?.startsWith('delete'))) composition = null;
+  // Composition text is scored once, at compositionend; until then the field is the browser's.
+  if (compositionInput || event.isComposing || composition?.type === type) return;
   if (event.inputType?.startsWith('delete')) {
     event.preventDefault();
     const previousLength = pushDelete(type);
@@ -665,18 +696,49 @@ function beforeTypingInput(event, type = 'primary') {
   }
   if (event.inputType !== 'insertText' || !event.data || /[\r\n]/u.test(event.data)) return;
   event.preventDefault();
-  if ([...event.data].length !== 1) {
+  // One key, or an accent mark and the letter it couldn't combine with (Windows sends both).
+  const keys = [...event.data].length === 1 ? [event.data] : composedKeys(event.data);
+  if (!keys) {
+    const targetAttempt = inputAttempt(type);
     targetAttempt.unsupportedInput = true;
     targetAttempt.interrupted = true;
     showInputNotice(type, NOTICES.multiCharacter, { sticky: true });
     return;
   }
-  const change = pushInsert(event.data, type);
-  refreshAfterInput(type, change.previousLength, change.blocked);
+  typeKeys(keys, type);
+}
+
+// An accent key's composition is typed characters, scored at compositionend; a preview or commit
+// that an accent key could not produce is IME text and stops the run counting.
+function wireComposition(input, type) {
+  input.addEventListener('compositionstart', () => {
+    composition = acceptingInput(type) ? { type, attempt: inputAttempt(type), refused: false } : null;
+  });
+  input.addEventListener('compositionupdate', (event) => {
+    if (composition?.type !== type || composition.refused || composition.attempt !== inputAttempt(type)) return;
+    if (!acceptingInput(type)) return;
+    if (composedKeys(event.data) === null) {
+      composition.refused = true;
+      refuseComposition(type);
+    }
+  });
+  input.addEventListener('compositionend', (event) => {
+    const session = composition?.type === type ? composition : null;
+    if (session) composition = null;
+    if (session && !session.refused && session.attempt === inputAttempt(type) && acceptingInput(type)) {
+      const keys = composedKeys(event.data);
+      if (keys === null) refuseComposition(type);
+      else typeKeys(keys, type);
+    }
+    // Hand the field back to the passage once the composition is over (finishing commits a pending mark).
+    const current = inputAttempt(type);
+    if (current) input.value = replayAttempt(current).typed;
+  });
 }
 
 // Everything the typing surface says, kept short. The focus-lost and composition
-// notices stay until restart because the run no longer counts.
+// notices stay until restart because the run no longer counts. Accent (dead) keys are
+// typed characters; only IME text (CJK, words) is refused.
 const NOTICES = {
   blocked: 'Fix the underlined letter.',
   paste: 'Paste is off. Type the passage.',
@@ -839,6 +901,8 @@ function storeAttempt(completed) {
 
 function finishPrimary(forcedElapsed = null) {
   if (!attempt || attempt.status !== 'running') return;
+  // A pending accent mark isn't a keystroke; disabling the field commits it, and that is ignored.
+  if (composition?.type === 'primary') composition = null;
   clearInterval(ticker);
   ticker = null;
   const endedAt = forcedElapsed ?? offsetFor();
@@ -1412,6 +1476,7 @@ function startRace() {
 }
 
 function setupRacePlayer() {
+  if (composition?.type === 'race') composition = null;
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
   inbox?.runChanged();
@@ -1436,6 +1501,7 @@ function updateRaceProgress(replay) {
 }
 
 function finishRacePlayer() {
+  if (composition?.type === 'race') composition = null;
   const valid = !race.attempt.interrupted && !race.attempt.unsupportedInput;
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
@@ -1897,7 +1963,12 @@ function bindEvents() {
   });
 
   $('typing-input').addEventListener('beforeinput', (event) => beforeTypingInput(event));
-  $('typing-input').addEventListener('input', () => { $('typing-input').value = replayAttempt(attempt).typed; });
+  // Setting the field mid-composition would end it silently, so wait for compositionend.
+  $('typing-input').addEventListener('input', (event) => {
+    if (event.isComposing || composition?.type === 'primary') return;
+    $('typing-input').value = replayAttempt(attempt).typed;
+  });
+  wireComposition($('typing-input'), 'primary');
   $('typing-input').addEventListener('keydown', (event) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
   });
@@ -1913,15 +1984,6 @@ function bindEvents() {
     }
   });
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
-  $('typing-input').addEventListener('compositionstart', () => {
-    if (attempt && ['ready', 'running'].includes(attempt.status)) {
-      if (attempt.status === 'ready') startAttempt(attempt);
-      attempt.unsupportedInput = true;
-      attempt.interrupted = true;
-      attempt.events.push({ type: 'composition', offsetMs: offsetFor() });
-      showInputNotice('primary', NOTICES.composition, { sticky: true });
-    }
-  });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession('practice', { focus: true }));
   $('result-words').addEventListener('keydown', moveWordFocus);
@@ -1960,7 +2022,11 @@ function bindEvents() {
 
   $('compete-setup').addEventListener('submit', (event) => { event.preventDefault(); startRace(); });
   $('race-input').addEventListener('beforeinput', (event) => beforeTypingInput(event, 'race'));
-  $('race-input').addEventListener('input', () => { if (race.attempt) $('race-input').value = replayAttempt(race.attempt).typed; });
+  $('race-input').addEventListener('input', (event) => {
+    if (!race.attempt || event.isComposing || composition?.type === 'race') return;
+    $('race-input').value = replayAttempt(race.attempt).typed;
+  });
+  wireComposition($('race-input'), 'race');
   $('race-input').addEventListener('keydown', (event) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
   });

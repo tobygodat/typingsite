@@ -53,6 +53,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 - Corrected WPM = correct target characters retained at finish / 5 / elapsed minutes. Elapsed time runs from the first printable input on a monotonic clock and continues when unfocused.
 - Online race elapsed time starts at the shared server start, including any delay before a player’s first key. Online results are separate from solo skill measurements and rankings.
 - Input accuracy = correct printable insertions / all printable insertions. Corrections consume time and corrected errors stay in the denominator; backspace is not an insertion.
+- An accent (dead) key sequence counts as the characters it commits: one, or the mark and the letter when they don't combine. IME composition is not scored.
 - First-attempt errors are recorded per target position. A corrected passage must not erase the evidence that a mistake happened.
 - Personal skill progress, quote difficulty / performance points, and multiplayer rating are three separate scores. A harder practice exercise must never read as a loss of skill or reduce a race rating.
 - Paste is disabled during practice. Interrupted or abandoned attempts cannot masquerade as completed comparable tests.
