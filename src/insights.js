@@ -4,6 +4,13 @@ export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
 export const MAX_MISSED_WORDS = 12;
 
+// Run kinds that are never compared, used as a baseline or mined for patterns (custom text, missed-word
+// practice). They keep no trace or pattern evidence and are retained on their own small budget, so they can
+// never push comparable history out of the summary and pattern windows. Extend this set for any other kind like that.
+export const NON_COMPARABLE_KINDS = new Set(['custom', 'missed']);
+export const MAX_NON_COMPARABLE_RUNS = 50;
+export const comparableKind = (kind) => !NON_COMPARABLE_KINDS.has(kind);
+
 export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
   const record = {
@@ -15,27 +22,30 @@ export function runRecord(attempt, at = attempt.at || null) {
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
     firstDailyAttempt: attempt.firstDailyAttempt,
   };
-  // Pattern counts only feed recurring targets, which never read missed-word practice.
-  if (attempt.kind === 'missed') return record;
-  const evidence = summarizePatterns([attempt]);
+  // Pattern counts only feed recurring targets, which never read custom text or missed-word practice.
+  if (!comparableKind(attempt.kind)) return record;
   // Keep counts and each run's measured median, rather than another keystroke log.
-  record.patterns = evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
+  record.patterns = summarizePatterns([attempt]).pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
   // The words missed on the first try, for "words you keep missing": only from runs pattern memory
   // reads, so a run without the field (older, trimmed or not eligible) is no evidence either way.
   if (patternRun(record)) record.missedWords = missedAndSlowWords(attempt, 0).missed.slice(0, MAX_MISSED_WORDS);
   return record;
 }
 
-// Pattern counts stay only on the newest 120 summaries, and missed words only on the newest 120 runs
-// the list counts, so the profile stays small. Counting those from the end means word practice and
-// drills between them never push counted runs out of the list's window.
+// Comparable runs keep the newest 1,000 summaries, the newest 120 with pattern evidence; other kinds keep their
+// newest 50. Order stays chronological, and a profile with only comparable runs is retained exactly as before.
+// Missed words stay only on the newest 120 runs the list counts, so the profile stays small. Counting those
+// from the end means drills between them never push counted runs out of the list's window (word practice and
+// custom text are on their own budget anyway).
 export function retainRuns(runs) {
-  const kept = runs.slice(-MAX_RUN_SUMMARIES);
-  const keepWords = new Set();
-  for (let i = kept.length - 1; i >= 0 && keepWords.size < MAX_PATTERN_RUNS; i -= 1) if (missedWordsRun(kept[i])) keepWords.add(i);
-  return kept.map((run, i) => {
-    const trimPatterns = i < kept.length - MAX_PATTERN_RUNS && run.patterns;
-    const trimWords = 'missedWords' in run && !keepWords.has(i);
+  const comparable = runs.filter((run) => comparableKind(run.kind));
+  const other = runs.filter((run) => !comparableKind(run.kind));
+  const kept = new Set([...comparable.slice(-MAX_RUN_SUMMARIES), ...other.slice(-MAX_NON_COMPARABLE_RUNS)]);
+  const withPatterns = new Set(comparable.slice(-MAX_PATTERN_RUNS));
+  const withWords = new Set(comparable.filter((run) => kept.has(run) && missedWordsRun(run)).slice(-MAX_PATTERN_RUNS));
+  return runs.filter((run) => kept.has(run)).map((run) => {
+    const trimPatterns = comparableKind(run.kind) && !withPatterns.has(run);
+    const trimWords = 'missedWords' in run && !withWords.has(run);
     if (!trimPatterns && !trimWords) return run;
     // Drop missed words rather than empty them: an empty list would read as a run with no misses.
     const { missedWords, ...rest } = run;
@@ -46,8 +56,8 @@ export function retainRuns(runs) {
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
 export const trendRun = (run) => validRun(run) && ['test', 'retest'].includes(run.kind);
 // The runs pattern memory reads: complete tests, retests and daily runs, never a daily passage
-// shown before. Drills, word practice, races and interrupted runs are left out.
-export const patternRun = (run) => validRun(run) && ['test', 'retest', 'daily'].includes(run.kind)
+// shown before. Drills, races, interrupted runs and every non-comparable kind (word practice, custom text) are left out.
+export const patternRun = (run) => validRun(run) && comparableKind(run.kind) && ['test', 'retest', 'daily'].includes(run.kind)
   && (run.kind !== 'daily' || run.fresh !== false);
 // The runs "words you keep missing" counts: those pattern memory reads that recorded missed words.
 const missedWordsRun = (run) => patternRun(run) && Array.isArray(run.missedWords);

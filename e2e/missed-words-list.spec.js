@@ -71,7 +71,7 @@ test('words missed across runs build a list in Training that starts an uncounted
   // Training is the results screen: the list sits below the recurring patterns.
   await openView(page, 'Train');
   const note = page.locator('#missed-words-note');
-  await expect(note).toHaveText(`First-try misses in your last ${runs} complete tests, retests and new daily passages on a physical keyboard, all other test conditions together, up to 12 words a run. Word practice and drills aren’t counted.`);
+  await expect(note).toHaveText(`First-try misses in your last ${runs} complete tests, retests and new daily passages on a physical keyboard, all other test conditions together, up to 12 words a run. Word practice, custom text and drills aren’t counted.`);
   const rows = await listRows(page);
   expect(rows.length).toBe(Math.min(8, recurring().length));
   for (const [word, copy] of rows) expect(copy).toBe(`missed in ${tally.get(word)} of the last ${runs} runs`);
@@ -113,8 +113,8 @@ test('words missed across runs build a list in Training that starts an uncounted
   const practiceWpm = Number(await page.locator('#result-wpm').textContent());
   expect(practiceWpm).toBeGreaterThanOrEqual(40);
   expect(practiceWpm).toBeLessThanOrEqual(110);
-  // Out of the evidence: the list still counts the same runs. (#best shows the best for the practice
-  // settings, never a word-practice key, so the signed-in test checks the stored bests instead.)
+  // Out of the evidence: the list still counts the same runs. (#best says word practice isn't counted,
+  // so the signed-in test checks the stored bests instead.)
   await expect(note).toContainText(`your last ${runs} complete tests`);
   expect(await listRows(page)).toEqual(rows);
 
@@ -204,8 +204,9 @@ test('signed in, the list rides the synced run summaries, starts from the palett
   // With no run in this tab, the newest retained run is the retest baseline.
   await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 25-word retest.');
   await expect(page.locator('#skip-to-retest')).toBeEnabled();
-  // Faster than the seeded runs, and still out of bests: the best and its stored record are unchanged.
-  await expect(page.locator('#best')).toHaveText(best);
+  // Faster than the seeded runs, and still out of bests: word practice has no best of its own, and the
+  // stored bests are unchanged (below).
+  await expect(page.locator('#best')).toHaveText('Not counted');
 
   // Persisted on the account: a reload shows the same list, unchanged by the practice run.
   await expect.poll(() => supabase.profileFor(user.email)?.runs.length).toBe(6);
@@ -239,6 +240,40 @@ test('signed in, the list rides the synced run summaries, starts from the palett
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
   await expect(page.locator('#session-title')).not.toHaveText('Practice words you keep missing');
   expect((await passageText(page)).split(' ')).toHaveLength(25);
+});
+
+test('custom text never feeds the list: its misses aren’t counted, as stored or as typed', async ({ page, supabase }) => {
+  const user = supabase.addUser('custom@stilltype.test');
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const traces = [trace('a', day(3), ['their', 'because']), trace('b', day(2), ['their', 'because'])];
+  // Custom-text summaries that carry missed words of their own (as a hand-edited copy might): never counted.
+  const custom = { ...conditions, mode: 'custom', count: null, wordList: null, customOrder: 'as-written' };
+  const customRun = (id) => ({ ...runRecord(trace(id, day(1), ['river', 'garden'], 'custom')), conditions: custom, missedWords: ['river', 'garden'] });
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: traces,
+    runs: [...traces.map((t) => runRecord(t)), customRun('c1'), customRun('c2')], loops: [], seenTextIds: traces.map((t) => t.textId),
+    bests: {}, updatedAt: new Date(Date.now() - 60000).toISOString() } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openView(page, 'Train');
+  const expected = [['because', 'missed in 2 of the last 2 runs'], ['their', 'missed in 2 of the last 2 runs']];
+  expect(await listRows(page)).toEqual(expected);
+
+  // A custom run typed here, missing "the", "and" and "it" on the first try, adds no evidence either.
+  await openView(page, 'Practice');
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(TEXT);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  const missed = await typeWithMisses(page, await passageText(page), 20);
+  expect([...missed].sort()).toEqual(['and', 'it', 'the']);
+  await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
+  await openView(page, 'Train');
+  expect(await listRows(page)).toEqual(expected);
+  await expect(page.locator('#missed-words-note')).toContainText('your last 2 complete tests');
+  await expect.poll(() => supabase.profileFor(user.email)?.runs.length).toBe(5);
+  const stored = supabase.profileFor(user.email).runs.at(-1);
+  expect(stored.kind).toBe('custom');
+  expect(stored).not.toHaveProperty('missedWords');
 });
 
 // Holds the next account-row fetch until `release()`, as a slow network would. The page boots from

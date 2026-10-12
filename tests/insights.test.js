@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage, wordHistory } from '../src/typing.js';
-import { MAX_MISSED_WORDS, dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, wordHistory } from '../src/typing.js';
+import { MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 test('missed and slowest words come from first tries and per-word speed', () => {
   const text = 'the cat sat on mat';
@@ -294,6 +294,7 @@ test('runs pattern memory leaves out record no missed words', () => {
   const text = 'the cat sat';
   const missing = (overrides) => assert.equal('missedWords' in typedRun('x', text, [1], overrides), false, JSON.stringify(overrides));
   missing({ kind: 'missed' }); // missed-word practice itself
+  missing({ kind: 'custom' }); // custom text is never compared
   missing({ kind: 'drill', target: 'th' });
   missing({ kind: 'race' });
   missing({ status: 'interrupted' });
@@ -313,10 +314,10 @@ test('missed words stay only on the newest 120 counted summaries, and trimmed on
   assert.equal('missedWords' in kept[0], false);
   assert.equal('missedWords' in kept[9], false);
   assert.deepEqual(kept[10].missedWords, ['the']);
-  // Pattern counts still go by position among all summaries.
+  // Pattern counts go by position among the comparable summaries: word practice takes no place.
   assert.deepEqual(kept[0].patterns, []);
-  assert.deepEqual(kept[10].patterns, []);
-  assert.deepEqual(kept[11].patterns, runs[11].patterns);
+  assert.deepEqual(kept[9].patterns, []);
+  assert.deepEqual(kept[10].patterns, runs[10].patterns);
   assert.equal('patterns' in kept.at(-1), false);
   assert.equal('missedWords' in kept.at(-1), false);
   assert.deepEqual(kept.at(-2).missedWords, ['the']);
@@ -331,6 +332,16 @@ test('drills and word practice between counted runs never push them out of the s
   assert.equal(kept.filter((r) => 'missedWords' in r).length, 100);
   assert.equal(recurringMissedWords(kept).runs, 100);
   assert.deepEqual(recurringMissedWords(kept).words.map((w) => [w.word, w.runs]), [['odd', 50], ['even', 50]]);
+});
+
+test('custom runs never push counted runs out of the list, and never keep missed words of their own', () => {
+  const tests = Array.from({ length: 30 }, (_, i) => run(`t${i}`, { missedWords: ['the'] }));
+  const custom = Array.from({ length: 1100 }, (_, i) => run(`c${i}`, { kind: 'custom', patterns: undefined, missedWords: ['the'] }));
+  const kept = retainRuns([...tests, ...custom]);
+  assert.equal(kept.filter((r) => r.kind === 'test' && 'missedWords' in r).length, 30);
+  assert.equal(kept.some((r) => r.kind === 'custom' && 'missedWords' in r), false);
+  assert.equal(kept.filter((r) => r.kind === 'custom').length, MAX_NON_COMPARABLE_RUNS);
+  assert.deepEqual(recurringMissedWords(kept).words.map((w) => [w.word, w.runs]), [['the', 30]]);
 });
 
 const missedRun = (id, missedWords, overrides = {}) => run(id, { missedWords, ...overrides });
@@ -363,9 +374,9 @@ test('words you keep missing need two runs and rank by runs missed in, then the 
   assert.deepEqual(recurringMissedWords([missedRun('x', ['The', 'the']), missedRun('y', ['the', 'the,'])]).words.map((w) => w.word), ['the']);
 });
 
-test('word practice, drills, interruptions and repeat daily text never feed the list', () => {
+test('word practice, custom text, drills, interruptions and repeat daily text never feed the list', () => {
   const both = (id, overrides = {}) => missedRun(id, ['the', 'and'], overrides);
-  const excluded = [both('m', { kind: 'missed' }), both('d', { kind: 'drill' }), both('i', { interrupted: true }),
+  const excluded = [both('m', { kind: 'missed' }), both('c', { kind: 'custom' }), both('d', { kind: 'drill' }), both('i', { interrupted: true }),
     both('s', { status: 'interrupted' }), both('r', { kind: 'race' }), both('p', { kind: 'daily', fresh: false })];
   assert.deepEqual(recurringMissedWords([...excluded, both('only')]), { runs: 1, inputClass: 'physical-keyboard', recurring: 0, words: [] });
   const counted = recurringMissedWords([both('fresh-daily', { kind: 'daily' }), both('retest', { kind: 'retest' })]);
@@ -402,4 +413,68 @@ test('touch runs are never pooled with physical-keyboard runs: the newest run pi
   assert.deepEqual(tally([...keys, missedRun('t1', ['the'], { conditions: touch }), missedRun('t2', ['the', 'of'], { conditions: touch })]), ['touch', 2, [['the', 2]]]);
   // Back on a keyboard, the keyboard runs count again, without the touch misses.
   assert.deepEqual(tally([...keys, missedRun('t1', ['the'], { conditions: touch }), missedRun('k4', ['of'], { conditions: keyboard })]), ['physical-keyboard', 4, [['and', 2], ['the', 2]]]);
+});
+
+test('custom run records keep the score but no per-pair patterns', () => {
+  const typed = (kind) => {
+    const attempt = createAttempt({ id: kind, text: 'the then', kind, conditions });
+    [...'the then'].forEach((char, i) => attempt.events.push({ type: 'insert', text: char, position: i, accepted: true, offsetMs: i * 120 }));
+    return completeAttempt(attempt, { endedAt: 1000 });
+  };
+  const custom = runRecord(typed('custom'));
+  assert.equal('patterns' in custom, false);
+  assert.equal(custom.kind, 'custom');
+  assert.ok(custom.score.wpm > 0);
+  assert.ok(runRecord(typed('test')).patterns.length > 0);
+  // Retention never adds an empty pattern list back to a record that had none.
+  assert.equal('patterns' in retainRuns([custom, ...Array.from({ length: 130 }, (_, i) => run(String(i)))])[0], false);
+});
+
+test('custom runs keep their own budget and never displace practice history', () => {
+  const practice = Array.from({ length: 10 }, (_, i) => run(`p${i}`));
+  const custom = (count) => Array.from({ length: count }, (_, i) => run(`c${i}`, { kind: 'custom', patterns: undefined }));
+  // 130 custom runs after 10 practice runs: the practice runs are still inside the pattern window.
+  const afterSome = retainRuns([...practice, ...custom(130)]);
+  assert.deepEqual(afterSome.filter((r) => r.kind === 'test').map((r) => r.patterns.length), Array(10).fill(1));
+  // 1,100 custom runs evict no practice summary, and custom keeps only its newest 50.
+  const afterMany = retainRuns([...practice, ...custom(1100)]);
+  assert.equal(afterMany.filter((r) => r.kind === 'test').length, 10);
+  assert.equal(afterMany.filter((r) => r.kind === 'custom').length, MAX_NON_COMPARABLE_RUNS);
+  assert.equal(afterMany.at(-1).id, 'c1099');
+  assert.equal(afterMany.find((r) => r.kind === 'custom').id, 'c1050');
+  assert.equal(afterMany.some((r) => r.kind === 'custom' && 'patterns' in r && r.patterns !== undefined), false);
+  // Interleaved runs stay in the order they happened.
+  const mixed = Array.from({ length: 200 }, (_, i) => (i % 3 ? run(`m${i}`, { kind: 'custom', patterns: undefined }) : run(`m${i}`)));
+  const order = retainRuns(mixed).map((r) => Number(r.id.slice(1)));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+});
+
+test('a profile with only comparable runs is retained exactly as before', () => {
+  // The retention rule as it stood before custom text existed.
+  const previous = (runs) => {
+    const kept = runs.slice(-1000);
+    return kept.map((r, i) => (i < kept.length - 120 ? { ...r, patterns: [] } : r));
+  };
+  const kinds = ['test', 'retest', 'drill', 'daily'];
+  const legacy = Array.from({ length: 1100 }, (_, i) => run(String(i), { kind: kinds[i % kinds.length] }));
+  legacy[1050] = { ...legacy[1050], patterns: undefined };
+  legacy[500] = { ...legacy[500], patterns: undefined };
+  assert.equal(JSON.stringify(retainRuns(legacy)), JSON.stringify(previous(legacy)));
+  const short = legacy.slice(0, 40);
+  assert.equal(JSON.stringify(retainRuns(short)), JSON.stringify(previous(short)));
+});
+
+test('missed-word practice is not comparable, so it never pushes practice runs out of the pattern window', () => {
+  assert.equal(comparableKind('missed'), false);
+  assert.equal(comparableKind('custom'), false);
+  assert.equal(comparableKind('test'), true);
+  // 120 practice runs, then 30 word-practice runs and 30 custom runs: every practice run keeps its patterns.
+  const practice = Array.from({ length: MAX_PATTERN_RUNS }, (_, i) => run(`p${i}`));
+  const missed = Array.from({ length: 30 }, (_, i) => run(`w${i}`, { kind: 'missed', patterns: undefined }));
+  const custom = Array.from({ length: 30 }, (_, i) => run(`c${i}`, { kind: 'custom', patterns: undefined }));
+  const kept = retainRuns([...practice, ...missed, ...custom]);
+  assert.deepEqual(kept.filter((r) => r.kind === 'test').map((r) => r.patterns.length), Array(MAX_PATTERN_RUNS).fill(1));
+  // The two uncounted kinds share one budget of the newest 50.
+  assert.equal(kept.filter((r) => !comparableKind(r.kind)).length, MAX_NON_COMPARABLE_RUNS);
+  assert.equal(kept.find((r) => r.kind === 'missed').id, 'w10');
 });
