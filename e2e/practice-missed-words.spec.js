@@ -199,6 +199,32 @@ test('a drill offers no word practice, while a daily run does', async ({ page })
   await expect(page.locator('#practice-words-evidence')).toContainText('missed first try:');
 });
 
+test('a daily passage shown before offers no word practice', async ({ page }) => {
+  // Two whole daily passages take longer than the default 30 s on a slow machine.
+  test.setTimeout(60_000);
+  await openApp(page);
+  const daily = async () => {
+    await openView(page, 'Challenge');
+    await page.locator('#challenge-daily').click();
+    await page.locator('#start-daily').click();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
+    const text = await passageText(page);
+    const words = text.split(' ');
+    await typeWithMisses(page, text, [1, words.findIndex((word, index) => index > 1 && word !== words[1])]);
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  };
+  // The first attempt is on fresh text, so its misses are offered.
+  await daily();
+  await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete');
+  await expect(page.locator('#practice-words')).toBeVisible();
+  // A repeat is on a passage already shown, which is never evidence: no words, the same misses or not.
+  await daily();
+  await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete · repeat attempt');
+  await expect(page.locator('#result-words .word-miss').first()).toBeVisible();
+  await expect(page.locator('#practice-words')).toBeHidden();
+  await expect(page.locator('#practice-words-evidence')).toBeHidden();
+});
+
 test('words practised from a retest are retested against that retest', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);

@@ -33,7 +33,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { comparableKind, dailyPassage, filterRuns, measuredKind, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { comparableKind, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -952,11 +952,11 @@ function renderCard(completed) {
 
 // Offer the words this run tripped on or was slowest through as their own uncounted run. The
 // slowest are one timing each, so they show their speed beside the run's median, not a weakness.
-// Only a measured run (test, retest or daily) is mined for words: a drill's text is synthetic and
-// target-heavy, and custom text and word practice itself keep no best. Run again repeats a
-// word-practice passage.
+// Only an evidence run is mined for words, by the same rule as recurring patterns: a complete test,
+// retest or daily run on fresh text. Not a drill (synthetic, target-heavy text), a daily passage shown
+// before, custom text or word practice itself. Run again repeats a word-practice passage.
 function renderPracticeWords(completed) {
-  const mined = completed.status === 'complete' && measuredKind(completed.kind);
+  const mined = evidenceRun(completed);
   const { missed, slow, timedCount, medianWpm } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
   const words = [...missed, ...slow.map((item) => item.word)];
   const button = $('practice-words');
@@ -976,9 +976,10 @@ function renderPracticeWords(completed) {
   const text = practiceWordsPassage(words);
   button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
   button.onclick = () => {
-    // The run whose words are practised is the baseline for the fresh retest offered afterward, as a
-    // finished practice or daily run is. A retest doesn't set it on finishing, so set it here. No drill
-    // comes between, so the next comparison reads and records no drill target; startDrill sets one again.
+    // The run whose words are practised (an evidence run, or there'd be no button) is the baseline for
+    // the fresh retest offered afterward, as a finished practice or daily run is. A retest doesn't set it
+    // on finishing, so set it here. No drill comes between, so the next comparison reads and records no
+    // drill target; startDrill sets one again.
     baselineAttempt = completed;
     trainingContext = null;
     selectedTarget = null;

@@ -11,8 +11,8 @@ export const MAX_NON_COMPARABLE_RUNS = 50;
 export const comparableKind = (kind) => !NON_COMPARABLE_KINDS.has(kind);
 
 // Run kinds that measure typing on ordinary text at the run's own conditions: practice tests, retests and daily
-// runs. Only these are mined for recurring patterns or for missed words to practise. Narrower than comparableKind,
-// which only splits retention budgets and so includes drills: their synthetic, target-heavy text is never measured.
+// runs. Only these can be evidence (see evidenceRun). Narrower than comparableKind, which only splits retention
+// budgets and so includes drills: their synthetic, target-heavy text is never measured.
 export const MEASURED_KINDS = new Set(['test', 'retest', 'daily']);
 export const measuredKind = (kind) => MEASURED_KINDS.has(kind);
 
@@ -47,6 +47,10 @@ export function retainRuns(runs) {
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
 export const trendRun = (run) => validRun(run) && ['test', 'retest'].includes(run.kind);
+// A run that counts as evidence about the person's typing: complete, uninterrupted and of a measured kind, and
+// never a daily passage shown before (a repeat attempt types known text). Recurring patterns and missed words to
+// practise both read only these. Works on a stored run summary or a just-finished attempt.
+export const evidenceRun = (run) => validRun(run) && measuredKind(run.kind) && (run.kind !== 'daily' || run.fresh !== false);
 
 export function filterRuns(runs, key, days = 'all', date = new Date()) {
   const cutoff = days === 'all' ? null : date.getTime() - Number(days) * 86400000;
@@ -75,9 +79,7 @@ export function weeklyChange(runs, key, date = new Date()) {
 
 export function recurringTargets(runs, loops, compatibleConditions) {
   const key = conditionKey(compatibleConditions);
-  const eligible = runs.filter((r) => validRun(r) && measuredKind(r.kind)
-    && (r.kind !== 'daily' || r.fresh !== false)
-    && conditionKey(r.conditions) === key).slice(-MAX_PATTERN_RUNS);
+  const eligible = runs.filter((r) => evidenceRun(r) && conditionKey(r.conditions) === key).slice(-MAX_PATTERN_RUNS);
   const pairs = new Map();
   for (const run of eligible) {
     for (const [pair, observations, errors, timingCount, medianMs, slowdownMs] of run.patterns || []) {

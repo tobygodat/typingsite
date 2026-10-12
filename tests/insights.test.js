@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, wordHistory } from '../src/typing.js';
-import { MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, filterRuns, measuredKind, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
+import { MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, evidenceRun, filterRuns, measuredKind, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 test('missed and slowest words come from first tries and per-word speed', () => {
   const text = 'the cat sat on mat';
@@ -340,4 +340,15 @@ test('only tests, retests and daily runs are measured; a drill is comparable for
   assert.deepEqual(recurringTargets(drills, [], conditions), []);
   const measured = ['test', 'retest', 'daily'].map((kind, i) => run(`m${i}`, { kind }));
   assert.deepEqual(recurringTargets(measured, [], conditions).map((p) => [p.pair, p.runs]), [['th', 3]]);
+});
+
+test('evidence runs are complete measured runs, never a daily passage shown before', () => {
+  for (const kind of ['test', 'retest', 'daily']) assert.equal(evidenceRun(run(kind, { kind })), true, kind);
+  for (const kind of ['drill', 'missed', 'custom']) assert.equal(evidenceRun(run(kind, { kind })), false, kind);
+  assert.equal(evidenceRun(run('repeat', { kind: 'daily', fresh: false })), false);
+  assert.equal(evidenceRun(run('cut', { interrupted: true })), false);
+  assert.equal(evidenceRun(run('idle', { status: 'interrupted' })), false);
+  // Recurring targets read the same rule: repeat daily attempts add no evidence.
+  const repeats = Array.from({ length: 3 }, (_, i) => run(`r${i}`, { kind: 'daily', fresh: false }));
+  assert.deepEqual(recurringTargets(repeats, [], conditions), []);
 });
