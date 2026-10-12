@@ -285,7 +285,8 @@ for (const theme of ['dark', 'light']) {
 
 // On phones the popover grows up from the bottom dock. Choosing a sound must not move the row under
 // the finger, the popover must stay clear of the account corner at the top, and every control must be
-// reachable (scrolling inside the popover on short screens).
+// reachable (scrolling inside the popover on short screens). Controls in a closed group, or in a
+// row hidden until its setting needs it, aren't rendered and are skipped.
 const phoneLayout = (page) => page.evaluate(() => {
   window.scrollTo(0, 0);
   const popover = document.querySelector('.preferences-popover');
@@ -294,6 +295,7 @@ const phoneLayout = (page) => page.evaluate(() => {
   const corner = document.querySelector('.corner').getBoundingClientRect();
   const layout = { top: box.top, bottom: box.bottom, clearOfCorner: box.top >= corner.bottom, soundTop: document.getElementById('sound-select').getBoundingClientRect().top, covered: [] };
   for (const control of popover.querySelectorAll('select, input')) {
+    if (!control.checkVisibility()) continue;
     control.scrollIntoView({ block: 'nearest' });
     const rect = control.getBoundingClientRect();
     const inside = rect.top >= box.top && rect.bottom <= box.bottom;
@@ -319,6 +321,11 @@ for (const [width, height] of [[390, 844], [320, 844], [320, 568]]) {
     await page.locator('#sound-volume-row').scrollIntoViewIfNeeded();
     await expect(page.locator('#sound-volume-row')).toBeInViewport({ ratio: 1 });
     expect(await settingsFit(page)).toBe(true);
+    // The test content group opens inside the same popover and its controls are reachable too.
+    await page.locator('#test-content-settings > summary').click();
+    await expect(page.locator('#numbers-toggle')).toBeVisible();
+    expect(await phoneLayout(page)).toMatchObject({ clearOfCorner: true, covered: [] });
+    await page.locator('#test-content-settings > summary').click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     if (width === 390) {
       await page.evaluate(() => document.activeElement.blur());
