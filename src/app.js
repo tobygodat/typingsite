@@ -123,8 +123,10 @@ let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
-// The open composition (an accent key's mark, or IME text): { type, attempt, refused }.
+// The open composition (an accent key's mark, or IME text): { type, attempt, refused, replaces }.
 let composition = null;
+// The last key press was a held accent key repeating; whatever it commits is key repeat, not typing.
+let heldDeadKey = false;
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
@@ -659,6 +661,10 @@ function refuseComposition(type) {
 // Each key takes the same path as a key press, so replay can't tell them apart. A mark and letter
 // committed together arrive with the second key press, and share its time.
 function typeKeys(keys, type) {
+  if (heldDeadKey) { // a held accent key commits its mark again and again (^^): ignore it, like any held key
+    showInputNotice(type, NOTICES.repeat, { speak: false });
+    return;
+  }
   const at = now();
   for (const key of keys) {
     if (!acceptingInput(type)) return; // the first of two may finish the passage or the clock
@@ -711,8 +717,13 @@ function beforeTypingInput(event, type = 'primary') {
 // An accent key's composition is typed characters, scored at compositionend; a preview or commit
 // that an accent key could not produce is IME text and stops the run counting.
 function wireComposition(input, type) {
-  input.addEventListener('compositionstart', () => {
-    composition = acceptingInput(type) ? { type, attempt: inputAttempt(type), refused: false } : null;
+  input.addEventListener('keydown', (event) => { heldDeadKey = event.repeat && event.key === 'Dead'; });
+  input.addEventListener('compositionstart', (event) => {
+    if (!acceptingInput(type)) { composition = null; return; }
+    // An accent key's mark starts as a caret after the typed text. A composition over letters already
+    // typed (the macOS press-and-hold accent menu, a keyboard re-composing a word) is not new keys.
+    const over = event.data || input.value.slice(input.selectionStart, input.selectionEnd);
+    composition = { type, attempt: inputAttempt(type), refused: false, replaces: over || null };
   });
   input.addEventListener('compositionupdate', (event) => {
     if (composition?.type !== type || composition.refused || composition.attempt !== inputAttempt(type)) return;
@@ -727,7 +738,10 @@ function wireComposition(input, type) {
     if (session) composition = null;
     if (session && !session.refused && session.attempt === inputAttempt(type) && acceptingInput(type)) {
       const keys = composedKeys(event.data);
-      if (keys === null) refuseComposition(type);
+      // Committing the same letters back (typing on past the accent menu) changes nothing; any
+      // other change to letters already scored is an input method's edit, not keys.
+      if (session.replaces !== null) { if (event.data !== session.replaces) refuseComposition(type); }
+      else if (keys === null) refuseComposition(type);
       else typeKeys(keys, type);
     }
     // Hand the field back to the passage once the composition is over (finishing commits a pending mark).
@@ -1143,7 +1157,11 @@ function navigate(view) {
   switchView(view);
 }
 
+// A mark still pending when focus leaves is dropped, as at the finish: the browser can commit it after
+// this check (macOS Chrome blurs the window first; opening commands moves focus), which would start a
+// ready run in the background.
 function markInterrupted(message) {
+  if (composition?.type === 'primary') composition = null;
   if (attempt?.status !== 'running' || attempt.interrupted) return;
   attempt.interrupted = true;
   attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor() });
@@ -1153,6 +1171,7 @@ function markInterrupted(message) {
 }
 
 function markRaceInterrupted() {
+  if (composition?.type === 'race') composition = null;
   if (race.attempt?.status !== 'running' || race.attempt.interrupted) return;
   race.attempt.interrupted = true;
   race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
@@ -2062,7 +2081,7 @@ function bindEvents() {
       preferences.querySelector('summary').focus();
       return;
     }
-    if (event.repeat && event.key.length === 1 && (document.activeElement === $('typing-input') || document.activeElement === $('race-input'))) {
+    if (event.repeat && (event.key.length === 1 || event.key === 'Dead') && (document.activeElement === $('typing-input') || document.activeElement === $('race-input'))) {
       event.preventDefault();
       showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
       return;

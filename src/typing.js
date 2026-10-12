@@ -153,11 +153,15 @@ function printable(text) {
 // Anything longer, East Asian or full-width is IME text, which isn't keyboard input: null.
 const DEAD_MARKS = new Set([...'\'"`~^´¨ˆ˜ˇ˘˚°¸˛˝˙¯']);
 const IME_TEXT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Bopomofo}　-〿＀-￯\r\n]/u;
+// Kana punctuation (ー ・ ゛ ゠) is Script=Common and only a kana IME types it. A few combining marks
+// list kana among their scripts too (U+0323 dot below), so accent marks are checked first.
+const KANA_EXTENSIONS = /[\p{scx=Hiragana}\p{scx=Katakana}]/u;
 const deadMark = (char) => DEAD_MARKS.has(char) || /^[̀-ͯ]$/u.test(char);
+const imeChar = (char) => IME_TEXT.test(char) || (!deadMark(char) && KANA_EXTENSIONS.test(char));
 
 export function composedKeys(text) {
   const chars = [...(text ?? '').normalize('NFC')];
-  if (chars.length > 2 || IME_TEXT.test(chars.join(''))) return null;
+  if (chars.length > 2 || chars.some(imeChar)) return null;
   if (chars.length === 2 && !deadMark(chars[0])) return null;
   return chars;
 }

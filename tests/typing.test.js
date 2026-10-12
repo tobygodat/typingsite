@@ -16,6 +16,7 @@ import {
   recommendTarget,
   replayAttempt,
   rawWpm,
+  summarizePatterns,
   consistency,
   characterBreakdown,
   wordHistory,
@@ -233,9 +234,12 @@ test('an accent-key commit is one or two typed keys; IME text is not', () => {
   for (const [text, keys] of [
     ['"', ['"']], [' ', [' ']], ['ä', ['ä']], ['ä', ['ä']],
     ['"h', ['"', 'h']], ["'t", ["'", 't']], ['´q', ['´', 'q']], ['́q', ['́', 'q']], ['""', ['"', '"']],
+    // Caron, dot above and dot below are accent marks, though Unicode also lists them for Bopomofo or kana.
+    ['ˇs', ['ˇ', 's']], ['˙z', ['˙', 'z']], ['\u0323q', ['\u0323', 'q']],
     ['', []],
   ]) assert.deepEqual(composedKeys(text), keys, JSON.stringify(text));
-  for (const text of ['ab', 'ni', '"hi', '你', 'あ', 'ㅎ', '한', 'ａ', '。', '\n', '"\n']) {
+  // Kana punctuation (ー ・ ゛ ゠) is Script=Common, but only a kana IME types it.
+  for (const text of ['ab', 'ni', '"hi', '你', 'あ', 'ㅎ', '한', 'ａ', '。', 'ー', '・', '゛', '゠', '"ー', '\n', '"\n']) {
     assert.equal(composedKeys(text), null, JSON.stringify(text));
   }
 });
@@ -247,14 +251,17 @@ test('a mark and letter committed together replay like two key presses', () => {
     attempt.startedAt = 0;
     return completeAttempt(attempt, { endedAt: 1000 });
   };
-  // Typed as separate keys, then with the mark and "h" committed together at 480 ms.
-  const keys = run([0, 80, 160, 240, 320, 400, 560, 640]).summary;
-  const commit = run([0, 80, 160, 240, 480, 480, 560, 640]).summary;
-  for (const field of ['typed', 'insertions', 'correctInsertions', 'mistakes', 'score']) assert.deepEqual(commit[field], keys[field], field);
-  assert.deepEqual(commit.firstAttempts.map((entry) => entry.correct), keys.firstAttempts.map((entry) => entry.correct));
-  const letterPairs = (replay) => replay.pairTimings.filter((entry) => /^[a-z]{2}$/.test(entry.pair)).map((entry) => entry.pair);
-  assert.deepEqual(letterPairs(commit), letterPairs(keys));
-  assert.equal(letterPairs(commit).includes('"h'), false);
+  // Typed as separate keys, then with the mark and "h" committed together at 400 ms (the "h" key).
+  const keys = run([0, 80, 160, 240, 320, 400, 480, 560]);
+  const commit = run([0, 80, 160, 240, 400, 400, 480, 560]);
+  for (const field of ['typed', 'insertions', 'correctInsertions', 'mistakes', 'score']) assert.deepEqual(commit.summary[field], keys.summary[field], field);
+  assert.deepEqual(commit.summary.firstAttempts.map((entry) => entry.correct), keys.summary.firstAttempts.map((entry) => entry.correct));
+  // The shared commit time gives "h a 0 ms interval; pattern evidence (letter pairs only) never sees it.
+  assert.ok(commit.summary.pairTimings.some((entry) => entry.pair === '"h' && entry.durationMs === 0));
+  const patterns = summarizePatterns([commit]);
+  assert.deepEqual(patterns, summarizePatterns([keys]));
+  assert.deepEqual(patterns.pairs.map((entry) => entry.pair).sort(), ['ay', 'hi', 'sa']);
+  assert.equal(patterns.personalMedianMs, 80);
 
   // A composed vowel where the mark belongs is one insertion and one mistake.
   const wrong = createAttempt({ id: 'w', text: '"a', textId: 'w', conditions: {} });
