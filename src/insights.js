@@ -70,6 +70,17 @@ export function standardScore(runs, key, best = null) {
   };
 }
 
+// Which input class heads the standard score, given standardScore for each. Totals count only runs
+// still in the kept summaries, while bests outlive them, so totals alone can't stand for lifetime
+// practice. Physical keyboard is the default. Touch heads only when the keyboard has nothing at all,
+// or once touch has a settled median from more kept runs, so one touch run can't replace a keyboard score.
+export function standardInputClass(keyboard, touch) {
+  const keyboardEmpty = !keyboard.total && keyboard.best === null;
+  const touchHasScore = touch.total > 0 || touch.best !== null;
+  if (keyboardEmpty && touchHasScore) return 'touch';
+  return touch.settled && touch.total > keyboard.total ? 'touch' : 'physical-keyboard';
+}
+
 export function recurringTargets(runs, loops, compatibleConditions) {
   const key = conditionKey(compatibleConditions);
   const eligible = runs.filter((r) => validRun(r) && ['test', 'retest', 'daily'].includes(r.kind)

@@ -29,7 +29,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -1309,8 +1309,8 @@ function renderTraining() {
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
-// Progress headline: the current standard recipe, at the input class with more completed runs
-// (physical keyboard on a tie), so one touch run can't replace a settled keyboard score.
+// Progress headline: the current standard recipe at one input class (standardInputClass decides), so
+// one touch run can't replace a keyboard score. The other class's best is named in the note.
 function renderStandardScore() {
   const scoreFor = (inputClass) => {
     const key = conditionKey(standardConditions(inputClass));
@@ -1318,9 +1318,10 @@ function renderStandardScore() {
   };
   const keyboard = scoreFor('physical-keyboard');
   const touch = scoreFor('touch');
-  const onTouch = touch.total > keyboard.total;
+  const onTouch = standardInputClass(keyboard, touch) === 'touch';
   const source = standardConditions(onTouch ? 'touch' : 'physical-keyboard');
   const score = onTouch ? touch : keyboard;
+  const other = onTouch ? keyboard : touch;
   setText($('standard-best'), score.best ?? '—');
   setText($('standard-median'), score.median === null ? '—' : Number(score.median.toFixed(1)));
   // A dash stands alone: "— wpm" would read as a measurement.
@@ -1334,6 +1335,7 @@ function renderStandardScore() {
   if (!score.total && score.best !== null) note = `Your best is kept, but your standard runs are older than the newest ${MAX_RUN_SUMMARIES.toLocaleString('en-US')} runs that Progress keeps, so the median waits for ${STANDARD_MIN_RUNS} new ones.`;
   else if (!score.total) note = 'No standard runs yet. Every one is fresh text from the same fixed recipe, so the scores stay comparable.';
   else if (!score.settled) note = `Only ${plural(score.total, 'standard run')} so far. The median appears after ${STANDARD_MIN_RUNS}, so a single fast or slow run can’t set your score.`;
+  if (other.best !== null) note += ` Your ${onTouch ? 'physical keyboard' : 'touch'} best is ${other.best} wpm.`;
   setText($('standard-score-note'), note);
 }
 

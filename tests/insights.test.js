@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage, standardConditions } from '../src/typing.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, standardScore, trendRun, weeklyChange } from '../src/insights.js';
+import { dailyPassage, filterRuns, recurringTargets, retainRuns, standardInputClass, standardScore, trendRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
@@ -101,4 +101,23 @@ test('the standard score keeps its best and a median of recent runs, and waits f
   const twelve = [at(100), at(90), ...Array.from({ length: 10 }, (_, i) => at(50 + i))];
   assert.deepEqual(standardScore(twelve, key), { total: 12, recent: 10, best: 100, median: 54.5, settled: true });
   assert.equal(standardScore(twelve, key, 101).best, 101);
+});
+
+test('the standard headline stays on the keyboard unless touch has the only score or a settled, busier one', () => {
+  // Shaped like standardScore: `total` counts only runs still in the kept summaries; a best can outlive them.
+  const score = (total, best = total ? 60 : null) => ({ total, recent: Math.min(total, 10), best, median: null, settled: total >= 3 });
+  const pick = (keyboard, touch) => standardInputClass(keyboard, touch);
+  assert.equal(pick(score(0), score(0)), 'physical-keyboard');
+  // Kept counts aren't lifetime counts: a keyboard best whose runs aged out holds against one or two touch runs.
+  assert.equal(pick(score(0, 82), score(1)), 'physical-keyboard');
+  assert.equal(pick(score(0, 82), score(2)), 'physical-keyboard');
+  assert.equal(pick(score(1), score(2)), 'physical-keyboard');
+  // Touch heads once it has a median from more kept runs than the keyboard (a tie stays on the keyboard)...
+  assert.equal(pick(score(0, 82), score(3)), 'touch');
+  assert.equal(pick(score(1), score(3)), 'touch');
+  assert.equal(pick(score(3), score(3)), 'physical-keyboard');
+  assert.equal(pick(score(3), score(4)), 'touch');
+  // ...or when the keyboard has nothing at all, even if touch has only a kept best.
+  assert.equal(pick(score(0), score(1)), 'touch');
+  assert.equal(pick(score(0), score(0, 47)), 'touch');
 });

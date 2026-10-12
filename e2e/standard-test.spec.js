@@ -212,7 +212,7 @@ test('Progress shows the standard best and the median of recent runs with its co
   await expect(page.locator('#standard-best')).toHaveText('66');
   await expect(page.locator('#standard-median')).toHaveText('63');
   await expect(page.locator('#standard-median-label')).toHaveText('median of last 5 runs');
-  await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs. Interrupted runs don’t count.');
+  await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs. Interrupted runs don’t count. Your touch best is 41 wpm.');
   await expect(page.locator('#standard-score-conditions')).toContainText('physical keyboard');
   // With history, the standard score still heads the page, above the filters.
   await expect(page.locator('#progress-empty')).toBeHidden();
@@ -315,7 +315,60 @@ test('a standard best that outlives its runs in the kept history says so, not "n
   await expect(page.locator('#standard-median')).toHaveText('—');
   await expect(page.locator('#standard-median + span')).toBeHidden();
   await expect(page.locator('#standard-median-label')).toHaveText('median');
-  await expect(page.locator('#standard-score-note')).toHaveText('Your best is kept, but your standard runs are older than the newest 1,000 runs that Progress keeps, so the median waits for 3 new ones.');
+  await expect(page.locator('#standard-score-note')).toHaveText(AGED_OUT);
+});
+
+// Run summaries are pruned to the newest 1,000 but bests are not, so kept run counts can't stand in for
+// lifetime counts when choosing which input class heads Progress.
+const AGED_OUT = 'Your best is kept, but your standard runs are older than the newest 1,000 runs that Progress keeps, so the median waits for 3 new ones.';
+const TOUCH_KEY = conditionKey(standardConditions('touch'));
+const touchRun = (wpm, i, base) => ({ ...base, id: `standard-touch-${i}`, at: new Date(Date.now() - (3 - i) * 3600000).toISOString(),
+  textId: `standard-v1-touch${i}`, conditions: standardConditions('touch'), score: { wpm, accuracy: 95 } });
+
+async function openProgressAs(page, supabase, email, data) {
+  const user = supabase.addUser(email);
+  data.seenTextIds = data.runs.map((run) => run.textId);
+  supabase.profiles.set(user.id, { data });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openView(page, 'Progress');
+}
+
+test('a kept keyboard best stays the headline over one newer touch run, and the touch best is named', async ({ page, supabase }) => {
+  // Every keyboard standard run has aged out of the kept summaries; one touch run is newer.
+  const data = seededProfile([62, 66, 64]);
+  data.runs = [touchRun(48, 0, data.runs[0])];
+  data.bests[TOUCH_KEY] = { wpm: 48, attemptId: data.runs[0].id, at: data.runs[0].at };
+  await openProgressAs(page, supabase, 'kept-keyboard@stilltype.test', data);
+  await expect(page.locator('#standard-best')).toHaveText('66');
+  await expect(page.locator('#standard-median')).toHaveText('—');
+  await expect(page.locator('#standard-score-conditions')).toContainText('physical keyboard');
+  await expect(page.locator('#standard-score-note')).toHaveText(`${AGED_OUT} Your touch best is 48 wpm.`);
+});
+
+test('a touch best is the headline when it is the only standard best, even with no runs left', async ({ page, supabase }) => {
+  const data = seededProfile([60]);
+  data.runs = [{ ...data.runs[0], id: 'time-30', textId: 'generated-time-30',
+    conditions: { ...standardConditions(), mode: 'time', duration: 30, recipe: undefined, wordList: '200', correctionPolicy: 'relaxed' } }];
+  data.bests = { [TOUCH_KEY]: { wpm: 47, attemptId: 'standard-touch-old', at: data.runs[0].at } };
+  await openProgressAs(page, supabase, 'touch-best@stilltype.test', data);
+  await expect(page.locator('#standard-best')).toHaveText('47');
+  await expect(page.locator('#standard-score-conditions')).toContainText('touch input');
+  await expect(page.locator('#standard-score-note')).toHaveText(AGED_OUT);
+});
+
+test('a settled touch score with more kept runs heads Progress, and the keyboard best is named', async ({ page, supabase }) => {
+  // One keyboard run is still kept; the keyboard best of 82 came from runs that have aged out.
+  const data = seededProfile([70]);
+  data.runs.push(...[44, 48, 46].map((wpm, i) => touchRun(wpm, i, data.runs[0])));
+  data.bests[conditionKey(standardConditions())].wpm = 82;
+  data.bests[TOUCH_KEY] = { wpm: 48, attemptId: 'standard-touch-1', at: data.runs.at(-2).at };
+  await openProgressAs(page, supabase, 'settled-touch@stilltype.test', data);
+  await expect(page.locator('#standard-best')).toHaveText('48');
+  await expect(page.locator('#standard-median')).toHaveText('46');
+  await expect(page.locator('#standard-median-label')).toHaveText('median of last 3 runs');
+  await expect(page.locator('#standard-score-conditions')).toContainText('touch input');
+  await expect(page.locator('#standard-score-note')).toHaveText('3 completed standard runs. Interrupted runs don’t count. Your physical keyboard best is 82 wpm.');
 });
 
 test('the palette starts the standard test and leaves out the settings it locks', async ({ page }) => {
