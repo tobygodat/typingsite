@@ -47,6 +47,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   let mode = 'online';
   let friends = [];
   let friendsLoaded = false;
+  const friendReplies = multiplayer.orderFriendReplies((list) => { friends = list; friendsLoaded = true; });
   let befriended = false;
   const fx = createTypingFx($('online-stage').querySelector('.online-typing-wrap'), $('online-text-display'), { ensureCharacters: (index) => textView?.ensureForward(index) });
 
@@ -99,6 +100,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       button.className = 'btn btn-secondary btn-sm';
       button.dataset.acceptInvite = invite.id;
       button.textContent = 'Join race';
+      button.disabled = busy;
       button.addEventListener('click', () => joinInvite(invite.id, button));
       row.append(copy, button);
       return row;
@@ -163,6 +165,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       race.dataset.raceFriend = friend.id;
       race.textContent = 'Challenge';
       race.setAttribute('aria-label', `Challenge ${friend.name}`);
+      race.disabled = busy;
       race.addEventListener('click', () => perform(race, async () => {
         const result = await multiplayer.createRace(getSession(), { ...newRace(), displayName: racerName(), friendId: friend.id });
         enterRoom(result);
@@ -177,8 +180,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       remove.dataset.removeFriend = friend.id;
       remove.textContent = 'Remove';
       remove.setAttribute('aria-label', `Remove ${friend.name} from friends`);
+      remove.disabled = busy;
       remove.addEventListener('click', () => perform(remove, async () => {
-        friends = await multiplayer.removeFriend(getSession(), friend.id);
+        await friendReplies.change(multiplayer.removeFriend(getSession(), friend.id));
         renderFriends();
         $('online-name').focus();
       }));
@@ -189,7 +193,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   }
   async function loadFriends() {
     if (!getSession()) return;
-    try { friends = await multiplayer.listFriends(getSession()); friendsLoaded = true; renderFriends(); }
+    try { if (await friendReplies.load(multiplayer.listFriends(getSession()))) renderFriends(); }
     catch (failure) { if (!friendsLoaded) renderFriends(failure); }
   }
   function newRace() {
@@ -197,13 +201,20 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const conditions = { mode: 'quote', quoteLength: 'medium', difficulty: 'any', duration: 60, correctionPolicy: 'mandatory', onlineRace: true, language: 'en', inputClass: 'physical-keyboard', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
     return { passage, conditions };
   }
+  // One race action at a time. Every control that starts one is disabled while another is in
+  // flight, so a click is never dropped unseen.
+  const PERFORM_CONTROLS = '#create-online-race, #join-online-race, #online-ready, #online-leave, #online-again, #online-rematch, #online-befriend, [data-race-friend], [data-remove-friend], [data-accept-invite]';
+  function renderBusy() {
+    for (const control of $('online-challenge').querySelectorAll(PERFORM_CONTROLS)) control.disabled = busy;
+  }
   async function perform(button, action) {
     if (busy) return;
     busy = true;
+    renderBusy();
     if (button) button.disabled = true;
     error();
     try { await action(); } catch (failure) { error(failure.message || 'The race service is unavailable. Try again.'); }
-    finally { busy = false; if (button) button.disabled = false; if (room) renderRoom(); }
+    finally { busy = false; renderBusy(); if (button) button.disabled = false; if (room) renderRoom(); }
   }
   function resetAttempt() {
     attempt = null;
@@ -533,8 +544,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       enterRoom(result);
       if (inviteEmail && $('online-save-friend').checked) {
         // Saving is a convenience; the race already exists if it fails.
-        multiplayer.addFriend(getSession(), { email: inviteEmail })
-          .then((list) => { friends = list; renderFriends(); }).catch(() => {});
+        friendReplies.change(multiplayer.addFriend(getSession(), { email: inviteEmail }))
+          .then(() => renderFriends(), () => {});
       }
       $('online-account-invite-status').hidden = !inviteEmail;
       $('online-account-invite-status').textContent = inviteEmail ? 'If that account exists, its invitation is waiting in their inbox.' : '';
@@ -566,7 +577,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     else rematch(credentials, room.conditions, $('online-rematch'));
   });
   $('online-befriend').addEventListener('click', () => perform($('online-befriend'), async () => {
-    friends = await multiplayer.addFriendFromRace(getSession(), credentials);
+    await friendReplies.change(multiplayer.addFriendFromRace(getSession(), credentials));
     befriended = true;
     renderFriends();
     announce(`${opponentOf(room)?.name || 'Your opponent'} is on your friends list.`);

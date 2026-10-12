@@ -44,12 +44,22 @@ test('a saved friend is challenged without retyping their email, and the challen
   await page.locator('#create-online-race').click();
   await expect(page.locator('#online-room')).toBeVisible();
   await expect.poll(() => supabase.races.friendList(supabase.users.get('host@stilltype.test').id).map((f) => f.email)).toEqual(['lin@stilltype.test']);
+  // Leaving is a request too: until its reply lands, the friend list shows as busy instead of dropping a click.
+  let releaseLeave;
+  const leaving = new Promise((resolve) => { releaseLeave = resolve; });
+  await page.route('**/rest/v1/rpc/race_action', async (route) => {
+    if (route.request().postDataJSON()?.p_action === 'leave') await leaving;
+    await route.fallback();
+  });
   await page.locator('#online-leave').click();
 
   // One click from the friend list sends the next challenge.
   const row = page.locator('.online-friend-row', { hasText: 'lin@stilltype.test' });
   await expect(row).toContainText('lin');
-  await row.getByRole('button', { name: 'Challenge lin' }).click();
+  const challenge = row.getByRole('button', { name: 'Challenge lin' });
+  await expect(challenge).toBeDisabled();
+  releaseLeave();
+  await challenge.click();
   await expect(page.locator('#online-room')).toBeVisible();
   await expect(page.locator('#online-account-invite-status')).toContainText('lin@stilltype.test');
   const room = [...supabase.races.rooms.values()].at(-1);
@@ -242,6 +252,7 @@ test('a guest races again with the same seat and no new link', async ({ page, br
   await supabase.attach(guest);
   try {
     await guest.goto(link);
+    await expect(guest.locator('#online-guest-join')).toBeVisible();
     await guest.locator('#online-guest-name').fill('Lin');
     await guest.locator('#join-online-race').click();
     await race(page, guest);
@@ -270,6 +281,7 @@ test('a guest’s rematch toast goes away when the host cancels the rematch', as
   await supabase.attach(guest);
   try {
     await guest.goto(link);
+    await expect(guest.locator('#online-guest-join')).toBeVisible();
     await guest.locator('#online-guest-name').fill('Lin');
     await guest.locator('#join-online-race').click();
     await race(page, guest);

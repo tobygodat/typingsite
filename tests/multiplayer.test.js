@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRace, joinRace, getRace, updateRaceProgress, parseRaceLink, makeGuestRaceLink,
   clearRaceLink, rememberRace, recallRace, forgetRace, rematchRace, addFriend, addFriendFromRace,
-  listFriends } from '../src/multiplayer.js';
+  listFriends, orderFriendReplies } from '../src/multiplayer.js';
 
 const roomId = '00000000-0000-4000-8000-000000000001';
 const inviteToken = 'a'.repeat(64);
@@ -91,4 +91,47 @@ test('friend races send only the friend id, and rematches keep the guest seat', 
     assert.deepEqual(await listFriends(null),[]);
     assert.equal(calls.length,4);
   } finally { globalThis.fetch = original; }
+});
+
+test('a friend-list reload that overlaps a change never overwrites the change’s newer list', async () => {
+  const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+  let shown = null;
+  const replies = orderFriendReplies((list) => { shown = list; });
+
+  // Sent before the change, answered after it: the reload may predate the change, so it is dropped.
+  const early = deferred(), save = deferred();
+  const earlyLoad = replies.load(early.promise);
+  const saving = replies.change(save.promise);
+  save.resolve(['lin']); await saving;
+  early.resolve([]);
+  assert.equal(await earlyLoad, false);
+  assert.deepEqual(shown, ['lin']);
+
+  // Sent while a change is open, answered before or after it lands: dropped either way.
+  const removeLin = deferred(), during = deferred(), after = deferred();
+  const removing = replies.change(removeLin.promise);
+  const duringLoad = replies.load(during.promise);
+  during.resolve(['lin']);
+  assert.equal(await duringLoad, false);
+  const afterLoad = replies.load(after.promise);
+  removeLin.resolve([]); await removing;
+  after.resolve(['lin']);
+  assert.equal(await afterLoad, false);
+  assert.deepEqual(shown, []);
+
+  // Once changes have landed, reloads apply, but never an older one over a newer one.
+  const older = deferred(), newer = deferred();
+  const olderLoad = replies.load(older.promise);
+  const newerLoad = replies.load(newer.promise);
+  newer.resolve(['ada']);
+  assert.equal(await newerLoad, true);
+  older.resolve([]);
+  assert.equal(await olderLoad, false);
+  assert.deepEqual(shown, ['ada']);
+
+  // A failed change keeps the list, and the next reload applies.
+  await assert.rejects(replies.change(Promise.reject(new Error('offline'))), /offline/);
+  assert.deepEqual(shown, ['ada']);
+  assert.equal(await replies.load(Promise.resolve(['ada', 'lin'])), true);
+  assert.deepEqual(shown, ['ada', 'lin']);
 });
