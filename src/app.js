@@ -33,7 +33,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { MAX_MISSED_WORDS, comparableKind, dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { MAX_MISSED_WORDS, comparableKind, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -595,7 +595,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: kind === 'daily' ? dailyConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, punctuation: /[^\p{Ll}\p{N} ]/u.test(passage.text), numbers: /\p{N}/u.test(passage.text), quoteLength: null, difficulty: null, wordList: null } : kind === 'custom' ? customConditions() : conditions(),
+    conditions: kind === 'daily' ? dailyConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, ...practiceTextConditions(passage.text), quoteLength: null, difficulty: null, wordList: null } : kind === 'custom' ? customConditions() : conditions(),
   });
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;
@@ -956,10 +956,11 @@ function renderCard(completed) {
 
 // Offer the words this run tripped on or was slowest through as their own uncounted run. The
 // slowest are one timing each, so they show their speed beside the run's median, not a weakness.
-// Only a comparable run is mined for words: custom text and word practice itself (any non-comparable
-// kind) offer none, as they keep no best. Run again repeats a word-practice passage.
+// Only an evidence run is mined for words, by the same rule as recurring patterns: a complete test,
+// retest or daily run on fresh text. Not a drill (synthetic, target-heavy text), a daily passage shown
+// before, custom text or word practice itself. Run again repeats a word-practice passage.
 function renderPracticeWords(completed) {
-  const mined = completed.status === 'complete' && comparableKind(completed.kind);
+  const mined = evidenceRun(completed);
   const { missed, slow, timedCount, medianWpm } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
   const words = [...missed, ...slow.map((item) => item.word)];
   const button = $('practice-words');
@@ -976,7 +977,13 @@ function renderPracticeWords(completed) {
   ].filter(Boolean);
   evidence.replaceChildren(...lines.flatMap((parts, index) => (index ? ['\n', ...parts] : parts)));
   button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
-  button.onclick = () => startWordPractice(words);
+  // The run whose words are practised (an evidence run, or there'd be no button) is the baseline for
+  // the fresh retest offered afterward, as a finished practice or daily run is. A retest doesn't set it
+  // on finishing, so set it here.
+  button.onclick = () => {
+    baselineAttempt = completed;
+    startWordPractice(words);
+  };
 }
 
 // Quote a token that carries punctuation, so "table," reads as the word typed.
@@ -984,12 +991,13 @@ function wordCopy(word) {
   return /[^\p{L}\p{N}]/u.test(word) ? `“${word}”` : word;
 }
 
-// An uncounted `missed` run of these words. It is not a drill, so a drill's context from earlier
-// doesn't carry over into the next retest's record.
+// An uncounted `missed` run of these words. It is not a drill, so a drill's context and target from
+// earlier don't carry over into the next retest's record; startDrill sets a target again.
 function startWordPractice(words, { recurring = false } = {}) {
   const text = practiceWordsPassage(words);
   wordsPassage = { id: `missed-${textId(text)}`, text, fresh: false, words, recurring };
   trainingContext = null;
+  selectedTarget = null;
   resetSession('missed', { focus: true });
 }
 

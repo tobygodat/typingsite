@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, wordHistory } from '../src/typing.js';
-import { MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
+import { MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, evidenceRun, filterRuns, measuredKind, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 test('missed and slowest words come from first tries and per-word speed', () => {
   const text = 'the cat sat on mat';
@@ -477,4 +477,35 @@ test('missed-word practice is not comparable, so it never pushes practice runs o
   // The two uncounted kinds share one budget of the newest 50.
   assert.equal(kept.filter((r) => !comparableKind(r.kind)).length, MAX_NON_COMPARABLE_RUNS);
   assert.equal(kept.find((r) => r.kind === 'missed').id, 'w10');
+});
+
+test('only tests, retests and daily runs are measured; a drill is comparable for retention but never measured', () => {
+  for (const kind of ['test', 'retest', 'daily']) assert.equal(measuredKind(kind), true, kind);
+  for (const kind of ['drill', 'missed', 'custom']) assert.equal(measuredKind(kind), false, kind);
+  // comparableKind only splits retention budgets, so a drill's synthetic text still counts there.
+  assert.equal(comparableKind('drill'), true);
+  // Recurring targets read the same measured kinds: a drill's target-heavy patterns never become evidence.
+  const drills = Array.from({ length: 3 }, (_, i) => run(`d${i}`, { kind: 'drill', target: 'th' }));
+  assert.deepEqual(recurringTargets(drills, [], conditions), []);
+  const measured = ['test', 'retest', 'daily'].map((kind, i) => run(`m${i}`, { kind }));
+  assert.deepEqual(recurringTargets(measured, [], conditions).map((p) => [p.pair, p.runs]), [['th', 3]]);
+});
+
+test('evidence runs are complete measured runs, never a daily passage shown before', () => {
+  for (const kind of ['test', 'retest', 'daily']) assert.equal(evidenceRun(run(kind, { kind })), true, kind);
+  for (const kind of ['drill', 'missed', 'custom']) assert.equal(evidenceRun(run(kind, { kind })), false, kind);
+  assert.equal(evidenceRun(run('repeat', { kind: 'daily', fresh: false })), false);
+  assert.equal(evidenceRun(run('cut', { interrupted: true })), false);
+  assert.equal(evidenceRun(run('idle', { status: 'interrupted' })), false);
+  // Recurring targets read the same rule: repeat daily attempts add no evidence.
+  const repeats = Array.from({ length: 3 }, (_, i) => run(`r${i}`, { kind: 'daily', fresh: false }));
+  assert.deepEqual(recurringTargets(repeats, [], conditions), []);
+});
+
+test('word-practice text needs punctuation only for a character that is not a letter, digit or space', () => {
+  // A capital is a letter, so a missed "The" alone isn't punctuation; a digit sets numbers, never punctuation.
+  assert.deepEqual(practiceTextConditions('The cat sat'), { punctuation: false, numbers: false });
+  assert.deepEqual(practiceTextConditions('table, cat'), { punctuation: true, numbers: false });
+  assert.deepEqual(practiceTextConditions('cat 42 The'), { punctuation: false, numbers: true });
+  assert.deepEqual(practiceTextConditions('9:30 cat'), { punctuation: true, numbers: true });
 });

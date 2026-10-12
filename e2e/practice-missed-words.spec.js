@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage } from './fixtures.js';
 
 // Types the passage with one wrong-then-fixed letter in each chosen word.
 // `delay` (ms per key) lets the screenshots show a human typing speed.
@@ -165,6 +165,155 @@ test('a missed comma is practised with its comma, and the run says punctuation',
   await expect(page.locator('#session-kicker')).toHaveText('missed words');
   expect((await passageText(page)).split(' ')).toContain(comma);
   await expect(page.locator('#condition-line')).toContainText('missed words · not counted · 40 words · punctuation');
+});
+
+test('a drill offers no word practice, while a daily run does', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  // A manual drill with no baseline ends on its own result card rather than starting a retest.
+  await openView(page, 'Train');
+  await page.locator('#manual-heading').click();
+  await page.locator('#manual-target-input').fill('th');
+  await page.locator('#apply-manual-target').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  const drill = (await passageText(page)).split(' ');
+  await typeWithMisses(page, `${drill.slice(0, 6).join(' ')} `, [1, 3]);
+  await page.clock.fastForward(60_000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('Drill complete · not counted toward your best');
+  await expect(page.locator('#result-words .word-miss').first()).toBeVisible();
+  // Its text is synthetic and target-heavy, so its misses and slow words are never offered.
+  await expect(page.locator('#practice-words')).toBeHidden();
+  await expect(page.locator('#practice-words-evidence')).toBeHidden();
+
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-daily').click();
+  await page.locator('#start-daily').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
+  const daily = await passageText(page);
+  const words = daily.split(' ');
+  const second = words.findIndex((word, index) => index > 1 && word !== words[1]);
+  await typeWithMisses(page, daily, [1, second]);
+  await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete');
+  await expect(page.locator('#practice-words')).toBeVisible();
+  await expect(page.locator('#practice-words-evidence')).toContainText('missed first try:');
+});
+
+test('a daily passage shown before offers no word practice', async ({ page }) => {
+  // Two whole daily passages take longer than the default 30 s on a slow machine.
+  test.setTimeout(60_000);
+  await openApp(page);
+  const daily = async () => {
+    await openView(page, 'Challenge');
+    await page.locator('#challenge-daily').click();
+    await page.locator('#start-daily').click();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
+    const text = await passageText(page);
+    const words = text.split(' ');
+    await typeWithMisses(page, text, [1, words.findIndex((word, index) => index > 1 && word !== words[1])]);
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  };
+  // The first attempt is on fresh text, so its misses are offered.
+  await daily();
+  await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete');
+  await expect(page.locator('#practice-words')).toBeVisible();
+  // A repeat is on a passage already shown, which is never evidence: no words, the same misses or not.
+  await daily();
+  await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete · repeat attempt');
+  await expect(page.locator('#result-words .word-miss').first()).toBeVisible();
+  await expect(page.locator('#practice-words')).toBeHidden();
+  await expect(page.locator('#practice-words-evidence')).toBeHidden();
+});
+
+test('words practised from a retest are retested against that retest', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  // A clean baseline, then a retest with two missed words.
+  await completePassage(page);
+  await expect(page.locator('#result-accuracy')).toHaveText('100');
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  const retest = await passageText(page);
+  const words = retest.split(' ');
+  const second = words.findIndex((word, index) => index > 1 && word !== words[1]);
+  await typeWithMisses(page, retest, [1, second]);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  const accuracy = Number(await page.locator('#result-accuracy').textContent());
+  expect(accuracy).toBeLessThan(100);
+  // A retest is measured, so its own misses are offered.
+  await expect(page.locator('#practice-words-evidence')).toContainText(`missed first try: ${words[1]}, ${words[second]}`);
+
+  await page.locator('#practice-words').click();
+  await expect(page.locator('#session-kicker')).toHaveText('missed words');
+  await completePassage(page);
+  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 10-word retest.');
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await expect(page.locator('#condition-line')).toContainText('10 words');
+  expect(await passageText(page)).not.toBe(retest);
+  await completePassage(page);
+  // Clean fresh text is compared with the retest whose words were practised, not the clean baseline.
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect(page.locator('#comparison-accuracy')).toHaveText(`+${100 - accuracy} pp`);
+});
+
+test('words practised from a drill’s retest leave the drill’s target behind', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  // A manual "br" drill, then the retest it starts after its minute, typed with two misses.
+  await page.locator('#manual-heading').click();
+  await page.locator('#manual-target-input').fill('br');
+  await page.locator('#apply-manual-target').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await typeInto(page, (await passageText(page)).slice(0, 20));
+  await page.clock.fastForward(60_000);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  const retest = await passageText(page);
+  const words = retest.split(' ');
+  const second = words.findIndex((word, index) => index > 1 && word !== words[1]);
+  await typeWithMisses(page, retest, [1, second]);
+  await expect(page.locator('#comparison-sample')).toHaveText(/^br · /);
+
+  await page.locator('#practice-words').click();
+  await expect(page.locator('#session-kicker')).toHaveText('missed words');
+  await completePassage(page);
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await completePassage(page);
+  // No drill came between, so this retest reads no target pattern and is saved as a fresh-text check.
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect(page.locator('#comparison-sample')).toHaveText(/^keystrokes · \d+ before · \d+ after · no target pattern$/);
+  await openView(page, 'Progress');
+  await expect(page.locator('.history-target')).toHaveText(['Fresh-text check', '“br” drill and retest']);
+});
+
+test('a missed capital is practised as written, and the run doesn’t say punctuation', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await page.locator('#punctuation-toggle').check();
+  const text = await passageText(page);
+  // Generated punctuation capitalises the tenth and last word, with nothing after it: miss only its capital.
+  const capital = text.split(' ')[9];
+  expect(capital).toMatch(/^\p{Lu}\p{Ll}*$/u);
+  const at = text.length - capital.length;
+  await page.locator('#typing-input').focus();
+  await page.keyboard.type(text.slice(0, at));
+  await page.keyboard.type('x');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type(text.slice(at));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#practice-words-evidence')).toContainText(`missed first try: ${capital}`);
+
+  await page.locator('#practice-words').click();
+  await expect(page.locator('#session-kicker')).toHaveText('missed words');
+  const practice = await passageText(page);
+  expect(practice.split(' ')).toContain(capital);
+  // A capital is a letter: with no comma, period or other mark in the passage, it isn't punctuation.
+  expect(practice).not.toMatch(/[^\p{L}\p{N} ]/u);
+  await expect(page.locator('#condition-line')).toContainText('missed words · not counted · 40 words · physical keyboard');
 });
 
 // Committed docs images are only rewritten on request (SCREENSHOTS=1); normal runs still take

@@ -11,6 +11,12 @@ export const NON_COMPARABLE_KINDS = new Set(['custom', 'missed']);
 export const MAX_NON_COMPARABLE_RUNS = 50;
 export const comparableKind = (kind) => !NON_COMPARABLE_KINDS.has(kind);
 
+// Run kinds that measure typing on ordinary text at the run's own conditions: practice tests, retests and daily
+// runs. Only these can be evidence (see evidenceRun). Narrower than comparableKind, which only splits retention
+// budgets and so includes drills: their synthetic, target-heavy text is never measured.
+export const MEASURED_KINDS = new Set(['test', 'retest', 'daily']);
+export const measuredKind = (kind) => MEASURED_KINDS.has(kind);
+
 export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
   const record = {
@@ -28,7 +34,7 @@ export function runRecord(attempt, at = attempt.at || null) {
   record.patterns = summarizePatterns([attempt]).pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
   // The words missed on the first try, for "words you keep missing": only from runs pattern memory
   // reads, so a run without the field (older, trimmed or not eligible) is no evidence either way.
-  if (patternRun(record)) record.missedWords = missedAndSlowWords(attempt, 0).missed.slice(0, MAX_MISSED_WORDS);
+  if (evidenceRun(record)) record.missedWords = missedAndSlowWords(attempt, 0).missed.slice(0, MAX_MISSED_WORDS);
   return record;
 }
 
@@ -55,12 +61,13 @@ export function retainRuns(runs) {
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
 export const trendRun = (run) => validRun(run) && ['test', 'retest'].includes(run.kind);
-// The runs pattern memory reads: complete tests, retests and daily runs, never a daily passage
-// shown before. Drills, races, interrupted runs and every non-comparable kind (word practice, custom text) are left out.
-export const patternRun = (run) => validRun(run) && comparableKind(run.kind) && ['test', 'retest', 'daily'].includes(run.kind)
-  && (run.kind !== 'daily' || run.fresh !== false);
+// A run that counts as evidence about the person's typing: complete, uninterrupted and of a measured kind, and
+// never a daily passage shown before (a repeat attempt types known text). Recurring patterns, missed words to
+// practise and the words you keep missing all read only these; drills, races, word practice and custom text never
+// count. Works on a stored run summary or a just-finished attempt.
+export const evidenceRun = (run) => validRun(run) && measuredKind(run.kind) && (run.kind !== 'daily' || run.fresh !== false);
 // The runs "words you keep missing" counts: those pattern memory reads that recorded missed words.
-const missedWordsRun = (run) => patternRun(run) && Array.isArray(run.missedWords);
+const missedWordsRun = (run) => evidenceRun(run) && Array.isArray(run.missedWords);
 const inputClassOf = (run) => run?.conditions?.inputClass || 'physical-keyboard';
 
 export function filterRuns(runs, key, days = 'all', date = new Date()) {
@@ -90,7 +97,7 @@ export function weeklyChange(runs, key, date = new Date()) {
 
 export function recurringTargets(runs, loops, compatibleConditions) {
   const key = conditionKey(compatibleConditions);
-  const eligible = runs.filter((r) => patternRun(r) && conditionKey(r.conditions) === key).slice(-MAX_PATTERN_RUNS);
+  const eligible = runs.filter((r) => evidenceRun(r) && conditionKey(r.conditions) === key).slice(-MAX_PATTERN_RUNS);
   const pairs = new Map();
   for (const run of eligible) {
     for (const [pair, observations, errors, timingCount, medianMs, slowdownMs] of run.patterns || []) {
@@ -267,6 +274,13 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
   const mid = timed.length >> 1;
   const medianWpm = !timed.length ? null : Math.round(timed.length % 2 ? timed[mid].wpm : (timed[mid - 1].wpm + timed[mid].wpm) / 2);
   return { missed, slow, timedCount: timed.length, medianWpm };
+}
+
+// What a word-practice passage asks for beyond plain letters, as test conditions: punctuation is any
+// character that isn't a letter, digit or space (a capital is a letter, so "The" alone isn't punctuation),
+// and numbers is any digit, which is never punctuation.
+export function practiceTextConditions(text) {
+  return { punctuation: /[^\p{L}\p{N} ]/u.test(text), numbers: /\p{N}/u.test(text) };
 }
 
 // Deterministic: the same words always build the same practice passage. It grows past `length`
