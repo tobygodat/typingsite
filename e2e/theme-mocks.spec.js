@@ -86,6 +86,25 @@ test('switching to a theme with other fonts remeasures the pills and the caret m
   }
 });
 
+// The quote filters and the custom text editor tuck up under the mode bar; in every theme they stay below it.
+test('the quote and custom rows sit clear of the mode bar in every theme', async ({ page }) => {
+  await openApp(page);
+  const gap = (row) => page.evaluate((id) => Math.round(document.getElementById(id).getBoundingClientRect().top
+    - document.querySelector('.practice-controls').getBoundingClientRect().bottom), row);
+  for (const theme of ['dark', 'light', ...MOCKS]) {
+    await page.locator('#theme-select').evaluate((select, value) => { select.value = value; select.dispatchEvent(new Event('change')); }, theme);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await page.locator('#mode-quote').click();
+    await expect(page.locator('#quote-options')).toBeVisible();
+    expect(await gap('quote-options'), `${theme} quote`).toBeGreaterThanOrEqual(8);
+    await page.locator('#mode-custom').click();
+    await expect(page.locator('#custom-options')).toBeVisible();
+    expect(await gap('custom-options'), `${theme} custom`).toBeGreaterThanOrEqual(8);
+    await page.locator('#mode-time').click();
+    await expect(page.locator('#custom-options')).toBeHidden();
+  }
+});
+
 test('an unknown stored theme falls back to the system theme', async ({ page }) => {
   await openApp(page);
   await page.locator('#theme-select').evaluate((select) => { select.value = 'neon'; select.dispatchEvent(new Event('change')); });

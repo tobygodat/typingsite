@@ -173,6 +173,7 @@
             <button id="mode-time" type="button" data-mode="time" aria-pressed="true" class="is-active">time</button>
             <button id="mode-words" type="button" data-mode="words" aria-pressed="false">words</button>
             <button id="mode-quote" type="button" data-mode="quote" aria-pressed="false">quote</button>
+            <button id="mode-custom" type="button" aria-pressed="false" aria-controls="custom-options" aria-expanded="false">custom</button>
           </div>
           <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
             <button type="button" aria-pressed="false" aria-label="15 seconds">15</button>
@@ -203,6 +204,24 @@
               <option value="precise">precise</option>
             </select>
           </label>
+        </div>
+
+        <div id="custom-options" class="custom-options" role="group" aria-label="Custom text" hidden>
+          <label for="custom-text" class="custom-label">your text
+            <span id="custom-count" class="custom-count">0 / 3,000</span>
+          </label>
+          <textarea id="custom-text" class="input custom-textarea" rows="4" spellcheck="false" placeholder="Paste or type any passage" aria-describedby="custom-count custom-error"></textarea>
+          <div class="custom-actions">
+            <label for="custom-order">order
+              <select id="custom-order" class="input select">
+                <option value="as-written" selected>as written</option>
+                <option value="shuffled">shuffled words</option>
+                <option value="random">random words</option>
+              </select>
+            </label>
+            <button id="custom-use" class="btn btn-primary btn-sm" type="button">Use this text</button>
+          </div>
+          <p id="custom-error" class="field-error" role="alert"></p>
         </div>
 
         <form id="typing-form" class="typing-form" autocomplete="off">
