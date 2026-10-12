@@ -166,6 +166,8 @@ let resultBestBefore = null;
 let resultPassageBefore = null;
 let displayedIds = null;
 let clearSnapshot = null;
+// The label of the practice passage waiting when history was cleared, which undo gives back.
+let clearedPassage = null;
 let clearTimer = null;
 
 let race = {
@@ -927,7 +929,8 @@ function storeAttempt(completed) {
   if (comparableKind(completed.kind)) profile.attempts.push(completed);
   profile.runs.push(runRecord(completed));
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
-    profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
+    // The best says its text was fresh, so freshBests never needs its run once the summary leaves the window.
+    profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString(), fresh: true };
   }
   if (practiceRun(completed) && completed.textId && !profile.seenTextIds.includes(completed.textId)) profile.seenTextIds.push(completed.textId);
   const saved = saveProfile();
@@ -1620,11 +1623,17 @@ function renderRaceResults() {
 
 function clearHistory() {
   clearSnapshot = JSON.stringify(profile);
+  // An unstarted practice passage outlives the clear (Practice keeps it), so it is the first text the cleared
+  // history shows: fresh, and recorded as seen, however it was labelled before. Clearing happens on Progress,
+  // so no run is under way.
+  const queued = sessionKind === 'practice' && attempt?.status === 'ready' ? attempt : null;
+  clearedPassage = queued && { attemptId: queued.id, fresh: passage.fresh, exhausted: passage.exhausted };
   profile.attempts = [];
   profile.runs = [];
   profile.loops = [];
-  profile.seenTextIds = [];
+  profile.seenTextIds = queued?.textId ? [queued.textId] : [];
   profile.bests = {};
+  if (queued && passage.fresh === false) labelPassage(true, false);
   baselineAttempt = null;
   trainingContext = null;
   selectedTarget = null;
@@ -1652,7 +1661,7 @@ function clearHistory() {
   $('undo-clear').hidden = false;
   $('undo-clear').focus();
   clearTimeout(clearTimer);
-  clearTimer = setTimeout(() => { $('history-toast').hidden = true; clearSnapshot = null; }, 5000);
+  clearTimer = setTimeout(() => { $('history-toast').hidden = true; clearSnapshot = null; clearedPassage = null; }, 5000);
   renderHistory();
   renderTraining();
   renderDaily();
@@ -1664,6 +1673,11 @@ function undoClear() {
   if (!clearSnapshot) return;
   try { profile = JSON.parse(clearSnapshot); } catch { return; }
   prefs = profile.preferences;
+  // The passage that waited through the clear gets its old label back while it is still unstarted. A run on it
+  // already under way is left alone (still run): it started as fresh text, and stays that way.
+  const queued = clearedPassage;
+  if (queued && attempt?.id === queued.attemptId && attempt.status === 'ready') labelPassage(queued.fresh, queued.exhausted);
+  clearedPassage = null;
   saveProfile();
   clearSnapshot = null;
   clearTimeout(clearTimer);
@@ -2267,6 +2281,15 @@ function setRepeatQuotes(enabled) {
   // otherwise when Practice next opens (staleRepeat), so the setting never changes the view. Else reword its notice.
   if (staleRepeat() && document.body.dataset.view === 'practice') resetSession('practice');
   else setPassageNotice(repeatedTextNotice());
+}
+
+// Relabels the unstarted passage when the history that judged it changes: a clear, or undoing one.
+function labelPassage(fresh, exhausted) {
+  passage.fresh = fresh;
+  passage.exhausted = exhausted;
+  attempt.fresh = fresh;
+  setPassageNotice(repeatedTextNotice());
+  $('condition-line').textContent = describeRun(attempt);
 }
 
 // An unstarted repeated passage that repeats-off would have replaced with unseen text.

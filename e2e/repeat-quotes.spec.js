@@ -1,5 +1,5 @@
 // Repeat quotes: off by default, a setting and a palette command, and honest labels when a seen quote returns.
-import { test, expect, completePassage, openApp, openView, openSettings, passageText, typeInto } from './fixtures.js';
+import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -34,6 +34,17 @@ async function openTestContent(page) {
 async function setRepeats(page, on) {
   await openTestContent(page);
   await page.locator('#repeat-quotes-toggle').setChecked(on);
+}
+
+const EXHAUSTED = 'You’ve seen every matching quote. Repeated text doesn’t count toward your best.';
+const REPEATED = 'Repeated text · doesn’t count toward your best.';
+
+// From Progress, through the typed confirmation; the undo toast is then showing.
+async function clearHistory(page) {
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(page.locator('#undo-clear')).toBeFocused();
 }
 
 // About 70 and 90 wpm: a human pace, so the scores on the run card are believable.
@@ -214,6 +225,82 @@ test('off from another view, the palette restart swaps a queued repeat for fresh
   expect([quote, swapped]).not.toContain(await passageText(page));
   await page.locator('#restart-button').click();
   await expect(page.locator('#input-help')).toHaveText('You’ve seen every matching quote. Repeated text doesn’t count toward your best.');
+});
+
+// Clearing history empties the seen list, so the passage still waiting on Practice is the first text the
+// cleared history shows: fresh text, recorded as seen. Undo gives it back the label the restored history gave it.
+test('clearing history makes a queued repeat fresh text, which can set a best', async ({ page, supabase }) => {
+  test.setTimeout(120_000);
+  supabase.addUser('repeats@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'repeats@stilltype.test');
+  const quote = await shortGentleQuotes(page);
+  await setRepeats(page, true);
+  await page.keyboard.press('Escape');
+  await typeQuote(page, 0);
+  const cloud = () => supabase.profileFor('repeats@stilltype.test');
+  await expect.poll(() => cloud()?.runs.length).toBe(1);
+  const first = cloud().runs[0].id;
+  await page.locator('#run-again').click();
+  expect(await passageText(page)).toBe(quote);
+  await expect(page.locator('#input-help')).toHaveText(REPEATED);
+
+  await openView(page, 'Progress');
+  await clearHistory(page);
+  await openView(page, 'Practice');
+  expect(await passageText(page)).toBe(quote);
+  await expect(page.locator('#input-help')).toHaveText('');
+  await expect(page.locator('#condition-line')).not.toContainText('repeated text');
+  await typeQuote(page, 0);
+  await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
+  await expect(page.locator('#result-conditions')).not.toContainText('repeated text');
+  await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
+  await expect.poll(() => cloud()?.runs.map((r) => r.id !== first)).toEqual([true]);
+  const profile = cloud();
+  expect(profile.runs[0]).toMatchObject({ fresh: true });
+  // The best records that its text was fresh, so it stays checked after its summary leaves the window.
+  expect(Object.values(profile.bests)).toEqual([expect.objectContaining({ attemptId: profile.runs[0].id, fresh: true })]);
+});
+
+test('clearing history relabels an exhausted-pool repeat, and undo puts the label back', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openApp(page);
+  await shortGentleQuotes(page);
+  await typeQuote(page, 0);
+  await page.locator('#run-again').click();
+  await expect(page.locator('#input-help')).toHaveText('');
+  await page.locator('#restart-button').click();
+  await expect(page.locator('#input-help')).toHaveText('');
+  await page.locator('#restart-button').click();
+  await expect(page.locator('#input-help')).toHaveText(EXHAUSTED);
+  const repeated = await passageText(page);
+
+  // Undone at once, the restored history has seen every matching quote again.
+  await openView(page, 'Progress');
+  await clearHistory(page);
+  await page.locator('#undo-clear').click();
+  await expect(page.locator('#history-feedback')).toHaveText('History restored.');
+  await openView(page, 'Practice');
+  expect(await passageText(page)).toBe(repeated);
+  await expect(page.locator('#input-help')).toHaveText(EXHAUSTED);
+  await expect(page.locator('#condition-line')).toContainText('repeated text');
+
+  // Cleared for good, the waiting quote is fresh and the only one seen, so two unseen quotes follow it.
+  await openView(page, 'Progress');
+  await clearHistory(page);
+  await openView(page, 'Practice');
+  expect(await passageText(page)).toBe(repeated);
+  await expect(page.locator('#input-help')).toHaveText('');
+  await expect(page.locator('#condition-line')).not.toContainText('repeated text');
+  const shown = [repeated];
+  for (let i = 0; i < 2; i += 1) {
+    await page.locator('#restart-button').click();
+    await expect(page.locator('#input-help')).toHaveText('');
+    shown.push(await passageText(page));
+  }
+  expect(new Set(shown).size).toBe(3);
+  await page.locator('#restart-button').click();
+  await expect(page.locator('#input-help')).toHaveText(EXHAUSTED);
 });
 
 test('a daily repeat attempt is repeated text too, so it is never a retest baseline', async ({ page }) => {
