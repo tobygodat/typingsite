@@ -136,6 +136,9 @@ test('undoing a clear brings the sitting back with the history', async ({ page }
 
 test('turning break suggestions off in settings takes a showing notice down', async ({ page }) => {
   test.setTimeout(90_000);
+  // The print sticks only on screens taller than 1120px (it is static below that, notice or not),
+  // so use a tall one to see the notice let go of the viewport and the print stick again.
+  await page.setViewportSize({ width: 1280, height: 1400 });
   await openApp(page);
   await slowSitting(page);
   const notice = page.locator('#fatigue-notice');

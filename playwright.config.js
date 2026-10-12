@@ -17,6 +17,8 @@ export default defineConfig({
     baseURL: `http://127.0.0.1:${port}`,
     viewport: { width: 1280, height: 800 },
     trace: 'retain-on-failure',
+    // The offline shell (sw.js) stays out of the way of the page.route fakes; e2e/pwa-offline.spec.js allows it.
+    serviceWorkers: 'block',
     launchOptions: process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {},
   },
   webServer: {
