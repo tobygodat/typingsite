@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { challengeFor, cleanRedirectUrl, freshSession, MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, suggestionRow } from '../src/account.js';
+import {
+  challengeFor, cleanRedirectUrl, freshSession, MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, signedOutKey, signOut,
+  suggestionRow,
+} from '../src/account.js';
 
 test('PKCE challenge matches the RFC 7636 example', async () => {
   assert.equal(await challengeFor('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'), 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
@@ -98,6 +101,74 @@ test('refreshing a session another tab has signed out of never touches the sessi
     globalThis.fetch = reply(400, { error: 'invalid_grant' });
     await assert.rejects(freshSession(own));
     assert.equal(store.has('stilltype-session-v1'), false);
+  } finally {
+    globalThis.localStorage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('a refresh that lands after the same account signed in again keeps the new session', async () => {
+  const later = Math.floor(Date.now() / 1000) + 3600;
+  const old = JSON.stringify({ access_token: 'a', refresh_token: 'a-refresh', expires_at: 1, user: { id: 'u1' } });
+  const signedInAgain = JSON.stringify({ access_token: 'n', refresh_token: 'n-refresh', expires_at: later, user: { id: 'u1' } });
+  const store = new Map([['stilltype-session-v1', old]]);
+  const originalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  // Another tab signs out and in again while the refresh is out.
+  globalThis.fetch = async () => {
+    store.set('stilltype-session-v1', signedInAgain);
+    return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: 'a2', refresh_token: 'a-refresh-2', expires_in: 3600, user: { id: 'u1' } }) };
+  };
+  try {
+    assert.equal((await freshSession(JSON.parse(old))).refresh_token, 'a-refresh-2');
+    assert.equal(store.get('stilltype-session-v1'), signedInAgain);
+  } finally {
+    globalThis.localStorage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('signing out touches only what is still that account’s', async () => {
+  const later = Math.floor(Date.now() / 1000) + 3600;
+  const session = (id) => ({ access_token: `${id}-access`, refresh_token: `${id}-refresh`, expires_at: later, user: { id } });
+  const originalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  let store;
+  const logouts = [];
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  globalThis.fetch = async (url, { headers }) => {
+    logouts.push(headers.Authorization);
+    return { ok: true, status: 204, text: async () => '' };
+  };
+  const device = (stored) => new Map([
+    ...(stored ? [['stilltype-session-v1', JSON.stringify(session(stored))]] : []),
+    [profileKey('u1'), '{"version":2}'],
+    [profileKey('u2'), '{"version":2}'],
+  ]);
+  try {
+    // Everything sent: the session, the cache and any marker go.
+    store = device('u1');
+    store.set(signedOutKey('u1'), 'true');
+    await signOut(session('u1'));
+    assert.deepEqual([...store.keys()], [profileKey('u2')]);
+    // Edits kept for the next sign-in: the cache stays, marked.
+    store = device('u1');
+    await signOut(session('u1'), { keepCache: true });
+    assert.deepEqual([...store.keys()].sort(), [profileKey('u1'), profileKey('u2'), signedOutKey('u1')].sort());
+    // The session had expired (none stored): only the marker is left.
+    store = device(null);
+    await signOut(session('u1'), { keepCache: true });
+    assert.deepEqual([...store.keys()].sort(), [profileKey('u1'), profileKey('u2'), signedOutKey('u1')].sort());
+    // Another tab signed in as someone else meanwhile: that session and both caches stay, and nothing is
+    // marked, whichever way this sign-out ended.
+    for (const keepCache of [false, true]) {
+      store = device('u2');
+      const before = [...store.entries()];
+      await signOut(session('u1'), { keepCache });
+      assert.deepEqual([...store.entries()], before);
+    }
+    assert.equal(logouts.length, 5);
   } finally {
     globalThis.localStorage = originalStorage;
     globalThis.fetch = originalFetch;

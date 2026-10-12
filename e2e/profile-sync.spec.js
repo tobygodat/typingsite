@@ -973,3 +973,64 @@ for (const next of [null, EMAIL, 'second@stilltype.test']) {
     expect(errors).toEqual([]);
   });
 }
+
+for (const next of ['second@stilltype.test', EMAIL]) {
+  const who = next === EMAIL ? 'the same account' : 'another account';
+  test(`a sign-out overtaken mid-run by a sign-out and sign-in to ${who} in another tab leaves the new session alone`, async ({ page, context, supabase }) => {
+    supabase.addUser(EMAIL);
+    if (next !== EMAIL) supabase.addUser(next);
+    const errors = [];
+    await openApp(page);
+    await signInWithEmail(page, EMAIL);
+    const other = await extraPage(context, supabase, errors);
+    await openApp(other);
+    await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    await openView(page, 'Practice');
+    await chooseWords(page, 10);
+    await expect.poll(() => cloud(supabase)?.preferences.count).toBe(10);
+    await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    const text = await passageText(page);
+    await typeInto(page, text.slice(0, 3));
+
+    // This tab signs out mid-run, and its push waits on the network while typing goes on. (Requests give
+    // up after 15 s, so the other tab's sign-out and sign-in fit within that.)
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    let held = 0;
+    await page.route(/\/rest\/v1\/profiles/, async (route) => {
+      held += 1;
+      await gate;
+      await route.fallback().catch(() => {});
+    });
+    await page.mouse.move(5, 5);
+    await page.mouse.move(40, 40);
+    await page.locator('#account-trigger').click();
+    await page.locator('#account-signout').click();
+    await expect.poll(() => held).toBeGreaterThan(0);
+    await typeInto(page, text.slice(3, 5));
+    await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+    await expect(page.locator('#typing-status')).toHaveText('In progress');
+
+    // Meanwhile the other tab signs out, having sent everything, and signs in.
+    await other.locator('#account-trigger').click();
+    await Promise.all([other.waitForEvent('load'), other.locator('#account-signout').click()]);
+    await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+    await signInWithEmail(other, next);
+    const stored = await other.evaluate(() => localStorage.getItem('stilltype-session-v1'));
+
+    // The waiting sign-out finds itself overtaken and starts again as the device now is. The new session
+    // and the other tab stay as they were, and nothing is marked signed out.
+    const reloaded = page.waitForEvent('load');
+    release();
+    await reloaded;
+    await expect(page.locator('#account')).toHaveAttribute('data-state', 'member');
+    await expect(page.locator('#account-email')).toHaveText(next);
+    expect(await page.evaluate(() => localStorage.getItem('stilltype-session-v1'))).toBe(stored);
+    expect((await storageKeys(page)).filter((key) => key.startsWith('stilltype-signed-out:'))).toEqual([]);
+    await other.reload();
+    await expect(other.locator('#account')).toHaveAttribute('data-state', 'member');
+    await expect(other.locator('#account-email')).toHaveText(next);
+    await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    expect(errors).toEqual([]);
+  });
+}

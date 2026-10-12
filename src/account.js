@@ -179,9 +179,10 @@ export async function freshSession(session = loadSession()) {
   if (session.expires_at - 60 > Date.now() / 1000) return session;
   try {
     const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token } });
-    // Stored only while the device is still signed in as this user: another tab may have signed out, or
-    // in as someone else, since this tab read the session.
-    return loadSession()?.user.id === session.user?.id ? storeSession(data) : sessionFrom(data);
+    // Stored only over the session it refreshed: another tab may have signed out, or in as someone else
+    // (the same account included, whose new session that sign-out's logout didn't end), since this tab
+    // read it.
+    return loadSession()?.refresh_token === session.refresh_token ? storeSession(data) : sessionFrom(data);
   } catch (error) {
     // A rejected refresh token means the session is over; a network failure keeps it for later. Only the
     // session whose token was refused is removed, never one another tab stored since (a newer token, or
@@ -201,13 +202,22 @@ export function signedOut(userId) {
 }
 export const clearSignedOut = (userId) => remove(signedOutKey(userId));
 
+// Touches only what is still this user's: another tab may have signed out, or in as someone else, while
+// this one was sending its edits. The device's session is checked here, where nothing waits between the
+// check and the writes. With none stored (this session expired), only the marker is left.
 export async function signOut(session, { keepCache = false } = {}) {
-  // Written before the session goes, so a tab that hears of the sign-out finds it.
-  if (session && keepCache) writeJson(signedOutKey(session.user.id), true);
-  remove(SESSION_KEY);
-  if (session && !keepCache) {
-    remove(profileKey(session.user.id));
-    clearSignedOut(session.user.id);
+  const userId = session?.user?.id;
+  const stored = loadSession()?.user.id;
+  if (userId && (!stored || stored === userId)) {
+    // Written before the session goes, so a tab that hears of the sign-out finds it.
+    if (keepCache) writeJson(signedOutKey(userId), true);
+    if (stored) {
+      remove(SESSION_KEY);
+      if (!keepCache) {
+        remove(profileKey(userId));
+        clearSignedOut(userId);
+      }
+    }
   }
   try { await request('/auth/v1/logout', { method: 'POST', token: session?.access_token }); } catch {}
 }

@@ -2029,14 +2029,21 @@ async function enterAccount(newSession) {
 
 async function signOutAccount() {
   closeAccountMenu();
-  // Already signed out in another tab: whatever the device holds now (another session included) stays.
-  if (signedOutElsewhere) {
-    location.reload();
-    return;
-  }
-  await onlineRace?.leave();
-  inbox?.forget();
   const userId = session.user.id;
+  // Another tab signed out, or in as someone else (the same account included), before this sign-out or
+  // while it waits on the network: this tab has followed (followSessionElsewhere), so it stops here and
+  // starts again as the device now is. Whatever the device holds (another session included) stays.
+  // Checked again after every wait; account.signOut checks the stored session once more.
+  const overtaken = () => {
+    const stored = account.loadSession()?.user.id;
+    if (!signedOutElsewhere && (!stored || stored === userId)) return false;
+    location.reload();
+    return true;
+  };
+  if (overtaken()) return;
+  await onlineRace?.leave();
+  if (overtaken()) return;
+  inbox?.forget();
   // Every tab signed in here shares the device cache, and another tab's latest save may not have reached
   // the account yet (its push still waiting, or failing). So the cache is merged and pushed before it
   // goes; the push reads the row and writes only what the row lacks. A second round covers a save that
@@ -2047,6 +2054,7 @@ async function signOutAccount() {
     absorbCache();
     unsynced = true;
     synced = await pushProfile();
+    if (overtaken()) return;
     // Unreachable (requests time out, see account.request) or refused: another round would only wait again.
     if (!synced && $('account').dataset.sync !== 'syncing') break;
   }
