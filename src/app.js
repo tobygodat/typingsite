@@ -171,8 +171,12 @@ let ghostRace = null;
 // The friend list belongs to the offer on screen: renderGhostOffer drops it when another run replaces it.
 let ghostRequest = null;
 let friendsRequest = null;
-// Counts the sessions set up on the practice surface, so a Race can tell whether one replaced the session it saw.
+// Counts the sessions set up on the practice surface, and everything typed anywhere (a passage or a form
+// field), so a Race can tell whether the person has set up something new or gone on typing since the click.
 let sessionCount = 0;
+let typedCount = 0;
+// A Race's error that lands beside a run the person went on typing waits for the run to end (see runChanged).
+let heldRaceError = '';
 let offerRun = null;
 let offerSentTo = new Set();
 // One request id per friend for the offered run, repeated on a retry so the service stores it once.
@@ -223,9 +227,15 @@ function syncCapsLock(event) {
   setCapsWarning(event.getModifierState('CapsLock'));
 }
 
+// Messages announced in the same moment are read together (a toast held until a run ends, then the run's
+// result), so a later one never replaces an earlier one before it is heard.
+let announcing = [];
 function announce(message) {
-  $('announcement').textContent = '';
-  requestAnimationFrame(() => { $('announcement').textContent = message; });
+  if (!announcing.length) {
+    $('announcement').textContent = '';
+    requestAnimationFrame(() => { $('announcement').textContent = announcing.join(' '); announcing = []; });
+  }
+  if (!announcing.includes(message)) announcing.push(message);
 }
 
 function conditions(inputClass = 'physical-keyboard') {
@@ -287,9 +297,16 @@ let runActive = false;
 function setRunning(running) {
   if (runActive !== running) {
     runActive = running;
-    inbox?.runChanged();
+    runChanged();
   }
   showChrome(!running);
+}
+// A run began or ended: what waited for its end appears now.
+function runChanged() {
+  inbox?.runChanged();
+  if (!heldRaceError || runInProgress()) return;
+  showAccountToast(heldRaceError);
+  heldRaceError = '';
 }
 // Skip no-op writes on every keystroke.
 function showChrome(shown) {
@@ -680,7 +697,7 @@ function startAttempt(targetAttempt, type = 'primary') {
     race.startTime = stamp;
     race.attempt.status = 'running';
     race.attempt.startedAt = 0;
-    inbox?.runChanged();
+    runChanged();
   }
 }
 
@@ -1213,7 +1230,7 @@ function markRaceInterrupted() {
   race.attempt.interrupted = true;
   race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
   showInputNotice('race', NOTICES.raceFocusLost, { speak: false });
-  inbox?.runChanged();
+  runChanged();
 }
 
 // A one-keyboard race keeps the chrome, but its passage is still being typed.
@@ -1530,10 +1547,11 @@ function onlineRoomFirst() {
   return true;
 }
 
-// Where the person is, as a Race sees it: the view, the session set up on the practice surface and how far
-// its run has got, the custom editor, a local race player, an online room open or on its way, and any dialog.
+// Where the person is, as a Race sees it: the view, the session set up on the practice surface and its run's
+// status, anything typed since (in the passage or any field), the custom editor, a local race player, an
+// online room open or on its way, and any dialog.
 function raceContext() {
-  return JSON.stringify([document.body.dataset.view, sessionCount, attempt?.status, customOpen, race.attempt?.id,
+  return JSON.stringify([document.body.dataset.view, sessionCount, attempt?.status, typedCount, customOpen, race.attempt?.id,
     race.attempt?.status, onlineRace?.liveRoomId || null, Boolean(onlineRace?.pending), Boolean(document.querySelector('dialog[open]'))]);
 }
 
@@ -1543,6 +1561,7 @@ function raceContext() {
 // result still reaches the inbox.
 async function startGhostRace(id) {
   if (onlineRoomFirst()) return;
+  heldRaceError = '';
   const request = ghostRequest = { id, context: raceContext() };
   let view = null;
   let failure = null;
@@ -1551,8 +1570,9 @@ async function startGhostRace(id) {
   if (ghostRequest !== request) return;
   ghostRequest = null;
   // The race opens only where it was asked for. Whatever the person has done since (another view, a new
-  // session, a run begun or ended, the custom editor, a local race, an online room, a dialog) stays theirs,
-  // and the race is offered instead; nor does it open while a room is on its way, which would open over it.
+  // session, a run begun or ended, typing in the passage or a field, the custom editor, a local race, an
+  // online room, a dialog) stays theirs, and the race is offered instead; nor does it open while a room is
+  // on its way, which would open over it.
   const here = raceContext() === request.context && !onlineRace?.pending;
   let conditions;
   try {
@@ -1566,8 +1586,14 @@ async function startGhostRace(id) {
     conditions = challengeConditions(view.conditions, view.duration ?? null);
     if (!conditions) throw new Error('This ghost race was recorded with settings this app can’t reproduce, so it can’t be raced fairly.');
   } catch (error) {
-    // Saying why changes nothing on screen, but nothing new appears beside a run begun since the click.
-    if (here || !runInProgress()) showAccountToast(error.message);
+    // Saying why changes nothing on screen. Said away from where Race was clicked, it names the race; beside
+    // a run the person went on typing, it waits for the run to end.
+    if (here) showAccountToast(error.message);
+    else {
+      const message = `${view?.name ? `${view.name}’s race` : 'The ghost race'} didn’t start. ${error.message}`;
+      if (runInProgress()) heldRaceError = message;
+      else showAccountToast(message);
+    }
     return;
   }
   // The offer is the inbox toast, held until a run ends; taking it asks again from where the person is then.
@@ -1778,7 +1804,7 @@ function startRace() {
 function setupRacePlayer() {
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
-  inbox?.runChanged();
+  runChanged();
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
   $('race-status').textContent = `Player ${race.player + 1} of 2`;
@@ -1804,7 +1830,7 @@ function finishRacePlayer() {
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
   race.attempt = completed;
-  inbox?.runChanged();
+  runChanged();
   race.results.push({ name: race.names[race.player], attempt: completed });
   $('race-input').disabled = true;
   $('race-stage').hidden = true;
@@ -2287,6 +2313,8 @@ function bindEvents() {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' || !event.target.matches?.('textarea, input:not([type="checkbox"])')) lastInput = 'keyboard';
   }, true);
+  // Anything typed, in the passage or a field, counts for a Race still loading (see raceContext).
+  document.addEventListener('beforeinput', () => { typedCount += 1; }, true);
   $('typing-input').addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'touch' && attempt?.status === 'ready') {
       attempt.conditions.inputClass = 'touch';

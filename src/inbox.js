@@ -99,9 +99,15 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     const entry = entries.find((value) => value.id === shown.id);
     return Boolean(entry) && entry.kind === shown.kind && !isClosed(entry);
   }
+  // A toast that goes while it has keyboard focus hands focus to the inbox, where its entry now is, and says why.
   function retire() {
     if (pendingToast && !current(pendingToast)) pendingToast = null;
-    if (toastEntry && !current(toastEntry)) hideToast();
+    if (!toastEntry || current(toastEntry)) return;
+    const focused = $('challenge-toast').contains(document.activeElement);
+    hideToast();
+    if (!focused) return;
+    if (!$('inbox').hidden) $('inbox-trigger').focus();
+    announce('That race is no longer open.');
   }
 
   function render() {
