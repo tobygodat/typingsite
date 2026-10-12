@@ -969,9 +969,11 @@ function armPace() {
   showPace();
 }
 
+// A pick, even of the pace shown, is stamped (saveChoice), so a different one waiting from elsewhere
+// doesn't replace it when a drill or retest ends. A custom pace keeps the speed shown with it.
 function setPaceCaret(mode) {
   prefs.paceCaret = mode;
-  saveProfile();
+  saveChoice('paceCaret', ...(mode === 'custom' ? ['paceWpm'] : []));
   armPace();
 }
 
@@ -2633,6 +2635,8 @@ function openCustom(open = true) {
 }
 
 // Signed in, the text is kept with the other preferences; a guest's preferences live only in memory.
+// Using it is a pick of the text and order shown, stamped even when they match what is stored, so a text
+// waiting from another tab doesn't replace it as the passage is prepared.
 function useCustomText() {
   const text = normalizeCustomText($('custom-text').value, Infinity);
   const error = customErrorMessage(customTextProblem(text));
@@ -2643,7 +2647,7 @@ function useCustomText() {
   }
   prefs.customText = text;
   prefs.customOrder = CUSTOM_ORDERS.includes($('custom-order').value) ? $('custom-order').value : 'as-written';
-  saveProfile();
+  saveChoice('customText', 'customOrder');
   customOpen = false;
   resetSession('custom', { focus: true });
   setModeControls();

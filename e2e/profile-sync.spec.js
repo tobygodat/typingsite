@@ -431,6 +431,95 @@ test('choosing the shape already shown keeps it over a different one waiting fro
   expect(errors).toEqual([]);
 });
 
+// A retest runs at the settings shown, so a pace another tab picks meanwhile waits here. Picking the pace
+// already shown, from the palette, is a choice like any other: it stays once the retest is over. A custom
+// pace keeps the speed shown with it.
+for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 120 wpm']]) {
+  test(`choosing the pace caret already shown (${mine}) during a retest keeps it over ${theirs} from another tab`, async ({ page, context, supabase }) => {
+    supabase.addUser(EMAIL);
+    const errors = [];
+    await openApp(page);
+    await signInWithEmail(page, EMAIL);
+    const other = await extraPage(context, supabase, errors);
+    await openApp(other);
+    await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    if (mine === 'custom') {
+      await openSettings(page);
+      await page.locator('#pace-select').selectOption('custom');
+      await expect(page.locator('#pace-label')).toHaveText('pace 80 wpm');
+      await page.keyboard.press('Escape');
+      await expect.poll(() => cloud(supabase)?.preferences.paceCaret, { timeout: 15000 }).toBe('custom');
+    }
+
+    await chooseWords(page, 10);
+    await typeInto(page, await passageText(page));
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+    await page.locator('#skip-to-retest').click();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+
+    await openSettings(other);
+    if (mine === 'custom') {
+      await expect(other.locator('#pace-select')).toHaveValue('custom');
+      await other.locator('#pace-wpm').fill('120');
+      await other.locator('#pace-wpm').press('Tab');
+      await expect.poll(() => cloud(supabase)?.preferences.paceWpm, { timeout: 15000 }).toBe(120);
+    } else {
+      await other.locator('#pace-select').selectOption('best');
+      await expect.poll(() => cloud(supabase)?.preferences.paceCaret, { timeout: 15000 }).toBe('best');
+    }
+    await expect(page.locator('#pace-select')).toHaveValue(mine);
+
+    await page.keyboard.press('Control+k');
+    await page.keyboard.type(`pace caret: ${mine}`);
+    await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText(`pace caret: ${mine}`);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#palette')).toBeHidden();
+    await typeInto(page, await passageText(page));
+    await expect(page.locator('#comparison-panel')).toBeVisible();
+
+    await expect(page.locator('#pace-select')).toHaveValue(mine);
+    if (mine === 'custom') await expect(page.locator('#pace-label')).toHaveText('pace 80 wpm');
+    const expected = mine === 'custom' ? { paceCaret: 'custom', paceWpm: 80 } : { paceCaret: 'off' };
+    await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 }).toMatchObject(expected);
+    await expect(other.locator('#pace-select')).toHaveValue(mine);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('using the custom text already shown keeps it over different text waiting from another tab', async ({ page, context, supabase }) => {
+  const MINE = 'the quick brown fox jumps over the lazy dog';
+  const THEIRS = 'pack my box with five dozen liquor jugs today';
+  supabase.addUser(EMAIL);
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(MINE);
+  await page.locator('#custom-use').click();
+  expect(await passageText(page)).toBe(MINE);
+  await expect.poll(() => cloud(supabase)?.preferences.customText, { timeout: 15000 }).toBe(MINE);
+
+  // The other tab uses its own text. This tab's custom passage is ready, so that text waits here.
+  await other.locator('#mode-custom').click();
+  await other.locator('#custom-text').fill(THEIRS);
+  await other.locator('#custom-use').click();
+  await expect.poll(() => cloud(supabase)?.preferences.customText, { timeout: 15000 }).toBe(THEIRS);
+  expect(await passageText(page)).toBe(MINE);
+
+  // Using the text shown here again is a choice: it stays, and reaches the account.
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-text')).toHaveValue(MINE);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(MINE);
+  await expect.poll(() => cloud(supabase)?.preferences.customText, { timeout: 15000 }).toBe(MINE);
+  expect(errors).toEqual([]);
+});
+
 test('undo brings back a run the clearing device never saw, after another device applied the clear', async ({ page, browser, supabase }) => {
   supabase.addUser(EMAIL);
   const errors = [];

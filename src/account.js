@@ -1,7 +1,7 @@
 // Accounts: Supabase Auth and one row of profile data per user, spoken to over fetch so the app
 // keeps no runtime dependencies. With no session the visitor is a guest and nothing is stored.
 // The publishable key is meant for browsers; row-level security limits every row to its owner.
-import { MAX_RUN_SUMMARIES, dailyChallengeId, retainRuns, settleDailyFirsts, trendRun } from './insights.js';
+import { dailyChallengeId, retainRuns, settleDailyFirsts, trendRun } from './insights.js';
 import { conditionKey } from './typing.js';
 
 const SUPABASE_URL = 'https://bicbyljexprkaedakofa.supabase.co';
@@ -366,23 +366,19 @@ export const beatsBest = (a, b) => !b || a.wpm > b.wpm || (a.wpm === b.wpm
 // drops exactly the ids its own clear named. Every clear that hasn't been undone keeps its pairs: two
 // devices can clear independently, and the newer marker alone would let a stale copy bring back a
 // record the older clear named. Earlier copies of this field hold ids alone, named by the copy's
-// historyClearedAt. Only records stamped ahead of a clear are named, so there are usually few. The
-// newest clear keeps all of its pairs: they can't outnumber the records it removed, even after a clock
-// corrected far backward (every run and loop then named). Older clears keep their newest
-// MAX_CLEARED_IDS pairs (by clear, then id) between them.
-export const MAX_CLEARED_IDS = MAX_RUN_SUMMARIES;
+// historyClearedAt. Only records stamped ahead of a clear are named, so there are usually few. Every
+// clear not undone keeps all of its pairs, with no cap: a newer clear finds the records an older one
+// removed already gone, so it can't name them, and a pair dropped would let a copy that heard of neither
+// bring its record back (stamped ahead, it sorts after both markers). A clear's pairs can't outnumber
+// the records it removed, even after a clock corrected far backward (every run and loop then named), and
+// its undo drops them.
 const namedPairs = (side) => list(side.historyClearedIds).flatMap((entry) => {
   const [marker, id] = typeof entry === 'string' ? [side.historyClearedAt, entry] : Array.isArray(entry) ? entry : [];
   return marker && typeof marker === 'string' && id && typeof id === 'string' ? [[marker, id]] : [];
 });
-const liveNamed = (pairs, undone, newest) => {
-  const live = [...new Map(pairs.filter(([marker]) => !undone.includes(marker))
-    .map((pair) => [JSON.stringify(pair), pair])).values()]
-    .sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]));
-  const older = live.filter(([marker]) => marker !== newest);
-  const dropped = new Set(older.slice(0, Math.max(0, older.length - MAX_CLEARED_IDS)));
-  return live.filter((pair) => !dropped.has(pair));
-};
+const liveNamed = (pairs, undone) => [...new Map(pairs.filter(([marker]) => !undone.includes(marker))
+  .map((pair) => [JSON.stringify(pair), pair])).values()]
+  .sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]));
 // The ids a copy's clears named (a merged or cleared copy holds only clears not undone).
 export const clearedIds = (profile) => new Set(namedPairs(profile).map(([, id]) => id));
 
@@ -403,7 +399,7 @@ export function clearProfile(profile) {
     for (const item of list(profile[name])) if ((item[at] || '') > marker && item.id) ahead.add(String(item.id));
   }
   for (const best of Object.values(profile.bests || {})) if ((best?.at || '') > marker && best.attemptId) ahead.add(String(best.attemptId));
-  const named = liveNamed([...namedPairs(profile), ...[...ahead].map((id) => [marker, id])], list(profile.undoneClears), marker);
+  const named = liveNamed([...namedPairs(profile), ...[...ahead].map((id) => [marker, id])], list(profile.undoneClears));
   const cleared = { ...profile, historyClearedAt: marker, bests: {}, seenTextIds: [] };
   for (const name of Object.keys(HISTORY)) cleared[name] = [];
   if (named.length) cleared.historyClearedIds = named;
@@ -471,7 +467,7 @@ export function mergeSynced(local, cloud) {
   const undone = [...new Set([...list(local.undoneClears), ...list(cloud.undoneClears)])].sort();
   const live = (marker) => (marker && !undone.includes(marker) ? marker : '');
   const clearedAt = [live(local.historyClearedAt), live(cloud.historyClearedAt)].sort().at(-1);
-  const named = liveNamed([...namedPairs(local), ...namedPairs(cloud)], undone, clearedAt);
+  const named = liveNamed([...namedPairs(local), ...namedPairs(cloud)], undone);
   const namedIds = new Set(named.map(([, id]) => id));
 
   const surviving = (side) => {
@@ -555,10 +551,22 @@ export function joinHolds(a, b) {
   return out;
 }
 
+// The ids a copy holds that a clear's named pairs can take: its records', and those its bests point to.
+const heldIds = (copy) => {
+  const ids = new Set();
+  for (const name of Object.keys(HISTORY)) for (const item of list(copy[name])) if (item.id !== undefined && item.id !== null) ids.add(String(item.id));
+  for (const best of Object.values(copy.bests || {})) if (best?.attemptId) ids.add(String(best.attemptId));
+  return ids;
+};
+
 // mergeSynced for a tab that holds what clears removed, so an Undo brings back history from every copy
 // merged here and not only the clearing tab's own: a clear can reach the account row, another tab or
-// another device holding runs the clearing tab never saw. Returns { merged, holds }; the caller keeps
-// holds in memory.
+// another device holding runs the clearing tab never saw. Each copy merged is held under every clear
+// still in force that took something from it: the newest, by date, from a copy that hadn't applied it,
+// and any clear whose named pairs take one of its records. An older clear's pairs can arrive after both
+// copies already share a newer marker, and the clearing device may hold less of the record than the copy
+// it was taken from (only its summary, once the 24-trace cap has dropped the trace). Returns
+// { merged, holds }; the caller keeps holds in memory.
 export function mergeAndHold(holds, local, cloud) {
   holds = { ...(holds || {}) };
   let merged = mergeSynced(local, cloud);
@@ -573,12 +581,14 @@ export function mergeAndHold(holds, local, cloud) {
     delete holds[marker];
   }
   const marker = merged.historyClearedAt;
-  if (marker) {
-    const undone = list(merged.undoneClears);
-    const knowing = (side) => (undone.length ? { ...side, undoneClears: undone } : side);
-    for (const side of sides) {
-      if (side.historyClearedAt !== marker) holds[marker] = holdCopy(holds[marker] || [], knowing(side));
-    }
+  const pairs = namedPairs(merged);
+  const undone = list(merged.undoneClears);
+  const knowing = (side) => (undone.length ? { ...side, undoneClears: undone } : side);
+  for (const side of sides) {
+    const ids = pairs.length ? heldIds(side) : new Set();
+    const by = new Set(pairs.filter(([, id]) => ids.has(id)).map(([clear]) => clear));
+    if (marker && side.historyClearedAt !== marker) by.add(marker);
+    for (const clear of by) holds[clear] = holdCopy(holds[clear] || [], knowing(side));
   }
   return { merged, holds };
 }
