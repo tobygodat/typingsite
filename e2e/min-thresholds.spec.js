@@ -172,6 +172,41 @@ test('the palette sets a minimum speed, which stops a slow run and resets for a 
   await expect(page.locator('#minimum-note')).toBeHidden();
 });
 
+test('custom text has no minimums: the note stands aside and a run under them still finishes', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await openSettings(page);
+  await page.locator('#min-accuracy').selectOption('95');
+  await page.locator('#min-wpm').selectOption('100');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy · min 100 wpm');
+  // Custom text is never counted, so it runs to the end like a drill: no note while Custom is on.
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#minimum-note')).toBeHidden();
+  const text = 'the quick brown fox jumps over the lazy dog and runs back home';
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await expect(page.locator('#condition-line')).not.toContainText('min ');
+  await expect(page.locator('#minimum-note')).toBeHidden();
+
+  // Every sixth key a miss at 60 wpm: under both minimums, well past the grace, and never stopped.
+  await page.clock.pauseAt(Date.now() + 1000);
+  await typeAtPace(page, withMisses(text));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await page.clock.resume();
+  await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
+  await expect(page.locator('#result-comparison-note')).toHaveText('');
+  await expect(page.locator('#result-conditions')).not.toContainText('min ');
+  expect(Number(await page.locator('#result-accuracy').textContent())).toBeLessThan(95);
+
+  // Back on a test, the minimums apply again.
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await expect(page.locator('#session-kicker')).toHaveText('practice');
+  await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy · min 100 wpm');
+  await expect(page.locator('#condition-line')).toContainText('min 95% accuracy · min 100 wpm');
+});
+
 test('a retest carries its baseline’s minimums, and the daily challenge has none', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
