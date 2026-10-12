@@ -167,6 +167,11 @@ let clearTimer = null;
 // The friend's recorded run being raced (sessionKind 'challenge'), and the run offered to friends.
 let ghostRace = null;
 // The Race still waiting for its challenge, and the offer's friend list still loading (see startGhostRace).
+// A Race click holds only while the person stays where they made it. Each move they make drops it at the
+// one place that move passes through: another view (navigate, which every online room entry goes through),
+// a new practice-surface session (resetSession), a local race player (setupRacePlayer), the custom editor
+// (openCustom) or a run begun (startAttempt). A late reply then never pulls them back into a race.
+// The friend list belongs to the offer on screen: renderGhostOffer drops it when another run replaces it.
 let ghostRequest = null;
 let friendsRequest = null;
 let offerRun = null;
@@ -552,11 +557,13 @@ function configureSessionCopy() {
   $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote';
 }
 
-function resetSession(kind = sessionKind, { focus = false, selectedPassage = null } = {}) {
+function resetSession(kind = sessionKind, { focus = false, selectedPassage = null, keepRace = false } = {}) {
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
   primaryNotice = '';
+  // A session the person starts supersedes a Race still loading; a redraw for a synced profile doesn't.
+  if (!keepRace) ghostRequest = null;
   if (kind === 'challenge' && !ghostRace) kind = 'practice';
   const kindChanged = sessionKind !== kind;
   sessionKind = kind;
@@ -916,7 +923,7 @@ function storeAttempt(completed) {
   const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
   resultBestBefore = profile.bests[key] || null;
   // Traces serve baselines and patterns. A custom passage is neither and can run to thousands of characters,
-  // so only its summary record is kept.
+  // so only its summary record is kept; so is a ghost race's, whose trace is sent from the run in memory.
   if (comparableKind(completed.kind)) profile.attempts.push(completed);
   profile.runs.push(runRecord(completed));
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
@@ -1038,8 +1045,8 @@ function renderResults(completed, saved) {
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
   $('start-drill').disabled = !counted;
   $('skip-to-retest').disabled = !counted || !baselineAttempt;
-  // Custom text is never mined for targets or kept as a baseline, so its results offer no drill or retest:
-  // the recommendation would come from other runs and the retest would measure a different text.
+  // Custom text and ghost races are never mined for targets or kept as a baseline, so their results offer no
+  // drill or retest: the recommendation would come from other runs and the retest would measure a different text.
   const compared = comparableKind(completed.kind);
   for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = !compared;
   renderEvidenceList(activeRecommendation.evidence);
@@ -1179,6 +1186,8 @@ function switchView(view) {
 }
 
 function navigate(view) {
+  // Going anywhere drops a Race still loading (see ghostRequest).
+  ghostRequest = null;
   if (view === 'practice') {
     // A custom passage that is ready or under way is practice too, so going to Practice keeps it.
     const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom') && !['complete', 'interrupted'].includes(attempt.status);
@@ -1492,7 +1501,8 @@ function renderDaily() {
 
 // ── Ghost races ───────────────────────────────────────────────────────────
 // A friend's recorded run, raced on the practice surface against a ghost caret that replays their
-// keystrokes (src/ghost-race.js). The run is kind 'challenge': saved like a drill, never a best.
+// keystrokes (src/ghost-race.js). The run is kind 'challenge', non-comparable like custom text: only its
+// summary is kept, and it is never a best.
 
 const GHOST_CONDITION_KEYS = ['mode', 'duration', 'count', 'punctuation', 'numbers', 'quoteLength', 'difficulty', 'wordList',
   'correctionPolicy', 'language', 'corpus', 'metricVersion'];
@@ -1533,8 +1543,8 @@ async function startGhostRace(id) {
   let view = null;
   let failure = null;
   try { view = await getChallenge(session, id); } catch (error) { failure = error; }
-  // A later Race replaces the request and a run begun clears it (startAttempt); an online room opened
-  // meanwhile still keeps the surface.
+  // A later Race replaces the request, and anything else the person does meanwhile drops it (see
+  // ghostRequest). An online room is entered through navigate, so this second check is only a backstop.
   if (ghostRequest !== request) return;
   ghostRequest = null;
   if (onlineRoomFirst()) return;
@@ -1754,6 +1764,8 @@ function startRace() {
 }
 
 function setupRacePlayer() {
+  // A local race set up drops a Race still loading (see ghostRequest).
+  ghostRequest = null;
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
   inbox?.runChanged();
@@ -1944,7 +1956,7 @@ function adoptProfile(data) {
   applyPreferences();
   setModeControls();
   renderHistory();
-  if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice');
+  if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice', { keepRace: true });
 }
 
 // The newer of the device cache and the account row wins; the other side is brought up to date.
@@ -2431,6 +2443,8 @@ function updateCustomState() {
 
 // The panel never opens or closes beside a live run: like the other mode buttons, it restarts the run first.
 function openCustom(open = true) {
+  // Opening or closing the editor drops a Race still loading (see ghostRequest).
+  ghostRequest = null;
   if (attempt?.status === 'running') resetSession(restartKind());
   customOpen = open;
   if (open) {
@@ -2501,7 +2515,7 @@ function inPractice(change) {
 
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
-  // During a custom session no test shape is current, only "custom text".
+  // During a custom session or a ghost race no test shape is current (a custom session marks "custom text").
   const shape = (mode, length) => comparableKind(sessionKind) && prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
   const commands = [
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
