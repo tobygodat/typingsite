@@ -1,6 +1,8 @@
 // The beginner path: lessons that add a few keys at a time with a finger map, unlock on one run at 95%
 // accuracy and a gentle speed, stay out of bests and progress, and hand off to the training loop.
 import { LESSONS } from '../src/lessons.js';
+import { conditionKey } from '../src/typing.js';
+import { DEFAULT_WORD_LIST } from '../src/words.js';
 import { test, expect, openApp, openView, chooseWords, completePassage, passageText, typeInto, signInWithEmail, storageKeys } from './fixtures.js';
 
 const body = (page) => page.locator('body');
@@ -400,6 +402,42 @@ test.describe('on a touch screen', () => {
     const saved = supabase.profileFor(user.email);
     expect(saved.runs[0].conditions.inputClass).toBe('touch');
     expect(Object.keys(saved.bests)).toEqual([expect.stringContaining(':touch:')]);
+  });
+
+  // The footer best is the one for the run on screen, input class included, never the other history's.
+  test('the footer shows the best for the run’s input class, and a tap on a ready run switches it', async ({ page, supabase }) => {
+    const shape = { mode: 'words', count: 10, punctuation: false, numbers: false, wordList: DEFAULT_WORD_LIST, correctionPolicy: 'relaxed' };
+    const seeded = (wpm) => ({ wpm, attemptId: `seed-${wpm}`, at: '2026-10-08T12:00:00Z' });
+    const bests = {
+      [conditionKey({ ...shape, inputClass: 'physical-keyboard' })]: seeded(72),
+      [conditionKey({ ...shape, inputClass: 'touch' })]: seeded(41),
+    };
+    const user = supabase.addUser('footer-best-touch@stilltype.test');
+    supabase.profiles.set(user.id, { data: { ...lessonProfile(LESSONS.length), bests, preferences: { mode: 'words', count: 10 } } });
+    await openApp(page);
+    await signInWithEmail(page, user.email);
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    await expect(page.locator('#best')).toHaveText('Best · 72 wpm');
+
+    await openLessons(page);
+    await page.locator('#lesson-primary').tap();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await expect(page.locator('#best')).toHaveText('Best · 41 wpm');
+
+    // A mouse click restarts on a physical keyboard; a tap on the ready passage then makes it touch input.
+    await page.locator('#restart-button').click();
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    await expect(page.locator('#best')).toHaveText('Best · 72 wpm');
+    await page.locator('#typing-input').tap();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await expect(page.locator('#best')).toHaveText('Best · 41 wpm');
+
+    // The finished touch run sets the touch best, and the footer shows that one.
+    await completePassage(page);
+    await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1);
+    const touchBest = supabase.profileFor(user.email).bests[conditionKey({ ...shape, inputClass: 'touch' })].wpm;
+    expect(touchBest).toBeGreaterThan(41);
+    await expect(page.locator('#best')).toHaveText(`Best · ${touchBest} wpm`);
   });
 
   // Every new run takes its class from the press that started it: a tap is touch, a key outside a text field is a

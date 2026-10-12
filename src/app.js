@@ -316,8 +316,9 @@ function showChrome(shown) {
 
 // The footer best belongs to the session on screen. A custom session (any non-comparable kind) has no best,
 // so it says it isn't counted rather than showing the best for the time or word settings underneath it.
+// The run's input class picks the best, so a touch run never shows the physical-keyboard one, or the reverse.
 function currentBestKey() {
-  return comparableKind(sessionKind) ? conditionKey(conditions()) : null;
+  return comparableKind(sessionKind) ? conditionKey(conditions(attempt?.conditions.inputClass)) : null;
 }
 
 function showBest() {
@@ -570,6 +571,8 @@ function configureSessionCopy() {
   const setup = document.querySelector('.practice-controls');
   if (setup) setup.hidden = sessionKind !== 'practice' && sessionKind !== 'custom';
   $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote';
+  // Every new run (resetSession) brings its own settings and input class to the footer best.
+  showBest();
 }
 
 // `show: false` replaces the session without leaving the current view.
@@ -2373,6 +2376,7 @@ function bindEvents() {
     if (activationInput !== 'touch' || !['ready', 'running'].includes(attempt?.status) || attempt.conditions.inputClass === 'touch') return;
     attempt.conditions.inputClass = 'touch';
     $('condition-line').textContent = describeRun(attempt);
+    showBest();
     if (attempt.status === 'ready') armPace();
   }, true);
   document.addEventListener('keydown', (event) => {
