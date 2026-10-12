@@ -65,6 +65,20 @@ test('practice time counts completed, uninterrupted runs in the week (from Monda
   assert.deepEqual(boardSummary([], dailyKey), { days: {}, weeks: {} });
 });
 
+test('custom-text runs count in neither the daily nor practice time, as Progress counts none of them', () => {
+  const custom = { ...words, mode: 'custom', count: null, wordList: null, customOrder: 'as-written' };
+  const runs = [
+    run('today', { elapsedMs: 30000 }),
+    dailyRun('daily', 80, 96, { elapsedMs: 45000 }),
+    run('custom', { kind: 'custom', conditions: custom, elapsedMs: 90000, score: { wpm: 150, accuracy: 100 } }),
+    run('custom-as-daily', { kind: 'custom', conditions: daily, challengeDate: '2026-10-09', elapsedMs: 40000, score: { wpm: 150, accuracy: 100 } }),
+    run('custom-only-week', { kind: 'custom', conditions: custom, at: '2026-09-29T12:00:00Z', elapsedMs: 50000 }),
+  ];
+  const summary = boardSummary(runs, dailyKey);
+  assert.deepEqual(summary.weeks, { '2026-10-05': { seconds: 75, runs: 2 } });
+  assert.deepEqual(summary.days, { '2026-10-09': { version: dailyVersion(dailyKey, now), wpm: 80, accuracy: 96, attempts: 1 } });
+});
+
 test('each run counts in its own day and week, whatever the writing device’s clock says', () => {
   // Monday 12 October: a phone with a correct clock played Monday's daily at 00:05 UTC and practised.
   const monday = new Date('2026-10-12T00:05:00Z');

@@ -9,7 +9,7 @@
 // numbers are reported by browsers, so they are friendly and unverified. Guests have no row.
 import { request, freshSession, loadSession, AuthError } from './account.js';
 import { conditionKey } from './typing.js';
-import { dailyPassage, validRun } from './insights.js';
+import { comparableKind, dailyPassage, validRun } from './insights.js';
 
 const DAY_MS = 86400000;
 // The service shows nothing outside these, so they are never written.
@@ -47,12 +47,14 @@ const latest = (periods) => [...periods.keys()].sort().reverse().slice(0, PERIOD
 // a run belongs to. `days` holds, for each of the latest dates with a daily, the best completed attempt
 // at the daily conditions on a physical keyboard, with the number of completed attempts beside it;
 // `weeks` holds, for each of the latest weeks (Monday 00:00 UTC) with a run, the time and number of
-// completed, uninterrupted runs.
+// completed, uninterrupted runs. Custom-text runs count in neither: Progress counts none of them, so the
+// board leaves out every kind that is never compared (see comparableKind). They are kept on their own
+// small budget, so practice time stays counted from the profile's newest 1,000 comparable runs.
 export function boardSummary(runs, dailyKey) {
   const dailies = new Map();
   const weeks = new Map();
   for (const run of runs) {
-    if (!validRun(run)) continue;
+    if (!validRun(run) || !comparableKind(run.kind)) continue;
     if (run.kind === 'daily' && DATE.test(run.challengeDate ?? '') && conditionKey(run.conditions) === dailyKey && run.score?.wpm <= MAX_WPM) {
       if (!dailies.has(run.challengeDate)) dailies.set(run.challengeDate, []);
       dailies.get(run.challengeDate).push(run);
