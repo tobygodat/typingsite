@@ -166,6 +166,9 @@ let clearSnapshot = null;
 let clearTimer = null;
 // The friend's recorded run being raced (sessionKind 'challenge'), and the run offered to friends.
 let ghostRace = null;
+// The Race still waiting for its challenge, and the offer's friend list still loading (see startGhostRace).
+let ghostRequest = null;
+let friendsRequest = null;
 let offerRun = null;
 let offerSentTo = new Set();
 // One request id per friend for the offered run, repeated on a retry so the service stores it once.
@@ -672,6 +675,8 @@ function startAttempt(targetAttempt, type = 'primary') {
     race.attempt.startedAt = 0;
     inbox?.runChanged();
   }
+  // A run begun outranks a Race still waiting for its challenge.
+  ghostRequest = null;
 }
 
 function offsetFor(type = 'primary') {
@@ -1511,12 +1516,31 @@ function ghostPassage() {
   return { id, text: ghostRace.passage, fresh: !profile.seenTextIds.includes(id) };
 }
 
+// An open online room keeps the surface: a ghost race never starts over it.
+function onlineRoomFirst() {
+  if (!onlineRace?.liveRoomId) return false;
+  showAccountToast('Leave your online race before starting a ghost race.');
+  return true;
+}
+
+// Every ghost race reply checks, once it lands, that what it was asked for is still current: the Race
+// (ghostRequest), the finished run still on screen (submitGhostRun), the offered run (sendGhost) or the
+// friend list (friendsRequest). A late one changes nothing here; what the service did stands, and its
+// result still reaches the inbox.
 async function startGhostRace(id) {
-  if (onlineRace?.liveRoomId) { showAccountToast('Leave your online race before starting a ghost race.'); return; }
-  let view;
+  if (onlineRoomFirst()) return;
+  const request = ghostRequest = { id };
+  let view = null;
+  let failure = null;
+  try { view = await getChallenge(session, id); } catch (error) { failure = error; }
+  // A later Race replaces the request and a run begun clears it (startAttempt); an online room opened
+  // meanwhile still keeps the surface.
+  if (ghostRequest !== request) return;
+  ghostRequest = null;
+  if (onlineRoomFirst()) return;
   let conditions;
   try {
-    view = await getChallenge(session, id);
+    if (failure) throw failure;
     if (view.role !== 'received' || view.status !== 'open' || typeof view.passage !== 'string' || !validTrace(view.trace)) {
       throw new Error(view.status === 'done' ? 'You have already raced this run.'
         : view.status === 'expired' ? 'This ghost race has expired.' : 'That ghost race is unavailable.');
@@ -1626,6 +1650,7 @@ function renderGhostOffer(completed = offerRun) {
     offerRun = completed;
     offerSentTo = new Set();
     offerRequests = new Map();
+    friendsRequest = null;
     $('ghost-offer').open = false;
     $('ghost-offer-status').textContent = '';
     $('ghost-offer-error').textContent = '';
@@ -1639,8 +1664,13 @@ async function loadGhostFriends() {
   if (!offerFriends.length) select.replaceChildren(new Option('Loading friends…', ''));
   select.disabled = true;
   $('send-ghost').disabled = true;
+  const request = friendsRequest = {};
+  let friends = offerFriends;
   let failure = '';
-  try { offerFriends = await listFriends(session); } catch (error) { failure = error.message; }
+  try { friends = await listFriends(session); } catch (error) { failure = error.message; }
+  // Only the newest list for this offer is drawn.
+  if (friendsRequest !== request) return;
+  offerFriends = friends;
   $('ghost-offer-error').textContent = failure;
   const empty = !offerFriends.length;
   $('ghost-offer-empty').hidden = !empty || Boolean(failure);

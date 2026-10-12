@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { test, expect, openApp, signInWithEmail, chooseWords, passageText, typeInto, openSettings } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto, openSettings } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -47,6 +47,22 @@ function steadyTrace(text, stepMs, end = null) {
 }
 
 const ghostX = (page) => page.locator('#text-display .ghost-caret').evaluate((node) => new DOMMatrix(getComputedStyle(node).transform).m41);
+
+// Lets one held reply go (a release from the fake's `held`) and gives the page a moment to act on it.
+async function letGo(page, release, action, id = null) {
+  const landed = page.waitForResponse((response) => /\/rpc\/challenge_action$/.test(response.url())
+    && response.request().postDataJSON().p_action === action && (!id || response.request().postDataJSON().p_id === id));
+  release();
+  await landed;
+  await page.waitForTimeout(500);
+}
+
+// Holds every reply to these actions; returns the releases as they queue.
+function hold(supabase, ...actions) {
+  supabase.challenges.held = [];
+  supabase.challenges.holding = new Set(actions);
+  return supabase.challenges.held;
+}
 
 test('a finished run goes to a friend, who races its ghost later, and both see who finished first', async ({ page, browser, supabase }, testInfo) => {
   const ada = supabase.addUser('ada@stilltype.test');
@@ -600,6 +616,153 @@ test('a ghost race reply that lands after Run again and a finished practice run 
   await expect(page.locator('#inbox-list [data-kind="challenge-result"]')).toContainText(`you ${stored.wpm} wpm`);
   expect(challenge.result).toEqual(stored);
   supabase.challenges.held = null;
+});
+
+// An open eight-word challenge from `name` to Lin.
+function challengeLin(supabase, lin, name, passage = 'river light patient words carry the quiet home') {
+  const sender = supabase.addUser(`${name.toLowerCase()}@stilltype.test`);
+  return supabase.challenges.seed(sender.id, lin.id, { name, label: 'Lin', passage,
+    conditions: { mode: 'words', count: 8, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' },
+    trace: steadyTrace(passage, 140) });
+}
+
+test('a Race reply that lands after a later Race click leaves the later race in place', async ({ page, supabase }) => {
+  const lin = supabase.addUser('lin@stilltype.test');
+  const ada = challengeLin(supabase, lin, 'Ada');
+  const bo = challengeLin(supabase, lin, 'Bo', 'still water over light time still water over');
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await expect(page.locator('#challenge-toast')).toBeVisible({ timeout: 12000 });
+  await page.locator('#challenge-toast-close').click();
+  const held = hold(supabase, 'get');
+  for (const [index, name] of ['Ada', 'Bo'].entries()) {
+    await page.locator('#inbox-trigger').click();
+    await page.locator('#inbox-list .inbox-entry', { hasText: `${name} challenged you` }).getByRole('button', { name: 'Race' }).click();
+    await expect.poll(() => held.length).toBe(index + 1);
+  }
+  const [adaReply, boReply] = held;
+  supabase.challenges.held = null;
+  await letGo(page, boReply, 'get', bo.id);
+  await expect(page.locator('#session-title')).toHaveText('Race Bo’s run');
+  // Ada's reply, asked for first, lands last: the race chosen later stays.
+  await letGo(page, adaReply, 'get', ada.id);
+  await expect(page.locator('#session-title')).toHaveText('Race Bo’s run');
+  await expect(page.locator('#accessible-passage')).toHaveText(bo.passage);
+  await typeInto(page, bo.passage, '#typing-input', { delay: 110 });
+  await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Bo sees this result in their inbox too.');
+  expect(bo.result).toBeTruthy();
+  expect(ada.result).toBeNull();
+});
+
+test('a Race reply that lands after an online room opened starts no ghost race and leaves the room alone', async ({ page, supabase }) => {
+  const lin = supabase.addUser('lin@stilltype.test');
+  const ada = challengeLin(supabase, lin, 'Ada');
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  const held = hold(supabase, 'get');
+  await page.locator('#challenge-toast').getByRole('button', { name: 'Race' }).click({ timeout: 12000 });
+  await expect.poll(() => held.length).toBe(1);
+  const [reply] = held;
+  supabase.challenges.held = null;
+  // While the reply is on its way, Lin opens an online race.
+  await openView(page, 'Challenge');
+  await page.locator('#online-name').fill('Lin');
+  await page.locator('#create-online-race').click();
+  await expect(page.locator('#online-room')).toBeVisible();
+  const room = [...supabase.races.rooms.values()][0];
+  await letGo(page, reply, 'get', ada.id);
+  await expect(page.locator('#account-feedback')).toHaveText('Leave your online race before starting a ghost race.');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'compete');
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
+  await expect(page.locator('#online-room')).toBeVisible();
+  await expect(page.locator('#online-guest-link')).toHaveValue(new RegExp(room.id));
+  expect(room.status).toBe('waiting');
+  // The ghost race is still Lin's to run once the room is left.
+  await page.locator('#inbox-trigger').click();
+  await expect(page.locator('#inbox-list [data-inbox-action="challenge"]')).toHaveCount(1);
+  expect(ada.result).toBeNull();
+});
+
+test('a Race reply that lands after a practice run began neither interrupts that run nor starts the race', async ({ page, supabase }) => {
+  const lin = supabase.addUser('lin@stilltype.test');
+  const ada = challengeLin(supabase, lin, 'Ada');
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  const held = hold(supabase, 'get');
+  await page.locator('#challenge-toast').getByRole('button', { name: 'Race' }).click({ timeout: 12000 });
+  await expect.poll(() => held.length).toBe(1);
+  const [reply] = held;
+  supabase.challenges.held = null;
+  // While the reply is on its way, Lin starts a practice run.
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 12), '#typing-input', { delay: 90 });
+  await letGo(page, reply, 'get', ada.id);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
+  await expect(page.locator('#typing-status')).toHaveText('In progress');
+  await page.keyboard.type(text.slice(12), { delay: 90 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#run-card-stamp')).toContainText('practice');
+  await expect(page.locator('#ghost-result')).toBeHidden();
+  await expect(page.locator('#ghost-offer')).toBeVisible();
+  expect(ada.result).toBeNull();
+});
+
+test('an inbox listing read before a ghost race was sent never offers that race again', async ({ page, supabase }) => {
+  const lin = supabase.addUser('lin@stilltype.test');
+  const ada = challengeLin(supabase, lin, 'Ada');
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await page.locator('#challenge-toast').getByRole('button', { name: 'Race' }).click({ timeout: 12000 });
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
+  // A poll reads the list while the race is still open; its reply lands only after the finish is stored.
+  const held = hold(supabase, 'list');
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => held.length, { timeout: 12000 }).toBe(1);
+  const [reply] = held;
+  // Later polls stay held, so only that late listing can reach the inbox.
+  supabase.challenges.held = [];
+  await typeInto(page, ada.passage, '#typing-input', { delay: 110 });
+  await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Ada sees this result in their inbox too.');
+  await letGo(page, reply, 'list');
+  await page.locator('#inbox-trigger').click();
+  await expect(page.locator('#inbox-list [data-kind="challenge-result"]')).toContainText(/^Ada’s 8-word run: /);
+  await expect(page.locator('#inbox-list [data-inbox-action="challenge"]')).toHaveCount(0);
+  for (const release of supabase.challenges.held.splice(0)) release();
+});
+
+test('a friend list that fails after a newer one arrived leaves the newer list and no error', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  befriend(supabase, ada, supabase.addUser('lin@stilltype.test'), 'Lin');
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await chooseWords(page, 10);
+  await typeInto(page, await passageText(page), '#typing-input', { delay: 90 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  // The offer's first friend list is slow and then fails; the one asked for after it arrives at once.
+  let fail;
+  const failing = new Promise((resolve) => { fail = resolve; });
+  let lists = 0;
+  await page.route(/\/rest\/v1\/rpc\/race_action$/, async (route) => {
+    if (route.request().method() !== 'POST' || route.request().postDataJSON().p_action !== 'friends' || lists++) return route.fallback();
+    await failing;
+    await route.abort('connectionreset');
+  });
+  const summary = page.locator('#ghost-offer summary');
+  await summary.click();
+  await expect.poll(() => lists).toBe(1);
+  await summary.click();
+  await summary.click();
+  await expect(page.locator('#ghost-friend option')).toHaveText(['Lin']);
+  await expect(page.locator('#send-ghost')).toBeEnabled();
+  const failed = page.waitForEvent('requestfailed', (request) => /\/rpc\/race_action$/.test(request.url()));
+  fail();
+  await failed;
+  await page.waitForTimeout(500);
+  await expect(page.locator('#ghost-offer-error')).toHaveText('');
+  await expect(page.locator('#ghost-friend option')).toHaveText(['Lin']);
+  await expect(page.locator('#send-ghost')).toBeEnabled();
 });
 
 // A challenge's conditions come from the sender's browser. The service now refuses any it can't

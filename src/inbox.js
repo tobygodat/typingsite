@@ -216,6 +216,9 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
         // Only a result left on the list counts as delivered.
         if (entries.some((entry) => entry.id === id)) deliver(id);
       } else if (challenge.role === 'received' && challenge.status === 'open') {
+        // A result this device already has is final: a list read before the finish was stored can't
+        // offer the race again.
+        if (delivered.has(id)) continue;
         notify({ id, kind: 'challenge', challengeId: challenge.id, closed: false, until: challenge.expiresAt, at: challenge.createdAt,
           text: offerText(challenge) }, { toast: true });
       } else if (known?.kind === 'challenge' && !known.closed) {

@@ -15,8 +15,9 @@ export class FakeChallenges {
   constructor(auth) {
     this.auth = auth;
     this.rows = new Map();
-    // With `held` set to an array, the reply to a write named in `holding` (a send, unless a test names
-    // others) waits until a test calls the release pushed onto it. The write itself is already done.
+    // With `held` set to an array, the reply to an action named in `holding` (a send, unless a test names
+    // others) waits until a test calls the release pushed onto it. The action itself is already done: a
+    // write is stored, and a read (`get`, `list`) holds the rows as they were when it arrived.
     this.held = null;
     this.holding = new Set(['send']);
     // Each action named here once more does its write and then loses its reply, as when a connection
@@ -67,7 +68,7 @@ export class FakeChallenges {
 
   handle(caller, { p_action: action, p_id: id, p_data: data = {} }, reply, drop) {
     const failure = (message) => reply(400, { message });
-    // A write's reply, unless the test has it lost or held.
+    // A successful reply, unless the test has it lost or held.
     const answer = (json) => {
       if (this.lost.delete(action)) return drop();
       if (this.held && this.holding.has(action)) return new Promise((release) => this.held.push(release)).then(() => reply(200, json));
@@ -93,11 +94,11 @@ export class FakeChallenges {
           conditions, duration: data.duration ?? null, trace: data.trace, requestId: data.requestId });
         return answer(this.view(row, caller));
       }
-      if (action === 'list') return reply(200, this.list(caller));
+      if (action === 'list') return answer(this.list(caller));
       const row = this.rows.get(id);
       if (action === 'get') {
         if (!row || (row.senderId !== caller && row.recipientId !== caller)) return failure('That ghost race is unavailable.');
-        return reply(200, { ...this.view(row, caller), passage: row.passage, trace: row.trace });
+        return answer({ ...this.view(row, caller), passage: row.passage, trace: row.trace });
       }
       if (action === 'finish') {
         if (!row || row.recipientId !== caller) return failure('That ghost race is unavailable.');
