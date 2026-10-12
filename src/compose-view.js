@@ -12,6 +12,7 @@ import {
   promptText,
   refusedEdit,
 } from './compose.js';
+import { drawCaret, holdsCaretStill } from './compose-caret.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -30,6 +31,8 @@ export const COMPOSE_NOTICES = {
 export function createCompose({ setRunning, announce, save, signedIn, uid }) {
   const input = $('compose-input');
   const done = $('compose-done');
+  // Only where the native caret would blink; Chromium holds its own still with `caret-animation`.
+  const caret = holdsCaretStill() ? null : drawCaret(input);
   let state = 'ready';
   let keys = [];
   // The text the counted keys built, edit by edit: the only source of what was typed.
@@ -176,6 +179,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     input.readOnly = true;
     input.tabIndex = -1;
     $('compose-form').dataset.state = 'done';
+    caret?.update();
     renderClock();
     setRunning(false);
     const counted = state === 'complete' && !unsupported && summary.measurable;
@@ -206,6 +210,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     input.readOnly = false;
     input.removeAttribute('tabindex');
     $('compose-form').dataset.state = 'ready';
+    caret?.update();
     done.disabled = true;
     $('compose-result').hidden = true;
     $('compose-footer').hidden = false;

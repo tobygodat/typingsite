@@ -1241,6 +1241,39 @@ body[data-session="practice"] .compose-measure { justify-content: space-between;
 #compose-input::-webkit-scrollbar { display: none; }
 #compose-input::placeholder { color: var(--muted); opacity: 1; font-style: italic; }
 
+/* Where `caret-animation` isn't supported, src/compose-caret.js makes the native caret transparent
+   (it still edits, selects and composes) and draws this one in its place: the accent, solid, moved
+   instantly and never animated. Chromium keeps the native caret above and none of this applies. */
+.compose-wrap[data-caret="drawn"] { position: relative; }
+.compose-wrap[data-caret="drawn"] #compose-input { caret-color: transparent; }
+.compose-caret-layer { position: absolute; overflow: hidden; pointer-events: none; }
+
+.compose-caret-mirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  margin: 0;
+  border-style: solid;
+  border-color: transparent;
+  visibility: hidden;
+}
+
+.compose-caret {
+  position: absolute;
+  top: 0;
+  left: -1px;
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  animation: none;
+  transition: none;
+}
+
+@media (forced-colors: active) {
+  .compose-caret { forced-color-adjust: none; background: CanvasText; }
+}
+
 /* Finished: the writing and the clock stop being "current". */
 .compose-form[data-state="done"] #compose-input { color: var(--muted); }
 .compose-form[data-state="done"] .timer-stat strong { color: var(--muted); }

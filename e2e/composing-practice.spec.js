@@ -644,6 +644,206 @@ test('composing screenshots, dark and light', async ({ page }, testInfo) => {
   await page.screenshot({ path: shot(testInfo, 'progress-light') });
 });
 
+// Browsers without `caret-animation: manual` (Firefox and Safari today) would blink the native
+// caret, so the field draws its own solid one there. Chromium has it, so these tests take it away.
+const caretSupport = (page, supported) => page.addInitScript((value) => {
+  const supports = CSS.supports.bind(CSS);
+  CSS.supports = (...args) => (/caret-animation/.test(String(args[0])) ? value : supports(...args));
+}, supported);
+
+// Where one character of the field sits, measured apart from the app: a hidden copy of the field with
+// every computed text property, laid over it, and a Range around the character (a textarea has no
+// Ranges of its own). Shifted by the field's own scroll, like the text inside it.
+function charRect(page, index) {
+  return page.locator('#compose-input').evaluate((input, at) => {
+    const style = getComputedStyle(input);
+    const copy = document.createElement('div');
+    const skip = /^(position|inset.*|top|right|bottom|left|(min-|max-)?(width|height|inline-size|block-size)|margin.*|overflow.*|visibility|display|float|clear|contain.*|content-visibility|transform.*|translate|scale|rotate)$/;
+    for (const name of style) if (!skip.test(name)) copy.style.setProperty(name, style.getPropertyValue(name));
+    const box = input.getBoundingClientRect();
+    const borders = parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
+    Object.assign(copy.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${input.clientWidth + borders}px`, margin: '0', visibility: 'hidden' });
+    copy.textContent = input.value;
+    document.body.append(copy);
+    const range = document.createRange();
+    range.setStart(copy.firstChild, at);
+    range.setEnd(copy.firstChild, at + 1);
+    const rect = range.getBoundingClientRect();
+    copy.remove();
+    return { left: rect.left - input.scrollLeft, right: rect.right - input.scrollLeft, top: rect.top - input.scrollTop, bottom: rect.bottom - input.scrollTop };
+  }, index);
+}
+
+const caretBox = (page) => page.locator('.compose-caret').evaluate((node) => {
+  const rect = node.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom };
+});
+
+// The drawn caret stands at one edge of a character, as tall as its letters, within a few pixels.
+async function expectCaretAt(page, index, edge) {
+  await expect.poll(async () => {
+    const want = await charRect(page, index);
+    const got = await caretBox(page);
+    return Math.max(Math.abs(got.x - want[edge]), Math.abs(got.top - want.top), Math.abs(got.bottom - want.bottom));
+  }, { message: `caret at the ${edge} of character ${index}` }).toBeLessThanOrEqual(3);
+}
+
+const caretMotion = (page) => page.locator('.compose-caret').evaluate((node) => ({
+  animations: node.getAnimations().length,
+  animation: getComputedStyle(node).animationName,
+  transition: getComputedStyle(node).transitionProperty,
+}));
+
+test.describe('without caret-animation', () => {
+  test.beforeEach(async ({ page }) => { await caretSupport(page, false); });
+
+  test('the field draws a solid caret at the selection instead of a blinking one', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await startPausedClock(page);
+    expect(await page.evaluate(() => CSS.supports('caret-animation', 'manual'))).toBe(false);
+    await openCompose(page);
+    const input = page.locator('#compose-input');
+    const caret = page.locator('.compose-caret');
+
+    // The native caret is only made clear, never removed; the drawn one is the accent, unseen by
+    // assistive tech and never in the way of a click.
+    await expect(input).toHaveCSS('caret-color', 'rgba(0, 0, 0, 0)');
+    await expect(caret).toHaveCount(1);
+    await expect(caret).toHaveCSS('background-color', 'rgb(143, 209, 138)');
+    await expect(caret).toHaveCSS('pointer-events', 'none');
+    await expect(page.locator('.compose-caret-layer')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('.compose-caret-layer')).toHaveCSS('pointer-events', 'none');
+
+    // Focused and empty, it waits at the start of the first line; it shows only while focused.
+    await expect(caret).toBeVisible();
+    const field = await input.evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return { left: rect.left + node.clientLeft + parseFloat(style.paddingLeft), top: rect.top + node.clientTop + parseFloat(style.paddingTop), line: parseFloat(style.lineHeight) };
+    });
+    const start = await caretBox(page);
+    expect(Math.abs(start.x - field.left)).toBeLessThanOrEqual(3);
+    expect(start.top).toBeGreaterThanOrEqual(field.top);
+    expect(start.bottom).toBeLessThanOrEqual(field.top + field.line);
+    expect(await caretMotion(page)).toEqual({ animations: 0, animation: 'none', transition: 'none' });
+    await input.evaluate((node) => node.blur());
+    await expect(caret).toBeHidden();
+    await input.focus();
+    await expect(caret).toBeVisible();
+
+    // Writing, it stands after the last letter, and nothing about it moves on its own.
+    const first = 'The kettle ticked while the light came up';
+    await typePaced(page, [...first], 210);
+    await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+    await expectCaretAt(page, first.length - 1, 'right');
+    expect(await caretMotion(page)).toEqual({ animations: 0, animation: 'none', transition: 'none' });
+
+    // A selection shows its highlight instead; collapsing it brings the caret back.
+    for (let index = 0; index < 3; index += 1) await page.keyboard.press('Shift+ArrowLeft');
+    await expect(caret).toBeHidden();
+    await page.keyboard.press('ArrowRight');
+    await expect(caret).toBeVisible();
+    await expectCaretAt(page, first.length - 1, 'right');
+
+    // A click into the middle of the text moves it there.
+    const middle = await charRect(page, 11);
+    await page.mouse.click(middle.left + 1, (middle.top + middle.bottom) / 2);
+    const at = await input.evaluate((node) => node.selectionStart);
+    expect(at).toBeGreaterThan(5);
+    expect(at).toBeLessThan(first.length - 5);
+    await expectCaretAt(page, at, 'left');
+
+    // Past three lines the field scrolls inside; the caret keeps to its letter, and scrolling the
+    // field by hand carries it along.
+    await page.keyboard.press('Control+End');
+    const rest = '\nthen toast\nthe bus\ncame late';
+    await typePaced(page, [...rest], 210);
+    const text = first + rest;
+    await expect(input).toHaveValue(text);
+    await expect.poll(() => input.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    await expectCaretAt(page, text.length - 1, 'right');
+    const before = { caret: await caretBox(page), scroll: await input.evaluate((node) => node.scrollTop) };
+    await input.evaluate((node, by) => { node.scrollTop -= by; }, Math.round(field.line / 2));
+    const scrolled = before.scroll - await input.evaluate((node) => node.scrollTop);
+    expect(scrolled).toBeGreaterThan(0);
+    await expect.poll(async () => Math.abs((await caretBox(page)).top - before.caret.top - scrolled)).toBeLessThanOrEqual(1);
+    await expectCaretAt(page, text.length - 1, 'right');
+
+    // A narrower window or a larger text size wraps the writing again; the caret follows.
+    await page.setViewportSize({ width: 860, height: 800 });
+    await expectCaretAt(page, text.length - 1, 'right');
+    await page.evaluate(() => { document.body.dataset.fontSize = '36'; });
+    await expectCaretAt(page, text.length - 1, 'right');
+    await page.evaluate(() => { document.body.dataset.fontSize = '28'; });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expectCaretAt(page, text.length - 1, 'right');
+
+    // IME still composes in the real field (it just isn't measured); the caret follows the composition.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.imeSetComposition', { text: 'にほ', selectionStart: 2, selectionEnd: 2 });
+    await expect(input).toHaveValue(`${text}にほ`);
+    await expect(caret).toBeVisible();
+    await expectCaretAt(page, text.length + 1, 'right');
+    await cdp.send('Input.insertText', { text: '日本' });
+    await expect(input).toHaveValue(`${text}日本`);
+    await expect(page.locator('#compose-help')).toHaveText('IME input isn’t measured. Esc to start over.');
+
+    // Finished, the field is read-only and shows no caret, even with focus put back on it.
+    await page.keyboard.press('Control+Enter');
+    await expect(page.locator('#compose-result')).toBeVisible();
+    await expect(caret).toBeHidden();
+    await input.focus();
+    await expect(input).toBeFocused();
+    await expect(caret).toBeHidden();
+
+    // Write another starts it again at the beginning of an empty field.
+    await page.locator('#compose-next').click();
+    await expect(input).toHaveValue('');
+    await expect(input).toBeFocused();
+    await expect(caret).toBeVisible();
+    const again = await caretBox(page);
+    expect(Math.abs(again.x - start.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(again.top - start.top)).toBeLessThanOrEqual(1);
+  });
+
+  test('drawn caret screenshots, dark and light', async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await startPausedClock(page);
+    await openCompose(page);
+    while ((await page.locator('#compose-prompt').textContent()) !== 'Describe your morning in three sentences.') {
+      await page.locator('#compose-another').click();
+    }
+    const keys = [...'I woke before the alarm and made tea whiel', '\b', '\b', ...'le the kettle ticked. The street was still dark'];
+    await typePaced(page, keys, 210, { 64: 2600 });
+    const text = await page.locator('#compose-input').inputValue();
+    await expectCaretAt(page, text.length - 1, 'right');
+    await expect(page.locator('.practice-controls')).toHaveCSS('opacity', '0');
+    await page.screenshot({ path: shot(testInfo, 'writing-drawn-caret-dark') });
+
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 241, 235)');
+    await expect(page.locator('.compose-caret')).toHaveCSS('background-color', 'rgb(46, 125, 79)');
+    await typePaced(page, [...', so I read by the window'], 210);
+    await expectCaretAt(page, text.length + 24, 'right');
+    await expect(page.locator('#compose-input')).toBeFocused();
+    await page.screenshot({ path: shot(testInfo, 'writing-drawn-caret-light') });
+  });
+});
+
+test('where the caret can be held solid, the field keeps its own and draws none', async ({ page }) => {
+  await caretSupport(page, true);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await startPausedClock(page);
+  await openCompose(page);
+  const input = page.locator('#compose-input');
+  await expect(input).toHaveCSS('caret-color', 'rgb(143, 209, 138)');
+  await expect(input).toHaveCSS('caret-animation', 'manual');
+  await typePaced(page, [...'Toast and the radio'], 210);
+  await expect(page.locator('.compose-caret, .compose-caret-layer')).toHaveCount(0);
+  await expect(page.locator('.compose-wrap')).not.toHaveAttribute('data-caret', /./);
+});
+
 test.describe('touchscreen laptop', () => {
   test.use({ hasTouch: true });
 

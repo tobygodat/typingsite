@@ -67,7 +67,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `src/corpus.js`: additional original quotes and real-word drill vocabulary (corpus v5).
 - `src/insights.js`: compact run summaries, bounded pattern memory, condition/period filters, weekly medians, recurring targets and frozen daily text selection.
 - `src/progress-view.js`: keyboard-accessible WPM/accuracy charts; presentational only.
-- `src/compose.js`: composing practice measurement (active time, free-typing speed, backspace rate), the prompt pool and the numbers-only stored record; `src/compose-view.js` drives the composing form on the practice screen.
+- `src/compose.js`: composing practice measurement (active time, free-typing speed, backspace rate), the prompt pool and the numbers-only stored record; `src/compose-view.js` drives the composing form on the practice screen; `src/compose-caret.js` draws the field’s solid caret where the browser lacks `caret-animation: manual` (presentational).
 - `src/app.js`: orchestration — screen state, input handling, preferences and theme, history, local challenge, palette commands and the ghost toggle.
 - `src/motion.js`: caret, line scroll and ghost pacer (presentational).
 - `e2e/`: Playwright browser verification (`playwright.config.js`); `e2e/fake-supabase.js` stands in for Supabase.

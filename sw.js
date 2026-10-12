@@ -13,6 +13,7 @@ const SHELL = [
   '/src/styles.css',
   '/src/account.js',
   '/src/app.js',
+  '/src/compose-caret.js',
   '/src/compose-view.js',
   '/src/compose.js',
   '/src/corpus.js',
