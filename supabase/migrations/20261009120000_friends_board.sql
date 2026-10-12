@@ -10,7 +10,8 @@
 -- off deletes it, which takes the account off the board at once. Changes to sharing apply in order,
 -- account-wide: each one the service applies moves the account's sharing version on, and a share counts
 -- only if sharing hasn't changed since the version its device last read, so a share that arrives late
--- can't undo a newer opt-out from another device. An opt-out always counts. Only members see the board,
+-- can't undo a newer opt-out from another device. An opt-out always counts, and one sent again under
+-- its own id (its reply was lost, or a copy was slow) counts once. Only members see the board,
 -- and they see only friends who are members too. A row is shown only to mutual friends: you see someone
 -- when each of you has the other on your friend list, by account or by a confirmed email (resolved
 -- exactly as a typed invite is). Because both lists must agree, adding an email never reveals whether it
@@ -31,10 +32,13 @@ revoke all on race_private.board_members from public, anon, authenticated;
 
 -- Each account's sharing version: how many shares and opt-outs the service has applied for it. The row
 -- stays when sharing is turned off, so a share sent before an opt-out can be told from one sent after.
--- An account without a row is at version 0.
+-- An account without a row is at version 0. `last_optout` is the id of the last opt-out applied that
+-- carried one, kept through the shares after it, so the same opt-out arriving again (its reply was lost,
+-- or a copy of it was slow) is recognised and changes nothing a second time.
 create table race_private.board_sharing (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  version bigint not null default 0 check (version >= 0)
+  version bigint not null default 0 check (version >= 0),
+  last_optout text check (last_optout is null or last_optout ~ '^[A-Za-z0-9_-]{1,64}$')
 );
 alter table race_private.board_sharing enable row level security;
 revoke all on race_private.board_sharing from public, anon, authenticated;
@@ -144,19 +148,25 @@ returns jsonb language sql stable set search_path = '' as $$
 $$;
 revoke all on function race_private.board_snapshot(uuid) from public, anon, authenticated;
 
--- 'board' reads it. 'unshare' removes the caller from the board, always: an opt-out is never refused, and
--- a repeat after a lost reply is answered as done. 'share' makes the caller a member only when sent with
--- the account's current sharing version (`{"version": n}`, as its device last read it): after any change
--- since, an opt-out from another device above all, it is refused and changes nothing, and the reply says
--- whether the account shares. So is a share without a whole-number version: none is ever applied blind.
--- Each change applied moves the version on by one, under that row's lock, so two changes to one account
--- apply one after the other and a share racing an opt-out is checked against it. No numbers travel, and
--- nothing here writes a profile row: those are the owner's own writes.
+-- 'board' reads it. 'unshare' removes the caller from the board, always: an opt-out is never refused. It
+-- carries the id its device keeps it under (`{"id": "…"}`, 1–64 letters, digits, '-' or '_'). The same
+-- opt-out arriving again (its reply was lost, or a copy was slow) is answered as done and changes
+-- nothing: it was applied already, and any share applied since was sent after it (with a version at or
+-- past the one it gave), so that share stands and the version stays. Any other opt-out, a new id or one
+-- without a valid id, moves the version on and takes the account off the board, even when it is off
+-- already, so a share sent before it is refused. 'share' makes the caller a
+-- member only when sent with the account's current sharing version (`{"version": n}`, as its device last
+-- read it): after any change since, an opt-out from another device above all, it is refused and changes
+-- nothing, and the reply says whether the account shares. So is a share without a whole-number version:
+-- none is ever applied blind. Each change applied moves the version on by one, under that row's lock, so
+-- two changes to one account apply one after the other and a share racing an opt-out is checked against
+-- it. No numbers travel, and nothing here writes a profile row: those are the owner's own writes.
 create function race_private.board(p_action text, p_data jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   v_uid uuid := auth.uid();
   v_seen bigint;
+  v_optout text;
 begin
   if v_uid is null or not exists(select 1 from auth.users where id = v_uid) then raise exception 'Sign in to see your friends board.'; end if;
   if p_action = 'share' or p_action = 'unshare' then
@@ -172,8 +182,16 @@ begin
       insert into race_private.board_members (user_id) values (v_uid) on conflict (user_id) do nothing;
     end if;
   elsif p_action = 'unshare' then
-    update race_private.board_sharing set version = version + 1 where user_id = v_uid;
-    delete from race_private.board_members where user_id = v_uid;
+    if jsonb_typeof(p_data->'id') = 'string' and p_data->>'id' ~ '^[A-Za-z0-9_-]{1,64}$' then
+      v_optout := p_data->>'id';
+    end if;
+    -- Under the row's lock: a second copy of one opt-out waits for the first (or for a share), then finds
+    -- it applied and changes nothing. One without a valid id leaves the last id as it was.
+    update race_private.board_sharing set version = version + 1, last_optout = coalesce(v_optout, last_optout)
+      where user_id = v_uid and (v_optout is null or last_optout is distinct from v_optout);
+    if found then
+      delete from race_private.board_members where user_id = v_uid;
+    end if;
   elsif p_action is distinct from 'board' then
     raise exception 'Unknown board action.';
   end if;

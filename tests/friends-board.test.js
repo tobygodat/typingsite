@@ -65,6 +65,30 @@ test('practice time counts completed, uninterrupted runs in the week (from Monda
   assert.deepEqual(boardSummary([], dailyKey), { days: {}, weeks: {}, bests: {} });
 });
 
+test('practice time is the week’s whole completed seconds: the runs’ time summed, then floored, never rounded up', () => {
+  // 59.5 s of practice is 59 completed seconds, not a minute.
+  assert.deepEqual(boardSummary([run('a', { elapsedMs: 29750 }), run('b', { elapsedMs: 29750 })], dailyKey).weeks,
+    { '2026-10-05': { seconds: 59, runs: 2 } });
+  assert.deepEqual(practiceTime(boardSummary([run('a', { elapsedMs: 59999.9 })], dailyKey).weeks['2026-10-05'].seconds), { value: '59', unit: 's' });
+  // Floored once, after summing: three runs of 20.6 s are 61 seconds, not 3 × 20.
+  assert.deepEqual(boardSummary(['a', 'b', 'c'].map((id) => run(id, { elapsedMs: 20600 })), dailyKey).weeks,
+    { '2026-10-05': { seconds: 61, runs: 3 } });
+});
+
+test('custom-text runs count in neither the daily nor practice time, as Progress counts none of them', () => {
+  const custom = { ...words, mode: 'custom', count: null, wordList: null, customOrder: 'as-written' };
+  const runs = [
+    run('today', { elapsedMs: 30000 }),
+    dailyRun('daily', 80, 96, { elapsedMs: 45000 }),
+    run('custom', { kind: 'custom', conditions: custom, elapsedMs: 90000, score: { wpm: 150, accuracy: 100 } }),
+    run('custom-as-daily', { kind: 'custom', conditions: daily, challengeDate: '2026-10-09', elapsedMs: 40000, score: { wpm: 150, accuracy: 100 } }),
+    run('custom-only-week', { kind: 'custom', conditions: custom, at: '2026-09-29T12:00:00Z', elapsedMs: 50000 }),
+  ];
+  const summary = boardSummary(runs, dailyKey);
+  assert.deepEqual(summary.weeks, { '2026-10-05': { seconds: 75, runs: 2 } });
+  assert.deepEqual(summary.days, { '2026-10-09': { version: dailyVersion(dailyKey, now), wpm: 80, accuracy: 96, attempts: 1 } });
+});
+
 test('each run counts in its own day and week, whatever the writing device’s clock says', () => {
   // Monday 12 October: a phone with a correct clock played Monday's daily at 00:05 UTC and practised.
   const monday = new Date('2026-10-12T00:05:00Z');
@@ -118,7 +142,7 @@ test('board order: fastest daily first, accuracy breaks a tie, nobody-yet last; 
   assert.deepEqual(weekOrder(rows).map((row) => row.name || 'you'), ['Lin', 'you', 'Ana', 'Kai', 'Sam']);
 });
 
-test('the board sends no numbers: reading, sharing (with only the sharing version it read) and stopping, as the signed-in account', async () => {
+test('the board sends no numbers: reading, sharing (with only the sharing version it read) and stopping (with only the opt-out’s id), as the signed-in account', async () => {
   const original = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, options) => {
@@ -128,12 +152,15 @@ test('the board sends no numbers: reading, sharing (with only the sharing versio
   try {
     const read = await readBoard(session);
     await startSharing(session, versionOf(read));
-    await stopSharing(session);
+    await stopSharing(session, 'mgm1k2-abc123');
+    // Without an id it goes without one (the board itself always sends the kept id): a new opt-out.
+    await stopSharing(session, null);
     assert.match(calls[0].url, /\/rest\/v1\/rpc\/friends_board$/);
     assert.equal(calls[0].headers.Authorization, 'Bearer account-token');
     assert.deepEqual(calls.map((call) => call.data), [
       { p_action: 'board', p_data: {} },
       { p_action: 'share', p_data: { version: 3 } },
+      { p_action: 'unshare', p_data: { id: 'mgm1k2-abc123' } },
       { p_action: 'unshare', p_data: {} },
     ]);
   } finally { globalThis.fetch = original; }
