@@ -1,7 +1,7 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
-import { boardSummary, dailyOrder, dailyVersion, newId, practiceTime, publishSummary, readBoard, runsSince, shareSummary, stopSharing, weekOrder, weekStart } from '../src/friends-board.js';
+import { BOARD_V, boardColumn, boardCurrent, boardSummary, dailyOrder, dailyVersion, nextRead, practiceTime, readBoard, readDue, startSharing, stopSharing, weekOrder, weekStart } from '../src/friends-board.js';
 import { dailyPassage } from '../src/insights.js';
 
 const daily = { mode: 'quote', duration: null, count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any',
@@ -23,7 +23,7 @@ test('weeks start on Monday 00:00 UTC, whatever the local day', () => {
   assert.equal(weekStart(new Date('2026-10-11T23:59:59Z')), '2026-10-05');
 });
 
-test('the daily result is today’s best completed physical-keyboard attempt, with the attempt count', () => {
+test('each day’s daily result is its best completed physical-keyboard attempt, with the attempt count', () => {
   const runs = [
     dailyRun('first', 64, 98),
     dailyRun('second', 78, 95),
@@ -35,8 +35,11 @@ test('the daily result is today’s best completed physical-keyboard attempt, wi
     dailyRun('impossible', 900, 100),
     run('practice', { score: { wpm: 130, accuracy: 100 } }),
   ];
-  assert.deepEqual(boardSummary(runs, dailyKey, now).daily, { date: '2026-10-09', version: dailyVersion(dailyKey, now), wpm: 78, accuracy: 97, attempts: 3 });
-  assert.equal(boardSummary([run('practice')], dailyKey, now).daily, null);
+  assert.deepEqual(boardSummary(runs, dailyKey).days, {
+    '2026-10-09': { version: dailyVersion(dailyKey, now), wpm: 78, accuracy: 97, attempts: 3 },
+    '2026-10-08': { version: dailyVersion(dailyKey, new Date('2026-10-08T00:00:00Z')), wpm: 110, accuracy: 99, attempts: 1 },
+  });
+  assert.deepEqual(boardSummary([run('practice')], dailyKey).days, {});
 });
 
 test('a daily result carries its version: the conditions key (corpus and metric version) and the passage', () => {
@@ -48,7 +51,7 @@ test('a daily result carries its version: the conditions key (corpus and metric 
   assert.notEqual(dailyVersion(dailyKey, new Date('2026-10-10T15:00:00Z')), version, 'another day is another passage');
 });
 
-test('practice time counts completed, uninterrupted runs since Monday, and nothing undated', () => {
+test('practice time counts completed, uninterrupted runs in the week (from Monday 00:00 UTC) each was run, and nothing undated', () => {
   const runs = [
     run('today', { elapsedMs: 30000 }),
     run('monday', { at: '2026-10-05T00:00:00Z', elapsedMs: 60000, kind: 'drill' }),
@@ -58,8 +61,41 @@ test('practice time counts completed, uninterrupted runs since Monday, and nothi
     run('abandoned', { status: 'interrupted', elapsedMs: 9000 }),
     run('undated', { at: null, elapsedMs: 9000 }),
   ];
-  assert.deepEqual(boardSummary(runs, dailyKey, now).week, { start: '2026-10-05', seconds: 135, runs: 3 });
-  assert.deepEqual(boardSummary([], dailyKey, now), { daily: null, week: { start: '2026-10-05', seconds: 0, runs: 0 }, bests: {} });
+  assert.deepEqual(boardSummary(runs, dailyKey).weeks, { '2026-10-05': { seconds: 135, runs: 3 }, '2026-09-28': { seconds: 120, runs: 1 } });
+  assert.deepEqual(boardSummary([], dailyKey), { days: {}, weeks: {}, bests: {} });
+});
+
+test('each run counts in its own day and week, whatever the writing device’s clock says', () => {
+  // Monday 12 October: a phone with a correct clock played Monday's daily at 00:05 UTC and practised.
+  const monday = new Date('2026-10-12T00:05:00Z');
+  const runs = [
+    dailyRun('monday-daily', 82, 97, { challengeDate: '2026-10-12', at: '2026-10-12T00:04:00Z' }),
+    run('sunday-practice', { at: '2026-10-11T22:00:00Z', elapsedMs: 600000 }),
+  ];
+  const expected = {
+    days: { '2026-10-12': { version: dailyVersion(dailyKey, monday), wpm: 82, accuracy: 97, attempts: 1 } },
+    weeks: { '2026-10-12': { seconds: 41, runs: 1 }, '2026-10-05': { seconds: 600, runs: 1 } },
+  };
+  // A laptop ten minutes slow (still Sunday) and one ten minutes fast write the same summary as the
+  // phone: the service, on Monday, finds Monday's daily and this week's practice in each.
+  for (const clock of ['2026-10-11T23:58:00Z', '2026-10-12T00:08:00Z', '2026-10-12T00:18:00Z']) {
+    mock.timers.enable({ apis: ['Date'], now: Date.parse(clock) });
+    try {
+      assert.equal(new Date().toISOString(), new Date(clock).toISOString());
+      const { days, weeks } = boardSummary(runs, dailyKey);
+      assert.deepEqual({ days, weeks }, expected, clock);
+    } finally { mock.timers.reset(); }
+  }
+});
+
+test('a summary keeps only the latest two days and weeks', () => {
+  const runs = ['2026-10-07', '2026-10-08', '2026-10-09'].map((day, index) => dailyRun(`daily-${day}`, 70 + index, 97,
+    { challengeDate: day, at: `${day}T12:00:00Z` }));
+  runs.push(run('older', { at: '2026-09-23T12:00:00Z' }), run('last-week', { at: '2026-10-01T12:00:00Z' }));
+  const summary = boardSummary(runs, dailyKey);
+  assert.deepEqual(Object.keys(summary.days), ['2026-10-09', '2026-10-08']);
+  assert.deepEqual(Object.keys(summary.weeks), ['2026-10-05', '2026-09-28']);
+  assert.deepEqual(summary.weeks['2026-10-05'], { seconds: 123, runs: 3 });
 });
 
 test('practice time reads in seconds, then minutes, and never rounds up', () => {
@@ -82,44 +118,79 @@ test('board order: fastest daily first, accuracy breaks a tie, nobody-yet last; 
   assert.deepEqual(weekOrder(rows).map((row) => row.name || 'you'), ['Lin', 'you', 'Ana', 'Kai', 'Sam']);
 });
 
-test('the board sends only the signed-in summary, as that account', async () => {
+test('the board sends no numbers: reading, sharing and stopping, as the signed-in account', async () => {
   const original = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, options) => {
     calls.push({ url, headers: options.headers, data: JSON.parse(options.body) });
-    return new Response(JSON.stringify({ date: '2026-10-09', weekStart: '2026-10-05', rows: [] }));
+    return new Response(JSON.stringify({ date: '2026-10-09', weekStart: '2026-10-05', sharing: true, nextDay: 32400, rows: [] }));
   };
   try {
-    const summary = boardSummary([dailyRun('daily', 80, 96)], dailyKey, now);
-    await publishSummary(session, summary);
     await readBoard(session);
-    await publishSummary(session, boardSummary([], dailyKey, now), { replace: true });
-    await shareSummary(session, summary);
+    await startSharing(session);
     await stopSharing(session);
     assert.match(calls[0].url, /\/rest\/v1\/rpc\/friends_board$/);
     assert.equal(calls[0].headers.Authorization, 'Bearer account-token');
-    assert.deepEqual(calls[0].data, { p_action: 'publish', p_data: summary });
-    assert.deepEqual(Object.keys(calls[0].data.p_data.daily).sort(), ['accuracy', 'attempts', 'date', 'version', 'wpm']);
-    assert.deepEqual(calls[1].data, { p_action: 'board', p_data: {} });
-    // A history clear or undo replaces the stored summary instead of being folded into it.
-    assert.deepEqual(calls[2].data, { p_action: 'replace', p_data: { daily: null, week: { start: '2026-10-05', seconds: 0, runs: 0 }, bests: {} } });
-    // Sharing is opt-in: turning it on sends the summary, turning it off sends nothing about the runs.
-    assert.deepEqual(calls[3].data, { p_action: 'share', p_data: summary });
-    assert.deepEqual(calls[4].data, { p_action: 'unshare', p_data: {} });
+    assert.deepEqual(calls.map((call) => call.data), [
+      { p_action: 'board', p_data: {} },
+      { p_action: 'share', p_data: {} },
+      { p_action: 'unshare', p_data: {} },
+    ]);
   } finally { globalThis.fetch = original; }
 });
 
-test('after a clear elsewhere, a summary counts only runs from the clear on', () => {
-  const runs = [run('before', { at: '2026-10-09T10:00:00Z' }), run('after', { at: '2026-10-09T12:00:00Z' }), run('undated', { at: null })];
-  assert.deepEqual(runsSince(runs, null).map((r) => r.id), ['before', 'after', 'undated']);
-  // The service's time, to the microsecond, as its replies carry it.
-  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00.123456+00:00').map((r) => r.id), ['after']);
-  assert.equal(boardSummary(runsSince(runs, '2026-10-09T11:00:00Z'), dailyKey, now).week.runs, 1);
-  // On a device whose clock reads an hour behind, a run it stamped 10:30 happened at 11:30 service time.
-  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00Z', 3600000).map((r) => r.id), ['before', 'after']);
-  // On one an hour ahead, a run it stamped 12:00 happened at 11:00, only just in.
-  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00Z', -3600000).map((r) => r.id), ['after']);
-  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00.001Z', -3600000).map((r) => r.id), []);
+test('the profile row’s board column is the summary of its runs, stamped with the write', () => {
+  const at = '2026-10-09T15:00:00.123Z';
+  const runs = [dailyRun('daily', 80, 96, { challengeDate: new Date().toISOString().slice(0, 10), at: new Date().toISOString() })];
+  const column = boardColumn(runs, dailyKey, at);
+  assert.equal(column.v, BOARD_V);
+  assert.equal(column.at, at);
+  assert.deepEqual({ days: column.days, weeks: column.weeks, bests: column.bests }, boardSummary(runs, dailyKey));
+  assert.deepEqual(Object.keys(column).sort(), ['at', 'bests', 'days', 'v', 'weeks']);
+  // Small enough for the column's 16 KB check by a wide margin.
+  assert.ok(JSON.stringify(column).length < 1024);
+});
+
+test('a row’s summary is current only while it is stamped with the row’s own updated_at, in this build’s shape', () => {
+  const at = '2026-10-09T15:00:00.123Z';
+  const board = boardColumn([], dailyKey, at);
+  assert.equal(boardCurrent({ updated_at: at, board }), true);
+  // The service writes timestamps back with an offset and microseconds; the same moment still matches.
+  assert.equal(boardCurrent({ updated_at: '2026-10-09T15:00:00.123+00:00', board }), true);
+  assert.equal(boardCurrent({ updated_at: '2026-10-09T17:00:00.123+02:00', board }), true);
+  // A later save that left the column alone (an older build), no column, or a column from before `v`.
+  assert.equal(boardCurrent({ updated_at: '2026-10-09T15:00:01.000Z', board }), false);
+  assert.equal(boardCurrent({ updated_at: at, board: null }), false);
+  assert.equal(boardCurrent({ updated_at: at }), false);
+  assert.equal(boardCurrent(null), false);
+  assert.equal(boardCurrent({ updated_at: at, board: { ...board, v: undefined } }), false);
+  assert.equal(boardCurrent({ updated_at: at, board: { ...board, v: BOARD_V - 1 } }), false);
+  assert.equal(boardCurrent({ updated_at: at, board: { ...board, at: 'yesterday' } }), false);
+});
+
+test('the next day’s read comes nextDay seconds after the reply arrived, by either clock, and never without one', () => {
+  assert.deepEqual(nextRead({ nextDay: 30 }, 1000, 50), { wall: 31000, mono: 30050 });
+  assert.deepEqual(nextRead({ nextDay: 0 }, 1000, 50), { wall: 1000, mono: 50 });
+  assert.equal(nextRead({}, 1000, 50), null);
+  assert.equal(nextRead(null, 1000, 50), null);
+  assert.equal(nextRead({ nextDay: '30' }, 1000, 50), null);
+  // With no board read yet, a read is due.
+  assert.equal(readDue(null, 0, 0), true);
+});
+
+test('setting the clock back while the board is open doesn’t hold the midnight read back', () => {
+  // Read at 22:00 UTC on the service, on a device whose clock is three hours fast (01:00): two hours to go.
+  const hour = 3600000;
+  const fast = Date.parse('2026-10-10T01:00:00Z');
+  const at = nextRead({ nextDay: 7200 }, fast, 1000);
+  // The clock is then corrected back to 22:00. Just before the service's midnight, nothing is due.
+  const corrected = (elapsed) => fast - 3 * hour + elapsed;
+  assert.equal(readDue(at, corrected(2 * hour - 1000), 1000 + 2 * hour - 1000), false);
+  // At the service's midnight the page's monotonic clock has passed two hours: the read is due, though
+  // the wall clock reads only 00:00 against a deadline of 03:00.
+  assert.equal(readDue(at, corrected(2 * hour), 1000 + 2 * hour), true);
+  // And a monotonic clock paused while the device slept leaves the wall clock to say so.
+  assert.equal(readDue(at, fast + 2 * hour, 1000 + hour), true);
 });
 
 test('a service without the board migration says it is being set up', async () => {
@@ -128,14 +199,4 @@ test('a service without the board migration says it is being set up', async () =
   try {
     await assert.rejects(readBoard(session), /being set up/);
   } finally { globalThis.fetch = original; }
-});
-
-test('clear ids are UUIDs even where crypto.randomUUID is missing (plain http on a LAN address)', () => {
-  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-  // An insecure context has getRandomValues but no randomUUID.
-  const insecure = { getRandomValues: (bytes) => globalThis.crypto.getRandomValues(bytes) };
-  const ids = Array.from({ length: 50 }, () => newId(insecure));
-  for (const id of ids) assert.match(id, uuid);
-  assert.equal(new Set(ids).size, ids.length);
-  assert.match(newId(), uuid);
 });

@@ -1,6 +1,8 @@
-// The friends board's Bests: each sharing friend's best on one test shape at a time.
+// The friends board's Bests: each sharing friend's best on one test shape at a time, read, like the rest
+// of the board, from each account's own profile row, where every profile save writes them.
 import { randomUUID } from 'node:crypto';
-import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
+import { CORPUS_VERSION, METRIC_VERSION, conditionKey, quoteCorpus } from '../src/typing.js';
+import { BOARD_V, shapeOf } from '../src/friends-board.js';
 import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto } from './fixtures.js';
 import { mondayOf, utcDay } from './fake-board.js';
 
@@ -51,27 +53,45 @@ function practice(extra = []) {
 const fastest = (runs, conditions) => runs.filter((run) => conditionKey(run.conditions) === conditionKey(conditions) && ['test', 'retest'].includes(run.kind))
   .sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy || Date.parse(a.at) - Date.parse(b.at))[0];
 
-function seedProfile(supabase, user, runs) {
+// The account's profile row as another device saved it: these runs, and the board summary given (none,
+// as before the board's column existed, unless one is given).
+function seedProfile(supabase, user, runs, { board = null, preferences = {}, seen = [] } = {}) {
   const updatedAt = new Date(Date.now() - 3600000).toISOString();
-  supabase.profiles.set(user.id, { data: { version: 2, profileId: randomUUID(), preferences: {}, attempts: [], runs, loops: [], seenTextIds: [], bests: {}, updatedAt }, updated_at: updatedAt });
+  supabase.profiles.set(user.id, { data: { version: 2, profileId: randomUUID(), preferences, attempts: [], runs, loops: [], seenTextIds: seen, bests: {}, updatedAt },
+    updated_at: updatedAt, board: board && { ...board, at: updatedAt } });
 }
 // A device that remembers the account shares, as it would after turning sharing on there.
 const remembers = (page, user) => page.addInitScript((key) => {
   try { if (localStorage.getItem(key) === null) localStorage.setItem(key, '1'); } catch {}
 }, `stilltype-board-sharing:${user.id}`);
-// An account that turned sharing on already, on this device: its row on the board, without bests yet.
-async function sharing(page, supabase, user, runs) {
-  seedProfile(supabase, user, runs);
-  supabase.board.summaries.set(user.id, { daily: null, week: { start: mondayOf(), seconds: 0, runs: 0 }, bests: {} });
+// An account that turned sharing on already, on this device, whose profile row holds these runs and no
+// summary yet: the first load writes one.
+async function sharing(page, supabase, user, runs, options) {
+  seedProfile(supabase, user, runs, options);
+  supabase.board.members.add(user.id);
   await remembers(page, user);
 }
+// The summary in an account's own profile row.
+const column = (supabase, user) => supabase.profiles.get(user.id)?.board ?? null;
+const bestsIn = (supabase, user) => column(supabase, user)?.bests ?? null;
 function befriend(supabase, owner, friend, name) {
   const list = supabase.races.friends.get(owner.id) || [];
   list.push({ id: randomUUID(), email: friend.email, name });
   supabase.races.friends.set(owner.id, list);
 }
 const best = (wpm, accuracy, days) => ({ wpm, accuracy, date: day(days) });
-const shares = (supabase, user, bests) => supabase.board.summaries.set(user.id, { daily: null, week: { start: mondayOf(), seconds: 900, runs: 12 }, bests });
+// An account that shares, whose profile row's summary holds these bests (and a quarter hour this week).
+// Its history holds a run behind each best this build can read, so a page of its own that saves the row
+// again writes the same bests.
+function shares(supabase, user, bests) {
+  const at = new Date(Date.now() - 3600000).toISOString();
+  const runs = Object.entries(bests).filter(([key]) => shapeOf(key)).map(([key, value], index) => ({ id: `${user.id}-${index}`,
+    at: `${value.date}T12:00:00.000Z`, kind: 'test', status: 'complete', interrupted: false, fresh: true, textId: `text-${index}`,
+    conditions: shapeOf(key), score: { wpm: value.wpm, accuracy: value.accuracy }, elapsedMs: 30000, errors: 1, target: null, challengeDate: null, patterns: [] }));
+  supabase.profiles.set(user.id, { data: { version: 2, profileId: randomUUID(), preferences: {}, attempts: [], runs, loops: [], seenTextIds: [], bests: {}, updatedAt: at },
+    updated_at: at, board: { v: BOARD_V, at, days: {}, weeks: { [mondayOf()]: { seconds: 900, runs: 12 } }, bests } });
+  supabase.board.members.add(user.id);
+}
 
 // Ada has chosen Lin, Mara and Sam, and they chose her. Ada also has Ola, who never added her back,
 // and Kai has added Ada without Ada adding Kai. Neither of those two may ever appear.
@@ -123,20 +143,20 @@ test('each mutual friend’s best on the picked shape, ranked, with a keyboard p
   await sharing(page, supabase, ada, runs);
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
-  await openBoard(page);
-  // Opening the board sends Ada's bests: her fastest run on each shape she has practised.
-  await expect.poll(() => supabase.board.published.length).toBe(1);
+  // The load's profile save writes Ada's bests into her own row: her fastest run on each shape she has
+  // practised, dated by that run.
   const own60 = fastest(runs, TIME60);
-  expect(Object.keys(supabase.board.published[0].bests).sort()).toEqual([K60, K30, K25].sort());
-  expect(supabase.board.published[0].bests[K60]).toEqual({ wpm: own60.score.wpm, accuracy: own60.score.accuracy, date: own60.at.slice(0, 10) });
+  await expect.poll(() => Object.keys(bestsIn(supabase, ada) ?? {}).sort()).toEqual([K60, K30, K25].sort());
+  expect(bestsIn(supabase, ada)[K60]).toEqual({ wpm: own60.score.wpm, accuracy: own60.score.accuracy, date: own60.at.slice(0, 10) });
+  expect(column(supabase, ada).v).toBe(BOARD_V);
+  await openBoard(page);
 
   // The picker is labelled, lists the shapes the board can compare, and opens on the one Ada has run most.
   const picker = page.locator('#friends-board').getByLabel('Test conditions');
   await expect(picker).toHaveValue(K60);
   await expect(picker.locator('option')).toHaveText(['30 s · plain', '60 s · plain', '25 words · plain']);
   await expect(page.locator('#board-bests-meta')).toHaveText('english 200 · 60 s · plain · physical keyboard · continue on error · corpus v5 · metric v1 · best completed test or retest · dates in utc');
-  const rows = await rowTexts(page);
-  expect(rows).toEqual([
+  await expect.poll(() => rowTexts(page)).toEqual([
     `Mara 91 wpm 98% accuracy · ${day(5)}`,
     `You ${own60.score.wpm} wpm ${own60.score.accuracy}% accuracy · ${own60.at.slice(0, 10)}`,
     `Lin 78 wpm 96% accuracy · ${day(3)}`,
@@ -206,10 +226,10 @@ test('only completed practice tests and retests are shared, never drills, dailie
   await sharing(page, supabase, ada, runs);
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
+  const only = { [K60]: { wpm: 64, accuracy: 95, date: at.slice(0, 10) } };
+  await expect.poll(() => bestsIn(supabase, ada)).toEqual(only);
   await openBoard(page);
-  await expect.poll(() => supabase.board.published.length).toBe(1);
-  expect(supabase.board.published[0].bests).toEqual({ [K60]: { wpm: 64, accuracy: 95, date: at.slice(0, 10) } });
-  expect(await rowTexts(page)).toEqual([`You 64 wpm 95% accuracy · ${at.slice(0, 10)}`]);
+  await expect.poll(() => rowTexts(page)).toEqual([`You 64 wpm 95% accuracy · ${at.slice(0, 10)}`]);
 
   // A daily run finished here changes the daily row and the week, but not the bests.
   await page.locator('#challenge-daily').click();
@@ -217,66 +237,26 @@ test('only completed practice tests and retests are shared, never drills, dailie
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   await typeInto(page, await passageText(page), '#typing-input', { delay: 120 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect.poll(() => supabase.board.published.length).toBe(2);
-  expect(supabase.board.published[1].daily).not.toBeNull();
-  expect(supabase.board.published[1].bests).toEqual({ [K60]: { wpm: 64, accuracy: 95, date: at.slice(0, 10) } });
+  await expect.poll(() => column(supabase, ada)?.days?.[utcDay()] ?? null).not.toBeNull();
+  expect(bestsIn(supabase, ada)).toEqual(only);
 });
 
-test('a run stored while a clock was far off never stops sharing from turning on', async ({ page, supabase }) => {
+test('a row saved before bests (by the board’s first build) gets them from its own runs on the next load', async ({ page, supabase }) => {
   const { ada } = circle(supabase);
   const runs = practice();
+  // Quotes, every one already seen: loading picks no new passage, so a load here saves nothing itself.
+  const options = { preferences: { mode: 'quote' }, seen: quoteCorpus.map((quote) => quote.id) };
+  // Her row's summary describes this very row, in the first build's shape: no bests.
+  await sharing(page, supabase, ada, runs, { ...options, board: { v: 1, days: {}, weeks: {} } });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  // The load repairs it from the row's own runs, on that row's version only.
   const own60 = fastest(runs, TIME60);
-  const own30 = fastest(runs, TIME30);
-  // The fastest on their shapes: one stored while a clock read four days ahead, one while a clock read
-  // a year before Stilltype. The service refuses either date, so neither travels.
-  const ahead = { ...own60, id: 'ahead', textId: 'text-ahead', at: new Date(Date.now() + 4 * DAY_MS).toISOString(), score: { wpm: 109, accuracy: 99 } };
-  const behind = { ...own30, id: 'behind', textId: 'text-behind', at: '2025-06-01T12:00:00.000Z', score: { wpm: 107, accuracy: 99 } };
-  seedProfile(supabase, ada, [...runs, ahead, behind]);
-  await openApp(page);
-  await signInWithEmail(page, 'ada@stilltype.test');
-  await openView(page, 'Challenge');
-  await page.locator('#challenge-friends').click();
-  await expect(page.locator('#share-board')).not.toBeChecked();
-  await page.locator('#share-board').check();
-  await expect(page.locator('#friends-board-lists')).toBeVisible();
-  await expect(page.locator('#share-board')).toBeChecked();
-  await expect(page.locator('#friends-board-status')).toHaveText('');
-  expect(supabase.board.published).toHaveLength(1);
-  expect(supabase.board.published[0]).toMatchObject({ action: 'share', week: { start: mondayOf() } });
-  expect(supabase.board.published[0].bests[K60]).toEqual({ wpm: own60.score.wpm, accuracy: own60.score.accuracy, date: own60.at.slice(0, 10) });
-  expect(supabase.board.published[0].bests[K30]).toEqual({ wpm: own30.score.wpm, accuracy: own30.score.accuracy, date: own30.at.slice(0, 10) });
-  expect(supabase.board.summaries.get(ada.id).sharing).not.toBe(false);
-});
-
-test('a device whose clock runs two days ahead learns the service’s clock before its first publish', async ({ page, supabase }) => {
-  // Tuesday 10:00 UTC on the service, running on from there. This device's clock reads Thursday, two
-  // days ahead but in the same UTC week. (Both in the past, so sign-in tokens read as fresh.)
-  const started = Date.now();
-  const serviceNow = () => Date.parse('2026-10-06T10:00:00Z') + (Date.now() - started);
-  supabase.board.now = () => new Date(serviceNow());
-  const ada = supabase.addUser('ada@stilltype.test');
-  seedProfile(supabase, ada, []);
-  supabase.board.summaries.set(ada.id, { daily: null, week: { start: '2026-10-05', seconds: 0, runs: 0 }, bests: {} });
-  // The device already knows the account shares, so loading never reads the board.
-  await remembers(page, ada);
-  await page.clock.install({ time: new Date(serviceNow() + 2 * DAY_MS) });
-  await openApp(page);
-  await signInWithEmail(page, 'ada@stilltype.test');
-  // Two runs, without opening the board. The first publish is preceded by one quiet read, and is taken.
-  const first = await typeTenWords(page);
-  await expect.poll(() => supabase.board.published.length).toBe(1);
-  expect(supabase.board.published[0].bests).toEqual({ [K10]: { wpm: first.wpm, accuracy: first.accuracy, date: '2026-10-06' } });
-  await page.locator('#run-again').click();
-  const second = await typeTenWords(page);
-  await expect.poll(() => supabase.board.published.length).toBe(2);
-  expect(supabase.board.calls).toEqual(['board', 'publish', 'publish']);
-  expect(supabase.board.refused).toEqual([]);
-  // The row has both runs, and the best of them dated on the service's day, not this device's.
-  const top = [first, second].sort((a, b) => b.wpm - a.wpm || b.accuracy - a.accuracy)[0];
-  expect(supabase.board.summaries.get(ada.id)).toMatchObject({ week: { start: '2026-10-05', runs: 2 },
-    bests: { [K10]: { wpm: top.wpm, accuracy: top.accuracy, date: '2026-10-06' } } });
-  expect(Object.keys(supabase.board.summaries.get(ada.id).bests)).toEqual([K10]);
-  await expect(page.locator('#friends-board-status')).toHaveText('');
+  await expect.poll(() => bestsIn(supabase, ada)?.[K60] ?? null).toEqual({ wpm: own60.score.wpm, accuracy: own60.score.accuracy, date: own60.at.slice(0, 10) });
+  expect(supabase.profileWrites.map((write) => write.method)).toEqual(['PATCH']);
+  expect(column(supabase, ada)).toMatchObject({ v: BOARD_V, at: supabase.profiles.get(ada.id).updated_at });
+  await openBoard(page);
+  await expect.poll(() => rowTexts(page)).toContain(`You ${own60.score.wpm} wpm ${own60.score.accuracy}% accuracy · ${own60.at.slice(0, 10)}`);
 });
 
 test('a clear takes your bests off the board, and undo brings them back', async ({ page, browser, supabase }) => {
@@ -289,8 +269,8 @@ test('a clear takes your bests off the board, and undo brings them back', async 
   const typed = await typeTenWords(page);
   expect(typed.wpm).toBeGreaterThanOrEqual(40);
   expect(typed.wpm).toBeLessThanOrEqual(110);
-  await expect.poll(() => supabase.board.summaries.get(ada.id).bests[K10]?.wpm).toBe(typed.wpm);
-  const before = supabase.board.summaries.get(ada.id).bests;
+  await expect.poll(() => bestsIn(supabase, ada)?.[K10]?.wpm).toBe(typed.wpm);
+  const before = bestsIn(supabase, ada);
   expect(Object.keys(before).sort()).toEqual([K60, K30, K25, K10].sort());
 
   // Lin sees them.
@@ -304,64 +284,24 @@ test('a clear takes your bests off the board, and undo brings them back', async 
     await lin.locator('#board-shape').selectOption(K60);
     await expect(lin.locator('#board-bests')).toContainText(`Ada ${before[K60].wpm} wpm`);
 
-    // Ada clears her history: the clear replaces her row, bests and all.
+    // Ada clears her history: the clear's save writes a summary of no runs, so no bests.
     await clearHistory(page);
-    await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('replace');
-    await expect.poll(() => supabase.board.summaries.get(ada.id).bests).toEqual({});
+    await expect.poll(() => bestsIn(supabase, ada)).toEqual({});
     await lin.locator('#refresh-friends-board').click();
     await expect(lin.locator('#friends-board-status')).toHaveText('Updated.');
     expect(await rowTexts(lin)).toContain('Ada — no best on this shape yet');
 
-    // Undo puts them back the way it puts back the week: the restored history's bests replace the row.
+    // Undo's save puts the history back, and with it the summary of its bests.
     await page.locator('#undo-clear').click();
     await expect(page.locator('#history-feedback')).toHaveText('History restored.');
-    await expect.poll(() => supabase.board.summaries.get(ada.id).bests).toEqual(before);
-    expect(supabase.board.published.at(-1)).toMatchObject({ action: 'replace', bests: before });
+    await expect.poll(() => bestsIn(supabase, ada)).toEqual(before);
+    expect(column(supabase, ada).at).toBe(supabase.profiles.get(ada.id).updated_at);
     await lin.locator('#refresh-friends-board').click();
     await expect(lin.locator('#board-bests')).toContainText(`Ada ${before[K60].wpm} wpm`);
     await openBoard(page);
     await page.locator('#board-shape').selectOption(K10);
-    expect(await rowTexts(page)).toContain(`You ${typed.wpm} wpm ${typed.accuracy}% accuracy · ${utcDay()}`);
+    await expect.poll(() => rowTexts(page)).toContain(`You ${typed.wpm} wpm ${typed.accuracy}% accuracy · ${utcDay()}`);
   } finally { await context.close(); }
-});
-
-test('a tab that missed a clear can’t put the cleared bests back', async ({ page, supabase }) => {
-  const ada = supabase.addUser('ada@stilltype.test');
-  // Ada's fastest one-minute test was earlier today, before the clear. The service keeps a best from
-  // the clear's own day, so only the tab leaving that run out keeps it off the board.
-  const earlier = { ...fastest(practice(), TIME60), id: 'earlier-today', textId: 'text-earlier-today', score: { wpm: 104, accuracy: 99 },
-    at: new Date(Math.max(Date.parse(`${utcDay()}T00:00:00Z`), Date.now() - 3600000)).toISOString() };
-  const runs = practice([earlier]);
-  await sharing(page, supabase, ada, runs);
-  await openApp(page);
-  await signInWithEmail(page, 'ada@stilltype.test');
-  // A second tab, loaded before the clear, keeps the runs and their bests in its copy. It opens the
-  // board before the clear, so it has heard from the service and its next write goes without a read.
-  const second = await page.context().newPage();
-  await supabase.attach(second);
-  await openApp(second);
-  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  await openBoard(second);
-  await expect.poll(() => supabase.board.summaries.get(ada.id).bests[K60]).toEqual({ wpm: 104, accuracy: 99, date: earlier.at.slice(0, 10) });
-  await openView(second, 'Practice');
-
-  await clearHistory(page);
-  await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('replace');
-  const { clear } = supabase.board.summaries.get(ada.id);
-  expect(supabase.board.summaries.get(ada.id).bests).toEqual({});
-
-  // The stale tab finishes a run. Sent with every best it holds, it is refused; it learns the clear and
-  // sends only the bests set since, so the cleared ones stay off the board.
-  const typed = await typeTenWords(second);
-  await expect.poll(() => supabase.board.published.at(-1)?.action).toBe('publish');
-  expect(supabase.board.refused).toHaveLength(1);
-  expect(Object.keys(supabase.board.refused[0].bests).sort()).toEqual([K60, K30, K25, K10].sort());
-  expect(supabase.board.refused[0].bests[K60]).toEqual({ wpm: 104, accuracy: 99, date: earlier.at.slice(0, 10) });
-  const retried = supabase.board.published.at(-1);
-  expect(retried.clear).toBe(clear.id);
-  expect(retried.bests).toEqual({ [K10]: { wpm: typed.wpm, accuracy: typed.accuracy, date: utcDay() } });
-  expect(supabase.board.summaries.get(ada.id).bests[K60]).toBeUndefined();
-  expect(supabase.board.summaries.get(ada.id).bests).toEqual({ [K10]: { wpm: typed.wpm, accuracy: typed.accuracy, date: utcDay() } });
 });
 
 test.describe('phone', () => {
@@ -372,8 +312,10 @@ test.describe('phone', () => {
     await sharing(page, supabase, ada, practice());
     await openApp(page);
     await signInWithEmail(page, 'ada@stilltype.test');
+    await expect.poll(() => bestsIn(supabase, ada)).not.toBeNull();
     await openBoard(page);
     await expect(page.locator('#board-bests .board-row')).toHaveCount(4);
+    await expect(page.locator('#board-bests [data-self]')).toContainText('wpm');
     expect(await overflow(page)).toBeLessThanOrEqual(0);
     await scrollBelow(page, '#board-bests-heading', 24);
     await shot(page, testInfo, 'bests-phone-light');

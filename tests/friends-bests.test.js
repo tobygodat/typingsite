@@ -1,11 +1,12 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CORPUS_VERSION, CORRECTION_POLICIES, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS,
   conditionKey } from '../src/typing.js';
 import { wordListIds } from '../src/words.js';
-import { MAX_SHAPES, bestsOrder, boardShapes, boardSummary, defaultShape, runsSince, shapeBests, shapeDescription, shapeLabels, shapeOf } from '../src/friends-board.js';
-import { bestsSince, foldBests, invalidBests } from '../e2e/fake-board.js';
+import { BOARD_V, MAX_SHAPES, bestsOrder, boardColumn, boardCurrent, boardShapes, boardSummary, defaultShape, shapeBests, shapeDescription, shapeLabels,
+  shapeOf } from '../src/friends-board.js';
+import { boardBests } from '../e2e/fake-board.js';
 
 const base = { mode: 'time', duration: 60, count: null, punctuation: false, numbers: false, quoteLength: null, difficulty: null, wordList: '200',
   inputClass: 'physical-keyboard', correctionPolicy: 'mandatory', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
@@ -15,11 +16,9 @@ const words25 = { ...base, mode: 'words', duration: null, count: 25, correctionP
 const quote = { ...base, mode: 'quote', duration: null, wordList: null, quoteLength: 'medium', difficulty: 'any' };
 const touch60 = { ...base, inputClass: 'touch' };
 const key = conditionKey;
-const now = new Date('2026-10-09T15:00:00Z');
 const run = (id, overrides = {}) => ({ id, at: '2026-10-09T12:00:00Z', status: 'complete', kind: 'test', interrupted: false,
   conditions: time60, score: { wpm: 70, accuracy: 97 }, elapsedMs: 60000, challengeDate: null, ...overrides });
 const score = (wpm, accuracy) => ({ score: { wpm, accuracy } });
-const utcDayOf = (date) => date.toISOString().slice(0, 10);
 // The app's own description of conditions, in parts (as src/app.js conditionParts gives them).
 const parts = (value) => ({
   language: value.wordList ? `english ${value.wordList}` : 'english',
@@ -66,7 +65,7 @@ test('only runs that can set a personal best are shared: completed, uninterrupte
   assert.deepEqual(shapeBests(runs), { [key(time60)]: { wpm: 75, accuracy: 94, date: '2026-10-09' } });
 });
 
-test('a shape’s best is the fastest run, then the more accurate, then the earlier, dated on the service’s clock', () => {
+test('a shape’s best is the fastest run, then the more accurate, then the earlier, dated by its run’s own UTC day', () => {
   const runs = [
     run('slow', { at: '2026-10-01T09:00:00Z', ...score(64, 99) }),
     run('first-fast', { at: '2026-10-03T09:00:00Z', ...score(81, 95) }),
@@ -80,8 +79,11 @@ test('a shape’s best is the fastest run, then the more accurate, then the earl
     [key(words25)]: { wpm: 58, accuracy: 92, date: '2026-10-08' },
     [key(touch60)]: { wpm: 49, accuracy: 90, date: '2026-10-09' },
   });
-  // A device whose clock reads an hour behind: 23:30 by its clock was 00:30 the next day on the service's.
-  assert.equal(shapeBests(runs, 3600000)[key(words25)].date, '2026-10-09');
+  // Whichever device writes the summary, and whatever its clock reads, the dates are the runs' own.
+  for (const clock of ['2026-10-08T23:50:00Z', '2026-10-12T10:00:00Z', '2025-01-01T00:00:00Z']) {
+    mock.timers.enable({ apis: ['Date'], now: Date.parse(clock) });
+    try { assert.equal(shapeBests(runs)[key(words25)].date, '2026-10-08', clock); } finally { mock.timers.reset(); }
+  }
 });
 
 test('at most 16 shapes are shared: the ones with the most runs, then the most recently run', () => {
@@ -97,31 +99,27 @@ test('at most 16 shapes are shared: the ones with the most runs, then the most r
   // Of the six run once, the two most recent stay: the 17th (on the 9th) and the 16th (on the 8th).
   assert.ok(key(shape(17)) in bests && key(shape(16)) in bests);
   for (const number of [15, 18, 19, 20]) assert.ok(!(key(shape(number)) in bests));
-  for (const value of Object.values(bests)) assert.equal(invalidBests({ x: value }, '2026-10-09'), null);
+  // The service shows every one of them.
+  assert.deepEqual(boardBests(bests), bests);
   for (const shape of Object.keys(bests)) assert.match(shape, /^[A-Za-z0-9:._+-]{1,200}$/, 'the service accepts the key');
 });
 
-test('a run dated outside the service’s limits never travels, so it can’t get a write refused', () => {
-  // Stored while a clock was days ahead, or years behind: the fastest on their shapes, but left out.
+test('a best keeps the date of its own run, and the service shows it whatever that date is', () => {
+  // Stored while a clock was days ahead, or years behind: each is that run's best, dated as stored. The
+  // summary no longer has limits to fit a service's clock: a best is shown as the row holds it.
   const runs = [
     run('real', { at: '2026-10-08T10:00:00Z', ...score(70, 95) }),
-    run('ahead', { at: '2026-10-16T10:00:00Z', ...score(72, 95) }),
-    run('behind', { at: '2025-12-31T23:00:00Z', ...score(90, 99) }),
-    run('ahead-only', { conditions: time30, at: '2026-10-12T10:00:00Z', ...score(88, 97) }),
-    run('tomorrow', { conditions: words25, at: '2026-10-10T23:59:00Z', ...score(61, 93) }),
+    run('ahead', { conditions: time30, at: '2026-10-16T10:00:00Z', ...score(72, 95) }),
+    run('behind', { conditions: words25, at: '2025-12-31T23:00:00Z', ...score(90, 99) }),
   ];
-  const { bests } = boardSummary(runs, 'daily-key', now);
-  assert.deepEqual(bests, { [key(time60)]: { wpm: 70, accuracy: 95, date: '2026-10-08' }, [key(words25)]: { wpm: 61, accuracy: 93, date: '2026-10-10' } });
-  assert.equal(invalidBests(bests, utcDayOf(now)), null);
-  // On the service’s clock: this device reads two days ahead of it, so its run on the 12th was on the 10th there.
-  const offset = -2 * 86400000;
-  const shifted = boardSummary(runs, 'daily-key', new Date(now.getTime() - offset), offset).bests;
-  assert.deepEqual(shifted[key(time30)], { wpm: 88, accuracy: 97, date: '2026-10-10' });
-  assert.equal(invalidBests(shifted, utcDayOf(now)), null);
-  // Whatever the dates, a summary built from stored runs always passes the service's limits.
+  const { bests } = boardSummary(runs, 'daily-key');
+  assert.deepEqual(bests, { [key(time60)]: { wpm: 70, accuracy: 95, date: '2026-10-08' }, [key(time30)]: { wpm: 72, accuracy: 95, date: '2026-10-16' },
+    [key(words25)]: { wpm: 90, accuracy: 99, date: '2025-12-31' } });
+  assert.deepEqual(boardBests(bests), bests);
   for (let days = -400; days <= 400; days += 37) {
-    const at = new Date(now.getTime() + days * 86400000).toISOString();
-    assert.equal(invalidBests(boardSummary([...runs, run(`d${days}`, { at, ...score(99, 99) })], 'daily-key', now).bests, utcDayOf(now)), null, at);
+    const at = new Date(Date.parse('2026-10-09T15:00:00Z') + days * 86400000).toISOString();
+    const withRun = boardSummary([...runs, run(`d${days}`, { at, ...score(99, 99) })], 'daily-key').bests;
+    assert.deepEqual(boardBests(withRun), withRun, at);
   }
 });
 
@@ -138,11 +136,20 @@ test('the 16 shapes shared are this build’s first, however many runs another v
   assert.equal(Object.keys(bests).filter((shape) => shapeOf(shape)).length, 2);
 });
 
-test('a summary’s bests count only runs since the board’s clear, so cleared bests never travel', () => {
-  const runs = [run('before', { at: '2026-10-09T10:00:00Z', ...score(96, 99) }), run('after', { at: '2026-10-09T12:00:00Z', ...score(71, 95) })];
-  assert.deepEqual(boardSummary(runs, 'daily-key', now).bests, { [key(time60)]: { wpm: 96, accuracy: 99, date: '2026-10-09' } });
-  assert.deepEqual(boardSummary(runsSince(runs, '2026-10-09T11:00:00Z'), 'daily-key', now).bests, { [key(time60)]: { wpm: 71, accuracy: 95, date: '2026-10-09' } });
-  assert.deepEqual(boardSummary(runsSince(runs, '2026-10-09T13:00:00Z'), 'daily-key', now).bests, {});
+test('bests come from the runs in the copy saved: a clear’s empty copy has none, and its undo’s copy has them back', () => {
+  const runs = [run('earlier', { at: '2026-10-09T10:00:00Z', ...score(96, 99) }), run('later', { at: '2026-10-09T12:00:00Z', ...score(71, 95) })];
+  const at = '2026-10-09T15:00:00.000Z';
+  assert.deepEqual(boardColumn(runs, 'daily-key', at).bests, { [key(time60)]: { wpm: 96, accuracy: 99, date: '2026-10-09' } });
+  assert.deepEqual(boardColumn([], 'daily-key', at).bests, {});
+  assert.deepEqual(boardColumn(runs.slice(1), 'daily-key', at).bests, { [key(time60)]: { wpm: 71, accuracy: 95, date: '2026-10-09' } });
+});
+
+test('a row saved before bests reads as out of date, so the next load writes its bests', () => {
+  const at = '2026-10-09T15:00:00.000Z';
+  assert.equal(BOARD_V, 2);
+  assert.equal(boardColumn([], 'daily-key', at).v, 2);
+  assert.equal(boardCurrent({ updated_at: at, board: { v: 1, at, days: {}, weeks: {} } }), false);
+  assert.equal(boardCurrent({ updated_at: at, board: boardColumn([], 'daily-key', at) }), true);
 });
 
 test('a condition key is compared only when this build writes it the same way', () => {
@@ -158,9 +165,9 @@ test('a condition key is compared only when this build writes it the same way', 
   assert.equal(shapeOf(key(time60).replace(':plain:', ':plain+symbols:')), null);
   assert.equal(shapeOf(key(time60).replace(':plain:', ':numbers:')), null);
   // A numbers test's best travels under its own key, which the service accepts.
-  const numbersBests = shapeBests([run('numbers', { conditions: { ...time60, numbers: true } })], 0, now);
+  const numbersBests = shapeBests([run('numbers', { conditions: { ...time60, numbers: true } })]);
   assert.deepEqual(Object.keys(numbersBests), [key({ ...time60, numbers: true })]);
-  assert.equal(invalidBests(numbersBests, '2026-10-09'), null);
+  assert.deepEqual(boardBests(numbersBests), numbersBests);
   assert.equal(shapeOf(key({ ...time60, metricVersion: 'stilltype-metrics-v0' })), null);
   assert.equal(shapeOf(key({ ...time60, corpus: 'original-en-v4' })), null);
   assert.equal(shapeOf(`${key(time60)}:extra-field`), null);
@@ -288,35 +295,31 @@ test('rows on a shape: fastest first, accuracy breaks a tie, another build’s b
   assert.deepEqual(ordered.map((row) => row.otherVersion), [false, false, false, true, false]);
 });
 
-test('the fake service folds and cuts bests as the migration does', () => {
+test('the fake service reads bests as the migration does: each shape on its own, at most 16', () => {
   const at = (wpm, accuracy, date) => ({ wpm, accuracy, date });
-  assert.deepEqual(foldBests({ a: at(80, 97, '2026-10-01'), b: at(70, 90, '2026-10-02') }, { a: at(80, 97, '2026-10-05'), b: at(71, 80, '2026-10-06') }),
-    { a: at(80, 97, '2026-10-01'), b: at(71, 80, '2026-10-06') });
-  assert.deepEqual(bestsSince({ a: at(1, 1, '2026-10-07'), b: at(1, 1, '2026-10-08'), c: at(1, 1, '2026-10-09') }, '2026-10-09T08:00:00Z'),
-    { b: at(1, 1, '2026-10-08'), c: at(1, 1, '2026-10-09') });
-  assert.equal(invalidBests({ a: at(84, 97, '2026-10-11') }, '2026-10-09'), 'That best is outside the board limits.');
-  assert.equal(invalidBests({ a: at(84, 97, '2025-12-31') }, '2026-10-09'), 'That best is outside the board limits.');
-  assert.equal(invalidBests({ a: at(84, 97, '2026-01-01') }, '2026-10-09'), null);
-  assert.equal(invalidBests({ 'a b': at(84, 97, '2026-10-09') }, '2026-10-09'), 'Invalid bests.');
+  const good = at(84, 97, '2026-10-09');
+  assert.deepEqual(boardBests({ a: good, b: at(401, 97, '2026-10-09'), c: at(84, 101, '2026-10-09'), d: at(84.5, 97, '2026-10-09'),
+    e: at(84, 97, '2026-10-9'), 'f g': good, h: '84', i: [84], j: { ...good, note: 'x' } }), { a: good, j: good });
+  assert.deepEqual(boardBests(Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`k${i}`, good]))), {});
+  assert.equal(Object.keys(boardBests(Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`k${i}`, good])))).length, 16);
+  for (const value of [null, undefined, [], 'fast', 7]) assert.deepEqual(boardBests(value), {});
 });
 
-// The bests migration copies the two board functions of the friends board migration and adds lines for
-// bests. Every added line mentions bests, so taking those out must give back the earlier functions
-// exactly: a change made to them later has to be carried over, or this fails.
-test('the bests migration changes the board functions only by lines about bests', () => {
+// The bests migration replaces board_numbers to add the summary's bests to what it returns. It must
+// stay the friends board migration's function otherwise: a change made there later has to be carried
+// over, or this fails.
+test('the bests migration changes board_numbers only by adding the bests', () => {
   const board = readFileSync(new URL('../supabase/migrations/20261009120000_friends_board.sql', import.meta.url), 'utf8');
   const bests = readFileSync(new URL('../supabase/migrations/20261009150000_friends_bests.sql', import.meta.url), 'utf8');
-  const body = (text, signature, end) => {
-    const start = text.indexOf(signature);
-    assert.ok(start >= 0, `${signature} is defined`);
-    return text.slice(start + signature.length, text.indexOf(end, start) + end.length);
+  const signature = 'function race_private.board_numbers(p_board jsonb, p_at timestamptz, p_today date, p_week date)';
+  const body = (text, prefix) => {
+    const start = text.indexOf(`${prefix}${signature}`);
+    assert.ok(start >= 0, `${prefix}${signature} is defined`);
+    return text.slice(start + prefix.length, text.indexOf('\nend $$;', start) + '\nend $$;'.length);
   };
-  const withoutBests = (text) => text.split('\n').filter((line) => !/best/i.test(line)).join('\n');
-  for (const [signature, end] of [['function race_private.board_snapshot(p_viewer uuid)', '\n$$;'], ['function race_private.board(p_action text, p_data jsonb)', '\nend $$;']]) {
-    const earlier = body(board, signature, end);
-    const later = body(bests, `create or replace ${signature}`, end);
-    assert.notEqual(later, earlier, 'the copy adds bests');
-    assert.equal(withoutBests(later), withoutBests(earlier));
-    assert.equal(withoutBests(earlier), earlier, 'the earlier function has no line about bests');
-  }
+  const earlier = body(board, 'create ');
+  const later = body(bests, 'create or replace ');
+  const returned = "  return jsonb_build_object('daily', v_daily, 'week', v_week);";
+  assert.ok(earlier.includes(returned));
+  assert.equal(later, earlier.replace(returned, "  return jsonb_build_object('daily', v_daily, 'week', v_week, 'bests', race_private.board_bests(p_board->'bests'));"));
 });
