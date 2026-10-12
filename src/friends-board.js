@@ -45,9 +45,10 @@ export const dailyVersion = (dailyKey, date = new Date()) => `${dailyKey}|${dail
 
 // Whether a run can stand as a best on the board: exactly the runs that can set a personal best in the
 // app (a completed, uninterrupted practice test or retest; never a drill, daily, race or anything
-// interrupted), on one of its own test shapes, dated, and within the limits the service shows.
+// interrupted), and only on fresh text (a run saved before runs recorded that counts as fresh); on one
+// of its own test shapes, dated, and within the limits the service shows.
 export function shareableBest(run) {
-  return trendRun(run) && SHAPE_MODES.includes(run.conditions?.mode) && Boolean(run.at) && !Number.isNaN(Date.parse(run.at))
+  return trendRun(run) && run.fresh !== false && SHAPE_MODES.includes(run.conditions?.mode) && Boolean(run.at) && !Number.isNaN(Date.parse(run.at))
     && Number.isInteger(run.score?.wpm) && run.score.wpm >= 0 && run.score.wpm <= MAX_WPM
     && Number.isInteger(run.score?.accuracy) && run.score.accuracy >= 0 && run.score.accuracy <= 100
     && KEY_PATTERN.test(conditionKey(run.conditions));

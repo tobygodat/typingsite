@@ -5,7 +5,7 @@ import { CORPUS_VERSION, CORRECTION_POLICIES, INPUT_CLASSES, METRIC_VERSION, QUO
   conditionKey } from '../src/typing.js';
 import { wordListIds } from '../src/words.js';
 import { BOARD_V, MAX_SHAPES, bestsOrder, boardColumn, boardCurrent, boardShapes, boardSummary, defaultShape, shapeBests, shapeDescription, shapeLabels,
-  shapeOf } from '../src/friends-board.js';
+  shapeOf, shareableBest } from '../src/friends-board.js';
 import { boardBests } from '../e2e/fake-board.js';
 
 const base = { mode: 'time', duration: 60, count: null, punctuation: false, numbers: false, quoteLength: null, difficulty: null, wordList: '200',
@@ -63,6 +63,21 @@ test('only runs that can set a personal best are shared: completed, uninterrupte
     run('impossible', score(401, 100)),
   ];
   assert.deepEqual(shapeBests(runs), { [key(time60)]: { wpm: 75, accuracy: 94, date: '2026-10-09' } });
+});
+
+test('a best is shared only from fresh text: a completed test on text already seen is not one, and a run saved before the field still counts', () => {
+  // An exhausted quote pool hands back seen text and marks the run `fresh: false`.
+  const repeated = run('repeated', { conditions: quote, fresh: false, ...score(110, 99) });
+  const seenRetest = run('seen-retest', { kind: 'retest', fresh: false, ...score(105, 99) });
+  const fresh = run('fresh', { fresh: true, ...score(72, 96) });
+  const older = run('older', { conditions: words25, ...score(58, 92) });
+  assert.equal(shareableBest(repeated), false);
+  assert.equal(shareableBest(seenRetest), false);
+  assert.equal(shareableBest(fresh), true);
+  assert.equal(shareableBest(older), true);
+  const expected = { [key(time60)]: { wpm: 72, accuracy: 96, date: '2026-10-09' }, [key(words25)]: { wpm: 58, accuracy: 92, date: '2026-10-09' } };
+  assert.deepEqual(shapeBests([repeated, seenRetest, fresh, older]), expected);
+  assert.deepEqual(boardSummary([repeated, seenRetest, fresh, older], 'daily-key').bests, expected);
 });
 
 test('a shape’s best is the fastest run, then the more accurate, then the earlier, dated by its run’s own UTC day', () => {
