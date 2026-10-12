@@ -115,13 +115,12 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     setTimeout(finish, 150);
   }
 
-  // The command gets the activating event, so one started by a tap on a row knows it was touch.
-  function run(index, event) {
+  function run(index = active) {
     const command = items[index];
     if (!command) return;
     // Close without the exit animation: the command may need focus outside the modal right away.
     close({ restore: false, animate: false });
-    command.run(event);
+    command.run();
   }
 
   input.addEventListener('input', render);
@@ -130,7 +129,7 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     else if (event.key === 'ArrowUp') { event.preventDefault(); move(active - 1); }
     else if (event.key === 'Home') { event.preventDefault(); move(0); }
     else if (event.key === 'End') { event.preventDefault(); move(items.length - 1); }
-    else if (event.key === 'Enter') { event.preventDefault(); run(active, event); }
+    else if (event.key === 'Enter') { event.preventDefault(); run(); }
   });
   list.addEventListener('pointermove', (event) => {
     const option = event.target.closest('[role="option"]');
@@ -138,7 +137,7 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
   });
   list.addEventListener('click', (event) => {
     const option = event.target.closest('[role="option"]');
-    if (option) run(Number(option.dataset.index), event);
+    if (option) run(Number(option.dataset.index));
   });
   // A press on an option or the backdrop leaves focus in the search field, as Enter and Escape do.
   // Otherwise the browser focuses the dialog and puts the selection on the pressed text; close then

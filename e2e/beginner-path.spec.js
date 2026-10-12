@@ -352,6 +352,63 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#lesson-status')).toHaveText('touch input');
     await expect(page.locator('#lesson-list .lesson-row').nth(1)).toHaveAttribute('data-state', 'locked');
   });
+
+  // The finished lesson is complete when the tap lands, so the tap must class the run it starts.
+  test('a palette restart tapped after a failed keyboard lesson starts a touch try that doesn’t unlock', async ({ page }) => {
+    await openApp(page);
+    await openLessons(page);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    const text = await passageText(page);
+    await typeInto(page, [...text].map((char, i) => (i % 4 === 1 && char !== ' ' ? (char === 'f' ? 'j' : 'f') : char)).join(''));
+    await expect(page.locator('#lesson-status')).toHaveText('not yet');
+    await page.keyboard.press('Control+k');
+    await page.locator('#palette-input').fill('restart test');
+    await page.locator('#palette-list [role="option"]', { hasText: 'restart test' }).tap();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+    await expect(page.locator('#typing-input')).toBeFocused();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await typeLesson(page);
+    await expect(page.locator('#lesson-status')).toHaveText('touch input');
+    await expect(page.locator('#lesson-list .lesson-row').nth(1)).toHaveAttribute('data-state', 'locked');
+  });
+
+  test('a tapped “Take a practice run” after every lesson is a touch run, never a physical-keyboard best', async ({ page, supabase }) => {
+    const user = supabase.addUser('handoff-touch@stilltype.test');
+    supabase.profiles.set(user.id, { data: { ...lessonProfile(LESSONS.length), preferences: { mode: 'words', count: 10 } } });
+    await openApp(page);
+    await signInWithEmail(page, user.email);
+    await openLessons(page);
+    await expect(page.locator('#lesson-primary')).toHaveText('Take a practice run');
+    await page.locator('#lesson-primary').tap();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
+    await expect(page.locator('#typing-input')).toBeFocused();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await completePassage(page);
+    await expect(page.locator('#result-conditions')).toContainText('touch input');
+    await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1);
+    const saved = supabase.profileFor(user.email);
+    expect(saved.runs[0].conditions.inputClass).toBe('touch');
+    expect(Object.keys(saved.bests)).toEqual([expect.stringContaining(':touch:')]);
+  });
+
+  // Every new run takes its class from the press that started it: a tap is touch, a key is a physical keyboard.
+  test('Run again and restart tapped start touch runs; Esc starts a physical-keyboard run', async ({ page }) => {
+    await openApp(page);
+    await chooseWords(page, 10);
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    await completePassage(page);
+    await expect(page.locator('#run-again')).toBeFocused();
+    await page.locator('#run-again').tap();
+    await expect(page.locator('#typing-input')).toBeFocused();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    await page.locator('#restart-button').tap();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await completePassage(page);
+    await expect(page.locator('#result-conditions')).toContainText('touch input');
+  });
 });
 
 test('a newer account profile that locks the current lesson replaces it, or the run finishes as not counted', async ({ page, supabase }) => {

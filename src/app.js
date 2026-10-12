@@ -166,10 +166,8 @@ let trainingContext = null;
 let resultBestBefore = null;
 let clearSnapshot = null;
 let clearTimer = null;
-// The lesson being typed, the input class of the tap or click that started it, and the last lesson
-// result in this tab (shown on the learn screen).
+// The lesson being typed and the last lesson result in this tab (shown on the learn screen).
 let lessonIndex = 0;
-let lessonInputClass = 'physical-keyboard';
 let lessonResult = null;
 
 let race = {
@@ -274,14 +272,18 @@ function describeLesson(run) {
 function lessonConditions() {
   return {
     mode: 'lesson', lesson: LESSONS[lessonIndex].id, duration: null, count: null, punctuation: false, numbers: false,
-    quoteLength: null, difficulty: null, wordList: null, inputClass: lessonInputClass,
+    quoteLength: null, difficulty: null, wordList: null, inputClass: 'physical-keyboard',
     correctionPolicy: conditions().correctionPolicy, language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION,
   };
 }
 
 // A tap that starts a session focuses the input and opens the soft keyboard, so no pointerdown reaches
-// the input: the activating event says touch instead. Keyboard Enter and mouse clicks are a physical keyboard.
+// the input: the activating press says touch instead. Keys and mouse clicks are a physical keyboard.
 const startedBy = (event) => (event?.pointerType === 'touch' ? 'touch' : 'physical-keyboard');
+// The input class of the latest press (see bindEvents). resetSession gives it to every new run, so a run is
+// classed by whatever started it: a button, the palette, Esc, Run again or a hand-off, with no path left over.
+let activationInput = 'physical-keyboard';
+const TEXT_FIELDS = 'textarea, input:not([type="checkbox"])';
 
 function signed(value, unit) {
   const sign = value > 0 ? '+' : value < 0 ? '−' : '';
@@ -623,12 +625,14 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     profile.seenTextIds.push(passage.challengeId);
     saveProfile();
   }
+  // The one place a run gets its input class: from the press that started it, never a default or the last run's.
+  const runConditions = kind === 'daily' ? dailyConditions() : kind === 'lesson' ? lessonConditions() : kind === 'custom' ? customConditions() : conditions();
   attempt = createAttempt({
     id: uid(),
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: kind === 'daily' ? dailyConditions() : kind === 'lesson' ? lessonConditions() : kind === 'custom' ? customConditions() : conditions(),
+    conditions: { ...runConditions, inputClass: activationInput },
   });
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;
@@ -831,7 +835,7 @@ function ghostPace(mode = prefs.paceCaret) {
     const wpm = LESSONS[lessonIndex].wpm;
     return { wpm, cps: (wpm * 5) / 60, fromBest: false, fallback: false };
   }
-  // The active attempt knows its real input class (touch is detected after reset).
+  // The active attempt knows its real input class (from the press that started it, or a later touch).
   const key = conditionKey(attempt?.conditions || conditions());
   let wpm = null;
   if (mode === 'custom') wpm = prefs.paceWpm;
@@ -1524,13 +1528,12 @@ function lessonMeta(index) {
   return `${lessonFingers(lesson)} · pass at ${LESSON_ACCURACY}% accuracy and ${lesson.wpm} wpm in one run${tries ? ` · ${tries} ${tries === 1 ? 'try' : 'tries'} so far` : ''}`;
 }
 
-// `event` is the tap, click or key that started it; a tap on the passage still marks a ready lesson as touch.
-function startLesson(index, event = null) {
+// Like every run, a lesson is classed by the press that started it (resetSession reads activationInput).
+function startLesson(index) {
   if (!lessonUnlocked(profile.lessons, index)) return;
   if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
   if (race.attempt?.status === 'running') markRaceInterrupted();
   lessonIndex = index;
-  lessonInputClass = startedBy(event);
   resetSession('lesson', { focus: true });
   // From a scrolled learn screen too, a lesson starts with its title, label and finger map in view.
   scrollTo({ top: 0, behavior: 'instant' });
@@ -1628,7 +1631,7 @@ function renderLessons() {
   let meta = '';
   let primary;
   let secondary = null;
-  const start = (index) => (event) => startLesson(index, event);
+  const start = (index) => () => startLesson(index);
   if (result) {
     const n = result.index + 1;
     const repeat = [`Repeat lesson ${n}`, start(result.index)];
@@ -2284,8 +2287,8 @@ function bindEvents() {
     }
     if (event.target.closest('[data-action="open-lessons"]')) openLessons();
   });
-  $('lesson-primary').addEventListener('click', (event) => lessonActions.primary?.(event));
-  $('lesson-secondary').addEventListener('click', (event) => lessonActions.secondary?.(event));
+  $('lesson-primary').addEventListener('click', () => lessonActions.primary?.());
+  $('lesson-secondary').addEventListener('click', () => lessonActions.secondary?.());
   $('mode-custom').addEventListener('click', () => openCustom(!customOpen));
   $('custom-text').addEventListener('input', updateCustomState);
   $('custom-use').addEventListener('click', useCustomText);
@@ -2345,24 +2348,22 @@ function bindEvents() {
   $('typing-input').addEventListener('blur', () => setCapsWarning(false));
   $('typing-input').addEventListener('paste', (event) => { event.preventDefault(); refusePaste('primary'); });
   $('typing-input').addEventListener('drop', (event) => event.preventDefault());
-  $('typing-input').addEventListener('pointerdown', (event) => {
-    if (event.pointerType === 'touch' && attempt?.status === 'ready') {
-      attempt.conditions.inputClass = 'touch';
-      $('condition-line').textContent = describeRun(attempt);
-      armPace();
-    }
-  });
-  // A lesson starts with the input class of the tap or click that started it (startedBy). After that, any
-  // touch while it is prepared or running makes it touch input, wherever the tap lands: the palette, settings
-  // or restart can refocus the input and open the soft keyboard with no tap on the passage. Restarts keep
-  // the class. The cost is deliberate: on a touchscreen laptop, a tap and then hardware-keyboard typing
-  // gives a labelled touch try that doesn't unlock.
+  // Every press is recorded before anything handles it, so the run it starts (resetSession) has its class. A tap
+  // is touch; a mouse click, or a key pressed outside a text field, is a physical keyboard. Keys typed into a
+  // text field (the passage, the palette's search) may come from a soft keyboard, so they leave the class as it
+  // was; Esc never does. After that, any touch while a run is prepared or running makes it touch input, wherever
+  // the tap lands: a palette command, a setting or the skip link can focus the input and open the soft keyboard
+  // without starting a run. The cost is deliberate: on a touchscreen laptop, a tap and then hardware-keyboard
+  // typing gives a touch run (a lesson try that doesn't unlock, never a physical-keyboard best).
   document.addEventListener('pointerdown', (event) => {
-    if (event.pointerType !== 'touch' || sessionKind !== 'lesson' || !['ready', 'running'].includes(attempt?.status)) return;
-    lessonInputClass = 'touch';
-    if (attempt.conditions.inputClass === 'touch') return;
+    activationInput = startedBy(event);
+    if (activationInput !== 'touch' || !['ready', 'running'].includes(attempt?.status) || attempt.conditions.inputClass === 'touch') return;
     attempt.conditions.inputClass = 'touch';
     $('condition-line').textContent = describeRun(attempt);
+    if (attempt.status === 'ready') armPace();
+  }, true);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' || !event.target.matches?.(TEXT_FIELDS)) activationInput = 'physical-keyboard';
   }, true);
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
   $('typing-input').addEventListener('compositionstart', () => {
@@ -2597,7 +2598,7 @@ function paletteCommands(query) {
     // while it has a text), with one new passage.
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => resetSession(sessionKind === 'custom' ? restartKind() : sessionKind, { focus: true }) },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
-    ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: (event) => startLesson(nextLessonIndex(profile.lessons), event) }]),
+    ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: () => startLesson(nextLessonIndex(profile.lessons)) }]),
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: sessionKind === 'custom' ? 'current' : '', on: sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },
