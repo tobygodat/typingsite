@@ -255,12 +255,13 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     if (!session || polling || forgotten) return invites;
     polling = true;
     try {
-      // Ghost challenges are a second source: if they can't be read, invitations still arrive.
-      const [listed, challenges] = await Promise.all([listInvites(session),
-        listChallenges ? listChallenges(session).catch(() => null) : null]);
+      // Invitations and ghost challenges are separate sources: either still arrives when the other can't be read.
+      const [listed, challenges] = await Promise.allSettled([listInvites(session),
+        listChallenges ? listChallenges(session) : null]);
       if (forgotten) return invites;
-      if (Array.isArray(challenges)) applyChallenges(challenges);
-      invites = listed;
+      if (Array.isArray(challenges.value)) applyChallenges(challenges.value);
+      if (listed.status === 'rejected') throw listed.reason;
+      invites = listed.value;
       const open = new Set(invites.map((invite) => `invite:${invite.id}`));
       for (const invite of [...invites].reverse()) {
         // Once the service lists an invitation it decides when the entry closes.
@@ -277,6 +278,8 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
       retire();
       for (const listener of listeners) listener(invites, null);
     } catch (failure) {
+      // Entries still lapse while invitations can't be read.
+      retire();
       for (const listener of listeners) listener(invites, failure);
     } finally { polling = false; }
     return invites;

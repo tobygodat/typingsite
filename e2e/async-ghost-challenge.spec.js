@@ -1115,6 +1115,33 @@ test('an inbox listing read before a ghost race was sent never offers that race 
   for (const release of supabase.challenges.held.splice(0)) release();
 });
 
+test('ghost races and their results still reach the inbox while invitations can’t be read', async ({ page, supabase }) => {
+  const lin = supabase.addUser('lin@stilltype.test');
+  challengeLin(supabase, lin, 'Ada');
+  // The online race invitations are unavailable throughout; the ghost race list is not.
+  let invites = 0;
+  await page.route(/\/rest\/v1\/rpc\/race_action$/, (route) => {
+    if (route.request().method() !== 'POST' || route.request().postDataJSON().p_action !== 'invites') return route.fallback();
+    invites += 1;
+    return route.fulfill({ status: 503, body: '' });
+  });
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await expect(page.locator('#challenge-toast-text')).toContainText('Ada challenged you', { timeout: 12000 });
+  expect(invites).toBeGreaterThan(0);
+  // The invitation list still says why it is empty.
+  await expect(page.locator('#online-invites-empty')).toHaveText('Request failed (503).');
+  // A race Lin sent is answered; the next poll brings its result the same way.
+  const passage = 'still water over light time still water over';
+  supabase.challenges.seed(lin.id, supabase.addUser('bo@stilltype.test').id, { name: 'Lin', label: 'Bo', passage,
+    conditions: { mode: 'words', count: 8, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' },
+    trace: steadyTrace(passage, 140), createdAt: Date.now() - 3600000, answered: true });
+  await pollInbox(page);
+  await page.locator('#inbox-trigger').click();
+  await expect(page.locator('#inbox-list [data-kind="challenge-result"]')).toContainText(/^Bo raced your 8-word run: /);
+  await expect(page.locator('#inbox-list [data-inbox-action="challenge"]')).toHaveCount(1);
+});
+
 test('a friend list that fails after a newer one arrived leaves the newer list and no error', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   befriend(supabase, ada, supabase.addUser('lin@stilltype.test'), 'Lin');
