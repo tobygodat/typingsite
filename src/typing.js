@@ -51,11 +51,31 @@ function punctuate(words) {
   });
 }
 
-export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST) {
+// Roughly 1 word in 8 becomes a 1–4 digit number, drawn from the same random source so a
+// seeded passage stays reproducible. A passage that drew none still gets one, so short
+// tests with numbers on always contain a number.
+function numberize(words, random) {
+  const number = () => {
+    const digits = 1 + Math.floor(random() * 4);
+    const low = digits === 1 ? 0 : 10 ** (digits - 1);
+    return String(low + Math.floor(random() * (10 ** digits - low)));
+  };
+  let drawn = false;
+  const result = words.map((word) => {
+    if (random() >= 1 / 8) return word;
+    drawn = true;
+    return number();
+  });
+  if (!drawn && result.length) result[Math.floor(random() * result.length)] = number();
+  return result;
+}
+
+export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST, numbers = false) {
   if (mode === 'quote') return quoteCorpus[Math.floor(random() * quoteCorpus.length)].text;
   const bank = wordList(list);
   // 1,600 words keeps even a 300 WPM typist supplied for the longest 120 s mode.
-  const words = Array.from({ length: mode === 'time' ? 1600 : count }, () => bank[Math.floor(random() * bank.length)]);
+  let words = Array.from({ length: mode === 'time' ? 1600 : count }, () => bank[Math.floor(random() * bank.length)]);
+  if (numbers) words = numberize(words, random);
   return (punctuation ? punctuate(words) : words).join(' ');
 }
 
@@ -68,7 +88,7 @@ export function textId(text) {
   return `generated-${(hash >>> 0).toString(36)}`;
 }
 
-export function selectPassage({ mode = 'time', count = 25, punctuation = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
+export function selectPassage({ mode = 'time', count = 25, punctuation = false, numbers = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
   const seen = new Set(seenIds);
   if (mode === 'quote') {
     const candidates = quoteCorpus.filter((item) => {
@@ -91,11 +111,11 @@ export function selectPassage({ mode = 'time', count = 25, punctuation = false, 
   }
 
   for (let i = 0; i < 12; i += 1) {
-    const text = makePassage(mode, count, punctuation, random, list);
+    const text = makePassage(mode, count, punctuation, random, list, numbers);
     const id = textId(text);
     if (!seen.has(id)) return { id, textVersion: `${id}@1`, text, corpus: CORPUS_VERSION, difficulty: 'generated', fresh: true, exhausted: false };
   }
-  const text = makePassage(mode, count, punctuation, random, list);
+  const text = makePassage(mode, count, punctuation, random, list, numbers);
   const id = textId(text);
   return { id, textVersion: `${id}@1`, text, corpus: CORPUS_VERSION, difficulty: 'generated', fresh: !seen.has(id), exhausted: seen.has(id) };
 }
@@ -126,6 +146,93 @@ export function passageComplete(attempt, typed) {
 
 function printable(text) {
   return typeof text === 'string' && text.length > 0 && !/[\r\n]/u.test(text);
+}
+
+// Custom text is held to the passage alphabet: printable ASCII, which every corpus passage uses and an
+// English keyboard types one key at a time without an input method. Each letter is then one UTF-16 unit,
+// which is how replay indexes the passage. About ten minutes of typing: each keystroke replays the whole
+// run, so a longer passage makes late keys lag (measured: ~2 ms per key at 3,000 characters, ~9 ms at 9,000).
+export const CUSTOM_MAX = 3000;
+const TYPABLE = /^[\x20-\x7E]$/;
+
+// Smart punctuation becomes ASCII; NFKC folds compatibility forms (full-width letters, ligatures, no-break
+// spaces); invisible code points go (every default-ignorable, such as ZWSP, ZWJ, CGJ, variation selectors,
+// bidi marks, soft hyphens and BOM, plus control characters); accents on Latin letters fold away (é → e);
+// whitespace collapses. Anything left outside the alphabet is for untypableCharacter to refuse. The cap
+// applies last, so a saved passage is stable across reloads; pass max = Infinity to measure the full text.
+export function normalizeCustomText(value, max = CUSTOM_MAX) {
+  return String(value || '')
+    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+    .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .replace(/\u2026/g, '...')
+    .normalize('NFKC')
+    .replace(/[\t\n\v\f\r\u0085\u2028\u2029]/g, ' ')
+    .replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, '')
+    .normalize('NFD')
+    .replace(/([\x20-\x7E])[\u0300-\u036F]+/g, '$1')
+    .normalize('NFC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max)
+    .trim();
+}
+
+// Shuffled order uses every word once, so it is exactly as long as the source. Random order samples with
+// replacement, so it draws only from words that still fit the source length (and the cap) and stops when
+// none do: a long word drawn twice can't push the run past what was validated, and an unlucky draw can't
+// end the passage early.
+export function orderCustomText(text, order = 'as-written', random = Math.random) {
+  if (!text) return text;
+  const words = text.split(' ');
+  if (order === 'shuffled') {
+    for (let i = words.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(random() * (i + 1));
+      [words[i], words[j]] = [words[j], words[i]];
+    }
+    return words.join(' ');
+  }
+  if (order !== 'random') return text;
+  const limit = Math.min(text.length, CUSTOM_MAX);
+  const picked = [];
+  let length = -1;
+  let fitting = words;
+  for (;;) {
+    const budget = limit - length - 1;
+    let word = fitting[Math.floor(random() * fitting.length)];
+    // The budget only shrinks, so words are dropped from the pool once and the draw stays uniform over what fits.
+    if (word.length > budget) {
+      fitting = fitting.filter((candidate) => candidate.length <= budget);
+      if (!fitting.length) break;
+      word = fitting[Math.floor(random() * fitting.length)];
+    }
+    picked.push(word);
+    length += 1 + word.length;
+  }
+  return picked.join(' ');
+}
+
+// The first character outside the passage alphabet, or null when every letter can be typed.
+export function untypableCharacter(text) {
+  for (const char of text) if (!TYPABLE.test(char)) return char;
+  return null;
+}
+
+// A passage needs enough typing to time: the clock starts on the first key, so one letter finishes at the
+// instant it starts. Built-in passages are at least 10 words because they are counted and compared; custom
+// text never is, so a short phrase is enough.
+export const CUSTOM_MIN_WORDS = 2;
+export const CUSTOM_MIN_CHARS = 10;
+
+// Why a normalised custom text can't be used yet, or null. Pass normalizeCustomText(value, Infinity), so an
+// over-long text is reported rather than cut.
+export function customTextProblem(text) {
+  if (!text) return { kind: 'empty' };
+  const char = untypableCharacter(text);
+  if (char) return { kind: 'untypable', char };
+  if (text.length < CUSTOM_MIN_CHARS || text.split(' ').length < CUSTOM_MIN_WORDS) return { kind: 'short' };
+  if (text.length > CUSTOM_MAX) return { kind: 'long', length: text.length };
+  return null;
 }
 
 export function replayAttempt(attempt) {
@@ -310,7 +417,8 @@ export function conditionKey(conditions = {}) {
     conditions.mode,
     conditions.duration || '',
     conditions.count || '',
-    conditions.punctuation ? 'punctuation' : 'plain',
+    // Numbers ride on the same segment so keys saved before the toggle existed stay unchanged.
+    `${conditions.punctuation ? 'punctuation' : 'plain'}${conditions.numbers ? '+numbers' : ''}`,
     conditions.quoteLength || '',
     conditions.difficulty || '',
     conditions.wordList || '',
@@ -365,4 +473,125 @@ export function compareAttempts(before, after) {
           ? 'One attempt can vary. Your best is untouched.'
           : 'Held steady on fresh text.',
   };
+}
+
+// Secondary run-card stats, derived from the event log only. Presentational: they never feed
+// the versioned wpm/accuracy contract, bests, comparisons or pattern memory.
+
+// Every printable key pressed, including keys held back while stop-on-error waits for a fix.
+function keystrokes(attempt) {
+  return (attempt.events || []).filter((event) => (event.type === 'insert' || event.type === 'blocked-insert') && printable(event.text));
+}
+
+export function rawWpm(attempt, replay = replayAttempt(attempt)) {
+  const typed = keystrokes(attempt).reduce((sum, event) => sum + [...event.text].length, 0);
+  return replay.elapsedMs > 0 ? Math.round(typed / 5 / (replay.elapsedMs / 60000)) : 0;
+}
+
+// 100 − coefficient of variation of per-second raw speed, over whole seconds; null under 3 s.
+export function consistency(attempt, replay = replayAttempt(attempt)) {
+  const keys = keystrokes(attempt);
+  if (!keys.length) return null;
+  const start = attempt.startedAt ?? keys[0].offsetMs;
+  const seconds = Math.floor(replay.elapsedMs / 1000);
+  if (seconds < 3) return null;
+  const counts = new Array(seconds).fill(0);
+  for (const event of keys) {
+    const second = Math.floor((event.offsetMs - start) / 1000);
+    if (second >= 0 && second < seconds) counts[second] += [...event.text].length;
+  }
+  const mean = counts.reduce((sum, value) => sum + value, 0) / seconds;
+  if (!mean) return 0;
+  const sd = Math.sqrt(counts.reduce((sum, value) => sum + (value - mean) ** 2, 0) / seconds);
+  return Math.round(Math.min(100, Math.max(0, 100 - (sd / mean) * 100)));
+}
+
+// The finished text, letter by letter: correct and incorrect (still wrong at the finish) in the
+// kept text; extra = keystrokes past the passage end; missed = letters left untyped inside the
+// last word the run reached. Slips fixed along the way are first-try errors, not incorrect.
+export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
+  const target = attempt.text;
+  const { typed } = replay;
+  let correct = 0;
+  for (let i = 0; i < typed.length; i += 1) if (typed[i] === target[i]) correct += 1;
+  let extra = 0;
+  let length = 0;
+  for (const event of attempt.events || []) {
+    if (event.type === 'delete') length = Math.max(0, length - Math.max(1, event.count || 1));
+    if (event.type !== 'insert' || !printable(event.text)) continue;
+    for (let n = [...event.text].length; n > 0; n -= 1) {
+      const position = Number.isInteger(event.position) ? event.position : length;
+      if (position >= target.length) extra += 1;
+      else if (event.accepted !== false) length += 1;
+    }
+  }
+  let reached = typed.length;
+  if (reached > 0 && reached < target.length && target[reached - 1] !== ' ') {
+    const space = target.indexOf(' ', reached);
+    reached = space === -1 ? target.length : space;
+  }
+  return { correct, incorrect: typed.length - correct, extra, missed: Math.max(0, reached - typed.length) };
+}
+
+// When each letter still there at the finish was typed, mirroring replayAttempt's kept text.
+function keptTimes(attempt) {
+  const times = [];
+  for (const event of attempt.events || []) {
+    if (event.type === 'delete') {
+      times.splice(Math.max(0, times.length - Math.max(1, event.count || 1)));
+      continue;
+    }
+    if (event.type !== 'insert' || !printable(event.text)) continue;
+    for (const _char of event.text) {
+      const position = Number.isInteger(event.position) ? event.position : times.length;
+      if (position >= attempt.text.length) break;
+      if (event.accepted !== false) times.push(event.offsetMs);
+    }
+  }
+  return times;
+}
+
+// The passage words the run reached, flagged if any first try or kept letter in them missed, with
+// the pace from the previous word's space (or the run's first keystroke) to the word's last letter,
+// timed by the keystrokes kept at the finish so corrections count against the pace. The passage sets
+// each word's bounds; the word shown is the letters kept there, slips left in included. A word the
+// run stopped inside shows only the letters typed; the rest are counted as missed, not shown.
+export function wordHistory(attempt, replay = replayAttempt(attempt)) {
+  const target = attempt.text;
+  const firsts = new Map(replay.firstAttempts.map((item) => [item.position, item]));
+  const times = keptTimes(attempt);
+  // The first word has no space to start from: it runs from the first key pressed, even one later
+  // fixed, and then every kept letter typed after that key counts.
+  const firstKey = (attempt.events || []).find((event) => event.type === 'insert' && printable(event.text))?.offsetMs;
+  const words = [];
+  const pattern = /\S+/gu;
+  let match;
+  while ((match = pattern.exec(target)) && match.index < replay.typed.length) {
+    const start = match.index;
+    const end = Math.min(start + match[0].length, replay.typed.length) - 1;
+    let wrong = false;
+    for (let i = start; i <= end; i += 1) {
+      if (firsts.get(i)?.correct === false || replay.typed[i] !== target[i]) wrong = true;
+    }
+    // The space after a word is part of typing it: a first-try miss there marks the word, and a
+    // character still wrong there at the finish shows on the word ("thex"). Pace stays on the letters.
+    const stop = start + match[0].length;
+    const gap = target.slice(stop).search(/\S/u);
+    const kept = replay.typed.slice(stop, gap === -1 ? target.length : stop + gap);
+    let shown = replay.typed.slice(start, end + 1);
+    for (let i = stop; i < stop + kept.length; i += 1) if (firsts.get(i)?.correct === false) wrong = true;
+    if (kept !== target.slice(stop, stop + kept.length)) {
+      wrong = true;
+      shown += kept;
+    }
+    const from = start > 0 ? times[start - 1] : firstKey;
+    const letters = start > 0 || times[start] > from ? end - start + 1 : end - start;
+    const durationMs = from !== undefined && times[end] !== undefined ? times[end] - from : 0;
+    words.push({
+      word: shown,
+      wrong,
+      wpm: durationMs > 0 ? Math.round(letters / 5 / (durationMs / 60000)) : null,
+    });
+  }
+  return words;
 }
