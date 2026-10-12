@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { stat } from 'node:fs/promises';
 import { BOOKS, BOOK_CREDIT, BOOK_VERSION, PAGE_WORDS, bookPlace, chapterName, chapterSpeeds, loadBookTexts, openBook, paginate, placeAt } from '../src/books.js';
 import { CORPUS_VERSION, METRIC_VERSION, comparable, conditionKey, recommendTarget, summarizePatterns } from '../src/typing.js';
-import { MAX_PATTERN_RUNS, recurringTargets, retainRuns, runRecord, trendRun } from '../src/insights.js';
+import { MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, recurringTargets, retainRuns, runRecord, trendRun } from '../src/insights.js';
 import { normalise } from '../scripts/build-book-texts.mjs';
 
 const texts = await loadBookTexts();
@@ -139,6 +139,30 @@ test('a long read never pushes practice evidence out of the bounded pattern memo
   for (let i = 10; i < MAX_PATTERN_RUNS + 5; i += 1) runs = retainRuns([...runs, test(i)]);
   assert.equal(runs.filter((run) => run.kind === 'test' && run.patterns.length).length, MAX_PATTERN_RUNS);
   assert.deepEqual(runs.filter((run) => run.kind === 'test' && !run.patterns.length).map((run) => run.id), ['t0', 't1', 't2', 't3', 't4']);
+});
+
+test('custom runs never reach chapter speeds, and book pages and custom runs keep their own budgets', () => {
+  const book = openBook('alice');
+  const page = (i, overrides = {}) => ({ id: `b${i}`, at: '2026-10-02T12:00:00Z', kind: 'book', status: 'complete', interrupted: false,
+    conditions: bookConditions, book: { id: 'alice', chapter: book.pages[i].chapter, page: i }, score: { wpm: 50, accuracy: 98 }, patterns: [], ...overrides });
+  // A custom run that somehow carried a book reference and the book's conditions is still never a chapter speed.
+  const [first] = chapterSpeeds([page(0), page(1, { kind: 'custom', id: 'c1', score: { wpm: 300, accuracy: 100 } })], book, bookConditions);
+  assert.deepEqual([first.pagesTyped, first.medianWpm], [1, 50]);
+
+  const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
+    inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+  const test = (i) => ({ id: `t${i}`, at: '2026-10-01T12:00:00Z', kind: 'test', status: 'complete', interrupted: false,
+    conditions: practice, score: { wpm: 60, accuracy: 97 }, patterns: [['th', 8, 1, 10, 140, 20]] });
+  const custom = (i) => ({ id: `c${i}`, at: '2026-10-03T12:00:00Z', kind: 'custom', status: 'complete', interrupted: false,
+    conditions: { ...practice, mode: 'custom', duration: null, wordList: null, customOrder: 'as-written' }, score: { wpm: 80, accuracy: 99 } });
+  let runs = [];
+  for (let i = 0; i < 10; i += 1) runs = retainRuns([...runs, test(i)]);
+  for (let i = 0; i < MAX_PATTERN_RUNS + 30; i += 1) runs = retainRuns([...runs, page(i % book.pages.length, { id: `b${i}` }), custom(i)]);
+  // Practice keeps its counts, book pages stay in the comparable window, custom keeps only its newest 50.
+  assert.equal(runs.filter((run) => run.kind === 'test' && run.patterns.length).length, 10);
+  assert.equal(runs.filter((run) => run.kind === 'book').length, MAX_PATTERN_RUNS + 30);
+  assert.equal(runs.filter((run) => run.kind === 'custom').length, MAX_NON_COMPARABLE_RUNS);
+  assert.equal(runs.some((run) => run.kind === 'custom' && 'patterns' in run), false);
 });
 
 test('normalising Gutenberg text keeps the words and makes them typable', () => {

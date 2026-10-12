@@ -1,12 +1,18 @@
 import {
   CORPUS_VERSION,
+  CUSTOM_MAX,
+  CUSTOM_MIN_CHARS,
+  CUSTOM_MIN_WORDS,
   METRIC_VERSION,
   compareAttempts,
   completeAttempt,
   conditionKey,
   createAttempt,
+  customTextProblem,
   makeDrill,
+  normalizeCustomText,
   normalizeManualTarget,
+  orderCustomText,
   passageComplete,
   recommendTarget,
   replayAttempt,
@@ -26,7 +32,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { comparableKind, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 import { BOOKS, BOOK_CREDIT, BOOK_VERSION, DEFAULT_BOOK, bookIds, bookPlace, chapterName, chapterSpeeds, loadBookTexts, openBook, placeAt } from './books.js';
 
@@ -51,9 +57,22 @@ const defaultPreferences = {
   focusMode: false,
   theme: 'system',
   book: DEFAULT_BOOK,
+  customText: '',
+  customOrder: 'as-written',
   paceCaret: 'off',
   paceWpm: 80,
 };
+
+const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
+let customOpen = false;
+
+function customPassage() {
+  const text = normalizeCustomText(prefs.customText);
+  if (!text) return null;
+  return { id: null, text: orderCustomText(text, prefs.customOrder), fresh: false };
+}
+
+const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
 
 const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
 const clampPace = (value) => Math.min(300, Math.max(10, Math.round(Number(value) || 80)));
@@ -85,6 +104,9 @@ let unsynced = false;
 function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
   if (!bookIds.includes(value.book)) value.book = DEFAULT_BOOK;
+  const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
+  value.customText = customTextProblem(customText) ? '' : customText;
+  if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
   if (!PACE_MODES.includes(value.paceCaret)) value.paceCaret = 'off';
   value.paceWpm = clampPace(value.paceWpm);
   return value;
@@ -193,7 +215,12 @@ function announce(message) {
 }
 
 function conditions(inputClass = 'physical-keyboard') {
-  if (prefs.mode === 'book') return bookConditions(inputClass);
+  return prefs.mode === 'book' ? bookConditions(inputClass) : settingsConditions(inputClass);
+}
+
+// The person's own test settings, whatever the mode. Book mode replaces them with bookConditions;
+// a custom passage builds on them (customConditions), so its key is the same in every mode.
+function settingsConditions(inputClass = 'physical-keyboard') {
   return {
     mode: prefs.mode,
     duration: prefs.mode === 'time' ? prefs.duration : null,
@@ -222,6 +249,14 @@ function bookConditions(inputClass = 'physical-keyboard') {
 const correctionLabel = (policy) => (policy === 'relaxed' ? 'continue on error' : 'stop on error');
 const inputLabel = (inputClass) => (inputClass === 'touch' ? 'touch input' : 'physical keyboard');
 
+// Custom text has its own condition key, so it can never share a best, trend or retest with a test.
+// It builds on the person's own settings, never a book's: with book mode underneath, a custom run gets
+// no book and no Gutenberg version, so its key is the same as in any other mode.
+function customConditions() {
+  return { ...settingsConditions(), mode: 'custom', duration: null, count: null, punctuation: false, numbers: false,
+    quoteLength: null, difficulty: null, wordList: null, customOrder: prefs.customOrder };
+}
+
 function describeConditions(value = conditions()) {
   const input = inputLabel(value.inputClass);
   const correction = correctionLabel(value.correctionPolicy);
@@ -244,6 +279,7 @@ function bookLocation(ref) {
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind === 'book') return `${bookLocation(run.book)} · ${describeConditions(run.conditions)}`;
+  if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${inputLabel(run.conditions.inputClass)} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
   return `drill · 60 s · english · ${inputLabel(run.conditions.inputClass)} · ${correctionLabel(run.conditions.correctionPolicy)}`;
 }
@@ -280,13 +316,16 @@ function showChrome(shown) {
   if (document.body.dataset.running !== value) document.body.dataset.running = value;
 }
 
+// The footer best belongs to the session on screen. A custom session (any non-comparable kind) has no best,
+// so it says it isn't counted rather than showing the best for the time or word settings underneath it.
 function currentBestKey() {
-  return conditionKey(conditions());
+  return comparableKind(sessionKind) ? conditionKey(conditions()) : null;
 }
 
 function showBest() {
-  const best = profile.bests[currentBestKey()];
-  $('best').textContent = prefs.mode === 'book' ? 'Book pages keep no best' : best ? `Best · ${best.wpm} wpm` : 'No best yet';
+  const key = currentBestKey();
+  const best = key && profile.bests[key];
+  $('best').textContent = !key ? 'Not counted' : prefs.mode === 'book' ? 'Book pages keep no best' : best ? `Best · ${best.wpm} wpm` : 'No best yet';
 }
 
 function resolvedTheme() {
@@ -355,17 +394,23 @@ function applyPreferences() {
 const ownText = () => prefs.mode === 'quote' || prefs.mode === 'book';
 
 function setModeControls() {
+  const custom = customOpen || sessionKind === 'custom';
+  $('mode-custom').classList.toggle('is-active', custom);
+  $('mode-custom').setAttribute('aria-pressed', String(custom));
+  $('mode-custom').setAttribute('aria-expanded', String(customOpen));
+  $('custom-options').hidden = !customOpen;
   document.querySelectorAll('[data-mode]').forEach((button) => {
-    const selected = button.dataset.mode === prefs.mode;
+    const selected = !custom && button.dataset.mode === prefs.mode;
     button.classList.toggle('is-active', selected);
     button.setAttribute('aria-pressed', String(selected));
   });
-  $('quote-options').hidden = prefs.mode !== 'quote';
-  $('book-options').hidden = prefs.mode !== 'book';
+  $('quote-options').hidden = custom || prefs.mode !== 'quote';
+  $('book-options').hidden = custom || prefs.mode !== 'book';
   $('punctuation-toggle').disabled = ownText();
   $('numbers-toggle').disabled = ownText();
   $('word-list').disabled = ownText();
-  $('duration-options').hidden = ownText();
+  $('duration-options').hidden = custom || ownText();
+  document.querySelector('.compact-switch').hidden = custom;
   const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
   const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
   $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
@@ -504,9 +549,13 @@ function choosePassage(extraSeen = []) {
   });
 }
 
+// Restarting or changing a setting keeps a custom passage; every other session restarts as practice.
+const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custom' : 'practice');
+
 function sessionDurationMs() {
   if (sessionKind === 'daily') return null;
   if (sessionKind === 'drill') return 60000;
+  if (sessionKind === 'custom') return null;
   if (prefs.mode === 'time') return prefs.duration * 1000;
   return null;
 }
@@ -515,6 +564,7 @@ function configureSessionCopy() {
   const copy = {
     practice: ['practice', 'Practice', ''],
     drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
+    custom: ['custom text', 'Your text', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
     book: ['book', BOOKS.find((book) => book.id === prefs.book)?.title || 'Book', bookPageCopy(passage)],
@@ -525,7 +575,7 @@ function configureSessionCopy() {
   $('typing-screen').dataset.session = sessionKind;
   document.body.dataset.session = sessionKind;
   const setup = document.querySelector('.practice-controls');
-  if (setup) setup.hidden = sessionKind !== 'practice' && sessionKind !== 'book';
+  if (setup) setup.hidden = !['practice', 'book', 'custom'].includes(sessionKind);
   $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote';
   $('book-options').hidden = sessionKind !== 'book';
   const book = openBook(prefs.book);
@@ -550,8 +600,13 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   ticker = null;
   setRunning(false);
   primaryNotice = '';
+  const kindChanged = sessionKind !== kind;
   sessionKind = kind;
-  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : kind === 'book' ? bookPassage() : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
+  // The mode bar marks Custom while a custom session is loaded, so it is redrawn whenever the kind changes.
+  // Changing to any session but custom also closes the custom editor, or Custom would stay marked over it.
+  if (kindChanged && kind !== 'custom') customOpen = false;
+  if (kindChanged) setModeControls();
+  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : kind === 'book' ? bookPassage() : kind === 'custom' ? customPassage() : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
@@ -574,7 +629,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: kind === 'daily' ? dailyConditions() : conditions(),
+    conditions: kind === 'daily' ? dailyConditions() : kind === 'custom' ? customConditions() : conditions(),
   });
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;
@@ -648,7 +703,9 @@ function bookEmptyState(focus) {
   return { text: 'Opening the book…', status: 'Opening the book', tone: 'badge-info', help: '' };
 }
 
+// Choosing a book is choosing book mode, so like a mode button it closes the custom editor and passage.
 function setBook(id) {
+  customOpen = false;
   prefs.book = id;
   prefs.mode = 'book';
   applyPreferences();
@@ -667,6 +724,7 @@ function restartBook() {
 // The action under a book page's results: that book's next page, the same page again after an
 // interrupted one, or page 1 once it is finished, even if the mode or book changed since.
 function continueBook(id) {
+  customOpen = false;
   prefs.mode = 'book';
   prefs.book = id;
   applyPreferences();
@@ -900,6 +958,12 @@ function markKeyboardTargets(target) {
   document.querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
 
+// The live readout shows no rate until a second has passed: before that it is noise. Custom text (any
+// non-comparable kind) can be short enough to finish inside that second, so its run card follows the same
+// floor. Built-in passages take far longer than a second to type, so their card is unchanged.
+const RATE_FLOOR_MS = 1000;
+const rateShown = (completed) => comparableKind(completed.kind) || completed.summary.elapsedMs >= RATE_FLOOR_MS;
+
 function updateLive(reset = false) {
   if (!attempt) return;
   const replay = replayAttempt(attempt);
@@ -911,7 +975,7 @@ function updateLive(reset = false) {
   const second = startTime === null ? -1 : Math.floor(boundedElapsed / 1000);
   if (reset || second !== liveSecond) {
     liveSecond = second;
-    const score = second >= 1 ? replayAttempt({ ...attempt, endedAt: boundedElapsed }).score : null;
+    const score = second >= 0 && boundedElapsed >= RATE_FLOOR_MS ? replayAttempt({ ...attempt, endedAt: boundedElapsed }).score : null;
     setText($('live-wpm'), score ? score.wpm : '—');
     setText($('live-accuracy'), score ? score.accuracy : '—');
   }
@@ -943,9 +1007,11 @@ function storeAttempt(completed) {
   const score = completed.summary.score;
   const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
   resultBestBefore = profile.bests[key] || null;
-  // A book page's keystrokes are never evidence or a baseline, so its trace would only push the
-  // newest practice traces out of the bounded store. Its run summary keeps the chapter speeds.
-  if (completed.kind !== 'book') profile.attempts.push(completed);
+  // Traces serve baselines and patterns. A custom passage (any non-comparable kind) is neither and can run to
+  // thousands of characters, and a book page's keystrokes are never evidence or a baseline either, so its trace
+  // would only push the newest practice traces out of the bounded store. Both keep only their summary record;
+  // a book page's keeps the chapter speeds.
+  if (comparableKind(completed.kind) && completed.kind !== 'book') profile.attempts.push(completed);
   profile.runs.push(runRecord(completed));
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
     profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
@@ -1010,12 +1076,15 @@ function renderCard(completed) {
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
   $('run-card').hidden = false;
-  renderSpeedGraph($('speed-graph'), completed, { animate: true });
+  const graph = $('speed-graph').closest('figure');
+  graph.hidden = !rateShown(completed);
+  if (!graph.hidden) renderSpeedGraph($('speed-graph'), completed, { animate: true });
 }
 
 function resultHeadline(completed) {
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
+  if (completed.kind === 'custom') return 'Custom text complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
   if (completed.kind === 'book') {
     const book = openBook(completed.book.id);
@@ -1039,7 +1108,8 @@ function renderResults(completed, saved) {
   const replay = completed.summary;
   const counted = completed.status === 'complete';
   const firstErrors = replay.firstAttempts.filter((item) => !item.correct).length;
-  $('result-wpm').textContent = replay.score.wpm;
+  const speed = rateShown(completed) ? `${replay.score.wpm} wpm` : 'Too quick to time';
+  $('result-wpm').textContent = rateShown(completed) ? replay.score.wpm : '—';
   $('result-accuracy').textContent = replay.score.accuracy;
   $('result-errors').textContent = firstErrors;
   $('result-time').textContent = `${(replay.elapsedMs / 1000).toFixed(1)} s`;
@@ -1065,8 +1135,10 @@ function renderResults(completed, saved) {
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
   $('start-drill').disabled = !counted;
   $('skip-to-retest').disabled = !counted || !baselineAttempt;
+  // Custom text is never mined for targets or kept as a baseline, so its results offer no drill or retest:
+  // the recommendation would come from other runs and the retest would measure a different text.
   renderEvidenceList(activeRecommendation.evidence);
-  setResultsKind(isBook);
+  setResultsKind(isBook, comparableKind(completed.kind));
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again'
     : isBook ? (!counted ? 'Try this page again' : bookFinished() ? 'Start again from page 1' : 'Next page')
       : 'Run again';
@@ -1075,14 +1147,15 @@ function renderResults(completed, saved) {
   renderDaily();
   $('comparison-panel').hidden = true;
   announce(saved
-    ? `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy.`
-    : `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+    ? `${speed}, ${replay.score.accuracy}% accuracy.`
+    : `${speed}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
 }
 
 // After a book page the next page replaces the drill offer, and becomes the one green action:
 // a book page's keystrokes are not training evidence, so there is nothing to recommend from it.
-function setResultsKind(isBook) {
-  for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = isBook;
+// compared: false for custom text (any non-comparable kind), which offers no drill or retest either.
+function setResultsKind(isBook, compared = true) {
+  for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = isBook || !compared;
   // A drill started here would take the book's conditions, which match no practice target.
   document.querySelector('.manual-panel').hidden = isBook;
   $('run-again').className = `btn ${isBook ? 'btn-primary' : 'btn-ghost'}`;
@@ -1236,7 +1309,9 @@ function switchView(view) {
 
 function navigate(view) {
   if (view === 'practice') {
-    if (!attempt || !['practice', 'book'].includes(sessionKind) || ['complete', 'interrupted'].includes(attempt.status)) resetSession('practice');
+    // A book page or custom passage that is ready or under way is practice too, so going to Practice keeps it.
+    const current = attempt && ['practice', 'book', 'custom'].includes(sessionKind) && !['complete', 'interrupted'].includes(attempt.status);
+    if (!current) resetSession('practice');
     switchView('practice');
     return;
   }
@@ -1291,7 +1366,8 @@ function renderSecondaryStats(completed) {
   const replay = completed.summary;
   const steady = consistency(completed, replay);
   const chars = characterBreakdown(completed, replay);
-  $('result-raw').textContent = rawWpm(completed, replay);
+  // Raw speed is a rate too, so a custom run that ends inside a second shows none, as for net wpm.
+  $('result-raw').textContent = rateShown(completed) ? rawWpm(completed, replay) : '—';
   $('result-consistency').textContent = steady ?? '—';
   // A break opportunity after each slash, so a long breakdown wraps instead of widening the card.
   $('result-chars').replaceChildren(...[chars.correct, chars.incorrect, chars.extra, chars.missed]
@@ -1307,6 +1383,8 @@ const wordPace = (item) => (item.wpm === null ? 'no pace' : `${item.wpm} wpm`);
 
 function renderWords(completed, replay) {
   wordItems = wordHistory(completed, replay);
+  // A run too quick to time shows no rate, so no word shows a pace from the same sub-second timestamps.
+  if (!rateShown(completed)) wordItems = wordItems.map((item) => ({ ...item, wpm: null }));
   $('result-words').replaceChildren(...wordItems.flatMap((item, i) => {
     const word = element('span', item.word, item.wrong ? 'word-miss' : '');
     word.setAttribute('role', 'option');
@@ -2021,10 +2099,19 @@ function bindEvents() {
       navigate(nav.dataset.nav);
       return;
     }
+    // "Start practicing" begins a normal test, so it closes the custom editor as a mode button does.
     const practice = event.target.closest('[data-action="go-practice"]');
-    if (practice) resetSession('practice', { focus: true });
+    if (practice) {
+      customOpen = false;
+      setModeControls();
+      resetSession('practice', { focus: true });
+    }
   });
+  $('mode-custom').addEventListener('click', () => openCustom(!customOpen));
+  $('custom-text').addEventListener('input', updateCustomState);
+  $('custom-use').addEventListener('click', useCustomText);
   document.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => {
+    customOpen = false;
     prefs.mode = button.dataset.mode;
     setModeControls();
     saveProfile();
@@ -2044,11 +2131,12 @@ function bindEvents() {
     saveProfile();
     resetSession('practice', { focus: true });
   });
+  // Numbers sits beside the word list in settings and, like it, keeps a custom passage.
   $('numbers-toggle').addEventListener('change', (event) => {
     prefs.numbers = event.target.checked;
     showBest();
     saveProfile();
-    resetSession('practice', { focus: true });
+    resetSession(restartKind(), { focus: true });
   });
   $('quote-length').addEventListener('change', (event) => { prefs.quoteLength = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
@@ -2099,7 +2187,7 @@ function bindEvents() {
   $('run-again').addEventListener('click', () => {
     if (sessionKind === 'daily') startDaily();
     else if (lastCompleted?.kind === 'book' && document.querySelector('.recommendation-panel').dataset.kind === 'book') continueBook(lastCompleted.book.id);
-    else resetSession('practice', { focus: true });
+    else resetSession(restartKind(), { focus: true });
   });
   $('book-select').addEventListener('change', (event) => setBook(event.target.value));
   $('book-restart').addEventListener('click', restartBook);
@@ -2214,7 +2302,64 @@ function bindEvents() {
   });
 }
 
+function updateCustomCount() {
+  $('custom-count').textContent = `${$('custom-text').value.length.toLocaleString('en')} / ${CUSTOM_MAX.toLocaleString('en')}`;
+}
+
+function setCustomError(message = '') {
+  if ($('custom-error').textContent !== message) $('custom-error').textContent = message;
+  $('custom-text').setAttribute('aria-invalid', String(Boolean(message)));
+}
+
+function customErrorMessage(problem) {
+  if (!problem) return '';
+  if (problem.kind === 'empty') return 'Add some text first.';
+  if (problem.kind === 'short') return `Use at least ${CUSTOM_MIN_WORDS} words and ${CUSTOM_MIN_CHARS} characters, so the run is long enough to time.`;
+  if (problem.kind === 'untypable') return `“${problem.char}” (U+${problem.char.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}) can’t be typed here. Custom text uses the letters, digits, spaces and punctuation of an English keyboard.`;
+  return `Keep it to ${CUSTOM_MAX.toLocaleString('en')} characters, about ten minutes of typing. This text has ${problem.length.toLocaleString('en')}.`;
+}
+
+// While the text is too short to time, "Use this text" is off and the line under it says why. Other problems
+// are reported when the button is pressed, and editing clears them.
+function updateCustomState() {
+  updateCustomCount();
+  const problem = customTextProblem(normalizeCustomText($('custom-text').value, Infinity));
+  $('custom-use').disabled = problem?.kind === 'empty' || problem?.kind === 'short';
+  setCustomError(problem?.kind === 'short' ? customErrorMessage(problem) : '');
+}
+
+// The panel never opens or closes beside a live run: like the other mode buttons, it restarts the run first.
+function openCustom(open = true) {
+  if (attempt?.status === 'running') resetSession(restartKind());
+  customOpen = open;
+  if (open) {
+    if (!$('custom-text').value) $('custom-text').value = prefs.customText || '';
+    $('custom-order').value = prefs.customOrder;
+    updateCustomState();
+  }
+  setModeControls();
+  if (open) $('custom-text').focus();
+}
+
+// Signed in, the text is kept with the other preferences; a guest's preferences live only in memory.
+function useCustomText() {
+  const text = normalizeCustomText($('custom-text').value, Infinity);
+  const error = customErrorMessage(customTextProblem(text));
+  setCustomError(error);
+  if (error) {
+    $('custom-text').focus();
+    return;
+  }
+  prefs.customText = text;
+  prefs.customOrder = CUSTOM_ORDERS.includes($('custom-order').value) ? $('custom-order').value : 'as-written';
+  saveProfile();
+  customOpen = false;
+  resetSession('custom', { focus: true });
+  setModeControls();
+}
+
 function setTestShape(mode, length) {
+  customOpen = false;
   prefs.mode = mode;
   if (mode === 'time' && length) prefs.duration = length;
   if (mode === 'words' && length) prefs.count = length;
@@ -2235,34 +2380,44 @@ function setStopOnError(enabled) {
   prefs.stopOnError = enabled;
   applyPreferences();
   saveProfile();
-  if (document.body.dataset.view === 'practice') resetSession('practice');
+  if (document.body.dataset.view === 'practice') resetSession(restartKind());
 }
 
-function setWordList(id) {
+function setWordList(id, kind = restartKind()) {
   prefs.wordList = id;
   applyPreferences();
   saveProfile();
-  resetSession('practice', { focus: true });
+  resetSession(kind, { focus: true });
+}
+
+// A palette command that changes a practice setting restarts the session the user was in, as the settings
+// popover does, even when going to Practice first has ended a finished custom run.
+function inPractice(change) {
+  const kind = restartKind();
+  navigate('practice');
+  change(kind);
 }
 
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
-  const shape = (mode, length) => prefs.mode === mode && (mode === 'quote' || mode === 'book' || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  // During a custom session no test shape or book is current, only "custom text".
+  const shape = (mode, length) => comparableKind(sessionKind) && prefs.mode === mode && (mode === 'quote' || mode === 'book' || (mode === 'time' ? prefs.duration : prefs.count) === length);
   const commands = [
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => { navigate('practice'); resetSession(sessionKind, { focus: true }); } },
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => inPractice((kind) => resetSession(kind, { focus: true })) },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
+    { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: sessionKind === 'custom' ? 'current' : '', on: sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     ...BOOKS.map((book) => ({ group: 'test', label: `book · ${book.short.toLowerCase()}`, keywords: `book mode page chapter read novel gutenberg ${book.title} ${book.author}`,
       // setBook resets once and shows practice itself; navigating first would display (and mark seen) a page in between.
       hint: shape('book') && prefs.book === book.id ? 'current' : '', on: shape('book') && prefs.book === book.id, run: () => setBook(book.id) })),
-    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: ownText(), run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
-    { group: 'test', label: 'numbers', keywords: 'digits figures', hint: onOff(prefs.numbers), on: Boolean(prefs.numbers), disabled: ownText(), run: () => { prefs.numbers = !prefs.numbers; applyPreferences(); saveProfile(); resetSession('practice', { focus: true }); } },
-    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: ownText(), run: () => { navigate('practice'); setWordList(id); } })),
+    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: ownText(), run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
+    { group: 'test', label: 'numbers', keywords: 'digits figures', hint: onOff(prefs.numbers), on: Boolean(prefs.numbers), disabled: ownText(), run: () => { prefs.numbers = !prefs.numbers; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
+    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: ownText(), run: () => inPractice((kind) => setWordList(id, kind)) })),
     ...[['off', 'off'], ['best', 'personal best'], ['average', 'average'], ['last', 'last run'], ['custom', 'custom']].map(([mode, name]) => (
       { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: prefs.paceCaret === mode ? 'on' : '', on: prefs.paceCaret === mode, run: () => setPaceCaret(mode) })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },

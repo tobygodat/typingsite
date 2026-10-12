@@ -93,6 +93,58 @@ test('book mode loads its text on demand and types page by page, keeping the pla
   await expect(page.locator('#mode-time')).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('custom text over book mode keeps its own condition and the place, and a book closes it', async ({ page }) => {
+  const text = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await openBookMode(page);
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await expect(page.locator('#book-options')).toBeHidden();
+  await expect(page.locator('#mode-book')).toHaveAttribute('aria-pressed', 'false');
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+
+  // The custom run builds on the person's settings, never the book's: no book, no Gutenberg version.
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await expect(page.locator('#condition-line')).not.toContainText('gutenberg');
+  await expect(page.locator('#book-options')).toBeHidden();
+  await expect(page.locator('#best')).toHaveText('Not counted');
+  await typeInto(page, text);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
+  await expect(page.locator('#book-panel')).toBeHidden();
+  for (const id of ['#start-drill', '#skip-to-retest', '#recommendation-title']) await expect(page.locator(id)).toBeHidden();
+  await expect(page.locator('#run-again')).toHaveText('Run again');
+  await page.locator('#run-again').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(text);
+
+  // The palette's book closes the open custom editor and passage; the custom run never moved the place.
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await page.locator('#typing-input').focus();
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('book · alice');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#session-title')).toHaveText('Alice’s Adventures in Wonderland');
+  await expect(page.locator('#custom-options')).toBeHidden();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#mode-book')).toHaveAttribute('aria-pressed', 'true');
+  await expect(description(page)).toHaveText(label('^Chapter I · Down the Rabbit-Hole · page 1 of \\d+$'));
+
+  // The editor opened over a book page closes when another book is chosen, as a mode button closes it.
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await page.locator('#typing-input').focus();
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('book · pride');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#session-title')).toHaveText('Pride and Prejudice');
+  await expect(page.locator('#custom-options')).toBeHidden();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#book-options')).toBeVisible();
+});
+
 test('an interrupted page is not counted and is offered again', async ({ page }) => {
   await openApp(page);
   await openBookMode(page);
