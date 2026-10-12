@@ -929,6 +929,8 @@ function markEndFailure(target) {
   target.failed = failed;
 }
 
+const failedDrill = (completed) => completed.kind === 'drill' && Boolean(completed.failed);
+
 function finishPrimary(forcedElapsed = null) {
   if (!attempt || attempt.status !== 'running') return;
   clearInterval(ticker);
@@ -949,7 +951,9 @@ function finishPrimary(forcedElapsed = null) {
   $('typing-status').textContent = valid ? 'Complete' : completed.failed ? 'Failed' : 'Interrupted';
   const saved = storeAttempt(completed);
 
-  if (sessionKind === 'drill' && baselineAttempt) {
+  // A drill the correction setting failed shows its result like any failed run, so it can be tried
+  // again or skipped to the retest; a finished or interrupted drill goes straight on to the retest.
+  if (sessionKind === 'drill' && baselineAttempt && !completed.failed) {
     if (trainingContext) trainingContext.drillCompleted = valid;
     announce(valid ? 'Drill complete. Retest ready.' : 'Drill interrupted. Retest ready.');
     startRetest();
@@ -964,7 +968,7 @@ function finishPrimary(forcedElapsed = null) {
   if (sessionKind === 'retest') renderComparison(baselineAttempt, completed, saved);
   switchView('results');
   renderCard(completed);
-  $('run-again').focus({ preventScroll: true });
+  $(failedDrill(completed) ? 'start-drill' : 'run-again').focus({ preventScroll: true });
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -1023,13 +1027,17 @@ function renderResults(completed, saved) {
     activeRecommendation = trainingRecommendation(completed.conditions);
     selectedTarget = activeRecommendation.target;
   }
-  $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
-  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : completed.failed ? 'This run failed under the correction setting.' : 'This run lost focus or used unsupported input.';
+  // A failed drill keeps the recommendation it came from: try the drill again, or skip on to the retest.
+  const retry = failedDrill(completed);
+  const recommended = counted || retry;
+  $('recommendation-title').textContent = recommended ? activeRecommendation.title : 'Restart for a counted run';
+  $('recommendation-evidence').textContent = recommended ? activeRecommendation.reason : completed.failed ? 'This run failed under the correction setting.' : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
     ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
-  $('start-drill').disabled = !counted;
-  $('skip-to-retest').disabled = !counted || !baselineAttempt;
+  $('start-drill').disabled = !recommended;
+  $('start-drill').textContent = retry ? 'Try drill again' : 'Start drill';
+  $('skip-to-retest').disabled = !recommended || !baselineAttempt;
   // Custom text is never mined for targets or kept as a baseline, so its results offer no drill or retest:
   // the recommendation would come from other runs and the retest would measure a different text.
   const compared = comparableKind(completed.kind);
@@ -1039,9 +1047,10 @@ function renderResults(completed, saved) {
   renderTraining();
   renderDaily();
   $('comparison-panel').hidden = true;
+  const failure = completed.failed ? `${completed.kind === 'drill' ? 'Drill' : 'Run'} failed, ${completed.failed}. ` : '';
   announce(saved
-    ? `${speed}, ${replay.score.accuracy}% accuracy.`
-    : `${speed}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+    ? `${failure}${speed}, ${replay.score.accuracy}% accuracy.`
+    : `${failure}${speed}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
 }
 
 function renderEvidenceList(evidence) {
@@ -1626,6 +1635,7 @@ function clearHistory() {
   $('recommendation-list').replaceChildren();
   $('comparison-panel').hidden = true;
   $('start-drill').disabled = true;
+  $('start-drill').textContent = 'Start drill';
   $('skip-to-retest').disabled = true;
   const saved = saveProfile();
   $('clear-dialog').close();

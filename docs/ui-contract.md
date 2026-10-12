@@ -55,7 +55,7 @@ The manual target lives in `details.manual-panel` (summary `#manual-heading`): `
 
 ## Drill and retest
 
-`#start-drill` changes the shared typing surface to `data-session="drill"`; the page uses the same input and text display with target-heavy generated text. `#skip-to-retest` and drill completion change it to `data-session="retest"`; the passage must be fresh and the condition line must say whether comparison is valid.
+`#start-drill` changes the shared typing surface to `data-session="drill"`; the page uses the same input and text display with target-heavy generated text. `#skip-to-retest` and drill completion change it to `data-session="retest"`; the passage must be fresh and the condition line must say whether comparison is valid. A drill that a failure policy (`fail-word`, `fail-any`) ends does not move on by itself: it shows its failed result like any failed run, with `#start-drill` relabelled "Try drill again" and focused, and `#skip-to-retest` enabled when there is a baseline. Its loop then records the drill as not completed.
 
 Retest outcome IDs are `#comparison-panel`, `#comparison-status`, `#comparison-accuracy`, `#comparison-timing`, `#comparison-wpm`, `#comparison-sample`, and `#comparison-caveat`. The panel supports `data-outcome="improved|mixed|regressed|steady|insufficient|unavailable"`. The green accent appears only for `improved`; `mixed` uses warning. Regression uses plain coral (danger) ink and explanatory copy. Insufficient samples and incomparable conditions state that no claim can be made.
 
