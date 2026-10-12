@@ -1395,9 +1395,8 @@ function renderHistory() {
     ? 'Drills, daily and custom runs count toward your daily practice. Finish a practice run to chart speed and accuracy. Daily results are in Challenge.'
     : 'Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.';
   $('progress-content').hidden = !hasProgress;
-  const hasHistory = profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0;
-  $('clear-history').hidden = !hasHistory;
-  $('clear-history').disabled = !hasHistory;
+  $('clear-history').hidden = !hasHistory();
+  $('clear-history').disabled = !hasHistory();
   const source = conditionOptions($('progress-conditions'), [...eligible, ...profile.loops]);
   const key = source ? conditionKey(source) : '';
   const period = $('progress-period').value;
@@ -1619,6 +1618,13 @@ function renderRaceResults() {
     return row;
   }));
   announce('Challenge complete.');
+}
+
+// Whether there is anything for Clear history to remove, for both the Progress button and the palette command.
+// Archived practice days count on their own: a client from before the calendar clears runs but keeps them.
+function hasHistory() {
+  return profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0
+    || Object.keys(profile.practiceDays).length > 0;
 }
 
 function clearHistory() {
@@ -2313,7 +2319,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
-    { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.runs.length === 0 && profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
+    { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: !hasHistory(), run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
   // Only an exact word finds this one.
   if (query === 'ghost') commands.unshift({ group: 'secret', secret: true, label: 'ghost pacer', hint: onOff(ghostOn()), on: ghostOn(), run: toggleGhost });

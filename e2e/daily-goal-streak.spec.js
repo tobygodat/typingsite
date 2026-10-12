@@ -1,4 +1,5 @@
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
+import { dayKey } from '../src/insights.js';
 import { test, expect, openApp, chooseWords, completePassage, openView, openSettings, signInWithEmail, typeInto } from './fixtures.js';
 
 test('daily goal line and practice calendar render on Progress', async ({ page }) => {
@@ -203,4 +204,38 @@ test('a custom text run counts toward daily practice but not the trend', async (
   await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '1');
   await expect(page.locator('#progress-content')).toBeHidden();
   await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');
+});
+
+// A client from before the calendar keeps practiceDays as an unknown field when it clears history, so a synced
+// profile can hold archived practice days and no runs. That is still history: both clear entry points offer it,
+// clearing removes the calendar, and Undo brings it back.
+test('archived practice days alone can be cleared from Progress or the palette, and Undo restores them', async ({ page, supabase }) => {
+  const user = supabase.addUser('archive@stilltype.test');
+  const now = new Date();
+  const back = (days) => dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - days));
+  const practiceDays = { [back(2)]: 12 * 60000, [back(3)]: 4 * 60000, [back(9)]: 7 * 60000 };
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: [], runs: [], practiceDays, loops: [],
+    seenTextIds: [], bests: {}, updatedAt: now.toISOString() } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openView(page, 'Progress');
+  const practised = page.locator('#goal-calendar .goal-day:not([data-level="0"])');
+  await expect(page.locator('#practice-goal')).toBeVisible();
+  await expect(practised).toHaveCount(3);
+  await expect(page.locator('#clear-history')).toBeVisible();
+  await expect(page.locator('#clear-history')).toBeEnabled();
+  // The palette lists only enabled commands, so finding this one means it is offered.
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('clear local history');
+  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('clear local history');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#clear-dialog')).toBeVisible();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(page.locator('#practice-goal')).toBeHidden();
+  await expect(page.locator('#clear-history')).toBeHidden();
+  await page.locator('#undo-clear').click();
+  await expect(page.locator('#practice-goal')).toBeVisible();
+  await expect(practised).toHaveCount(3);
+  await expect(page.locator('#clear-history')).toBeEnabled();
 });

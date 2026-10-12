@@ -87,7 +87,7 @@ The two players type the same original passage sequentially on one keyboard, usi
 
 Required IDs: `history-list`, `history-row-template`, `progress-empty`, `clear-history`, `clear-dialog`, `confirm-clear-input`, `confirm-clear`, `cancel-clear`, `history-toast`, `undo-clear`, and `history-feedback`.
 
-`#progress-empty` is visible when no completed loop exists and links back to Practice. History rows state mode, text/corpus conditions, metric version, and sample counts. `#clear-history` opens the typed-confirm dialog. The confirm button stays disabled until the exact word `clear` is entered. After clearing, show `#undo-clear` in `#history-toast` for five seconds.
+`#progress-empty` is visible when no completed loop exists and links back to Practice. History rows state mode, text/corpus conditions, metric version, and sample counts. `#clear-history` opens the typed-confirm dialog. It and the palette's clear command are offered whenever anything clearable is saved (runs, attempts, loops or archived practice days) and hidden otherwise. The confirm button stays disabled until the exact word `clear` is entered. After clearing, show `#undo-clear` in `#history-toast` for five seconds.
 
 ## Accounts
 
