@@ -28,6 +28,13 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
   let toastStarted = 0;
   let toastTimer = 0;
   const listeners = new Set();
+  // Kinds whose action waits for a request already in flight (the online race sends one at a time):
+  // their buttons are aria-disabled, so they keep focus and show why nothing happens, and ignore clicks.
+  let waiting = new Set();
+  function markWaiting(button, kind) {
+    if (waiting.has(kind)) button.setAttribute('aria-disabled', 'true');
+    else button.removeAttribute('aria-disabled');
+  }
   // Guests keep no entries, so toasts are also remembered for this page alone.
   const toasted = new Set();
   const userId = () => getSession()?.user?.id || null;
@@ -84,7 +91,9 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
         button.className = 'btn btn-secondary btn-sm';
         button.dataset.inboxAction = entry.kind;
         button.textContent = action.label;
+        markWaiting(button, entry.kind);
         button.addEventListener('click', () => {
+          if (waiting.has(entry.kind)) return;
           $('inbox').open = false;
           // The offer can lapse while the inbox sits open; re-check before acting on it.
           if (isClosed(entry)) { render(); return; }
@@ -120,6 +129,7 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     $('challenge-toast-text').textContent = entry.text;
     $('challenge-toast-action').hidden = !action;
     $('challenge-toast-action').textContent = action?.label || '';
+    markWaiting($('challenge-toast-action'), entry.kind);
     $('challenge-toast').hidden = false;
     announce(entry.text);
     toastLeft = TOAST_MS;
@@ -204,6 +214,7 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     $('inbox-trigger').focus();
   });
   $('challenge-toast-action').addEventListener('click', () => {
+    if (waiting.has(toastEntry?.kind)) return;
     const entry = toastEntry;
     hideToast();
     if (entry) {
@@ -234,6 +245,12 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     runChanged,
     get invites() { return invites; },
     subscribe(listener) { listeners.add(listener); },
+    // Marks these kinds' actions as waiting (none, once the request has landed).
+    wait(kinds) {
+      waiting = new Set(kinds);
+      for (const button of $('inbox-list').querySelectorAll('[data-inbox-action]')) markWaiting(button, button.dataset.inboxAction);
+      if (toastEntry) markWaiting($('challenge-toast-action'), toastEntry.kind);
+    },
     // The room was opened another way: the toast for it goes and its entry counts as read. An
     // invitation only this device knew about is used up, since nothing else will close it.
     settle(id) {

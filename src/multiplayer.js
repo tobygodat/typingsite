@@ -50,29 +50,31 @@ export const listFriends = (session) => session ? action(session, 'friends') : P
 export const addFriend = (session, { email, name = '' }) => action(session, 'befriend', {}, { email: email.trim(), name: name.trim() });
 export const addFriendFromRace = (session, credentials) => action(session, 'befriend', { roomId: credentials.roomId });
 export const removeFriend = (session, friendId) => action(session, 'unfriend', {}, { friendId });
-// Friend-list replies can land out of order. A change replies with the list just after it, so it
-// always applies. A reload that was in flight alongside a change, or behind a newer reload that
-// already applied, may predate it, so its list is dropped.
-export function orderFriendReplies(apply) {
-  let changes = 0; // bumped as each change starts and as it lands
-  let open = 0;
-  let loads = 0;
-  let appliedLoad = 0;
+// This tab's friend-list requests (list, befriend, unfriend) never overlap: each is sent only once
+// the one before it has settled, and every reply is the whole list, applied as it lands. So the list
+// shown is always the newest the service has given. A failed request applies nothing and holds
+// nothing up. A reload queued behind another that hasn't been sent yet is that same reload.
+export function queueFriendRequests(apply) {
+  let last = Promise.resolve();
+  let waitingReload = null;
+  function queue(send) {
+    const applied = last.then(send).then((list) => { apply(list); return list; });
+    last = applied.catch(() => {});
+    return applied;
+  }
   return {
-    async load(request) {
-      const ticket = ++loads;
-      const seen = changes;
-      const list = await request;
-      if (open > 0 || seen !== changes || ticket < appliedLoad) return false;
-      appliedLoad = ticket;
-      apply(list);
-      return true;
+    reload(send) {
+      if (waitingReload) return waitingReload;
+      const reload = queue(() => {
+        if (waitingReload === reload) waitingReload = null;
+        return send();
+      });
+      waitingReload = reload;
+      return reload;
     },
-    async change(request) {
-      changes += 1;
-      open += 1;
-      try { apply(await request); }
-      finally { changes += 1; open -= 1; }
+    change(send) {
+      waitingReload = null;
+      return queue(send);
     },
   };
 }

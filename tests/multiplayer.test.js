@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRace, joinRace, getRace, updateRaceProgress, parseRaceLink, makeGuestRaceLink,
   clearRaceLink, rememberRace, recallRace, forgetRace, rematchRace, addFriend, addFriendFromRace,
-  listFriends, orderFriendReplies } from '../src/multiplayer.js';
+  listFriends, queueFriendRequests } from '../src/multiplayer.js';
 
 const roomId = '00000000-0000-4000-8000-000000000001';
 const inviteToken = 'a'.repeat(64);
@@ -93,45 +93,83 @@ test('friend races send only the friend id, and rematches keep the guest seat', 
   } finally { globalThis.fetch = original; }
 });
 
-test('a friend-list reload that overlaps a change never overwrites the change’s newer list', async () => {
-  const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+// A friend-list service the test answers by hand. `sent` lists each request as the queue sends it.
+function friendService() {
+  const sent = [];
+  const send = (name) => () => new Promise((resolve, reject) => { sent.push({ name, resolve, reject }); });
+  return { sent, send, names: () => sent.map((request) => request.name) };
+}
+const settle = () => new Promise((resolve) => { setImmediate(resolve); });
+
+test('a removal made while a save is still out is sent after it, so the save’s reply can’t bring the friend back', async () => {
+  const { sent, send, names } = friendService();
+  const shown = [];
+  const friends = queueFriendRequests((list) => { shown.push(list); });
+  // Creating a race saves Lin in the background; with that save out, Kim is removed.
+  const saving = friends.change(send('befriend lin'));
+  const removing = friends.change(send('unfriend kim'));
+  await settle();
+  assert.deepEqual(names(), ['befriend lin']);
+  // The service has both; the save's reply is the list before the removal.
+  sent[0].resolve(['kim', 'lin']);
+  await saving;
+  await settle();
+  assert.deepEqual(names(), ['befriend lin', 'unfriend kim']);
+  sent[1].resolve(['lin']);
+  await removing;
+  assert.deepEqual(shown, [['kim', 'lin'], ['lin']]);
+});
+
+test('a failed save neither drops nor holds up the friend list read before or after it', async () => {
+  const { sent, send, names } = friendService();
   let shown = null;
-  const replies = orderFriendReplies((list) => { shown = list; });
+  const friends = queueFriendRequests((list) => { shown = list; });
+  // A slow first read, then a background save that fails.
+  const reading = friends.reload(send('friends'));
+  const saving = friends.change(send('befriend lin'));
+  await settle();
+  sent[0].resolve(['kim']);
+  assert.deepEqual(await reading, ['kim']);
+  assert.deepEqual(shown, ['kim']);
+  await settle();
+  sent[1].reject(new Error('offline'));
+  await assert.rejects(saving, /offline/);
+  assert.deepEqual(shown, ['kim']);
+  // A save that fails first leaves the read queued behind it to apply.
+  const failing = friends.change(send('befriend ada'));
+  const after = friends.reload(send('friends'));
+  await settle();
+  sent[2].reject(new Error('offline'));
+  await assert.rejects(failing, /offline/);
+  await settle();
+  sent[3].resolve(['kim', 'lin']);
+  await after;
+  assert.deepEqual(shown, ['kim', 'lin']);
+  assert.deepEqual(names(), ['friends', 'befriend lin', 'befriend ada', 'friends']);
+});
 
-  // Sent before the change, answered after it: the reload may predate the change, so it is dropped.
-  const early = deferred(), save = deferred();
-  const earlyLoad = replies.load(early.promise);
-  const saving = replies.change(save.promise);
-  save.resolve(['lin']); await saving;
-  early.resolve([]);
-  assert.equal(await earlyLoad, false);
+test('friend-list reloads queued back to back go as one, and never ahead of a change', async () => {
+  const { sent, send, names } = friendService();
+  let shown = null;
+  const friends = queueFriendRequests((list) => { shown = list; });
+  const first = friends.reload(send('friends'));
+  const second = friends.reload(send('friends'));
+  const third = friends.reload(send('friends'));
+  assert.equal(second, first);
+  assert.equal(third, first);
+  const removing = friends.change(send('unfriend kim'));
+  const last = friends.reload(send('friends'));
+  assert.notEqual(last, first);
+  await settle();
+  sent[0].resolve(['kim', 'lin']);
+  await first;
+  // A reload already sent is not joined: the next one is its own request.
+  await settle();
+  sent[1].resolve(['lin']);
+  await removing;
+  await settle();
+  sent[2].resolve(['lin']);
+  await last;
+  assert.deepEqual(names(), ['friends', 'unfriend kim', 'friends']);
   assert.deepEqual(shown, ['lin']);
-
-  // Sent while a change is open, answered before or after it lands: dropped either way.
-  const removeLin = deferred(), during = deferred(), after = deferred();
-  const removing = replies.change(removeLin.promise);
-  const duringLoad = replies.load(during.promise);
-  during.resolve(['lin']);
-  assert.equal(await duringLoad, false);
-  const afterLoad = replies.load(after.promise);
-  removeLin.resolve([]); await removing;
-  after.resolve(['lin']);
-  assert.equal(await afterLoad, false);
-  assert.deepEqual(shown, []);
-
-  // Once changes have landed, reloads apply, but never an older one over a newer one.
-  const older = deferred(), newer = deferred();
-  const olderLoad = replies.load(older.promise);
-  const newerLoad = replies.load(newer.promise);
-  newer.resolve(['ada']);
-  assert.equal(await newerLoad, true);
-  older.resolve([]);
-  assert.equal(await olderLoad, false);
-  assert.deepEqual(shown, ['ada']);
-
-  // A failed change keeps the list, and the next reload applies.
-  await assert.rejects(replies.change(Promise.reject(new Error('offline'))), /offline/);
-  assert.deepEqual(shown, ['ada']);
-  assert.equal(await replies.load(Promise.resolve(['ada', 'lin'])), true);
-  assert.deepEqual(shown, ['ada', 'lin']);
 });

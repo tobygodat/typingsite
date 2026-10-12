@@ -586,7 +586,7 @@ kbd {
 }
 
 .btn:active:not(:disabled) { transform: scale(0.98); }
-.btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.38; cursor: not-allowed; }
 
 .btn-primary {
   background: var(--accent);
