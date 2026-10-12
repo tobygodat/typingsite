@@ -212,7 +212,7 @@ Density is low and deliberate. The practice screen centres the passage with the 
 A warm, low-chroma neutral ramp with one green and one coral. The palette is defined twice, once for dark (`:root`, `[data-theme="dark"]`) and once for light (`[data-theme="light"]`), with identical token names. Frontmatter keys ending in `-light` are the light-theme values of the same token.
 
 ### Primary
-- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. Focus rings on inputs use its soft tint (accent-soft). Text on a green fill uses accent-ink. The practice calendar on Progress steps it at 30%, 55% and 80% (practice-level-1 to 3) and then full accent; days without practice sit on the hairline.
+- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. Focus rings on inputs use its soft tint (accent-soft). Text on a green fill uses accent-ink. The practice calendar on Progress steps it at 30%, 55% and 80% (practice-level-1 to 3) and then full accent; days without practice sit on the hairline, and days that met the goal also carry a small accent-ink centre dot so they never rest on colour alone.
 
 ### Secondary
 - **Ember Coral** (danger): mistyped letters, the blocked caret, regressions, destructive actions and field errors. It is always paired with a second cue (a tint or a word) and never used alone.

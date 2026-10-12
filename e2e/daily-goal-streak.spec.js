@@ -16,15 +16,32 @@ test('daily goal line and practice calendar render on Progress', async ({ page }
   expect(await days.count()).toBeGreaterThanOrEqual(17 * 7 + 1);
   const today = days.last();
   await expect(today).toHaveAttribute('data-level', '1');
-  await expect(today).toHaveAttribute('title', /^[A-Z][a-z]{2} \d{1,2}: (<1|\d+) min$/);
+  // Under the 5-minute goal: no goal-met mark.
+  await expect(today).not.toHaveAttribute('data-goal', 'met');
+  // The caption is visual only and stays empty until a day is focused or hovered (the goal line covers today).
+  const caption = page.locator('#goal-caption');
+  await expect(caption).toHaveAttribute('aria-hidden', 'true');
+  await expect(caption).toHaveText('');
   // One tab stop; arrows move a day (up/down) or a week (left/right), and each day says what it holds.
   await expect(page.locator('#goal-calendar [tabindex="0"]')).toHaveCount(1);
   await expect(today).toHaveAttribute('tabindex', '0');
   await today.focus();
+  await expect(caption).toHaveText(/^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2} · (<1|\d+) min$/);
   await page.keyboard.press('ArrowLeft');
   const weekAgo = days.nth((await days.count()) - 8);
   await expect(weekAgo).toBeFocused();
   await expect(weekAgo).toHaveAttribute('aria-label', /^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2}: 0 min$/);
+  // The caption follows focus and uses the label's words, shortened.
+  const [weekday, month, date] = (await weekAgo.getAttribute('aria-label')).match(/^([A-Z][a-z]{2})[a-z]*, ([A-Z][a-z]{2})[a-z]* (\d{1,2}):/).slice(1);
+  await expect(caption).toHaveText(`${weekday}, ${month} ${date} · 0 min`);
+  // Hover shows the hovered day; leaving the calendar returns to the focused one, and blurring clears it.
+  await days.nth(3).hover();
+  await expect(caption).toHaveText(/^Wed, [A-Z][a-z]{2} \d{1,2} · 0 min$/);
+  await page.mouse.move(1200, 700);
+  await expect(caption).toHaveText(`${weekday}, ${month} ${date} · 0 min`);
+  await weekAgo.evaluate((cell) => cell.blur());
+  await expect(caption).toHaveText('');
+  await weekAgo.focus();
   // Up and down stay inside the drawn week column, Sunday at the top and Saturday at the bottom.
   await page.keyboard.press('Home');
   await expect(days.first()).toBeFocused();
@@ -86,6 +103,36 @@ test('Progress screenshots with ten weeks of seeded history', async ({ page, sup
   await openView(page, 'Progress');
   await expect(page.locator('#goal-line')).toHaveText(/^Today \d+ \/ 10 min · 5-day streak$/);
 
+  // Goal-met days carry a mark beyond colour: the attribute, the label's words and an accent-ink centre dot.
+  const days = page.locator('#goal-calendar .goal-day');
+  const today = days.last();
+  await expect(today).toHaveAttribute('data-goal', 'met');
+  await expect(today).toHaveAttribute('aria-label', /, goal met$/);
+  await expect(page.locator('#goal-calendar .goal-day[data-goal="met"]:not([data-level="3"]):not([data-level="4"])')).toHaveCount(0);
+  await expect(page.locator('#goal-calendar .goal-day[data-level="3"]:not([data-goal="met"]), #goal-calendar .goal-day[data-level="4"]:not([data-goal="met"])')).toHaveCount(0);
+  const dot = (cell) => cell.evaluate((node) => {
+    const probe = document.body.appendChild(document.createElement('i'));
+    probe.style.color = 'var(--accent-ink)';
+    const ink = getComputedStyle(probe).color;
+    probe.remove();
+    const after = getComputedStyle(node, '::after');
+    return { content: after.content, width: after.width, background: after.backgroundColor, ink };
+  });
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
+    const met = await dot(today);
+    expect(met.content, theme).toBe('""');
+    expect(met.width, theme).toBe('4px');
+    expect(met.background, theme).toBe(met.ink);
+  }
+  expect((await dot(days.first())).content).toBe('none');
+
+  // Focus today from the keyboard (End) so the screenshots show the caption and the focus ring.
+  await today.focus();
+  await page.keyboard.press('End');
+  await expect(today).toBeFocused();
+  await expect(page.locator('#goal-caption')).toHaveText(/^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2} · \d+ min · goal met$/);
+
   for (const theme of ['dark', 'light']) {
     await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
     await page.mouse.move(640, 300);
@@ -94,6 +141,36 @@ test('Progress screenshots with ten weeks of seeded history', async ({ page, sup
     const name = `progress-${theme}.png`;
     await page.screenshot({ path: process.env.SCREENSHOTS ? `docs/screenshots/daily-goal-streak/${name}` : testInfo.outputPath(name) });
   }
+});
+
+test('the calendar and its longest caption fit a 320px screen', async ({ page, supabase }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const user = supabase.addUser('narrow@stilltype.test');
+  const runs = seededHistory();
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { dailyGoal: 10 }, attempts: [], runs, loops: [],
+    seenTextIds: runs.map((r) => r.textId), bests: {}, updatedAt: runs.at(-1).at } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openSettings(page);
+  await page.locator('#daily-goal').selectOption('10');
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 320, height: 640 });
+  await openView(page, 'Progress');
+  const days = page.locator('#goal-calendar .goal-day');
+  const longest = await days.evaluateAll((cells) => cells.reduce((best, cell, i) => (cell.dataset.caption.length > cells[best].dataset.caption.length ? i : best), 0));
+  await days.nth(longest).focus();
+  await expect(page.locator('#goal-caption')).toHaveText(/ · goal met$/);
+  const width = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  for (const selector of ['#goal-calendar', '#goal-caption', '#goal-line']) {
+    const box = await page.locator(selector).boundingBox();
+    expect(box.x, selector).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, selector).toBeLessThanOrEqual(width);
+  }
+  // The caption stays on its one reserved line.
+  const { height, line } = await page.locator('#goal-caption').evaluate((node) => ({ height: node.getBoundingClientRect().height, line: parseFloat(getComputedStyle(node).lineHeight) }));
+  expect(height).toBeLessThanOrEqual(line + 1);
+  await page.locator('#practice-goal').screenshot({ path: testInfo.outputPath('progress-goal-320.png') });
 });
 
 test('drills alone count toward daily practice and the empty trend copy agrees', async ({ page, supabase }) => {

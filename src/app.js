@@ -1264,7 +1264,11 @@ function renderTraining() {
 
 // Daily goal line and an 18-week practice calendar (Sunday-first columns), static by design.
 // The calendar is one tab stop: each day is a labelled cell, and the arrow keys move between them as drawn.
+// Goal-met days carry a dot as well as the green step, and the caption under the calendar repeats the
+// focused or hovered day's label for sighted users (it is aria-hidden; the cell's own label is announced).
 let goalDay = '';
+function captionGoalDay(cell) { $('goal-caption').textContent = cell?.dataset?.caption || ''; }
+const focusedGoalDay = () => ($('goal-calendar').contains(document.activeElement) ? document.activeElement : null);
 function renderGoal(date = new Date()) {
   goalDay = dayKey(date);
   const byDay = minutesByDay(profile.runs, profile.practiceDays);
@@ -1276,18 +1280,21 @@ function renderGoal(date = new Date()) {
   const cells = [];
   for (const day = new Date(start); day <= date; day.setDate(day.getDate() + 1)) {
     const minutes = byDay[dayKey(day)] || 0;
+    const met = goal > 0 && minutes >= goal;
     const cell = element('span', '', 'goal-day');
     cell.dataset.level = String(practiceLevel(minutes, goal));
+    if (met) cell.dataset.goal = 'met';
     cell.setAttribute('role', 'img');
     cell.tabIndex = -1;
-    cell.title = `${day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: ${goalMinutes(minutes)} min`;
-    cell.setAttribute('aria-label', `${day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}: ${goalMinutes(minutes)} min${goal && minutes >= goal ? ', goal met' : ''}`);
+    cell.setAttribute('aria-label', `${day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}: ${goalMinutes(minutes)} min${met ? ', goal met' : ''}`);
+    cell.dataset.caption = [day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), `${goalMinutes(minutes)} min`, met && 'goal met'].filter(Boolean).join(' · ');
     cells.push(cell);
   }
   cells.at(-1).tabIndex = 0;
   const practised = cells.filter((cell) => cell.dataset.level !== '0').length;
-  const hadFocus = $('goal-calendar').contains(document.activeElement);
+  const hadFocus = Boolean(focusedGoalDay());
   $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last 18 weeks: ${practised} days with practice. Arrow keys move between days.`);
+  captionGoalDay(null);
   $('goal-calendar').replaceChildren(...cells);
   if (hadFocus) cells.at(-1).focus();
 }
@@ -1939,6 +1946,10 @@ function bindEvents() {
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveProfile(); renderGoal(); });
   $('goal-calendar').addEventListener('keydown', moveGoalFocus);
+  $('goal-calendar').addEventListener('focusin', (event) => captionGoalDay(event.target));
+  $('goal-calendar').addEventListener('focusout', (event) => { if (!$('goal-calendar').contains(event.relatedTarget)) captionGoalDay(null); });
+  $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()));
+  $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
