@@ -11,18 +11,21 @@ export function mondayOf(date = new Date()) {
 
 const whole = (value, max) => Number.isInteger(value) && value >= 0 && value <= max;
 
+// An entry of a summary's map of periods, by its key, when the map is an object.
+const entry = (periods, key) => (periods && typeof periods === 'object' && !Array.isArray(periods) && Object.hasOwn(periods, key) ? periods[key] : null);
+
 // As race_private.board_numbers: nothing unless the summary is stamped with the row's own updated_at,
-// then today's daily and this week's practice, each checked on its own.
+// then the daily keyed by the service's today and the practice keyed by its week, each checked on its own.
 export function boardNumbers(board, updatedAt, today, week) {
   if (!board || typeof board !== 'object' || typeof board.at !== 'string') return null;
   const at = Date.parse(board.at);
   if (Number.isNaN(at) || at !== Date.parse(updatedAt)) return null;
-  const d = board.daily;
-  const w = board.week;
-  const daily = d && typeof d === 'object' && d.date === today && typeof d.version === 'string' && /^[ -~]{1,200}$/.test(d.version)
+  const d = entry(board.days, today);
+  const w = entry(board.weeks, week);
+  const daily = d && typeof d === 'object' && typeof d.version === 'string' && /^[ -~]{1,200}$/.test(d.version)
     && whole(d.wpm, 400) && whole(d.accuracy, 100) && whole(d.attempts, 1000) && d.attempts >= 1
     ? { version: d.version, wpm: d.wpm, accuracy: d.accuracy, attempts: d.attempts } : null;
-  const practice = w && typeof w === 'object' && w.start === week && whole(w.seconds, 604800) && whole(w.runs, 10000)
+  const practice = w && typeof w === 'object' && whole(w.seconds, 604800) && whole(w.runs, 10000)
     ? { seconds: w.seconds, runs: w.runs } : null;
   return { daily, week: practice };
 }
@@ -40,6 +43,9 @@ export class FakeBoard {
     // Set to a promise to hold the next 'share' or 'unshare': it is applied and answered only once that
     // settles, while later requests go through, as a slow request can on the real service.
     this.holdNext = null;
+    // Set to a promise to hold the reply to the next 'share' or 'unshare' once it is applied: the service
+    // has taken it, and the answer is slow to come back while later requests go through.
+    this.holdNextReply = null;
     // Set to delay the next reply by this many milliseconds: the board is read on arrival, and the reply
     // takes that long to get back.
     this.delayNextReply = 0;
@@ -92,6 +98,11 @@ export class FakeBoard {
     else if (action === 'unshare') this.members.delete(caller);
     else if (action !== 'board') return reply(400, { message: 'Unknown board action.' });
     const result = this.board(caller);
+    if ((action === 'share' || action === 'unshare') && this.holdNextReply) {
+      const held = this.holdNextReply;
+      this.holdNextReply = null;
+      await held;
+    }
     if (this.delayNextReply) {
       const delay = this.delayNextReply;
       this.delayNextReply = 0;

@@ -34,21 +34,46 @@ export function weekStart(date = new Date()) {
 // A reader compares only results whose version matches its own, so two builds never share one ranking.
 export const dailyVersion = (dailyKey, date = new Date()) => `${dailyKey}|${dailyPassage(date).textVersion}`;
 
-// What an account shows about itself. The daily result is today's best completed attempt at the
-// daily conditions on a physical keyboard, as the Daily panel counts it, with the number of completed
-// attempts beside it. Practice time is every completed, uninterrupted run since Monday 00:00 UTC.
-export function boardSummary(runs, dailyKey, date = new Date()) {
-  const day = utcDay(date);
-  const start = weekStart(date);
-  const from = Date.parse(`${start}T00:00:00Z`);
-  const daily = runs.filter((run) => run.kind === 'daily' && validRun(run) && run.challengeDate === day
-    && conditionKey(run.conditions) === dailyKey && run.score?.wpm <= MAX_WPM);
-  const best = [...daily].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
-  const week = runs.filter((run) => validRun(run) && run.at && Date.parse(run.at) >= from && Date.parse(run.at) < from + 7 * DAY_MS);
-  const ms = week.reduce((sum, run) => sum + Math.max(0, Number(run.elapsedMs) || 0), 0);
+// How many of the latest days and weeks a summary keeps: the service shows the one that is its own
+// today (or this week), so two cover a reader on either side of a midnight.
+const PERIODS = 2;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+// The latest PERIODS keys of a map of periods, newest first.
+const latest = (periods) => [...periods.keys()].sort().reverse().slice(0, PERIODS);
+
+// What an account shows about itself, from its runs alone. Each run counts in its own day and week, by
+// its own record, as the Daily panel and Progress count it: a daily by the UTC date it was played for,
+// practice by when it was run. So no device's clock, the writer's included, decides which day or week
+// a run belongs to. `days` holds, for each of the latest dates with a daily, the best completed attempt
+// at the daily conditions on a physical keyboard, with the number of completed attempts beside it;
+// `weeks` holds, for each of the latest weeks (Monday 00:00 UTC) with a run, the time and number of
+// completed, uninterrupted runs.
+export function boardSummary(runs, dailyKey) {
+  const dailies = new Map();
+  const weeks = new Map();
+  for (const run of runs) {
+    if (!validRun(run)) continue;
+    if (run.kind === 'daily' && DATE.test(run.challengeDate ?? '') && conditionKey(run.conditions) === dailyKey && run.score?.wpm <= MAX_WPM) {
+      if (!dailies.has(run.challengeDate)) dailies.set(run.challengeDate, []);
+      dailies.get(run.challengeDate).push(run);
+    }
+    const at = run.at ? Date.parse(run.at) : NaN;
+    if (Number.isNaN(at)) continue;
+    const start = weekStart(new Date(at));
+    const week = weeks.get(start) || { ms: 0, runs: 0 };
+    week.ms += Math.max(0, Number(run.elapsedMs) || 0);
+    week.runs += 1;
+    weeks.set(start, week);
+  }
   return {
-    daily: best ? { date: day, version: dailyVersion(dailyKey, date), wpm: best.score.wpm, accuracy: best.score.accuracy, attempts: Math.min(daily.length, MAX_ATTEMPTS) } : null,
-    week: { start, seconds: Math.min(Math.round(ms / 1000), 7 * DAY_MS / 1000), runs: Math.min(week.length, MAX_RUNS) },
+    days: Object.fromEntries(latest(dailies).map((day) => {
+      const attempts = dailies.get(day);
+      const best = [...attempts].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
+      return [day, { version: dailyVersion(dailyKey, new Date(`${day}T00:00:00Z`)), wpm: best.score.wpm, accuracy: best.score.accuracy,
+        attempts: Math.min(attempts.length, MAX_ATTEMPTS) }];
+    })),
+    weeks: Object.fromEntries(latest(weeks).map((start) => [start, {
+      seconds: Math.min(Math.round(weeks.get(start).ms / 1000), 7 * DAY_MS / 1000), runs: Math.min(weeks.get(start).runs, MAX_RUNS) }])),
   };
 }
 
@@ -63,8 +88,14 @@ export const boardCurrent = (row) => Boolean(row?.board?.at) && Date.parse(row.b
 
 // When to read the board again for the next UTC day: `nextDay` seconds after the reply arrived. The
 // service counts them from when it built the reply, so the time the reply took to arrive can only make
-// this later than its midnight, never earlier, and this device's clock setting doesn't matter.
-export const nextRead = (receivedAt, reply) => (Number.isFinite(reply?.nextDay) ? receivedAt + reply.nextDay * 1000 : null);
+// this later than its midnight, never earlier, and this device's clock setting doesn't matter. It is
+// kept on both this device's clock (`wall`) and the page's monotonic clock (`mono`), and the read is
+// due once either has passed: setting the clock back while the board is open can't hold the read
+// back, and a monotonic clock that pauses while the device sleeps can't either. A read that comes early
+// is harmless: it shows the same day, with a new `nextDay`.
+export const nextRead = (reply, wall = Date.now(), mono = performance.now()) => (Number.isFinite(reply?.nextDay)
+  ? { wall: wall + reply.nextDay * 1000, mono: mono + reply.nextDay * 1000 } : null);
+export const readDue = (at, wall = Date.now(), mono = performance.now()) => !at || wall >= at.wall || mono >= at.mono;
 
 // Under a minute in seconds, then minutes: one decimal below ten, whole above. Never rounded up.
 export function practiceTime(seconds) {
@@ -107,18 +138,23 @@ function rememberSharing(session, value) {
 }
 // An opt-out the service hasn't confirmed yet, kept on this device across reloads until it has. Any tab
 // of the device sends it, before any other board request; the service answers a repeat as done. Until
-// then this device's profile saves write no summary (src/app.js), so it shows nothing new.
+// then this device's profile saves write no summary (src/app.js), so it shows nothing new. Each opt-out
+// is kept under its own id, and a confirmation settles only the one it was sent for: a reply that
+// arrives after sharing was turned back on and off again can't drop the newer opt-out.
 const optOutKey = (session) => `stilltype-board-optout:${session.user.id}`;
-export function optOutPending(session) {
-  try { return localStorage.getItem(optOutKey(session)) !== null; } catch { return false; }
+function optOutId(session) {
+  try { return localStorage.getItem(optOutKey(session)); } catch { return null; }
 }
-function rememberOptOut(session, pending) {
-  try {
-    if (pending) localStorage.setItem(optOutKey(session), '1');
-    else localStorage.removeItem(optOutKey(session));
-  } catch {}
+export const optOutPending = (session) => optOutId(session) !== null;
+function rememberOptOut(session) {
+  try { localStorage.setItem(optOutKey(session), `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`); } catch {}
+}
+function settleOptOut(session, id) {
+  try { if (localStorage.getItem(optOutKey(session)) === id) localStorage.removeItem(optOutKey(session)); } catch {}
 }
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+const OFF = 'Your row is off the board.';
+const PENDING = 'Your row comes off once the board can be reached.';
 
 async function call(session, action) {
   // Background polls may have rotated the refresh token; the newest stored copy for this account wins.
@@ -138,7 +174,7 @@ export const readBoard = (session) => call(session, 'board');
 export const startSharing = (session) => call(session, 'share');
 export const stopSharing = (session) => call(session, 'unshare');
 
-export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline }) {
+export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, onShared = () => {} }) {
   let visible = false;
   // Whether this account shares, as this device last knew it (see knownSharing); null until it knows.
   let sharing = getSession() ? knownSharing(getSession()) : null;
@@ -155,7 +191,7 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline })
   let generation = 0;
   // When to read again for the next UTC day (see nextRead), from the last board received. A read that
   // fails leaves it, so the next check tries again.
-  let rollAt = 0;
+  let rollAt = null;
   // A quiet line for the board when sharing was turned off on another device.
   let note = '';
   // Bumped by each switch of the sharing setting here, so a reply that crossed one doesn't count.
@@ -170,7 +206,7 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline })
   // A board the service sent.
   function took(result) {
     board = result;
-    rollAt = nextRead(Date.now(), result) ?? rollAt;
+    rollAt = nextRead(result) ?? rollAt;
   }
   // The account doesn't share (any more). A tab that thought it shared says so in one line; one that
   // didn't know just knows now.
@@ -198,13 +234,14 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline })
     switching = next;
     return next;
   };
-  // The opt-out, sent now. Once the service confirms it, it is settled on this device, unless the switch
-  // here has moved since it was asked for.
+  // The opt-out, sent now. Once the service confirms it, that opt-out is settled on this device. This
+  // tab is off the board then, unless its switch has moved since, or a newer opt-out is still kept.
   async function unshareNow(session, seq = toggles) {
+    const id = optOutId(session);
     const result = await stopSharing(session);
-    if (seq === toggles) {
+    settleOptOut(session, id);
+    if (seq === toggles && !optOutPending(session)) {
       unsharing = false;
-      rememberOptOut(session, false);
       notSharing();
       note = '';
       took(result);
@@ -262,7 +299,10 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline })
   // What the switch shows: what this device knows, or on while turning sharing on is on its way.
   const switchedOn = () => (isSharing() && !unsharing) || turningOn;
 
+  // The status line last asked for, kept when another tab's change re-renders the board.
+  let shown = '';
   function render(status = '') {
+    shown = status;
     const signedIn = Boolean(getSession());
     const shared = signedIn && isSharing() && !unsharing;
     $('friends-board-guest').hidden = signedIn;
@@ -334,11 +374,13 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline })
       turningOn = true;
       note = '';
       render('Turning sharing on…');
+      // An opt-out kept on this device from before this switch goes first, and stays kept until the
+      // service confirms it, so a share that never gets through leaves the account as the switch then
+      // shows: off. One made after it (switching off again, here or in another tab) goes after it.
+      const kept = optOutId(session);
       try {
-        // An opt-out still kept on this device goes first, and stays kept until the service confirms it,
-        // so a share that never gets through leaves the account as the switch then shows: off.
         const result = await inTurn(async () => {
-          if (optOutPending(session)) await unshareNow(session, seq);
+          if (kept !== null && optOutId(session) === kept) await unshareNow(session, seq);
           return startSharing(session);
         });
         if (seq !== toggles) return;
@@ -347,6 +389,8 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline })
         setSharing(true);
         took(result);
         render();
+        // Saves made while an opt-out was unconfirmed wrote no summary: the app writes one from the row.
+        onShared();
       } catch (failure) {
         if (seq !== toggles) return;
         turningOn = false;
@@ -359,18 +403,19 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline })
     try {
       await removeRow(session);
       if (seq !== toggles) return;
-      render('Your row is off the board.');
+      // Off, unless an opt-out made since (in another tab) is still on its way.
+      render(unsharing ? PENDING : OFF);
     } catch (failure) {
       if (seq !== toggles) return;
       // Another tab may have sent it meanwhile, and settled it.
       unsharing = optOutPending(session);
-      render(unsharing ? `${failure.message || 'The board is unavailable.'} Your row comes off once the board can be reached.` : 'Your row is off the board.');
+      render(unsharing ? `${failure.message || 'The board is unavailable.'} ${PENDING}` : OFF);
     }
   }
 
   // Turning sharing off here: the opt-out is kept until the service confirms it.
   function stopHere(session) {
-    rememberOptOut(session, true);
+    rememberOptOut(session);
     setSharing(false);
     optedOut();
   }
@@ -383,9 +428,11 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline })
     if (event.key === optOutKey(session)) {
       if (event.newValue) optingOut(session);
       else if (unsharing) {
-        // Settled there: off the board now, unless that tab turned sharing back on.
+        // Settled there: off the board now, unless that tab turned sharing back on. A line here that
+        // said it was still on its way says which.
         unsharing = false;
         sharing = knownSharing(session);
+        if (shown.endsWith(PENDING)) shown = sharing ? '' : OFF;
       }
     } else if (event.key === sharingKey(session)) {
       if (unsharing || turningOn) return;
@@ -401,7 +448,8 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline })
         return;
       }
     } else return;
-    if (visible) render();
+    // The status line stays: a change made in another tab doesn't take back what this one said.
+    if (visible) render(shown);
   }
 
   $('refresh-friends-board').addEventListener('click', () => { if (!loading) refresh({ manual: true }); });
@@ -443,6 +491,6 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline })
     // again once the day has turned (see nextRead), from the app's periodic check or when the tab comes
     // back; a hidden tab waits for its return. Quietly: no loading line, no "Updated.", no failure line
     // (a failed read is tried again at the next check), and focus stays put.
-    rollover() { if (visible && !loading && !document.hidden && getSession() && Date.now() >= rollAt) refresh({ quiet: true }); },
+    rollover() { if (visible && !loading && !document.hidden && getSession() && readDue(rollAt)) refresh({ quiet: true }); },
   };
 }

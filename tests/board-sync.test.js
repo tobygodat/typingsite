@@ -8,7 +8,7 @@ import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
 import * as account from '../src/account.js';
 import * as board from '../src/friends-board.js';
 
-const { boardColumn, boardCurrent, boardSummary, nextRead, weekStart } = board;
+const { boardColumn, boardCurrent, boardSummary, nextRead, utcDay, weekStart } = board;
 const { pushCloudProfile, repairBoard } = account;
 const words = { mode: 'words', duration: null, count: 25, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
   inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
@@ -57,10 +57,14 @@ async function withApi(api, task) {
   globalThis.fetch = api.fetch;
   try { return await task(); } finally { globalThis.fetch = original; }
 }
+// Today's and this week's parts of a summary, as the service picks them.
+const parts = (summary) => ({ daily: summary.days[utcDay()] ?? null, week: summary.weeks[weekStart()] ?? null });
 // What a reader is shown of a row, as the service shows it: the summary only while it describes the row.
-const shown = (row) => (boardCurrent(row) ? { daily: row.board.daily, week: row.board.week } : null);
+const shown = (row) => (boardCurrent(row) ? parts(row.board) : null);
 // What Progress shows from the same row.
-const progress = (row) => boardSummary(row.data.runs, dailyKey);
+const progress = (row) => parts(boardSummary(row.data.runs, dailyKey));
+// This week's run count a reader is shown (none yet reads as 0).
+const weekRuns = (row) => shown(row)?.week?.runs ?? 0;
 
 test('finding 1: a pre-clear run stamped by a fast clock comes back on the board only with the history Progress shows', async () => {
   const api = profilesApi();
@@ -70,18 +74,18 @@ test('finding 1: a pre-clear run stamped by a fast clock comes back on the board
   await withApi(api, async () => {
     // Another device clears: the row and its summary are empty.
     await save(copy([]));
-    assert.deepEqual(shown(api.rows.get('ada')).week.runs, 0);
+    assert.equal(shown(api.rows.get('ada')).week, null);
     // The correctly timed device then makes a run after the clear: only that run counts, whatever the
     // stamps of runs it no longer holds.
     await save(copy([run('after-clear', thisWeek(MINUTE))]));
-    assert.equal(shown(api.rows.get('ada')).week.runs, 1);
+    assert.equal(weekRuns(api.rows.get('ada')), 1);
     // A stale device that still holds the pre-clear history saves it back (last writer wins on master):
     // the board then shows exactly that history, no more and no fewer runs than Progress.
     await save(before);
   });
   const row = api.rows.get('ada');
   assert.deepEqual(shown(row), progress(row));
-  assert.equal(shown(row).week.runs, 2);
+  assert.equal(weekRuns(row), 2);
   assert.equal(row.board.at, row.updated_at);
   // Nothing on the client weighs a run's stamp against a clock any more.
   assert.equal(board.runsSince, undefined);
@@ -102,11 +106,11 @@ test('finding 2: clear and undo twice with the first save’s reply held, and th
   const row = api.rows.get('ada');
   assert.equal(saves.length, 4);
   assert.deepEqual(shown(row), progress(row));
-  assert.equal(shown(row).week.runs, 3);
+  assert.equal(weekRuns(row), 3);
   assert.deepEqual(row.data, full);
   // Each write carried the summary of its own copy; nothing was kept on the device to settle later.
   const posts = api.requests.filter((request) => request.method === 'POST');
-  assert.deepEqual(posts.map((request) => request.body.board.week.runs), [0, 3, 0, 3]);
+  assert.deepEqual(posts.map((request) => request.body.board.weeks[weekStart()]?.runs ?? 0), [0, 3, 0, 3]);
   for (const post of posts) assert.equal(post.body.board.at, post.body.updated_at);
 });
 
@@ -117,11 +121,12 @@ test('finding 3: a board reply ten seconds late only moves the next read later, 
   const midnight = Date.parse('2026-10-10T00:00:00Z');
   const behind = 5 * MINUTE;
   const arrived = built + 10000 - behind;
-  const at = nextRead(arrived, { nextDay: 10, date: '2026-10-09' });
+  const at = nextRead({ nextDay: 10, date: '2026-10-09' }, arrived, 0);
   // The read comes ten seconds after the reply arrived, which in real time is after the service's
   // midnight (by the time the reply took), never before it, whatever this device's clock says.
-  assert.equal(at - arrived, 10000);
-  assert.equal(at + behind - midnight, 10000);
+  assert.equal(at.wall - arrived, 10000);
+  assert.equal(at.wall + behind - midnight, 10000);
+  assert.equal(at.mono, 10000);
   // Meanwhile another device clears and makes one run: its save carries that run, and the late reply has
   // nothing to weigh it against.
   const api = profilesApi();
@@ -130,7 +135,7 @@ test('finding 3: a board reply ten seconds late only moves the next read later, 
     await save(copy([run('after-clear', thisWeek(1000))]));
   });
   const row = api.rows.get('ada');
-  assert.equal(shown(row).week.runs, 1);
+  assert.equal(weekRuns(row), 1);
   assert.deepEqual(row.data.runs.map((r) => r.id), ['after-clear']);
 });
 

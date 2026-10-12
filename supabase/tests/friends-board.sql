@@ -87,9 +87,18 @@ begin
   perform set_config('role', 'none', true);
   return v_count;
 end $$;
--- A summary as the browser writes it: stamped with its save in the browser's own format (milliseconds, Z).
+-- One period's entry as a summary keys it: a daily under its `date`, a week's practice under its `start`.
+-- Anything else (no such key, not an object) is put in the summary as it is, standing for a malformed map.
+create function pg_temp.keyed(p_part jsonb, p_key text) returns jsonb language sql as $$
+  select case when p_part is null or jsonb_typeof(p_part) = 'null' then '{}'::jsonb
+    when jsonb_typeof(p_part) = 'object' and jsonb_typeof(p_part->p_key) = 'string' then jsonb_build_object(p_part->>p_key, p_part - p_key)
+    else p_part end
+$$;
+-- A summary as the browser writes it: stamped with its save in the browser's own format (milliseconds, Z),
+-- with this daily and this week's practice, each keyed by its own period.
 create function pg_temp.col(p_at timestamptz, p_daily jsonb, p_week jsonb) returns jsonb language sql as $$
-  select jsonb_build_object('v', 1, 'at', to_char(p_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'daily', p_daily, 'week', p_week)
+  select jsonb_build_object('v', 1, 'at', to_char(p_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'days', pg_temp.keyed(p_daily, 'date'), 'weeks', pg_temp.keyed(p_week, 'start'))
 $$;
 -- A save's stamp: now, to the millisecond, as a browser's clock gives it.
 create function pg_temp.stamp(p_offset interval default '0') returns timestamptz language sql as $$
@@ -269,12 +278,12 @@ begin
   -- A malformed or forged column never raises: it reads as nothing yet. An impossible stamp, one that
   -- isn't a time, a number, an empty object, or numbers without any stamp.
   foreach bad in array array[
-    jsonb_build_object('v',1,'at','2026-02-31T10:00:00Z','daily',daily,'week',week),
-    jsonb_build_object('v',1,'at','2026-04-31T10:00:00.000Z','daily',daily,'week',week),
-    jsonb_build_object('v',1,'at','yesterday','daily',daily,'week',week),
-    jsonb_build_object('v',1,'at',7,'daily',daily,'week',week),
-    jsonb_build_object('v',1,'at',null,'daily',daily,'week',week),
-    jsonb_build_object('daily',daily,'week',week),
+    jsonb_build_object('v',1,'at','2026-02-31T10:00:00Z') || (pg_temp.col(at, daily, week) - 'v' - 'at'),
+    jsonb_build_object('v',1,'at','2026-04-31T10:00:00.000Z') || (pg_temp.col(at, daily, week) - 'v' - 'at'),
+    jsonb_build_object('v',1,'at','yesterday') || (pg_temp.col(at, daily, week) - 'v' - 'at'),
+    jsonb_build_object('v',1,'at',7) || (pg_temp.col(at, daily, week) - 'v' - 'at'),
+    jsonb_build_object('v',1,'at',null) || (pg_temp.col(at, daily, week) - 'v' - 'at'),
+    pg_temp.col(at, daily, week) - 'at',
     '{}'::jsonb
   ] loop
     at := pg_temp.stamp();
@@ -292,6 +301,18 @@ begin
     exception when check_violation then denied := true; end;
     if not denied then raise exception 'The board column took %', left(bad::text, 40); end if;
   end loop;
+  -- A summary keeps the latest days and weeks its runs fall in, each by the run's own record, whatever
+  -- the writer's clock said: the service shows its own today's and this week's, and only those.
+  at := pg_temp.stamp();
+  perform pg_temp.save(at, jsonb_build_object('v',1,'at',pg_temp.col(at, null, null)->'at',
+    'days', jsonb_build_object((today + 1)::text, jsonb_build_object('version',v,'wpm',99,'accuracy',99,'attempts',1),
+      today::text, daily - 'date', (today - 1)::text, jsonb_build_object('version',v,'wpm',98,'accuracy',99,'attempts',1)),
+    'weeks', jsonb_build_object((monday + 7)::text, jsonb_build_object('seconds',99,'runs',9),
+      monday::text, week - 'start', (monday - 7)::text, jsonb_build_object('seconds',98,'runs',8))));
+  board := pg_temp.board('board','{}');
+  if board->'rows'->0->'daily' is distinct from shown_daily or board->'rows'->0->'week' is distinct from shown_week then
+    raise exception 'The entries for the service''s own day and week were not the ones shown: %', board;
+  end if;
   at := pg_temp.stamp();
   perform pg_temp.save(at, pg_temp.col(at, daily, week));
 
@@ -332,7 +353,7 @@ begin
   -- A forged column of Ada's reads as nothing yet on Lin's board, and her board still works.
   perform set_config('request.jwt.claim.sub',ada::text,true);
   at := pg_temp.stamp();
-  perform pg_temp.save(at, jsonb_build_object('v',1,'at','2026-02-30T00:00:00Z','daily','x','week',jsonb_build_object('start',monday,'seconds','1e9','runs','[]'::jsonb)));
+  perform pg_temp.save(at, jsonb_build_object('v',1,'at','2026-02-30T00:00:00Z','days','x','weeks',jsonb_build_object(monday::text,jsonb_build_object('seconds','1e9','runs','[]'::jsonb))));
   perform set_config('request.jwt.claim.sub',lin::text,true);
   board := pg_temp.board('board','{}');
   if jsonb_array_length(board->'rows') <> 2 or jsonb_typeof(board->'rows'->1->'week') <> 'null' or board->'rows'->0->'week'->>'seconds' <> '754' then
@@ -419,7 +440,7 @@ begin
   end loop;
   at := pg_temp.stamp();
   perform pg_temp.save(at, pg_temp.col(at, daily, week));
-  if (select p.board->'week' from public.profiles p where p.user_id = ada) is distinct from week then
+  if (select p.board->'weeks'->(monday::text) from public.profiles p where p.user_id = ada) is distinct from week - 'start' then
     raise exception 'The owner''s own row lost its summary.';
   end if;
   perform set_config('request.jwt.claim.sub',sam::text,true);

@@ -27,11 +27,14 @@ alter table race_private.board_members enable row level security;
 revoke all on race_private.board_members from public, anon, authenticated;
 
 -- What a reader is shown of one profile row's summary: null unless it is stamped with the row's own
--- `updated_at` (it describes that exact row); then today's daily and this week's practice, each checked
--- on its own against the limits a browser writes within, so a part out of place reads as nothing yet
--- without hiding the other. Every cast comes after a pattern that guards it, in a statement of its own,
--- and dates are compared as text, so a malformed column an owner wrote over the API reads as nothing yet
--- and never raises: a raise would break the board for that person's friends.
+-- `updated_at` (it describes that exact row); then today's daily and this week's practice. A summary
+-- keys each daily by the UTC date it was played for (`days`) and each week's practice by its Monday
+-- (`weeks`), from the runs' own records, so the writer's clock never picks the day or week: this reads
+-- the entries for the service's own today and week. Each is checked on its own against the limits a
+-- browser writes within, so a part out of place reads as nothing yet without hiding the other. Every
+-- cast comes after a pattern that guards it, in a statement of its own, so a malformed column an owner
+-- wrote over the API reads as nothing yet and never raises: a raise would break the board for that
+-- person's friends.
 create function race_private.board_numbers(p_board jsonb, p_at timestamptz, p_today date, p_week date)
 returns jsonb language plpgsql stable set search_path = '' as $$
 declare
@@ -45,10 +48,10 @@ begin
     return null;
   end if;
   if (p_board->>'at')::timestamptz is distinct from p_at then return null; end if;
-  d := p_board->'daily';
-  w := p_board->'week';
+  -- A key on anything but an object reads as null.
+  d := p_board->'days'->to_char(p_today, 'YYYY-MM-DD');
+  w := p_board->'weeks'->to_char(p_week, 'YYYY-MM-DD');
   if jsonb_typeof(d) = 'object'
-    and jsonb_typeof(d->'date') = 'string' and d->>'date' = to_char(p_today, 'YYYY-MM-DD')
     and jsonb_typeof(d->'version') = 'string' and d->>'version' ~ '^[ -~]{1,200}$'
     and jsonb_typeof(d->'wpm') = 'number' and d->>'wpm' ~ '^[0-9]{1,3}$'
     and jsonb_typeof(d->'accuracy') = 'number' and d->>'accuracy' ~ '^[0-9]{1,3}$'
@@ -59,7 +62,6 @@ begin
     end if;
   end if;
   if jsonb_typeof(w) = 'object'
-    and jsonb_typeof(w->'start') = 'string' and w->>'start' = to_char(p_week, 'YYYY-MM-DD')
     and jsonb_typeof(w->'seconds') = 'number' and w->>'seconds' ~ '^[0-9]{1,6}$'
     and jsonb_typeof(w->'runs') = 'number' and w->>'runs' ~ '^[0-9]{1,5}$' then
     if (w->>'seconds')::integer <= 604800 and (w->>'runs')::integer <= 10000 then
@@ -113,8 +115,9 @@ returns jsonb language sql stable set search_path = '' as $$
   )
   select jsonb_build_object('date', c.today, 'weekStart', c.week_start, 'sharing', me.sharing, 'nextDay', c.next_day,
     'rows', case when me.sharing then coalesce(
-      (select jsonb_agg(jsonb_build_object('self', p.self, 'id', p.friend_row, 'name', p.name,
-          'daily', n.numbers->'daily', 'week', n.numbers->'week')
+      -- Each row carries whatever parts board_numbers reads, nothing yet when it reads none.
+      (select jsonb_agg(jsonb_build_object('self', p.self, 'id', p.friend_row, 'name', p.name, 'daily', null, 'week', null)
+          || coalesce(n.numbers, '{}'::jsonb)
         order by p.self desc, lower(p.name), p.friend_row)
        from people p
        join race_private.board_members s on s.user_id = p.account_id

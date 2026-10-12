@@ -1670,6 +1670,17 @@ function repairBoard(cloud) {
     .then((sent) => { if (sent) friendsBoard?.pushed(); }, () => {});
 }
 
+// Sharing turned on: saves made while an opt-out was still unconfirmed wrote no summary, so the row as
+// it stands now is read and, if its summary doesn't describe it, repaired as on load.
+async function repairBoardNow() {
+  if (!session) return;
+  try {
+    session = await account.freshSession(session);
+    const cloud = await account.fetchCloudProfile(session);
+    if (cloud) repairBoard(cloud);
+  } catch {}
+}
+
 // Puts the account's profile in the device cache, then starts over as that user.
 // A device copy newer than the account row (unsynced when last signed out) is kept for syncOnLoad.
 async function enterAccount(newSession) {
@@ -2230,6 +2241,7 @@ friendsBoard = createFriendsBoard({
   signIn: () => openAccountDialog('signin'),
   // The button that asks for this disappears with the board, so focus lands on the Online selector.
   openOnline: () => { onlineRace.open(); $('challenge-online').focus(); },
+  onShared: repairBoardNow,
 });
 onlineRace = createOnlineRace({
   getSession: () => session,
