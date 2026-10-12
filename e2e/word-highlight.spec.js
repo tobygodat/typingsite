@@ -132,6 +132,23 @@ test('changing it never restarts the passage or changes the conditions', async (
   await expect(page.locator('#condition-line')).toHaveText(conditionLine);
 });
 
+test('a custom passage is tinted too, and changing the highlight keeps it', async ({ page }) => {
+  const custom = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(custom);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await pickHighlight(page, 'current');
+  await pickHighlight(page, 'next');
+  expect(await passageText(page)).toBe(custom);
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'custom');
+  expect(await tinted(page)).toEqual([1]);
+  await typeInto(page, 'the ', '#typing-input', { delay: 60 });
+  expect(await tinted(page)).toEqual([2]);
+});
+
 test('the one-keyboard challenge passage follows the same setting', async ({ page }) => {
   await openApp(page);
   await pickHighlight(page, 'current');
