@@ -205,12 +205,17 @@ function conditions(inputClass = 'physical-keyboard') {
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
     wordList: prefs.mode === 'quote' ? null : prefs.wordList,
     inputClass,
-    layout: prefs.layout,
+    layout: inputLayout(inputClass),
     correctionPolicy: prefs.stopOnError ? 'mandatory' : 'relaxed',
     language: 'en',
     corpus: CORPUS_VERSION,
     metricVersion: METRIC_VERSION,
   };
+}
+
+// The layout setting describes a physical keyboard, so touch runs always keep the default key.
+function inputLayout(inputClass) {
+  return inputClass === 'touch' ? DEFAULT_LAYOUT : prefs.layout;
 }
 
 // The layout is named only when it isn't QWERTY; runs saved before layouts existed read as QWERTY.
@@ -1060,9 +1065,10 @@ function startRetest() {
 
 // The layout is set in the operating system, not here, so restoring conditions never switches it.
 // A baseline typed on another layout (a missing layout means QWERTY) can't be retested on this one.
+// A touch baseline never used the setting, so the setting can't block it.
 function layoutMismatch(source) {
   const layout = normalizeLayout(source?.layout);
-  if (layout === prefs.layout) return '';
+  if (source?.inputClass === 'touch' || layout === prefs.layout) return '';
   return `The baseline was typed on ${layoutLabel(layout)}. Switch the keyboard layout back to ${layoutLabel(layout)} to retest it.`;
 }
 
@@ -1252,8 +1258,8 @@ function targetButton(target, source) {
 
 function practiceTarget(target, source) {
   // Use a retained, compatible baseline when possible. Older corpus versions need a new baseline.
-  // The layout stays the one in use now, so the baseline must have been typed on it too.
-  const current = { ...source, layout: prefs.layout };
+  // The layout stays the one in use now, so the baseline must have been typed on it too (touch keeps the default).
+  const current = { ...source, layout: inputLayout(source.inputClass) };
   baselineAttempt = [...profile.attempts].reverse().find((a) => a.status === 'complete' && !a.interrupted
     && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
     && conditionKey(a.conditions) === conditionKey(current) && source.corpus === CORPUS_VERSION) || null;
@@ -1432,7 +1438,14 @@ function renderKeyboard() {
       key.dataset.hand = hand;
       key.dataset.finger = finger;
       key.dataset.column = String(column);
-      key.textContent = letter === ' ' ? 'space' : letter;
+      const label = letter === ' ' ? 'space' : letter;
+      if (prefs.fingerMap) {
+        // The initial and band are hidden from screen readers, so each key says its finger in words,
+        // as one phrase ("f, left index"); the printed cap is unchanged.
+        const cap = element('span', label);
+        cap.setAttribute('aria-hidden', 'true');
+        key.append(cap, element('span', `${label}, ${hand === 'both' ? 'thumbs' : `${hand} ${finger}`}`, 'sr-only'));
+      } else key.textContent = label;
       row.append(key);
     }
     fragment.append(row);
@@ -1972,8 +1985,7 @@ function bindEvents() {
   $('typing-input').addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'touch' && attempt?.status === 'ready') {
       attempt.conditions.inputClass = 'touch';
-      // The layout setting describes a physical keyboard; touch runs keep the default key.
-      attempt.conditions.layout = DEFAULT_LAYOUT;
+      attempt.conditions.layout = inputLayout('touch');
       $('condition-line').textContent = describeRun(attempt);
       armPace();
     }

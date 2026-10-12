@@ -4,7 +4,8 @@ import { test, expect, openApp, openView, openSettings, chooseWords, completePas
 
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/keyboard-layouts/${name}.png` : testInfo.outputPath(`${name}.png`));
 const row = (page, index) => page.locator(`#keyboard .key-row:nth-child(${index}) .key`);
-const legend = async (page, index) => (await row(page, index).allTextContents()).join('');
+// The label printed on each cap: its first text node (with the finger map on, visually hidden words follow it).
+const legend = async (page, index) => (await row(page, index).evaluateAll((keys) => keys.map((key) => key.firstChild.textContent))).join('');
 
 async function runCommand(page, query, label = query) {
   await page.mouse.move(5, 5);
@@ -121,6 +122,39 @@ test('the finger map names each key’s finger, bands alternate fingers, splits 
   expect(await legend(page, 3)).toBe('xcdvzkh,./');
 });
 
+// The initial and band are hidden from assistive technology, so each key says its finger in words.
+test('the finger map names each key’s hand and finger to assistive technology, and only while it is on', async ({ page }) => {
+  await openApp(page);
+  await openSettings(page);
+  await page.locator('#keyboard-toggle').check();
+  const keyboard = page.locator('#keyboard');
+  const key = (letter) => page.locator(`#keyboard .key[data-key="${letter}"]`);
+  const size = (letter) => key(letter).evaluate((node) => { const { width, height } = node.getBoundingClientRect(); return { width, height }; });
+  // What assistive technology reads in the keyboard: one line of text, plus the legend when the map is on.
+  const spoken = async () => (await keyboard.ariaSnapshot()).replace(/^- text: /, '').split('\n')[0];
+  // Off: each key is just its letter, as before.
+  expect(await spoken()).toBe('q w e r t y u i o p a s d f g h j k l ; z x c v b n m , . / space');
+  await expect(key('f')).toHaveText('f');
+  const plain = await size('f');
+
+  // On: each key is one phrase naming its letter, hand and finger.
+  await page.locator('#finger-toggle').check();
+  await expect(keyboard).toHaveAttribute('data-fingers', 'true');
+  const home = 'a, left pinky s, left ring d, left middle f, left index g, left index h, right index j, right index k, right middle l, right ring ;, right pinky';
+  expect(await spoken()).toContain(home);
+  expect(await spoken()).toMatch(/\/, right pinky space, thumbs$/);
+  // The cap is unchanged: the words are visually hidden and it still prints only its letter.
+  expect(await size('f')).toEqual(plain);
+  expect(await legend(page, 2)).toBe('asdfghjkl;');
+
+  // The words follow the layout: Dvorak's home row puts u under the left index finger.
+  await page.locator('#layout-select').selectOption('dvorak');
+  expect(await spoken()).toContain('a, left pinky o, left ring e, left middle u, left index i, left index d, right index');
+
+  await page.locator('#finger-toggle').uncheck();
+  expect(await spoken()).not.toMatch(/index|middle|ring|pinky|thumb/);
+});
+
 test('a drill keeps its target keys marked on the new legend', async ({ page }) => {
   await openApp(page);
   await runCommand(page, 'layout · workman');
@@ -131,7 +165,9 @@ test('a drill keeps its target keys marked on the new legend', async ({ page }) 
   await page.locator('#apply-manual-target').click();
   await expect(page.locator('#session-title')).toHaveText('Practice “th”');
   await expect(page.locator('#condition-line')).toContainText('drill · 60 s · english · physical keyboard · workman');
-  await expect(page.locator('#keyboard .key.target')).toHaveText(['h', 't']);
+  const targets = page.locator('#keyboard .key.target');
+  await expect(targets).toHaveCount(2);
+  expect(await targets.evaluateAll((keys) => keys.map((key) => key.dataset.key))).toEqual(['h', 't']);
   // With the finger map on, a target still looks different from an untargeted key on the same finger.
   const look = (letter) => page.locator(`#keyboard .key[data-key="${letter}"]`).evaluate((node) => {
     const style = getComputedStyle(node);
@@ -185,6 +221,47 @@ test('touch input keeps the default key: the layout setting describes a physical
   await page.locator('#typing-input').dispatchEvent('pointerdown', { pointerType: 'touch' });
   await expect(page.locator('#condition-line')).toContainText('touch input · continue on error');
   await expect(page.locator('#condition-line')).not.toContainText('dvorak');
+});
+
+test.describe('on a touch screen', () => {
+  test.use({ hasTouch: true });
+
+  // A touch run's baseline is recorded as QWERTY whatever the setting says, so the setting never blocks it.
+  test('a touch baseline drills and retests while another physical layout is chosen', async ({ page }) => {
+    await openApp(page);
+    await runCommand(page, 'layout · dvorak');
+    await chooseWords(page, 10);
+    await page.locator('#typing-input').tap();
+    await expect(page.locator('#condition-line')).toContainText('touch input · continue on error');
+    await completePassage(page);
+    await expect(page.locator('#result-conditions')).not.toContainText('dvorak');
+
+    // The drill keeps the touch baseline, so a retest follows it.
+    await openView(page, 'Train');
+    await page.locator('#manual-heading').click();
+    await page.locator('#manual-target-input').fill('th');
+    await page.locator('#apply-manual-target').click();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+    await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
+
+    // The retest starts, and on touch it compares with the touch baseline.
+    await openView(page, 'Train');
+    await page.locator('#skip-to-retest').click();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+    await page.locator('#typing-input').tap();
+    await expect(page.locator('#condition-line')).toContainText('10 words · plain · touch input · continue on error');
+    await completePassage(page);
+    await expect(page.locator('#comparison-panel')).toBeVisible();
+    await expect(page.locator('#comparison-panel')).not.toHaveAttribute('data-outcome', 'unavailable');
+
+    // Practising that target again from Progress finds the touch baseline too.
+    await openView(page, 'Progress');
+    await expect(page.locator('#progress-conditions')).toContainText('touch input');
+    await page.locator('#history-list details summary').first().click();
+    await page.getByRole('button', { name: 'Practice “th” again' }).click();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+    await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
+  });
 });
 
 test('a saved profile from before layouts reads as QWERTY and keeps its best', async ({ page, supabase }) => {
