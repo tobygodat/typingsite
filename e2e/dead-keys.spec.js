@@ -135,6 +135,7 @@ const dispatchEvents = (page, events, field = '#typing-input') => page.evaluate(
 }, [events, field]);
 
 const lastStoredAttempt = (page, userId) => page.evaluate((key) => JSON.parse(localStorage.getItem(key)).attempts.at(-1), `stilltype-profile-v2:${userId}`);
+const storedRuns = (page, userId) => page.evaluate((key) => JSON.parse(localStorage.getItem(key))?.runs ?? [], `stilltype-profile-v2:${userId}`);
 
 test('a dead-key quote mark followed by space is one typed character', async ({ page }) => {
   await openApp(page);
@@ -924,6 +925,96 @@ test('an emoji committed through a composition is refused like IME text', async 
   await keys.commit('❤');
   await expect(page.locator('#input-help')).toHaveText(IME_NOTICE);
   expect(await scored(page)).toEqual({ correct: 0, wrong: 0, value: '' });
+});
+
+test('a one-letter commit no accent key opened is refused like IME text, whatever its script', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  await chooseWords(page, 10);
+  // Each way an input method commits a single letter with no accent key behind it.
+  const ways = {
+    // Hindi: the letter shows, then commits.
+    hindi: () => keys.preview('अ').then(() => keys.commit('अ')),
+    // Russian on Linux: Chromium sends key Process, then the input method's letter.
+    russian: async () => {
+      await keys.processKey('KeyF');
+      await keys.preview('ж');
+      await keys.commit('ж');
+    },
+    // Hebrew, committed with nothing shown first and no key before it (Safari's order).
+    hebrew: () => dispatchEvents(page, [{ type: 'compositionstart', data: '' }, end('ש')]),
+    // Pinyin or Telex committing the very letter the passage wants next: Latin, but an input method's.
+    latin: async (next) => {
+      await keys.processKey(`Key${next.toUpperCase()}`);
+      await keys.preview(next);
+      await keys.commit(next);
+    },
+  };
+  for (const [way, commit] of Object.entries(ways)) {
+    await page.locator('#typing-input').focus();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#typing-status'), way).toHaveText('Ready');
+    const text = await passageText(page);
+    const at = 3 + text.slice(3).search(/[a-z]/);
+    await typeInto(page, text.slice(0, at));
+    await commit(text[at]);
+    await expect(page.locator('#input-help'), way).toHaveText(IME_NOTICE);
+    expect(await scored(page), way).toEqual({ correct: at, wrong: 0, value: text.slice(0, at) });
+  }
+
+  // The run no longer counts.
+  const text = await passageText(page);
+  const typed = (await page.locator('#typing-input').inputValue()).length;
+  await page.keyboard.type(text.slice(typed));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
+});
+
+test('a commit on a passage’s last letter counts every key in it before the run ends', async ({ page, supabase }) => {
+  const user = supabase.addUser('last-letter@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  const keys = await accentKeys(page);
+  const custom = 'She said "go"';
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(custom);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+
+  // The closing " takes the accent key, and the h that commits it is a slip (space types the mark alone).
+  // The passage has no place for the h, so it is judged against the last letter and not kept: 13 of 14
+  // keys right, nothing left wrong in the text, one extra. Plain keys can't do this: a plain " ends the run
+  // before the next key, but here the h was pressed while the last letter was still to come. Stop on
+  // error has nothing left to hold, so the run ends the same way.
+  const ways = {
+    composition: () => keys.deadKey('"').then(() => keys.commit('"h')),
+    // Windows sends the mark and the key as one plain input, with no composition.
+    windows: () => keys.commit('"h'),
+    stopOnError: () => keys.deadKey('"').then(() => keys.commit('"h')),
+  };
+  for (const [way, commit] of Object.entries(ways)) {
+    if (way === 'stopOnError') {
+      await openSettings(page);
+      await page.locator('#stop-on-error-toggle').check();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#condition-line')).toContainText('stop on error');
+    }
+    expect(await passageText(page), way).toBe(custom);
+    await typeInto(page, custom.slice(0, -1));
+    await commit();
+    await expect(page.locator('body'), way).toHaveAttribute('data-view', 'results');
+    await expect(page.locator('#result-accuracy'), way).toHaveText('93');
+    await expect(page.locator('#result-errors'), way).toHaveText('0');
+    await expect(page.locator('#result-chars'), way).toHaveText('13/0/1/0');
+    await expect(page.locator('#typing-input'), way).toHaveValue(custom);
+    await expect(page.locator('#result-delta'), way).toHaveText('Custom text complete · not counted toward your best');
+    await expect.poll(async () => (await storedRuns(page, user.id)).length, way).toBe(Object.keys(ways).indexOf(way) + 1);
+    const run = (await storedRuns(page, user.id)).at(-1);
+    expect(run.status, way).toBe('complete');
+    expect(run.score.accuracy, way).toBe(93);
+    await page.locator('#run-again').click();
+    await expect(page.locator('#typing-status')).toHaveText('Ready');
+  }
 });
 
 test('a custom passage takes accent keys like any other passage', async ({ page }) => {

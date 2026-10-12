@@ -150,23 +150,28 @@ function printable(text) {
 
 // Accent (dead) keys reach the page as a short composition: the mark shows, then the next key commits
 // one character (ä, or " after space) or, where the pair has no composed form, the mark and that key ("h).
-// Anything longer, East Asian or full-width is IME text, which isn't keyboard input: null. So is an
-// emoji, which pickers and phone keyboards commit the same way.
+// Which compositions are an accent key's is decided by where they came from (accentComposition); what one
+// commits must then be what a Latin keyboard's keys type, or it is IME text, which isn't keyboard input.
 const DEAD_MARKS = new Set([...'\'"`~^´¨ˆ˜ˇ˘˚°¸˛˝˙¯']);
-const IME_TEXT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Bopomofo}　-〿＀-￯\r\n]/u;
-// Kana punctuation (ー ・ ゛ ゠) is Script=Common and only a kana IME types it. A few combining marks
-// list kana among their scripts too (U+0323 dot below), so accent marks are checked first.
-const KANA_EXTENSIONS = /[\p{scx=Hiragana}\p{scx=Katakana}]/u;
-// A key types one letter, digit, punctuation mark, symbol or space. Not a pictograph (❤ ☺), an astral
-// character (a 😀 is two UTF-16 units, so it would move the caret two letters), or the selectors,
-// joiners and keycaps that build emoji sequences. A combining accent is a mark, except the invisible
-// grapheme joiner (U+034F) among them: nothing default-ignorable is a key.
-const KEY_CHAR = /[\p{L}\p{N}\p{P}\p{S}\p{Zs}]/u;
+// A combining accent is a mark too, except the invisible grapheme joiner (U+034F) among them.
 const deadMark = (char) => DEAD_MARKS.has(char) || (/^[̀-ͯ]$/u.test(char) && !/\p{Default_Ignorable_Code_Point}/u.test(char));
-const imeChar = (char) => IME_TEXT.test(char) || (!deadMark(char) && KANA_EXTENSIONS.test(char));
-const keyChar = (char) => char.length === 1 && (deadMark(char) || KEY_CHAR.test(char))
-  && !/\p{Extended_Pictographic}/u.test(char) && !imeChar(char);
+// What a key on a Latin keyboard types: printable ASCII, a Latin-1 sign (AZERTY's ² £ §), the euro, or a
+// Latin letter (é ø ł ẽ). Not another script's letter, a full-width one (an East Asian IME's), anything
+// invisible (soft hyphen) or a pictograph (© ❤), which emoji pickers commit through compositions too. An
+// astral character is two UTF-16 units, so it would move the caret two letters.
+const LATIN_KEY = /^(?:[\x20-\x7E\u00A1-\u00FF\u20AC]|(?=\p{L})\p{Script=Latin})$/u;
+const keyChar = (char) => char.length === 1 && (deadMark(char) || LATIN_KEY.test(char))
+  && !/[\p{Default_Ignorable_Code_Point}\p{Extended_Pictographic}\uFF00-\uFFEF]/u.test(char);
 
+// Where a composition came from. An accent key's opens with that key's keydown (key Dead) in Chrome and
+// Firefox. Safari sends the keydown after the mark shows, and Chromium on Linux sends key Process for every
+// key its input method takes, so there the mark itself, shown first and on its own, says so. Any other
+// composition is an input method's (Pinyin, Telex, Hindi, Korean), whatever it commits: even one letter
+// from it is not a key press.
+export const accentComposition = ({ key = null, preview = null } = {}) => key === 'Dead'
+  || (typeof preview === 'string' && preview.length === 1 && deadMark(preview));
+
+// What an accent key's composition types: the one or two keys it committed, or null for anything else.
 export function composedKeys(text) {
   const chars = [...(text ?? '').normalize('NFC')];
   if (chars.length > 2 || !chars.every(keyChar)) return null;
@@ -533,7 +538,8 @@ export function consistency(attempt, replay = replayAttempt(attempt)) {
 }
 
 // The finished text, letter by letter: correct and incorrect (still wrong at the finish) in the
-// kept text; extra = keystrokes past the passage end; missed = letters left untyped inside the
+// kept text; extra = keystrokes past the passage end, including a key an accent commit carried past
+// it (recorded against the last letter, not kept); missed = letters left untyped inside the
 // last word the run reached. Slips fixed along the way are first-try errors, not incorrect.
 export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
   const target = attempt.text;
@@ -547,8 +553,8 @@ export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
     if (event.type !== 'insert' || !printable(event.text)) continue;
     for (let n = [...event.text].length; n > 0; n -= 1) {
       const position = Number.isInteger(event.position) ? event.position : length;
-      if (position >= target.length) extra += 1;
-      else if (event.accepted !== false) length += 1;
+      if (position >= target.length || event.accepted === false) extra += 1;
+      else length += 1;
     }
   }
   let reached = typed.length;

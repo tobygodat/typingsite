@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   CUSTOM_MAX,
   EVENT_VERSION,
+  accentComposition,
   METRIC_VERSION,
   compareAttempts,
   customTextProblem,
@@ -274,14 +275,63 @@ test('every mark and letter a real accent key commits is still typed', () => {
   for (const mark of ['"', "'", '`', '~', '^', '´', '¨', '°', 'ˇ', '˙', '˛', '˘', '˝', '¸', '¯', '˚', 'ˆ', '˜']) {
     assert.deepEqual(composedKeys(mark), [mark], mark);
   }
-  // A composed letter, or BÉPO's currency and Greek keys (€, α).
-  for (const letter of ['ä', 'é', 'è', 'ê', 'ë', 'ï', 'ñ', 'ã', 'õ', 'ç', 'å', 'ø', 'ů', 'ő', 'ű', 'ž', 'č', 'ř', 'ě', 'ż', 'ą', 'ę', 'ł', 'ś', 'ẽ', 'ŵ', '€', 'α']) {
+  // A composed letter, or BÉPO's currency key (€). Its Greek key (α) types no Latin letter: see below.
+  for (const letter of ['ä', 'é', 'è', 'ê', 'ë', 'ï', 'ñ', 'ã', 'õ', 'ç', 'å', 'ø', 'ů', 'ő', 'ű', 'ž', 'č', 'ř', 'ě', 'ż', 'ą', 'ę', 'ł', 'ś', 'ẽ', 'ŵ', '€']) {
     assert.deepEqual(composedKeys(letter), [letter], letter);
   }
-  // The mark and the key it doesn't combine with: Windows US-International sends ~e, not ẽ.
-  for (const pair of ['^q', '~e', '`x', '¨k', '´t', '°x', 'ˇx', '˙q', '˛b', '¸k', '˝a', "'1", '"#', '"é', '~~', '^ ']) {
+  // The mark and the key it doesn't combine with: Windows US-International sends ~e, not ẽ. A layout's
+  // own keys (AZERTY's ², £ and §) can follow a mark too.
+  for (const pair of ['^q', '~e', '`x', '¨k', '´t', '°x', 'ˇx', '˙q', '˛b', '¸k', '˝a', "'1", '"#', '"é', '~~', '^ ', '¨²', '^£', '´§']) {
     assert.deepEqual(composedKeys(pair), [...pair], pair);
   }
+});
+
+test('a one-letter commit from another script’s input method is not an accent key', () => {
+  // Hindi, Korean, Hebrew, Russian, Greek, Thai and Arabic input methods commit one letter through a
+  // composition too. Accent keys type Latin: a mark, a letter with a diacritic, or the mark and the next key.
+  for (const text of ['अ', 'ㅎ', 'ש', 'ж', 'α', 'ก', 'ع', '"ж', '´अ', 'ˇש', '¨α']) {
+    assert.equal(composedKeys(text), null, JSON.stringify(text));
+  }
+});
+
+test('only a composition an accent key opened is scored as one', () => {
+  // Chrome and Firefox send the accent key (Dead) before its composition. Safari sends it after the mark
+  // shows, and Chromium on Linux sends key Process for every key its input method takes, so there the
+  // mark, shown first and on its own, says where the composition came from.
+  for (const origin of [
+    { key: 'Dead', preview: '"' }, { key: 'Dead', preview: '¤' }, { key: 'Dead' },
+    { key: 'Process', preview: '^' }, { preview: '´' }, { preview: '¨' }, { preview: '\u0301' },
+  ]) assert.equal(accentComposition(origin), true, JSON.stringify(origin));
+  // An input method's composition opens on what it composes (Pinyin, Telex, Hindi, Korean, Russian, kana),
+  // whatever it commits in the end: one letter from it is still not a key press.
+  for (const origin of [
+    {}, { key: 'Process' }, { key: 'Process', preview: 'a' }, { key: 'n', preview: 'n' }, { preview: 'अ' },
+    { key: 'Process', preview: 'ж' }, { preview: 'ㅎ' }, { preview: 'ä' }, { preview: 'ă' }, { preview: '""' },
+    { preview: '' }, { preview: 'あ' }, { preview: '\u034F' }, { key: 'Shift', preview: 'a' },
+  ]) assert.equal(accentComposition(origin), false, JSON.stringify(origin));
+});
+
+test('a key a commit carries past the passage end counts against the last letter, and is not kept', () => {
+  // "h committed on a passage's last letter ("): the mark is kept, and the h, pressed while the last
+  // letter was still to come, is judged against it. A doubled mark costs nothing.
+  const run = (extra) => {
+    const attempt = createAttempt({ id: 'e', text: 'go"', textId: 'e', conditions: {} });
+    attempt.events = [...'go"'].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: position * 100 }));
+    attempt.events.push({ type: 'insert', text: extra, position: 2, accepted: false, offsetMs: 200 });
+    attempt.startedAt = 0;
+    return completeAttempt(attempt, { endedAt: 200 });
+  };
+  const slip = run('h');
+  assert.equal(slip.typed, 'go"');
+  assert.equal(slip.summary.insertions, 4);
+  assert.equal(slip.summary.mistakes, 1);
+  assert.equal(slip.summary.score.accuracy, 75);
+  assert.ok(slip.summary.firstAttempts.every((entry) => entry.correct));
+  assert.ok(passageComplete(slip, slip.typed));
+  assert.deepEqual(characterBreakdown(slip), { correct: 3, incorrect: 0, extra: 1, missed: 0 });
+  const doubled = run('"');
+  assert.equal(doubled.summary.score.accuracy, 100);
+  assert.deepEqual(characterBreakdown(doubled), { correct: 3, incorrect: 0, extra: 1, missed: 0 });
 });
 
 test('a mark and letter committed together replay like two key presses', () => {

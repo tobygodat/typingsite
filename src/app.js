@@ -4,6 +4,7 @@ import {
   CUSTOM_MIN_CHARS,
   CUSTOM_MIN_WORDS,
   METRIC_VERSION,
+  accentComposition,
   compareAttempts,
   completeAttempt,
   composedKeys,
@@ -146,8 +147,8 @@ let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
 // The open composition (an accent key's mark, or IME text): { type, attempt, refused, replaces, keyed,
-// leaving, repeated, heldMark, mark (the first thing it showed) }, then once it ends, the { commit, at }
-// still to be scored.
+// leaving, repeated, heldMark, key (Dead if an accent key's keydown opened it), mark (the first thing it
+// showed) }, then once it ends, the { commit, at } still to be scored.
 let composition = null;
 // The last key press was a held accent key repeating, and it is still down: { mark } it shows (null if
 // unknown). A composition that repeat opens is key repeat too (repeated), and so is plain text it sends
@@ -668,16 +669,21 @@ function currentReplay(type = 'primary') {
   return replayAttempt(type === 'primary' ? attempt : race.attempt);
 }
 
-function pushInsert(char, type = 'primary', at = now()) {
+// carried: a later key of an accent commit (the h of "h). One the passage has no place left for was pressed
+// while its last letter was still to come, so it is judged against that letter and not kept.
+function pushInsert(char, type = 'primary', at = now(), carried = false) {
   const targetAttempt = type === 'primary' ? attempt : race.attempt;
   startAttempt(targetAttempt, type, at);
   const replay = replayAttempt(targetAttempt);
   const unresolved = targetAttempt.conditions.correctionPolicy !== 'relaxed'
     && replay.typed.length > 0
     && replay.typed.at(-1) !== targetAttempt.text[replay.typed.length - 1];
-  targetAttempt.events.push(unresolved
-    ? { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs: offsetFor(type, at) }
-    : { type: 'insert', text: char, position: replay.typed.length, accepted: true, offsetMs: offsetFor(type, at) });
+  const last = targetAttempt.text.length - 1;
+  const offsetMs = offsetFor(type, at);
+  let event = { type: 'insert', text: char, position: replay.typed.length, accepted: true, offsetMs };
+  if (unresolved) event = { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs };
+  else if (carried && replay.typed.length > last) event = { type: 'insert', text: char, position: last, accepted: false, offsetMs };
+  targetAttempt.events.push(event);
   return { previousLength: replay.typed.length, blocked: unresolved };
 }
 
@@ -725,13 +731,13 @@ function refuseComposition(type) {
 }
 
 // Each key takes the same path as a key press, so replay can't tell them apart. A mark and letter
-// committed together arrive with the second key press, and share its time.
+// committed together arrive with the second key press, and share its time. Every key of a commit is
+// recorded before the passage can finish: on the last letter, "h counts the h too (see pushInsert).
 function typeKeys(keys, type, at = now()) {
-  for (const key of keys) {
-    if (!acceptingInput(type, at)) return; // the first of two may finish the passage
-    const change = pushInsert(key, type, at);
-    refreshAfterInput(type, change.previousLength, change.blocked, at);
-  }
+  if (!keys.length || !acceptingInput(type, at)) return;
+  const room = inputAttempt(type).text.length - currentReplay(type).typed.length;
+  const changes = keys.map((key, index) => pushInsert(key, type, at, room > 0 && index >= room));
+  refreshAfterInput(type, changes[0].previousLength, changes.at(-1).blocked, at);
 }
 
 // What a composition committed, scored once the key that ended it is known. A mark pending when focus
@@ -756,10 +762,11 @@ function scoreCommit(type) {
   // A held accent key commits its mark again and again (^^): ignore it, like any held key, and the
   // letter that commits the last repeated mark (â) with it. Committing the same letters back (typing on
   // past the accent menu) changes nothing; any other change to letters already scored is an input
-  // method's edit, not keys.
+  // method's edit, not keys. A composition no accent key opened is an input method's, even when it
+  // commits one Latin letter; a cancelled one (nothing committed) types nothing.
   if (session.repeated) showInputNotice(type, NOTICES.repeat, { speak: false });
   else if (session.replaces !== null) { if (session.commit !== session.replaces) refuseComposition(type); }
-  else if (keys === null) refuseComposition(type);
+  else if (keys === null || (keys.length && !accentComposition({ key: session.key, preview: session.mark }))) refuseComposition(type);
   else typeKeys(keys, type, session.at);
   // The clock may have run out while the commit waited: the run ends now, at its limit.
   if (type === 'primary') finishIfTimeUp();
@@ -812,9 +819,12 @@ function beforeTypingInput(event, type = 'primary') {
   typeKeys(keys, type);
 }
 
-// An accent key's composition is typed characters, scored after compositionend; a preview or commit
-// that an accent key could not produce is IME text and stops the run counting.
+// An accent key's composition is typed characters, scored after compositionend. Any other composition
+// (no accent key opened it), or a preview or commit no accent key could produce, is IME text and stops
+// the run counting.
 function wireComposition(input, type) {
+  // The last key pressed in the field: Chrome and Firefox send an accent key (Dead) before its composition.
+  let lastKey = null;
   // Tab commits a pending mark on its way to the next control: dropped, like any mark as focus leaves.
   const drop = () => {
     composition = null;
@@ -827,6 +837,8 @@ function wireComposition(input, type) {
     if (session?.commit === null) {
       // Chrome (keyCode 229 on macOS) and Firefox send the key that will end the composition first.
       if (!COMPOSING_KEYS.has(event.key)) Object.assign(session, { keyed: true, leaving: event.key === 'Tab' });
+      // Safari sends the accent key's own keydown after its mark shows.
+      if (event.key === 'Dead') session.key = 'Dead';
       // A held accent key's repeat adds its mark to this composition, or (Safari) is the key that opened it.
       if (repeat) Object.assign(session, { repeated: true, heldMark: null });
     } else if (session) {
@@ -836,10 +848,14 @@ function wireComposition(input, type) {
     }
     scoreCommit(type);
     heldDeadKey = repeat ? { mark: session?.mark ?? heldDeadKey?.mark ?? null } : null;
+    lastKey = event.key;
   });
   // Letting go of a held accent key ends its repeats; what it left pending stays repeated.
   input.addEventListener('keyup', (event) => { if (event.key === 'Dead') heldDeadKey = null; });
   input.addEventListener('compositionstart', (event) => {
+    // A key opens one composition at most.
+    const key = lastKey;
+    lastKey = null;
     scoreCommit(type);
     if (!acceptingInput(type)) { composition = null; return; }
     // An accent key's mark starts as a caret after the typed text. A composition over letters already
@@ -847,7 +863,7 @@ function wireComposition(input, type) {
     const over = event.data || input.value.slice(input.selectionStart, input.selectionEnd);
     // Chrome and Firefox send the key that opens a composition first: a held accent key's repeat opens a
     // repeated one, and the letter that later commits its mark (â) is ignored with it.
-    composition = { type, attempt: inputAttempt(type), refused: false, replaces: over || null, keyed: false, leaving: false, repeated: Boolean(heldDeadKey), heldMark: heldDeadKey?.mark ?? null, mark: null, commit: null, at: 0 };
+    composition = { type, attempt: inputAttempt(type), refused: false, replaces: over || null, keyed: false, leaving: false, repeated: Boolean(heldDeadKey), heldMark: heldDeadKey?.mark ?? null, key, mark: null, commit: null, at: 0 };
   });
   input.addEventListener('compositionupdate', (event) => {
     if (composition?.type !== type || composition.refused || composition.attempt !== inputAttempt(type)) return;
@@ -881,13 +897,14 @@ function wireComposition(input, type) {
   // repeats say so again.
   input.addEventListener('blur', () => {
     heldDeadKey = null;
+    lastKey = null;
     if (composition?.type === type) composition = null;
   });
 }
 
 // Everything the typing surface says, kept short. The focus-lost and composition
 // notices stay until restart because the run no longer counts. Accent (dead) keys are
-// typed characters; only IME text (CJK, words) is refused.
+// typed characters; only IME text (any composition no accent key opened) is refused.
 const NOTICES = {
   blocked: 'Fix the underlined letter.',
   paste: 'Paste is off. Type the passage.',
