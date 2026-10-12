@@ -31,6 +31,16 @@ async function typeLesson(page, options = {}) {
   return text;
 }
 
+// A stylus press (pointerType pen), as a tablet pen sends it.
+async function penPress(page, selector) {
+  const box = await page.locator(selector).boundingBox();
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2, button: 'left', clickCount: 1, pointerType: 'pen' };
+  const client = await page.context().newCDPSession(page);
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point });
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point });
+  await client.detach();
+}
+
 // An account profile whose first `count` lessons were passed at plausible beginner numbers.
 function lessonProfile(count, updatedAt = '2026-10-08T12:00:00Z') {
   const lessons = Object.fromEntries(LESSONS.slice(0, count).map((lesson, i) => {
@@ -392,8 +402,9 @@ test.describe('on a touch screen', () => {
     expect(Object.keys(saved.bests)).toEqual([expect.stringContaining(':touch:')]);
   });
 
-  // Every new run takes its class from the press that started it: a tap is touch, a key is a physical keyboard.
-  test('Run again and restart tapped start touch runs; Esc starts a physical-keyboard run', async ({ page }) => {
+  // Every new run takes its class from the press that started it: a tap is touch, a key outside a text field is a
+  // physical keyboard. A key in the passage may come from a soft keyboard (some have Esc), so it keeps the class.
+  test('Run again and restart tapped start touch runs; Esc in the passage keeps the class', async ({ page }) => {
     await openApp(page);
     await chooseWords(page, 10);
     await expect(page.locator('#condition-line')).toContainText('physical keyboard');
@@ -403,11 +414,56 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#typing-input')).toBeFocused();
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await page.keyboard.press('Escape');
-    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
-    await page.locator('#restart-button').tap();
+    await expect(page.locator('#typing-input')).toBeFocused();
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await completePassage(page);
     await expect(page.locator('#result-conditions')).toContainText('touch input');
+    // A key outside a text field can only be a hardware keyboard.
+    await expect(page.locator('#run-again')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    await page.locator('#restart-button').tap();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+  });
+
+  // Typed as a soft keyboard does: committed text with no key presses, and an Esc key in the passage.
+  test('Esc from a soft keyboard restarts a tapped lesson as touch input, and the try doesn’t unlock', async ({ page }) => {
+    await openApp(page);
+    await openLessons(page);
+    await page.locator('#lesson-primary').tap();
+    await expect(page.locator('#typing-input')).toBeFocused();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await page.keyboard.insertText('f');
+    await page.keyboard.insertText('j');
+    await expect(page.locator('#typing-input')).toHaveValue('fj');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#typing-input')).toHaveValue('');
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    for (const char of await passageText(page)) await page.keyboard.insertText(char);
+    await expect(body(page)).toHaveAttribute('data-view', 'learn');
+    await expect(page.locator('#lesson-status')).toHaveText('touch input');
+    await expect(page.locator('#lesson-list .lesson-row').nth(1)).toHaveAttribute('data-state', 'locked');
+  });
+
+  // A pen opens the soft keyboard (or a handwriting panel) just as a finger does: only a mouse is a physical keyboard.
+  test('a pen press that starts a lesson, or lands on the passage, makes it touch input that doesn’t unlock', async ({ page }) => {
+    await openApp(page);
+    await openLessons(page);
+    await penPress(page, '#lesson-primary');
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await typeLesson(page);
+    await expect(page.locator('#lesson-status')).toHaveText('touch input');
+    const rows = page.locator('#lesson-list .lesson-row');
+    await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    await penPress(page, '#typing-input');
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await typeLesson(page);
+    await expect(page.locator('#lesson-status')).toHaveText('touch input');
+    await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
   });
 });
 
@@ -463,6 +519,37 @@ test('a newer account profile that locks the current lesson replaces it, or the 
   await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 4 is locked · not counted');
   await expect(page.locator('#lesson-status')).toHaveText('not counted');
   await expect(page.locator('#lesson-primary')).toHaveText('Start lesson 1');
+  expect(supabase.profileFor(user.email).lessons).toEqual({});
+});
+
+// A lesson finished before the load-time check is an edit made here first, so a newer account row discards it.
+test('a lesson result that a newer account profile discards is cleared, never shown as passed', async ({ page, supabase }) => {
+  const user = learner(supabase, 'discarded-pass@stilltype.test', 0);
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  let held = true;
+  let release = null;
+  await page.route(/\/rest\/v1\/profiles/, async (route) => {
+    if (held && route.request().method() === 'GET') await new Promise((done) => { release = done; });
+    await route.fallback();
+  });
+  // Another device saved a newer row without this pass (lesson 1 stays open there, so only the record differs).
+  supabase.profiles.set(user.id, { data: lessonProfile(0, new Date(Date.now() + 5 * 60000).toISOString()) });
+  await page.reload();
+  await expect(page.locator('#text-display .char').first()).toBeVisible();
+  await expect.poll(() => typeof release).toBe('function');
+  await openLessons(page);
+  await startLesson(page, 1);
+  await typeLesson(page);
+  await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 1 passed. d and k are next.');
+  held = false;
+  release();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 1 · f and j');
+  await expect(page.locator('#lesson-status')).toBeHidden();
+  await expect(page.locator('#lesson-primary')).toHaveText('Start lesson 1');
+  await expect(page.locator('#lesson-list .lesson-row').first()).toHaveAttribute('data-state', 'next');
   expect(supabase.profileFor(user.email).lessons).toEqual({});
 });
 

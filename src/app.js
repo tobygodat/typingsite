@@ -278,8 +278,10 @@ function lessonConditions() {
 }
 
 // A tap that starts a session focuses the input and opens the soft keyboard, so no pointerdown reaches
-// the input: the activating press says touch instead. Keys and mouse clicks are a physical keyboard.
-const startedBy = (event) => (event?.pointerType === 'touch' ? 'touch' : 'physical-keyboard');
+// the input: the activating press says touch instead. A pen opens the soft keyboard (or a handwriting panel)
+// just as a finger does, so every pointer but a mouse is touch. Mouse clicks, and clicks made with a key
+// (no pointer type), are a physical keyboard.
+const startedBy = (event) => (event?.pointerType && event.pointerType !== 'mouse' ? 'touch' : 'physical-keyboard');
 // The input class of the latest press (see bindEvents). resetSession gives it to every new run, so a run is
 // classed by whatever started it: a button, the palette, Esc, Run again or a hand-off, with no path left over.
 let activationInput = 'physical-keyboard';
@@ -1558,8 +1560,9 @@ function finishLesson(completed, valid) {
   let firstPass = false;
   let recorded = false;
   let saved = true;
+  const at = new Date().toISOString();
   if (valid) {
-    const run = recordLessonRun(profile.lessons, lessonIndex, score, new Date().toISOString(), completed.conditions.inputClass);
+    const run = recordLessonRun(profile.lessons, lessonIndex, score, at, completed.conditions.inputClass);
     // A lesson that was locked when it finished saves nothing, but still shows its numbers.
     outcome = run.outcome || lessonOutcome(lessonIndex, score);
     firstPass = run.firstPass;
@@ -1569,13 +1572,21 @@ function finishLesson(completed, valid) {
       saved = saveProfile();
     }
   }
-  lessonResult = { index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, recorded, touch, saved, valid };
+  lessonResult = { index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, recorded, at, touch, saved, valid };
   switchView('learn');
   announce(`${lessonHeadline(lessonResult)} ${score.accuracy}% accuracy, ${score.wpm} wpm.`);
   // Show the result from the top of the page, or from the result itself when the page is too short.
   scrollTo({ top: 0, behavior: 'instant' });
   if ($('lesson-current').getBoundingClientRect().bottom > innerHeight) $('lesson-current').scrollIntoView({ block: 'start', behavior: 'instant' });
   $('lesson-primary').focus({ preventScroll: true });
+}
+
+// Whether progress still holds what a lesson result shows: its lesson open and, if the run was saved, that very
+// try. A newer account row adopted at load replaces tries made here before the check, whatever it unlocks.
+function lessonResultHeld(result, progress) {
+  if (!lessonUnlocked(progress, result.index)) return false;
+  const entry = progress[LESSONS[result.index].id];
+  return !result.recorded || [entry?.last?.at, entry?.passed?.at].includes(result.at);
 }
 
 function lessonHeadline(result) {
@@ -2023,7 +2034,8 @@ function adoptProfile(data) {
   account.cacheProfile(session.user.id, profile);
   // Less lesson progress (history cleared on another device) can lock the lesson started from the cache.
   // One waiting is replaced, as when history is cleared here; one being typed finishes as not counted.
-  if (lessonResult && !lessonUnlocked(profile.lessons, lessonResult.index)) lessonResult = null;
+  // A result the adopted progress no longer holds (its lesson locked, or its try discarded) is dropped.
+  if (lessonResult && !lessonResultHeld(lessonResult, profile.lessons)) lessonResult = null;
   applyPreferences();
   setModeControls();
   renderHistory();
@@ -2349,12 +2361,13 @@ function bindEvents() {
   $('typing-input').addEventListener('paste', (event) => { event.preventDefault(); refusePaste('primary'); });
   $('typing-input').addEventListener('drop', (event) => event.preventDefault());
   // Every press is recorded before anything handles it, so the run it starts (resetSession) has its class. A tap
-  // is touch; a mouse click, or a key pressed outside a text field, is a physical keyboard. Keys typed into a
-  // text field (the passage, the palette's search) may come from a soft keyboard, so they leave the class as it
-  // was; Esc never does. After that, any touch while a run is prepared or running makes it touch input, wherever
-  // the tap lands: a palette command, a setting or the skip link can focus the input and open the soft keyboard
-  // without starting a run. The cost is deliberate: on a touchscreen laptop, a tap and then hardware-keyboard
-  // typing gives a touch run (a lesson try that doesn't unlock, never a physical-keyboard best).
+  // or a pen press is touch; a mouse click, or a key pressed outside a text field, is a physical keyboard. Any key
+  // in a text field (the passage, the palette's search) may come from a soft keyboard, so it leaves the class as
+  // it was: Esc too, since some soft keyboards have one (and Ctrl and Alt, so a chord is no proof either). After
+  // that, any touch while a run is prepared or running makes it touch input, wherever the tap lands: a palette
+  // command, a setting or the skip link can focus the input and open the soft keyboard without starting a run.
+  // The cost is deliberate: on a touchscreen laptop, a tap and then hardware-keyboard typing (Esc included) gives
+  // a touch run (a lesson try that doesn't unlock, never a physical-keyboard best).
   document.addEventListener('pointerdown', (event) => {
     activationInput = startedBy(event);
     if (activationInput !== 'touch' || !['ready', 'running'].includes(attempt?.status) || attempt.conditions.inputClass === 'touch') return;
@@ -2363,7 +2376,7 @@ function bindEvents() {
     if (attempt.status === 'ready') armPace();
   }, true);
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' || !event.target.matches?.(TEXT_FIELDS)) activationInput = 'physical-keyboard';
+    if (!event.target.matches?.(TEXT_FIELDS)) activationInput = 'physical-keyboard';
   }, true);
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
   $('typing-input').addEventListener('compositionstart', () => {
