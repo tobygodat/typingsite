@@ -17,6 +17,8 @@ async function accentKeys(page) {
     },
     // An auto-repeat of a held dead key (the OS sends these while the key stays down).
     deadKeyRepeat: () => cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222, autoRepeat: true }),
+    // Letting go of a held dead key.
+    releaseDeadKey: () => cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 }),
     // The next key commits the open composition; with none open this is plain text (the Windows lane).
     commit: (text) => cdp.send('Input.insertText', { text }),
     // Chrome on macOS sends the key that ends a composition first, as keyCode 229, then the commit
@@ -106,6 +108,25 @@ const safariOrder = (page, { field = '#typing-input', commit = '"', key = ' ', n
   if (o.focus === 'blur') input.blur();
   else if (o.focus) document.querySelector(o.focus).focus();
 }, { field, commit, key, nextTask, focus });
+
+// A run of key and composition events dispatched in one task, in the order given (Safari's, for a held key).
+const start = (mark) => [{ type: 'compositionstart', data: '' }, { type: 'compositionupdate', data: mark }];
+const end = (data) => ({ type: 'compositionend', data });
+const down = (key, repeat = false) => ({ type: 'keydown', key, repeat });
+const up = (key) => ({ type: 'keyup', key });
+const dispatchEvents = (page, events, field = '#typing-input') => page.evaluate(([list, f]) => {
+  const input = document.querySelector(f);
+  for (const { type, data, key, repeat } of list) {
+    if (type.startsWith('key')) {
+      input.dispatchEvent(new KeyboardEvent(type, { bubbles: true, cancelable: true, key, repeat }));
+      continue;
+    }
+    input.dispatchEvent(new CompositionEvent(type, { bubbles: true, data }));
+    if (type !== 'compositionupdate') continue;
+    input.value += data;
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', data, isComposing: true }));
+  }
+}, [events, field]);
 
 const lastStoredAttempt = (page, userId) => page.evaluate((key) => JSON.parse(localStorage.getItem(key)).attempts.at(-1), `stilltype-profile-v2:${userId}`);
 
@@ -401,6 +422,56 @@ test('a mark pending when the clock runs out is not scored', async ({ page }) =>
   await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, 10));
 });
 
+test('an accent commit made before a timed run’s limit counts, though it is scored after the limit', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  const keys = await accentKeys(page);
+  await page.locator('#duration-options [data-length="15"]').click();
+  await expect(page.locator('#timer')).toHaveText('15');
+  // Chrome sends the letter's key before the commit, which is scored a task later; Safari sends it after
+  // the commit, which waits for it. Either way the clock runs out before the commit is scored.
+  const orders = {
+    chrome: async () => {
+      await keys.deadKey('´');
+      await keys.macKey('e', 'é');
+    },
+    safari: () => dispatchEvents(page, [...start('´'), down('Dead'), end('é')]),
+  };
+  for (const [order, commit] of Object.entries(orders)) {
+    const text = await passageText(page);
+    // Time stands still while the run is typed, and the commit lands 50 ms before the limit.
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+    await typeInto(page, text.slice(0, 10));
+    await page.clock.fastForward(14_950);
+    await expect(page.locator('#typing-status'), order).toHaveText('In progress');
+    await commit();
+    await page.clock.fastForward(300);
+    await expect(page.locator('body'), order).toHaveAttribute('data-view', 'results');
+    await expect(page.locator('#result-time'), order).toHaveText('15.0 s');
+    await expect(page.locator('#typing-input'), order).toHaveValue(`${text.slice(0, 10)}é`);
+    await expect(page.locator('#result-delta'), order).not.toHaveText('Interrupted · not counted');
+    await page.clock.resume();
+    await page.locator('#run-again').click();
+    await expect(page.locator('#typing-status')).toHaveText('Ready');
+  }
+
+  // Focus leaving after the limit drops a commit still waiting for its key, and the run ends complete.
+  const text = await passageText(page);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await typeInto(page, text.slice(0, 10));
+  await page.clock.fastForward(14_950);
+  await dispatchEvents(page, [...start('´'), down('Dead'), end('é')]);
+  await page.clock.fastForward(60);
+  await page.evaluate(() => {
+    document.querySelector('#typing-input').dispatchEvent(new FocusEvent('blur'));
+    window.dispatchEvent(new Event('blur'));
+  });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-time')).toHaveText('15.0 s');
+  await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, 10));
+  await expect(page.locator('#result-delta')).not.toHaveText('Interrupted · not counted');
+});
+
 test('Esc with a mark pending restarts cleanly', async ({ page }) => {
   await openApp(page);
   const keys = await accentKeys(page);
@@ -497,6 +568,48 @@ test('a held accent key is key repeat: what it commits is ignored', async ({ pag
   // The next key press types as usual.
   await page.keyboard.type(text.slice(2, 5));
   expect(await scored(page)).toEqual({ correct: 5, wrong: 0, value: text.slice(0, 5) });
+});
+
+test('a mark a held accent key leaves pending is repeat too, whichever order its letter arrives in', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 2));
+  const unscored = { correct: 2, wrong: 0, value: text.slice(0, 2) };
+
+  // Chrome and Firefox: the last repeat shows a new mark, then the next letter's keydown comes before
+  // the commit it ends (â).
+  await keys.deadKey('^');
+  await keys.deadKeyRepeat();
+  await keys.commit('^^');
+  await keys.deadKeyRepeat();
+  await keys.preview('^');
+  await keys.releaseDeadKey();
+  await keys.macKey('a', 'â');
+  expect(await scored(page)).toEqual(unscored);
+  await expect(page.locator('#input-help')).toHaveText('Key repeat ignored.');
+
+  // Safari: each key's composition events come before its keydown, the first repeat's commit (^^) included.
+  await dispatchEvents(page, [
+    ...start('^'), down('Dead'),
+    end('^^'), down('Dead', true),
+    ...start('^'), down('Dead', true),
+    up('Dead'),
+    end('â'), down('a'),
+  ]);
+  expect(await scored(page)).toEqual(unscored);
+  await expect(page.locator('#input-help')).toHaveText('Key repeat ignored.');
+
+  // Once the key is let go, a fresh accent key types its mark again (here " then space, a wrong letter).
+  await dispatchEvents(page, [
+    ...start('^'), down('Dead'), end('^^'), down('Dead', true), up('Dead'),
+    ...start('"'), down('Dead'), end('"'), down(' '),
+  ]);
+  expect(await scored(page)).toEqual({ correct: 2, wrong: 1, value: `${text.slice(0, 2)}"` });
+  await keys.deadKey('"');
+  await keys.commit('"');
+  expect(await scored(page)).toEqual({ correct: 2, wrong: 2, value: `${text.slice(0, 2)}""` });
 });
 
 test('a mark pending when focus leaves does not start a ready run', async ({ page }) => {
@@ -688,6 +801,43 @@ test('an emoji committed through a composition is refused like IME text', async 
   await keys.commit('❤');
   await expect(page.locator('#input-help')).toHaveText(IME_NOTICE);
   expect(await scored(page)).toEqual({ correct: 0, wrong: 0, value: '' });
+});
+
+test('a custom passage takes accent keys like any other passage', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  const custom = 'She said "be brief" and it\'s "done" now.';
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(custom);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(custom);
+
+  // A mark pending as focus moves on is dropped, and the run stays ready.
+  await page.locator('#typing-input').click();
+  await keys.deadKey('"');
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#typing-input')).not.toBeFocused();
+  expect(await scored(page)).toEqual({ correct: 0, wrong: 0, value: '' });
+  await expect(page.locator('#typing-status')).toHaveText('Ready');
+
+  // Every quotation mark and apostrophe through the accent key: "b and 's commit together.
+  await page.locator('#typing-input').click();
+  await typeWithAccentKeys(page, keys, custom);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-accuracy')).toHaveText('100');
+  await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
+
+  // Run again keeps the custom passage, and an emoji committed through a composition is refused there too.
+  await page.locator('#run-again').click();
+  expect(await passageText(page)).toBe(custom);
+  await typeInto(page, custom.slice(0, 3));
+  await keys.preview('😀');
+  await expect(page.locator('#input-help')).toHaveText(IME_NOTICE);
+  await keys.commit('😀');
+  expect(await scored(page)).toEqual({ correct: 3, wrong: 0, value: custom.slice(0, 3) });
+  await typeWithAccentKeys(page, keys, custom, 3);
+  await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
 });
 
 test('both one-keyboard race players can type with accent keys', async ({ page }) => {
