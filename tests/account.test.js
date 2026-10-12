@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  challengeFor, cleanRedirectUrl, freshSession, MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, signedOutKey, signOut,
-  suggestionRow,
+  challengeFor, cleanRedirectUrl, freshSession, MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, restoreUnsent, SESSION_KEY,
+  signedOutKey, signOut, suggestionRow, textStamp, unsentCopy,
 } from '../src/account.js';
 
 test('PKCE challenge matches the RFC 7636 example', async () => {
@@ -141,36 +141,126 @@ test('signing out touches only what is still that account’s', async () => {
     logouts.push(headers.Authorization);
     return { ok: true, status: 204, text: async () => '' };
   };
+  const sent = '{"version":2,"runs":[]}';
   const device = (stored) => new Map([
     ...(stored ? [['stilltype-session-v1', JSON.stringify(session(stored))]] : []),
-    [profileKey('u1'), '{"version":2}'],
+    [profileKey('u1'), sent],
     [profileKey('u2'), '{"version":2}'],
   ]);
   try {
-    // Everything sent: the session, the cache and any marker go.
+    // Everything sent, and the cache still holds exactly the copy sent: the session, the cache and any
+    // marker go.
     store = device('u1');
     store.set(signedOutKey('u1'), 'true');
-    await signOut(session('u1'));
+    await signOut(session('u1'), { sentText: sent });
     assert.deepEqual([...store.keys()], [profileKey('u2')]);
-    // Edits kept for the next sign-in: the cache stays, marked.
-    store = device('u1');
-    await signOut(session('u1'), { keepCache: true });
-    assert.deepEqual([...store.keys()].sort(), [profileKey('u1'), profileKey('u2'), signedOutKey('u1')].sort());
+    // The cache holds another copy (another tab saved since), or nothing was confirmed sent: it stays,
+    // marked, for the next sign-in.
+    for (const sentText of ['{"version":2,"runs":[{"id":"r"}]}', null]) {
+      store = device('u1');
+      await signOut(session('u1'), { sentText });
+      assert.deepEqual([...store.keys()].sort(), [profileKey('u1'), profileKey('u2'), signedOutKey('u1')].sort());
+      assert.equal(store.get(signedOutKey('u1')), 'true');
+      assert.equal(store.get(profileKey('u1')), sent);
+    }
     // The session had expired (none stored): only the marker is left.
     store = device(null);
-    await signOut(session('u1'), { keepCache: true });
+    await signOut(session('u1'));
     assert.deepEqual([...store.keys()].sort(), [profileKey('u1'), profileKey('u2'), signedOutKey('u1')].sort());
     // Another tab signed in as someone else meanwhile: that session and both caches stay, and nothing is
     // marked, whichever way this sign-out ended.
-    for (const keepCache of [false, true]) {
+    for (const sentText of [sent, null]) {
       store = device('u2');
       const before = [...store.entries()];
-      await signOut(session('u1'), { keepCache });
+      await signOut(session('u1'), { sentText });
       assert.deepEqual([...store.entries()], before);
     }
-    assert.equal(logouts.length, 5);
+    assert.equal(logouts.length, 6);
   } finally {
     globalThis.localStorage = originalStorage;
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('a sign-out that sent everything names the copy it sent before removing it', async () => {
+  const later = Math.floor(Date.now() / 1000) + 3600;
+  const session = { access_token: 'u1-access', refresh_token: 'u1-refresh', expires_at: later, user: { id: 'u1' } };
+  const originalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  const sent = '{"version":2,"runs":[{"id":"a"}]}';
+  const store = new Map([[SESSION_KEY, JSON.stringify(session)], [profileKey('u1'), sent]]);
+  const writes = [];
+  globalThis.localStorage = {
+    getItem: (key) => store.get(key) ?? null,
+    setItem: (key, value) => { writes.push(['set', key, value]); store.set(key, value); },
+    removeItem: (key) => { writes.push(['remove', key]); store.delete(key); },
+  };
+  globalThis.fetch = async () => ({ ok: true, status: 204, text: async () => '' });
+  try {
+    await signOut(session, { sentText: sent });
+    // Other tabs hear the marker first, so each knows which copy the removal after it was meant to take.
+    assert.deepEqual(writes, [
+      ['set', signedOutKey('u1'), JSON.stringify({ sent: textStamp(sent) })],
+      ['remove', SESSION_KEY],
+      ['remove', profileKey('u1')],
+      ['remove', signedOutKey('u1')],
+    ]);
+    assert.deepEqual([...store.keys()], []);
+  } finally {
+    globalThis.localStorage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('a copy of the cache is stamped by its exact text', () => {
+  const text = '{"version":2,"runs":[{"id":"a"}]}';
+  assert.equal(textStamp(text), textStamp(String(text)));
+  assert.notEqual(textStamp(text), textStamp(text.replace('"a"', '"b"')));
+  assert.notEqual(textStamp(text), textStamp(`${text} `));
+});
+
+test('a removal heard from a sign-out gives back only what the copy sent lacks', () => {
+  const at = (n) => new Date(Date.UTC(2026, 9, 1, 12, n)).toISOString();
+  const copy = (over = {}) => JSON.stringify({ version: 2, profileId: 'p', preferences: {}, attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, ...over });
+  const runs = (data) => data.runs.map((run) => run.id);
+  const sentText = copy({ runs: [{ id: 'a', at: at(1) }] });
+  const sent = textStamp(sentText);
+
+  // The copy sent was removed, and this tab's copy is the same, held in it, or absent: nothing was lost.
+  assert.equal(unsentCopy(sentText, sent, sentText), null);
+  assert.equal(unsentCopy(sentText, sent, copy()), null);
+  assert.equal(unsentCopy(sentText, sent, null), null);
+  // Another tab's save, unseen by the signing-out tab, was removed instead: it comes back, with this tab's.
+  const unseen = copy({ runs: [{ id: 'a', at: at(1) }, { id: 'b', at: at(2) }] });
+  assert.deepEqual(runs(unsentCopy(unseen, sent, sentText)), ['a', 'b']);
+  assert.deepEqual(runs(unsentCopy(unseen, sent, null)), ['a', 'b']);
+  // The copy sent was removed, but this tab saved a run it lacks (a write-back held over a run): the union.
+  assert.deepEqual(runs(unsentCopy(sentText, sent, copy({ runs: [{ id: 'c', at: at(3) }] }))), ['a', 'c']);
+  // This tab's copy is stale, and a clear in the copy sent took out its runs: nothing was lost.
+  const cleared = copy({ historyClearedAt: at(5), runs: [{ id: 'after', at: at(6) }] });
+  assert.equal(unsentCopy(cleared, textStamp(cleared), copy({ runs: [{ id: 'old', at: at(2) }] })), null);
+  // Nothing readable was removed: this tab's copy alone.
+  assert.deepEqual(runs(unsentCopy(null, sent, unseen)), ['a', 'b']);
+  assert.equal(unsentCopy(null, sent, null), null);
+});
+
+test('what a sign-out removed unsent goes back into the cache, merged with anything stored since', () => {
+  const originalStorage = globalThis.localStorage;
+  const store = new Map();
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  const copy = (ids) => JSON.stringify({ version: 2, profileId: 'p', preferences: {}, attempts: [], runs: ids.map((id, n) => ({ id, at: `2026-10-01T12:0${n}:00.000Z` })), loops: [], seenTextIds: [], bests: {} });
+  try {
+    const sentText = copy(['a']);
+    assert.equal(restoreUnsent('u1', sentText, textStamp(sentText), sentText), false);
+    assert.deepEqual([...store.keys()], []);
+    assert.equal(restoreUnsent('u1', copy(['a', 'b']), textStamp(sentText), sentText), true);
+    assert.deepEqual(JSON.parse(store.get(profileKey('u1'))).runs.map((run) => run.id), ['a', 'b']);
+    // Another tab put back its own copy first: both stay.
+    store.set(profileKey('u1'), copy(['x']));
+    restoreUnsent('u1', copy(['a', 'b']), textStamp(sentText), null);
+    assert.deepEqual(JSON.parse(store.get(profileKey('u1'))).runs.map((run) => run.id).sort(), ['a', 'b', 'x']);
+    assert.deepEqual([...store.keys()], [profileKey('u1')]);
+  } finally {
+    globalThis.localStorage = originalStorage;
   }
 });

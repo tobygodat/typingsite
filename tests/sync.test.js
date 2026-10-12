@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HISTORY, MAX_CLEARED_IDS, MAX_STORED_ATTEMPTS, capHistory, clearProfile, insertCloudProfile, mergeAndHold, mergeSynced, revokeClear,
-  sameProfile, stampAfter, updateCloudProfile,
+  HISTORY, MAX_CLEARED_IDS, MAX_STORED_ATTEMPTS, capHistory, clearProfile, insertCloudProfile, joinHolds, mergeAndHold, mergeSynced, revokeClear,
+  sameProfile, stampAfter, undoClearHere, updateCloudProfile,
 } from '../src/account.js';
 import { MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
 import { conditionKey } from '../src/typing.js';
@@ -240,35 +240,35 @@ test('undo restores what the clear removed from copies the clearing tab never sa
 
   // The laptop clears, and its push merges the row and writes the result.
   let laptop = clearProfile(laptopBefore);
-  let laptopHeld = { marker: laptop.historyClearedAt, before: laptopBefore };
-  ({ merged: laptop, held: laptopHeld } = mergeAndHold(laptopHeld, laptop, row));
+  let laptopHeld = { [laptop.historyClearedAt]: [laptopBefore] };
+  ({ merged: laptop, holds: laptopHeld } = mergeAndHold(laptopHeld, laptop, row));
   row = laptop;
   assert.deepEqual(ids(row.runs), []);
-  assert.deepEqual(ids(laptopHeld.before.runs), ['l1', 'd1']);
+  assert.deepEqual(laptopHeld[laptop.historyClearedAt].map((copy) => ids(copy.runs)), [['l1'], ['l1', 'd1']]);
 
   // The phone comes back online before the undo: it hears of the clear and drops its copies.
-  let phoneHeld = null;
-  ({ merged: phone, held: phoneHeld } = mergeAndHold(phoneHeld, phone, row));
+  let phoneHeld = {};
+  ({ merged: phone, holds: phoneHeld } = mergeAndHold(phoneHeld, phone, row));
   row = phone;
   assert.deepEqual(ids(phone.runs), []);
 
   // Undo on the laptop, from what it held, reaches the row; the phone then gives back what it held.
-  laptop = revokeClear(laptop, laptopHeld.before, laptopHeld.marker);
-  ({ merged: row } = mergeAndHold(null, laptop, row));
+  laptop = undoClearHere(laptopHeld, laptop, laptop.historyClearedAt, laptopBefore).merged;
+  ({ merged: row } = mergeAndHold({}, laptop, row));
   assert.deepEqual(ids(row.runs), ['l1', 'd1']);
-  ({ merged: phone, held: phoneHeld } = mergeAndHold(phoneHeld, phone, row));
-  assert.equal(phoneHeld, null);
+  ({ merged: phone, holds: phoneHeld } = mergeAndHold(phoneHeld, phone, row));
+  assert.deepEqual(phoneHeld, {});
   assert.deepEqual(ids(phone.runs), ['l1', 'd1', 'd2']);
   assert.deepEqual([...phone.seenTextIds].sort(), ['q2', 'qd', 'ql']);
   assert.equal(phone.historyClearedAt, undefined);
   // And the laptop's next merge with the phone's copy brings d2 there too.
-  assert.deepEqual(ids(mergeAndHold(null, laptop, phone).merged.runs), ['l1', 'd1', 'd2']);
+  assert.deepEqual(ids(mergeAndHold({}, laptop, phone).merged.runs), ['l1', 'd1', 'd2']);
 
   // A clear that is never undone keeps everything it removed out, held or not.
-  const kept = mergeAndHold(null, profile({ runs: [item('old', 1)] }), clearProfile(profile()));
+  const kept = mergeAndHold({}, profile({ runs: [item('old', 1)] }), clearProfile(profile()));
   assert.deepEqual(ids(kept.merged.runs), []);
-  assert.deepEqual(ids(kept.held.before.runs), ['old']);
-  assert.deepEqual(ids(mergeAndHold(kept.held, kept.merged, profile({ historyClearedAt: kept.merged.historyClearedAt })).merged.runs), []);
+  assert.deepEqual(kept.holds[kept.merged.historyClearedAt].map((copy) => ids(copy.runs)), [['old']]);
+  assert.deepEqual(ids(mergeAndHold(kept.holds, kept.merged, profile({ historyClearedAt: kept.merged.historyClearedAt })).merged.runs), []);
 });
 
 test('a clock running ahead elsewhere can’t move a clear into the future', () => {
@@ -415,23 +415,185 @@ test('an undo that arrives with an older clear still in force gives back what th
   const phone = profile({ historyClearedAt: minute(10), runs: [item('phone-after', 12)] });
   const laptopBefore = profile({ runs: [item('old', 5), item('mid', 15)] });
   const laptopCleared = clearProfile(laptopBefore);
-  let { merged: tablet, held } = mergeAndHold(null, profile({ runs: [...laptopBefore.runs, item('tablet-own', 16)] }), laptopCleared);
+  let { merged: tablet, holds: held } = mergeAndHold({}, profile({ runs: [...laptopBefore.runs, item('tablet-own', 16)] }), laptopCleared);
   assert.deepEqual(ids(tablet.runs), []);
-  assert.equal(held.marker, laptopCleared.historyClearedAt);
+  assert.deepEqual(Object.keys(held), [laptopCleared.historyClearedAt]);
 
   // The laptop undoes before hearing of the phone's clear; the row takes in both, and the tablet then
   // pulls the row. Its own run, after the phone's clear, comes back; the run from before it stays out.
   const laptop = revokeClear(laptopCleared, laptopBefore, laptopCleared.historyClearedAt);
   const row = mergeSynced(phone, laptop);
-  ({ merged: tablet, held } = mergeAndHold(held, tablet, row));
+  ({ merged: tablet, holds: held } = mergeAndHold(held, tablet, row));
   assert.deepEqual(ids(tablet.runs), ['phone-after', 'mid', 'tablet-own']);
   assert.equal(tablet.historyClearedAt, minute(10));
   // What the phone's clear removed is held in turn, so its own undo gives that back too.
-  assert.equal(held.marker, minute(10));
-  ({ merged: tablet, held } = mergeAndHold(held, tablet, revokeClear(row, phoneBefore, minute(10))));
+  assert.deepEqual(Object.keys(held), [minute(10)]);
+  ({ merged: tablet, holds: held } = mergeAndHold(held, tablet, revokeClear(row, phoneBefore, minute(10))));
   assert.deepEqual(ids(tablet.runs), ['phone-old', 'old', 'phone-after', 'mid', 'tablet-own']);
   assert.equal(tablet.historyClearedAt, undefined);
-  assert.equal(held, null);
+  assert.deepEqual(held, {});
+});
+
+// A device: its copy and what it holds for Undo. mergeInto() is a pull, or a push that writes the row.
+const device = (copy) => ({ copy, holds: {}, clears: [] });
+const mergeInto = (d, other) => {
+  ({ merged: d.copy, holds: d.holds } = mergeAndHold(d.holds, d.copy, other));
+  return d.copy;
+};
+const clearOn = (d) => {
+  const before = d.copy;
+  d.copy = clearProfile(before);
+  d.holds = joinHolds(d.holds, { [d.copy.historyClearedAt]: [before] });
+  const clear = { marker: d.copy.historyClearedAt, before };
+  d.clears.push(clear);
+  return clear;
+};
+const undoOn = (d, { marker, before }) => {
+  ({ merged: d.copy, holds: d.holds } = undoClearHere(d.holds, d.copy, marker, before));
+  d.clears = d.clears.filter((clear) => clear.marker !== marker);
+  return d.copy;
+};
+const runIds = (copy) => [...ids(copy.runs)].sort();
+
+for (const order of ['older undo first', 'newer undo first']) {
+  test(`a newer clear keeps what an older clear held here, and both undos give it back (${order})`, () => {
+    const phone = device(profile({ runs: [item('phone-old', 2)] }));
+    const laptop = device(profile({ runs: [item('laptop-old', 3)] }));
+    const tablet = device(profile({ runs: [item('tablet-unsent', 5)] }));
+    let row = profile();
+    const phoneClear = clearOn(phone);
+    row = mergeInto(phone, row);
+    mergeInto(tablet, row); // the tablet applies the phone's clear and holds its unsent run
+    assert.deepEqual(runIds(tablet.copy), []);
+    row = mergeInto(laptop, row);
+    const afterPhone = new Date(Date.parse(phoneClear.marker) + 60000).toISOString();
+    laptop.copy = { ...laptop.copy, runs: [...laptop.copy.runs, { id: 'laptop-mid', at: afterPhone }] };
+    const laptopClear = clearOn(laptop); // a newer clear
+    assert.ok(laptopClear.marker > phoneClear.marker);
+    row = mergeInto(laptop, row);
+    mergeInto(tablet, row); // the tablet applies it too: what the older clear held must stay
+    assert.deepEqual(runIds(tablet.copy), []);
+    assert.deepEqual(Object.keys(tablet.holds).sort(), [phoneClear.marker, laptopClear.marker].sort());
+    const undos = [
+      () => { undoOn(phone, phoneClear); row = mergeInto(phone, row); },
+      () => { undoOn(laptop, laptopClear); row = mergeInto(laptop, row); },
+    ];
+    for (const step of order === 'older undo first' ? undos : undos.reverse()) {
+      step();
+      mergeInto(tablet, row);
+      row = mergeInto(tablet, row); // the tablet pushes
+    }
+    // Every device settles on everything, once each has pulled.
+    for (const d of [phone, laptop, tablet]) row = mergeInto(d, row);
+    for (const d of [phone, laptop, tablet]) mergeInto(d, row);
+    for (const d of [phone, laptop, tablet]) {
+      assert.deepEqual(runIds(d.copy), ['laptop-mid', 'laptop-old', 'phone-old', 'tablet-unsent']);
+      assert.equal(d.copy.historyClearedAt, undefined);
+      assert.deepEqual(d.holds, {});
+    }
+  });
+}
+
+test('held copies with different clears never drop each other’s records', () => {
+  // The tablet holds a run the phone's clear (minute 10) would take, and hears of the laptop's newer
+  // clear first; then a copy that applied the phone's clear only arrives. Both are held for the newer
+  // clear: merged into one, the phone's clear would take the tablet's run from the hold.
+  const phoneClear = minute(10);
+  const tablet = device(profile({ runs: [item('tablet-old', 5)] }));
+  const laptopClear = clearProfile(profile({ runs: [item('laptop-old', 4)] }));
+  mergeInto(tablet, laptopClear);
+  mergeInto(tablet, profile({ historyClearedAt: phoneClear, runs: [item('phone-after', 12)] }));
+  assert.deepEqual(runIds(tablet.copy), []);
+  assert.deepEqual(tablet.holds[laptopClear.historyClearedAt].map(runIds), [['tablet-old'], ['phone-after']]);
+
+  // The laptop's undo arrives: the phone's clear still stands, so the tablet's run is held again for it,
+  // and comes back with that clear's own undo.
+  mergeInto(tablet, { ...laptopClear, undoneClears: [laptopClear.historyClearedAt] });
+  assert.deepEqual(runIds(tablet.copy), ['phone-after']);
+  assert.equal(tablet.copy.historyClearedAt, phoneClear);
+  assert.deepEqual(Object.keys(tablet.holds), [phoneClear]);
+  mergeInto(tablet, profile({ undoneClears: [phoneClear] }));
+  assert.deepEqual(runIds(tablet.copy), ['phone-after', 'tablet-old']);
+  assert.deepEqual(tablet.holds, {});
+});
+
+test('joinHolds keeps both derivations’ holds (a clear made while a push was out)', () => {
+  // This tab clears; its push merges the row, which holds a run from another device that never heard
+  // of the clear: that merge holds it.
+  const tab = device(profile({ runs: [item('mine', 1)] }));
+  const first = clearOn(tab);
+  const row = profile({ runs: [item('row-only', 2)] });
+  const atPush = mergeAndHold(tab.holds, tab.copy, row);
+  assert.deepEqual(atPush.holds[first.marker].map(runIds), [['mine'], ['row-only']]);
+
+  // While the write is out, this tab runs again and clears again.
+  tab.copy = { ...tab.copy, runs: [{ id: 'mid', at: stampAfter(first.marker) }] };
+  const second = clearOn(tab);
+  assert.ok(second.marker > first.marker);
+
+  // The write lands: what the push held joins what this tab holds now, and nothing is lost.
+  tab.holds = joinHolds(tab.holds, atPush.holds);
+  assert.deepEqual(Object.keys(tab.holds).sort(), [first.marker, second.marker]);
+  assert.deepEqual(tab.holds[first.marker].map(runIds), [['mine'], ['row-only']]);
+  mergeInto(tab, atPush.merged);
+  undoOn(tab, second);
+  assert.deepEqual(runIds(tab.copy), ['mid']);
+  undoOn(tab, first);
+  assert.deepEqual(runIds(tab.copy), ['mid', 'mine', 'row-only']);
+  assert.deepEqual(tab.holds, {});
+
+  // Joining is idempotent, and a hold joined again after its undo is released by the next merge.
+  assert.deepEqual(joinHolds(atPush.holds, atPush.holds), atPush.holds);
+  tab.holds = joinHolds(tab.holds, atPush.holds);
+  mergeInto(tab, tab.copy);
+  assert.deepEqual(runIds(tab.copy), ['mid', 'mine', 'row-only']);
+  assert.deepEqual(tab.holds, {});
+});
+
+// A seeded generator, so a failure names a sequence that can be replayed.
+const seeded = (seed) => () => {
+  seed = (seed * 1103515245 + 12345) % 2147483648;
+  return seed / 2147483648;
+};
+
+test('randomised: once every clear is undone, every run made anywhere is everywhere', () => {
+  const realNow = Date.now;
+  const failed = [];
+  try {
+    for (let seed = 1; seed <= 400; seed += 1) {
+      const random = seeded(seed);
+      let now = Date.UTC(2026, 9, 1);
+      Date.now = () => now;
+      const devices = [0, 1, 2].map(() => device(profile({ preferences: {} })));
+      let row = profile({ preferences: {} });
+      const made = [];
+      for (let step = 0; step < 40; step += 1) {
+        now += 60000;
+        const d = devices[Math.floor(random() * 3)];
+        const roll = random();
+        if (roll < 0.35) {
+          const id = `r${made.length}`;
+          made.push(id);
+          d.copy = { ...d.copy, runs: [...d.copy.runs, { id, at: new Date(now).toISOString() }] };
+        } else if (roll < 0.5) clearOn(d);
+        else if (roll < 0.6 && d.clears.length) undoOn(d, d.clears[Math.floor(random() * d.clears.length)]);
+        else if (roll < 0.8) row = mergeInto(d, row);
+        else mergeInto(d, row);
+      }
+      for (const d of devices) for (const clear of [...d.clears]) undoOn(d, clear);
+      for (let round = 0; round < 3; round += 1) for (const d of devices) row = mergeInto(d, row);
+      for (const d of devices) {
+        const have = new Set(ids(d.copy.runs));
+        if (made.some((id) => !have.has(id)) || d.copy.historyClearedAt) {
+          failed.push(seed);
+          break;
+        }
+      }
+    }
+  } finally {
+    Date.now = realNow;
+  }
+  assert.deepEqual(failed, []);
 });
 
 test('fields this build does not know, and profiles from older builds, survive a merge', () => {

@@ -194,8 +194,9 @@ export async function freshSession(session = loadSession()) {
 
 // Left by a sign-out that keeps unsent edits for the next sign-in, until that user signs in again: a tab
 // still holding the account must stop caching runs under it, though the cache stays. (A sign-out that
-// sent everything removes the cache, which stops those tabs already.) A session that only expired
-// leaves none, so its tabs keep caching for the next sign-in.
+// sent everything removes the cache, which stops those tabs already; its marker, { sent }, stands only
+// around that removal, see signOut.) A session that only expired leaves none, so its tabs keep caching
+// for the next sign-in.
 export const signedOutKey = (userId) => `stilltype-signed-out:${userId}`;
 export function signedOut(userId) {
   try { return localStorage.getItem(signedOutKey(userId)) !== null; } catch { return false; }
@@ -205,21 +206,76 @@ export const clearSignedOut = (userId) => remove(signedOutKey(userId));
 // Touches only what is still this user's: another tab may have signed out, or in as someone else, while
 // this one was sending its edits. The device's session is checked here, where nothing waits between the
 // check and the writes. With none stored (this session expired), only the marker is left.
-export async function signOut(session, { keepCache = false } = {}) {
+// `sentText` is the device cache as this tab's last push left it, with everything in it in the account.
+// The cache goes only if it still holds exactly that; otherwise it stays, marked, for the next sign-in.
+// Reads of localStorage across tabs can be milliseconds stale, so another tab's save can be in the cache
+// unseen here as it is removed. The removal therefore names the copy it sent, in a marker every tab hears
+// before it, and a tab that hears a different copy removed puts it back (restoreUnsent).
+export async function signOut(session, { sentText = null } = {}) {
   const userId = session?.user?.id;
   const stored = loadSession()?.user.id;
   if (userId && (!stored || stored === userId)) {
+    const settled = sentText !== null && loadCachedProfileText(userId) === sentText;
     // Written before the session goes, so a tab that hears of the sign-out finds it.
-    if (keepCache) writeJson(signedOutKey(userId), true);
+    if (!settled) writeJson(signedOutKey(userId), true);
     if (stored) {
+      // Heard by every tab before the removal.
+      if (settled) writeJson(signedOutKey(userId), { sent: textStamp(sentText) });
       remove(SESSION_KEY);
-      if (!keepCache) {
+      if (settled) {
         remove(profileKey(userId));
         clearSignedOut(userId);
       }
     }
   }
   try { await request('/auth/v1/logout', { method: 'POST', token: session?.access_token }); } catch {}
+}
+
+// cyrb53: a fast 53-bit string hash. Not cryptographic; it only tells copies of the cache apart.
+function cyrb53(text) {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 2654435761);
+    h2 = Math.imul(h2 ^ code, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+
+// Names one copy of the device cache in a few characters, so a sign-out marker can say which it sent.
+export const textStamp = (text) => `${text.length.toString(36)}:${cyrb53(text).toString(36)}`;
+
+const storedProfile = (text) => {
+  try {
+    const data = JSON.parse(text);
+    return data?.version === 2 ? data : null;
+  } catch {
+    return null;
+  }
+};
+
+// What a sign-out that sent the copy stamped `sent` lost by removing `removedText`, given `savedText`, the
+// copy the tab that heard the removal last saved or took in. Null when the removed copy is the one sent
+// and the saved copy holds nothing it lacks (a stale copy whose runs a clear in the removed one took out
+// holds nothing more). Otherwise the union of both, to keep for the next sign-in.
+export function unsentCopy(removedText, sent, savedText) {
+  const removed = storedProfile(removedText);
+  const saved = storedProfile(savedText);
+  if (removed && textStamp(removedText) === sent
+    && (!saved || savedText === removedText || sameProfile(mergeSynced(removed, saved), removed))) return null;
+  return removed && saved ? mergeSynced(removed, saved) : (removed || saved);
+}
+
+// Puts back what a sign-out elsewhere removed unsent (unsentCopy), merged with anything stored since. No
+// marker: every tab of the account has already followed the sign-out. Returns whether it wrote.
+export function restoreUnsent(userId, removedText, sent, savedText) {
+  const copy = unsentCopy(removedText, sent, savedText);
+  if (!copy) return false;
+  const stored = storedProfile(loadCachedProfileText(userId));
+  return cacheProfileText(userId, JSON.stringify(stored ? mergeSynced(stored, copy) : copy));
 }
 
 export async function fetchCloudProfile(session) {
@@ -483,35 +539,49 @@ export function revokeClear(current, before, marker) {
   return mergeSynced({ ...before, undoneClears: undone }, current);
 }
 
-// mergeSynced for a tab that keeps what a clear removed, so an Undo restores history from every copy
-// and not only from the clearing tab's own. A clear can reach a copy before its Undo does: the account
-// row, another tab, or another device holding runs the clearing tab never saw. `held` is
-// { marker, before } or null: every copy merged here that the newest live clear removed history from,
-// as it was before that. When a copy arrives with that clear undone, what was held comes back.
-// Returns { merged, held }; the caller keeps `held` in memory.
-// The undo is checked first: it can arrive with an older clear still in force (another device's, made
-// independently), which then becomes the newest live clear. What the undone clear held comes back as far
-// as that older clear allows, and is held in turn for that clear's own undo.
-export function mergeAndHold(held, local, cloud) {
+// Holds: { [marker]: [copy, …] } for every clear still in force here that removed history from a copy
+// merged here: those copies as they were before it. Kept side by side, never merged with each other: a
+// merge would apply one copy's clear to another and drop what the hold is for. Each list is released by
+// its own clear's undo only, so a newer clear never drops what an older one holds.
+const holdCopy = (list_, copy) => (list_.some((held) => held === copy || sameProfile(held, copy)) ? list_ : [...list_, copy]);
+export function joinHolds(a, b) {
+  const out = { ...(a || {}) };
+  for (const [marker, copies] of Object.entries(b || {})) for (const copy of copies) out[marker] = holdCopy(out[marker] || [], copy);
+  return out;
+}
+
+// mergeSynced for a tab that holds what clears removed, so an Undo brings back history from every copy
+// merged here and not only the clearing tab's own: a clear can reach the account row, another tab or
+// another device holding runs the clearing tab never saw. Returns { merged, holds }; the caller keeps
+// holds in memory.
+export function mergeAndHold(holds, local, cloud) {
+  holds = { ...(holds || {}) };
   let merged = mergeSynced(local, cloud);
   const sides = [local, cloud];
-  if (held && list(merged.undoneClears).includes(held.marker)) {
-    merged = revokeClear(merged, held.before, held.marker);
-    sides.push(held.before);
-    held = null;
+  // Every held clear now undone gives back what it held, as far as clears still in force allow.
+  const released = Object.keys(holds).filter((marker) => list(merged.undoneClears).includes(marker));
+  for (const marker of released) {
+    for (const copy of holds[marker]) {
+      merged = mergeSynced({ ...copy, undoneClears: [...new Set([...list(copy.undoneClears), ...list(merged.undoneClears)])] }, merged);
+      sides.push(copy);
+    }
+    delete holds[marker];
   }
   const marker = merged.historyClearedAt;
   if (marker) {
-    // Each copy is held knowing every undo seen here, so a clear undone since takes nothing from another.
     const undone = list(merged.undoneClears);
     const knowing = (side) => (undone.length ? { ...side, undoneClears: undone } : side);
-    let before = held?.marker === marker ? held.before : null;
     for (const side of sides) {
-      if (side.historyClearedAt !== marker) before = before ? mergeSynced(before, knowing(side)) : knowing(side);
+      if (side.historyClearedAt !== marker) holds[marker] = holdCopy(holds[marker] || [], knowing(side));
     }
-    if (before) held = { marker, before };
   }
-  return { merged, held };
+  return { merged, holds };
+}
+
+// Undo here of the clear `marker`, made in this tab from `before`: released with everything held for it.
+export function undoClearHere(holds, current, marker, before) {
+  const undone = { ...current, undoneClears: [...new Set([...list(current.undoneClears), marker])] };
+  return mergeAndHold(joinHolds(holds, { [marker]: [before] }), undone, undone);
 }
 
 // A digest of everything a merge can change, without walking every keystroke: two profiles with the

@@ -88,6 +88,13 @@ let cacheWaiting = false;
 // (followSessionElsewhere): this tab saves and sends nothing more for it, and starts again as the device
 // now is once no run is in progress.
 let signedOutElsewhere = false;
+// A sign-out in another tab that sent everything names the copy of the device cache it sent before
+// removing it (account.signOut). Its stamp is kept here until that removal is heard, so a copy removed
+// that wasn't the one sent goes back for the next sign-in (finishFollow).
+let pendingSignOut = null;
+// The device cache as the last push that left nothing unsent stored it: what a sign-out here has sent.
+// absorbCache moves cacheText, never this, so another tab's save taken in since never looks sent.
+let sentText = null;
 const PULL_INTERVAL_MS = 15000;
 
 function validPreferences(value) {
@@ -157,9 +164,10 @@ let resultBestBefore = null;
 let clearSnapshot = null;
 let clearedAt = null;
 let clearTimer = null;
-// What the newest clear removed from each copy merged here, so an Undo from any tab brings all of it
-// back (account.mergeAndHold): { marker, before } or null. In memory only.
-let heldClear = null;
+// For each clear still in force here, the copies merged here that it removed history from, as they were
+// before it, so its Undo from any tab brings all of it back (account.mergeAndHold): { [marker]: [copy, …] }.
+// A list goes back only with its own clear's undo. In memory only.
+let heldClears = {};
 // The history clear this tab's training state (baseline, results on show) was last checked against.
 let trainingClear = profile.historyClearedAt || null;
 
@@ -359,7 +367,8 @@ function setRunning(running) {
 function flushDeferredSync() {
   if (runInProgress()) return;
   if (signedOutElsewhere) {
-    location.reload();
+    // A sign-out that sent everything reloads once its removal of the cache is heard (finishFollow).
+    if (pendingSignOut === null) location.reload();
     return;
   }
   if (cacheWaiting && absorbCache()) setTimeout(showMerged);
@@ -1696,7 +1705,7 @@ function clearHistory() {
   // they held is kept here as this tab merges them (account.mergeAndHold), for Undo.
   profile = account.clearProfile(profile);
   clearedAt = profile.historyClearedAt;
-  heldClear = { marker: clearedAt, before: normalizeProfile(JSON.parse(clearSnapshot)) };
+  heldClears = account.joinHolds(heldClears, { [clearedAt]: [normalizeProfile(JSON.parse(clearSnapshot))] });
   trainingClear = clearedAt;
   forgetTraining();
   const saved = saveProfile();
@@ -1716,16 +1725,12 @@ function clearHistory() {
 
 function undoClear() {
   if (!clearSnapshot) return;
-  let before;
-  // What the clear removed from copies merged since, together with this tab's own copy from just before it.
-  try {
-    const snapshot = normalizeProfile(JSON.parse(clearSnapshot));
-    before = heldClear?.marker === clearedAt ? account.mergeSynced(heldClear.before, snapshot) : snapshot;
-  } catch { return; }
-  heldClear = null;
+  let snapshot;
+  try { snapshot = normalizeProfile(JSON.parse(clearSnapshot)); } catch { return; }
   // Restores the history even if the clear has already synced, keeping anything added since: this tab's
-  // own, and whatever the clear removed from the account row or another tab as they merged here.
-  profile = account.revokeClear(profile, before, clearedAt);
+  // own copy from just before it, and whatever the clear removed from the account row or another tab as
+  // they merged here (held for it), as far as clears still in force allow.
+  ({ merged: profile, holds: heldClears } = account.undoClearHere(heldClears, profile, clearedAt, snapshot));
   saveProfile();
   clearSnapshot = null;
   clearTimeout(clearTimer);
@@ -1780,7 +1785,7 @@ function signedInAs(userId) {
 function absorb(data) {
   if (data?.version !== 2) return false;
   const before = account.syncSignature(profile);
-  ({ merged: profile, held: heldClear } = account.mergeAndHold(heldClear, profile, normalizeProfile(data)));
+  ({ merged: profile, holds: heldClears } = account.mergeAndHold(heldClears, profile, normalizeProfile(data)));
   return account.syncSignature(profile) !== before;
 }
 
@@ -1872,25 +1877,27 @@ async function pushOnce({ cloud: known } = {}) {
         if (!signedInAs(userId)) return false;
       }
       const edits = localEdits;
-      const heldAtMerge = heldClear;
       const theirs = cloud?.data?.version === 2 ? normalizeProfile(cloud.data) : null;
-      const { merged, held } = theirs ? account.mergeAndHold(heldClear, profile, theirs) : { merged: profile, held: heldClear };
+      const { merged, holds: pushHolds } = theirs ? account.mergeAndHold(heldClears, profile, theirs) : { merged: profile, holds: heldClears };
       let written;
       if (theirs && account.sameProfile(merged, theirs)) written = cloud.updated_at;
       else if (cloud) written = await account.updateCloudProfile(session, merged, cloud.updated_at);
       else written = await account.insertCloudProfile(session, merged);
       if (!signedInAs(userId)) return false;
       if (written) {
-        // A clear made here while the write was out holds this tab's whole copy from before it, which
-        // this merge never saw; that hold stays, and the merge below adds this write's copy to it.
-        if (heldClear === heldAtMerge) heldClear = held;
+        // What this merge held joins what is held now. Holds are only added to, and a list goes back only
+        // with its clear's undo (twice changes nothing), so an Undo or a clear made here while the write
+        // was out still holds and releases everything.
+        heldClears = account.joinHolds(heldClears, pushHolds);
         noteCloudAt(written);
         absorb(merged);
-        storeLocally();
+        const kept = storeLocally();
         // Done unless this tab saved again, or took in another tab's save, while the write was out:
         // that goes up with the next push.
-        if (edits === localEdits && account.sameProfile(profile, merged)) unsynced = false;
-        else if (!syncTimer) syncTimer = setTimeout(pushWhenIdle, 1500);
+        if (edits === localEdits && account.sameProfile(profile, merged)) {
+          unsynced = false;
+          sentText = kept ? cacheText : null;
+        } else if (!syncTimer) syncTimer = setTimeout(pushWhenIdle, 1500);
         showMerged();
         setSyncState(unsynced ? 'syncing' : 'synced');
         return !unsynced;
@@ -2037,7 +2044,8 @@ async function signOutAccount() {
   const overtaken = () => {
     const stored = account.loadSession()?.user.id;
     if (!signedOutElsewhere && (!stored || stored === userId)) return false;
-    location.reload();
+    // Followed: after hearing the cache removed, for a sign-out elsewhere that sent everything (finishFollow).
+    if (pendingSignOut === null) location.reload();
     return true;
   };
   if (overtaken()) return;
@@ -2058,8 +2066,8 @@ async function signOutAccount() {
     // Unreachable (requests time out, see account.request) or refused: another round would only wait again.
     if (!synced && $('account').dataset.sync !== 'syncing') break;
   }
-  const settled = synced && account.loadCachedProfileText(userId) === cacheText;
-  await account.signOut(session, { keepCache: !settled });
+  // The cache goes only if it still holds what the last push sent, checked as it is removed.
+  await account.signOut(session, { sentText: synced ? sentText : null });
   location.reload();
 }
 
@@ -2176,9 +2184,15 @@ function bindAccount() {
   });
   // Another tab signed in to this account saved: merge its copy. Only what the copy lacks is written back
   // (absorbCache), so tabs settle rather than echo each other. Mid-run the merge waits; the save at the
-  // end of the run merges it then.
+  // end of the run merges it then. While this tab follows a sign-out that sent everything, only that
+  // sign-out's removal of the cache matters (finishFollow).
   addEventListener('storage', (event) => {
-    if (!session || signedOutElsewhere || followSessionElsewhere(event)) return;
+    if (!session) return;
+    if (pendingSignOut !== null) {
+      finishFollow(event);
+      return;
+    }
+    if (signedOutElsewhere || followSessionElsewhere(event)) return;
     if (event.key !== account.profileKey(session.user.id)) return;
     if (runInProgress()) cacheWaiting = true;
     else if (absorbCache()) showMerged();
@@ -2186,8 +2200,9 @@ function bindAccount() {
 }
 
 // Another tab signed this account out, either way: keeping unsent edits leaves its marker
-// (account.signedOutKey), and sending everything first removes the device cache (any other removal of
-// the cache, such as cleared site data, counts the same). Or the device now holds another account's
+// (account.signedOutKey), and sending everything first removes the device cache, after a marker naming
+// the copy it sent, which this tab hears first (finishFollow then hears the removal). Any other removal
+// of the cache, such as cleared site data, counts the same. Or the device now holds another account's
 // session. This tab then starts again as the device now is, once any run in progress ends
 // (flushDeferredSync): as a guest, or as whoever has signed in since, the same account included. The run
 // is kept in memory only. A session that only expired (a refused refresh removes the session and nothing
@@ -2203,8 +2218,38 @@ function followSessionElsewhere(event) {
   signedOutElsewhere = true;
   clearTimeout(syncTimer);
   syncTimer = 0;
-  if (!runInProgress()) location.reload();
+  // A sign-out that sent everything removes the cache next: this tab waits to hear it (finishFollow).
+  const sent = event.key === account.signedOutKey(userId) ? sentStamp(event.newValue) : null;
+  if (sent !== null) pendingSignOut = sent;
+  else if (!runInProgress()) location.reload();
   return true;
+}
+
+function sentStamp(markerText) {
+  try {
+    const sent = JSON.parse(markerText)?.sent;
+    return typeof sent === 'string' ? sent : null;
+  } catch {
+    return null;
+  }
+}
+
+// The rest of following a sign-out that sent everything (pendingSignOut). The signing-out tab can't yet
+// see a save made here, or in another tab, just before it removed the cache: the removal names the copy
+// it removed (oldValue), and one that isn't the copy sent goes back for the next sign-in
+// (account.restoreUnsent), together with what this tab last saved or took in (cacheText). Never this
+// tab's memory: a run finished after hearing of the sign-out, or still in progress, stays out. Only
+// storage changes, so this happens mid-run too; the tab then starts again as the device now is once no
+// run is in progress. A cleared storage, or the marker removed without the cache, finishes with nothing
+// to put back.
+function finishFollow(event) {
+  const userId = session.user.id;
+  const cacheRemoved = event.key === account.profileKey(userId) && event.newValue === null;
+  const finished = cacheRemoved || event.key === null || (event.key === account.signedOutKey(userId) && event.newValue === null);
+  if (!finished) return;
+  if (cacheRemoved) account.restoreUnsent(userId, event.oldValue, pendingSignOut, cacheText);
+  pendingSignOut = null;
+  if (!runInProgress()) location.reload();
 }
 
 // Finishes a Google or email-confirmation return; the page reloads as the signed-in user.

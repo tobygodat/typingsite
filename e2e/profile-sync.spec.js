@@ -1,6 +1,7 @@
 // One account in two tabs or on two devices, against the fake Supabase in e2e/fake-supabase.js: a save
 // from a copy that is out of date merges with the other copy instead of replacing it.
 import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys } from './fixtures.js';
+import { textStamp } from '../src/account.js';
 
 test.setTimeout(90000);
 
@@ -1034,3 +1035,92 @@ for (const next of ['second@stilltype.test', EMAIL]) {
     expect(errors).toEqual([]);
   });
 }
+
+// Reads of localStorage across tabs can be milliseconds stale, so a sign-out that sent everything can
+// remove a cache another tab has just saved a run to. This replays one in `page`: it read the cache as
+// `sentText`, and names that copy before removing the session, the cache and its marker, as
+// account.signOut does. Returns the cache's key.
+const staleSignOut = (page, sentText) => page.evaluate((sent) => {
+  const userId = JSON.parse(localStorage.getItem('stilltype-session-v1')).user.id;
+  localStorage.setItem(`stilltype-signed-out:${userId}`, JSON.stringify({ sent }));
+  localStorage.removeItem('stilltype-session-v1');
+  localStorage.removeItem(`stilltype-profile-v2:${userId}`);
+  localStorage.removeItem(`stilltype-signed-out:${userId}`);
+  return `stilltype-profile-v2:${userId}`;
+}, textStamp(sentText));
+
+const cachedText = (page) => page.evaluate(() => {
+  const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-profile-v2:'));
+  return localStorage.getItem(key);
+});
+
+// Two tabs signed in, everything sent; the other tab's pushes then fail (offline, or still waiting on
+// their timer when the sign-out comes). Returns the other tab and the cache as the account has it.
+async function twoTabsSynced(page, context, supabase, errors) {
+  supabase.addUser(EMAIL);
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await chooseWords(page, 10);
+  await expect.poll(() => cloud(supabase)?.preferences.count).toBe(10);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await other.route(/\/rest\/v1\/profiles/, (route) => route.abort());
+  return { other, sentText: await cachedText(page) };
+}
+
+test('a run another tab saved just before a sign-out that sent everything reaches the account at the next sign-in', async ({ page, context, supabase }) => {
+  const errors = [];
+  const { other, sentText } = await twoTabsSynced(page, context, supabase, errors);
+  await finishRun(other);
+  await expect.poll(async () => (await cachedProfile(page))?.runs?.length).toBe(1);
+  const saved = runIds(await cachedProfile(page));
+  expect(runIds(cloud(supabase))).toEqual([]);
+
+  // A sign-out here that read the cache just before that save reached it.
+  const key = await staleSignOut(page, sentText);
+  await page.reload();
+  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+
+  // The other tab heard a copy removed that wasn't the one sent: it puts it back for the next sign-in, with
+  // no session, and starts again as a guest.
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+  await expect.poll(() => storageKeys(page)).toEqual([key]);
+  expect(runIds(await cachedProfile(page))).toEqual(saved);
+  await signInWithEmail(page, EMAIL);
+  await expect.poll(() => runIds(cloud(supabase))).toEqual(saved);
+  expect(errors).toEqual([]);
+});
+
+test('a tab mid-run puts back the run it saved before a sign-out that sent everything, and keeps the run in progress out', async ({ page, context, supabase }) => {
+  const errors = [];
+  const { other, sentText } = await twoTabsSynced(page, context, supabase, errors);
+  await finishRun(other);
+  await expect.poll(async () => (await cachedProfile(page))?.runs?.length).toBe(1);
+  const saved = runIds(await cachedProfile(page));
+  expect(runIds(cloud(supabase))).toEqual([]);
+  await openView(other, 'Practice');
+  const text = await passageText(other);
+  await typeInto(other, text.slice(0, 3));
+  await expect(other.locator('body')).toHaveAttribute('data-running', 'true');
+
+  const key = await staleSignOut(page, sentText);
+  await page.reload();
+  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+
+  // The saved run goes back mid-run (only storage changes), and the run goes on undisturbed.
+  await expect.poll(() => storageKeys(page)).toEqual([key]);
+  expect(runIds(await cachedProfile(page))).toEqual(saved);
+  await expect(other.locator('body')).toHaveAttribute('data-running', 'true');
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'member');
+
+  // Once it ends, the tab starts again as a guest; the run finished after the sign-out stays out.
+  await other.keyboard.type(text.slice(3));
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+  expect(await storageKeys(page)).toEqual([key]);
+  expect(runIds(await cachedProfile(page))).toEqual(saved);
+  await signInWithEmail(page, EMAIL);
+  await expect.poll(() => runIds(cloud(supabase))).toEqual(saved);
+  expect(errors).toEqual([]);
+});
