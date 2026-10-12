@@ -277,7 +277,7 @@ test('a clock running ahead elsewhere can’t move a clear into the future', () 
   const tablet = { id: 'tablet', at: hours(5), textId: 'q-tablet' };
   const laptop = profile({ runs: [item('mine', 1), tablet], seenTextIds: ['q-tablet'], bests: { k: { wpm: 90, attemptId: 'tablet', at: hours(5) } } });
   const cleared = clearProfile(laptop);
-  assert.ok(Date.parse(cleared.historyClearedAt) <= Date.now() + 1000);
+  assert.ok(Date.parse(cleared.historyClearedAt.split('~')[0]) <= Date.now() + 1000);
   assert.deepEqual(cleared.historyClearedIds, [[cleared.historyClearedAt, 'tablet']]);
 
   // A phone with a right clock hadn't heard of the clear: it still holds both, and ran again 2 h later.
@@ -466,7 +466,7 @@ for (const order of ['older undo first', 'newer undo first']) {
     mergeInto(tablet, row); // the tablet applies the phone's clear and holds its unsent run
     assert.deepEqual(runIds(tablet.copy), []);
     row = mergeInto(laptop, row);
-    const afterPhone = new Date(Date.parse(phoneClear.marker) + 60000).toISOString();
+    const afterPhone = new Date(Date.parse(phoneClear.marker.split('~')[0]) + 60000).toISOString();
     laptop.copy = { ...laptop.copy, runs: [...laptop.copy.runs, { id: 'laptop-mid', at: afterPhone }] };
     const laptopClear = clearOn(laptop); // a newer clear
     assert.ok(laptopClear.marker > phoneClear.marker);
@@ -589,6 +589,127 @@ test('randomised: once every clear is undone, every run made anywhere is everywh
           break;
         }
       }
+    }
+  } finally {
+    Date.now = realNow;
+  }
+  assert.deepEqual(failed, []);
+});
+
+test('an undo undoes only its own clear, even when two clears are stamped the same millisecond', () => {
+  const realNow = Date.now;
+  const T0 = Date.UTC(2026, 9, 12, 9, 0);
+  let now = T0;
+  Date.now = () => now;
+  try {
+    const run = (id) => ({ id, at: new Date(now).toISOString() });
+    // A phone whose clock ran a fortnight ahead cleared and undid at once. Its undone marker stays, and
+    // until real time passes it every clear on a device that knows of it is stamped a millisecond after.
+    now = T0 + 14 * 86400e3;
+    const phone = device(profile({ runs: [{ id: 'old', at: minute(0) }] }));
+    undoOn(phone, clearOn(phone));
+    now = T0;
+    const a = device(profile());
+    let row = mergeInto(a, mergeInto(phone, profile()));
+    a.copy = { ...a.copy, runs: [...a.copy.runs, run('a-private')] };
+    row = mergeInto(a, row);
+    const b = device(profile());
+    mergeInto(b, row); // B loads, then pulls nothing more
+
+    // 10:00: A clears on purpose and sends it. 11:00: B clears, and undoes within the toast's seconds.
+    now = T0 + 3600e3;
+    const aClear = clearOn(a);
+    row = mergeInto(a, row);
+    now = T0 + 2 * 3600e3;
+    const bClear = clearOn(b);
+    assert.equal(bClear.marker.split('~')[0], aClear.marker.split('~')[0]);
+    assert.notEqual(bClear.marker, aClear.marker);
+    now += 3000;
+    undoOn(b, bClear);
+    row = mergeInto(b, row);
+    // A's clear still stands: its runs stay out of the row, and A's next pull keeps them out.
+    assert.equal(row.historyClearedAt, aClear.marker);
+    assert.deepEqual(runIds(row), []);
+    assert.deepEqual(runIds(mergeInto(a, row)), []);
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('an undo elsewhere never gives back what a different clear holds here', () => {
+  const realNow = Date.now;
+  const T0 = Date.UTC(2026, 9, 12, 9, 0);
+  let now = T0;
+  Date.now = () => now;
+  try {
+    const run = (id) => ({ id, at: new Date(now).toISOString() });
+    // A tablet whose clock runs a day ahead clears; the row and both devices take it in.
+    now = T0 + 86400e3;
+    const tablet = device(profile());
+    clearOn(tablet);
+    now = T0;
+    const a = device(profile());
+    const b = device(profile());
+    let row = mergeInto(a, tablet.copy);
+    mergeInto(b, row);
+    // B runs and sends; A runs and keeps its run unsent.
+    now = T0 + 3600e3;
+    b.copy = { ...b.copy, runs: [run('b-secret')] };
+    row = mergeInto(b, row);
+    now = T0 + 2 * 3600e3;
+    a.copy = { ...a.copy, runs: [run('a-1')] };
+    // B clears on purpose and sends it; A, which hasn't pulled since, clears minutes later and undoes.
+    now = T0 + 3 * 3600e3;
+    const bClear = clearOn(b);
+    row = mergeInto(b, row);
+    now += 120e3;
+    const aClear = clearOn(a);
+    assert.equal(aClear.marker.split('~')[0], bClear.marker.split('~')[0]);
+    undoOn(a, aClear);
+    row = mergeInto(a, row);
+    assert.equal(row.historyClearedAt, bClear.marker);
+    // B's tab, still open, pulls: its clear stands, and what it holds for it stays held.
+    mergeInto(b, row);
+    assert.deepEqual(runIds(b.copy), []);
+    assert.deepEqual(b.holds[bClear.marker].map(runIds), [['b-secret']]);
+    // Only B's own undo gives it back. A's run, which A held for B's clear as its push merged, follows.
+    undoOn(b, bClear);
+    assert.deepEqual(runIds(b.copy), ['b-secret']);
+    row = mergeInto(b, row);
+    assert.deepEqual(runIds(mergeInto(a, row)), ['a-1', 'b-secret']);
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('randomised, clocks minutes apart: every clear not undone stands everywhere', () => {
+  // Clocks a whole number of minutes apart, so independent clears often share a millisecond.
+  const realNow = Date.now;
+  const failed = [];
+  try {
+    for (let seed = 1; seed <= 400; seed += 1) {
+      const random = seeded(seed);
+      let now = Date.UTC(2026, 9, 1);
+      let current = null;
+      Date.now = () => now + (current?.offset || 0);
+      const devices = [0, 1, 2].map(() => ({ ...device(profile({ preferences: {} })), offset: Math.floor(random() * 5 - 2) * 60000 }));
+      let row = profile({ preferences: {} });
+      let made = 0;
+      for (let step = 0; step < 40; step += 1) {
+        now += 60000;
+        const d = devices[Math.floor(random() * 3)];
+        current = d;
+        const roll = random();
+        if (roll < 0.35) d.copy = { ...d.copy, runs: [...d.copy.runs, { id: `r${made++}`, at: new Date(Date.now()).toISOString() }] };
+        else if (roll < 0.5) clearOn(d);
+        else if (roll < 0.6 && d.clears.length) undoOn(d, d.clears[Math.floor(random() * d.clears.length)]);
+        else if (roll < 0.8) row = mergeInto(d, row);
+        else mergeInto(d, row);
+      }
+      for (let round = 0; round < 3; round += 1) for (const d of devices) { current = d; row = mergeInto(d, row); }
+      const standing = devices.flatMap((d) => d.clears.map((clear) => clear.marker));
+      const newest = standing.sort().at(-1);
+      if (standing.some((marker) => (row.undoneClears || []).includes(marker)) || devices.some((d) => d.copy.historyClearedAt !== newest)) failed.push(seed);
     }
   } finally {
     Date.now = realNow;

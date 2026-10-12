@@ -258,9 +258,9 @@ const storedProfile = (text) => {
 };
 
 // What a sign-out that sent the copy stamped `sent` lost by removing `removedText`, given `savedText`, the
-// copy the tab that heard the removal last saved or took in. Null when the removed copy is the one sent
-// and the saved copy holds nothing it lacks (a stale copy whose runs a clear in the removed one took out
-// holds nothing more). Otherwise the union of both, to keep for the next sign-in.
+// copy the tab that heard the removal last saved, or took in holding all it saved. Null when the removed
+// copy is the one sent and the saved copy holds nothing it lacks (a stale copy whose runs a clear in the
+// removed one took out holds nothing more). Otherwise the union of both, to keep for the next sign-in.
 export function unsentCopy(removedText, sent, savedText) {
   const removed = storedProfile(removedText);
   const saved = storedProfile(savedText);
@@ -284,9 +284,10 @@ export async function fetchCloudProfile(session) {
 }
 
 // An ISO time later than now and than every given stamp, so a device whose clock runs behind still
-// moves a stamp forward rather than writing one that looks older than what it replaces.
+// moves a stamp forward rather than writing one that looks older than what it replaces. A clear marker
+// counts as its time (see clearProfile).
 export function stampAfter(...stamps) {
-  const times = stamps.map((stamp) => Date.parse(stamp) + 1).filter(Number.isFinite);
+  const times = stamps.map((stamp) => Date.parse(typeof stamp === 'string' ? stamp.split('~')[0] : stamp) + 1).filter(Number.isFinite);
   return new Date(Math.max(Date.now(), ...times)).toISOString();
 }
 
@@ -386,13 +387,17 @@ const liveNamed = (pairs, undone, newest) => {
 export const clearedIds = (profile) => new Set(namedPairs(profile).map(([, id]) => id));
 
 // Clear history: every HISTORY collection, the bests and the seen passages (preferences stay). The
-// marker it leaves is this clock's now, moved past any earlier marker (an undone one included, so a new
-// clear never matches an old one). Copies elsewhere drop what they hold from at or before it. A record
-// stamped after it, by a clock running ahead of this one, is named by id instead: taking the latest
-// stamp as the marker would move the marker into the future, where it would also take runs made
-// elsewhere after the clear.
+// marker it leaves is this clock's now, moved past any earlier marker (an undone one included), then `~`
+// and a random id. The marker is the clear's identity: an undo, the pairs it named and the copies held
+// for it all go by it. Its time alone can't be: two devices that clear without syncing in between can
+// stamp the same millisecond (both stepping just past a marker from a clock running ahead), and one's
+// undo would then undo the other's clear. The id sorts it just after its time, so string comparisons
+// with record stamps hold. Copies elsewhere drop what they hold from at or before it. A record stamped
+// after it, by a clock running ahead of this one, is named by id instead: taking the latest stamp as the
+// marker would move the marker into the future, where it would also take runs made elsewhere after the
+// clear.
 export function clearProfile(profile) {
-  const marker = stampAfter(profile.historyClearedAt, ...list(profile.undoneClears));
+  const marker = `${stampAfter(profile.historyClearedAt, ...list(profile.undoneClears))}~${base64url(crypto.getRandomValues(new Uint8Array(6)))}`;
   const ahead = new Set();
   for (const [name, { at }] of Object.entries(HISTORY)) {
     for (const item of list(profile[name])) if ((item[at] || '') > marker && item.id) ahead.add(String(item.id));

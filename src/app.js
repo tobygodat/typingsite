@@ -80,7 +80,8 @@ let unsynced = false;
 let localEdits = 0;
 // The account row's updated_at as last merged here: the version a conditional write expects to replace.
 let lastCloudAt = null;
-// The device cache as this tab last wrote or merged it; different text means another tab wrote since.
+// The device cache as this tab last wrote it, or took it in holding everything this tab had written;
+// different text means another tab wrote since.
 let cacheText = null;
 let lastPull = 0;
 let cacheWaiting = false;
@@ -1814,7 +1815,9 @@ function showMerged() {
 // returns whether it changed, and the caller shows it (showMerged). Writes only to put back what the
 // cache lacks: tabs read and write it separately, so two saves at the same moment can each write a copy
 // read before the other's, leaving out a run that may exist nowhere else yet. A tab holding nothing
-// more than the cache writes nothing, so tabs settle instead of echoing each other.
+// more than the cache writes nothing, so tabs settle instead of echoing each other. If that write is
+// refused (a sign-out elsewhere is under way), cacheText stays this tab's own last write: the copy taken
+// in lacks it, and a repair of the sign-out's removal must still put it back (finishFollow).
 function absorbCache() {
   cacheWaiting = false;
   if (!session || !signedInAs(session.user.id)) return false;
@@ -1823,8 +1826,9 @@ function absorbCache() {
   try {
     const data = JSON.parse(text);
     const changed = absorb(data);
+    const own = cacheText;
     cacheText = text;
-    if (data?.version === 2 && !account.sameProfile(profile, normalizeProfile(data))) storeLocally();
+    if (data?.version === 2 && !account.sameProfile(profile, normalizeProfile(data)) && !storeLocally()) cacheText = own;
     return changed;
   } catch {
     return false;
@@ -2237,11 +2241,11 @@ function sentStamp(markerText) {
 // The rest of following a sign-out that sent everything (pendingSignOut). The signing-out tab can't yet
 // see a save made here, or in another tab, just before it removed the cache: the removal names the copy
 // it removed (oldValue), and one that isn't the copy sent goes back for the next sign-in
-// (account.restoreUnsent), together with what this tab last saved or took in (cacheText). Never this
-// tab's memory: a run finished after hearing of the sign-out, or still in progress, stays out. Only
-// storage changes, so this happens mid-run too; the tab then starts again as the device now is once no
-// run is in progress. A cleared storage, or the marker removed without the cache, finishes with nothing
-// to put back.
+// (account.restoreUnsent), together with what this tab last saved, or took in holding all it saved
+// (cacheText; see absorbCache). Never this tab's memory: a run finished after hearing of the sign-out,
+// or still in progress, stays out. Only storage changes, so this happens mid-run too; the tab then starts
+// again as the device now is once no run is in progress. A cleared storage, or the marker removed
+// without the cache, finishes with nothing to put back.
 function finishFollow(event) {
   const userId = session.user.id;
   const cacheRemoved = event.key === account.profileKey(userId) && event.newValue === null;

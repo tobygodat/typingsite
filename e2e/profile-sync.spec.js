@@ -1124,3 +1124,51 @@ test('a tab mid-run puts back the run it saved before a sign-out that sent every
   await expect.poll(() => runIds(cloud(supabase))).toEqual(saved);
   expect(errors).toEqual([]);
 });
+
+// The same sign-out, but its last push wrote `sentText` over the run `page` had just saved, and `page`'s
+// view of storage runs a step ahead of its events: it already shows the sign-out's marker, though not yet
+// the session's removal, when it hears of that write. Each write is made in `page` and its event then
+// dispatched there in order, as the signing-out tab's would arrive. Returns the cache's key.
+const overwrittenSignOut = (page, sentText) => page.evaluate(({ text, sent }) => {
+  const sessionKey = 'stilltype-session-v1';
+  const sessionText = localStorage.getItem(sessionKey);
+  const userId = JSON.parse(sessionText).user.id;
+  const cacheKey = `stilltype-profile-v2:${userId}`;
+  const markerKey = `stilltype-signed-out:${userId}`;
+  const marker = JSON.stringify({ sent });
+  const saved = localStorage.getItem(cacheKey);
+  const hear = (key, oldValue, newValue) => dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue, storageArea: localStorage }));
+  localStorage.setItem(cacheKey, text);
+  localStorage.setItem(markerKey, marker);
+  hear(cacheKey, saved, text);
+  hear(markerKey, null, marker);
+  localStorage.removeItem(sessionKey);
+  hear(sessionKey, sessionText, null);
+  localStorage.removeItem(cacheKey);
+  hear(cacheKey, text, null);
+  localStorage.removeItem(markerKey);
+  hear(markerKey, marker, null);
+  return cacheKey;
+}, { text: sentText, sent: textStamp(sentText) });
+
+test('a run a sign-out’s last write overwrote, heard with the sign-out under way, reaches the account at the next sign-in', async ({ page, context, supabase }) => {
+  const errors = [];
+  const { other, sentText } = await twoTabsSynced(page, context, supabase, errors);
+  await finishRun(other);
+  await expect.poll(async () => (await cachedProfile(page))?.runs?.length).toBe(1);
+  const saved = runIds(await cachedProfile(other));
+  expect(runIds(cloud(supabase))).toEqual([]);
+  // Only `other` hears the sign-out, so only its repair counts.
+  await page.goto('about:blank');
+
+  const key = await overwrittenSignOut(other, sentText);
+  // It took in the copy that lacked its run but couldn't write the union back (the sign-out had begun):
+  // what it saved still goes back for the next sign-in, and it starts again as a guest.
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+  expect(await storageKeys(other)).toEqual([key]);
+  expect(runIds(await cachedProfile(other))).toEqual(saved);
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await expect.poll(() => runIds(cloud(supabase))).toEqual(saved);
+  expect(errors).toEqual([]);
+});
