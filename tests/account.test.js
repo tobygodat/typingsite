@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  challengeFor, cleanRedirectUrl, freshSession, MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, restoreUnsent, sameSignIn,
-  SESSION_KEY, signedOutKey, signIn, signOut, suggestionRow, textStamp, unsentCopy,
+  challengeFor, cleanRedirectUrl, freshSession, MAX_SUGGESTION, mergeProfiles, mergeSynced, parseAuthRedirect, profileKey, restoreUnsent,
+  sameProfile, sameSignIn, SESSION_KEY, signedOutKey, signIn, signOut, suggestionRow, textStamp, unsentCopy,
 } from '../src/account.js';
 
 test('PKCE challenge matches the RFC 7636 example', async () => {
@@ -333,5 +333,117 @@ test('what a sign-out removed unsent goes back into the cache, merged with anyth
     assert.deepEqual([...store.keys()], [profileKey('u1')]);
   } finally {
     globalThis.localStorage = originalStorage;
+  }
+});
+
+// ── Copies saved by builds from before merging ──────────────────────────
+// Those builds synced whole copies (the copy saved later replaced the other, by updatedAt) and cleared
+// history by saving an empty copy, with no marker. This build's copies carry mergeStamp, the updatedAt
+// it wrote; an older build stamps updatedAt on every save and passes mergeStamp through unchanged.
+const minute = (n) => new Date(Date.UTC(2026, 8, 20, 9, n)).toISOString();
+const record = (id, n) => ({ id, at: minute(n), textId: `t-${id}` });
+const olderBuild = (over = {}) => ({ version: 2, profileId: 'p', preferences: {}, attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, ...over });
+const thisBuild = (over = {}) => ({ ...olderBuild(over), mergeStamp: over.updatedAt });
+const recordIds = (copy) => Object.fromEntries(['attempts', 'runs', 'loops'].map((name) => [name, copy[name].map((item) => item.id)]));
+const best = (id, n, wpm) => ({ k: { wpm, attemptId: id, at: minute(n) } });
+
+test('a clear an older build saved is kept when this build merges an older copy, in either order', () => {
+  // Synced before the clear: two runs, a loop, a best, and a passage shown but never typed.
+  const older = olderBuild({ attempts: [record('r1', 1)], runs: [record('r1', 1), record('r2', 2)], loops: [record('l2', 2)],
+    seenTextIds: ['t-r1', 't-r2', 'shown'], bests: best('r2', 2, 60), updatedAt: minute(3) });
+  for (const cleared of [
+    // Cleared at minute 5 with nothing since (the account row, or the clearing device's cache when its push failed).
+    olderBuild({ updatedAt: minute(5) }),
+    // Cleared, then a slower run at minute 6 on that build.
+    olderBuild({ attempts: [record('r6', 6)], runs: [record('r6', 6)], seenTextIds: ['t-r6'], bests: best('r6', 6, 40), updatedAt: minute(6) }),
+  ]) {
+    for (const merged of [mergeSynced(older, cleared), mergeSynced(cleared, older)]) {
+      assert.deepEqual(recordIds(merged), recordIds(cleared));
+      assert.deepEqual(merged.bests, cleared.bests);
+      assert.deepEqual(merged.seenTextIds, cleared.seenTextIds);
+      assert.ok(sameProfile(mergeSynced(merged, older), merged), 'merging the older copy again changes nothing');
+      assert.ok(sameProfile(mergeSynced(cleared, merged), merged));
+    }
+  }
+});
+
+test('once merged, an older build’s clear keeps out every copy saved before it, as whole-copy sync did', () => {
+  const older = olderBuild({ runs: [record('r1', 1), record('r2', 2)], seenTextIds: ['t-r1', 't-r2'], bests: best('r2', 2, 60), updatedAt: minute(3) });
+  const cleared = olderBuild({ runs: [record('r6', 6)], seenTextIds: ['t-r6'], updatedAt: minute(6) });
+  const saved = mergeSynced(older, cleared);
+  // A third device's copy, older still and holding a run of its own from before the clear.
+  const oldest = olderBuild({ runs: [record('r0', 0), record('r1', 1)], seenTextIds: ['t-r0'], bests: best('r0', 0, 70), updatedAt: minute(2) });
+  // A copy this build saved before the clear, with a run the clearing device never saw.
+  const unsent = thisBuild({ runs: [record('r1', 1), record('r4', 4)], seenTextIds: ['t-r1', 't-r4'], bests: best('r4', 4, 80), updatedAt: minute(4) });
+  for (const copy of [oldest, unsent]) {
+    for (const merged of [mergeSynced(copy, saved), mergeSynced(saved, copy), mergeSynced(mergeSynced(copy, older), saved),
+      mergeSynced(mergeSynced(saved, older), copy)]) {
+      assert.deepEqual(recordIds(merged).runs, ['r6']);
+      assert.deepEqual(merged.bests, {});
+      assert.deepEqual(merged.seenTextIds, ['t-r6']);
+    }
+  }
+  // A save made later by a copy that never heard of the clear replaced it under whole-copy sync, keeping
+  // only its own runs; here it replaces it too, and the run made after the clear stays as well. (A clear
+  // made on this build holds against such a save: see the last test below.)
+  const stale = olderBuild({ ...older, runs: [...older.runs, record('r9', 9)], updatedAt: minute(9) });
+  const offline = thisBuild({ ...older, runs: [...older.runs, record('r8', 8)], updatedAt: minute(8) });
+  for (const [copy, runs] of [[stale, ['r1', 'r2', 'r6', 'r9']], [offline, ['r1', 'r2', 'r6', 'r8']]]) {
+    for (const merged of [mergeSynced(copy, saved), mergeSynced(saved, copy)]) assert.deepEqual(recordIds(merged).runs, runs);
+  }
+});
+
+test('copies that took the same start from an older build’s copy merge as union, seen passages included', () => {
+  const row = mergeSynced(olderBuild({ runs: [record('r1', 1)], seenTextIds: ['t-r1'], updatedAt: minute(2) }),
+    olderBuild({ runs: [record('r1', 1)], seenTextIds: ['t-r1'], updatedAt: minute(2) }));
+  // One tab showed a passage it never typed; the other saved a run later.
+  const shown = { ...row, seenTextIds: [...row.seenTextIds, 'shown'], updatedAt: minute(3), mergeStamp: minute(3) };
+  const ran = { ...row, runs: [...row.runs, record('r4', 4)], seenTextIds: [...row.seenTextIds, 't-r4'], updatedAt: minute(4), mergeStamp: minute(4) };
+  for (const merged of [mergeSynced(shown, ran), mergeSynced(ran, shown)]) {
+    assert.deepEqual(recordIds(merged).runs, ['r1', 'r4']);
+    assert.deepEqual([...merged.seenTextIds].sort(), ['shown', 't-r1', 't-r4']);
+  }
+});
+
+test('a copy this build saved, then an older build cleared and saved, is that build’s clear', () => {
+  const synced = thisBuild({ runs: [record('r1', 1), record('r2', 2)], bests: best('r2', 2, 60), updatedAt: minute(3) });
+  // The older build kept the fields it doesn't know, mergeStamp included, and stamped its own save.
+  const cleared = { ...synced, runs: [], bests: {}, seenTextIds: [], updatedAt: minute(5) };
+  for (const merged of [mergeSynced(synced, cleared), mergeSynced(cleared, synced)]) {
+    assert.deepEqual(merged.runs, []);
+    assert.deepEqual(merged.bests, {});
+  }
+});
+
+test('copies older builds saved with no clear between them keep at least what last-writer-wins kept', () => {
+  // Each device ran once without the other hearing of it. Whole-copy sync kept only the later save's run.
+  const row = olderBuild({ runs: [record('r1', 1), record('r2', 2), record('phone', 4)], updatedAt: minute(5) });
+  const device = olderBuild({ runs: [record('r1', 1), record('r2', 2), record('laptop', 3)], updatedAt: minute(3) });
+  for (const [a, b] of [[row, device], [device, row], [row, { ...device, updatedAt: minute(6) }], [{ ...device, updatedAt: minute(6) }, row]]) {
+    assert.deepEqual(recordIds(mergeSynced(a, b)).runs, ['r1', 'r2', 'laptop', 'phone']);
+  }
+  // This build only removes history with a clear marker: its newer copy lacking a run is no clear.
+  const lacking = thisBuild({ runs: [record('r2', 2), record('later', 7)], updatedAt: minute(7) });
+  for (const merged of [mergeSynced(device, lacking), mergeSynced(lacking, device)]) {
+    assert.deepEqual(recordIds(merged).runs, ['r1', 'r2', 'laptop', 'later']);
+  }
+  // A phone ran offline before the laptop's first run reached the account, and saved last. The account
+  // row (the laptop's) starts later than the phone's runs, but the phone's later save outranks it, as it
+  // did under whole-copy sync, which kept the phone's runs and dropped the laptop's.
+  const laptop = mergeSynced(olderBuild({ runs: [record('l1', 12)], updatedAt: minute(20) }),
+    olderBuild({ runs: [record('l1', 12), record('l2', 26)], updatedAt: minute(26) }));
+  const phone = olderBuild({ runs: [record('p1', 2), record('p2', 5), record('p3', 30)], updatedAt: minute(30) });
+  for (const merged of [mergeSynced(laptop, phone), mergeSynced(phone, laptop)]) {
+    assert.deepEqual(recordIds(merged).runs, ['p1', 'p2', 'l1', 'l2', 'p3']);
+  }
+});
+
+test('a clear made on this build holds against a later save from an older build that never heard of it', () => {
+  const marker = `${minute(5)}~abcdefgh`;
+  const cleared = thisBuild({ historyClearedAt: marker, runs: [record('r6', 6)], updatedAt: minute(6) });
+  const stale = olderBuild({ runs: [record('r1', 1), record('r2', 2), record('r7', 7)], updatedAt: minute(7) });
+  for (const merged of [mergeSynced(cleared, stale), mergeSynced(stale, cleared)]) {
+    assert.deepEqual(recordIds(merged).runs, ['r6', 'r7']);
+    assert.equal(merged.historyClearedAt, marker);
   }
 });

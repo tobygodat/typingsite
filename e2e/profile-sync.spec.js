@@ -586,6 +586,91 @@ test('a row an older build saved later keeps the settings it lacks from the copy
   expect((await cachedProfile(page)).preferences).toMatchObject({ fontSize: '36', numbers: true, paceCaret: 'custom', paceWpm: 120 });
 });
 
+// Builds from before merging synced whole copies (the copy saved later replaced the other) and cleared
+// history by saving an empty copy, with no marker. A copy as one of them saved it: none of the fields
+// only merging writes, and its own updatedAt.
+const MERGE_ONLY = ['preferencesAt', 'mergeStamp', 'legacyClearedAt', 'historyClearedAt', 'appliedClears', 'heardClears',
+  'historyClearedIds', 'undoneClears'];
+const savedByOlderBuild = (data, updatedAt, over = {}) => ({
+  ...Object.fromEntries(Object.entries(data).filter(([key]) => !MERGE_ONLY.includes(key))), ...over, updatedAt,
+});
+const CLEARED = { attempts: [], runs: [], loops: [], seenTextIds: [], bests: {} };
+const seedCache = (page, userId, data) => page.addInitScript(([key, text]) => {
+  if (sessionStorage.getItem('older-copy')) return;
+  sessionStorage.setItem('older-copy', '1');
+  localStorage.setItem(key, text);
+}, [`stilltype-profile-v2:${userId}`, JSON.stringify(data)]);
+
+// A device still on an older build clears history; this build then opens a copy from before the clear.
+for (const where of ['account row', 'device cache']) {
+  test(`a clear an older build saved to the ${where} stays cleared when this build merges a copy from before it`, async ({ page, browser, supabase }) => {
+    const user = supabase.addUser(EMAIL);
+    const errors = [];
+    await openApp(page);
+    await signInWithEmail(page, EMAIL);
+    await finishRun(page);
+    await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
+    await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    const populated = savedByOlderBuild(cloud(supabase), cloud(supabase).updatedAt);
+    const cleared = savedByOlderBuild(populated, new Date().toISOString(), CLEARED);
+    // The clear reached the account, or only the clearing device's cache (its push failed).
+    const [row, cache] = where === 'account row' ? [cleared, populated] : [populated, cleared];
+    supabase.profiles.set(user.id, { data: row });
+    await seedCache(page, user.id, cache);
+    const writes = supabase.writes.length;
+    await page.reload();
+    await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    await expect(page.locator('#best')).toHaveText('No best yet');
+    await openView(page, 'Progress');
+    await expect(page.locator('#progress-empty')).toBeVisible();
+    await expect.poll(() => supabase.writes.length).toBeGreaterThan(writes);
+    expect(runIds(cloud(supabase))).toEqual([]);
+    expect(cloud(supabase).bests).toEqual({});
+
+    // A third device, its copy from before the run and holding an older one: nothing comes back from it.
+    const [run] = populated.runs;
+    const older = { ...run, id: 'older-run', at: new Date(Date.parse(run.at) - 60000).toISOString() };
+    const oldest = savedByOlderBuild(populated, new Date(Date.parse(older.at) + 1000).toISOString(), { attempts: [], runs: [older], bests: {} });
+    const context = await browser.newContext();
+    try {
+      const phone = await extraPage(context, supabase, errors);
+      await seedCache(phone, user.id, oldest);
+      await openApp(phone);
+      await signInWithEmail(phone, EMAIL);
+      await openView(phone, 'Progress');
+      await expect(phone.locator('#progress-empty')).toBeVisible();
+      await phone.evaluate(() => dispatchEvent(new Event('online')));
+      await expect(phone.locator('#account')).toHaveAttribute('data-sync', 'synced');
+      expect(runIds(cloud(supabase))).toEqual([]);
+      expect(runIds(await cachedProfile(phone))).toEqual([]);
+      expect(errors).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test('a clear an older build saved elsewhere withdraws, on return, the drill and retest offered for a cleared run', async ({ page, supabase }) => {
+  const user = supabase.addUser(EMAIL);
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await finishRun(page);
+  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  supabase.profiles.set(user.id, { data: savedByOlderBuild(cloud(supabase), new Date().toISOString(), CLEARED) });
+  const writes = supabase.writes.length;
+  await page.evaluate(() => dispatchEvent(new Event('online')));
+  await expect(page.locator('#best')).toHaveText('No best yet');
+  await expect(page.locator('#skip-to-retest')).toBeDisabled();
+  await expect(page.locator('#start-drill')).toBeDisabled();
+  await expect(page.locator('#result-delta')).toHaveText('No run yet.');
+  await expect.poll(() => supabase.writes.length).toBeGreaterThan(writes);
+  expect(runIds(cloud(supabase))).toEqual([]);
+  expect(runIds(await cachedProfile(page))).toEqual([]);
+});
+
 test('undo brings back a run the clearing device never saw, after another device applied the clear', async ({ page, browser, supabase }) => {
   supabase.addUser(EMAIL);
   const errors = [];
@@ -745,7 +830,7 @@ test('a tab puts back a run that another tab’s write from an older read left o
   // tab's run landed, so its write leaves the run out.
   const now = new Date().toISOString();
   const stale = { ...before, preferences: { ...before.preferences, fontSize: '36' },
-    preferencesAt: { ...before.preferencesAt, fontSize: now }, updatedAt: now };
+    preferencesAt: { ...before.preferencesAt, fontSize: now }, updatedAt: now, mergeStamp: now };
   await other.evaluate(([name, text]) => localStorage.setItem(name, text), [key, JSON.stringify(stale)]);
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   await expect.poll(async () => (await cachedProfile(other)).runs.length).toBe(1);

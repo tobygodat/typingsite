@@ -499,10 +499,40 @@ const fuller = (held, other) => {
     ? { ...kept, firstDailyAttempt: false } : kept;
 };
 
+// Builds from before merging synced whole copies: on load the copy saved later (by updatedAt) replaced
+// the other, and every save replaced the account row. Clear History saved an empty copy, with no marker.
+// Such a build stamps updatedAt on every save and passes through fields it doesn't know, so this build
+// writes mergeStamp with every updatedAt it writes (here and in mergeSynced): a copy whose updatedAt
+// isn't its mergeStamp was last saved by an older build, even one this build had saved before.
+export function stampProfile(profile, at = new Date().toISOString()) {
+  profile.updatedAt = at;
+  profile.mergeStamp = at;
+  return profile;
+}
+const stampOf = (value) => (typeof value === 'string' ? value : '');
+const savedByOlderBuild = (side) => stampOf(side.updatedAt) !== '' && side.mergeStamp !== side.updatedAt;
+
+// The date a copy's history starts: its earliest record or best (an undated one counts as earliest),
+// and no later than its last save.
+function historyStart(side) {
+  let start = stampOf(side.updatedAt);
+  const dates = [...Object.entries(HISTORY).flatMap(([name, { at }]) => list(side[name]).map((item) => item[at])),
+    ...Object.values(side.bests || {}).filter(Boolean).map((best) => best.at)];
+  for (const date of dates) if (stampOf(date) < start) start = stampOf(date);
+  return start;
+}
+
+// Where a copy's history starts, as builds from before merging left it. Their sync let the copy saved
+// later replace the other whole, and all their Clear History left was an empty copy and the runs made
+// since. A copy an older build saved last starts at its earliest record or best; a copy this build saved
+// starts where the copy it last took that from did (legacyClearedAt, carried by every merge).
+const legacyStart = (side) => (savedByOlderBuild(side) ? historyStart(side) : stampOf(side.legacyClearedAt));
+
 // The fields mergeSynced has a rule of its own for. The rest (version, and any field this build
 // doesn't know) are passed through.
 const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 'preferences', 'preferencesAt',
-  'historyClearedAt', 'appliedClears', 'heardClears', 'historyClearedIds', 'undoneClears', 'updatedAt', 'profileId']);
+  'historyClearedAt', 'appliedClears', 'heardClears', 'historyClearedIds', 'undoneClears', 'legacyClearedAt', 'updatedAt',
+  'mergeStamp', 'profileId']);
 
 // Merges another copy of this account's profile (`cloud`: the account row, or another tab's cache) into
 // this device's (`local`). Field by field:
@@ -528,7 +558,15 @@ const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 
 // - undoneClears: union of clears that were undone, which never apply again. Never trimmed: a copy
 //   that applied an old clear and missed its undo must still find it here, and each entry takes a
 //   typed confirmation and an Undo within seconds, so the list stays tiny.
-// - updatedAt: the later of the two (the time of the last saved edit anywhere).
+// - legacyClearedAt: the start (legacyStart) of the copy saved later (updatedAt; for equal saves, the
+//   later start). As builds from before merging let that copy replace the other, the other, if its own
+//   start is earlier, drops its history and bests from at or before that start, and keeps its seen ids
+//   only where its surviving history shows the passage, as for a clear it hadn't applied; the rest of it,
+//   which they dropped too, stays. So a clear made on such a build stands wherever their sync kept it,
+//   and stays: a copy saved before it and merged later is held to it, while a save made later without
+//   hearing of it replaces it, as there. No Undo restores what it drops: the older build offered its
+//   own, in the clearing tab.
+// - updatedAt: the later of the two (the time of the last saved edit anywhere), with mergeStamp.
 // - profileId: the smaller id, so every copy settles on the same one whichever merges first.
 // - version and any field this build doesn't know: from the copy saved later (updatedAt, the only stamp
 //   such a field has), then the value that sorts first, so both sides of a merge keep the same value and
@@ -551,10 +589,17 @@ export function mergeSynced(local, cloud) {
     return shown;
   };
 
-  const surviving = (side, { applied }) => {
-    // Judged by the newest clear standing, unless this side applied it (see clearsOf).
+  const starts = [legacyStart(local), legacyStart(cloud)];
+  const later = compare(stampOf(local.updatedAt), stampOf(cloud.updatedAt)) || compare(starts[0], starts[1]);
+  const legacyAt = later < 0 ? starts[1] : starts[0];
+
+  const surviving = (side, { applied }, saved, start) => {
+    // Judged by the newest clear standing, unless this side applied it (see clearsOf), and, when saved
+    // earlier, by the later start of the copy saved later (legacyClearedAt).
     const stale = Boolean(clearedAt) && !applied.has(clearedAt);
-    const after = (stamp, id) => !namedIds.has(String(id ?? '')) && (!stale || (stamp || '') > clearedAt);
+    const behind = saved < 0 && start < legacyAt;
+    const after = (stamp, id) => !namedIds.has(String(id ?? '')) && (!stale || (stamp || '') > clearedAt)
+      && (!behind || (stamp || '') > legacyAt);
     const kept = {};
     const taken = [];
     for (const [name, { at }] of Object.entries(HISTORY)) {
@@ -566,12 +611,12 @@ export function mergeSynced(local, cloud) {
     kept.rebest = stale || Object.keys(kept.bests).length < bests.length;
     const shown = shownBy(Object.keys(HISTORY).flatMap((name) => kept[name]));
     const gone = shownBy(taken);
-    kept.seenTextIds = list(side.seenTextIds).filter((id) => shown.has(id) || (!stale && !gone.has(id)));
+    kept.seenTextIds = list(side.seenTextIds).filter((id) => shown.has(id) || (!stale && !behind && !gone.has(id)));
     kept.stale = stale;
     return kept;
   };
-  const mine = surviving(local, clears[0]);
-  const theirs = surviving(cloud, clears[1]);
+  const mine = surviving(local, clears[0], later, starts[0]);
+  const theirs = surviving(cloud, clears[1], -later, starts[1]);
 
   const merged = { ...cloud, ...local };
   for (const key of Object.keys(merged)) {
@@ -612,8 +657,11 @@ export function mergeSynced(local, cloud) {
   else delete merged.historyClearedIds;
   if (undone.length) merged.undoneClears = undone;
   else delete merged.undoneClears;
+  if (legacyAt) merged.legacyClearedAt = legacyAt;
+  else delete merged.legacyClearedAt;
   const updatedAt = [local.updatedAt, cloud.updatedAt].filter(Boolean).sort().at(-1);
-  if (updatedAt) merged.updatedAt = updatedAt;
+  if (updatedAt) stampProfile(merged, updatedAt);
+  else delete merged.mergeStamp;
   const profileId = [local.profileId, cloud.profileId].filter(Boolean).sort()[0];
   if (profileId) merged.profileId = profileId;
   return merged;

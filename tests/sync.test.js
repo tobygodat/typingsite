@@ -709,7 +709,7 @@ test('randomised: once every clear is undone, every run made anywhere is everywh
           const id = `r${made.length}`;
           made.push(id);
           const updatedAt = new Date(now - (now % 180000)).toISOString();
-          d.copy = { ...d.copy, runs: [...d.copy.runs, { id, at: new Date(now).toISOString() }], note: { by: n, run: id }, updatedAt };
+          d.copy = { ...d.copy, runs: [...d.copy.runs, { id, at: new Date(now).toISOString() }], note: { by: n, run: id }, updatedAt, mergeStamp: updatedAt };
         } else if (roll < 0.5) clearOn(d);
         else if (roll < 0.6 && d.clears.length) undoOn(d, d.clears[Math.floor(random() * d.clears.length)]);
         else if (roll < 0.8) row = pull(d);
@@ -1118,7 +1118,9 @@ test('randomised: a clear undone leaves every copy as a clear never made would',
 });
 
 test('fields this build does not know, and profiles from older builds, survive a merge', () => {
-  const local = { version: 2, profileId: 'b', preferences: { theme: 'dark' }, attempts: [item('a', 1)], goal: { daily: 10 }, updatedAt: minute(1) };
+  // The attempt postdates the start of the newer copy's history, so no clear there could have taken it
+  // (see the tests of older builds' copies in tests/account.test.js).
+  const local = { version: 2, profileId: 'b', preferences: { theme: 'dark' }, attempts: [item('a', 3)], goal: { daily: 10 }, updatedAt: minute(1) };
   const cloud = { version: 2, profileId: 'a', preferences: { theme: 'light' }, runs: [item('r', 2)], goal: { daily: 5 }, streak: 3, updatedAt: minute(4) };
   const merged = mergeSynced(local, cloud);
   assert.deepEqual(merged.goal, { daily: 5 }, 'a shared unknown field from the copy saved later');

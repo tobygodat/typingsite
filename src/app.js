@@ -124,8 +124,9 @@ let clearTimer = null;
 // A list goes back only with its own clear's undo. In memory only.
 let heldClears = {};
 // The history clears this tab had applied when its training state (baseline, results on show) was last
-// checked against them.
+// checked against them, and where an older build's clear left history starting (legacyClearedAt).
 let trainingClears = account.clearsApplied(profile);
+let trainingLegacyAt = profile.legacyClearedAt || '';
 
 let race = {
   passage: null,
@@ -148,7 +149,7 @@ function saveProfile() {
   unsynced = true;
   localEdits += 1;
   if (cloudChecked) {
-    profile.updatedAt = new Date().toISOString();
+    account.stampProfile(profile);
     clearTimeout(syncTimer);
     syncTimer = setTimeout(pushWhenIdle, 1500);
   }
@@ -1691,7 +1692,8 @@ function forgetTraining() {
 // them as the clearing tab did. Dates are checked against a marker this tab hadn't applied only, so a run
 // made here after this tab knew of a clear is never taken for a cleared one, an older clear back in force
 // after a newer one's undo included. Named records are checked on every merge: no copy keeps one, and an
-// older clear's names can arrive while the newest marker stays the same.
+// older clear's names can arrive while the newest marker stays the same. An older build's clear that
+// arrives (a new legacyClearedAt) took a run dated at or before it only if the merged history lacks it.
 // Never mid-run: flushDeferredSync checks again when the run ends, so a drill then stands alone and a
 // retest makes no comparison with the cleared run.
 function forgetClearedTraining() {
@@ -1699,9 +1701,15 @@ function forgetClearedTraining() {
   const marker = profile.historyClearedAt || null;
   const arrived = marker && !trainingClears.has(marker) ? marker : null;
   trainingClears = account.clearsApplied(profile);
+  const legacyStart = profile.legacyClearedAt || '';
+  const legacyAt = legacyStart !== trainingLegacyAt ? legacyStart : '';
+  trainingLegacyAt = legacyStart;
   if (!baselineAttempt && !lastCompleted) return;
   const named = account.clearedIds(profile);
-  const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id));
+  const takenByLegacy = (record) => Boolean(legacyAt) && (record.at || '') <= legacyAt
+    && !profile.runs.some((run) => run.id === record.id);
+  const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id)
+    || takenByLegacy(record));
   if (!cleared(baselineAttempt) && !cleared(lastCompleted)) return;
   forgetTraining();
   renderTraining();
