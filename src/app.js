@@ -16,7 +16,6 @@ import {
   normalizeManualTarget,
   orderCustomText,
   passageComplete,
-  quickEndApplies,
   recommendTarget,
   refusesSpace,
   replayAttempt,
@@ -298,8 +297,11 @@ function showChrome(shown) {
 
 // The footer best belongs to the session on screen. A custom session (any non-comparable kind) has no best,
 // so it says it isn't counted rather than showing the best for the time or word settings underneath it.
+// A session that keeps its own conditions (the daily, a retest) shows the best for those, whatever the
+// switches say now; practice and drills follow the settings.
 function currentBestKey() {
-  return comparableKind(sessionKind) ? conditionKey(conditions()) : null;
+  if (!comparableKind(sessionKind)) return null;
+  return conditionKey(FIXED_RULE_KINDS.includes(sessionKind) ? sessionConditions(sessionKind) : conditions());
 }
 
 function showBest() {
@@ -565,9 +567,10 @@ function sessionDurationMs(kind = sessionKind) {
 // preferences: a drill started from a words baseline is still a timed minute. quickEnd names why
 // quick end does nothing there ('' when it applies); fixed names a session that keeps the rules it
 // started with (the daily's are set, a retest has to match its baseline, and custom text keeps the defaults).
+const FIXED_RULE_KINDS = ['daily', 'retest', 'custom'];
 function ruleLimits({ kind, run }) {
   return {
-    fixed: ['daily', 'retest', 'custom'].includes(kind) ? kind : '',
+    fixed: FIXED_RULE_KINDS.includes(kind) ? kind : '',
     quickEnd: sessionDurationMs(kind) !== null ? (kind === 'drill' ? 'drill' : 'timed')
       : run.correctionPolicy === 'relaxed' ? '' : 'stopOnError',
   };
@@ -1215,6 +1218,9 @@ function startRetest() {
   resetSession('retest', { focus: true });
 }
 
+// Restores the source's test shape. Strict space and quick end stay as the person set them: a retest
+// takes its baseline's rules in sessionConditions, and a drill follows the switches, so a choice made
+// on the results screen still reaches the next practice run.
 function restoreConditions(source) {
   prefs = {
     ...prefs,
@@ -1227,9 +1233,6 @@ function restoreConditions(source) {
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
     stopOnError: source.correctionPolicy !== 'relaxed',
-    strictSpace: source.strictSpace === true,
-    // Only where quick end is part of the source's key; a timed or stop-on-error run keeps the preference.
-    quickEnd: quickEndApplies(source) ? source.quickEnd !== false : prefs.quickEnd,
   };
   profile.preferences = prefs;
   applyPreferences();

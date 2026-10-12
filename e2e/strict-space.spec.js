@@ -376,13 +376,16 @@ test('a rule changed during a retest keeps the retest on its baseline’s rules'
   await page.emulateMedia({ colorScheme: 'light' });
   await openApp(page);
   await chooseWords(page, 10);
-  await completePassage(page);
+  // Typed at a person's pace, since the baseline's best stays in the footer for the screenshot.
+  await typeInto(page, await passageText(page), '#typing-input', PACE);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await page.locator('#skip-to-retest').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
   await openSettings(page);
   await expect(page.locator('#rules-note')).toHaveText(RETEST_NOTE);
   await page.locator('#strict-space-toggle').check();
   await expect(page.locator('#strict-space-toggle')).toHaveAccessibleDescription(RETEST_NOTE);
+  await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
   await settle(page);
   await page.screenshot({ path: shot(testInfo, 'retest-note-light.png') });
   await page.locator('details.preferences > summary').click();
@@ -398,6 +401,48 @@ test('a rule changed during a retest keeps the retest on its baseline’s rules'
   // The preference waits for the next practice run.
   await page.locator('#run-again').click();
   await expect(page.locator('#condition-line')).toContainText('continue on error · strict space');
+});
+
+test('the footer best follows a waiting retest’s rules, not a rule changed under it', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
+  const best = await page.locator('#best').textContent();
+  await setSwitch(page, 'strict-space-toggle', true);
+  await expect(page.locator('#condition-line')).not.toContainText('strict space');
+  await expect(page.locator('#best')).toHaveText(best);
+  // The next practice run takes strict space, which has no best yet.
+  await completePassage(page);
+  await page.locator('#run-again').click();
+  await expect(page.locator('#condition-line')).toContainText('continue on error · strict space');
+  await expect(page.locator('#best')).toHaveText('No best yet');
+});
+
+test('a rule changed on the results screen outlasts the retest and applies to the next practice run', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await setSwitch(page, 'quick-end-toggle', false);
+  await completePassage(page);
+  await setSwitch(page, 'quick-end-toggle', true);
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  // The retest runs on its baseline's rules; the switch keeps the choice and says why it waits.
+  await expect(page.locator('#condition-line')).toContainText('continue on error · quick end off');
+  await openSettings(page);
+  await expect(page.locator('#quick-end-toggle')).toBeChecked();
+  await expect(page.locator('#rules-note')).toHaveText(RETEST_NOTE);
+  await page.locator('details.preferences > summary').click();
+  await completePassage(page);
+  await expect(page.locator('#result-conditions')).toContainText('continue on error · quick end off');
+  await page.locator('#run-again').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
+  await expect(page.locator('#condition-line')).toContainText('10 words');
+  await expect(page.locator('#condition-line')).not.toContainText('quick end');
+  await openSettings(page);
+  await expect(page.locator('#quick-end-toggle')).toBeChecked();
 });
 
 test('a rule changed on another screen rebuilds the waiting practice passage', async ({ page }) => {
