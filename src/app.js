@@ -123,8 +123,8 @@ let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
-// The open composition (an accent key's mark, or IME text): { type, attempt, refused, replaces }, then
-// once it ends, the { commit, at } still to be scored.
+// The open composition (an accent key's mark, or IME text): { type, attempt, refused, replaces, keyed,
+// leaving }, then once it ends, the { commit, at } still to be scored.
 let composition = null;
 // The last key press was a held accent key repeating; whatever it commits is key repeat, not typing.
 let heldDeadKey = false;
@@ -673,9 +673,16 @@ function typeKeys(keys, type, at = now()) {
   }
 }
 
-// What a composition committed, scored once the task that ended it is over: a browser commits a pending
-// mark as focus moves and blurs the field straight after (Chrome), and a mark pending when focus leaves is
-// dropped. The next key, input or composition on the field scores it first, so keys keep their order.
+// What a composition committed, scored once the key that ended it is known. A mark pending when focus
+// leaves is dropped, and browsers commit it on the way out: Chrome and Firefox send that key (Tab)
+// before compositionend, Safari after it, and Chrome on macOS commits as a click begins, a task before
+// focus moves. So a commit no key came before waits for one, or for the blur. The next key, input or
+// composition on the field scores it first, so keys keep their order.
+const COMMIT_KEY_WAIT_MS = 100;
+// Keys pressed while composing that don't end it: the accent key itself (Safari sends its keydown after
+// the mark shows) and modifiers held for the next letter.
+const COMPOSING_KEYS = new Set(['Dead', 'Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock', 'Fn']);
+
 function scoreCommit(type) {
   const session = composition?.type === type && composition.commit !== null ? composition : null;
   if (!session) return;
@@ -690,7 +697,9 @@ function scoreCommit(type) {
 }
 
 function beforeTypingInput(event, type = 'primary') {
-  scoreCommit(type);
+  const compositionInput = event.inputType?.includes('Composition');
+  // Safari can insert a commit's text after compositionend; that is the commit itself, not a next key.
+  if (!compositionInput) scoreCommit(type);
   if (!acceptingInput(type)) {
     event.preventDefault();
     return;
@@ -700,7 +709,6 @@ function beforeTypingInput(event, type = 'primary') {
     refusePaste(type);
     return;
   }
-  const compositionInput = event.inputType?.includes('Composition');
   // A plain key with isComposing false means the composition ended without compositionend
   // (the field changed under it, or the browser dropped the event): let this key through.
   if (composition?.type === type && !event.isComposing && !compositionInput
@@ -734,7 +742,18 @@ function beforeTypingInput(event, type = 'primary') {
 // An accent key's composition is typed characters, scored after compositionend; a preview or commit
 // that an accent key could not produce is IME text and stops the run counting.
 function wireComposition(input, type) {
+  // Tab commits a pending mark on its way to the next control: dropped, like any mark as focus leaves.
+  const drop = () => {
+    composition = null;
+    const current = inputAttempt(type);
+    if (current) input.value = replayAttempt(current).typed;
+  };
   input.addEventListener('keydown', (event) => {
+    const session = composition?.type === type ? composition : null;
+    if (session?.commit === null) {
+      // Chrome (keyCode 229 on macOS) and Firefox send the key that will end the composition first.
+      if (!COMPOSING_KEYS.has(event.key)) Object.assign(session, { keyed: true, leaving: event.key === 'Tab' });
+    } else if (session && event.key === 'Tab') drop(); // Safari sends it after compositionend
     scoreCommit(type);
     heldDeadKey = event.repeat && event.key === 'Dead';
   });
@@ -744,7 +763,7 @@ function wireComposition(input, type) {
     // An accent key's mark starts as a caret after the typed text. A composition over letters already
     // typed (the macOS press-and-hold accent menu, a keyboard re-composing a word) is not new keys.
     const over = event.data || input.value.slice(input.selectionStart, input.selectionEnd);
-    composition = { type, attempt: inputAttempt(type), refused: false, replaces: over || null, commit: null, at: 0 };
+    composition = { type, attempt: inputAttempt(type), refused: false, replaces: over || null, keyed: false, leaving: false, commit: null, at: 0 };
   });
   input.addEventListener('compositionupdate', (event) => {
     if (composition?.type !== type || composition.refused || composition.attempt !== inputAttempt(type)) return;
@@ -755,11 +774,12 @@ function wireComposition(input, type) {
     }
   });
   input.addEventListener('compositionend', (event) => {
-    if (composition?.type === type) {
-      if (composition.refused || composition.attempt !== inputAttempt(type)) composition = null;
+    const session = composition?.type === type ? composition : null;
+    if (session) {
+      if (session.refused || session.leaving || session.attempt !== inputAttempt(type)) composition = null;
       else {
-        Object.assign(composition, { commit: event.data ?? '', at: now() });
-        setTimeout(() => scoreCommit(type));
+        Object.assign(session, { commit: event.data ?? '', at: now() });
+        setTimeout(() => { if (composition === session) scoreCommit(type); }, session.keyed ? 0 : COMMIT_KEY_WAIT_MS);
       }
     }
     // Hand the field back to the passage once the composition is over (finishing commits a pending mark).

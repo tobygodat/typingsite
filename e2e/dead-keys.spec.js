@@ -19,6 +19,19 @@ async function accentKeys(page) {
     deadKeyRepeat: () => cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222, autoRepeat: true }),
     // The next key commits the open composition; with none open this is plain text (the Windows lane).
     commit: (text) => cdp.send('Input.insertText', { text }),
+    // Chrome on macOS sends the key that ends a composition first, as keyCode 229, then the commit
+    // (render_widget_host_view_cocoa.mm, keyEvent:).
+    async macKey(key, text) {
+      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code: key === 'Tab' ? 'Tab' : '', windowsVirtualKeyCode: 229 });
+      await cdp.send('Input.insertText', { text });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key === 'Tab' ? 'Tab' : '', windowsVirtualKeyCode: 229 });
+    },
+    // Tab with a mark pending, there: the commit comes before the real Tab, which moves focus in a later task.
+    async macTab(mark = '"') {
+      await this.macKey('Tab', mark);
+      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+    },
     preview: (text) => cdp.send('Input.imeSetComposition', { text, selectionStart: [...text].length, selectionEnd: [...text].length }),
     // Composition text over letters already in the field, as the macOS press-and-hold accent menu sends it.
     replace: (text, start, end) => cdp.send('Input.imeSetComposition', { text, selectionStart: [...text].length, selectionEnd: [...text].length, replacementStart: start, replacementEnd: end }),
@@ -60,13 +73,39 @@ const recordHelp = (page) => page.evaluate(() => {
   new MutationObserver(() => window.helpSeen.push(help.textContent)).observe(help, { childList: true, characterData: true, subtree: true });
 });
 
-// Read once the page's pending timers have run: a commit is scored after the task that made it, so a
-// focus change in that task can still drop it.
-const scored = (page) => page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve({
-  correct: document.querySelectorAll('#text-display .char.correct').length,
-  wrong: document.querySelectorAll('#text-display .char.wrong').length,
-  value: document.querySelector('#typing-input').value,
-}))));
+// A commit that no key came before waits this long for one (COMMIT_KEY_WAIT_MS in src/app.js): Safari
+// sends the key that ended a composition after it, and Tab, or focus moving, drops the mark.
+const COMMIT_KEY_WAIT_MS = 100;
+const readScore = (page, wait, display = '#text-display', field = '#typing-input') => page.evaluate(([ms, d, f]) => new Promise((resolve) => setTimeout(() => resolve({
+  correct: document.querySelectorAll(`${d} .char.correct`).length,
+  wrong: document.querySelectorAll(`${d} .char.wrong`).length,
+  value: document.querySelector(f).value,
+}), ms)), [wait, display, field]);
+// Read once a commit's wait is over. Timers run in order of when they are due, so the read is deterministic.
+const scored = (page) => readScore(page, COMMIT_KEY_WAIT_MS + 50);
+// Read after the task that made a commit whose key came first (Chrome, Firefox), without the wait.
+const scoredNow = (page) => readScore(page, 0);
+
+// Safari dispatches composition events before the keydown of the key that caused them (WebKit runs the
+// input method first): the accent key's mark shows, then its keydown; the next key's commit, then its
+// keydown, then any focus change. Chromium has no path that produces this order, so dispatch it.
+const safariOrder = (page, { field = '#typing-input', commit = '"', key = ' ', nextTask = false, focus = null }) => page.evaluate(async (o) => {
+  const input = document.querySelector(o.field);
+  const composition = (type, data) => input.dispatchEvent(new CompositionEvent(type, { bubbles: true, data }));
+  const keydown = (key) => input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key }));
+  const nextTask = () => new Promise((resolve) => setTimeout(resolve));
+  composition('compositionstart', '');
+  composition('compositionupdate', '"');
+  input.value += '"';
+  input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', data: '"', isComposing: true }));
+  keydown('Dead');
+  await nextTask();
+  composition('compositionend', o.commit);
+  if (o.nextTask) await nextTask();
+  if (o.key) keydown(o.key);
+  if (o.focus === 'blur') input.blur();
+  else if (o.focus) document.querySelector(o.focus).focus();
+}, { field, commit, key, nextTask, focus });
 
 const lastStoredAttempt = (page, userId) => page.evaluate((key) => JSON.parse(localStorage.getItem(key)).attempts.at(-1), `stilltype-profile-v2:${userId}`);
 
@@ -493,10 +532,15 @@ test('a mark pending when focus leaves does not start a ready run', async ({ pag
 });
 
 // Each way focus moves to a control on the page with a mark pending. Chrome commits the mark as focus
-// moves, then blurs the field (Tab, a click); Firefox and Safari blur first and commit after.
+// moves, then blurs the field (Tab, a click); on macOS it commits on Tab's first keydown, a task before
+// the Tab that moves focus. Firefox and Safari blur first and commit after.
 const leaveWithMark = {
   tab: async (page) => {
     await page.keyboard.press('Tab');
+    await expect(page.locator('#restart-button')).toBeFocused();
+  },
+  macTab: async (page, keys) => {
+    await keys.macTab();
     await expect(page.locator('#restart-button')).toBeFocused();
   },
   click: async (page) => {
@@ -564,6 +608,63 @@ test('a mark dropped as focus moves mid-run leaves the run as it was', async ({ 
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 });
 
+test('a mark committed a task or more before focus moves (Safari, a click on macOS) is dropped too', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  // Safari sends Tab's keydown after the commit, in the same task or a later one; a click on macOS
+  // commits as it begins, and moves focus a task later.
+  const orders = {
+    safariTab: { key: 'Tab', focus: '#restart-button' },
+    safariTabNextTask: { key: 'Tab', nextTask: true, focus: '#restart-button' },
+    macClick: { key: null, nextTask: true, focus: '.dock-settings' },
+  };
+  const leaveEachWay = async (typed, status) => {
+    for (const [way, order] of Object.entries(orders)) {
+      await page.locator('#typing-input').focus();
+      await safariOrder(page, order);
+      expect(await scored(page), way).toEqual(typed);
+      await expect(page.locator('#typing-status'), way).toHaveText(status);
+      await expect(page.locator('#input-help'), way).toHaveText('');
+    }
+  };
+
+  await leaveEachWay({ correct: 0, wrong: 0, value: '' }, 'Ready');
+  await typeInto(page, text.slice(0, 5));
+  await leaveEachWay({ correct: 5, wrong: 0, value: text.slice(0, 5) }, 'In progress');
+
+  await page.locator('#typing-input').focus();
+  await page.keyboard.type(text.slice(5));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-accuracy')).toHaveText('100');
+  await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
+});
+
+test('a mark is typed as soon as the key that commits it arrives, before or after the commit', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  const text = await quoteWithMarks(page);
+  const at = text.indexOf('"');
+  const pair = text.slice(at, at + 2);
+  const typed = { correct: at + 2, wrong: 0, value: text.slice(0, at + 2) };
+  await typeInto(page, text.slice(0, at));
+
+  // Chrome on macOS: the key, then the commit.
+  await keys.deadKey('"');
+  await keys.macKey(pair[1], pair);
+  expect(await scoredNow(page)).toEqual(typed);
+
+  // Safari: the commit, then the key.
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Backspace');
+  await safariOrder(page, { commit: pair, key: pair[1] });
+  expect(await scoredNow(page)).toEqual(typed);
+
+  await page.keyboard.type(text.slice(at + 2));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
+});
+
 test('an emoji committed through a composition is refused like IME text', async ({ page }) => {
   await openApp(page);
   const keys = await accentKeys(page);
@@ -606,10 +707,10 @@ test('both one-keyboard race players can type with accent keys', async ({ page }
   await expect(page.locator('#race-input')).toBeFocused();
   const text = await page.locator('#race-accessible-passage').textContent();
   expect(text).toContain('"');
-  const raceScored = () => page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve({
-    correct: document.querySelectorAll('#race-text-display .char.correct').length,
-    wrong: document.querySelectorAll('#race-text-display .char.wrong').length,
-  }))));
+  const raceScored = async () => {
+    const { correct, wrong } = await readScore(page, COMMIT_KEY_WAIT_MS + 50, '#race-text-display', '#race-input');
+    return { correct, wrong };
+  };
 
   // A mark pending as the window loses focus (macOS Chrome blurs before it commits) doesn't start the turn.
   await keys.deadKey('"');
@@ -624,6 +725,16 @@ test('both one-keyboard race players can type with accent keys', async ({ page }
   await page.locator('#race-input').focus();
   await keys.deadKey('"');
   await page.keyboard.press('Tab');
+  await expect(page.locator('#race-input')).not.toBeFocused();
+  expect(await raceScored()).toEqual({ correct: 0, wrong: 0 });
+  // Nor one that Tab commits on macOS: Chrome sends Tab before the commit, Safari after it.
+  await page.locator('#race-input').focus();
+  await keys.deadKey('"');
+  await keys.macTab();
+  await expect(page.locator('#race-input')).not.toBeFocused();
+  expect(await raceScored()).toEqual({ correct: 0, wrong: 0 });
+  await page.locator('#race-input').focus();
+  await safariOrder(page, { field: '#race-input', key: 'Tab', nextTask: true, focus: 'blur' });
   await expect(page.locator('#race-input')).not.toBeFocused();
   expect(await raceScored()).toEqual({ correct: 0, wrong: 0 });
   await expect(page.locator('#race-help')).not.toHaveText('Focus lost. Esc to restart this turn.');
