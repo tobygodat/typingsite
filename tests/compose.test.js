@@ -11,6 +11,7 @@ import {
   compositionRecord,
   countCharacters,
   countWords,
+  graphemeCount,
   keyedChange,
   keyedEdit,
   normalizeCompositions,
@@ -171,6 +172,46 @@ test('a key counts only when the field changed by exactly that key; any other ch
   assert.equal(change('then a long walk', 'then walk', 'deleteWordBackward'), null);
   assert.equal(change('Tea', 'Tea', 'insertText', 'a'), null);
   assert.equal(change('Tea', 'Tea', 'deleteContentBackward'), null);
+});
+
+test('Backspace and Delete remove one character; only a word delete may remove up to a word', () => {
+  const change = (before, after, inputType) => keyedChange(before, after, { inputType });
+  // A whole word reported as an ordinary Backspace or Delete is not one key.
+  assert.equal(change('alpha beta', 'alpha ', 'deleteContentBackward'), null);
+  assert.equal(change('alpha beta', ' beta', 'deleteContentForward'), null);
+  assert.equal(change('alpha beta', 'alpha bet', 'deleteContentBackward'), 'delete');
+  assert.equal(change('alpha beta', 'lpha beta', 'deleteContentForward'), 'delete');
+  // Backspace with a selection reports deleteContentBackward and removes the whole selection.
+  assert.equal(change('alpha beta', 'a beta', 'deleteContentBackward'), null);
+  assert.equal(change('alpha beta', 'abeta', 'deleteContentForward'), null);
+  assert.equal(change('ab', '', 'deleteContentBackward'), null);
+  // One character is one grapheme, however many code points it takes, or one part of it.
+  for (const character of ['é', 'é', '😀', '👍🏽', '👨‍👩‍👧', '🇬🇧', '\n', ' ']) {
+    assert.equal(change(`ab${character}`, 'ab', 'deleteContentBackward'), 'delete', JSON.stringify(character));
+    assert.equal(change(`${character}ab`, 'ab', 'deleteContentForward'), 'delete', JSON.stringify(character));
+  }
+  assert.equal(change('aé', 'ae', 'deleteContentBackward'), 'delete', 'just the accent');
+  assert.equal(change('ab😀😀', 'ab', 'deleteContentBackward'), null, 'two emoji');
+  // Ctrl/⌥ word deletes may remove one word, with its spacing, and no more.
+  assert.equal(change('alpha beta', 'alpha ', 'deleteWordBackward'), 'delete');
+  assert.equal(change('alpha beta', ' beta', 'deleteWordForward'), 'delete');
+  assert.equal(change('alpha beta', '', 'deleteWordBackward'), null);
+  assert.equal(change('alpha beta gamma', 'alpha gamma', 'deleteWordForward'), 'delete');
+  // Any other delete type is not a counted key, even when it removes a single character.
+  for (const type of ['deleteSoftLineBackward', 'deleteSoftLineForward', 'deleteHardLineBackward', 'deleteHardLineForward',
+    'deleteEntireSoftLine', 'deleteByCut', 'deleteByDrag', 'deleteContent']) {
+    assert.equal(change('alpha beta', 'alpha bet', type), null, type);
+    assert.equal(change('alpha beta', 'alpha ', type), null, type);
+  }
+});
+
+test('without grapheme segmentation, one character is one code point', () => {
+  assert.equal(graphemeCount('😀', null), 1, 'a surrogate pair is one');
+  assert.equal(graphemeCount('é', null), 1);
+  assert.equal(graphemeCount('ab', null), 2);
+  assert.equal(graphemeCount('é', null), 2);
+  assert.equal(graphemeCount('é'), 1);
+  assert.equal(graphemeCount('👨‍👩‍👧'), 1);
 });
 
 test('too little active typing gives no speed', () => {

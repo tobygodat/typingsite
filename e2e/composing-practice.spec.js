@@ -489,14 +489,37 @@ test('an edit a refusal could not cancel, or one unlike its key, is never saved'
   await expect(page.locator('#compose-history')).toBeHidden();
 });
 
-test('letters, Enter, Backspace, Delete and word deletes at any caret are all scored', async ({ page }) => {
+test('a Backspace or Delete that removes more than one character is never saved', async ({ page }) => {
+  await startPausedClock(page);
+  await openCompose(page);
+  const input = page.locator('#compose-input');
+  const typed = 'The bus came early, so I walked the last bit';
+  const edits = [
+    // An ordinary Backspace at the caret, as the browser reports it, that took a whole word.
+    [typed.slice(0, -'bit'.length), { before: { inputType: 'deleteContentBackward' }, after: { inputType: 'deleteContentBackward' } }],
+    // A Delete with no beforeinput at all that took a selection's worth of letters.
+    [typed.replace('early', 'e'), { after: { inputType: 'deleteContentForward' } }],
+  ];
+  for (const [value, events] of edits) {
+    await typePaced(page, [...typed], 230);
+    await browserEdit(input, value, events);
+    await finishUnsupported(page);
+    await page.locator('#compose-retry').click();
+  }
+
+  await openView(page, 'Progress');
+  await expect(page.locator('#compose-history')).toBeHidden();
+});
+
+test('letters, Enter, Backspace, Delete and word deletes at any caret, emoji included, are all scored', async ({ page }) => {
   await startPausedClock(page);
   await openCompose(page);
   const input = page.locator('#compose-input');
   const word = process.platform === 'darwin' ? 'Alt' : 'Control';
   // Each counted key lands 200 ms after the last; caret moves change nothing and take no time.
+  // An emoji is one character of two code units, and one Backspace takes it away again.
   const steps = [...'Toast with jam', 'Enter', ...'then a long walk.', 'move:ArrowLeft*5', `${word}+Backspace`,
-    'Delete', 'W', `${word}+Delete`, 'move:End', 'x', 'Backspace', ...' home.'];
+    'Delete', 'W', `${word}+Delete`, 'move:End', 'x', 'Backspace', 'insert:😀', 'Backspace', ...' home.'];
   let keystrokes = 0;
   for (const step of steps) {
     if (step.startsWith('move:')) {
@@ -504,7 +527,8 @@ test('letters, Enter, Backspace, Delete and word deletes at any caret are all sc
       for (let index = 0; index < Number(times); index += 1) await page.keyboard.press(key);
       continue;
     }
-    if (step.length === 1) await page.keyboard.type(step);
+    if (step.startsWith('insert:')) await page.keyboard.insertText(step.slice(7));
+    else if (step.length === 1) await page.keyboard.type(step);
     else await page.keyboard.press(step);
     keystrokes += 1;
     await page.clock.runFor(200);
@@ -514,8 +538,8 @@ test('letters, Enter, Backspace, Delete and word deletes at any caret are all sc
   await page.keyboard.press('Control+Enter');
   const activeMs = (keystrokes - 1) * 200;
   await expect(page.locator('#compose-result-heading')).toHaveText(/^Finished after \d+ s$/);
-  await expect(page.locator('#compose-definition')).toContainText(`4 of ${keystrokes} keystrokes were backspace or delete`);
-  await expect(page.locator('#compose-backspace')).toHaveText(String(Math.round((4 / keystrokes) * 100)));
+  await expect(page.locator('#compose-definition')).toContainText(`5 of ${keystrokes} keystrokes were backspace or delete`);
+  await expect(page.locator('#compose-backspace')).toHaveText(String(Math.round((5 / keystrokes) * 100)));
   await expect(page.locator('#compose-characters')).toHaveText(String(text.length));
   await expect(page.locator('#compose-active')).toHaveText((activeMs / 1000).toFixed(1));
   await expect(page.locator('#compose-wpm')).toHaveText(String(Math.round(text.length / 5 / (activeMs / 60_000))));
