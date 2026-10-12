@@ -389,6 +389,51 @@ test('the palette starts the standard test and leaves out the settings it locks'
   await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).toHaveText('current');
 });
 
+test('a custom passage over standard keeps its own condition and never reaches the standard score', async ({ page }) => {
+  const text = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await page.locator('#mode-standard').click();
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await expect(page.locator('#standard-options')).toBeHidden();
+  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'false');
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+
+  // The custom run is built on the person's own settings, not the recipe: no recipe in its key, and the
+  // default correction rule, which the settings show unlocked.
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await expect(page.locator('#condition-line')).toContainText('continue on error');
+  await expect(page.locator('#standard-options')).toBeHidden();
+  await expect(page.locator('#best')).toHaveText('Not counted');
+  await openSettings(page);
+  await expect(page.locator('#stop-on-error-toggle')).toBeEnabled();
+  await expect(page.locator('#stop-on-error-toggle')).not.toBeChecked();
+  await expect(page.locator('.preference-lock').first()).toBeHidden();
+  await page.keyboard.press('Escape');
+
+  await typeInto(page, text);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-conditions')).toContainText('custom text');
+  await expect(page.locator('#result-conditions')).not.toContainText('standard');
+  await expect(page.locator('#run-card-stamp')).toContainText('custom');
+
+  await openView(page, 'Progress');
+  await expect(page.locator('#standard-best')).toHaveText('—');
+  await expect(page.locator('#standard-score-note')).toHaveText(NO_STANDARD_RUNS);
+
+  // Standard again closes the custom passage and locks the recipe's settings.
+  await openView(page, 'Practice');
+  await page.locator('#mode-standard').click();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
+  await expect(page.locator('#best')).toHaveText('No best yet');
+  await openSettings(page);
+  await expect(page.locator('#stop-on-error-toggle')).toBeDisabled();
+  await expect(page.locator('#stop-on-error-toggle')).toBeChecked();
+});
+
 test('the daily challenge keeps its own conditions while standard is selected', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-09-30T12:00:00Z') });
   await openApp(page);
