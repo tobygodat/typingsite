@@ -1,6 +1,7 @@
 // Accounts: Supabase Auth and one row of profile data per user, spoken to over fetch so the app
 // keeps no runtime dependencies. With no session the visitor is a guest and nothing is stored.
 // The publishable key is meant for browsers; row-level security limits every row to its owner.
+import { mergePracticeDays } from './insights.js';
 
 const SUPABASE_URL = 'https://bicbyljexprkaedakofa.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_-JwGKezfGmITUHTITrhsNw_Izw71gdI';
@@ -202,7 +203,8 @@ export function cacheProfile(userId, data) {
   return writeJson(profileKey(userId), data);
 }
 
-// Folds a one-off import (the pre-accounts profile) into a profile: runs and loops by id, the higher best.
+// Folds a one-off import (the pre-accounts profile) into a profile: runs and loops by id, the higher best,
+// and archived practice days by the larger day total (mergePracticeDays), so a day is never counted twice.
 // The base keeps its preferences unless it has no history of its own yet.
 export function mergeProfiles(base, extra) {
   const byId = (items) => [...new Map(items.map((item) => [item.id, item])).values()];
@@ -211,11 +213,13 @@ export function mergeProfiles(base, extra) {
     if (!bests[key] || best.wpm >= bests[key].wpm) bests[key] = best;
   }
   const baseIsNew = base.attempts.length === 0 && base.loops.length === 0 && !base.runs?.length;
+  const runs = byId([...(extra.runs || []), ...(base.runs || [])]);
   return {
     ...base,
     preferences: baseIsNew ? extra.preferences : base.preferences,
     attempts: byId([...extra.attempts, ...base.attempts]),
-    runs: byId([...(extra.runs || []), ...(base.runs || [])]),
+    runs,
+    practiceDays: mergePracticeDays(base, extra, runs),
     loops: byId([...extra.loops, ...base.loops]),
     seenTextIds: [...new Set([...extra.seenTextIds, ...base.seenTextIds])],
     bests,

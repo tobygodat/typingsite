@@ -153,6 +153,26 @@ export function retainHistory(runs, practiceDays = {}) {
   return { runs: retainRuns(runs), practiceDays: Object.fromEntries(kept.map((key) => [key, Math.round(days[key])])) };
 }
 
+// The archive when two copies of a profile meet, given their merged runs (de-duplicated by id). An archived
+// day holds the time of runs that are gone, so it can't be matched by run id, and two copies of one person's
+// history archive the same runs: adding the archives would count those runs twice, and so would keeping one
+// side's archive beside runs the other side still keeps as summaries. What each copy says of a day (its archive
+// plus its own runs that day) is time really practised, and so is the merged runs' time. The day keeps the
+// largest of those, so no run counts twice; its archive is that total less the merged runs' time, which the
+// calendar adds back. An empty copy (a new account) takes the other's archive as it is. The trade-off:
+// different runs that two copies never shared, archived on the same day, count as the larger day, not the sum.
+export function mergePracticeDays(a, b, runs) {
+  const own = (side) => validPracticeDays(side.practiceDays);
+  const total = (side) => addRunTime(own(side), Array.isArray(side.runs) ? side.runs : []);
+  const [first, second, merged] = [total(a), total(b), addRunTime({}, runs)];
+  const days = {};
+  for (const key of [...new Set([...Object.keys(own(a)), ...Object.keys(own(b))])].sort()) {
+    const rest = Math.round(Math.max(first[key] || 0, second[key] || 0) - (merged[key] || 0));
+    if (rest > 0) days[key] = rest;
+  }
+  return days;
+}
+
 export function minutesByDay(runs, practiceDays = {}) {
   const totals = addRunTime({ ...practiceDays }, runs);
   for (const key of Object.keys(totals)) totals[key] /= 60000;

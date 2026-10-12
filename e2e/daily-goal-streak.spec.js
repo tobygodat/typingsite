@@ -239,3 +239,37 @@ test('archived practice days alone can be cleared from Progress or the palette, 
   await expect(practised).toHaveCount(3);
   await expect(page.locator('#clear-history')).toBeEnabled();
 });
+
+// A pre-accounts profile can hold more runs than the summary window. Normalizing it archives the oldest runs'
+// time per day, and that archive must reach the first account with the runs, or the calendar loses those days.
+test('a pre-accounts profile past the summary limit brings its archived practice days into the account', async ({ page, supabase }) => {
+  const user = supabase.addUser('legacy-days@stilltype.test');
+  const now = new Date();
+  const back = (days) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - days, 19, 5);
+  const conditions = { mode: 'time', count: null, duration: 60, punctuation: false, quoteLength: null,
+    difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
+    language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+  const record = (id, at, seconds) => ({ id, at: at.toISOString(), kind: 'test', status: 'complete', conditions, textId: id,
+    fresh: true, interrupted: false, score: { wpm: 72, accuracy: 96 }, elapsedMs: seconds * 1000, errors: 2, target: null,
+    challengeDate: null, patterns: [] });
+  // Twelve one-minute runs twenty days ago, then the newest 1,000 (fifteen seconds each) over the last ten days.
+  const runs = [
+    ...Array.from({ length: 12 }, (_, i) => record(`old-${i}`, new Date(back(20).getTime() + i * 90000), 60)),
+    ...Array.from({ length: 1000 }, (_, i) => record(`new-${i}`, new Date(back(10 - Math.floor(i / 100)).getTime() + (i % 100) * 30000), 15)),
+  ];
+  await page.addInitScript((profile) => {
+    if (sessionStorage.getItem('e2e-seeded')) return;
+    sessionStorage.setItem('e2e-seeded', '1');
+    localStorage.setItem('stilltype-profile-v2', JSON.stringify(profile));
+  }, { version: 2, profileId: 'legacy', preferences: {}, attempts: [], runs, loops: [], seenTextIds: [], bests: {} });
+
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1000);
+  expect(supabase.profileFor(user.email).practiceDays).toEqual({ [dayKey(back(20))]: 12 * 60000 });
+  await openView(page, 'Progress');
+  const days = page.locator('#goal-calendar .goal-day');
+  const archived = days.nth((await days.count()) - 1 - 20);
+  await expect(archived).toHaveAttribute('aria-label', /: 12 min$/);
+  await expect(archived).not.toHaveAttribute('data-level', '0');
+});
