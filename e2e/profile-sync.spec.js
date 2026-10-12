@@ -559,6 +559,33 @@ test('using the custom text already shown keeps it over different text waiting f
   expect(errors).toEqual([]);
 });
 
+// This device chose numbers and a custom pace on a build from before settings were stamped; since then a
+// build from before those settings existed saved the account row. Its later save decides the settings
+// both copies hold, but a setting it lacks comes from the copy that has it, not from a default filled in.
+test('a row an older build saved later keeps the settings it lacks from the copy that has them', async ({ page, supabase }) => {
+  const user = supabase.addUser(EMAIL);
+  const empty = { version: 2, profileId: 'p', attempts: [], runs: [], loops: [], seenTextIds: [], bests: {} };
+  const kept = { ...empty, preferences: { theme: 'system', fontSize: '28', numbers: true, paceCaret: 'custom', paceWpm: 120 },
+    updatedAt: new Date(Date.now() - 3600000).toISOString() };
+  supabase.profiles.set(user.id, { data: { ...empty, preferences: { theme: 'system', fontSize: '36' }, updatedAt: new Date(Date.now() - 60000).toISOString() } });
+  // Kept on this device from an earlier session, and merged with the row at sign-in and on load.
+  await page.addInitScript(([key, text]) => {
+    if (sessionStorage.getItem('e2e-seeded')) return;
+    sessionStorage.setItem('e2e-seeded', '1');
+    localStorage.setItem(key, text);
+  }, [`stilltype-profile-v2:${user.id}`, JSON.stringify(kept)]);
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+
+  await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
+  await expect(page.locator('#condition-line')).toContainText('numbers');
+  await expect(page.locator('#pace-select')).toHaveValue('custom');
+  await expect(page.locator('#pace-label')).toHaveText('pace 120 wpm');
+  await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 })
+    .toMatchObject({ fontSize: '36', numbers: true, paceCaret: 'custom', paceWpm: 120 });
+  expect((await cachedProfile(page)).preferences).toMatchObject({ fontSize: '36', numbers: true, paceCaret: 'custom', paceWpm: 120 });
+});
+
 test('undo brings back a run the clearing device never saw, after another device applied the clear', async ({ page, browser, supabase }) => {
   supabase.addUser(EMAIL);
   const errors = [];

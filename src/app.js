@@ -23,7 +23,7 @@ import {
   characterBreakdown,
   wordHistory,
 } from './typing.js';
-import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
+import { wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
@@ -32,35 +32,13 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { comparableKind, dailyChallengeId, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, settleDailyFirsts, trendRun, validRun, weeklyChange } from './insights.js';
+import { comparableKind, dailyChallengeId, dailyPassage, filterRuns, recurringTargets, runRecord, settleDailyFirsts, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
+import { CUSTOM_ORDERS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
-const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const defaultPreferences = {
-  mode: 'time',
-  duration: 30,
-  count: 25,
-  punctuation: false,
-  numbers: false,
-  quoteLength: 'medium',
-  difficulty: 'any',
-  wordList: DEFAULT_WORD_LIST,
-  fontSize: '28',
-  liveMetrics: false,
-  keyboard: false,
-  stopOnError: false,
-  focusMode: false,
-  theme: 'system',
-  customText: '',
-  customOrder: 'as-written',
-  paceCaret: 'off',
-  paceWpm: 80,
-};
-
-const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
 let customOpen = false;
 
 function customPassage() {
@@ -70,22 +48,6 @@ function customPassage() {
 }
 
 const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
-
-const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
-const clampPace = (value) => Math.min(300, Math.max(10, Math.round(Number(value) || 80)));
-
-function emptyProfile() {
-  return {
-    version: 2,
-    profileId: uid(),
-    preferences: { ...defaultPreferences },
-    attempts: [],
-    runs: [],
-    loops: [],
-    seenTextIds: [],
-    bests: {},
-  };
-}
 
 let storageAvailable = true;
 // No session means guest mode: default settings, and nothing leaves this tab.
@@ -117,37 +79,6 @@ let pendingSignOut = null;
 let sentText = null;
 const PULL_INTERVAL_MS = 15000;
 
-function validPreferences(value) {
-  if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
-  const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
-  value.customText = customTextProblem(customText) ? '' : customText;
-  if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
-  if (!PACE_MODES.includes(value.paceCaret)) value.paceCaret = 'off';
-  value.paceWpm = clampPace(value.paceWpm);
-  return value;
-}
-
-function normalizeProfile(parsed) {
-  if (parsed?.version !== 2) return emptyProfile();
-  const traces = Array.isArray(parsed.attempts) ? parsed.attempts : [];
-  const records = Array.isArray(parsed.runs) ? parsed.runs : traces.map((trace) => {
-    // Older traces did not have wall-clock dates. Preserve unknown dates rather than invent them.
-    const loop = parsed.loops?.find((l) => l.afterAttemptId === trace.id);
-    const best = Object.values(parsed.bests || {}).find((b) => b.attemptId === trace.id);
-    return runRecord(trace, trace.at || loop?.at || best?.at || null);
-  });
-  return {
-    ...emptyProfile(),
-    ...parsed,
-    preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences }),
-    attempts: settleDailyFirsts(traces),
-    runs: retainRuns(settleDailyFirsts(records)),
-    loops: Array.isArray(parsed.loops) ? parsed.loops : [],
-    seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
-    bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
-  };
-}
-
 function loadProfile() {
   if (!session) return emptyProfile();
   cacheText = account.loadCachedProfileText(session.user.id);
@@ -155,9 +86,10 @@ function loadProfile() {
 }
 
 let profile = loadProfile();
-// The preferences in use. profile.preferences is what is stored and synced; merges change only that,
-// and these follow it where that can't disturb a run (followStoredPreferences).
-let prefs = { ...profile.preferences };
+// The preferences in use. profile.preferences is what is stored and synced (only the settings chosen,
+// never a default filled in: see normalizeProfile); merges change only that, and these follow it where
+// that can't disturb a run (followStoredPreferences).
+let prefs = preferencesInUse(profile.preferences);
 // prefs as last committed or followed. A difference is an edit made in this tab.
 let livePreferences = JSON.stringify(prefs);
 let preferencesWaiting = false;
@@ -2048,7 +1980,7 @@ async function pullProfile({ force = false } = {}) {
 
 function adoptProfile(data) {
   profile = normalizeProfile(data);
-  prefs = { ...profile.preferences };
+  prefs = preferencesInUse(profile.preferences);
   livePreferences = JSON.stringify(prefs);
   storeLocally();
   applyPreferences();
@@ -2073,7 +2005,7 @@ async function syncOnLoad() {
       const legacy = account.takeLegacyProfile();
       if (legacy?.version === 2) {
         profile = account.mergeProfiles(profile, normalizeProfile(legacy));
-        prefs = { ...profile.preferences };
+        prefs = preferencesInUse(profile.preferences);
       }
       // Stored and sent before anything re-renders, so the import can't be left half done.
       saveProfile();

@@ -452,7 +452,8 @@ const stampsOf = (side) => (side.preferencesAt && typeof side.preferencesAt === 
 // (edits in the same millisecond, or clocks that each stepped just past the same stamp from a clock
 // running ahead, see stampAfter), and unstamped settings in profiles saved the same moment, go to the
 // value that sorts first, so every copy picks the same one and copies settle. A setting one side lacks
-// (an older build) comes from the side that has it.
+// (an older build) comes from the side that has it, whichever was saved later: reading a copy
+// (normalizeProfile) leaves out what it lacks rather than filling in a default that would count as a choice.
 const valueOrder = (value) => JSON.stringify(value) ?? '';
 // Whether `theirs` wins over `mine` given each one's stamp: the later stamp, then the value that sorts
 // first, so both sides of a merge pick the same one.

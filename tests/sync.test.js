@@ -5,6 +5,7 @@ import {
   sameProfile, stampAfter, undoClearHere, updateCloudProfile,
 } from '../src/account.js';
 import { MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
+import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 import { conditionKey } from '../src/typing.js';
 
 const minute = (n) => new Date(Date.UTC(2026, 9, 1, 12, 0) + n * 60000).toISOString();
@@ -144,6 +145,33 @@ test('equal setting stamps settle on the same value on every copy', () => {
   const older = profile({ preferences: { fontSize: '28' }, preferencesAt: { theme: phone.preferencesAt.theme } });
   assert.equal(mergeSynced(older, phone).preferences.theme, 'dark');
   assert.equal(mergeSynced(phone, older).preferences.theme, 'dark');
+});
+
+// Every caller reads a stored copy with normalizeProfile before merging it (the account row, another tab's
+// cache, the copy kept at sign-out, this tab's own on load), so reading must not give a copy from an older
+// build a setting it lacks: unstamped, that default would outrank a real choice whenever the older copy was
+// saved later.
+test('a setting a copy from an older build lacks comes from the copy that has it, even against a later save', () => {
+  // Chosen on a build from before stamps; a build from before numbers and the pace caret saved later.
+  const chosen = profile({ preferences: { theme: 'system', fontSize: '28', numbers: true, paceCaret: 'custom', paceWpm: 120 }, updatedAt: minute(1) });
+  const older = profile({ preferences: { theme: 'dark', fontSize: '36' }, updatedAt: minute(9) });
+  // Settings both copies hold go to the later save, as before.
+  const expected = { theme: 'dark', fontSize: '36', numbers: true, paceCaret: 'custom', paceWpm: 120 };
+  const settings = (copy) => Object.fromEntries(Object.keys(expected).map((key) => [key, copy.preferences[key]]));
+  // A tab that read the older copy and saved an unrelated edit stores what it read; another tab or the row
+  // reads that in turn.
+  const resaved = normalizeProfile(JSON.parse(JSON.stringify({ ...normalizeProfile(older), updatedAt: minute(10) })));
+  for (const [how, a, b] of [['as stored', chosen, older], ['as read', normalizeProfile(chosen), normalizeProfile(older)],
+    ['read after a save', normalizeProfile(chosen), resaved]]) {
+    const merged = [mergeSynced(a, b), mergeSynced(b, a)];
+    for (const copy of merged) assert.deepEqual(settings(copy), expected, how);
+    assert.ok(sameProfile(merged[0], merged[1]), how);
+    assert.ok(sameProfile(mergeSynced(merged[0], b), merged[0]), how);
+  }
+  // Read, the older copy stores only what it holds, and is used with the default for each setting it lacks.
+  assert.deepEqual(normalizeProfile(older).preferences, { theme: 'dark', fontSize: '36' });
+  assert.deepEqual(settings({ preferences: preferencesInUse(normalizeProfile(older).preferences) }),
+    { theme: 'dark', fontSize: '36', numbers: false, paceCaret: 'off', paceWpm: 80 });
 });
 
 test('two devices that each tried the same daily before merging keep one first attempt', () => {
@@ -651,22 +679,26 @@ const seeded = (seed) => () => {
 
 // Each run also writes a field this build doesn't merge (as a newer build might), saved in three-minute
 // steps so copies often share a save time: both orders of every merge must keep the same value of it,
-// and every copy must end with the same one.
+// and every copy must end with the same one. The first device holds two settings picked on a build from
+// before stamps, which the others' older builds lack; every copy is read as the app reads one
+// (normalizeProfile), and those picks must end up on every copy, whoever saved last.
 test('randomised: once every clear is undone, every run made anywhere is everywhere', () => {
   const realNow = Date.now;
   const failed = [];
   const unordered = [];
+  const lost = [];
+  const picks = { numbers: true, paceCaret: 'custom' };
   try {
     for (let seed = 1; seed <= 400; seed += 1) {
       const random = seeded(seed);
       let now = Date.UTC(2026, 9, 1);
       Date.now = () => now;
-      const devices = [0, 1, 2].map(() => device(profile({ preferences: {} })));
+      const devices = [picks, {}, {}].map((preferences) => device(normalizeProfile(profile({ preferences }))));
       let row = profile({ preferences: {} });
       const made = [];
       const pull = (d) => {
         if (passThrough(mergeSynced(d.copy, row)) !== passThrough(mergeSynced(row, d.copy)) && !unordered.includes(seed)) unordered.push(seed);
-        return mergeInto(d, row);
+        return mergeInto(d, normalizeProfile(row));
       };
       for (let step = 0; step < 40; step += 1) {
         now += 60000;
@@ -692,12 +724,14 @@ test('randomised: once every clear is undone, every run made anywhere is everywh
           break;
         }
       }
+      if ([row, ...devices.map((d) => d.copy)].some((copy) => Object.entries(picks).some(([key, value]) => copy.preferences[key] !== value))) lost.push(seed);
     }
   } finally {
     Date.now = realNow;
   }
   assert.deepEqual(failed, []);
   assert.deepEqual(unordered, []);
+  assert.deepEqual(lost, []);
 });
 
 test('an undo undoes only its own clear, even when two clears are stamped the same millisecond', () => {

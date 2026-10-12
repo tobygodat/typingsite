@@ -67,6 +67,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `src/insights.js`: compact run summaries, bounded pattern memory, condition/period filters, weekly medians, recurring targets and frozen daily text selection.
 - `src/progress-view.js`: keyboard-accessible WPM/accuracy charts; presentational only.
 - `src/app.js`: orchestration — screen state, input handling, preferences and theme, history, local challenge, palette commands and the ghost toggle.
+- `src/profile.js`: the stored profile's shape — setting defaults and `normalizeProfile`, which every stored copy goes through before use or a merge. A copy keeps only the settings it holds (never a default filled in, which a merge couldn't tell from a choice); `preferencesInUse` adds the defaults where settings are used.
 - `src/motion.js`: caret, line scroll and ghost pacer (presentational).
 - `e2e/`: Playwright browser verification (`playwright.config.js`); `e2e/fake-supabase.js` stands in for Supabase.
 - `scripts/measure-latency.mjs`: standalone Chromium browser event-to-paint benchmark for an exclusive desktop session.
