@@ -11,6 +11,14 @@ async function member(browser, supabase, email) {
   return { context, page };
 }
 
+// Create is a request: the click returns before the reply, and the share field is empty until it lands.
+async function createGuestRace(page) {
+  await page.locator('#create-online-race').click();
+  const field = page.locator('#online-guest-link');
+  await expect(field).toHaveValue(/#race=[0-9a-f-]+&invite=[0-9a-f]+$/);
+  return field.inputValue();
+}
+
 async function race(host, guest) {
   await host.locator('#online-ready').click();
   await guest.locator('#online-ready').click();
@@ -154,6 +162,8 @@ test('after a race either player can race again against the same opponent, and a
   await page.locator('#online-invite-email').fill('lin@stilltype.test');
   await page.locator('#online-save-friend').uncheck();
   await page.locator('#create-online-race').click();
+  // The room opens only once the service has created it.
+  await expect(page.locator('#online-room')).toBeVisible();
   const first = [...supabase.races.rooms.values()][0];
   const { context, page: lin } = await member(browser, supabase, 'lin@stilltype.test');
   try {
@@ -226,8 +236,7 @@ test('a guest races again with the same seat and no new link', async ({ page, br
   await signInWithEmail(page, 'host@stilltype.test');
   await openView(page, 'Challenge');
   await page.locator('#online-name').fill('Ada');
-  await page.locator('#create-online-race').click();
-  const link = await page.locator('#online-guest-link').inputValue();
+  const link = await createGuestRace(page);
   const context = await browser.newContext();
   const guest = await context.newPage();
   await supabase.attach(guest);
@@ -255,8 +264,7 @@ test('a guest’s rematch toast goes away when the host cancels the rematch', as
   await signInWithEmail(page, 'host@stilltype.test');
   await openView(page, 'Challenge');
   await page.locator('#online-name').fill('Ada');
-  await page.locator('#create-online-race').click();
-  const link = await page.locator('#online-guest-link').inputValue();
+  const link = await createGuestRace(page);
   const context = await browser.newContext();
   const guest = await context.newPage();
   await supabase.attach(guest);
