@@ -115,6 +115,23 @@ test('Watch replay plays the run the results show, not a drill whose retest was 
   await expect(page.locator('#replay-dialog')).toBeHidden();
 });
 
+test('a custom run keeps no trace, so it offers no replay; the next counted run does again', async ({ page }) => {
+  const custom = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(custom);
+  await page.locator('#custom-use').click();
+  await typeInto(page, custom);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toContainText('not counted toward your best');
+  await expect(page.locator('#watch-replay')).toBeHidden();
+
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect(page.locator('#watch-replay')).toBeVisible();
+});
+
 test('replay controls wrap inside the dialog at phone width', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
   await finishWithCorrectedMiss(page);
