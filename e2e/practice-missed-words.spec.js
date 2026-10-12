@@ -65,12 +65,50 @@ test('missed and slowest words become their own uncounted practice run', async (
   await expect(page.locator('#run-card-stamp')).toContainText('missed');
   // The retest it offers keeps the 10-word baseline's shape.
   await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 10-word retest.');
-  // A fast practice run on short words must not become a personal best.
-  await expect(page.locator('#best')).toHaveText(best);
+  // Word practice has no best of its own, so the footer says it isn't counted.
+  await expect(page.locator('#best')).toHaveText('Not counted');
+  // A practice run is never mined for words of its own: Run again repeats its passage.
+  await expect(page.locator('#practice-words')).toBeHidden();
+  await expect(page.locator('#practice-words-evidence')).toBeHidden();
   // Run again stays on the same practice passage.
   await page.locator('#run-again').click();
   await expect(page.locator('#session-kicker')).toHaveText('missed words');
   expect((await passageText(page)).split(' ')).toEqual(practice);
+  // A fast practice run on short words must not become a personal best. Going to Practice leaves word
+  // practice for the 10-word test, whose best is unchanged.
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await expect(page.locator('#session-kicker')).toHaveText('practice');
+  await expect(page.locator('#condition-line')).toContainText('10 words');
+  await expect(page.locator('#best')).toHaveText(best);
+});
+
+test('custom text offers no word practice, and word practice closes the custom editor', async ({ page }) => {
+  await finishWithTwoMisses(page);
+  await expect(page.locator('#practice-words')).toBeVisible();
+
+  // The custom editor is open when word practice starts from the Train view.
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await page.locator('.nav-item[data-nav="results"]').click();
+  await page.locator('#practice-words').click();
+  await expect(page.locator('#session-kicker')).toHaveText('missed words');
+  await expect(page.locator('#custom-options')).toBeHidden();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+
+  // A custom run with the same kind of slip is never mined for words to practise.
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await page.locator('#mode-custom').click();
+  const text = 'the quick brown fox jumps over the lazy dog';
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await typeWithMisses(page, text, [1, 3], 60);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
+  await expect(page.locator('#result-words .word-miss').first()).toBeVisible();
+  await expect(page.locator('#practice-words')).toBeHidden();
+  await expect(page.locator('#practice-words-evidence')).toBeHidden();
 });
 
 test('after a timed test, the practice run lasts until its passage is typed', async ({ page }) => {

@@ -148,6 +148,93 @@ export function printable(text) {
   return typeof text === 'string' && text.length > 0 && !/[\r\n]/u.test(text);
 }
 
+// Custom text is held to the passage alphabet: printable ASCII, which every corpus passage uses and an
+// English keyboard types one key at a time without an input method. Each letter is then one UTF-16 unit,
+// which is how replay indexes the passage. About ten minutes of typing: each keystroke replays the whole
+// run, so a longer passage makes late keys lag (measured: ~2 ms per key at 3,000 characters, ~9 ms at 9,000).
+export const CUSTOM_MAX = 3000;
+const TYPABLE = /^[\x20-\x7E]$/;
+
+// Smart punctuation becomes ASCII; NFKC folds compatibility forms (full-width letters, ligatures, no-break
+// spaces); invisible code points go (every default-ignorable, such as ZWSP, ZWJ, CGJ, variation selectors,
+// bidi marks, soft hyphens and BOM, plus control characters); accents on Latin letters fold away (é → e);
+// whitespace collapses. Anything left outside the alphabet is for untypableCharacter to refuse. The cap
+// applies last, so a saved passage is stable across reloads; pass max = Infinity to measure the full text.
+export function normalizeCustomText(value, max = CUSTOM_MAX) {
+  return String(value || '')
+    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+    .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .replace(/\u2026/g, '...')
+    .normalize('NFKC')
+    .replace(/[\t\n\v\f\r\u0085\u2028\u2029]/g, ' ')
+    .replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, '')
+    .normalize('NFD')
+    .replace(/([\x20-\x7E])[\u0300-\u036F]+/g, '$1')
+    .normalize('NFC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max)
+    .trim();
+}
+
+// Shuffled order uses every word once, so it is exactly as long as the source. Random order samples with
+// replacement, so it draws only from words that still fit the source length (and the cap) and stops when
+// none do: a long word drawn twice can't push the run past what was validated, and an unlucky draw can't
+// end the passage early.
+export function orderCustomText(text, order = 'as-written', random = Math.random) {
+  if (!text) return text;
+  const words = text.split(' ');
+  if (order === 'shuffled') {
+    for (let i = words.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(random() * (i + 1));
+      [words[i], words[j]] = [words[j], words[i]];
+    }
+    return words.join(' ');
+  }
+  if (order !== 'random') return text;
+  const limit = Math.min(text.length, CUSTOM_MAX);
+  const picked = [];
+  let length = -1;
+  let fitting = words;
+  for (;;) {
+    const budget = limit - length - 1;
+    let word = fitting[Math.floor(random() * fitting.length)];
+    // The budget only shrinks, so words are dropped from the pool once and the draw stays uniform over what fits.
+    if (word.length > budget) {
+      fitting = fitting.filter((candidate) => candidate.length <= budget);
+      if (!fitting.length) break;
+      word = fitting[Math.floor(random() * fitting.length)];
+    }
+    picked.push(word);
+    length += 1 + word.length;
+  }
+  return picked.join(' ');
+}
+
+// The first character outside the passage alphabet, or null when every letter can be typed.
+export function untypableCharacter(text) {
+  for (const char of text) if (!TYPABLE.test(char)) return char;
+  return null;
+}
+
+// A passage needs enough typing to time: the clock starts on the first key, so one letter finishes at the
+// instant it starts. Built-in passages are at least 10 words because they are counted and compared; custom
+// text never is, so a short phrase is enough.
+export const CUSTOM_MIN_WORDS = 2;
+export const CUSTOM_MIN_CHARS = 10;
+
+// Why a normalised custom text can't be used yet, or null. Pass normalizeCustomText(value, Infinity), so an
+// over-long text is reported rather than cut.
+export function customTextProblem(text) {
+  if (!text) return { kind: 'empty' };
+  const char = untypableCharacter(text);
+  if (char) return { kind: 'untypable', char };
+  if (text.length < CUSTOM_MIN_CHARS || text.split(' ').length < CUSTOM_MIN_WORDS) return { kind: 'short' };
+  if (text.length > CUSTOM_MAX) return { kind: 'long', length: text.length };
+  return null;
+}
+
 export function replayAttempt(attempt) {
   let typed = '';
   let insertions = 0;
