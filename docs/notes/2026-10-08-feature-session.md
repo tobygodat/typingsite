@@ -324,7 +324,7 @@ The handoff carries the migrations, the bugs found on master, the merge rules an
 
 **#59 friends bests (stacked on #51)**
 - Bests come from the run summaries since the board's clear, the same runs as the week's practice, not from the profile's bests (`summary`, `src/friends-board.js:379-380` on #59). Profile bests are wpm-only and follow the profile's history, not the board's clear.
-- Eligible runs: completed, uninterrupted test or retest runs in time, words or quote mode, dated and within the service's limits (`shareableBest`, `src/friends-board.js:41`).
+- Eligible runs: completed, uninterrupted test or retest runs on fresh text (`fresh !== false`; a run saved before runs recorded it counts as fresh) in time, words or quote mode, dated and within the service's limits (`shareableBest`, `src/friends-board.js:50`, since ec93bc3). #43 adds the same freshness rule to `trendRun`, so the board and personal bests then agree.
 - At most 16 shapes, the keys this build can compare first (`MAX_SHAPES`, `:18`; `shapeBests`, `:54`). A best's date runs from 2026-01-01 to tomorrow on the service's clock (`:21`, `:60`); the service checks the same (`20261009150000_friends_bests.sql:63`).
 - `shapeOf` (`src/friends-board.js:104-120`) lists a key only if it has 11 parts, each a value this build writes. The option lists (`TEST_DURATIONS`, `TEST_COUNTS`, `QUOTE_LENGTHS`, `QUOTE_DIFFICULTIES`, `INPUT_CLASSES`, `CORRECTION_POLICIES`) now live in `src/typing.js:311-316`. A unit test checks index.html's quote filters against `QUOTE_LENGTHS` and `QUOTE_DIFFICULTIES`, and its word lists against `wordListIds` (`tests/friends-bests.test.js:159-165`). The handoff's merge rules list the PRs that change the key, and #32's policies.
 - **Changes to #51's client:**
