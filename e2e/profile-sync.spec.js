@@ -486,6 +486,45 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
   });
 }
 
+// Picking a custom pace when another pace is shown picks the pace alone: no speed was on show, so the
+// speed another tab chose for its custom pace stays.
+test('picking pace caret custom (from off) during a retest keeps the custom speed another tab chose', async ({ page, context, supabase }) => {
+  supabase.addUser(EMAIL);
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  await chooseWords(page, 10);
+  await typeInto(page, await passageText(page));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+
+  await openSettings(other);
+  await other.locator('#pace-select').selectOption('custom');
+  await other.locator('#pace-wpm').fill('120');
+  await other.locator('#pace-wpm').press('Tab');
+  await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 }).toMatchObject({ paceCaret: 'custom', paceWpm: 120 });
+  await expect(page.locator('#pace-select')).toHaveValue('off');
+
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('pace caret: custom');
+  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('pace caret: custom');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#palette')).toBeHidden();
+  await typeInto(page, await passageText(page));
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+
+  await expect(page.locator('#pace-select')).toHaveValue('custom');
+  await expect(page.locator('#pace-label')).toHaveText('pace 120 wpm');
+  await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 }).toMatchObject({ paceCaret: 'custom', paceWpm: 120 });
+  await expect(other.locator('#pace-wpm')).toHaveValue('120');
+  expect(errors).toEqual([]);
+});
+
 test('using the custom text already shown keeps it over different text waiting from another tab', async ({ page, context, supabase }) => {
   const MINE = 'the quick brown fox jumps over the lazy dog';
   const THEIRS = 'pack my box with five dozen liquor jugs today';
@@ -845,6 +884,48 @@ test('an older clear that names the run on show withdraws its drill and retest u
   await expect(page.locator('#skip-to-retest')).toBeDisabled();
   await expect(page.locator('#start-drill')).toBeDisabled();
   await expect(page.locator('#result-delta')).toHaveText('No run yet.');
+});
+
+// A tab answers to every clear it has applied, not only its newest. Once a newer clear is undone, a run
+// it made after an older clear (stamped before that clear by a clock running behind the clearing one)
+// stays, and so do its drill and retest.
+test('a newer clear undone elsewhere leaves the run on show made after an older clear this tab applied', async ({ page, supabase }) => {
+  const user = supabase.addUser(EMAIL);
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  const row = () => supabase.profiles.get(user.id);
+  const pull = async (data) => {
+    row().data = data;
+    row().updated_at = new Date().toISOString().replace('Z', '+00:00');
+    await page.evaluate(() => dispatchEvent(new Event('online')));
+  };
+
+  // A laptop whose clock runs an hour ahead clears; this tab applies it. A desktop that had applied it
+  // clears too, stamped just past it; this tab applies that as well.
+  const ahead = Date.now() + 3600000;
+  const older = `${new Date(ahead).toISOString()}~laptop01`;
+  await pull({ ...row().data, historyClearedAt: older });
+  await expect.poll(async () => (await cachedProfile(page))?.historyClearedAt).toBe(older);
+  const newer = `${new Date(ahead + 1).toISOString()}~desktop1`;
+  await pull({ ...row().data, historyClearedAt: newer, appliedClears: [older] });
+  await expect.poll(async () => (await cachedProfile(page))?.historyClearedAt).toBe(newer);
+
+  // This tab finishes a run, stamped before the laptop's marker by its own clock, and sends it.
+  await finishRun(page);
+  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
+  const [run] = runIds(cloud(supabase));
+
+  // The desktop undoes its clear, and its copy reaches the row: the laptop's clear is the one in force.
+  const { appliedClears, ...rest } = row().data;
+  expect(appliedClears).toEqual([older]);
+  await pull({ ...rest, historyClearedAt: older, undoneClears: [newer], runs: [], attempts: [], bests: {}, seenTextIds: [] });
+  await expect.poll(async () => (await cachedProfile(page))?.historyClearedAt).toBe(older);
+  expect(runIds(await cachedProfile(page))).toEqual([run]);
+  await expect.poll(() => runIds(cloud(supabase))).toEqual([run]);
+  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect(page.locator('#result-delta')).not.toHaveText('No run yet.');
 });
 
 test('a clear in another tab during a retest applies when it ends, with no comparison to the cleared run', async ({ page, context, supabase }) => {

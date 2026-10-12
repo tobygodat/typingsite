@@ -191,8 +191,9 @@ let clearTimer = null;
 // before it, so its Undo from any tab brings all of it back (account.mergeAndHold): { [marker]: [copy, …] }.
 // A list goes back only with its own clear's undo. In memory only.
 let heldClears = {};
-// The history clear this tab's training state (baseline, results on show) was last checked against.
-let trainingClear = profile.historyClearedAt || null;
+// The history clears this tab had applied when its training state (baseline, results on show) was last
+// checked against them.
+let trainingClears = account.clearsApplied(profile);
 
 let race = {
   passage: null,
@@ -970,10 +971,13 @@ function armPace() {
 }
 
 // A pick, even of the pace shown, is stamped (saveChoice), so a different one waiting from elsewhere
-// doesn't replace it when a drill or retest ends. A custom pace keeps the speed shown with it.
-function setPaceCaret(mode) {
+// doesn't replace it when a drill or retest ends. The custom speed is stamped only when it was on show:
+// typed in (`speed`), or kept by picking custom again. Picking custom from another pace shows a speed
+// nobody chose here, so a speed chosen elsewhere outranks it.
+function setPaceCaret(mode, { speed = false } = {}) {
+  const speedShown = speed || (mode === 'custom' && prefs.paceCaret === 'custom');
   prefs.paceCaret = mode;
-  saveChoice('paceCaret', ...(mode === 'custom' ? ['paceWpm'] : []));
+  saveChoice('paceCaret', ...(speedShown ? ['paceWpm'] : []));
   armPace();
 }
 
@@ -1752,16 +1756,17 @@ function forgetTraining() {
 
 // A clear made in another tab or on another device arrives as stored data only. When it covers the
 // baseline or the run on show, as a merge into a copy that hadn't heard of it decides, this tab forgets
-// them as the clearing tab did. Dates are checked against a newly arrived marker only, so a run made here
-// after this tab knew of it is never taken for a cleared one. Named records are checked on every merge:
-// no copy keeps one, and an older clear's names can arrive while the newest marker stays the same.
+// them as the clearing tab did. Dates are checked against a marker this tab hadn't applied only, so a run
+// made here after this tab knew of a clear is never taken for a cleared one, an older clear back in force
+// after a newer one's undo included. Named records are checked on every merge: no copy keeps one, and an
+// older clear's names can arrive while the newest marker stays the same.
 // Never mid-run: flushDeferredSync checks again when the run ends, so a drill then stands alone and a
 // retest makes no comparison with the cleared run.
 function forgetClearedTraining() {
   if (runInProgress()) return;
   const marker = profile.historyClearedAt || null;
-  const arrived = marker !== trainingClear ? marker : null;
-  trainingClear = marker;
+  const arrived = marker && !trainingClears.has(marker) ? marker : null;
+  trainingClears = account.clearsApplied(profile);
   if (!baselineAttempt && !lastCompleted) return;
   const named = account.clearedIds(profile);
   const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id));
@@ -1777,7 +1782,7 @@ function clearHistory() {
   profile = account.clearProfile(profile);
   clearedAt = profile.historyClearedAt;
   heldClears = account.joinHolds(heldClears, { [clearedAt]: [normalizeProfile(JSON.parse(clearSnapshot))] });
-  trainingClear = clearedAt;
+  trainingClears = account.clearsApplied(profile);
   forgetTraining();
   const saved = saveProfile();
   $('clear-dialog').close();
@@ -2447,7 +2452,7 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
-  $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(event.target.value); setPaceCaret('custom'); });
+  $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(event.target.value); setPaceCaret('custom', { speed: true }); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
