@@ -215,6 +215,49 @@ test('an interrupted or touch ghost race is not sent and can be raced again; the
   await expect(page.locator('#inbox-list [data-kind="challenge-result"]')).toContainText(/^Ada’s 8-word run: /);
 });
 
+test.describe('on a touch screen', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  // Tapping Race again focuses the input, which can reopen the software keyboard with no tap on the
+  // input itself; the retry is still a touch run. A key press still starts a physical-keyboard one.
+  test('a tap on Race again or Run again starts a touch attempt, so a touch retry is sent', async ({ page, supabase }) => {
+    const ada = supabase.addUser('ada@stilltype.test');
+    const lin = supabase.addUser('lin@stilltype.test');
+    const passage = 'river light patient words carry the quiet home';
+    const challenge = supabase.challenges.seed(ada.id, lin.id, { name: 'Ada', label: 'Lin', passage,
+      conditions: { mode: 'words', count: 8, punctuation: false, wordList: '200', correctionPolicy: 'relaxed', inputClass: 'touch' },
+      trace: steadyTrace(passage, 140) });
+    await openApp(page);
+    await signInWithEmail(page, 'lin@stilltype.test');
+    await expect(page.locator('#challenge-toast')).toBeVisible({ timeout: 12000 });
+    await page.locator('#challenge-toast-close').tap();
+    await page.locator('#inbox-trigger').tap();
+    await page.locator('#inbox-list [data-inbox-action="challenge"]').tap();
+    await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
+    await page.locator('#typing-input').tap();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await page.keyboard.type(passage.slice(0, 6), { delay: 110 });
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await page.keyboard.type(passage.slice(6), { delay: 60 });
+    await expect(page.locator('#ghost-result-heading')).toHaveText('Interrupted, so not sent.');
+
+    await page.locator('#ghost-result-action').tap();
+    await expect(page.locator('#typing-input')).toBeFocused();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await page.keyboard.type(passage, { delay: 110 });
+    await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Ada sees this result in their inbox too.');
+    await expect(page.locator('#result-conditions')).toContainText('touch input');
+    expect(challenge.result.wpm).toBeGreaterThan(30);
+
+    // The plain Run again shares the reset: a tap starts touch, Esc from a keyboard starts physical.
+    await page.locator('#run-again').tap();
+    await expect(page.locator('#typing-input')).toBeFocused();
+    await expect(page.locator('#condition-line')).toContainText('touch input');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+  });
+});
+
 test('at 320 px a long sender name wraps, a corrected slip onto ö is still sent, inbox polls keep focus and the race ends a retest cycle', async ({ page, supabase }) => {
   const name = 'christopher.montgomery12';
   const sender = supabase.addUser(`${name}@stilltype.test`);

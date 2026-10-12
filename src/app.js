@@ -124,6 +124,8 @@ let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
+// What the person last acted with: a pointer type, or 'keyboard' (see bindEvents).
+let lastInput = '';
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
@@ -549,6 +551,10 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     profile.seenTextIds.push(passage.challengeId);
     saveProfile();
   }
+  // A tap on Restart, Run again or Race again focuses the input, which can reopen the software keyboard
+  // with no tap on the input, so it starts a touch attempt as a tap on the input does. A key or a mouse
+  // click starts a physical-keyboard one, as before; otherwise the last attempt's input carries over.
+  const touch = lastInput === 'touch' || (!['keyboard', 'mouse'].includes(lastInput) && attempt?.conditions?.inputClass === 'touch');
   attempt = createAttempt({
     id: uid(),
     text: passage.text,
@@ -556,6 +562,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     kind: kind === 'practice' ? 'test' : kind,
     conditions: kind === 'daily' ? dailyConditions() : kind === 'challenge' ? ghostConditions() : conditions(),
   });
+  if (touch) attempt.conditions.inputClass = 'touch';
   if (kind === 'challenge') attempt.challengeId = ghostRace.id;
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;
@@ -2126,6 +2133,12 @@ function bindEvents() {
   $('typing-input').addEventListener('blur', () => setCapsWarning(false));
   $('typing-input').addEventListener('paste', (event) => { event.preventDefault(); refusePaste('primary'); });
   $('typing-input').addEventListener('drop', (event) => event.preventDefault());
+  // Keys typed into a text field may come from a software keyboard, so only Esc or a key elsewhere
+  // (Enter on a button, a switch) marks a physical keyboard.
+  document.addEventListener('pointerdown', (event) => { lastInput = event.pointerType; }, true);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' || !event.target.matches?.('textarea, input:not([type="checkbox"])')) lastInput = 'keyboard';
+  }, true);
   $('typing-input').addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'touch' && attempt?.status === 'ready') {
       attempt.conditions.inputClass = 'touch';
