@@ -547,6 +547,110 @@ test('a composition dropped without compositionend frees the field for the next 
   expect(await scored(page)).toEqual({ correct: at + 4, wrong: 0, value: text.slice(0, at + 4) });
 });
 
+// A browser can end a composition without compositionend and send what it commits as plain text. Setting
+// the field mid-composition ends one that way here; the plain text after it stands for that commit.
+const loseCompositionEnd = (page, field = '#typing-input') => page.evaluate((f) => { document.querySelector(f).value = 'zz'; }, field);
+
+test('when compositionend is lost, an accent key’s commit still types and an input method’s is refused', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+
+  // An accent key's mark: the plain text after it is typed, and the run counts.
+  const quote = await quoteWithMarks(page);
+  const mark = quote.indexOf('"');
+  await typeInto(page, quote.slice(0, mark));
+  await keys.deadKey('"');
+  await loseCompositionEnd(page);
+  await keys.commit('"');
+  expect(await scored(page)).toEqual({ correct: mark + 1, wrong: 0, value: quote.slice(0, mark + 1) });
+  await expect(page.locator('#input-help')).toHaveText('');
+  await typeWithAccentKeys(page, keys, quote, mark + 1);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).not.toHaveText('Interrupted · not counted');
+
+  // Pinyin previews n, and space commits 你 as plain text: that is the input method's commit, not a key.
+  await page.locator('#run-again').click();
+  await chooseWords(page, 10);
+  const ways = {
+    commit: async () => {
+      await keys.processKey('KeyN');
+      await keys.preview('n');
+      await loseCompositionEnd(page);
+      await keys.processKey('Space');
+      await keys.commit('你');
+    },
+    // A backspace in between deletes a letter as usual; the text after it is still the commit.
+    backspace: async () => {
+      await keys.preview('n');
+      await loseCompositionEnd(page);
+      await page.keyboard.press('Backspace');
+      await keys.commit('你');
+    },
+  };
+  for (const [way, commit] of Object.entries(ways)) {
+    await page.locator('#typing-input').focus();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#typing-status'), way).toHaveText('Ready');
+    const text = await passageText(page);
+    await typeInto(page, text.slice(0, 3));
+    await commit();
+    await expect(page.locator('#input-help'), way).toHaveText(IME_NOTICE);
+    const kept = way === 'backspace' ? 2 : 3;
+    expect(await scored(page), way).toEqual({ correct: kept, wrong: 0, value: text.slice(0, kept) });
+  }
+
+  // The run no longer counts.
+  const text = await passageText(page);
+  await page.keyboard.type(text.slice(2));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
+});
+
+test('an input method’s composition dropped as focus leaves still has its plain commit refused', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  await chooseWords(page, 10);
+  const ready = async (way) => {
+    await page.locator('#typing-input').focus();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#typing-status'), way).toHaveText('Ready');
+  };
+
+  // Chrome commits the preview as focus moves, then blurs the field: dropped, and the next key types.
+  await ready('commit on the way out');
+  const text = await passageText(page);
+  await keys.preview('n');
+  await page.locator('#restart-button').focus();
+  await page.locator('#typing-input').focus();
+  await page.keyboard.type(text[0]);
+  expect(await scored(page)).toEqual({ correct: 1, wrong: 0, value: text[0] });
+  await expect(page.locator('#input-help')).toHaveText('');
+
+  // The window loses focus first (macOS Chrome), or the field does, with the composition still open; its
+  // compositionend never comes, and its commit arrives as plain text.
+  const ways = {
+    window: async () => {
+      await keys.preview('n');
+      await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+      await loseCompositionEnd(page);
+      await keys.commit('你');
+    },
+    field: async () => {
+      await keys.preview('n');
+      await loseCompositionEnd(page);
+      await page.locator('#restart-button').focus();
+      await page.locator('#typing-input').focus();
+      await keys.commit('你');
+    },
+  };
+  for (const [way, leave] of Object.entries(ways)) {
+    await ready(way);
+    await leave();
+    await expect(page.locator('#input-help'), way).toHaveText(IME_NOTICE);
+    expect(await scored(page), way).toEqual({ correct: 0, wrong: 0, value: '' });
+  }
+});
+
 test('a composition over letters already typed (press-and-hold accents) does not type them again', async ({ page }) => {
   await openApp(page);
   const keys = await accentKeys(page);

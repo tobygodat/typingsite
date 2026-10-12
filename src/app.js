@@ -152,6 +152,9 @@ let liveSecond = -1;
 // leaving, repeated, heldMark, key (Dead if an accent key's keydown opened it), mark (the first thing it
 // showed) }, then once it ends, the { commit, at } still to be scored.
 let composition = null;
+// An input method's composition (no accent key opened it) that was let go while still open: its
+// compositionend never came, or focus left first. The browser may yet send its commit as plain text.
+let lostComposition = null;
 // The last key press was a held accent key repeating, and it is still down: { mark } it shows (null if
 // unknown). A composition that repeat opens is key repeat too (repeated), and so is plain text it sends
 // (Windows). Forgotten when the field can no longer hear the key let go (blur, finish, restart).
@@ -782,6 +785,27 @@ function scoreCommit(type) {
   if (type === 'primary') finishIfTimeUp();
 }
 
+// A composition's end: what it committed is scored once the key that ended it is known, unless it was
+// refused already or left with Tab. The field goes back to the passage.
+function endComposition(session, commit, type, input) {
+  if (session.refused || session.leaving || session.attempt !== inputAttempt(type)) composition = null;
+  else {
+    composition = Object.assign(session, { commit: commit ?? '', at: now() });
+    setTimeout(() => { if (composition === session) scoreCommit(type); }, session.keyed ? 0 : COMMIT_KEY_WAIT_MS);
+  }
+  const current = inputAttempt(type);
+  if (current) input.value = replayAttempt(current).typed;
+}
+
+// Stops following a composition before its compositionend. An accent key's pending mark is just dropped;
+// an input method's that is still open is kept (lostComposition), so the plain text it may commit later
+// is still that input method's.
+function forgetComposition(type) {
+  if (composition?.type !== type) return;
+  if (composition.commit === null && !accentComposition({ key: composition.key, preview: composition.mark })) lostComposition = composition;
+  composition = null;
+}
+
 // A Windows accent mark scored without the key it waited for (keys, given when that key's input came), as
 // a commit is: together, at the mark's time, so on the last letter the passage can't end between them.
 function scoreAccentPair(type, keys = null) {
@@ -813,9 +837,10 @@ function beforeTypingInput(event, type = 'primary') {
     return;
   }
   // A plain key with isComposing false means the composition ended without compositionend
-  // (the field changed under it, or the browser dropped the event): let this key through.
+  // (the field changed under it, or the browser dropped the event): let this key through, unless the
+  // composition was an input method's (its commit, below).
   if (composition?.type === type && !event.isComposing && !compositionInput
-    && (event.inputType === 'insertText' || event.inputType?.startsWith('delete'))) composition = null;
+    && (event.inputType === 'insertText' || event.inputType?.startsWith('delete'))) forgetComposition(type);
   // Composition text is scored once, after compositionend; until then the field is the browser's.
   if (compositionInput || event.isComposing || composition?.type === type) return;
   if (event.inputType?.startsWith('delete')) {
@@ -830,6 +855,16 @@ function beforeTypingInput(event, type = 'primary') {
   }
   if (event.inputType !== 'insertText' || !event.data || /[\r\n]/u.test(event.data)) return;
   event.preventDefault();
+  // The first text after an input method's composition that ended unseen is what it committed (Pinyin's
+  // 你 after n), scored as that commit: refused, as after compositionend, and never typed as a key.
+  const lost = lostComposition?.type === type ? lostComposition : null;
+  if (lost) {
+    lostComposition = null;
+    if (lost.attempt === inputAttempt(type)) {
+      endComposition(lost, event.data, type, event.target);
+      return;
+    }
+  }
   // One key, or an accent mark and the letter it couldn't combine with (Windows sends both).
   const keys = [...event.data].length === 1 ? [event.data] : composedKeys(event.data);
   if (!keys) {
@@ -911,6 +946,8 @@ function wireComposition(input, type) {
     afterAccent = false;
     scoreCommit(type);
     scoreAccentPair(type);
+    // A new composition: the one that ended unseen sent no commit as plain text.
+    if (lostComposition?.type === type) lostComposition = null;
     if (!acceptingInput(type)) { composition = null; return; }
     // An accent key's mark starts as a caret after the typed text. A composition over letters already
     // typed (the macOS press-and-hold accent menu, a keyboard re-composing a word) is not new keys.
@@ -936,17 +973,11 @@ function wireComposition(input, type) {
   input.addEventListener('compositionend', (event) => {
     // Safari sends the accent key's keydown inside its composition.
     afterAccent = false;
-    const session = composition?.type === type ? composition : null;
-    if (session) {
-      if (session.refused || session.leaving || session.attempt !== inputAttempt(type)) composition = null;
-      else {
-        Object.assign(session, { commit: event.data ?? '', at: now() });
-        setTimeout(() => { if (composition === session) scoreCommit(type); }, session.keyed ? 0 : COMMIT_KEY_WAIT_MS);
-      }
-    }
+    // One let go first ends here after all: what it commits now is dropped, as when focus leaves.
+    if (lostComposition?.type === type) lostComposition = null;
     // Hand the field back to the passage once the composition is over (finishing commits a pending mark).
-    const current = inputAttempt(type);
-    if (current) input.value = replayAttempt(current).typed;
+    if (composition?.type === type) endComposition(composition, event.data, type, input);
+    else if (inputAttempt(type)) input.value = replayAttempt(inputAttempt(type)).typed;
   });
   // Focus moving anywhere drops a mark still pending, or committed on the way out, whichever comes first.
   // A held accent key is let go out of the field's hearing; if it is still down when focus returns, its
@@ -955,7 +986,7 @@ function wireComposition(input, type) {
     heldDeadKey = null;
     lastKey = null;
     afterAccent = false;
-    if (composition?.type === type) composition = null;
+    forgetComposition(type);
     if (accentPair?.type === type) accentPair = null;
   });
 }
@@ -1394,7 +1425,7 @@ function navigate(view) {
 // this check (macOS Chrome blurs the window first; opening commands moves focus), which would start a
 // ready run in the background.
 function markInterrupted(message) {
-  if (composition?.type === 'primary') composition = null;
+  forgetComposition('primary');
   // A timed run past its limit (its finish can wait for a commit made in time) is over, not interrupted.
   finishIfTimeUp();
   if (attempt?.status !== 'running' || attempt.interrupted) return;
@@ -1406,7 +1437,7 @@ function markInterrupted(message) {
 }
 
 function markRaceInterrupted() {
-  if (composition?.type === 'race') composition = null;
+  forgetComposition('race');
   if (race.attempt?.status !== 'running' || race.attempt.interrupted) return;
   race.attempt.interrupted = true;
   race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
