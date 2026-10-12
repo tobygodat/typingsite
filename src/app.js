@@ -1534,11 +1534,19 @@ function raceStillBest() {
   return Boolean(raceTarget) && profile.bests[raceTarget.key]?.attemptId === raceTarget.trace.id;
 }
 
+// Whether the prepared race is still what the profile offers: the same best, on keystrokes it still keeps.
+// Newer history from the account can keep the best but no longer keep its keystrokes.
+function raceTargetCurrent() {
+  const option = raceTarget ? raceableBest(profile, raceTarget.key) : null;
+  return Boolean(option?.available) && option.trace.id === raceTarget.trace.id;
+}
+
 // Before a race is prepared (again): when newer history from the account has replaced its best, it races
 // the best that history holds for those conditions, or goes back to practice if there is none it can
-// race, with a note either way. A race under way is never changed (still run); see raceResult.
+// race (no best, or no keystrokes kept for it), with a note either way. A race under way is never
+// changed (still run); see raceResult.
 function refreshRaceTarget() {
-  if (!raceTarget || raceStillBest()) return;
+  if (!raceTarget || raceTargetCurrent()) return;
   const option = raceableBest(profile, raceTarget.key);
   if (option.available) {
     raceTarget = { ...raceTarget, best: option.best, trace: option.trace, track: ghostTrack(option.trace) };
@@ -1550,7 +1558,8 @@ function refreshRaceTarget() {
 }
 
 // The finish against the raced best. If newer history from the account replaced that best mid-race,
-// the race ran on unchanged, but it isn't compared with a run that is no longer your best.
+// the race ran on unchanged, but it isn't compared with a run that is no longer your best. A best that
+// stays but whose keystrokes are no longer kept is still your best, so the race is compared with it.
 function raceResult(completed) {
   return raceOutcome(raceTarget?.trace, completed, { replaced: Boolean(raceTarget) && !raceStillBest() });
 }
@@ -1828,7 +1837,7 @@ function adoptProfile(data) {
   if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice');
   // A race nobody has started is prepared again against the adopted best (resetSession checks it). One
   // under way runs on (raceResult); one left on another screen gives way to practice on the way back.
-  else if (sessionKind === GHOST_RACE && attempt?.status === 'ready' && document.body.dataset.view === 'practice' && !raceStillBest()) resetSession(GHOST_RACE);
+  else if (sessionKind === GHOST_RACE && attempt?.status === 'ready' && document.body.dataset.view === 'practice' && !raceTargetCurrent()) resetSession(GHOST_RACE);
 }
 
 // The newer of the device cache and the account row wins; the other side is brought up to date.

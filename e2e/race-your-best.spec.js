@@ -31,9 +31,10 @@ function seedBest(supabase, email, best, { traceKept = true } = {}) {
 const cachedProfile = (page, id) => page.evaluate((key) => JSON.parse(localStorage.getItem(key)), `stilltype-profile-v2:${id}`);
 
 // Another device wrote the account row after this one cached it: a different best, or no history at all.
-async function newerAccountRow(page, supabase, user, best = null) {
+// traceKept false: the same best, whose keystrokes slower runs there have pushed out of the kept traces.
+async function newerAccountRow(page, supabase, user, best = null, { traceKept = true } = {}) {
   const cachedAt = (await cachedProfile(page, user.id)).updatedAt;
-  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: best ? [best] : [],
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: best && traceKept ? [best] : [],
     runs: best ? [runRecord(best)] : [], loops: [], seenTextIds: best ? [best.textId] : [],
     bests: best ? { [conditionKey(best.conditions)]: { wpm: best.summary.score.wpm, attemptId: best.id, at: best.at } } : {},
     updatedAt: new Date(Date.parse(cachedAt) + 60000).toISOString() } });
@@ -380,6 +381,32 @@ test('a newer account row with no best cancels a race nobody has started, with a
   const saved = await cachedProfile(page, user.id);
   expect(saved.bests).toEqual({});
   expect(saved.runs.filter((run) => run.kind === 'ghost-race')).toEqual([]);
+});
+
+test('a newer account row that keeps the same best but not its keystrokes cancels a race nobody has started', async ({ page, supabase }) => {
+  const best = bestTrace('best-a');
+  const user = seedBest(supabase, 'evicted-later@stilltype.test', best);
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await newerAccountRow(page, supabase, user, best, { traceKept: false });
+  const release = await reloadHoldingAccountRow(page);
+
+  await openView(page, 'Progress');
+  await page.locator('#progress-race-start').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
+  await expect(page.locator('#accessible-passage')).toHaveText(TEXT);
+  release();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  // The best is unchanged, but the race would replay keystrokes the account no longer keeps.
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
+  await expect(page.locator('#race-toast')).toBeVisible();
+  await expect(page.locator('#race-feedback')).toHaveText(`Race cancelled: your account’s newer history has a ${best.summary.score.wpm} wpm best here whose keystrokes are no longer kept.`);
+  await expect(page.locator('#text-display .ghost-caret')).toHaveClass(/is-hidden/);
+  await expect(page.locator('#accessible-passage')).not.toHaveText(TEXT);
+  const saved = await cachedProfile(page, user.id);
+  expect(saved.bests[conditionKey(words10)].attemptId).toBe('best-a');
+  expect(saved.attempts).toEqual([]);
 });
 
 test('a race under way when a newer account row arrives runs on unchanged and is not compared with a replaced best', async ({ page, supabase }) => {
