@@ -81,6 +81,39 @@ test('off by default: unseen quotes come first, and an exhausted pool says it is
   await expect(page.locator('#palette-list')).not.toContainText('repeat quotes');
 });
 
+test('custom text is never labelled repeated text, keeps its passage when repeats change and stays out of Progress', async ({ page }) => {
+  const text = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await page.locator('#mode-quote').click();
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+  // A custom passage is never fresh, but it is its own session, not a repeat.
+  await expect(page.locator('#condition-line')).toHaveText(/^custom text · /);
+  await expect(page.locator('#input-help')).toHaveText('');
+
+  await setRepeats(page, true);
+  await page.keyboard.press('Escape');
+  expect(await passageText(page)).toBe(text);
+  await expect(page.locator('#condition-line')).toHaveText(/^custom text · /);
+  await expect(page.locator('#input-help')).toHaveText('');
+
+  // The same text twice: still never "repeated text", never chasing a passage best.
+  for (let i = 0; i < 2; i += 1) {
+    await typeInto(page, text);
+    await expect(page.locator('#result-conditions')).toHaveText(/^custom text · /);
+    await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
+    if (i === 0) {
+      await page.locator('#run-again').click();
+      expect(await passageText(page)).toBe(text);
+    }
+  }
+
+  await openView(page, 'Progress');
+  await expect(page.locator('#progress-empty')).toBeVisible();
+  await expect(page.locator('#run-history .run-row')).toHaveCount(0);
+});
+
 test('on: a seen quote can return to chase its score, but never sets a best, a baseline or a trend point', async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   await page.emulateMedia({ colorScheme: 'dark' });

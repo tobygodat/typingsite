@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, summarizePatterns } from '../src/typing.js';
-import { filterRuns, freshBests, passageBest, practiceRun, recurringTargets, trendRun, weeklyChange } from '../src/insights.js';
+import { NON_COMPARABLE_KINDS, filterRuns, freshBests, passageBest, practiceRun, recurringTargets, trendRun, weeklyChange } from '../src/insights.js';
 
 const bucket = quoteCorpus.filter((q) => q.difficulty === 'gentle' && q.text.split(/\s+/).length <= 30).map((q) => q.id);
 const quote = (overrides) => selectPassage({ mode: 'quote', quoteLength: 'short', difficulty: 'gentle', ...overrides });
@@ -120,4 +120,31 @@ test('a best that an exhausted quote pool set before repeat quotes falls back to
   assert.deepEqual(freshBests(legacy, [exhausted]), { other: elsewhere }, 'with no fresh run saved, the best goes');
   const honest = { [key]: { wpm: 70, attemptId: 'fresh', at: fresh.at } };
   assert.deepEqual(freshBests(honest, [fresh, exhausted]), honest, 'a best set by fresh text is kept as stored');
+});
+
+test('custom text is excluded by kind as well as by freshness: never listed, trended, chased or a best', () => {
+  const customConditions = { ...conditions, mode: 'custom', quoteLength: null, difficulty: null, customOrder: 'as-written' };
+  const custom = (id, wpm) => summary(id, { kind: 'custom', textId: null, fresh: false, conditions: customConditions, score: { wpm, accuracy: 99 }, patterns: undefined });
+  const earlier = custom('custom-1', 120);
+  const now = custom('custom-2', 90);
+  assert.equal(practiceRun(now), false);
+  assert.equal(trendRun(now), false);
+  assert.equal(passageBest([earlier, now], now), null, 'a custom run has no passage best to chase');
+  const key = conditionKey(customConditions);
+  assert.deepEqual(freshBests({ [key]: { wpm: 120, attemptId: 'custom-1', at: earlier.at } }, [earlier, now]), {});
+
+  // The gate reads comparableKind, so any kind added to NON_COMPARABLE_KINDS drops out of all four at once.
+  const fresh = summary('fresh-retest', { kind: 'retest' });
+  const later = summary('later-retest', { kind: 'retest', fresh: false });
+  assert.equal(trendRun(fresh), true);
+  NON_COMPARABLE_KINDS.add('retest');
+  try {
+    assert.equal(practiceRun(fresh), false);
+    assert.equal(trendRun(fresh), false);
+    assert.equal(passageBest([fresh, later], later), null);
+    assert.deepEqual(freshBests({ [conditionKey(conditions)]: { wpm: 99, attemptId: 'later-retest', at: later.at } }, [fresh, later]), {});
+  } finally {
+    NON_COMPARABLE_KINDS.delete('retest');
+  }
+  assert.equal(trendRun(fresh), true);
 });
