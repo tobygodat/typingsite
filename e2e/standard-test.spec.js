@@ -144,7 +144,7 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await expect(page.locator('#standard-median')).toHaveText('—');
   await expect(page.locator('#standard-median + span')).toBeHidden();
   await expect(page.locator('#standard-median-label')).toHaveText('median');
-  await expect(page.locator('#standard-score-note')).toHaveText('Only 1 standard run so far. The median appears after 3, so a single fast or slow run can’t set your score.');
+  await expect(page.locator('#standard-score-note')).toHaveText('1 standard run kept. The median appears after 3, so a single fast or slow run can’t set your score.');
   await expect(page.locator('#standard-score-conditions')).toHaveText(`${RECIPE} · physical keyboard · stop on error · corpus v5 · metric v1`);
   expect((await page.locator('#progress-conditions option').allTextContents()).filter((label) => label.startsWith('standard v1'))).toHaveLength(1);
   await expect(page.locator('#run-history .run-row').first()).toContainText('standard');
@@ -212,7 +212,7 @@ test('Progress shows the standard best and the median of recent runs with its co
   await expect(page.locator('#standard-best')).toHaveText('66');
   await expect(page.locator('#standard-median')).toHaveText('63');
   await expect(page.locator('#standard-median-label')).toHaveText('median of last 5 runs');
-  await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs. Interrupted runs don’t count. Your touch best is 41 wpm.');
+  await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs kept. Interrupted runs don’t count. Your touch best is 41 wpm.');
   await expect(page.locator('#standard-score-conditions')).toContainText('physical keyboard');
   // With history, the standard score still heads the page, above the filters.
   await expect(page.locator('#progress-empty')).toBeHidden();
@@ -321,6 +321,7 @@ test('a standard best that outlives its runs in the kept history says so, not "n
 // Run summaries are pruned to the newest 1,000 but bests are not, so kept run counts can't stand in for
 // lifetime counts when choosing which input class heads Progress.
 const AGED_OUT = 'Your best is kept, but your standard runs are older than the newest 1,000 runs that Progress keeps, so the median waits for 3 new ones.';
+const OLDER_BEST = 'Your best comes from a run older than the newest 1,000 runs that Progress keeps.';
 const TOUCH_KEY = conditionKey(standardConditions('touch'));
 const touchRun = (wpm, i, base) => ({ ...base, id: `standard-touch-${i}`, at: new Date(Date.now() - (3 - i) * 3600000).toISOString(),
   textId: `standard-v1-touch${i}`, conditions: standardConditions('touch'), score: { wpm, accuracy: 95 } });
@@ -333,6 +334,28 @@ async function openProgressAs(page, supabase, email, data) {
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
 }
+
+test('when only some standard runs are kept, the note counts kept runs and says the best is older', async ({ page, supabase }) => {
+  // Two standard runs, then 999 newer comparable runs (daily challenges, which stay off Progress): keeping
+  // the newest 1,000 summaries drops the first standard run, the 66 wpm best, while the best itself stays.
+  const data = seededProfile([66, 60]);
+  const [first, second] = data.runs;
+  const daily = Array.from({ length: 999 }, (_, i) => ({ ...second, id: `daily-${i}`, kind: 'daily', textId: `daily-${i}`,
+    at: new Date(Date.now() - (999 - i) * 60000).toISOString(), challengeDate: '2026-10-01', firstDailyAttempt: i === 0,
+    conditions: { ...standardConditions(), mode: 'time', duration: 30, recipe: undefined, wordList: '200', correctionPolicy: 'relaxed' },
+    score: { wpm: 58, accuracy: 97 } }));
+  data.runs = [first, second, ...daily];
+  await openProgressAs(page, supabase, 'partly-aged@stilltype.test', data);
+  await expect(page.locator('#standard-best')).toHaveText('66');
+  await expect(page.locator('#standard-median')).toHaveText('—');
+  await expect(page.locator('#standard-score-note')).not.toContainText('so far');
+  await expect(page.locator('#standard-score-note')).toHaveText(`1 standard run kept. ${OLDER_BEST} The median appears after 3, so a single fast or slow run can’t set your score.`);
+  // The longest note still wraps inside a 320px screen.
+  await page.setViewportSize({ width: 320, height: 640 });
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+  const note = await page.locator('#standard-score-note').boundingBox();
+  expect(note.x + note.width).toBeLessThanOrEqual(320);
+});
 
 test('a kept keyboard best stays the headline over one newer touch run, and the touch best is named', async ({ page, supabase }) => {
   // Every keyboard standard run has aged out of the kept summaries; one touch run is newer.
@@ -368,7 +391,7 @@ test('a settled touch score with more kept runs heads Progress, and the keyboard
   await expect(page.locator('#standard-median')).toHaveText('46');
   await expect(page.locator('#standard-median-label')).toHaveText('median of last 3 runs');
   await expect(page.locator('#standard-score-conditions')).toContainText('touch input');
-  await expect(page.locator('#standard-score-note')).toHaveText('3 completed standard runs. Interrupted runs don’t count. Your physical keyboard best is 82 wpm.');
+  await expect(page.locator('#standard-score-note')).toHaveText('3 completed standard runs kept. Interrupted runs don’t count. Your physical keyboard best is 82 wpm.');
 });
 
 test('the palette starts the standard test and leaves out the settings it locks', async ({ page }) => {
