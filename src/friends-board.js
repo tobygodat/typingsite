@@ -121,19 +121,25 @@ export function weekOrder(rows) {
 
 // Whether the account shares is the service's to say: its membership is the only record, and every board
 // reply says. This device keeps what it last read (or last chose) only to show the switch: true, false, or
-// null when it has never read the board for this account. It is never synced, so one device can't put
-// sharing back on for another. Its tabs share it.
+// null when it has never read the board for this account, with the sharing version of the reply that said
+// so (see versionOf), or none while an opt-out made here is unconfirmed. It is never synced, so one device
+// can't put sharing back on for another. Its tabs share it, both parts in one value ('1' or '0', then
+// ':' and the version), so a tab that adopts what another tab read adopts the version that goes with it.
+// A value without a version (kept by an earlier build) has none; anything else is nothing known.
+export const sharingValue = (value, version) => `${value ? 1 : 0}${Number.isSafeInteger(version) && version >= 0 ? `:${version}` : ''}`;
+export function readSharing(value) {
+  const kept = /^([01])(?::(\d{1,16}))?$/.exec(typeof value === 'string' ? value : '');
+  const version = kept?.[2] === undefined ? null : Number(kept[2]);
+  return kept && (version === null || Number.isSafeInteger(version)) ? { sharing: kept[1] === '1', version } : { sharing: null, version: null };
+}
 const sharingKey = (session) => `stilltype-board-sharing:${session.user.id}`;
 function knownSharing(session) {
-  try {
-    const value = localStorage.getItem(sharingKey(session));
-    return value === '1' ? true : value === '0' ? false : null;
-  } catch { return null; }
+  try { return readSharing(localStorage.getItem(sharingKey(session))); } catch { return readSharing(null); }
 }
-function rememberSharing(session, value) {
+function rememberSharing(session, value, version = null) {
   try {
     if (value === null) localStorage.removeItem(sharingKey(session));
-    else localStorage.setItem(sharingKey(session), value ? '1' : '0');
+    else localStorage.setItem(sharingKey(session), sharingValue(value, version));
   } catch {}
 }
 // An opt-out the service hasn't confirmed yet, kept on this device across reloads until it has. Any tab
@@ -185,14 +191,16 @@ export const stopSharing = (session) => call(session, 'unshare');
 export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, onShared = () => {} }) {
   let visible = false;
   // Whether this account shares, as this device last knew it (see knownSharing); null until it knows.
-  let sharing = getSession() ? knownSharing(getSession()) : null;
+  const known = getSession() ? knownSharing(getSession()) : { sharing: null, version: null };
+  let sharing = known.sharing;
   // Signed out: this device stops keeping whether the account shares.
   let closed = false;
   const isSharing = () => sharing === true;
-  function setSharing(value) {
+  // `at` is the sharing version of the reply that said so, kept beside it for this device's other tabs.
+  function setSharing(value, at = null) {
     sharing = value;
     const session = getSession();
-    if (session && !closed) rememberSharing(session, value);
+    if (session && !closed) rememberSharing(session, value, at);
   }
   let loading = false;
   let board = null;
@@ -211,17 +219,20 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
   // board request. Kept across reloads.
   let unsharing = Boolean(getSession() && optOutPending(getSession()));
   // The sharing version a share from this tab is sent with (see versionOf): the one in the last board
-  // this tab took, which is what its switch showed when it moved. A board taken while turning sharing on
-  // is on its way leaves it alone, since it may hold an opt-out made after the switch moved; this tab's
-  // own changes move it on one step each (see stepped). Null until this tab has read one: a share then
-  // reads the board first, so none is sent blind.
-  let version = null;
+  // this tab took, or that another tab of this browser read and this tab adopted with its sharing state
+  // (see adopt), which is what its switch showed when it moved. While a share from this tab is waiting
+  // to go, nothing but this tab's own changes ahead of it moves it, one step each (see stepped): a board
+  // taken or adopted meanwhile may hold an opt-out made after the switch moved. Null until this browser
+  // has read one: a share then reads the board first, so none is sent blind.
+  let version = known.version;
+  // How many shares from this tab are waiting to go, or on their way.
+  let sharesWaiting = 0;
 
   // A board the service sent.
   function took(result) {
     board = result;
     rollAt = nextRead(result) ?? rollAt;
-    if (!turningOn) version = versionOf(result) ?? version;
+    if (!sharesWaiting) version = versionOf(result) ?? version;
   }
   // The reply to this tab's own change: one step past the version it knew means nothing else came in
   // between, so the version after it is known too. Anything more stays unknown until this tab takes a
@@ -229,11 +240,11 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
   function stepped(result) {
     if (version !== null && versionOf(result) === version + 1) version += 1;
   }
-  // The account doesn't share (any more). A tab that thought it shared says so in one line; one that
-  // didn't know just knows now.
-  function notSharing() {
+  // The account doesn't share (any more), as this reply says. A tab that thought it shared says so in one
+  // line; one that didn't know just knows now.
+  function notSharing(result) {
     if (sharing) note = ELSEWHERE;
-    setSharing(false);
+    setSharing(false, versionOf(result));
   }
   // Every reply says whether this account shares, and that is what this tab goes by: another device may
   // have turned it on or off. A reply that crossed a switch here, or came while an opt-out made on this
@@ -241,10 +252,10 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
   // only the switch sends 'share'.
   function learn(result, seq) {
     if (typeof result?.sharing !== 'boolean' || seq !== toggles || unsharing) return;
-    if (!result.sharing) notSharing();
-    else if (!sharing) {
-      setSharing(true);
-      note = '';
+    if (!result.sharing) notSharing(result);
+    else {
+      if (!sharing) note = '';
+      setSharing(true, versionOf(result));
     }
   }
 
@@ -256,18 +267,21 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
     return next;
   };
   // The opt-out, sent now. Once the service confirms it, that opt-out is settled on this device. This
-  // tab is off the board then, unless its switch has moved since, or a newer opt-out is still kept.
+  // tab is off the board then, unless its switch has moved since, or a newer opt-out is still kept. What
+  // it now knows is kept before the opt-out is settled, so the other tabs, which adopt it once that
+  // happens, adopt this reply's version with it.
   async function unshareNow(session, seq = toggles) {
     const id = optOutId(session);
     const result = await stopSharing(session);
     stepped(result);
-    settleOptOut(session, id);
-    if (seq === toggles && !optOutPending(session)) {
+    const newest = optOutId(session);
+    if (seq === toggles && (newest === null || newest === id)) {
       unsharing = false;
-      notSharing();
+      notSharing(result);
       note = '';
       took(result);
     }
+    settleOptOut(session, id);
     return result;
   }
   function removeRow(session) {
@@ -385,7 +399,7 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
 
   // The switch on the board, and its palette command: the only way this device shares or stops. Turning
   // sharing on makes this account a member, and your row shows whatever your profile row holds, unless
-  // sharing was turned off elsewhere since this tab last read it: then the service refuses, and the
+  // sharing was turned off elsewhere since this browser last read it: then the service refuses, and the
   // switch stays off and says so. Turning it off takes you off the board, retrying (resume, the next
   // board request in any tab, or the next load) if that fails. Focus stays where it was.
   async function setShare(on) {
@@ -401,6 +415,7 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
       // service confirms it, so a share that never gets through leaves the account as the switch then
       // shows: off. One made after it (switching off again, here or in another tab) goes after it.
       const kept = optOutId(session);
+      sharesWaiting += 1;
       try {
         const result = await inTurn(async () => {
           const off = kept !== null && optOutId(session) === kept ? await unshareNow(session, seq) : null;
@@ -410,20 +425,20 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
           // A refused share moved nothing.
           if (reply?.sharing) stepped(reply);
           return reply;
-        });
+        }).finally(() => { sharesWaiting -= 1; });
         if (seq !== toggles) return;
         turningOn = false;
         if (!result?.sharing) {
-          // Refused: sharing was turned off elsewhere after this tab last read it. It stays off.
+          // Refused: sharing was turned off elsewhere after this browser last read it. It stays off.
           unsharing = optOutPending(session);
-          setSharing(false);
+          setSharing(false, versionOf(result));
           note = ELSEWHERE;
           took(result);
           render();
           return;
         }
         unsharing = false;
-        setSharing(true);
+        setSharing(true, versionOf(result));
         took(result);
         render();
         // Saves made while an opt-out was unconfirmed wrote no summary: the app writes one from the row.
@@ -457,6 +472,13 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
     optedOut();
   }
 
+  // What another tab of this browser read: this tab shows it, and a share from here goes with its
+  // version, since that is the state this tab's switch then shows. Not while a share from this tab is
+  // waiting to go (see version).
+  function adopt(kept) {
+    sharing = kept.sharing;
+    if (!sharesWaiting) version = kept.version;
+  }
   // Another tab of this browser changed what this device keeps: an opt-out (made, or settled), or
   // whether the account shares.
   function onStorage(event) {
@@ -468,14 +490,16 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
         // Settled there: off the board now, unless that tab turned sharing back on. A line here that
         // said it was still on its way says which.
         unsharing = false;
-        sharing = knownSharing(session);
+        adopt(knownSharing(session));
         if (shown.endsWith(PENDING)) shown = sharing ? '' : OFF;
       }
     } else if (event.key === sharingKey(session)) {
       if (unsharing || turningOn) return;
-      const value = knownSharing(session);
-      if (value === sharing) return;
-      sharing = value;
+      const kept = knownSharing(session);
+      const value = kept.sharing;
+      const changed = value !== sharing;
+      adopt(kept);
+      if (!changed) return;
       note = '';
       if (value && visible) {
         // Turned on there: the switch shows it at once, and the board reads again to show the rows.

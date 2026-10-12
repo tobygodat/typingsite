@@ -635,7 +635,7 @@ test('sharing turned on during the account check takes effect at once, and the b
   await expect.poll(() => weekRuns(supabase, ada)).toBe(4);
   await openBoard(page);
   await expect(page.locator('#board-week')).toContainText('4 runs');
-  await expect.poll(() => knownHere(page, ada)).toBe('1');
+  await expect.poll(() => knownHere(page, ada)).toBe('1:1');
   expect(supabase.profiles.get(ada.id)?.data?.preferences).not.toHaveProperty('shareBoard');
 });
 
@@ -886,6 +886,107 @@ test('a share waiting behind this device’s own opt-out counts only that opt-ou
     expect(supabase.board.members.has(ada.id)).toBe(false);
     await expect.poll(() => optOutsKept(page)).toEqual([]);
   } finally { await laptopContext.close(); }
+});
+
+test('sharing turned off in one tab and back on in another shares at the first click, with no word of another device', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  const second = await page.context().newPage();
+  await supabase.attach(second);
+  await openApp(second);
+  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openBoard(second);
+  await expect(second.locator('#share-board')).toBeChecked();
+  const actions = boardActions(page);
+  for (let round = 0; round < 2; round += 1) {
+    // Off in the second tab, confirmed; the first tab's switch follows at once.
+    await second.locator('#share-board').uncheck();
+    await expect(second.locator('#friends-board-status')).toHaveText('Your row is off the board.');
+    await expect(page.locator('#share-board')).not.toBeChecked();
+    expect(supabase.board.members.has(ada.id)).toBe(false);
+    // On again in the first tab, having seen it off there: it shares with the version the second tab
+    // read, so the first click counts.
+    const mark = actions.length;
+    await page.locator('#share-board').check();
+    await expect(page.locator('#friends-board-lists')).toBeVisible();
+    await expect(page.locator('#share-board')).toBeChecked();
+    await expect(page.locator('#friends-board-status')).toHaveText('');
+    expect(actions.slice(mark)).toEqual(['share']);
+    expect(supabase.board.members.has(ada.id)).toBe(true);
+    await expect(second.locator('#share-board')).toBeChecked();
+  }
+});
+
+test('the palette turns sharing on at the first try in a tab whose board is hidden, after another tab turned it off', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  await openView(page, 'Practice');
+  const second = await page.context().newPage();
+  await supabase.attach(second);
+  await openApp(second);
+  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openBoard(second);
+  await second.locator('#share-board').uncheck();
+  await expect(second.locator('#friends-board-status')).toHaveText('Your row is off the board.');
+  // Back in the first tab, from the palette: the board opens (its read is overtaken by the switch) and
+  // the share counts.
+  const actions = boardActions(page);
+  await page.bringToFront();
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('share on friends');
+  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('share on friends board');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  await expect(page.locator('#share-board')).toBeChecked();
+  await expect(page.locator('#friends-board-status')).toHaveText('');
+  expect(actions.filter((action) => action !== 'board')).toEqual(['share']);
+  expect(supabase.board.members.has(ada.id)).toBe(true);
+});
+
+test('a share waiting its turn in one tab can’t undo an opt-out made after it in another tab', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  const second = await page.context().newPage();
+  await supabase.attach(second);
+  await openApp(second);
+  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openBoard(second);
+  await expect(second.locator('#share-board')).toBeChecked();
+  // In the first tab she turns sharing off, held on its way, and straight back on: that share waits.
+  let land;
+  supabase.board.holdNext = new Promise((resolve) => { land = resolve; });
+  await page.locator('#share-board').uncheck();
+  await expect.poll(() => supabase.board.holdNext === null).toBe(true);
+  await page.locator('#share-board').check();
+  await expect(second.locator('#share-board')).not.toBeChecked();
+  // Then, in the second tab, she turns it on and off again, and the service confirms both.
+  await second.locator('#share-board').check();
+  await expect(second.locator('#friends-board-lists')).toBeVisible();
+  await second.locator('#share-board').uncheck();
+  await expect(second.locator('#friends-board-status')).toHaveText('Your row is off the board.');
+  expect(supabase.board.members.has(ada.id)).toBe(false);
+  // The first tab reads the board meanwhile, and then its opt-out lands. The share waiting behind it was
+  // made before the second tab's opt-out, so it doesn't count.
+  await refreshBoard(page);
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+  land();
+  await expect(page.locator('#friends-board-status')).toHaveText('Sharing was turned off on another device.');
+  await expect(page.locator('#share-board')).not.toBeChecked();
+  expect(supabase.board.members.has(ada.id)).toBe(false);
+  await expect(second.locator('#share-board')).not.toBeChecked();
+  await expect.poll(() => optOutsKept(page)).toEqual([]);
 });
 
 test('turning sharing off takes your row off the board at once, and a device that missed it can’t share again', async ({ page, browser, supabase }) => {
