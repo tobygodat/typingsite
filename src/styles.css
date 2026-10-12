@@ -1261,7 +1261,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .run-card-graph { margin: 0; display: grid; gap: var(--space-2); }
 
 .speed-graph { aspect-ratio: 16 / 9; margin-inline: -4px; }
-.speed-graph svg { display: block; overflow: visible; }
+/* Drawn at the container's pixel size. Capping it at the container keeps the old drawing from
+   holding the card at its old width when the window narrows, so the observer sees the new width
+   and redraws; until then it scales evenly rather than stretching. */
+.speed-graph svg { display: block; max-width: 100%; height: auto; overflow: visible; }
 
 .graph-axis { stroke: var(--hairline-strong); stroke-width: 1; }
 .graph-grid { stroke: var(--hairline); stroke-width: 1; }
