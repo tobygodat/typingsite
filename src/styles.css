@@ -75,6 +75,9 @@
   --accent: #8fd18a;
   --accent-ink: #0f1a0e;
   --accent-soft: rgba(143, 209, 138, 0.13);
+  --practice-level-1: rgba(143, 209, 138, 0.3);
+  --practice-level-2: rgba(143, 209, 138, 0.55);
+  --practice-level-3: rgba(143, 209, 138, 0.8);
   --danger: #ff8a6b;
   --danger-soft: rgba(255, 138, 107, 0.16);
   --warning: #e0b565;
@@ -99,6 +102,9 @@
   --accent: #2e7d4f;
   --accent-ink: #fbf9f5;
   --accent-soft: rgba(46, 125, 79, 0.11);
+  --practice-level-1: rgba(46, 125, 79, 0.3);
+  --practice-level-2: rgba(46, 125, 79, 0.55);
+  --practice-level-3: rgba(46, 125, 79, 0.8);
   --danger: #b4432c;
   --danger-soft: rgba(180, 67, 44, 0.12);
   --warning: #8a5a00;
@@ -1496,7 +1502,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .history-detail dt, .run-detail dt { font: var(--text-mono)/1.5 var(--font-mono); color: var(--muted); }
 .history-detail dd, .run-detail dd { margin: var(--space-2) 0 0; font-size: var(--text-lead); }
 .progress-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); }
-/* Daily goal: static calendar, accent at four steps; empty days sit on the hairline. */
+/* Daily goal: static calendar, accent at four steps (--practice-level-1…3, then --accent); empty days sit on the hairline. */
 .practice-goal { display: grid; gap: var(--space-3); margin-bottom: var(--space-8); }
 .goal-line { margin: 0; font-family: var(--font-serif); font-size: var(--text-body); font-variant-numeric: tabular-nums; }
 .goal-label { margin-right: var(--space-1); color: var(--muted); font: 500 var(--text-fine)/1 var(--font-mono); }
@@ -1505,9 +1511,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   gap: var(--space-1); justify-content: start;
 }
 .goal-day { border-radius: var(--radius-cell); background: var(--hairline); }
-.goal-day[data-level="1"] { background: color-mix(in oklab, var(--accent) 30%, transparent); }
-.goal-day[data-level="2"] { background: color-mix(in oklab, var(--accent) 55%, transparent); }
-.goal-day[data-level="3"] { background: color-mix(in oklab, var(--accent) 80%, transparent); }
+.goal-day[data-level="1"] { background: var(--practice-level-1); }
+.goal-day[data-level="2"] { background: var(--practice-level-2); }
+.goal-day[data-level="3"] { background: var(--practice-level-3); }
 .goal-day[data-level="4"] { background: var(--accent); }
 .filter-field { min-width: 0; display: grid; gap: var(--space-2); font-size: var(--text-small); }
 .progress-filters .filter-field:first-child { flex: 1; }
