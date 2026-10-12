@@ -977,10 +977,11 @@ function renderPracticeWords(completed) {
   button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
   button.onclick = () => {
     // The run whose words are practised is the baseline for the fresh retest offered afterward, as a
-    // finished practice or daily run is. A retest doesn't set it on finishing, so set it here; its
-    // drill context is done with, so the next comparison records no drill.
+    // finished practice or daily run is. A retest doesn't set it on finishing, so set it here. No drill
+    // comes between, so the next comparison reads and records no drill target; startDrill sets one again.
     baselineAttempt = completed;
     trainingContext = null;
+    selectedTarget = null;
     wordsPassage = { id: `missed-${textId(text)}`, text, fresh: false, words };
     resetSession('missed', { focus: true });
   };

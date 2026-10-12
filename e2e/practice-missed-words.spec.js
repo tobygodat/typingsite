@@ -232,6 +232,38 @@ test('words practised from a retest are retested against that retest', async ({ 
   await expect(page.locator('#comparison-accuracy')).toHaveText(`+${100 - accuracy} pp`);
 });
 
+test('words practised from a drill’s retest leave the drill’s target behind', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  // A manual "br" drill, then the retest it starts after its minute, typed with two misses.
+  await page.locator('#manual-heading').click();
+  await page.locator('#manual-target-input').fill('br');
+  await page.locator('#apply-manual-target').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await typeInto(page, (await passageText(page)).slice(0, 20));
+  await page.clock.fastForward(60_000);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  const retest = await passageText(page);
+  const words = retest.split(' ');
+  const second = words.findIndex((word, index) => index > 1 && word !== words[1]);
+  await typeWithMisses(page, retest, [1, second]);
+  await expect(page.locator('#comparison-sample')).toHaveText(/^br · /);
+
+  await page.locator('#practice-words').click();
+  await expect(page.locator('#session-kicker')).toHaveText('missed words');
+  await completePassage(page);
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await completePassage(page);
+  // No drill came between, so this retest reads no target pattern and is saved as a fresh-text check.
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect(page.locator('#comparison-sample')).toHaveText(/^keystrokes · \d+ before · \d+ after · no target pattern$/);
+  await openView(page, 'Progress');
+  await expect(page.locator('.history-target')).toHaveText(['Fresh-text check', '“br” drill and retest']);
+});
+
 // Committed docs images are only rewritten on request (SCREENSHOTS=1); normal runs still take
 // the shots, into the test's own output folder.
 const shot = (testInfo, name) => process.env.SCREENSHOTS
