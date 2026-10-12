@@ -185,7 +185,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
     test('practice, a run, results, settings, palette, account and challenge controls are 44px targets', async ({ page }) => {
       const small = [];
       await openApp(page);
-      expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+      expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
       small.push(...await sweep(page, 'practice'));
       await page.locator('#mode-quote').click();
       small.push(...await sweep(page, 'practice, quote'));

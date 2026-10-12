@@ -2049,10 +2049,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .nav-label-short { display: inline; }
 }
 
-/* Coarse pointers keep a 44px minimum target. e2e/touch-targets.spec.js measures every control.
-   Text-sized controls reach into the space around them with a transparent ::after, so neither the
-   layout nor the focus ring moves. Relative position keeps that reach above the content after it. */
-@media (pointer: coarse) {
+/* Any coarse pointer keeps a 44px minimum target. any-pointer, not pointer: a touchscreen laptop or
+   a tablet with a trackpad reports its fine pointer as primary, and a finger still reaches every
+   control. e2e/touch-targets.spec.js measures every control; touch-targets-hybrid.spec.js checks
+   the hybrid case. Text-sized controls reach into the space around them with a transparent ::after,
+   so neither the layout nor the focus ring moves. Relative position keeps that reach above the
+   content after it. */
+@media (any-pointer: coarse) {
   .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
   .footer-link, .run-detail summary, .daily-challenge summary { position: relative; }
   .footer-link::after, .run-detail summary::after, .daily-challenge summary::after { content: ""; position: absolute; }
