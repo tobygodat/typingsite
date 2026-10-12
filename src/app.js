@@ -29,7 +29,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { STANDARD_MIN_RUNS, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -1329,7 +1329,10 @@ function renderStandardScore() {
   setText($('standard-median-label'), score.settled ? `median of last ${plural(score.recent, 'run')}` : 'median');
   setText($('standard-score-conditions'), `${recipeSummary(source)} · ${conditionTail(source)}`);
   let note = `${plural(score.total, 'completed standard run')}. Interrupted runs don’t count.`;
-  if (!score.total) note = 'No standard runs yet. Every one is fresh text from the same fixed recipe, so the scores stay comparable.';
+  // Bests outlive run summaries: once every standard run has aged out of the kept history, the best
+  // stays but nothing is left to count or take a median of.
+  if (!score.total && score.best !== null) note = `Your best is kept, but your standard runs are older than the newest ${MAX_RUN_SUMMARIES.toLocaleString('en-US')} runs that Progress keeps, so the median waits for ${STANDARD_MIN_RUNS} new ones.`;
+  else if (!score.total) note = 'No standard runs yet. Every one is fresh text from the same fixed recipe, so the scores stay comparable.';
   else if (!score.settled) note = `Only ${plural(score.total, 'standard run')} so far. The median appears after ${STANDARD_MIN_RUNS}, so a single fast or slow run can’t set your score.`;
   setText($('standard-score-note'), note);
 }

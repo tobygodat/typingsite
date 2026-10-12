@@ -219,6 +219,26 @@ test('Progress shows the standard best and the median of recent runs with its co
   await expect(page.locator('#best')).toHaveText('Best · 66 wpm');
 });
 
+test('a standard best that outlives its runs in the kept history says so, not "no runs yet"', async ({ page, supabase }) => {
+  const user = supabase.addUser('aged@stilltype.test');
+  // Bests stay until history is cleared, but only the newest 1,000 run summaries are kept: here every
+  // standard run has aged out and only a newer time test remains.
+  const data = seededProfile([62, 66, 64]);
+  data.runs = [{ ...data.runs[0], id: 'time-30', at: new Date().toISOString(), textId: 'generated-time-30',
+    conditions: { ...standardConditions(), mode: 'time', duration: 30, recipe: undefined, wordList: '200', correctionPolicy: 'relaxed' },
+    score: { wpm: 58, accuracy: 97 } }];
+  supabase.profiles.set(user.id, { data });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openView(page, 'Progress');
+  await expect(page.locator('#standard-best')).toHaveText('66');
+  await expect(page.locator('#standard-best + span')).toBeVisible();
+  await expect(page.locator('#standard-median')).toHaveText('—');
+  await expect(page.locator('#standard-median + span')).toBeHidden();
+  await expect(page.locator('#standard-median-label')).toHaveText('median');
+  await expect(page.locator('#standard-score-note')).toHaveText('Your best is kept, but your standard runs are older than the newest 1,000 runs that Progress keeps, so the median waits for 3 new ones.');
+});
+
 test('the palette starts the standard test and leaves out the settings it locks', async ({ page }) => {
   await openApp(page);
   await page.keyboard.press('Control+k');
