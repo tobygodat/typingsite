@@ -210,6 +210,44 @@ test('Escape restarts a lesson, and an interrupted lesson is not counted', async
   await expect(page.locator('#lesson-primary')).toHaveText('Try lesson 1 again');
 });
 
+// A lesson is a session of its own, like the test modes: starting one closes the custom editor and Custom
+// isn't marked over it. Custom text is never lesson progress, and a lesson never restarts as custom text.
+test('a lesson closes the custom editor and restarts as a lesson, not as custom text', async ({ page }) => {
+  const custom = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(custom);
+  await page.locator('#custom-use').click();
+  await typeInto(page, custom);
+  await expect(body(page)).toHaveAttribute('data-view', 'results');
+  await page.locator('#run-again').click();
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+
+  await openLessons(page);
+  await expect(page.locator('#lesson-list .lesson-row').first()).not.toContainText('try');
+  await startLesson(page, 1);
+  await expect(page.locator('#custom-options')).toBeHidden();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#condition-line')).toContainText('lesson 1 of');
+
+  await page.locator('#typing-input').press('Escape');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('restart test');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+  expect(await passageText(page)).not.toBe(custom);
+
+  // Practice after the lesson is a normal test; the custom text waits behind Custom.
+  await openView(page, 'Practice');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
+  await expect(page.locator('#condition-line')).not.toContainText('custom text');
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#custom-options')).toBeHidden();
+});
+
 test('guests keep lesson progress for the tab only, and clearing history clears it with an undo', async ({ page, supabase }) => {
   await openApp(page);
   await openLessons(page);
