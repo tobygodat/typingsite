@@ -90,3 +90,25 @@ for (const scheme of ['dark', 'light']) {
     await page.screenshot({ path: shot(testInfo, `settings-${scheme}.png`) });
   });
 }
+
+// Correction is a practice setting like stop on error: changing it keeps a custom passage, and a failed custom
+// run reads as failed, stays uncounted, and Run again keeps the same text.
+test('a failure policy applies to custom text and keeps its passage', async ({ page }) => {
+  const custom = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(custom);
+  await page.locator('#custom-use').click();
+  await chooseCorrection(page, 'fail-any');
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await expect(page.locator('#condition-line')).toContainText('fail on any error');
+  expect(await passageText(page)).toBe(custom);
+  await typeInto(page, 'thx');
+  await expect(page.locator('#result-delta')).toHaveText('failed · wrong key');
+  await expect(page.locator('#result-conditions')).toContainText('custom text');
+  await expect(page.locator('#result-conditions')).toContainText('fail on any error');
+  await page.locator('#run-again').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(custom);
+  await expect(page.locator('#best')).toHaveText('Not counted');
+});
