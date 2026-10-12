@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRace, joinRace, getRace, updateRaceProgress, parseRaceLink, makeGuestRaceLink,
   clearRaceLink, rememberRace, recallRace, forgetRace, rematchRace, addFriend, addFriendFromRace,
-  listFriends, queueFriendRequests } from '../src/multiplayer.js';
+  listFriends, removeFriend, queueFriendRequests } from '../src/multiplayer.js';
 
 const roomId = '00000000-0000-4000-8000-000000000001';
 const inviteToken = 'a'.repeat(64);
@@ -96,7 +96,7 @@ test('friend races send only the friend id, and rematches keep the guest seat', 
 // A friend-list service the test answers by hand. `sent` lists each request as the queue sends it.
 function friendService() {
   const sent = [];
-  const send = (name) => () => new Promise((resolve, reject) => { sent.push({ name, resolve, reject }); });
+  const send = (name) => (signal) => new Promise((resolve, reject) => { sent.push({ name, signal, resolve, reject }); });
   return { sent, send, names: () => sent.map((request) => request.name) };
 }
 const settle = () => new Promise((resolve) => { setImmediate(resolve); });
@@ -172,4 +172,36 @@ test('friend-list reloads queued back to back go as one, and never ahead of a ch
   await last;
   assert.deepEqual(names(), ['friends', 'unfriend kim', 'friends']);
   assert.deepEqual(shown, ['lin']);
+});
+
+test('a friend-list request that never answers gives up after the limit, aborts its fetch, and lets the next one go', { timeout: 5000 }, async () => {
+  const { sent, send, names } = friendService();
+  const shown = [];
+  const friends = queueFriendRequests((list) => { shown.push(list); }, { limit: 20 });
+  // A list read stalls (the connection never answers), and a removal is queued behind it.
+  const stalled = friends.reload(send('friends'));
+  const removing = friends.change(send('unfriend kim'));
+  await assert.rejects(stalled, /taking too long/);
+  assert.equal(sent[0].signal.aborted, true);
+  await settle();
+  assert.deepEqual(names(), ['friends', 'unfriend kim']);
+  // An answer that comes after the limit is not drawn.
+  sent[0].resolve(['kim', 'lin']);
+  sent[1].resolve(['lin']);
+  await removing;
+  assert.deepEqual(shown, [['lin']]);
+});
+
+test('friend-list calls hand their abort signal to fetch', async () => {
+  const original = globalThis.fetch;
+  const signals = [];
+  globalThis.fetch = async (url, options) => { signals.push(options.signal); return new Response('[]'); };
+  try {
+    const { signal } = new AbortController();
+    await listFriends(session, signal);
+    await addFriend(session, { email: 'lin@example.com' }, signal);
+    await removeFriend(session, roomId, signal);
+    await addFriendFromRace(session, { roomId }, signal);
+    assert.deepEqual(signals, [signal, signal, signal, signal]);
+  } finally { globalThis.fetch = original; }
 });

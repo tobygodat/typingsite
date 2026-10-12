@@ -7,6 +7,19 @@ const MAX_ENTRIES = 30;
 const POLL_MS = 10000;
 export const TOAST_MS = 18000;
 
+// Draws a list's rows again without losing keyboard focus: a focused control comes back on the new
+// control with the same data attributes or, when its row has gone, on `fallback`. The online race's
+// lists use it too.
+export function redrawList(list, rows, fallback = null) {
+  const focused = list.contains(document.activeElement) ? document.activeElement : null;
+  const key = focused && JSON.stringify({ ...focused.dataset });
+  const focusVisible = focused?.matches(':focus-visible');
+  list.replaceChildren(...rows);
+  if (!focused) return;
+  const same = [...list.querySelectorAll('button')].find((button) => JSON.stringify({ ...button.dataset }) === key);
+  (same || fallback)?.focus({ preventScroll: true, focusVisible });
+}
+
 function ago(at, now = Date.now()) {
   const minutes = Math.round((now - Date.parse(at)) / 60000);
   if (!(minutes >= 1)) return 'just now';
@@ -72,7 +85,7 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     $('inbox-trigger').setAttribute('aria-label', unread ? `Inbox, ${unread} unread` : 'Inbox');
     $('inbox-empty').hidden = entries.length > 0;
     $('inbox-clear').hidden = entries.length === 0;
-    $('inbox-list').replaceChildren(...entries.map((entry) => {
+    redrawList($('inbox-list'), entries.map((entry) => {
       const row = document.createElement('li');
       row.className = 'inbox-entry';
       row.dataset.kind = entry.kind;
@@ -90,6 +103,7 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
         button.type = 'button';
         button.className = 'btn btn-secondary btn-sm';
         button.dataset.inboxAction = entry.kind;
+        button.dataset.inboxEntry = entry.id;
         button.textContent = action.label;
         markWaiting(button, entry.kind);
         button.addEventListener('click', () => {
@@ -102,7 +116,7 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
         row.append(button);
       }
       return row;
-    }));
+    }), $('inbox-trigger'));
   }
 
   // Adds or refreshes an entry. A new entry can raise the toast; a known one never does again.

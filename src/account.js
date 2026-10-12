@@ -81,12 +81,13 @@ function storeSession(data) {
   return session;
 }
 
-export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false } = {}) {
+export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false, signal } = {}) {
   let response;
   try {
     response = await fetch(`${SUPABASE_URL}${path}`, {
       method,
       keepalive,
+      signal,
       headers: {
         apikey: SUPABASE_KEY,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),

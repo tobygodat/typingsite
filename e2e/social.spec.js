@@ -300,8 +300,23 @@ const challengeFrom = (supabase, host, email) => new Promise((resolve) => {
     passage: 'The quick brown fox jumps over the lazy dog, twice over.', conditions: {}, displayName: 'Kim', inviteEmail: email,
   } }, resolve);
 });
+// The request held for this action has reached the service (its answer is still held).
+const arrived = (supabase, action) => expect.poll(() => supabase.races.holds.has(action)).toBe(false);
+// Counts how often a list's rows are drawn again from now on.
+async function countRedraws(page, selector) {
+  const key = `redraws:${selector}`;
+  await page.locator(selector).evaluate((list, name) => {
+    window[name] = 0;
+    new MutationObserver(() => { window[name] += 1; }).observe(list, { childList: true });
+  }, key);
+  return () => page.evaluate((name) => window[name], key);
+}
+// Visible CSS transitions (a theme's cross-fade) finish before a measurement or a picture.
+const settleTransitions = (page) => page.evaluate(() => Promise.all(document.getAnimations()
+  .filter((animation) => animation instanceof CSSTransition && animation.effect?.target?.checkVisibility())
+  .map((animation) => animation.finished.catch(() => {}))));
 
-test('a friend removed while a new race’s save to friends is still out stays removed', async ({ page, supabase }) => {
+test('a friend removed while a new race’s save to friends is still out stays removed, and its Remove keeps focus', async ({ page, supabase }) => {
   const host = supabase.addUser('host@stilltype.test');
   supabase.addUser('lin@stilltype.test');
   await saveFriend(supabase, host, 'kim@stilltype.test');
@@ -326,15 +341,51 @@ test('a friend removed while a new race’s save to friends is still out stays r
     new MutationObserver(() => window.drawnFriends.push([...list.querySelectorAll('strong')].map((name) => name.textContent)))
       .observe(list, { childList: true });
   });
-  await remove.click();
+  // Kim is removed from the keyboard, and the removal's answer is slow too.
+  const releaseRemove = supabase.races.hold('unfriend');
+  await remove.focus();
+  await page.keyboard.press('Enter');
+  await expect(remove).toHaveAttribute('aria-disabled', 'true');
   releaseSave();
-  // Once the save's answer (Kim and Lin) has been drawn, the removal still has the last word.
+  // The save's answer (Kim and Lin) is drawn first, and the pressed Remove, drawn again, keeps focus.
   await expect.poll(() => page.evaluate(() => window.drawnFriends.some((names) => names.includes('kim') && names.includes('lin')))).toBe(true);
+  await arrived(supabase, 'unfriend');
+  await expect(remove).toBeFocused();
+  await expect(remove).toHaveAttribute('aria-disabled', 'true');
+  // The removal still has the last word; as Kim's row goes, focus moves to the name field.
+  releaseRemove();
   await expect(rows).toHaveText([/lin@stilltype\.test/]);
+  await expect(page.locator('#online-name')).toBeFocused();
   expect(supabase.races.friendList(host.id).map((friend) => friend.name)).toEqual(['lin']);
 });
 
-test('a pressed race control keeps keyboard focus while its request is out, and the others wait', async ({ page, supabase }, testInfo) => {
+test('a friend change waiting behind a slow friend-list read holds up only the friend controls', async ({ page, supabase }) => {
+  const host = supabase.addUser('host@stilltype.test');
+  await saveFriend(supabase, host, 'kim@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'host@stilltype.test');
+  await openView(page, 'Challenge');
+  await expect(page.locator('.online-friend-row')).toHaveText([/kim@stilltype\.test/]);
+  // Coming back to Challenge reads the list again, and that read doesn't answer.
+  const releaseRead = supabase.races.hold('friends');
+  await openView(page, 'Practice');
+  await openView(page, 'Challenge');
+  await arrived(supabase, 'friends');
+  const remove = page.getByRole('button', { name: 'Remove kim from friends' });
+  await remove.click();
+  await expect(remove).toHaveAttribute('aria-disabled', 'true');
+  // The removal waits its turn, and races don't wait for it.
+  await expect(page.locator('#create-online-race')).not.toHaveAttribute('aria-disabled');
+  await expect(page.getByRole('button', { name: 'Challenge kim' })).not.toHaveAttribute('aria-disabled');
+  await page.locator('#online-name').fill('Ada');
+  await page.locator('#create-online-race').click();
+  await expect(page.locator('#online-room')).toBeVisible();
+  expect(supabase.races.friendList(host.id)).toHaveLength(1);
+  releaseRead();
+  await expect.poll(() => supabase.races.friendList(host.id)).toEqual([]);
+});
+
+test('a pressed race control keeps keyboard focus while its request is out, and the other race controls wait', async ({ page, supabase }, testInfo) => {
   const host = supabase.addUser('host@stilltype.test');
   const kim = supabase.addUser('kim@stilltype.test');
   supabase.addUser('lin@stilltype.test');
@@ -346,47 +397,103 @@ test('a pressed race control keeps keyboard focus while its request is out, and 
   await openView(page, 'Challenge');
   await page.locator('#online-name').fill('Ada');
   await expect(page.locator('[data-accept-invite]')).toBeVisible();
+  await expect(page.locator('.online-friend-row')).toHaveCount(2);
+  // Coming back to Challenge reads the friend list again, and its answer is slow.
+  const releaseRead = supabase.races.hold('friends');
+  await openView(page, 'Practice');
+  await openView(page, 'Challenge');
+  await arrived(supabase, 'friends');
   const challenge = page.getByRole('button', { name: 'Challenge lin' });
   const releaseCreate = supabase.races.hold('create');
   await challenge.focus();
   await page.keyboard.press('Enter');
   await expect(challenge).toHaveAttribute('aria-disabled', 'true');
-  for (const control of ['#create-online-race', '[data-accept-invite]', '[data-race-friend]', '[data-remove-friend]']) {
+  // The list's answer draws the rows again while the race is being created; the pressed Challenge keeps focus.
+  const redraws = await countRedraws(page, '#online-friend-list');
+  releaseRead();
+  await expect.poll(redraws).toBeGreaterThan(0);
+  await expect(challenge).toBeFocused();
+  for (const control of ['#create-online-race', '[data-accept-invite]', '[data-race-friend]']) {
     for (const button of await page.locator(control).all()) await expect(button).toHaveAttribute('aria-disabled', 'true');
   }
-  expect(await page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe('Challenge lin');
-  // Dimmed as the disabled look, in both themes.
+  // Removing a friend is not a race request, so it doesn't wait for one.
+  for (const button of await page.locator('[data-remove-friend]').all()) await expect(button).not.toHaveAttribute('aria-disabled');
   await page.evaluate(() => scrollTo(0, document.getElementById('online-invite-note').getBoundingClientRect().top + scrollY - 100));
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
-    // The theme's cross-fade finishes before the picture (inside a closed popover it never runs).
-    await page.evaluate(() => Promise.all(document.getAnimations()
-      .filter((animation) => animation instanceof CSSTransition && animation.effect?.target?.checkVisibility())
-      .map((animation) => animation.finished.catch(() => {}))));
-    expect(await challenge.evaluate((node) => getComputedStyle(node).opacity)).toBe('0.38');
+    await settleTransitions(page);
+    // The others are dimmed as disabled. The pressed one dims its colours instead of the whole box,
+    // so its focus ring stays at full strength in the text colour.
+    expect(await page.getByRole('button', { name: 'Challenge kim' }).evaluate((node) => getComputedStyle(node).opacity)).toBe('0.38');
+    const look = await challenge.evaluate((node) => ({ opacity: getComputedStyle(node).opacity, ring: getComputedStyle(node).outlineColor,
+      text: getComputedStyle(document.body).color, focusVisible: node.matches(':focus-visible') }));
+    expect(look).toEqual({ opacity: '1', ring: look.text, text: look.text, focusVisible: true });
     const path = process.env.SCREENSHOTS ? `docs/screenshots/social-rematch-flake/challenge-busy-${theme}.png` : testInfo.outputPath(`challenge-busy-${theme}.png`);
     await page.screenshot({ path });
   }
   // Pressing it again sends nothing more; focus is still there.
   await page.keyboard.press('Enter');
   await expect(challenge).toBeFocused();
+  // Under the pointer a waiting control stays as it is: no hover fill, and no press.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const background = (button) => button.evaluate((node) => getComputedStyle(node).backgroundColor);
+  for (const button of [page.getByRole('button', { name: 'Challenge kim' }), page.locator('#create-online-race')]) {
+    const atRest = await background(button);
+    await button.hover();
+    expect(await background(button)).toBe(atRest);
+  }
+  await page.mouse.down();
+  expect(await page.locator('#create-online-race').evaluate((node) => getComputedStyle(node).transform)).toBe('none');
+  await page.mouse.up();
   releaseCreate();
   await expect(page.locator('#online-room')).toBeVisible();
   expect([...supabase.races.rooms.values()].filter((room) => room.players[0].userId === host.id)).toHaveLength(1);
 });
 
+test('an invitation’s Join race keeps keyboard focus while its join is out, and a press while it waits does nothing', async ({ page, supabase }) => {
+  supabase.addUser('host@stilltype.test');
+  const kim = supabase.addUser('kim@stilltype.test');
+  await challengeFrom(supabase, kim, 'host@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'host@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#online-name').fill('Ada');
+  const join = page.locator('[data-accept-invite]');
+  await expect(join).toBeVisible();
+  await expect(page.locator('#refresh-race-invites')).toBeEnabled();
+  // Joining also refreshes the invitations; that answer draws the list again while the join is out.
+  const releaseInvites = supabase.races.hold('invites');
+  const releaseJoin = supabase.races.hold('join');
+  await join.focus();
+  await page.keyboard.press('Enter');
+  await expect(join).toHaveAttribute('aria-disabled', 'true');
+  await arrived(supabase, 'invites');
+  const redraws = await countRedraws(page, '#online-invites');
+  releaseInvites();
+  await expect.poll(redraws).toBeGreaterThan(0);
+  await expect(join).toBeFocused();
+  await expect(join).toHaveAttribute('aria-disabled', 'true');
+  // A press while it waits does nothing at all: not even a refresh of the invitations.
+  await expect(page.locator('#refresh-race-invites')).toBeEnabled();
+  expect(await join.evaluate((node) => { node.click(); return document.getElementById('refresh-race-invites').disabled; })).toBe(false);
+  await expect(join).toBeFocused();
+  releaseJoin();
+  await expect(page.locator('#online-room')).toBeVisible();
+});
+
 test('while a race request is out, the toast’s and the inbox’s Join wait visibly instead of dropping the click', async ({ page, supabase }) => {
   const kim = supabase.addUser('kim@stilltype.test');
-  const lin = supabase.addUser('lin@stilltype.test');
-  await saveFriend(supabase, lin, 'ada@stilltype.test');
+  supabase.addUser('lin@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'lin@stilltype.test');
   await openView(page, 'Challenge');
-  // Lin removes a friend, and the service is slow to answer; meanwhile Kim's challenge arrives.
-  const releaseRemove = supabase.races.hold('unfriend');
-  await page.getByRole('button', { name: 'Remove ada from friends' }).click();
+  await page.locator('#online-name').fill('Lin');
+  await createGuestRace(page);
+  // Lin leaves her race, and the service is slow to answer; meanwhile Kim's challenge arrives.
+  const releaseLeave = supabase.races.hold('leave');
+  await page.locator('#online-leave').click();
   await challengeFrom(supabase, kim, 'lin@stilltype.test');
-  const room = [...supabase.races.rooms.values()][0];
+  const room = [...supabase.races.rooms.values()].at(-1);
   await page.locator('#refresh-race-invites').click();
   const toast = page.locator('#challenge-toast');
   await expect(toast).toContainText('Kim challenged you to a race.');
@@ -399,16 +506,43 @@ test('while a race request is out, the toast’s and the inbox’s Join wait vis
   await page.locator('#inbox-trigger').click();
   const inboxJoin = page.locator('#inbox-list [data-inbox-action="invite"]');
   await expect(inboxJoin).toHaveAttribute('aria-disabled', 'true');
+  // The inbox keeps polling while it waits; each answer draws the list again, and focus stays on the Join.
+  await inboxJoin.focus();
+  const redraws = await countRedraws(page, '#inbox-list');
+  await expect.poll(async () => { await page.evaluate(() => dispatchEvent(new Event('online'))); return redraws(); }).toBeGreaterThan(0);
+  await expect(inboxJoin).toBeFocused();
   // A click past the dimmed look does nothing, and the inbox stays open on it.
   await inboxJoin.click({ force: true });
   await expect(page.locator('#inbox')).toHaveAttribute('open', '');
   expect(room.players).toHaveLength(1);
-  // Once the removal lands, the same Join works.
-  releaseRemove();
+  // Once the leave lands, the same Join works.
+  releaseLeave();
   await expect(inboxJoin).not.toHaveAttribute('aria-disabled');
   await inboxJoin.click();
   await expect(page.locator('#online-room')).toBeVisible();
   await expect.poll(() => room.players.length).toBe(2);
+});
+
+test('a friend list that failed to load, then loads empty, shows its usual copy again', async ({ page, supabase }) => {
+  supabase.addUser('host@stilltype.test');
+  await openApp(page);
+  // The first read of the friend list, as the signed-in page loads, never reaches the service.
+  let failed = false;
+  await page.route(/\/rest\/v1\/rpc\/race_action$/, (route) => {
+    if (failed || route.request().postDataJSON()?.p_action !== 'friends') return route.fallback();
+    failed = true;
+    return route.abort('internetdisconnected');
+  });
+  await signInWithEmail(page, 'host@stilltype.test');
+  // Opening Challenge reads it again; until that answers, the failure is what the list says.
+  const releaseRead = supabase.races.hold('friends');
+  await openView(page, 'Challenge');
+  const empty = page.locator('#online-friends-empty');
+  await expect(empty).toContainText('Can’t reach');
+  await arrived(supabase, 'friends');
+  // It answers: no friends yet.
+  releaseRead();
+  await expect(empty).toHaveText(/^Save someone when you invite them by email/);
 });
 
 test('the inbox sits beside the account button without touching the dock', async ({ page, supabase }) => {
