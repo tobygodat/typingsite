@@ -91,7 +91,21 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     return actions[entry.kind]?.available?.(entry) === false;
   }
 
+  // A toast speaks for its entry as the inbox holds it now. Once the entry has closed, been replaced by
+  // another kind (a ghost race answered on another device becomes its result) or gone, the toast goes too,
+  // so its button never acts on what was. Guests keep no entries, so their toast stands for itself.
+  function current(shown) {
+    if (!userId()) return !isClosed(shown);
+    const entry = entries.find((value) => value.id === shown.id);
+    return Boolean(entry) && entry.kind === shown.kind && !isClosed(entry);
+  }
+  function retire() {
+    if (pendingToast && !current(pendingToast)) pendingToast = null;
+    if (toastEntry && !current(toastEntry)) hideToast();
+  }
+
   function render() {
+    retire();
     const signedIn = Boolean(userId());
     $('inbox').hidden = !signedIn;
     if (!signedIn) return;
@@ -153,6 +167,7 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
   }
 
   function showToast(entry) {
+    if (!current(entry)) return;
     if (running()) { pendingToast = entry; return; }
     pendingToast = null;
     toastEntry = entry;
@@ -226,7 +241,6 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
         changed = true;
       }
     }
-    if (toastEntry?.kind === 'challenge' && isClosed(entries.find((entry) => entry.id === toastEntry.id) || toastEntry)) hideToast();
     if (changed) { save(); render(); }
   }
 
@@ -252,8 +266,9 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
       for (const entry of entries) {
         if (entry.kind === 'invite' && !entry.closed && !entry.local && !open.has(entry.id)) { entry.closed = true; changed = true; }
       }
-      if (toastEntry?.kind === 'invite' && !toastEntry.local && !open.has(toastEntry.id)) hideToast();
       if (changed) { save(); render(); }
+      // An entry's action can also lapse with time, so a toast is checked on every poll.
+      retire();
       for (const listener of listeners) listener(invites, null);
     } catch (failure) {
       for (const listener of listeners) listener(invites, failure);
@@ -293,7 +308,7 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     if (entry) {
       const known = entries.find((value) => value.id === entry.id);
       if (known && !known.read) { known.read = true; save(); render(); }
-      if (!isClosed(known || entry)) actions[entry.kind]?.run(entry);
+      if (current(entry)) actions[entry.kind]?.run(entry);
     }
   });
   $('challenge-toast-close').addEventListener('click', hideToast);
@@ -333,6 +348,12 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     },
     // Records a result this device produced, so the next poll does not deliver it again.
     deliver,
+    // A Race whose reply landed after the person moved on: the toast offers it again, with `text`, while
+    // its entry is still an open ghost race. Like any toast it waits for a run to end.
+    offer(id, text) {
+      const entry = entries.find((value) => value.id === id);
+      if (entry?.kind === 'challenge') showToast({ ...entry, text });
+    },
     // A request this device discovered has lapsed: its toast goes and its entry closes.
     withdraw(id) {
       if (toastEntry?.id === id || pendingToast?.id === id) { pendingToast = null; hideToast(); }

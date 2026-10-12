@@ -167,13 +167,12 @@ let clearTimer = null;
 // The friend's recorded run being raced (sessionKind 'challenge'), and the run offered to friends.
 let ghostRace = null;
 // The Race still waiting for its challenge, and the offer's friend list still loading (see startGhostRace).
-// A Race click holds only while the person stays where they made it. Each move they make drops it at the
-// one place that move passes through: another view (navigate, which every online room entry goes through),
-// a new practice-surface session (resetSession), a local race player (setupRacePlayer), the custom editor
-// (openCustom) or a run begun (startAttempt). A late reply then never pulls them back into a race.
+// A Race carries where it was clicked (raceContext); a later Race replaces it.
 // The friend list belongs to the offer on screen: renderGhostOffer drops it when another run replaces it.
 let ghostRequest = null;
 let friendsRequest = null;
+// Counts the sessions set up on the practice surface, so a Race can tell whether one replaced the session it saw.
+let sessionCount = 0;
 let offerRun = null;
 let offerSentTo = new Set();
 // One request id per friend for the offered run, repeated on a retry so the service stores it once.
@@ -562,8 +561,9 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   ticker = null;
   setRunning(false);
   primaryNotice = '';
-  // A session the person starts supersedes a Race still loading; a redraw for a synced profile doesn't.
-  if (!keepRace) ghostRequest = null;
+  // Each session set up counts, so a Race still loading can tell its session was replaced (see raceContext);
+  // a redraw for a synced profile doesn't count.
+  if (!keepRace) sessionCount += 1;
   if (kind === 'challenge' && !ghostRace) kind = 'practice';
   const kindChanged = sessionKind !== kind;
   sessionKind = kind;
@@ -682,8 +682,6 @@ function startAttempt(targetAttempt, type = 'primary') {
     race.attempt.startedAt = 0;
     inbox?.runChanged();
   }
-  // A run begun outranks a Race still waiting for its challenge.
-  ghostRequest = null;
 }
 
 function offsetFor(type = 'primary') {
@@ -1186,8 +1184,6 @@ function switchView(view) {
 }
 
 function navigate(view) {
-  // Going anywhere drops a Race still loading (see ghostRequest).
-  ghostRequest = null;
   if (view === 'practice') {
     // A custom passage that is ready or under way is practice too, so going to Practice keeps it.
     const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom') && !['complete', 'interrupted'].includes(attempt.status);
@@ -1224,6 +1220,7 @@ function markRaceInterrupted() {
 function localRaceRunning() {
   return race.attempt?.status === 'running' && !race.attempt.interrupted && document.body.dataset.view === 'compete';
 }
+const runInProgress = () => runActive || localRaceRunning();
 
 function conditionOptions(select, sources, fallback = null) {
   const prior = select.value;
@@ -1533,21 +1530,30 @@ function onlineRoomFirst() {
   return true;
 }
 
+// Where the person is, as a Race sees it: the view, the session set up on the practice surface and how far
+// its run has got, the custom editor, a local race player, an online room open or on its way, and any dialog.
+function raceContext() {
+  return JSON.stringify([document.body.dataset.view, sessionCount, attempt?.status, customOpen, race.attempt?.id,
+    race.attempt?.status, onlineRace?.liveRoomId || null, Boolean(onlineRace?.pending), Boolean(document.querySelector('dialog[open]'))]);
+}
+
 // Every ghost race reply checks, once it lands, that what it was asked for is still current: the Race
 // (ghostRequest), the finished run still on screen (submitGhostRun), the offered run (sendGhost) or the
 // friend list (friendsRequest). A late one changes nothing here; what the service did stands, and its
 // result still reaches the inbox.
 async function startGhostRace(id) {
   if (onlineRoomFirst()) return;
-  const request = ghostRequest = { id };
+  const request = ghostRequest = { id, context: raceContext() };
   let view = null;
   let failure = null;
   try { view = await getChallenge(session, id); } catch (error) { failure = error; }
-  // A later Race replaces the request, and anything else the person does meanwhile drops it (see
-  // ghostRequest). An online room is entered through navigate, so this second check is only a backstop.
+  // A later Race replaces this one.
   if (ghostRequest !== request) return;
   ghostRequest = null;
-  if (onlineRoomFirst()) return;
+  // The race opens only where it was asked for. Whatever the person has done since (another view, a new
+  // session, a run begun or ended, the custom editor, a local race, an online room, a dialog) stays theirs,
+  // and the race is offered instead; nor does it open while a room is on its way, which would open over it.
+  const here = raceContext() === request.context && !onlineRace?.pending;
   let conditions;
   try {
     if (failure) throw failure;
@@ -1560,7 +1566,13 @@ async function startGhostRace(id) {
     conditions = challengeConditions(view.conditions, view.duration ?? null);
     if (!conditions) throw new Error('This ghost race was recorded with settings this app can’t reproduce, so it can’t be raced fairly.');
   } catch (error) {
-    showAccountToast(error.message);
+    // Saying why changes nothing on screen, but nothing new appears beside a run begun since the click.
+    if (here || !runInProgress()) showAccountToast(error.message);
+    return;
+  }
+  // The offer is the inbox toast, held until a run ends; taking it asks again from where the person is then.
+  if (!here) {
+    inbox?.offer(`challenge:${id}`, `${view.name}’s race is ready.`);
     return;
   }
   if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
@@ -1764,8 +1776,6 @@ function startRace() {
 }
 
 function setupRacePlayer() {
-  // A local race set up drops a Race still loading (see ghostRequest).
-  ghostRequest = null;
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
   inbox?.runChanged();
@@ -2443,8 +2453,6 @@ function updateCustomState() {
 
 // The panel never opens or closes beside a live run: like the other mode buttons, it restarts the run first.
 function openCustom(open = true) {
-  // Opening or closing the editor drops a Race still loading (see ghostRequest).
-  ghostRequest = null;
   if (attempt?.status === 'running') resetSession(restartKind());
   customOpen = open;
   if (open) {
@@ -2629,7 +2637,7 @@ renderTraining();
 renderDaily();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
 inbox = createInbox({
-  isRunning: () => runActive || localRaceRunning(),
+  isRunning: runInProgress,
   getSession: () => session,
   listInvites: listRaceInvites,
   listChallenges,

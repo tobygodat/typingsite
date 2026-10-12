@@ -3,7 +3,15 @@
 import { randomUUID } from 'node:crypto';
 
 export class FakeRaces {
-  constructor(auth) { this.auth = auth; this.rooms = new Map(); this.friends = new Map(); }
+  constructor(auth) {
+    this.auth = auth;
+    this.rooms = new Map();
+    this.friends = new Map();
+    // As in FakeChallenges: with `held` set to an array, a successful reply to an action named in `holding`
+    // waits until a test calls the release pushed onto it. The action itself is already done.
+    this.held = null;
+    this.holding = new Set();
+  }
 
   friendList(owner) {
     return (this.friends.get(owner) || []).map(({ id, name, email, friendId }) => ({ id, name, account: Boolean(friendId), ...(email ? { email } : {}) }))
@@ -41,7 +49,9 @@ export class FakeRaces {
       wpm: 0, accuracy: 100, elapsed: 0, sequence: 0, typed: '', keystrokes: 0, errors: 0 };
   }
 
-  handle(caller, { p_action: action, p_room_id: id, p_data: data = {}, p_guest_token: guestToken }, reply) {
+  handle(caller, { p_action: action, p_room_id: id, p_data: data = {}, p_guest_token: guestToken }, send) {
+    const reply = (status, json) => (status === 200 && this.held && this.holding.has(action)
+      ? new Promise((release) => this.held.push(release)).then(() => send(status, json)) : send(status, json));
     const failure = (message) => reply(400, { message });
     if (action === 'invites') return reply(200, [...this.rooms.values()]
       .filter((room) => room.invitedUser === caller && caller && room.status === 'waiting' && Date.parse(room.expiresAt) > Date.now()
