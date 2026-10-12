@@ -169,6 +169,41 @@ test('Escape cancels, leaving the field applies a valid value, and another pill 
   await expect(pill(page)).toHaveText('custom');
 });
 
+test('custom text hides the custom length, and the palette leaves custom text for it', async ({ page }) => {
+  await openApp(page);
+  await setCustom(page, 45);
+  await expect(page.locator('#condition-line')).toContainText('· 45 s ·');
+
+  // Opening the custom text editor closes a custom length field left open in the row it hides.
+  await pill(page).click();
+  await expect(field(page)).toBeFocused();
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await expect(page.locator('#duration-options')).toBeHidden();
+  await expect(page.locator('#custom-length-form')).toBeHidden();
+
+  const text = 'the quick brown fox jumps over the lazy dog';
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await expect(page.locator('#best')).toHaveText('Not counted');
+
+  // No length is current under custom text, though the remembered one is still offered.
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('custom time');
+  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('custom time…');
+  await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).toHaveText('45 s');
+  await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).not.toHaveClass(/is-on/);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#mode-time')).toHaveAttribute('aria-pressed', 'true');
+  await expect(field(page)).toBeFocused();
+  await field(page).fill('50');
+  await field(page).press('Enter');
+  await expect(page.locator('#condition-line')).toContainText('· 50 s ·');
+  await expect(page.locator('#best')).toHaveText('No best yet');
+});
+
 test('the palette opens the custom field, switching mode when needed', async ({ page }) => {
   await openApp(page);
   await page.locator('#mode-words').click();
