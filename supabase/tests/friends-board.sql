@@ -580,4 +580,92 @@ begin
   if exists(select 1 from race_private.board_sharing where user_id in (eve, gus)) then raise exception 'A deleted account kept its sharing version.'; end if;
   raise notice 'Friends board sharing order checks passed.';
 end $order$;
+
+-- Each opt-out carries the id its device keeps it under. Sent again after its reply was lost, while it is
+-- still the last change applied, it moves nothing, so the share that follows it from that device counts
+-- at the first try. Any other opt-out moves the version on, even when the account is already off the
+-- board: a new id, the same id after a share since, or no valid id at all.
+do $optout$
+declare
+  hal uuid := gen_random_uuid();
+  ivy uuid := gen_random_uuid();
+  board jsonb;
+  seen bigint;
+  bad jsonb;
+  denied boolean;
+begin
+  insert into auth.users (id,email,email_confirmed_at) values (hal,'board-optout-' || hal::text || '@example.invalid',now()),
+    (ivy,'board-optout-' || ivy::text || '@example.invalid',now());
+  insert into race_private.friends(owner_id, friend_id, name) values (hal, ivy, 'Ivy'), (ivy, hal, 'Hal');
+  perform set_config('request.jwt.claim.sub',ivy::text,true);
+  perform pg_temp.share();
+  perform set_config('request.jwt.claim.sub',hal::text,true);
+  board := pg_temp.share();
+  seen := (board->>'sharingVersion')::bigint;
+  if not (board->>'sharing')::boolean or seen <> 1 then raise exception 'Hal did not start sharing at version 1: %', board; end if;
+
+  -- Hal turns sharing off. The service applies it; the reply is lost, so his device sends it again.
+  board := pg_temp.board('unshare', '{"id":"mgm1k2-abc123"}');
+  if (board->>'sharing')::boolean or (board->>'sharingVersion')::bigint <> seen + 1 then raise exception 'An opt-out with an id was not applied: %', board; end if;
+  board := pg_temp.board('unshare', '{"id":"mgm1k2-abc123"}');
+  if (board->>'sharing')::boolean or (board->>'sharingVersion')::bigint <> seen + 1 or board->'rows' <> '[]'::jsonb
+    or exists(select 1 from race_private.board_members where user_id = hal) then
+    raise exception 'The same opt-out sent again moved the version or left Hal on the board: %', board;
+  end if;
+  -- So the share his device sends next, with the version that reply gave, counts at the first try.
+  board := pg_temp.board('share', jsonb_build_object('version', seen + 1));
+  if not (board->>'sharing')::boolean or (board->>'sharingVersion')::bigint <> seen + 2 or jsonb_array_length(board->'rows') <> 2 then
+    raise exception 'The share after a repeated opt-out was refused: %', board;
+  end if;
+  seen := seen + 2;
+
+  -- That opt-out arriving once more after the share (a copy slow on its way) is no longer the last change:
+  -- it counts as an opt-out again, the safe way round, and moves the version, so every device can tell.
+  board := pg_temp.board('unshare', '{"id":"mgm1k2-abc123"}');
+  seen := seen + 1;
+  if (board->>'sharing')::boolean or (board->>'sharingVersion')::bigint <> seen
+    or exists(select 1 from race_private.board_members where user_id = hal) then
+    raise exception 'An opt-out sent again after a share did not take Hal off the board with a new version: %', board;
+  end if;
+
+  -- A new id moves the version on although Hal is already off the board, so a share another device sent
+  -- with the version from before it is refused. Its repeat moves nothing.
+  board := pg_temp.board('unshare', '{"id":"mgm1k9_xyz789"}');
+  if (board->>'sharingVersion')::bigint <> seen + 1 then raise exception 'A new opt-out while off the board did not move the version: %', board; end if;
+  board := pg_temp.board('share', jsonb_build_object('version', seen));
+  if (board->>'sharing')::boolean or (board->>'sharingVersion')::bigint <> seen + 1 or exists(select 1 from race_private.board_members where user_id = hal) then
+    raise exception 'A share sent before a newer opt-out (made while off the board) undid it: %', board;
+  end if;
+  seen := seen + 1;
+  board := pg_temp.board('unshare', '{"id":"mgm1k9_xyz789"}');
+  if (board->>'sharingVersion')::bigint <> seen then raise exception 'A repeated opt-out moved the version: %', board; end if;
+
+  -- An opt-out without a valid id is a new one each time, never raises, and is never taken for a repeat;
+  -- after one, the earlier id is a new one again.
+  foreach bad in array array['{}'::jsonb, '{"id":null}'::jsonb, '{"id":""}'::jsonb, jsonb_build_object('id', repeat('a', 65)),
+    '{"id":"a b"}'::jsonb, '{"id":"a1\n"}'::jsonb, '{"id":"ö1"}'::jsonb, '{"id":"a1;--"}'::jsonb, '{"id":7}'::jsonb,
+    '{"id":["a1"]}'::jsonb, '{"id":{"a":1}}'::jsonb, '"a1"'::jsonb, 'null'::jsonb, null, '{"id":""}'::jsonb] loop
+    denied := false;
+    begin board := pg_temp.board('unshare', bad);
+    exception when others then denied := true; end;
+    seen := seen + 1;
+    if denied or (board->>'sharing')::boolean or (board->>'sharingVersion')::bigint <> seen then
+      raise exception 'An opt-out with id % was not a new one: %', bad, board;
+    end if;
+  end loop;
+  board := pg_temp.board('unshare', '{"id":"mgm1k9_xyz789"}');
+  seen := seen + 1;
+  if (board->>'sharingVersion')::bigint <> seen then raise exception 'An id applied before an opt-out without one was taken for a repeat: %', board; end if;
+  -- The longest id there can be is still an id.
+  board := pg_temp.board('unshare', jsonb_build_object('id', repeat('z', 64)));
+  board := pg_temp.board('unshare', jsonb_build_object('id', repeat('z', 64)));
+  if (board->>'sharingVersion')::bigint <> seen + 1 then raise exception 'A 64-character id was not recognised when sent again: %', board; end if;
+
+  -- What the service keeps is its own: a browser can't read or set the id it keeps either.
+  if has_column_privilege('authenticated','race_private.board_sharing','last_optout','SELECT')
+    or has_column_privilege('authenticated','race_private.board_sharing','last_optout','UPDATE') then
+    raise exception 'The last opt-out id is exposed.';
+  end if;
+  raise notice 'Friends board opt-out repeat checks passed.';
+end $optout$;
 rollback;

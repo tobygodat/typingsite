@@ -1326,6 +1326,82 @@ test('sharing switched off, on and off again while the first is on its way keeps
   await expect.poll(() => optOutsKept(page)).toEqual([]);
 });
 
+test('a slow board read answered before another tab turned sharing on changes nothing when it lands', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  seedProfile(supabase, ada, practiceThisWeek(2));
+  // This browser has never read the board for her, so the first tab reads it once the account check is
+  // done. The service answers at once (not sharing, version 0), but the answer is slow to come back.
+  let land;
+  supabase.board.holdNextRead = new Promise((resolve) => { land = resolve; });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await expect.poll(() => supabase.board.holdNextRead === null).toBe(true);
+  // Meanwhile a second tab reads the board and turns sharing on.
+  const second = await page.context().newPage();
+  await supabase.attach(second);
+  await openApp(second);
+  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openBoard(second);
+  await second.locator('#share-board').click();
+  await expect(second.locator('#friends-board-lists')).toBeVisible();
+  expect(supabase.board.members.has(ada.id)).toBe(true);
+  await expect.poll(() => knownHere(page, ada)).toBe('1:1');
+  // The first tab's old answer lands now. It is older than what this browser holds: nothing changes.
+  const landed = page.waitForResponse((response) => response.url().endsWith('/rest/v1/rpc/friends_board'));
+  land();
+  await landed;
+  await page.waitForTimeout(1000);
+  expect(await knownHere(page, ada)).toBe('1:1');
+  await expect(second.locator('#share-board')).toBeChecked();
+  await expect(second.locator('#friends-board-lists')).toBeVisible();
+  await expect(second.locator('#friends-board-status')).toHaveText('');
+  expect(supabase.board.members.has(ada.id)).toBe(true);
+  // The first tab still shows sharing on: its palette says so without reading the board, and so does
+  // the board, with no word of another device.
+  await page.bringToFront();
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('share on friends');
+  await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).toHaveText('on');
+  await page.keyboard.press('Escape');
+  await openBoard(page);
+  await expect(page.locator('#share-board')).toBeChecked();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  await expect(page.locator('#friends-board-status')).toHaveText('');
+});
+
+test('an opt-out whose reply was lost goes again before sharing is turned back on, and the share counts at the first click', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  seedProfile(supabase, ada, practiceThisWeek(2));
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await expect(page.locator('#friends-board-off')).toBeVisible();
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  expect(supabase.board.version(ada.id)).toBe(1);
+  // She turns sharing off. The service applies it, but the reply is lost on its way back, so the opt-out
+  // stays kept here.
+  supabase.board.loseNextReply = true;
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-status')).toContainText('Your row comes off once the board can be reached.');
+  expect(supabase.board.members.has(ada.id)).toBe(false);
+  expect(supabase.board.version(ada.id)).toBe(2);
+  expect(await optOutsKept(page)).toHaveLength(1);
+  // Turned back on, that same opt-out goes first. The service has applied it already, so it moves
+  // nothing, and the share counts at the first click, with no word of another device.
+  const actions = boardActions(page);
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-status')).not.toHaveText('Turning sharing on…');
+  expect(await page.locator('#friends-board-status').textContent()).toBe('');
+  await expect(page.locator('#share-board')).toBeChecked();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  expect(actions).toEqual(['unshare', 'share']);
+  expect(supabase.board.members.has(ada.id)).toBe(true);
+  expect(supabase.board.version(ada.id)).toBe(3);
+  expect(await optOutsKept(page)).toEqual([]);
+  await expect.poll(() => knownHere(page, ada)).toBe('1:3');
+});
+
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 

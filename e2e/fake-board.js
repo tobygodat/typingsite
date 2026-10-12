@@ -2,8 +2,9 @@
 // e2e/fake-supabase.js), shown only to mutual friends who are members too and labelled with the reader's
 // own name for them. It reads the friend lists kept by e2e/fake-races.js. `members` holds the accounts
 // that share, and `versions` each account's sharing version: a share counts only when sent with the
-// current one, an opt-out always, and each that counts moves it on. supabase/tests/friends-board.sql
-// checks the migration itself; this mirrors its replies.
+// current one, an opt-out always, and each that counts moves it on, except the same opt-out (by its id)
+// sent again while it is still the last change (`lastOptOut`). supabase/tests/friends-board.sql checks
+// the migration itself; this mirrors its replies.
 const DAY_MS = 86400000;
 export const utcDay = (date = new Date()) => date.toISOString().slice(0, 10);
 export function mondayOf(date = new Date()) {
@@ -38,6 +39,8 @@ export class FakeBoard {
     this.members = new Set();
     // Each account's sharing version: how many shares and opt-outs were applied (none yet is 0).
     this.versions = new Map();
+    // Each account's last applied opt-out id while it is still the last change (a share clears it).
+    this.lastOptOut = new Map();
     // Every board call's action, in order.
     this.calls = [];
     // Set to stand in for a project where the migration has not been applied yet.
@@ -53,6 +56,12 @@ export class FakeBoard {
     // Set to delay the next reply by this many milliseconds: the board is read on arrival, and the reply
     // takes that long to get back.
     this.delayNextReply = 0;
+    // Set to a promise to hold the reply to the next 'board' read once it is built: the board is read on
+    // arrival, and the answer comes back only once that settles, while later requests go through.
+    this.holdNextRead = null;
+    // Set to lose the reply to the next 'share' or 'unshare': the service applies it, and the browser gets
+    // a failure instead of the answer.
+    this.loseNextReply = false;
   }
 
   version(account) { return this.versions.get(account) ?? 0; }
@@ -60,6 +69,7 @@ export class FakeBoard {
   // An account that turned sharing on before the test (one change applied, as the service counts it).
   joined(account) {
     this.versions.set(account, this.version(account) + 1);
+    this.lastOptOut.delete(account);
     this.members.add(account);
   }
 
@@ -112,13 +122,29 @@ export class FakeBoard {
       const seen = data?.version;
       if (Number.isSafeInteger(seen) && seen >= 0 && seen === this.version(caller)) {
         this.versions.set(caller, seen + 1);
+        this.lastOptOut.delete(caller);
         this.members.add(caller);
       }
     } else if (action === 'unshare') {
-      this.versions.set(caller, this.version(caller) + 1);
+      // An opt-out sent again under its id, while it is still the last change applied, moves nothing;
+      // any other (a new id, or none valid) moves the version on, even when already off the board.
+      const id = typeof data?.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(data.id) ? data.id : null;
+      if (id === null || this.lastOptOut.get(caller) !== id) {
+        this.versions.set(caller, this.version(caller) + 1);
+        this.lastOptOut.set(caller, id);
+      }
       this.members.delete(caller);
     } else if (action !== 'board') return reply(400, { message: 'Unknown board action.' });
     const result = this.board(caller);
+    if (action === 'board' && this.holdNextRead) {
+      const held = this.holdNextRead;
+      this.holdNextRead = null;
+      await held;
+    }
+    if ((action === 'share' || action === 'unshare') && this.loseNextReply) {
+      this.loseNextReply = false;
+      return reply(503, { message: 'The board is unavailable.' });
+    }
     if ((action === 'share' || action === 'unshare') && this.holdNextReply) {
       const held = this.holdNextReply;
       this.holdNextReply = null;
