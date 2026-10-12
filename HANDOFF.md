@@ -80,6 +80,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `supabase/functions/delete-account/`: the account-deletion Edge Function (Deno). `handler.ts` holds the logic and is unit tested under Node (`tests/delete-account.test.js`); `index.ts` wires it to `Deno.serve` and a service-key supabase-js client. Deploy with `supabase functions deploy delete-account`.
 - `supabase/tests/`: SQL checks run inside a rolled-back transaction; `account-deletion.sql` asserts every foreign key to `auth.users` cascades and that deleting a user takes exactly its own rows.
 - `src/egg.js`: the ↑↑↓↓←→←→ b a key sequence.
+- `sw.js`, `manifest.webmanifest`, `icons/`: the installable offline shell. `sw.js` precaches exactly the served files (`tests/sw.test.js` checks the list), serves them cache-first, fetches navigations network-first, and never caches Supabase or other origins. `npm run build` stamps its cache name with a content hash. Registered from `src/app.js` everywhere except `localhost`; e2e blocks service workers except in `e2e/pwa-offline.spec.js`.
 - `docs/ui-contract.md`: DOM integration contract.
 - `server.mjs` / `scripts/build-static.mjs`: serve / copy exactly `index.html`, `src/*.js`, `src/*.css`, `src/fonts/*.ttf`, `src/fonts/*.woff2` and the `OFL*.txt` licences. `design/`, canvas artboards and project documents are not served or built.
 
