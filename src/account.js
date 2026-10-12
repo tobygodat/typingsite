@@ -72,20 +72,27 @@ export function loadSession() {
   return session?.user?.id && session.refresh_token ? session : null;
 }
 
-function sessionFrom(data) {
+// A sign-in's id is made when it signs in and kept through every refresh, so a tab can tell another tab's
+// refresh of the sign-in they share from a new sign-in there (a guest tab signing in to the same account).
+// Sessions stored before sign-ins had one have none, and count as one sign-in.
+function sessionFrom(data, signInId) {
   return {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: data.expires_at || Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
     user: { id: data.user.id, email: data.user.email || '' },
+    ...(signInId ? { signInId } : {}),
   };
 }
 
-function storeSession(data) {
-  const session = sessionFrom(data);
+export const sameSignIn = (a, b) => Boolean(a?.user?.id) && a.user.id === b?.user?.id && a.signInId === b?.signInId;
+
+function storeSession(session) {
   writeJson(SESSION_KEY, session);
   return session;
 }
+
+const storeSignIn = (data) => storeSession(sessionFrom(data, base64url(crypto.getRandomValues(new Uint8Array(9)))));
 
 // A request that hasn't finished by then fails as unreachable, so nothing waiting behind it (the push
 // queue, sign-out) can hang on a stalled connection; edits stay on the device, as offline. A keepalive
@@ -127,13 +134,13 @@ export async function request(path, { method = 'GET', body, token, headers = {},
 export async function signUp(email, password, redirectTo) {
   const data = await request(`/auth/v1/signup?redirect_to=${encodeURIComponent(redirectTo)}`, { method: 'POST', body: { email, password } });
   // With email confirmation on, Supabase returns the user without a session.
-  if (data?.access_token) return { session: storeSession(data) };
+  if (data?.access_token) return { session: storeSignIn(data) };
   return { confirm: true };
 }
 
 export async function signIn(email, password) {
   const data = await request('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } });
-  return storeSession(data);
+  return storeSignIn(data);
 }
 
 // Asks first, so a provider that is not configured yet gives a sentence rather than a raw error page.
@@ -162,10 +169,10 @@ export async function completeRedirect(href) {
     remove(VERIFIER_KEY);
     if (!verifier) throw new AuthError('That sign-in link has expired. Try again.');
     const data = await request('/auth/v1/token?grant_type=pkce', { method: 'POST', body: { auth_code: redirect.code, code_verifier: verifier } });
-    return storeSession(data);
+    return storeSignIn(data);
   }
   const user = await request('/auth/v1/user', { token: redirect.access_token });
-  return storeSession({ ...redirect, user });
+  return storeSignIn({ ...redirect, user });
 }
 
 // Returns a session with a usable access token, refreshing it if it is about to expire.
@@ -181,8 +188,9 @@ export async function freshSession(session = loadSession()) {
     const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token } });
     // Stored only over the session it refreshed: another tab may have signed out, or in as someone else
     // (the same account included, whose new session that sign-out's logout didn't end), since this tab
-    // read it.
-    return loadSession()?.refresh_token === session.refresh_token ? storeSession(data) : sessionFrom(data);
+    // read it. Either way it is still the sign-in it refreshed.
+    const refreshed = sessionFrom(data, session.signInId);
+    return loadSession()?.refresh_token === session.refresh_token ? storeSession(refreshed) : refreshed;
   } catch (error) {
     // A rejected refresh token means the session is over; a network failure keeps it for later. Only the
     // session whose token was refused is removed, never one another tab stored since (a newer token, or
@@ -203,9 +211,11 @@ export function signedOut(userId) {
 }
 export const clearSignedOut = (userId) => remove(signedOutKey(userId));
 
-// Touches only what is still this user's: another tab may have signed out, or in as someone else, while
-// this one was sending its edits. The device's session is checked here, where nothing waits between the
-// check and the writes. With none stored (this session expired), only the marker is left.
+// Touches only what is still this sign-in's: another tab may have signed out, or in as anyone (the same
+// account included), while this one was sending its edits. The device's session is checked here, where
+// nothing waits between the check and the writes. With none stored (this session expired), only the
+// marker is left. Another sign-in to this account is left alone and not logged out either, since
+// Supabase's logout ends every session of the account.
 // `sentText` is the device cache as this tab's last push left it, with everything in it in the account.
 // The cache goes only if it still holds exactly that; otherwise it stays, marked, for the next sign-in.
 // Reads of localStorage across tabs can be milliseconds stale, so another tab's save can be in the cache
@@ -213,12 +223,14 @@ export const clearSignedOut = (userId) => remove(signedOutKey(userId));
 // before it, and a tab that hears a different copy removed puts it back (restoreUnsent).
 export async function signOut(session, { sentText = null } = {}) {
   const userId = session?.user?.id;
-  const stored = loadSession()?.user.id;
-  if (userId && (!stored || stored === userId)) {
+  const stored = loadSession();
+  if (stored && stored.user.id === userId && !sameSignIn(stored, session)) return;
+  const held = stored?.user.id === userId ? stored : null;
+  if (userId && (!stored || held)) {
     const settled = sentText !== null && loadCachedProfileText(userId) === sentText;
     // Written before the session goes, so a tab that hears of the sign-out finds it.
     if (!settled) writeJson(signedOutKey(userId), true);
-    if (stored) {
+    if (held) {
       // Heard by every tab before the removal.
       if (settled) writeJson(signedOutKey(userId), { sent: textStamp(sentText) });
       remove(SESSION_KEY);
@@ -228,7 +240,8 @@ export async function signOut(session, { sentText = null } = {}) {
       }
     }
   }
-  try { await request('/auth/v1/logout', { method: 'POST', token: session?.access_token }); } catch {}
+  // With the device's copy of this sign-in, when it holds one: another tab may have refreshed it since.
+  try { await request('/auth/v1/logout', { method: 'POST', token: (held || session)?.access_token }); } catch {}
 }
 
 // cyrb53: a fast 53-bit string hash. Not cryptographic; it only tells copies of the cache apart.

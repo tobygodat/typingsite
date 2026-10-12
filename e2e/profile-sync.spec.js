@@ -1233,6 +1233,81 @@ for (const next of ['second@stilltype.test', EMAIL]) {
   });
 }
 
+// A tab signed in to the account and a guest tab beside it. The guest tab's sign-in to the same account
+// leaves no sign-out marker: it only stores a newer sign-in over this tab's.
+async function besideGuestTab(page, context, supabase, errors) {
+  supabase.addUser(EMAIL);
+  await openApp(page);
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await signInWithEmail(page, EMAIL);
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+  const logouts = [];
+  page.on('request', (request) => {
+    if (/\/auth\/v1\/logout/.test(request.url())) logouts.push(request.headers().authorization);
+  });
+  return { other, logouts };
+}
+
+const storedSession = (page) => page.evaluate(() => localStorage.getItem('stilltype-session-v1'));
+
+test('signing out after a guest tab signed in to the same account ends that newer sign-in, in both tabs', async ({ page, context, supabase }) => {
+  const errors = [];
+  const { other, logouts } = await besideGuestTab(page, context, supabase, errors);
+  const first = JSON.parse(await storedSession(page));
+  await signInWithEmail(other, EMAIL);
+  const newer = JSON.parse(await storedSession(other));
+  expect(newer.refresh_token).not.toBe(first.refresh_token);
+
+  // This tab still shows the account, so its sign-out ends the sign-in the device holds for it when asked,
+  // with that sign-in's token: every tab of the account signs out, as when they share one sign-in.
+  await page.locator('#account-trigger').click();
+  await Promise.all([page.waitForEvent('load'), page.locator('#account-signout').click()]);
+  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+  expect(logouts).toEqual([`Bearer ${newer.access_token}`]);
+  expect(await storedSession(page)).toBeNull();
+  expect(errors).toEqual([]);
+});
+
+test('a sign-out overtaken by a guest tab signing in to the same account leaves that sign-in alone', async ({ page, context, supabase }) => {
+  const errors = [];
+  const { other, logouts } = await besideGuestTab(page, context, supabase, errors);
+
+  // This tab signs out, and its push waits on the network.
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let held = 0;
+  await page.route(/\/rest\/v1\/profiles/, async (route) => {
+    held += 1;
+    await gate;
+    await route.fallback().catch(() => {});
+  });
+  await page.locator('#account-trigger').click();
+  await page.locator('#account-signout').click();
+  await expect.poll(() => held).toBeGreaterThan(0);
+
+  // Meanwhile the guest tab signs in to the same account.
+  await signInWithEmail(other, EMAIL);
+  const stored = await storedSession(other);
+
+  // The waiting sign-out finds itself overtaken and starts again as the device now is: signed in, with the
+  // other tab's sign-in still stored and still valid, and nothing marked signed out.
+  const reloaded = page.waitForEvent('load');
+  release();
+  await reloaded;
+  await expect(page.locator('#account')).toHaveAttribute('data-state', 'member');
+  await expect(page.locator('#account-email')).toHaveText(EMAIL);
+  expect(await storedSession(page)).toBe(stored);
+  expect(logouts).toEqual([]);
+  expect(supabase.refreshTokens.has(JSON.parse(stored).refresh_token)).toBe(true);
+  expect((await storageKeys(page)).filter((key) => key.startsWith('stilltype-signed-out:'))).toEqual([]);
+  await other.reload();
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'member');
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  expect(errors).toEqual([]);
+});
+
 // Reads of localStorage across tabs can be milliseconds stale, so a sign-out that sent everything can
 // remove a cache another tab has just saved a run to. This replays one in `page`: it read the cache as
 // `sentText`, and names that copy before removing the session, the cache and its marker, as

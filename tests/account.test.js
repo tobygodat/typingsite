@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  challengeFor, cleanRedirectUrl, freshSession, MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, restoreUnsent, SESSION_KEY,
-  signedOutKey, signOut, suggestionRow, textStamp, unsentCopy,
+  challengeFor, cleanRedirectUrl, freshSession, MAX_SUGGESTION, mergeProfiles, parseAuthRedirect, profileKey, restoreUnsent, sameSignIn,
+  SESSION_KEY, signedOutKey, signIn, signOut, suggestionRow, textStamp, unsentCopy,
 } from '../src/account.js';
 
 test('PKCE challenge matches the RFC 7636 example', async () => {
@@ -176,6 +176,77 @@ test('signing out touches only what is still that account’s', async () => {
       assert.deepEqual([...store.entries()], before);
     }
     assert.equal(logouts.length, 6);
+  } finally {
+    globalThis.localStorage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('a sign-in gets an id that its refreshes keep, stored or not', async () => {
+  const store = new Map();
+  const originalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  let issued = 0;
+  globalThis.fetch = async () => {
+    issued += 1;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: `a${issued}`, refresh_token: `r${issued}`, expires_in: 3600, user: { id: 'u1' } }) };
+  };
+  try {
+    const first = await signIn('ada@stilltype.test', 'pw');
+    const second = await signIn('ada@stilltype.test', 'pw');
+    assert.match(first.signInId, /^[\w-]{12}$/);
+    assert.notEqual(second.signInId, first.signInId);
+    assert.equal(sameSignIn(first, second), false);
+    // Refreshed over the stored copy: the same sign-in.
+    const expiring = { ...second, expires_at: 1 };
+    store.set(SESSION_KEY, JSON.stringify(expiring));
+    const refreshed = await freshSession(expiring);
+    assert.equal(refreshed.refresh_token, 'r3');
+    assert.equal(JSON.parse(store.get(SESSION_KEY)).signInId, second.signInId);
+    assert.ok(sameSignIn(refreshed, second));
+    // Refreshed after another sign-in was stored (left in place): still its own sign-in, not that one.
+    const other = JSON.stringify({ ...first, expires_at: 0 });
+    store.set(SESSION_KEY, other);
+    const own = await freshSession(expiring);
+    assert.equal(own.signInId, second.signInId);
+    assert.equal(store.get(SESSION_KEY), other);
+    // Sessions stored before sign-ins had an id count as one sign-in.
+    assert.ok(sameSignIn({ user: { id: 'u1' }, refresh_token: 'x' }, { user: { id: 'u1' }, refresh_token: 'y' }));
+  } finally {
+    globalThis.localStorage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('signing out leaves a newer sign-in to the same account alone, and ends its own however refreshed', async () => {
+  const later = Math.floor(Date.now() / 1000) + 3600;
+  const session = (signInId, token) => ({ access_token: `${token}-access`, refresh_token: `${token}-refresh`, expires_at: later, user: { id: 'u1' }, signInId });
+  const originalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  const sent = '{"version":2,"runs":[]}';
+  let store;
+  const logouts = [];
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  globalThis.fetch = async (url, { headers }) => {
+    logouts.push(headers.Authorization);
+    return { ok: true, status: 204, text: async () => '' };
+  };
+  try {
+    // A guest tab signed in to the account since: nothing is touched or marked, and no logout goes out,
+    // since it would end every session of the account, that one included.
+    for (const sentText of [sent, null]) {
+      store = new Map([[SESSION_KEY, JSON.stringify(session('newer', 'n'))], [profileKey('u1'), sent]]);
+      const before = [...store.entries()];
+      await signOut(session('mine', 'm'), { sentText });
+      assert.deepEqual([...store.entries()], before);
+    }
+    assert.deepEqual(logouts, []);
+    // Its own sign-in, refreshed since by another tab: removed, and logged out with the device's copy.
+    store = new Map([[SESSION_KEY, JSON.stringify(session('mine', 'm2'))], [profileKey('u1'), sent]]);
+    await signOut(session('mine', 'm'), { sentText: sent });
+    assert.deepEqual([...store.keys()], []);
+    assert.deepEqual(logouts, ['Bearer m2-access']);
   } finally {
     globalThis.localStorage = originalStorage;
     globalThis.fetch = originalFetch;

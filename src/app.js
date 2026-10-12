@@ -2048,13 +2048,20 @@ async function enterAccount(newSession) {
 async function signOutAccount() {
   closeAccountMenu();
   const userId = session.user.id;
-  // Another tab signed out, or in as someone else (the same account included), before this sign-out or
-  // while it waits on the network: this tab has followed (followSessionElsewhere), so it stops here and
-  // starts again as the device now is. Whatever the device holds (another session included) stays.
+  // What this ends is the account's sign-in on the device as it stands now. That may be newer than this
+  // tab's: a guest tab may have signed in to the account since, with no sign-out between. Every tab of the
+  // account then signs out, as tabs that share one sign-in do.
+  const stored = account.loadSession();
+  if (!signedOutElsewhere && stored?.user.id === userId) session = stored;
+  const ending = session;
+  // Another tab signed out, or in as someone else, before this sign-out (this tab has followed:
+  // followSessionElsewhere), or signed out or in as anyone (the same account included) while it waits on
+  // the network: this sign-out stops here, and the tab starts again as the device now is. Whatever the
+  // device holds (another session included) stays.
   // Checked again after every wait; account.signOut checks the stored session once more.
   const overtaken = () => {
-    const stored = account.loadSession()?.user.id;
-    if (!signedOutElsewhere && (!stored || stored === userId)) return false;
+    const now = account.loadSession();
+    if (!signedOutElsewhere && (!now || account.sameSignIn(now, ending))) return false;
     // Followed: after hearing the cache removed, for a sign-out elsewhere that sent everything (finishFollow).
     if (pendingSignOut === null) location.reload();
     return true;
@@ -2217,7 +2224,10 @@ function bindAccount() {
 // session. This tab then starts again as the device now is, once any run in progress ends
 // (flushDeferredSync): as a guest, or as whoever has signed in since, the same account included. The run
 // is kept in memory only. A session that only expired (a refused refresh removes the session and nothing
-// else) is not followed: this tab keeps caching for the next sign-in. Returns whether it followed.
+// else) is not followed: this tab keeps caching for the next sign-in. Nor is a new sign-in to this account
+// with no sign-out between (a guest tab signing in): the account and its cache are the same, and this tab
+// takes up the newer sign-in before its next request (account.freshSession) and as it signs out
+// (signOutAccount). Returns whether it followed.
 function followSessionElsewhere(event) {
   const userId = session.user.id;
   const current = account.loadSession()?.user.id;
