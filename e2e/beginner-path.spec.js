@@ -348,9 +348,6 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#palette')).toBeHidden();
     await expect(page.locator('#typing-input')).toBeFocused();
     await expect(page.locator('#condition-line')).toContainText('touch input');
-    // Focus given inside a palette click leaves Chromium with no caret in the input (a separate, existing
-    // palette issue), so the test refocuses it without a pointer before typing.
-    await page.locator('#typing-input').blur();
     await typeLesson(page);
     await expect(page.locator('#lesson-status')).toHaveText('touch input');
     await expect(page.locator('#lesson-list .lesson-row').nth(1)).toHaveAttribute('data-state', 'locked');
