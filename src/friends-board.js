@@ -151,17 +151,28 @@ function rememberSharing(session, value, version = null) {
 // confirmation settles only the one it was sent for: a reply that arrives after sharing was turned back
 // on and off again can't drop the newer opt-out. The id goes with it, so when its reply was lost and it
 // is sent again, the service answers the repeat as done without moving the sharing version a second
-// time, and a share sent after it counts.
+// time, and a share sent after it counts. An opt-out is only ever sent with the id it is kept under: where
+// this browser can't keep one in localStorage, this page keeps it until it is confirmed (or the page closes).
 const optOutKey = (session) => `stilltype-board-optout:${session.user.id}`;
+const keptInPage = new Map();
 function optOutId(session) {
-  try { return localStorage.getItem(optOutKey(session)); } catch { return null; }
+  try {
+    const id = localStorage.getItem(optOutKey(session));
+    if (id !== null) return id;
+  } catch {}
+  return keptInPage.get(session.user.id) ?? null;
 }
 export const optOutPending = (session) => optOutId(session) !== null;
 function rememberOptOut(session) {
-  try { localStorage.setItem(optOutKey(session), `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`); } catch {}
+  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  try {
+    localStorage.setItem(optOutKey(session), id);
+    keptInPage.delete(session.user.id);
+  } catch { keptInPage.set(session.user.id, id); }
 }
 function settleOptOut(session, id) {
   try { if (localStorage.getItem(optOutKey(session)) === id) localStorage.removeItem(optOutKey(session)); } catch {}
+  if (keptInPage.get(session.user.id) === id) keptInPage.delete(session.user.id);
 }
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const OFF = 'Your row is off the board.';
@@ -189,7 +200,7 @@ async function call(session, action, data = {}) {
 }
 // No numbers travel: the service reads them from each account's own profile row. A share carries only
 // the sharing version it is based on (see versionOf), and an opt-out only the id it is kept under here
-// (none when none is kept: the service then takes it as a new one).
+// (the service takes one without a valid id as a new opt-out; the board never sends one).
 export const readBoard = (session) => call(session, 'board');
 export const startSharing = (session, version) => call(session, 'share', { version });
 export const stopSharing = (session, id = null) => call(session, 'unshare', id ? { id } : {});
@@ -308,9 +319,15 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
   // The opt-out, sent now with the id it is kept under. Once the service confirms it, that opt-out is
   // settled on this device. This tab is off the board then, unless its switch has moved since, or a newer
   // opt-out is still kept. What it now knows is kept before the opt-out is settled, so the other tabs,
-  // which adopt it once that happens, adopt this reply's version with it.
+  // which adopt it once that happens, adopt this reply's version with it. When none is kept any more by
+  // the time its turn comes (a share ahead of it, or another tab, sent and settled it), nothing is sent:
+  // an opt-out sent then would be a new one, and would undo the share. It reads the board instead.
   async function unshareNow(session, seq = toggles) {
     const id = optOutId(session);
+    if (id === null) {
+      unsharing = false;
+      return readBoard(session);
+    }
     const result = await stopSharing(session, id);
     stepped(result);
     const newest = optOutId(session);
@@ -335,12 +352,14 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
     board = null;
   }
   // An opt-out made in another tab, re-read before any board request here: this tab stops too, and sends
-  // it with that request. True while one is unconfirmed.
+  // it with that request. One this tab still waits on that is no longer kept was confirmed (by a share
+  // ahead of it, or by another tab): there is nothing left to send. True while one is unconfirmed.
   function optingOut(session) {
-    if (!unsharing && optOutPending(session)) {
+    const pending = optOutPending(session);
+    if (!unsharing && pending) {
       optedOut();
       if (visible) render();
-    }
+    } else if (unsharing && !pending) unsharing = false;
     return unsharing;
   }
 
@@ -485,6 +504,9 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
       } catch (failure) {
         if (seq !== toggles) return;
         turningOn = false;
+        // Still waiting on an opt-out only if one is still kept: the share may have failed after the
+        // opt-out ahead of it was confirmed (or the share itself may have landed with its reply lost).
+        unsharing = optOutPending(session);
         render(failure.message || 'Sharing couldn’t be turned on. Try again.');
       }
       return;

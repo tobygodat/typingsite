@@ -3,8 +3,8 @@
 // own name for them. It reads the friend lists kept by e2e/fake-races.js. `members` holds the accounts
 // that share, and `versions` each account's sharing version: a share counts only when sent with the
 // current one, an opt-out always, and each that counts moves it on, except the same opt-out (by its id)
-// sent again while it is still the last change (`lastOptOut`). supabase/tests/friends-board.sql checks
-// the migration itself; this mirrors its replies.
+// arriving again (`lastOptOut`), which changes nothing. supabase/tests/friends-board.sql checks the
+// migration itself; this mirrors its replies.
 const DAY_MS = 86400000;
 export const utcDay = (date = new Date()) => date.toISOString().slice(0, 10);
 export function mondayOf(date = new Date()) {
@@ -39,7 +39,7 @@ export class FakeBoard {
     this.members = new Set();
     // Each account's sharing version: how many shares and opt-outs were applied (none yet is 0).
     this.versions = new Map();
-    // Each account's last applied opt-out id while it is still the last change (a share clears it).
+    // Each account's last applied opt-out id that came with one, kept through the shares after it.
     this.lastOptOut = new Map();
     // Every board call's action, in order.
     this.calls = [];
@@ -69,7 +69,6 @@ export class FakeBoard {
   // An account that turned sharing on before the test (one change applied, as the service counts it).
   joined(account) {
     this.versions.set(account, this.version(account) + 1);
-    this.lastOptOut.delete(account);
     this.members.add(account);
   }
 
@@ -122,18 +121,17 @@ export class FakeBoard {
       const seen = data?.version;
       if (Number.isSafeInteger(seen) && seen >= 0 && seen === this.version(caller)) {
         this.versions.set(caller, seen + 1);
-        this.lastOptOut.delete(caller);
         this.members.add(caller);
       }
     } else if (action === 'unshare') {
-      // An opt-out sent again under its id, while it is still the last change applied, moves nothing;
-      // any other (a new id, or none valid) moves the version on, even when already off the board.
+      // An opt-out arriving again under its id changes nothing, even after a share since; any other (a
+      // new id, or none valid) moves the version on and takes the account off, even when already off.
       const id = typeof data?.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(data.id) ? data.id : null;
       if (id === null || this.lastOptOut.get(caller) !== id) {
         this.versions.set(caller, this.version(caller) + 1);
-        this.lastOptOut.set(caller, id);
+        if (id !== null) this.lastOptOut.set(caller, id);
+        this.members.delete(caller);
       }
-      this.members.delete(caller);
     } else if (action !== 'board') return reply(400, { message: 'Unknown board action.' });
     const result = this.board(caller);
     if (action === 'board' && this.holdNextRead) {

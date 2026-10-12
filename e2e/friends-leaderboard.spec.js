@@ -98,6 +98,14 @@ function boardActions(page) {
   });
   return actions;
 }
+// The board requests one page sends from now on, each as its action and what it carries.
+function boardCalls(page) {
+  const calls = [];
+  page.on('request', (request) => {
+    if (request.url().endsWith('/rest/v1/rpc/friends_board')) calls.push({ action: request.postDataJSON()?.p_action, data: request.postDataJSON()?.p_data });
+  });
+  return calls;
+}
 // The summary in the account's own profile row.
 const column = (supabase, user) => supabase.profiles.get(user.id)?.board ?? null;
 // This week's run count in that summary (none yet reads as 0), or null when there is no summary.
@@ -1400,6 +1408,189 @@ test('an opt-out whose reply was lost goes again before sharing is turned back o
   expect(supabase.board.version(ada.id)).toBe(3);
   expect(await optOutsKept(page)).toEqual([]);
   await expect.poll(() => knownHere(page, ada)).toBe('1:3');
+});
+
+// Ada shares, then turns sharing off; the service applies it (version 2), but the reply is lost, so the
+// opt-out stays kept here.
+async function optOutReplyLost(page, supabase, ada) {
+  seedProfile(supabase, ada, practiceThisWeek(2));
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  supabase.board.loseNextReply = true;
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-status')).toContainText('Your row comes off once the board can be reached.');
+  expect(supabase.board.version(ada.id)).toBe(2);
+  expect(supabase.board.members.has(ada.id)).toBe(false);
+}
+
+test('a Refresh pressed while sharing goes back on after a lost opt-out reply sends that opt-out once, and the share stands', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await optOutReplyLost(page, supabase, ada);
+  const calls = boardCalls(page);
+  // She turns sharing back on; the kept opt-out goes again first, and its reply is slow. She presses
+  // Refresh meanwhile, so a board request waits behind the share for the opt-out it saw kept.
+  let land;
+  supabase.board.holdNextReply = new Promise((resolve) => { land = resolve; });
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-status')).toHaveText('Turning sharing on…');
+  await expect.poll(() => supabase.board.holdNextReply === null).toBe(true);
+  await page.locator('#refresh-friends-board').click();
+  land();
+  // By its turn the share has confirmed that opt-out, so the Refresh only reads: no opt-out without an
+  // id goes after the share to undo it.
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+  const id = calls[0].data.id;
+  expect(id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+  expect(calls).toEqual([{ action: 'unshare', data: { id } }, { action: 'share', data: { version: 2 } }, { action: 'board', data: {} }]);
+  expect(supabase.board.members.has(ada.id)).toBe(true);
+  expect(supabase.board.version(ada.id)).toBe(3);
+  await expect(page.locator('#share-board')).toBeChecked();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  expect(await knownHere(page, ada)).toBe('1:3');
+});
+
+test('coming back online while sharing goes back on before the opt-out’s reply sends no second opt-out', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  seedProfile(supabase, ada, practiceThisWeek(2));
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  const calls = boardCalls(page);
+  // Off, with the reply held once the service has applied it; then on again before it is back, and the
+  // browser comes back online meanwhile.
+  let land;
+  supabase.board.holdNextReply = new Promise((resolve) => { land = resolve; });
+  await page.locator('#share-board').click();
+  await expect.poll(() => supabase.board.holdNextReply === null).toBe(true);
+  await page.locator('#share-board').click();
+  await expect(page.locator('#share-board')).toBeChecked();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  land();
+  await expect.poll(() => supabase.board.version(ada.id)).toBe(3);
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  await expect.poll(() => calls.filter((call) => call.action === 'board').length).toBeGreaterThan(0);
+  await expect(page.locator('#refresh-friends-board')).not.toHaveAttribute('aria-disabled', 'true');
+  const id = calls[0].data.id;
+  expect(calls.slice(0, 2)).toEqual([{ action: 'unshare', data: { id } }, { action: 'share', data: { version: 2 } }]);
+  expect(calls.slice(2).every((call) => call.action === 'board')).toBe(true);
+  expect(supabase.board.members.has(ada.id)).toBe(true);
+  expect(supabase.board.version(ada.id)).toBe(3);
+  await expect(page.locator('#share-board')).toBeChecked();
+  expect(await page.locator('#friends-board-status').textContent()).toBe('');
+});
+
+test('a share that lands with its reply lost leaves the next Refresh a plain read, which shows sharing on', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  seedProfile(supabase, ada, practiceThisWeek(2));
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  const calls = boardCalls(page);
+  // Off, and on again before the opt-out's reply is back. The opt-out lands; the share after it is
+  // applied, but its reply is lost, so this tab can't tell and the switch shows off.
+  let land;
+  supabase.board.holdNextReply = new Promise((resolve) => { land = resolve; });
+  await page.locator('#share-board').click();
+  await expect.poll(() => supabase.board.holdNextReply === null).toBe(true);
+  await page.locator('#share-board').click();
+  supabase.board.loseNextReply = true;
+  land();
+  await expect(page.locator('#friends-board-status')).toHaveText('The board is unavailable.');
+  await expect(page.locator('#share-board')).not.toBeChecked();
+  expect(supabase.board.members.has(ada.id)).toBe(true);
+  expect(supabase.board.version(ada.id)).toBe(3);
+  expect(await optOutsKept(page)).toEqual([]);
+  // Nothing is left to opt out of, so Refresh reads the board, and the switch shows what it says.
+  await refreshBoard(page);
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+  const id = calls[0].data.id;
+  expect(calls).toEqual([{ action: 'unshare', data: { id } }, { action: 'share', data: { version: 2 } }, { action: 'board', data: {} }]);
+  expect(supabase.board.members.has(ada.id)).toBe(true);
+  await expect(page.locator('#share-board')).toBeChecked();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  expect(await knownHere(page, ada)).toBe('1:3');
+});
+
+test('a slow copy of an opt-out from another tab, landing after the share that followed it, leaves the share standing', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  seedProfile(supabase, ada, practiceThisWeek(2));
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  const second = await page.context().newPage();
+  await supabase.attach(second);
+  await openApp(second);
+  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openBoard(second);
+  await expect(second.locator('#share-board')).toBeChecked();
+  // The first tab turns sharing off; the service applies it, but the reply is lost, so both tabs keep it.
+  await page.bringToFront();
+  supabase.board.loseNextReply = true;
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-status')).toContainText('Your row comes off once the board can be reached.');
+  await expect(second.locator('#share-board')).not.toBeChecked();
+  expect(supabase.board.version(ada.id)).toBe(2);
+  // Back online, the second tab sends it again, and that copy is slow on its way. Meanwhile she turns
+  // sharing on in the first tab: it sends the same opt-out (answered as done), then the share.
+  const fromSecond = boardCalls(second);
+  let land;
+  supabase.board.holdNext = new Promise((resolve) => { land = resolve; });
+  await second.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => supabase.board.holdNext === null).toBe(true);
+  await page.bringToFront();
+  await page.locator('#share-board').click();
+  await expect.poll(() => supabase.board.version(ada.id)).toBe(3);
+  await expect(page.locator('#share-board')).toBeChecked();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  // The slow copy lands after the share. It was applied already, so it changes nothing: the share stands,
+  // and both tabs show sharing on.
+  land();
+  await expect.poll(() => fromSecond.length).toBeGreaterThan(1);
+  expect(fromSecond[0].action).toBe('unshare');
+  expect(supabase.board.members.has(ada.id)).toBe(true);
+  expect(supabase.board.version(ada.id)).toBe(3);
+  await expect(second.locator('#share-board')).toBeChecked();
+  await expect(second.locator('#friends-board-lists')).toBeVisible();
+  await expect(page.locator('#share-board')).toBeChecked();
+  expect(await knownHere(page, ada)).toBe('1:3');
+  expect(await page.locator('#friends-board-status').textContent()).toBe('');
+});
+
+test('where the browser can’t keep an opt-out, the page keeps it, and sends it with its id until it lands', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await page.addInitScript(() => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function keep(key, value) {
+      if (String(key).startsWith('stilltype-board-optout')) throw new DOMException('Blocked', 'QuotaExceededError');
+      return setItem.call(this, key, value);
+    };
+  });
+  const calls = boardCalls(page);
+  await optOutReplyLost(page, supabase, ada);
+  expect(await optOutsKept(page)).toEqual([]);
+  // Refresh sends it again under the same id, which the service answers as done; sharing turned on
+  // after it counts at the first click.
+  await refreshBoard(page);
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  const changes = calls.filter((call) => call.action !== 'board');
+  const id = changes[1].data.id;
+  expect(id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+  expect(changes).toEqual([{ action: 'share', data: { version: 0 } }, { action: 'unshare', data: { id } }, { action: 'unshare', data: { id } },
+    { action: 'share', data: { version: 2 } }]);
+  expect(supabase.board.version(ada.id)).toBe(3);
+  expect(supabase.board.members.has(ada.id)).toBe(true);
+  await expect(page.locator('#share-board')).toBeChecked();
 });
 
 test.describe('phone', () => {

@@ -152,7 +152,7 @@ test('the board sends no numbers: reading, sharing (with only the sharing versio
     const read = await readBoard(session);
     await startSharing(session, versionOf(read));
     await stopSharing(session, 'mgm1k2-abc123');
-    // Without a kept id it goes without one, and the service takes it as a new opt-out.
+    // Without an id it goes without one (the board itself always sends the kept id): a new opt-out.
     await stopSharing(session, null);
     assert.match(calls[0].url, /\/rest\/v1\/rpc\/friends_board$/);
     assert.equal(calls[0].headers.Authorization, 'Bearer account-token');
