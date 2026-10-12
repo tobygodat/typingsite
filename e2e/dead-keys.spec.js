@@ -27,6 +27,15 @@ async function accentKeys(page) {
     processKey: (code, autoRepeat = false) => cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Process', code, windowsVirtualKeyCode: 229, autoRepeat }),
     // The next key commits the open composition; with none open this is plain text (the Windows lane).
     commit: (text) => cdp.send('Input.insertText', { text }),
+    // Windows has no composition: the accent key's keydown (Dead) types nothing, then the next key's keydown
+    // types the mark and that key, as one plain input or as one input per character (a WM_CHAR each).
+    async windowsPair(key, code, ...inputs) {
+      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code });
+      for (const text of inputs) await cdp.send('Input.insertText', { text });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code });
+    },
     // Chrome on macOS sends the key that ends a composition first, as keyCode 229, then the commit
     // (render_widget_host_view_cocoa.mm, keyEvent:).
     async macKey(key, text) {
@@ -375,6 +384,24 @@ test('without composition (Windows), a mark and letter sent together are two key
   await page.keyboard.press('Backspace');
   await keys.commit(`"${text[at + 1]}`);
   expect(await scored(page)).toEqual({ correct: at + 2, wrong: 0, value: text.slice(0, at + 2) });
+  await expect(page.locator('#input-help')).toHaveText('');
+
+  // From the accent key and the letter's keydowns: the pair as one input, or as one input per character
+  // (the mark waits for the letter's input, so both are typed together).
+  const letter = text[at + 1];
+  for (const inputs of [[`"${letter}`], ['"', letter]]) {
+    await page.keyboard.press('Backspace');
+    await page.keyboard.press('Backspace');
+    await keys.windowsPair(letter, `Key${letter.toUpperCase()}`, ...inputs);
+    expect(await scoredNow(page), inputs.join('|')).toEqual({ correct: at + 2, wrong: 0, value: text.slice(0, at + 2) });
+  }
+  // A mark whose letter never comes as an input of its own is typed once the wait is over.
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Backspace');
+  await keys.windowsPair(letter, `Key${letter.toUpperCase()}`, '"');
+  expect(await scored(page)).toEqual({ correct: at + 1, wrong: 0, value: text.slice(0, at + 1) });
+  await page.keyboard.type(letter);
+  expect(await scoredNow(page)).toEqual({ correct: at + 2, wrong: 0, value: text.slice(0, at + 2) });
   await expect(page.locator('#input-help')).toHaveText('');
 
   await page.keyboard.insertText('xy');
@@ -970,6 +997,44 @@ test('a one-letter commit no accent key opened is refused like IME text, whateve
   await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
 });
 
+test('a symbol a Latin layout’s own key types after an accent mark is a slip, not IME text', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  await chooseWords(page, 10);
+  // Each way an accent key commits a punctuation mark or symbol past Latin-1: a typing error, in the run.
+  const ways = {
+    // Linux (IBus): dead circumflex, then 4, composes the superscript (Compose: <dead_circumflex> <4>).
+    linux: async () => {
+      await keys.processKey('Digit6');
+      await keys.preview('^');
+      await keys.processKey('Digit4');
+      await keys.commit('⁴');
+      return '⁴';
+    },
+    // Windows US-International: dead ', then AltGr+0 (’), sent as one plain input.
+    windows: () => keys.windowsPair('’', 'Digit0', "'’").then(() => "'’"),
+    // macOS: dead ", then Option+Shift+- (—).
+    mac: () => keys.deadKey('"').then(() => keys.commit('"—')).then(() => '"—'),
+  };
+  let text = '';
+  let typed = '';
+  for (const [way, slip] of Object.entries(ways)) {
+    await page.locator('#typing-input').focus();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#typing-status'), way).toHaveText('Ready');
+    text = await passageText(page);
+    await typeInto(page, text.slice(0, 3));
+    typed = text.slice(0, 3) + await slip();
+    await expect(page.locator('#input-help'), way).toHaveText('');
+    expect(await scored(page), way).toEqual({ correct: 3, wrong: typed.length - 3, value: typed });
+  }
+
+  // The run still counts.
+  await page.keyboard.type(text.slice(typed.length));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).not.toHaveText('Interrupted · not counted');
+});
+
 test('a commit on a passage’s last letter counts every key in it before the run ends', async ({ page, supabase }) => {
   const user = supabase.addUser('last-letter@stilltype.test');
   await openApp(page);
@@ -982,14 +1047,16 @@ test('a commit on a passage’s last letter counts every key in it before the ru
   await expect(page.locator('#condition-line')).toContainText('custom text');
 
   // The closing " takes the accent key, and the h that commits it is a slip (space types the mark alone).
-  // The passage has no place for the h, so it is judged against the last letter and not kept: 13 of 14
+  // The passage has no place for the h, so it is a mistake against the last letter and not kept: 13 of 14
   // keys right, nothing left wrong in the text, one extra. Plain keys can't do this: a plain " ends the run
   // before the next key, but here the h was pressed while the last letter was still to come. Stop on
   // error has nothing left to hold, so the run ends the same way.
   const ways = {
     composition: () => keys.deadKey('"').then(() => keys.commit('"h')),
-    // Windows sends the mark and the key as one plain input, with no composition.
-    windows: () => keys.commit('"h'),
+    // Windows has no composition: the h's keydown types the mark and the h as one plain input, or as two
+    // (one per character), and then the mark waits for the h's input.
+    windows: () => keys.windowsPair('h', 'KeyH', '"h'),
+    windowsTwoInputs: () => keys.windowsPair('h', 'KeyH', '"', 'h'),
     stopOnError: () => keys.deadKey('"').then(() => keys.commit('"h')),
   };
   for (const [way, commit] of Object.entries(ways)) {
@@ -1012,6 +1079,36 @@ test('a commit on a passage’s last letter counts every key in it before the ru
     const run = (await storedRuns(page, user.id)).at(-1);
     expect(run.status, way).toBe('complete');
     expect(run.score.accuracy, way).toBe(93);
+    await page.locator('#run-again').click();
+    await expect(page.locator('#typing-status')).toHaveText('Ready');
+  }
+});
+
+test('a doubled mark on a passage’s last letter costs nothing, after a slip too', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  const custom = 'She said "go"';
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(custom);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+
+  // One slip left in (Sxe), then the closing ". A plain " scores 12 of 13 and ends the run, so a second
+  // press of the key is never recorded. Pressing the accent key twice commits "" on the last letter: the
+  // second mark is that letter again, so it adds nothing either, and can't lift accuracy to 13 of 14.
+  const ways = {
+    plain: () => page.keyboard.type('"'),
+    composition: () => keys.deadKey('"').then(() => keys.commit('""')),
+    // Windows: the second press is the accent key again, and each mark comes as an input of its own.
+    windows: () => keys.windowsPair('Dead', 'Quote', '"', '"'),
+  };
+  for (const [way, close] of Object.entries(ways)) {
+    expect(await passageText(page), way).toBe(custom);
+    await typeInto(page, 'Sxe said "go');
+    await close();
+    await expect(page.locator('body'), way).toHaveAttribute('data-view', 'results');
+    await expect(page.locator('#result-accuracy'), way).toHaveText('92');
+    await expect(page.locator('#result-chars'), way).toHaveText('12/1/0/0');
     await page.locator('#run-again').click();
     await expect(page.locator('#typing-status')).toHaveText('Ready');
   }

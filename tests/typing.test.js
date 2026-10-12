@@ -5,6 +5,7 @@ import {
   EVENT_VERSION,
   accentComposition,
   METRIC_VERSION,
+  carriedKey,
   compareAttempts,
   customTextProblem,
   completeAttempt,
@@ -284,12 +285,23 @@ test('every mark and letter a real accent key commits is still typed', () => {
   for (const pair of ['^q', '~e', '`x', '¨k', '´t', '°x', 'ˇx', '˙q', '˛b', '¸k', '˝a', "'1", '"#', '"é', '~~', '^ ', '¨²', '^£', '´§']) {
     assert.deepEqual(composedKeys(pair), [...pair], pair);
   }
+  // Punctuation, symbols and spaces past Latin-1 that Latin layouts' own keys type, alone or after a mark
+  // (a slip, but keys): Windows US-International's AltGr+0 (’), macOS Option+Shift+- (—) and Option+[ (“),
+  // Linux's dead circumflex then 4 (⁴), a no-break space, an ellipsis, ≠ and the middle dot.
+  for (const text of ['⁴', '’', '—', '…', '≠', ' ', ' ', '·', "'’", '"—', '"“', '^–', '"…', '^≠', '" ']) {
+    assert.deepEqual(composedKeys(text), [...text], JSON.stringify(text));
+  }
 });
 
 test('a one-letter commit from another script’s input method is not an accent key', () => {
   // Hindi, Korean, Hebrew, Russian, Greek, Thai and Arabic input methods commit one letter through a
   // composition too. Accent keys type Latin: a mark, a letter with a diacritic, or the mark and the next key.
   for (const text of ['अ', 'ㅎ', 'ש', 'ж', 'α', 'ก', 'ع', '"ж', '´अ', 'ˇש', '¨α']) {
+    assert.equal(composedKeys(text), null, JSON.stringify(text));
+  }
+  // Nor another script's digits or punctuation (Devanagari, Arabic), or East Asian forms no script owns:
+  // the ideographic space, CJK punctuation, vertical, small and full-width forms.
+  for (const text of ['१', '٣', '।', '،', '"।', '　', '"　', '、', '〜', '︐', '﹐', '＄']) {
     assert.equal(composedKeys(text), null, JSON.stringify(text));
   }
 });
@@ -311,27 +323,50 @@ test('only a composition an accent key opened is scored as one', () => {
   ]) assert.equal(accentComposition(origin), false, JSON.stringify(origin));
 });
 
-test('a key a commit carries past the passage end counts against the last letter, and is not kept', () => {
+test('a key a commit carries past the passage end is a mistake against the last letter, or nothing', () => {
   // "h committed on a passage's last letter ("): the mark is kept, and the h, pressed while the last
-  // letter was still to come, is judged against it. A doubled mark costs nothing.
-  const run = (extra) => {
+  // letter was still to come, is a mistake against it and not kept. A key that is that letter ("" on a
+  // closing ") adds nothing, as a plain key after the passage ends isn't recorded either: it can't raise
+  // accuracy after a slip.
+  const run = (extra, slip = false) => {
     const attempt = createAttempt({ id: 'e', text: 'go"', textId: 'e', conditions: {} });
     attempt.events = [...'go"'].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: position * 100 }));
-    attempt.events.push({ type: 'insert', text: extra, position: 2, accepted: false, offsetMs: 200 });
+    if (slip) attempt.events.unshift({ type: 'insert', text: 'x', position: 0, accepted: true, offsetMs: 0 }, { type: 'delete', count: 1, offsetMs: 0 });
+    const carried = extra === null ? null : carriedKey(attempt, extra, 200);
+    if (carried) attempt.events.push(carried);
     attempt.startedAt = 0;
     return completeAttempt(attempt, { endedAt: 200 });
   };
-  const slip = run('h');
-  assert.equal(slip.typed, 'go"');
-  assert.equal(slip.summary.insertions, 4);
-  assert.equal(slip.summary.mistakes, 1);
-  assert.equal(slip.summary.score.accuracy, 75);
-  assert.ok(slip.summary.firstAttempts.every((entry) => entry.correct));
-  assert.ok(passageComplete(slip, slip.typed));
-  assert.deepEqual(characterBreakdown(slip), { correct: 3, incorrect: 0, extra: 1, missed: 0 });
+  const wrong = run('h');
+  assert.equal(wrong.typed, 'go"');
+  assert.deepEqual(wrong.events.at(-1), { type: 'insert', text: 'h', position: 2, accepted: false, offsetMs: 200 });
+  assert.equal(wrong.summary.insertions, 4);
+  assert.equal(wrong.summary.mistakes, 1);
+  assert.equal(wrong.summary.score.accuracy, 75);
+  assert.ok(wrong.summary.firstAttempts.every((entry) => entry.correct));
+  assert.ok(passageComplete(wrong, wrong.typed));
+  assert.deepEqual(characterBreakdown(wrong), { correct: 3, incorrect: 0, extra: 1, missed: 0 });
   const doubled = run('"');
+  assert.equal(doubled.summary.insertions, 3);
   assert.equal(doubled.summary.score.accuracy, 100);
-  assert.deepEqual(characterBreakdown(doubled), { correct: 3, incorrect: 0, extra: 1, missed: 0 });
+  assert.deepEqual(characterBreakdown(doubled), { correct: 3, incorrect: 0, extra: 0, missed: 0 });
+  // After a slip, a doubled mark scores exactly as the plain closing " does (3 of 4), not 4 of 5.
+  const plainAfterSlip = run(null, true);
+  assert.equal(plainAfterSlip.summary.score.accuracy, 75);
+  assert.deepEqual(run('"', true).summary, plainAfterSlip.summary);
+  assert.equal(run('h', true).summary.score.accuracy, 60);
+});
+
+test('a refused key inside the passage is not extra in the character breakdown', () => {
+  // A key recorded but not kept at a position the passage still has (as a strict space rule refuses a
+  // space typed where a letter belongs) is a mistake there, not a keystroke past the passage end.
+  const attempt = createAttempt({ id: 'r', text: 'go on', textId: 'r', conditions: {} });
+  attempt.events = [
+    ...[...'go '].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: position * 100 })),
+    { type: 'insert', text: ' ', position: 3, accepted: false, offsetMs: 300 },
+    ...[...'on'].map((char, i) => ({ type: 'insert', text: char, position: 3 + i, accepted: true, offsetMs: 400 + i * 100 })),
+  ];
+  assert.deepEqual(characterBreakdown(attempt), { correct: 5, incorrect: 0, extra: 0, missed: 0 });
 });
 
 test('a mark and letter committed together replay like two key presses', () => {
