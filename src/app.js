@@ -146,11 +146,13 @@ let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
 // The open composition (an accent key's mark, or IME text): { type, attempt, refused, replaces, keyed,
-// leaving, repeated }, then once it ends, the { commit, at } still to be scored.
+// leaving, repeated, heldMark, mark (the first thing it showed) }, then once it ends, the { commit, at }
+// still to be scored.
 let composition = null;
-// The last key press was a held accent key repeating, and it is still down. A composition that repeat
-// opens is key repeat too (repeated), and so is plain text it sends (Windows).
-let heldDeadKey = false;
+// The last key press was a held accent key repeating, and it is still down: { mark } it shows (null if
+// unknown). A composition that repeat opens is key repeat too (repeated), and so is plain text it sends
+// (Windows). Forgotten when the field can no longer hear the key let go (blur, finish, restart).
+let heldDeadKey = null;
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
@@ -541,8 +543,10 @@ function configureSessionCopy() {
 }
 
 function resetSession(kind = sessionKind, { focus = false, selectedPassage = null } = {}) {
-  // Setting the field ends a composition without compositionend, so forget it first.
+  // Setting the field ends a composition without compositionend, so forget it first, and a held accent key
+  // (let go while the field couldn't hear it).
   if (composition?.type === 'primary') composition = null;
+  heldDeadKey = null;
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
@@ -739,6 +743,9 @@ const COMMIT_KEY_WAIT_MS = 100;
 // Keys pressed while composing that don't end it: the accent key itself (Safari sends its keydown after
 // the mark shows) and modifiers held for the next letter.
 const COMPOSING_KEYS = new Set(['Dead', 'Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock', 'Fn']);
+// Keys whose auto-repeat is a held accent key: Dead, and Process, which Chromium on Linux sends for every
+// key its input method takes (the accent key among them), with the repeat flag kept.
+const ACCENT_REPEAT_KEYS = new Set(['Dead', 'Process']);
 
 function scoreCommit(type) {
   const session = composition?.type === type && composition.commit !== null ? composition : null;
@@ -816,22 +823,22 @@ function wireComposition(input, type) {
   };
   input.addEventListener('keydown', (event) => {
     const session = composition?.type === type ? composition : null;
-    const repeat = event.repeat && event.key === 'Dead';
+    const repeat = event.repeat && ACCENT_REPEAT_KEYS.has(event.key);
     if (session?.commit === null) {
       // Chrome (keyCode 229 on macOS) and Firefox send the key that will end the composition first.
       if (!COMPOSING_KEYS.has(event.key)) Object.assign(session, { keyed: true, leaving: event.key === 'Tab' });
       // A held accent key's repeat adds its mark to this composition, or (Safari) is the key that opened it.
-      if (repeat) session.repeated = true;
+      if (repeat) Object.assign(session, { repeated: true, heldMark: null });
     } else if (session) {
       // Safari sends the key that ended a composition after compositionend.
       if (repeat && !session.keyed) session.repeated = true;
       if (event.key === 'Tab') drop();
     }
     scoreCommit(type);
-    heldDeadKey = repeat;
+    heldDeadKey = repeat ? { mark: session?.mark ?? heldDeadKey?.mark ?? null } : null;
   });
   // Letting go of a held accent key ends its repeats; what it left pending stays repeated.
-  input.addEventListener('keyup', (event) => { if (event.key === 'Dead') heldDeadKey = false; });
+  input.addEventListener('keyup', (event) => { if (event.key === 'Dead') heldDeadKey = null; });
   input.addEventListener('compositionstart', (event) => {
     scoreCommit(type);
     if (!acceptingInput(type)) { composition = null; return; }
@@ -840,10 +847,16 @@ function wireComposition(input, type) {
     const over = event.data || input.value.slice(input.selectionStart, input.selectionEnd);
     // Chrome and Firefox send the key that opens a composition first: a held accent key's repeat opens a
     // repeated one, and the letter that later commits its mark (â) is ignored with it.
-    composition = { type, attempt: inputAttempt(type), refused: false, replaces: over || null, keyed: false, leaving: false, repeated: heldDeadKey, commit: null, at: 0 };
+    composition = { type, attempt: inputAttempt(type), refused: false, replaces: over || null, keyed: false, leaving: false, repeated: Boolean(heldDeadKey), heldMark: heldDeadKey?.mark ?? null, mark: null, commit: null, at: 0 };
   });
   input.addEventListener('compositionupdate', (event) => {
     if (composition?.type !== type || composition.refused || composition.attempt !== inputAttempt(type)) return;
+    // Safari sends a key's composition before its keydown, so one opened while an accent key is held may be
+    // another accent key's: it is the held key's repeat only if it first shows that key's mark.
+    if (composition.mark === null) {
+      if (composition.heldMark !== null && event.data !== composition.heldMark) composition.repeated = false;
+      composition.mark = event.data;
+    }
     if (!acceptingInput(type)) return;
     if (composedKeys(event.data) === null) {
       composition.refused = true;
@@ -864,7 +877,12 @@ function wireComposition(input, type) {
     if (current) input.value = replayAttempt(current).typed;
   });
   // Focus moving anywhere drops a mark still pending, or committed on the way out, whichever comes first.
-  input.addEventListener('blur', () => { if (composition?.type === type) composition = null; });
+  // A held accent key is let go out of the field's hearing; if it is still down when focus returns, its
+  // repeats say so again.
+  input.addEventListener('blur', () => {
+    heldDeadKey = null;
+    if (composition?.type === type) composition = null;
+  });
 }
 
 // Everything the typing surface says, kept short. The focus-lost and composition
@@ -1042,8 +1060,10 @@ function storeAttempt(completed) {
 
 function finishPrimary(forcedElapsed = null) {
   if (!attempt || attempt.status !== 'running') return;
-  // A pending accent mark isn't a keystroke; disabling the field commits it, and that is ignored.
+  // A pending accent mark isn't a keystroke; disabling the field commits it, and that is ignored. Nor can
+  // the disabled field hear a held accent key let go.
   if (composition?.type === 'primary') composition = null;
+  heldDeadKey = null;
   clearInterval(ticker);
   ticker = null;
   const endedAt = forcedElapsed ?? offsetFor();
@@ -1638,6 +1658,7 @@ function startRace() {
 
 function setupRacePlayer() {
   if (composition?.type === 'race') composition = null;
+  heldDeadKey = null;
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
   inbox?.runChanged();
@@ -1663,6 +1684,7 @@ function updateRaceProgress(replay) {
 
 function finishRacePlayer() {
   if (composition?.type === 'race') composition = null;
+  heldDeadKey = null;
   const valid = !race.attempt.interrupted && !race.attempt.unsupportedInput;
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
@@ -2233,7 +2255,7 @@ function bindEvents() {
       preferences.querySelector('summary').focus();
       return;
     }
-    if (event.repeat && (event.key.length === 1 || event.key === 'Dead') && (document.activeElement === $('typing-input') || document.activeElement === $('race-input'))) {
+    if (event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key)) && (document.activeElement === $('typing-input') || document.activeElement === $('race-input'))) {
       event.preventDefault();
       showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
       return;

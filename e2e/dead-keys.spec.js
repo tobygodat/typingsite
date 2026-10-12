@@ -19,6 +19,12 @@ async function accentKeys(page) {
     deadKeyRepeat: () => cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222, autoRepeat: true }),
     // Letting go of a held dead key.
     releaseDeadKey: () => cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 }),
+    // Another accent key (^ on US-International), pressed while the first is still held.
+    otherDeadKey: () => cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Digit6', windowsVirtualKeyCode: 54 }),
+    // Chromium on Linux sends every key its input method takes (the accent key, its repeats, the letter
+    // that commits the mark) as key Process, keyCode 229, keeping the key's code and repeat flag
+    // (SendFakeProcessKeyEvent in input_method_auralinux.cc), before the composition change it makes.
+    processKey: (code, autoRepeat = false) => cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Process', code, windowsVirtualKeyCode: 229, autoRepeat }),
     // The next key commits the open composition; with none open this is plain text (the Windows lane).
     commit: (text) => cdp.send('Input.insertText', { text }),
     // Chrome on macOS sends the key that ends a composition first, as keyCode 229, then the commit
@@ -610,6 +616,123 @@ test('a mark a held accent key leaves pending is repeat too, whichever order its
   await keys.deadKey('"');
   await keys.commit('"');
   expect(await scored(page)).toEqual({ correct: 2, wrong: 2, value: `${text.slice(0, 2)}""` });
+});
+
+test('a held accent key is key repeat on Linux too, where its repeats arrive as Process keys', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 2));
+  const unscored = { correct: 2, wrong: 0, value: text.slice(0, 2) };
+  await page.evaluate(() => {
+    window.repeats = [];
+    window.addEventListener('keydown', (event) => { if (event.repeat) window.repeats.push(event.defaultPrevented); });
+  });
+
+  // Each repeat commits the pending mark (^) or shows a new one.
+  await keys.processKey('Quote');
+  await keys.preview('^');
+  await keys.processKey('Quote', true);
+  await keys.commit('^');
+  await keys.processKey('Quote', true);
+  await keys.preview('^');
+  await keys.processKey('Quote', true);
+  await keys.commit('^');
+  expect(await scored(page)).toEqual(unscored);
+  await expect(page.locator('#input-help')).toHaveText('Key repeat ignored.');
+  // An input method that shows no mark sends a repeat's commit as plain text, as Windows does.
+  await keys.processKey('Quote', true);
+  await keys.commit('^');
+  expect(await scored(page)).toEqual(unscored);
+  expect(await page.evaluate(() => window.repeats)).toEqual([true, true, true, true]);
+
+  // The mark the last repeat leaves pending is repeat too, with the letter that commits it (â).
+  await keys.processKey('Quote', true);
+  await keys.preview('^');
+  await keys.releaseDeadKey();
+  await keys.processKey('KeyA');
+  await keys.commit('â');
+  expect(await scored(page)).toEqual(unscored);
+  await expect(page.locator('#input-help')).toHaveText('Key repeat ignored.');
+
+  // Once it is let go, a fresh accent key types its mark (here " then space, a wrong letter).
+  await keys.processKey('Quote');
+  await keys.preview('"');
+  await keys.processKey('Space');
+  await keys.commit('"');
+  expect(await scored(page)).toEqual({ correct: 2, wrong: 1, value: `${text.slice(0, 2)}"` });
+});
+
+test('another accent key pressed while one is held types its own mark, whichever order the events come in', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 2));
+
+  // Safari: the second key's composition comes before its own keydown, while the first key is still down.
+  await dispatchEvents(page, [
+    ...start('^'), down('Dead'), end('^^'), down('Dead', true),
+    ...start('"'), down('Dead'), end('"'), down(' '), up('Dead'),
+  ]);
+  expect(await scored(page)).toEqual({ correct: 2, wrong: 1, value: `${text.slice(0, 2)}"` });
+  // The same with a repeated mark still pending: the second key commits it (dropped), then shows its own.
+  await dispatchEvents(page, [
+    ...start('^'), down('Dead'), end('^^'), down('Dead', true),
+    ...start('^'), down('Dead', true),
+    end('^'), ...start('"'), down('Dead'), end('"'), down(' '), up('Dead'),
+  ]);
+  expect(await scored(page)).toEqual({ correct: 2, wrong: 2, value: `${text.slice(0, 2)}""` });
+
+  // Chrome and Firefox: the second key's keydown comes first, then the held key's pending mark (dropped)
+  // and the second key's own.
+  await keys.deadKey('^');
+  await keys.deadKeyRepeat();
+  await keys.commit('^^');
+  await keys.deadKeyRepeat();
+  await keys.preview('^');
+  await keys.otherDeadKey();
+  await keys.commit('^');
+  await keys.preview('"');
+  await keys.releaseDeadKey();
+  await keys.macKey(' ', '"');
+  expect(await scored(page)).toEqual({ correct: 2, wrong: 3, value: `${text.slice(0, 2)}"""` });
+});
+
+test('an accent key let go where the field can’t hear it doesn’t hold back the next one', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await page.locator('#duration-options [data-length="15"]').click();
+  await expect(page.locator('#timer')).toHaveText('15');
+  const text = await passageText(page);
+  // Safari order: the key is held past its first repeat; the next accent key's composition comes first.
+  const held = [...start('^'), down('Dead'), end('^^'), down('Dead', true)];
+  const fresh = [...start('"'), down('Dead'), end('"'), down(' ')];
+
+  // A timed run ends with the key held: the field is disabled, and the key is let go on Run again.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await typeInto(page, text.slice(0, 10));
+  await dispatchEvents(page, held);
+  await page.clock.fastForward(15_000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#run-again')).toBeFocused();
+  await page.locator('#run-again').dispatchEvent('keyup', { key: 'Dead' });
+  await page.clock.resume();
+  await page.locator('#run-again').click();
+  await expect(page.locator('#typing-status')).toHaveText('Ready');
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await dispatchEvents(page, fresh);
+  await expect(page.locator('#typing-input')).toHaveValue('"');
+  await expect(page.locator('#typing-status')).toHaveText('In progress');
+
+  // Mid-run, focus moves (a click elsewhere, a window switch) and the key is let go there.
+  await dispatchEvents(page, held);
+  await page.locator('#restart-button').focus();
+  await page.locator('#restart-button').dispatchEvent('keyup', { key: 'Dead' });
+  await page.locator('#typing-input').focus();
+  await dispatchEvents(page, fresh);
+  await expect(page.locator('#typing-input')).toHaveValue('""');
 });
 
 test('a mark pending when focus leaves does not start a ready run', async ({ page }) => {

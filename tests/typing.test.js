@@ -259,6 +259,14 @@ test('an emoji committed through a composition is not an accent key', () => {
   ]) assert.equal(composedKeys(text), null, JSON.stringify(text));
 });
 
+test('an invisible code point committed through a composition is not an accent key', () => {
+  // U+034F combining grapheme joiner sits among the combining accents but is default-ignorable: it shows
+  // nothing, so typing it would move the caret over a letter nobody sees.
+  for (const text of ['͏', '͏a', '"͏', '­', '​', '⁠', '﻿', '᠋']) {
+    assert.equal(composedKeys(text), null, JSON.stringify(text));
+  }
+});
+
 test('every mark and letter a real accent key commits is still typed', () => {
   // A mark on its own (the dead key, then space) on US-International, UK-Extended, German, French AZERTY
   // and BÉPO, Spanish, Portuguese, Swedish/Norwegian, Czech and Polish. ~ is a math symbol, ° an other

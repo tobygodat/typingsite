@@ -159,9 +159,10 @@ const IME_TEXT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script
 const KANA_EXTENSIONS = /[\p{scx=Hiragana}\p{scx=Katakana}]/u;
 // A key types one letter, digit, punctuation mark, symbol or space. Not a pictograph (❤ ☺), an astral
 // character (a 😀 is two UTF-16 units, so it would move the caret two letters), or the selectors,
-// joiners and keycaps that build emoji sequences.
+// joiners and keycaps that build emoji sequences. A combining accent is a mark, except the invisible
+// grapheme joiner (U+034F) among them: nothing default-ignorable is a key.
 const KEY_CHAR = /[\p{L}\p{N}\p{P}\p{S}\p{Zs}]/u;
-const deadMark = (char) => DEAD_MARKS.has(char) || /^[̀-ͯ]$/u.test(char);
+const deadMark = (char) => DEAD_MARKS.has(char) || (/^[̀-ͯ]$/u.test(char) && !/\p{Default_Ignorable_Code_Point}/u.test(char));
 const imeChar = (char) => IME_TEXT.test(char) || (!deadMark(char) && KANA_EXTENSIONS.test(char));
 const keyChar = (char) => char.length === 1 && (deadMark(char) || KEY_CHAR.test(char))
   && !/\p{Extended_Pictographic}/u.test(char) && !imeChar(char);
