@@ -253,6 +253,43 @@ test('the daily challenge keeps its fixed rules whatever these settings say', as
   await expect(page.locator('#typing-input')).toHaveValue(`${text.slice(0, at)} `);
 });
 
+test('custom text keeps the default rules and its passage, so its key stays the one master writes', async ({ page }) => {
+  const custom = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await chooseWords(page, 10);
+  await setSwitch(page, 'strict-space-toggle', true);
+  await setSwitch(page, 'quick-end-toggle', false);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(custom);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await expect(page.locator('#condition-line')).not.toContainText('strict space');
+  await expect(page.locator('#condition-line')).not.toContainText('quick end');
+  await openSettings(page);
+  await expect(page.locator('#rules-note')).toHaveText('custom text keeps the default rules');
+  // A rule change leaves the custom passage in place rather than starting a generated test.
+  await setSwitch(page, 'strict-space-toggle', false);
+  await setSwitch(page, 'strict-space-toggle', true);
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
+  expect(await passageText(page)).toBe(custom);
+  // Strict space is off for custom text: an early space takes the letter's place.
+  const at = midWord(custom);
+  await typeInto(page, `${custom.slice(0, at)} `);
+  await expect(page.locator('#typing-input')).toHaveValue(`${custom.slice(0, at)} `);
+  // Quick end is on: a wrong last letter still ends the run without waiting for a space.
+  await page.locator('#typing-input').press('Escape');
+  expect(await passageText(page)).toBe(custom);
+  await typeInto(page, `${custom.slice(0, -1)}${wrongFor(custom.at(-1))}`);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-conditions')).toContainText('custom text');
+  await expect(page.locator('#result-conditions')).not.toContainText('strict space');
+  await expect(page.locator('#result-delta')).toContainText('not counted toward your best');
+  // Back on a words test the rules apply again.
+  await openView(page, 'Practice');
+  await chooseWords(page, 10);
+  await expect(page.locator('#condition-line')).toContainText('continue on error · strict space · quick end off');
+});
+
 test('a retest restores the baseline’s strict space and quick end', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
