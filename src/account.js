@@ -448,24 +448,28 @@ const stampsOf = (side) => (side.preferencesAt && typeof side.preferencesAt === 
 // changed and is stamped on every change, so a font size changed on one device survives a test shape
 // picked later on another. A setting only one side has stamped comes from that side: the other has
 // recorded no change to it since stamps began. A setting neither side has stamped (profiles saved
-// before stamps) comes from the newer profile by updatedAt, as whole-profile sync chose, and keeps this
-// device's when neither is newer. Equal stamps (edits in the same millisecond, or clocks that each
-// stepped just past the same stamp from a clock running ahead, see stampAfter) go to the value that
-// sorts first, so every copy picks the same one and copies settle. A setting one side lacks (an older
-// build) comes from the side that has it.
+// before stamps) comes from the newer profile by updatedAt, as whole-profile sync chose. Equal stamps
+// (edits in the same millisecond, or clocks that each stepped just past the same stamp from a clock
+// running ahead, see stampAfter), and unstamped settings in profiles saved the same moment, go to the
+// value that sorts first, so every copy picks the same one and copies settle. A setting one side lacks
+// (an older build) comes from the side that has it.
 const valueOrder = (value) => JSON.stringify(value) ?? '';
+// Whether `theirs` wins over `mine` given each one's stamp: the later stamp, then the value that sorts
+// first, so both sides of a merge pick the same one.
+const takesTheirs = (myStamp, theirStamp, mine, theirs) => theirStamp > myStamp
+  || (theirStamp === myStamp && valueOrder(theirs) < valueOrder(mine));
 export function mergePreferences(local, cloud) {
   const mine = local.preferences || {};
   const theirs = cloud.preferences || {};
   const myStamps = stampsOf(local);
   const theirStamps = stampsOf(cloud);
-  const cloudNewer = (cloud.updatedAt || '') > (local.updatedAt || '');
   const preferences = {};
   const preferencesAt = {};
   for (const key of new Set([...Object.keys(mine), ...Object.keys(theirs)])) {
     const a = myStamps[key] || '';
     const b = theirStamps[key] || '';
-    const fromCloud = a || b ? b > a || (b === a && valueOrder(theirs[key]) < valueOrder(mine[key])) : cloudNewer;
+    const fromCloud = a || b ? takesTheirs(a, b, mine[key], theirs[key])
+      : takesTheirs(local.updatedAt || '', cloud.updatedAt || '', mine[key], theirs[key]);
     preferences[key] = (fromCloud ? theirs[key] : mine[key]) ?? (fromCloud ? mine[key] : theirs[key]);
     if (a || b) preferencesAt[key] = a > b ? a : b;
   }
@@ -480,6 +484,11 @@ const fuller = (held, other) => {
   return kept.firstDailyAttempt && (held.firstDailyAttempt === false || other.firstDailyAttempt === false)
     ? { ...kept, firstDailyAttempt: false } : kept;
 };
+
+// The fields mergeSynced has a rule of its own for. The rest (version, and any field this build
+// doesn't know) are passed through.
+const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 'preferences', 'preferencesAt',
+  'historyClearedAt', 'appliedClears', 'heardClears', 'historyClearedIds', 'undoneClears', 'updatedAt', 'profileId']);
 
 // Merges another copy of this account's profile (`cloud`: the account row, or another tab's cache) into
 // this device's (`local`). Field by field:
@@ -507,8 +516,11 @@ const fuller = (held, other) => {
 //   typed confirmation and an Undo within seconds, so the list stays tiny.
 // - updatedAt: the later of the two (the time of the last saved edit anywhere).
 // - profileId: the smaller id, so every copy settles on the same one whichever merges first.
-// - version and any field this build doesn't know: this device's copy, filled from the other side, so
-//   a field written by a newer build survives a merge made by an older one.
+// - version and any field this build doesn't know: from the copy saved later (updatedAt, the only stamp
+//   such a field has), then the value that sorts first, so both sides of a merge keep the same value and
+//   copies settle, rather than an older build that kept a stale value writing it back over a newer one
+//   on every sync. A field only one side has comes from that side, so one a newer build wrote survives
+//   an older build's merge.
 export function mergeSynced(local, cloud) {
   const undone = [...new Set([...list(local.undoneClears), ...list(cloud.undoneClears)])].sort();
   const clears = [clearsOf(local, undone), clearsOf(cloud, undone)];
@@ -548,6 +560,12 @@ export function mergeSynced(local, cloud) {
   const theirs = surviving(cloud, clears[1]);
 
   const merged = { ...cloud, ...local };
+  for (const key of Object.keys(merged)) {
+    if (MERGED_FIELDS.has(key)) continue;
+    const [mineValue, theirValue] = [local[key], cloud[key]];
+    if (mineValue === undefined || (theirValue !== undefined
+      && takesTheirs(local.updatedAt || '', cloud.updatedAt || '', mineValue, theirValue))) merged[key] = theirValue;
+  }
   for (const [name, { at, keep }] of Object.entries(HISTORY)) {
     const byId = new Map();
     for (const item of [...mine[name], ...theirs[name]]) {

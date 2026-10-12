@@ -14,6 +14,11 @@ const profile = (over = {}) => ({
 });
 const item = (id, n, extra = {}) => ({ id, at: n === null ? null : minute(n), ...extra });
 const ids = (items) => items.map((entry) => entry.id);
+// A field mergeSynced has no rule for: version, and any field a newer build added.
+const MERGED_FIELDS = [...Object.keys(HISTORY), 'bests', 'seenTextIds', 'preferences', 'preferencesAt', 'historyClearedAt',
+  'appliedClears', 'heardClears', 'historyClearedIds', 'undoneClears', 'updatedAt', 'profileId'];
+const passThrough = (copy) => JSON.stringify(Object.keys(copy).filter((key) => !MERGED_FIELDS.includes(key) && copy[key] !== undefined)
+  .sort().map((key) => [key, copy[key]]));
 
 test('history is a union by id, ordered by date, before the caps apply', () => {
   const local = profile({ attempts: [item('a1', 1), item('a3', 3)], runs: [item('r1', 1), item('r3', 3)], loops: [item('l3', 3)] });
@@ -111,8 +116,12 @@ test('each setting comes from the side that changed it last', () => {
   assert.deepEqual(mergeSynced(stale, fresh).preferences, large);
   assert.deepEqual(mergeSynced(fresh, stale).preferences, large);
   assert.equal(mergeSynced(fresh, stale).preferencesAt, undefined);
-  // With nothing to go on at all, this device keeps its own; a setting an older build lacks is filled in.
-  assert.deepEqual(mergeSynced(profile({ preferences: light }), profile({ preferences: large })).preferences, light);
+  // With nothing to go on at all, every copy keeps the value that sorts first; a setting an older build
+  // lacks is filled in.
+  const dark = { theme: 'dark', fontSize: '36', mode: 'words' };
+  const first = { theme: 'dark', fontSize: '28', mode: 'time' };
+  assert.deepEqual(mergeSynced(profile({ preferences: light }), profile({ preferences: dark })).preferences, first);
+  assert.deepEqual(mergeSynced(profile({ preferences: dark }), profile({ preferences: light })).preferences, first);
   const older = profile({ preferences: { theme: 'dark' } });
   assert.equal(mergeSynced(older, profile({ preferences: { theme: 'light', wordList: '1k' }, updatedAt: minute(1) })).preferences.wordList, '1k');
 });
@@ -640,9 +649,13 @@ const seeded = (seed) => () => {
   return seed / 2147483648;
 };
 
+// Each run also writes a field this build doesn't merge (as a newer build might), saved in three-minute
+// steps so copies often share a save time: both orders of every merge must keep the same value of it,
+// and every copy must end with the same one.
 test('randomised: once every clear is undone, every run made anywhere is everywhere', () => {
   const realNow = Date.now;
   const failed = [];
+  const unordered = [];
   try {
     for (let seed = 1; seed <= 400; seed += 1) {
       const random = seeded(seed);
@@ -651,24 +664,30 @@ test('randomised: once every clear is undone, every run made anywhere is everywh
       const devices = [0, 1, 2].map(() => device(profile({ preferences: {} })));
       let row = profile({ preferences: {} });
       const made = [];
+      const pull = (d) => {
+        if (passThrough(mergeSynced(d.copy, row)) !== passThrough(mergeSynced(row, d.copy)) && !unordered.includes(seed)) unordered.push(seed);
+        return mergeInto(d, row);
+      };
       for (let step = 0; step < 40; step += 1) {
         now += 60000;
-        const d = devices[Math.floor(random() * 3)];
+        const n = Math.floor(random() * 3);
+        const d = devices[n];
         const roll = random();
         if (roll < 0.35) {
           const id = `r${made.length}`;
           made.push(id);
-          d.copy = { ...d.copy, runs: [...d.copy.runs, { id, at: new Date(now).toISOString() }] };
+          const updatedAt = new Date(now - (now % 180000)).toISOString();
+          d.copy = { ...d.copy, runs: [...d.copy.runs, { id, at: new Date(now).toISOString() }], note: { by: n, run: id }, updatedAt };
         } else if (roll < 0.5) clearOn(d);
         else if (roll < 0.6 && d.clears.length) undoOn(d, d.clears[Math.floor(random() * d.clears.length)]);
-        else if (roll < 0.8) row = mergeInto(d, row);
-        else mergeInto(d, row);
+        else if (roll < 0.8) row = pull(d);
+        else pull(d);
       }
       for (const d of devices) for (const clear of [...d.clears]) undoOn(d, clear);
-      for (let round = 0; round < 3; round += 1) for (const d of devices) row = mergeInto(d, row);
+      for (let round = 0; round < 3; round += 1) for (const d of devices) row = pull(d);
       for (const d of devices) {
         const have = new Set(ids(d.copy.runs));
-        if (made.some((id) => !have.has(id)) || d.copy.historyClearedAt) {
+        if (made.some((id) => !have.has(id)) || d.copy.historyClearedAt || passThrough(d.copy) !== passThrough(row)) {
           failed.push(seed);
           break;
         }
@@ -678,6 +697,7 @@ test('randomised: once every clear is undone, every run made anywhere is everywh
     Date.now = realNow;
   }
   assert.deepEqual(failed, []);
+  assert.deepEqual(unordered, []);
 });
 
 test('an undo undoes only its own clear, even when two clears are stamped the same millisecond', () => {
@@ -1067,7 +1087,8 @@ test('fields this build does not know, and profiles from older builds, survive a
   const local = { version: 2, profileId: 'b', preferences: { theme: 'dark' }, attempts: [item('a', 1)], goal: { daily: 10 }, updatedAt: minute(1) };
   const cloud = { version: 2, profileId: 'a', preferences: { theme: 'light' }, runs: [item('r', 2)], goal: { daily: 5 }, streak: 3, updatedAt: minute(4) };
   const merged = mergeSynced(local, cloud);
-  assert.deepEqual(merged.goal, { daily: 10 }, 'this device’s copy of a shared unknown field');
+  assert.deepEqual(merged.goal, { daily: 5 }, 'a shared unknown field from the copy saved later');
+  assert.deepEqual(mergeSynced(cloud, local).goal, { daily: 5 });
   assert.equal(merged.streak, 3, 'an unknown field only the other side has');
   assert.deepEqual(ids(merged.attempts), ['a']);
   assert.deepEqual(ids(merged.runs), ['r']);
@@ -1084,6 +1105,79 @@ test('fields this build does not know, and profiles from older builds, survive a
   // Merging again changes nothing.
   assert.ok(sameProfile(mergeSynced(merged, merged), merged));
   assert.ok(sameProfile(mergeSynced(merged, cloud), merged));
+});
+
+test('a field this build doesn’t merge comes from the copy saved later, whichever side merges', () => {
+  // An older build kept a stale value of a field a newer build has since changed on another device.
+  const stale = profile({ goal: { daily: 5 }, updatedAt: minute(1) });
+  const newer = profile({ goal: { daily: 10 }, updatedAt: minute(4) });
+  const onOld = mergeSynced(stale, newer);
+  const onNew = mergeSynced(newer, stale);
+  assert.deepEqual(onOld.goal, { daily: 10 });
+  assert.deepEqual(onNew.goal, { daily: 10 });
+  assert.ok(sameProfile(onOld, onNew));
+  // Saved the same moment, or before saves were stamped: the value that sorts first, on every copy.
+  for (const updatedAt of [minute(2), undefined]) {
+    const a = profile({ goal: { daily: 5 }, updatedAt });
+    const b = profile({ goal: { daily: 10 }, updatedAt });
+    assert.equal(passThrough(mergeSynced(a, b)), passThrough(mergeSynced(b, a)));
+    assert.ok(sameProfile(mergeSynced(a, b), mergeSynced(b, a)));
+  }
+});
+
+test('a field only one copy has survives a merge in either order', () => {
+  const lone = profile({ streak: 3, updatedAt: minute(1) });
+  const other = profile({ updatedAt: minute(5) });
+  for (const [a, b] of [[lone, other], [other, lone], [{ ...lone, updatedAt: minute(9) }, other], [other, { ...lone, updatedAt: minute(9) }]]) {
+    assert.equal(mergeSynced(a, b).streak, 3);
+  }
+});
+
+// Each device pulls the row and pushes when its merged copy differs from it, as pushOnce does. Returns
+// how many writes each round made.
+const settle = (copies, rounds = 6) => {
+  let row = copies[0];
+  const writes = [];
+  for (let round = 0; round < rounds; round += 1) {
+    let wrote = 0;
+    copies.forEach((copy, n) => {
+      copies[n] = mergeSynced(copy, row);
+      if (!sameProfile(copies[n], row)) {
+        row = copies[n];
+        wrote += 1;
+      }
+    });
+    writes.push(wrote);
+  }
+  return { row, writes, copies };
+};
+
+test('two devices that disagree on a field this build doesn’t merge settle instead of rewriting the row', () => {
+  const cases = [
+    // A device on an older build holds a stale value; the newer value was saved later elsewhere.
+    [profile({ goal: { daily: 5 }, updatedAt: minute(1) }), profile({ goal: { daily: 10 }, updatedAt: minute(4) })],
+    // Both saved the same moment.
+    [profile({ goal: { daily: 5 }, updatedAt: minute(4) }), profile({ goal: { daily: 10 }, updatedAt: minute(4) })],
+  ];
+  for (const [laptop, phone] of cases) {
+    for (const first of [laptop, phone]) {
+      const { row, writes, copies } = settle([first, first === laptop ? phone : laptop]);
+      assert.deepEqual(writes.slice(2), [0, 0, 0, 0], `writes per round: ${writes}`);
+      for (const copy of copies) assert.ok(sameProfile(copy, row));
+      if (laptop.updatedAt < phone.updatedAt) assert.deepEqual(row.goal, { daily: 10 });
+    }
+  }
+});
+
+test('settings neither copy has stamped, saved the same moment, settle on one value', () => {
+  const dark = profile({ preferences: { theme: 'dark', fontSize: '28' }, updatedAt: minute(4) });
+  const light = profile({ preferences: { theme: 'light', fontSize: '28' }, updatedAt: minute(4) });
+  assert.deepEqual(mergeSynced(dark, light).preferences, mergeSynced(light, dark).preferences);
+  for (const order of [[dark, light], [light, dark]]) {
+    const { row, writes, copies } = settle(order);
+    assert.deepEqual(writes.slice(2), [0, 0, 0, 0], `writes per round: ${writes}`);
+    for (const copy of copies) assert.ok(sameProfile(copy, row));
+  }
 });
 
 test('one list of history collections drives the caps on save and merge', () => {
