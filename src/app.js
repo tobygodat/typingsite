@@ -1565,12 +1565,20 @@ function raceResult(completed) {
 }
 
 function startRaceBest(key, inputClass = 'physical-keyboard') {
-  const option = raceableBest(profile, key);
+  let option = raceableBest(profile, key);
+  // The run a race replaces is stored first, and keeping it can push the best's keystrokes out of the newest
+  // kept traces, so the best is looked up again once it is stored. That run is over then, so a race that can
+  // no longer start leaves a fresh passage ready, as a restart does.
+  if (option.available && attempt?.status === 'running') {
+    markInterrupted(NOTICES.leftSurface);
+    finishPrimary(null, { advance: false });
+    option = raceableBest(profile, key);
+    if (!option.available) resetSession(restartKind(), { focus: true });
+  }
   if (!option.available) {
     showRaceNotice(raceUnavailableCopy(option));
     return false;
   }
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { advance: false }); }
   if (race.attempt?.status === 'running') markRaceInterrupted();
   $('race-toast').hidden = true;
   raceTarget = { key, best: option.best, trace: option.trace, track: ghostTrack(option.trace), inputClass };

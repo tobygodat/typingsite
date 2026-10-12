@@ -323,6 +323,61 @@ test('without the best’s keystrokes the race says plainly why it is unavailabl
   await expect(page.locator('body')).toHaveAttribute('data-view', 'progress');
 });
 
+test('a palette race started mid-run replaces that run when its best keeps its keystrokes', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  const original = await completePassage(page);
+  await page.locator('#run-again').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
+  await typeInto(page, (await passageText(page)).slice(0, 3));
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('race your best');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
+  await expect(page.locator('#race-toast')).toBeHidden();
+  expect(await passageText(page)).toBe(original);
+  await expect(page.locator('#typing-input')).toBeFocused();
+});
+
+test('a palette race started mid-run whose stored run pushes out the best’s keystrokes does not start', async ({ page, supabase }) => {
+  // 24 kept traces with the best the oldest: storing the run the race replaces leaves no room for the best's.
+  const best = bestTrace('oldest-best');
+  const slower = Array.from({ length: 23 }, (_, index) => bestTrace(`slower-${index}`, { text: OTHER_TEXT, step: 400 }));
+  const traces = [best, ...slower];
+  const user = supabase.addUser('full@stilltype.test');
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: traces, runs: traces.map(runRecord), loops: [],
+    seenTextIds: traces.map((trace) => trace.textId),
+    bests: { [conditionKey(words10)]: { wpm: best.summary.score.wpm, attemptId: best.id, at: best.at } },
+    updatedAt: '2026-10-01T12:00:00Z' } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await chooseWords(page, 10);
+  await expect(page.locator('#best')).toHaveText(`Best · ${best.summary.score.wpm} wpm`);
+  const passage = await passageText(page);
+  await typeInto(page, passage.slice(0, 3));
+  await expect(page.locator('#typing-input')).toHaveValue(passage.slice(0, 3));
+
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('race your best');
+  await expect(page.locator('#palette-list [role="option"]').first()).toContainText(`${best.summary.score.wpm} wpm`);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#race-toast')).toBeVisible();
+  await expect(page.locator('#race-feedback')).toHaveText(`Your ${best.summary.score.wpm} wpm best can’t be raced: its keystrokes are no longer kept (only your newest 24 runs keep them). Set a new best to race it.`);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
+  await expect(page.locator('#accessible-passage')).not.toHaveText(TEXT);
+  await expect(page.locator('#text-display .ghost-caret')).toHaveClass(/is-hidden/);
+  // A fresh passage is ready, as a restart leaves it.
+  await expect(page.locator('#typing-input')).toBeEnabled();
+  await expect(page.locator('#typing-input')).toHaveValue('');
+  await expect(page.locator('#typing-input')).toBeFocused();
+
+  const saved = await cachedProfile(page, user.id);
+  expect(saved.attempts).toHaveLength(24);
+  expect(saved.attempts.map((a) => a.id)).not.toContain('oldest-best');
+  expect(saved.attempts.at(-1)).toMatchObject({ kind: 'test', status: 'interrupted' });
+  expect(saved.runs.filter((run) => run.kind === 'ghost-race')).toEqual([]);
+});
+
 test('a newer account row arriving before the first key prepares the race again against the best it holds', async ({ page, supabase }) => {
   const cached = bestTrace('best-a');
   const user = seedBest(supabase, 'stale@stilltype.test', cached);

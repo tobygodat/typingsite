@@ -106,6 +106,7 @@ spacing:
   "2": "8px"
   "3": "12px"
   "4": "16px"
+  "5": "20px"
   "6": "24px"
   "8": "32px"
   "10": "40px"
@@ -338,7 +339,7 @@ A static print: 22px corners, 22px padding, a strong hairline border, and the ca
 A 600px opaque raised panel with 22px corners over a flat dim. It has a 62px search row (19px input) and 46px option rows with a 6px state dot (accent when selected). Mono group labels and mono hints sit on the right. It enters and exits with a 4px lift and fade over 150ms.
 
 ### Toasts
-Opaque raised pills of 16px radius at the bottom centre, with a status dot and 15px text, rising 6px over 200ms.
+Opaque raised pills of 16px radius at the bottom centre, with a status dot and 15px text, rising 6px over 200ms. The race-your-best note, a sentence or two, grows to `--toast-max` (560px) before it wraps.
 
 ## Do's and Don'ts
 
