@@ -244,6 +244,33 @@ test('an accent-key commit is one or two typed keys; IME text is not', () => {
   }
 });
 
+test('an emoji committed through a composition is not an accent key', () => {
+  // Emoji pickers and phone keyboards commit through composition too. An astral emoji is two UTF-16
+  // units, so typing it would move the caret two letters; pictographs, presentation selectors, joined
+  // sequences, flags and keycaps aren't one passage character either.
+  for (const text of [
+    '😀', '👍', '❤', '☺', '✌', '❤️', '☺️', '✌️', '👍🏽', '👩‍💻', '🇫🇷', '1️⃣', '#️⃣',
+    '"😀', '´😀', '"❤', '~☺', '‍', '️', '"️', '⃣',
+  ]) assert.equal(composedKeys(text), null, JSON.stringify(text));
+});
+
+test('every mark and letter a real accent key commits is still typed', () => {
+  // A mark on its own (the dead key, then space) on US-International, UK-Extended, German, French AZERTY
+  // and BÉPO, Spanish, Portuguese, Swedish/Norwegian, Czech and Polish. ~ is a math symbol, ° an other
+  // symbol and ˇ a modifier letter, so a whitelist by general category would refuse some of them.
+  for (const mark of ['"', "'", '`', '~', '^', '´', '¨', '°', 'ˇ', '˙', '˛', '˘', '˝', '¸', '¯', '˚', 'ˆ', '˜']) {
+    assert.deepEqual(composedKeys(mark), [mark], mark);
+  }
+  // A composed letter, or BÉPO's currency and Greek keys (€, α).
+  for (const letter of ['ä', 'é', 'è', 'ê', 'ë', 'ï', 'ñ', 'ã', 'õ', 'ç', 'å', 'ø', 'ů', 'ő', 'ű', 'ž', 'č', 'ř', 'ě', 'ż', 'ą', 'ę', 'ł', 'ś', 'ẽ', 'ŵ', '€', 'α']) {
+    assert.deepEqual(composedKeys(letter), [letter], letter);
+  }
+  // The mark and the key it doesn't combine with: Windows US-International sends ~e, not ẽ.
+  for (const pair of ['^q', '~e', '`x', '¨k', '´t', '°x', 'ˇx', '˙q', '˛b', '¸k', '˝a', "'1", '"#', '"é', '~~', '^ ']) {
+    assert.deepEqual(composedKeys(pair), [...pair], pair);
+  }
+});
+
 test('a mark and letter committed together replay like two key presses', () => {
   const run = (offsets) => {
     const attempt = createAttempt({ id: 'q', text: 'say "hi"', textId: 'q', conditions: {} });

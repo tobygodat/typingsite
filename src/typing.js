@@ -150,18 +150,25 @@ function printable(text) {
 
 // Accent (dead) keys reach the page as a short composition: the mark shows, then the next key commits
 // one character (ä, or " after space) or, where the pair has no composed form, the mark and that key ("h).
-// Anything longer, East Asian or full-width is IME text, which isn't keyboard input: null.
+// Anything longer, East Asian or full-width is IME text, which isn't keyboard input: null. So is an
+// emoji, which pickers and phone keyboards commit the same way.
 const DEAD_MARKS = new Set([...'\'"`~^´¨ˆ˜ˇ˘˚°¸˛˝˙¯']);
 const IME_TEXT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Bopomofo}　-〿＀-￯\r\n]/u;
 // Kana punctuation (ー ・ ゛ ゠) is Script=Common and only a kana IME types it. A few combining marks
 // list kana among their scripts too (U+0323 dot below), so accent marks are checked first.
 const KANA_EXTENSIONS = /[\p{scx=Hiragana}\p{scx=Katakana}]/u;
+// A key types one letter, digit, punctuation mark, symbol or space. Not a pictograph (❤ ☺), an astral
+// character (a 😀 is two UTF-16 units, so it would move the caret two letters), or the selectors,
+// joiners and keycaps that build emoji sequences.
+const KEY_CHAR = /[\p{L}\p{N}\p{P}\p{S}\p{Zs}]/u;
 const deadMark = (char) => DEAD_MARKS.has(char) || /^[̀-ͯ]$/u.test(char);
 const imeChar = (char) => IME_TEXT.test(char) || (!deadMark(char) && KANA_EXTENSIONS.test(char));
+const keyChar = (char) => char.length === 1 && (deadMark(char) || KEY_CHAR.test(char))
+  && !/\p{Extended_Pictographic}/u.test(char) && !imeChar(char);
 
 export function composedKeys(text) {
   const chars = [...(text ?? '').normalize('NFC')];
-  if (chars.length > 2 || chars.some(imeChar)) return null;
+  if (chars.length > 2 || !chars.every(keyChar)) return null;
   if (chars.length === 2 && !deadMark(chars[0])) return null;
   return chars;
 }

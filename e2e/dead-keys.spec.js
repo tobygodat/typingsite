@@ -60,11 +60,13 @@ const recordHelp = (page) => page.evaluate(() => {
   new MutationObserver(() => window.helpSeen.push(help.textContent)).observe(help, { childList: true, characterData: true, subtree: true });
 });
 
-const scored = (page) => page.evaluate(() => ({
+// Read once the page's pending timers have run: a commit is scored after the task that made it, so a
+// focus change in that task can still drop it.
+const scored = (page) => page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve({
   correct: document.querySelectorAll('#text-display .char.correct').length,
   wrong: document.querySelectorAll('#text-display .char.wrong').length,
   value: document.querySelector('#typing-input').value,
-}));
+}))));
 
 const lastStoredAttempt = (page, userId) => page.evaluate((key) => JSON.parse(localStorage.getItem(key)).attempts.at(-1), `stilltype-profile-v2:${userId}`);
 
@@ -490,6 +492,103 @@ test('a mark pending when focus leaves does not start a ready run', async ({ pag
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 });
 
+// Each way focus moves to a control on the page with a mark pending. Chrome commits the mark as focus
+// moves, then blurs the field (Tab, a click); Firefox and Safari blur first and commit after.
+const leaveWithMark = {
+  tab: async (page) => {
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#restart-button')).toBeFocused();
+  },
+  click: async (page) => {
+    // A run fades the chrome until the pointer moves.
+    await page.mouse.move(5, 5);
+    await page.mouse.move(40, 40);
+    await page.locator('.dock-settings').click();
+    await expect(page.locator('.preferences-popover')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.preferences-popover')).toBeHidden();
+  },
+  blurFirst: async (page, keys) => {
+    await page.evaluate(() => document.querySelector('#typing-input').dispatchEvent(new FocusEvent('blur')));
+    await keys.commit('"');
+  },
+};
+
+test('a mark pending when focus moves to a control on the page is dropped, and the run stays ready', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+
+  for (const [way, leave] of Object.entries(leaveWithMark)) {
+    // Clicking the passage puts focus back in the field.
+    await page.locator('#typing-input').click();
+    await keys.deadKey('"');
+    await expect(page.locator('#typing-input')).toHaveValue('"');
+    await leave(page, keys);
+    expect(await scored(page), way).toEqual({ correct: 0, wrong: 0, value: '' });
+    await expect(page.locator('#typing-status'), way).toHaveText('Ready');
+    await expect(page.locator('#input-help'), way).toHaveText('');
+  }
+
+  // The run starts with its first real key, and counts.
+  await page.locator('#typing-input').click();
+  await page.keyboard.type(text);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
+});
+
+test('a mark dropped as focus moves mid-run leaves the run as it was', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 5));
+  const typed = { correct: 5, wrong: 0, value: text.slice(0, 5) };
+
+  for (const [way, leave] of Object.entries(leaveWithMark)) {
+    await page.locator('#typing-input').click();
+    await keys.deadKey('"');
+    await leave(page, keys);
+    // Not scored, and moving focus within the page neither ends the run nor stops it counting.
+    expect(await scored(page), way).toEqual(typed);
+    await expect(page.locator('#typing-status'), way).toHaveText('In progress');
+    await expect(page.locator('#input-help'), way).toHaveText('');
+  }
+
+  await page.locator('#typing-input').click();
+  await page.keyboard.type(text.slice(5));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-accuracy')).toHaveText('100');
+  await expect(page.locator('#result-errors')).toHaveText('0');
+  await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
+});
+
+test('an emoji committed through a composition is refused like IME text', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 3));
+
+  // An emoji picker or phone keyboard: 😀 is two UTF-16 units, so typing it would move the caret two letters.
+  await keys.preview('😀');
+  await expect(page.locator('#input-help')).toHaveText(IME_NOTICE);
+  await keys.commit('😀');
+  expect(await scored(page)).toEqual({ correct: 3, wrong: 0, value: text.slice(0, 3) });
+  await page.keyboard.type(text.slice(3));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
+
+  // A pictograph from the Basic Multilingual Plane, committed straight into an accent key's composition.
+  await page.locator('#run-again').click();
+  await expect(page.locator('#typing-status')).toHaveText('Ready');
+  await keys.deadKey('"');
+  await keys.commit('❤');
+  await expect(page.locator('#input-help')).toHaveText(IME_NOTICE);
+  expect(await scored(page)).toEqual({ correct: 0, wrong: 0, value: '' });
+});
+
 test('both one-keyboard race players can type with accent keys', async ({ page }) => {
   // Race passages are medium quotes; keep those with quotation marks, so each turn uses the dead key.
   await page.route('**/src/typing.js', async (route) => {
@@ -507,10 +606,10 @@ test('both one-keyboard race players can type with accent keys', async ({ page }
   await expect(page.locator('#race-input')).toBeFocused();
   const text = await page.locator('#race-accessible-passage').textContent();
   expect(text).toContain('"');
-  const raceScored = () => page.evaluate(() => ({
+  const raceScored = () => page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve({
     correct: document.querySelectorAll('#race-text-display .char.correct').length,
     wrong: document.querySelectorAll('#race-text-display .char.wrong').length,
-  }));
+  }))));
 
   // A mark pending as the window loses focus (macOS Chrome blurs before it commits) doesn't start the turn.
   await keys.deadKey('"');
@@ -521,6 +620,14 @@ test('both one-keyboard race players can type with accent keys', async ({ page }
   await keys.commit('"');
   await expect(page.locator('#race-input')).toHaveValue('');
   expect(await raceScored()).toEqual({ correct: 0, wrong: 0 });
+  // Nor does one Chrome commits as Tab moves focus on.
+  await page.locator('#race-input').focus();
+  await keys.deadKey('"');
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#race-input')).not.toBeFocused();
+  expect(await raceScored()).toEqual({ correct: 0, wrong: 0 });
+  await expect(page.locator('#race-help')).not.toHaveText('Focus lost. Esc to restart this turn.');
+  await page.locator('#race-input').focus();
 
   // The first mark waits in the field, unscored, until the next key commits it ("W together, or the
   // mark alone before a space); every other mark goes through the accent key too.

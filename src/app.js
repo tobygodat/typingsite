@@ -123,7 +123,8 @@ let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
-// The open composition (an accent key's mark, or IME text): { type, attempt, refused, replaces }.
+// The open composition (an accent key's mark, or IME text): { type, attempt, refused, replaces }, then
+// once it ends, the { commit, at } still to be scored.
 let composition = null;
 // The last key press was a held accent key repeating; whatever it commits is key repeat, not typing.
 let heldDeadKey = false;
@@ -660,12 +661,11 @@ function refuseComposition(type) {
 
 // Each key takes the same path as a key press, so replay can't tell them apart. A mark and letter
 // committed together arrive with the second key press, and share its time.
-function typeKeys(keys, type) {
+function typeKeys(keys, type, at = now()) {
   if (heldDeadKey) { // a held accent key commits its mark again and again (^^): ignore it, like any held key
     showInputNotice(type, NOTICES.repeat, { speak: false });
     return;
   }
-  const at = now();
   for (const key of keys) {
     if (!acceptingInput(type)) return; // the first of two may finish the passage or the clock
     const change = pushInsert(key, type, at);
@@ -673,7 +673,24 @@ function typeKeys(keys, type) {
   }
 }
 
+// What a composition committed, scored once the task that ended it is over: a browser commits a pending
+// mark as focus moves and blurs the field straight after (Chrome), and a mark pending when focus leaves is
+// dropped. The next key, input or composition on the field scores it first, so keys keep their order.
+function scoreCommit(type) {
+  const session = composition?.type === type && composition.commit !== null ? composition : null;
+  if (!session) return;
+  composition = null;
+  if (session.attempt !== inputAttempt(type) || !acceptingInput(type)) return;
+  const keys = composedKeys(session.commit);
+  // Committing the same letters back (typing on past the accent menu) changes nothing; any
+  // other change to letters already scored is an input method's edit, not keys.
+  if (session.replaces !== null) { if (session.commit !== session.replaces) refuseComposition(type); }
+  else if (keys === null) refuseComposition(type);
+  else typeKeys(keys, type, session.at);
+}
+
 function beforeTypingInput(event, type = 'primary') {
+  scoreCommit(type);
   if (!acceptingInput(type)) {
     event.preventDefault();
     return;
@@ -688,7 +705,7 @@ function beforeTypingInput(event, type = 'primary') {
   // (the field changed under it, or the browser dropped the event): let this key through.
   if (composition?.type === type && !event.isComposing && !compositionInput
     && (event.inputType === 'insertText' || event.inputType?.startsWith('delete'))) composition = null;
-  // Composition text is scored once, at compositionend; until then the field is the browser's.
+  // Composition text is scored once, after compositionend; until then the field is the browser's.
   if (compositionInput || event.isComposing || composition?.type === type) return;
   if (event.inputType?.startsWith('delete')) {
     event.preventDefault();
@@ -714,16 +731,20 @@ function beforeTypingInput(event, type = 'primary') {
   typeKeys(keys, type);
 }
 
-// An accent key's composition is typed characters, scored at compositionend; a preview or commit
+// An accent key's composition is typed characters, scored after compositionend; a preview or commit
 // that an accent key could not produce is IME text and stops the run counting.
 function wireComposition(input, type) {
-  input.addEventListener('keydown', (event) => { heldDeadKey = event.repeat && event.key === 'Dead'; });
+  input.addEventListener('keydown', (event) => {
+    scoreCommit(type);
+    heldDeadKey = event.repeat && event.key === 'Dead';
+  });
   input.addEventListener('compositionstart', (event) => {
+    scoreCommit(type);
     if (!acceptingInput(type)) { composition = null; return; }
     // An accent key's mark starts as a caret after the typed text. A composition over letters already
     // typed (the macOS press-and-hold accent menu, a keyboard re-composing a word) is not new keys.
     const over = event.data || input.value.slice(input.selectionStart, input.selectionEnd);
-    composition = { type, attempt: inputAttempt(type), refused: false, replaces: over || null };
+    composition = { type, attempt: inputAttempt(type), refused: false, replaces: over || null, commit: null, at: 0 };
   });
   input.addEventListener('compositionupdate', (event) => {
     if (composition?.type !== type || composition.refused || composition.attempt !== inputAttempt(type)) return;
@@ -734,20 +755,19 @@ function wireComposition(input, type) {
     }
   });
   input.addEventListener('compositionend', (event) => {
-    const session = composition?.type === type ? composition : null;
-    if (session) composition = null;
-    if (session && !session.refused && session.attempt === inputAttempt(type) && acceptingInput(type)) {
-      const keys = composedKeys(event.data);
-      // Committing the same letters back (typing on past the accent menu) changes nothing; any
-      // other change to letters already scored is an input method's edit, not keys.
-      if (session.replaces !== null) { if (event.data !== session.replaces) refuseComposition(type); }
-      else if (keys === null) refuseComposition(type);
-      else typeKeys(keys, type);
+    if (composition?.type === type) {
+      if (composition.refused || composition.attempt !== inputAttempt(type)) composition = null;
+      else {
+        Object.assign(composition, { commit: event.data ?? '', at: now() });
+        setTimeout(() => scoreCommit(type));
+      }
     }
     // Hand the field back to the passage once the composition is over (finishing commits a pending mark).
     const current = inputAttempt(type);
     if (current) input.value = replayAttempt(current).typed;
   });
+  // Focus moving anywhere drops a mark still pending, or committed on the way out, whichever comes first.
+  input.addEventListener('blur', () => { if (composition?.type === type) composition = null; });
 }
 
 // Everything the typing surface says, kept short. The focus-lost and composition
