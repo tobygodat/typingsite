@@ -78,6 +78,27 @@ export function refusedEdit({ inputType = '', data = null, selectionStart = 0, s
   return selectionStart === selectionEnd ? null : 'selection';
 }
 
+// The kind of key that turned `before` (the text the counted keys built) into `after` (what the
+// field now holds), or null when no single counted key could have: an insert adds exactly the one
+// character it reports and removes nothing; a delete adds nothing and removes at most one word.
+// Anything else changed the text some other way, such as autocorrect, assistive text or an edit
+// the browser applied after it was refused, and is never counted.
+export function keyedChange(before, after, { inputType = '', data = null } = {}) {
+  const kind = keyedEdit(inputType);
+  if (!kind) return null;
+  const was = [...String(before)];
+  const is = [...String(after)];
+  let start = 0;
+  while (start < was.length && start < is.length && was[start] === is[start]) start += 1;
+  let end = 0;
+  while (end < was.length - start && end < is.length - start && was[was.length - 1 - end] === is[is.length - 1 - end]) end += 1;
+  const removed = was.slice(start, was.length - end).join('');
+  const added = is.slice(start, is.length - end).join('');
+  if (kind === 'delete') return removed && !added && countWords(removed) <= 1 ? 'delete' : null;
+  const reported = inputType === 'insertText' ? data : '\n';
+  return !removed && [...added].length === 1 && (typeof reported !== 'string' || added === reported) ? 'insert' : null;
+}
+
 // Active time is the sum of the gaps between consecutive keys, where a gap longer than the pause
 // cut-off (thinking, not typing) counts as the average of the shorter gaps. Dropping long gaps
 // outright would leave the key after each pause with no time of its own and overstate the speed

@@ -11,6 +11,7 @@ import {
   compositionRecord,
   countCharacters,
   countWords,
+  keyedChange,
   keyedEdit,
   normalizeCompositions,
   promptDeck,
@@ -132,6 +133,44 @@ test('a key typed or deleted over a selection is refused, so a selection never v
   assert.equal(refusedEdit({ inputType: 'insertText', data: 'x', selectionStart: 4, selectionEnd: 5 }), 'selection', 'even one selected character');
   assert.equal(over('deleteByCut'), 'edit', 'a cut is refused whatever is selected');
   assert.equal(refusedEdit({ inputType: 'insertText', data: 'x' }), null, 'no selection given means a caret');
+});
+
+test('a key counts only when the field changed by exactly that key; any other change is unsupported', () => {
+  const change = (before, after, inputType, data = null) => keyedChange(before, after, { inputType, data });
+  // One character, Enter, Backspace, Delete and a word delete, anywhere in the text.
+  assert.equal(change('Tea', 'Teas', 'insertText', 's'), 'insert');
+  assert.equal(change('Tea', 'Tear', 'insertText', 'r'), 'insert');
+  assert.equal(change('Ta', 'Tea', 'insertText', 'e'), 'insert', 'mid-text');
+  assert.equal(change('aa', 'aaa', 'insertText', 'a'), 'insert', 'a repeated letter');
+  assert.equal(change('Tea', 'Tea😀', 'insertText', '😀'), 'insert', 'one emoji is one character');
+  assert.equal(change('Tea', 'Tea\n', 'insertLineBreak'), 'insert');
+  assert.equal(change('Tea', 'Tea\n', 'insertParagraph'), 'insert');
+  assert.equal(change('Tea', 'Te', 'deleteContentBackward'), 'delete');
+  assert.equal(change('Tea', 'ea', 'deleteContentForward'), 'delete');
+  assert.equal(change('cd😀', 'cd', 'deleteContentBackward'), 'delete', 'a whole emoji');
+  assert.equal(change('then a long walk', 'then a walk', 'deleteWordBackward'), 'delete');
+  assert.equal(change('ab cd', ' cd', 'deleteWordForward'), 'delete');
+  // Chromium can report a letter delete after a word delete as another word delete.
+  assert.equal(change(' cd', 'cd', 'deleteWordForward'), 'delete');
+
+  // Input types no key makes are never counted, whatever they changed.
+  for (const type of ['insertReplacementText', 'insertFromAssistiveText', 'insertFromPaste', 'historyUndo', '']) {
+    assert.equal(change('I made teh tea', 'I made the tea', type, 'the'), null, type || '(none)');
+    assert.equal(change('Tea', 'Teas', type, 's'), null, type || '(none)');
+  }
+  // A counted type whose change is not that one key: several characters, a replacement, the
+  // wrong character, an insert that also deletes, a delete that adds or spans words, or nothing.
+  assert.equal(change('Tea', 'Tea and more', 'insertText', ' and more'), null);
+  assert.equal(change('Tea', 'Tea and more', 'insertText', 'e'), null);
+  assert.equal(change('Tea', 'Teb', 'insertText', 'b'), null);
+  assert.equal(change('Tea', 'Tex', 'insertText', 'x'), null);
+  assert.equal(change('Tea', 'Teas', 'insertText', 'x'), null);
+  assert.equal(change('The bus came', 'The tram camex', 'insertText', 'x'), null);
+  assert.equal(change('Tea', 'Teax', 'insertLineBreak'), null);
+  assert.equal(change('Tea', 'Ta!', 'deleteContentBackward'), null);
+  assert.equal(change('then a long walk', 'then walk', 'deleteWordBackward'), null);
+  assert.equal(change('Tea', 'Tea', 'insertText', 'a'), null);
+  assert.equal(change('Tea', 'Tea', 'deleteContentBackward'), null);
 });
 
 test('too little active typing gives no speed', () => {

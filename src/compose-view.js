@@ -6,6 +6,7 @@ import {
   COMPOSE_MIN_ACTIVE_MS,
   composeSummary,
   compositionRecord,
+  keyedChange,
   keyedEdit,
   promptDeck,
   promptText,
@@ -31,6 +32,8 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
   const done = $('compose-done');
   let state = 'ready';
   let keys = [];
+  // The text the counted keys built, edit by edit: the only source of what was typed.
+  let typed = '';
   let startedAt = null;
   // The elapsed time a finished session ended at, so the clock and the heading agree.
   let endedMs = null;
@@ -112,6 +115,21 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     showNotice(COMPOSE_NOTICES.composition, { sticky: true });
   }
 
+  // A key counts only when the field changed by exactly that key at one place. Any other change,
+  // whatever its input type, fails closed: the session is unsupported input and is never scored.
+  function record(inputType, data) {
+    if (unsupported) return;
+    // A counted key that changed nothing (for example at the length cap) is not a keystroke.
+    if (keyedEdit(inputType) && input.value === typed) return;
+    const kind = keyedChange(typed, input.value, { inputType, data });
+    if (!kind) {
+      markUnsupported();
+      return;
+    }
+    keys.push({ type: kind, at: now() - startedAt });
+    typed = input.value;
+  }
+
   function resultHeading(summary, endedBy, counted) {
     if (state === 'interrupted') return 'Interrupted · not saved';
     if (unsupported) return 'IME input · not measured or saved';
@@ -148,7 +166,10 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     clearInterval(ticker);
     ticker = 0;
     const elapsedMs = endedBy === 'time' ? COMPOSE_LIMIT_MS : elapsed();
-    const summary = composeSummary({ keys, text: input.value, elapsedMs });
+    // A field that no longer holds what the keys built was changed with no input event at all.
+    if (input.value !== typed) markUnsupported();
+    // Only the recorded text is ever scored; an unsupported session just shows what the field holds.
+    const summary = composeSummary({ keys, text: unsupported ? input.value : typed, elapsedMs });
     endedMs = summary.elapsedMs;
     state = interrupted ? 'interrupted' : 'complete';
     // Read-only and out of the tab order: a finished field has no caret to show focus with.
@@ -173,6 +194,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     ticker = 0;
     state = 'ready';
     keys = [];
+    typed = '';
     startedAt = null;
     endedMs = null;
     interrupted = false;
@@ -209,10 +231,11 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     if (type.includes('Composition') || event.isComposing) return;
     // Typing and deleting at the caret are measured; anything else that changes the text is refused.
     const refused = refusedEdit({ inputType: type, data: event.data, selectionStart: input.selectionStart, selectionEnd: input.selectionEnd });
-    if (refused) {
-      event.preventDefault();
-      showNotice(COMPOSE_NOTICES[refused]);
-    }
+    if (!refused) return;
+    event.preventDefault();
+    // A refusal the browser can't cancel lands anyway, uncounted, so nothing after it is measured.
+    if (!event.defaultPrevented) markUnsupported();
+    else showNotice(COMPOSE_NOTICES[refused]);
   });
 
   // Counted after the change lands, so a key the field refused (for example at its length cap) never counts.
@@ -220,9 +243,8 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     if (state === 'complete' || state === 'interrupted') return;
     const type = event.inputType || '';
     if (state === 'ready') start();
-    const keyed = keyedEdit(type);
     if (type.includes('Composition') || event.isComposing) markUnsupported();
-    else if (keyed) keys.push({ type: keyed, at: now() - startedAt });
+    else record(type, event.data);
     done.disabled = false;
     if (!notice) setText($('compose-help'), '');
     setRunning(true);
@@ -281,6 +303,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
       ticker = 0;
       state = 'ready';
       keys = [];
+      typed = '';
       startedAt = null;
       endedMs = null;
       input.value = '';

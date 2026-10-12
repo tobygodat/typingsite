@@ -423,6 +423,105 @@ test('keyless input, focus loss and an emptied field are never saved, and settin
   expect(await passageText(page)).not.toBe(hidden);
 });
 
+// An edit the browser makes on its own, as autocorrect or assistive text can: `before` and
+// `after` are the beforeinput and input it reports, if any, around the change to `value`.
+async function browserEdit(input, value, { before = null, after = null } = {}) {
+  await input.evaluate((node, edit) => {
+    if (edit.before) node.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: false, ...edit.before }));
+    node.value = edit.value;
+    node.setSelectionRange(edit.value.length, edit.value.length);
+    if (edit.after) node.dispatchEvent(new InputEvent('input', { bubbles: true, ...edit.after }));
+  }, { value, before, after });
+}
+
+// Ends the session and checks it is reported as unsupported input: no rates and nothing saved.
+async function finishUnsupported(page) {
+  await page.keyboard.press('Control+Enter');
+  await expect(page.locator('#compose-result-heading')).toHaveText('IME input · not measured or saved');
+  await expect(page.locator('#compose-wpm')).toHaveText('—');
+  await expect(page.locator('#compose-backspace')).toHaveText('—');
+  await expect(page.locator('#compose-saved')).toHaveText('IME input isn’t measured. Esc to start over.');
+}
+
+test('text no counted key typed, such as an autocorrection, marks it unsupported and is never saved', async ({ page }) => {
+  await startPausedClock(page);
+  await openCompose(page);
+  const input = page.locator('#compose-input');
+  const typed = 'I made teh tea and sat by the window. ';
+  // Input with no cancellable beforeinput first: a replacement, and a type nothing here knows.
+  for (const inputType of ['insertReplacementText', 'insertFromAssistiveText']) {
+    await typePaced(page, [...typed], 230);
+    await browserEdit(input, typed.replace('teh', 'the'), { after: { inputType, data: 'the' } });
+    await finishUnsupported(page);
+    await page.locator('#compose-retry').click();
+  }
+  // A change with no event at all is caught at the end: the field no longer matches the keys.
+  await typePaced(page, [...typed], 230);
+  await input.evaluate((node) => { node.value += 'and a line no key typed'; });
+  await finishUnsupported(page);
+
+  await openView(page, 'Progress');
+  await expect(page.locator('#compose-history')).toBeHidden();
+});
+
+test('an edit a refusal could not cancel, or one unlike its key, is never saved', async ({ page }) => {
+  await startPausedClock(page);
+  await openCompose(page);
+  const input = page.locator('#compose-input');
+  const typed = 'The bus came early, so I walked the last bit. ';
+  const phrase = 'and then a little more';
+  const edits = [
+    // A refused replacement whose beforeinput can't be cancelled, which the browser then applies.
+    [typed.replace('bit', 'part'), { before: { inputType: 'insertReplacementText', data: 'part' }, after: { inputType: 'insertReplacementText', data: 'part' } }],
+    // Several characters at once, refused but not cancellable: a counted type, but not one key.
+    [typed + phrase, { before: { inputType: 'insertText', data: phrase }, after: { inputType: 'insertText', data: phrase } }],
+    // A counted key whose change isn't that key: the field no longer matches the recorded text.
+    [`${typed.replace('bus', 'tram')}x`, { after: { inputType: 'insertText', data: 'x' } }],
+  ];
+  for (const [value, events] of edits) {
+    await typePaced(page, [...typed], 230);
+    await browserEdit(input, value, events);
+    await finishUnsupported(page);
+    await page.locator('#compose-retry').click();
+  }
+
+  await openView(page, 'Progress');
+  await expect(page.locator('#compose-history')).toBeHidden();
+});
+
+test('letters, Enter, Backspace, Delete and word deletes at any caret are all scored', async ({ page }) => {
+  await startPausedClock(page);
+  await openCompose(page);
+  const input = page.locator('#compose-input');
+  const word = process.platform === 'darwin' ? 'Alt' : 'Control';
+  // Each counted key lands 200 ms after the last; caret moves change nothing and take no time.
+  const steps = [...'Toast with jam', 'Enter', ...'then a long walk.', 'move:ArrowLeft*5', `${word}+Backspace`,
+    'Delete', 'W', `${word}+Delete`, 'move:End', 'x', 'Backspace', ...' home.'];
+  let keystrokes = 0;
+  for (const step of steps) {
+    if (step.startsWith('move:')) {
+      const [key, times = 1] = step.slice(5).split('*');
+      for (let index = 0; index < Number(times); index += 1) await page.keyboard.press(key);
+      continue;
+    }
+    if (step.length === 1) await page.keyboard.type(step);
+    else await page.keyboard.press(step);
+    keystrokes += 1;
+    await page.clock.runFor(200);
+  }
+  const text = await input.inputValue();
+  expect(text.startsWith('Toast with jam\nthen a W')).toBe(true);
+  await page.keyboard.press('Control+Enter');
+  const activeMs = (keystrokes - 1) * 200;
+  await expect(page.locator('#compose-result-heading')).toHaveText(/^Finished after \d+ s$/);
+  await expect(page.locator('#compose-definition')).toContainText(`4 of ${keystrokes} keystrokes were backspace or delete`);
+  await expect(page.locator('#compose-backspace')).toHaveText(String(Math.round((4 / keystrokes) * 100)));
+  await expect(page.locator('#compose-characters')).toHaveText(String(text.length));
+  await expect(page.locator('#compose-active')).toHaveText((activeMs / 1000).toFixed(1));
+  await expect(page.locator('#compose-wpm')).toHaveText(String(Math.round(text.length / 5 / (activeMs / 60_000))));
+  await expect(page.locator('#compose-saved')).toHaveText('Kept for this tab: these numbers, not your words.');
+});
+
 test('composing and custom text replace each other in the mode row', async ({ page }) => {
   const text = 'the quick brown fox jumps over the lazy dog';
   await startPausedClock(page);
