@@ -225,7 +225,7 @@ The handoff carries the migrations, the bugs found on master, the merge rules an
 - While composing, a `resetSession('practice')` from settings, sync, the dock or the ghost toggle waits and keeps you in compose, so no hidden quote is marked seen. Mode buttons, palette test shapes, Run again, drills, retests and the daily end composing.
 - **Input rules:** only single-character inserts, line breaks and Backspace or Delete at a collapsed caret count. Cut, line deletes, autocorrect replacements and any key over a selection are refused with a notice; IME composition goes through, marked "not measured". On a phone with predictive text every suggested word is refused, so touch composing works only key by key. Check on a real phone before calling it touch-ready.
 - Window blur marks composing interrupted, as it does copy tests. Free writers often tab away to think, so this may feel strict; it's a product call.
-- The writing field uses the native caret held solid with `caret-animation: manual` (Chromium 139+). Other browsers still blink it, and DESIGN.md says so.
+- The writing field's caret holds still in every browser. Chromium 139+ keeps its own caret solid with `caret-animation: manual`. Elsewhere (Firefox, Safari, every iOS browser) `src/compose-caret.js` makes the native caret transparent and draws a solid 2px accent bar at the selection, measured with a mirror of the field and following its wrap side and scroll (a9d2d5b, 4193d28).
 - To count composing toward #27's goal, read `profile.compositions[].activeMs`.
 - The mode group's label changed from "Test mode" to "Practice mode".
 - At 1280×800 the result just fits at the medium text size; the large size needs a small scroll.
