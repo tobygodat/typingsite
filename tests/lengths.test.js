@@ -158,7 +158,7 @@ test('long custom runs keep fewer full traces, so the device cache stays inside 
   assert.ok(JSON.stringify(kept).length <= TRACE_BUDGET);
   assert.deepEqual(kept.map((t) => t.id), traces.slice(-kept.length).map((t) => t.id));
 
-  // The newest trace is always kept, whatever its size.
-  assert.deepEqual(retainTraces(traces, { budget: 10 }).map((t) => t.id), ['long23']);
+  // A trace over the whole budget is never kept, not even the newest (tests/insights.test.js has the details).
+  assert.deepEqual(retainTraces(traces, { budget: 10 }), []);
   assert.deepEqual(retainTraces([]), []);
 });

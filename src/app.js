@@ -1131,7 +1131,7 @@ function renderResults(completed, saved) {
   ].filter(Boolean).join(' ');
 
   if (sessionKind === 'practice' || sessionKind === 'daily') {
-    activeRecommendation = trainingRecommendation(completed.conditions);
+    activeRecommendation = trainingRecommendation(completed.conditions, completed);
     selectedTarget = activeRecommendation.target;
   }
   $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
@@ -1447,8 +1447,10 @@ function practiceTarget(target, source) {
   if (!baselineAttempt) $('session-description').textContent = 'Standalone drill. Finish a new practice run afterward for a comparable retest.';
 }
 
-function trainingRecommendation(source) {
-  const recommendation = recommendTarget(profile.attempts, source);
+// The run just finished always counts toward its own recommendation, even when its trace was too large to keep.
+function trainingRecommendation(source, current = null) {
+  const traces = current && !profile.attempts.includes(current) ? [...profile.attempts, current] : profile.attempts;
+  const recommendation = recommendTarget(traces, source);
   const recurring = recurringTargets(profile.runs, profile.loops, source)[0];
   if (!recurring) return recommendation;
   const counts = recurring.errors

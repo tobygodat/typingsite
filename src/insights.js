@@ -49,14 +49,17 @@ function traceSize(trace) {
   return traceSizes.get(trace);
 }
 
-// The newest full traces, at most MAX_TRACES and within TRACE_BUDGET; the newest is always kept.
-// An older run loses only its trace: bests, trends and recurring evidence read the compact summaries.
+// The newest full traces, at most MAX_TRACES and within TRACE_BUDGET. A run loses only its trace: bests,
+// trends and recurring evidence read the compact summaries. A trace over the whole budget on its own (ten
+// minutes past ~215 wpm, or a key held down) is never kept, even the newest, so the cache stays bounded.
 export function retainTraces(traces, { max = MAX_TRACES, budget = TRACE_BUDGET } = {}) {
   const kept = [];
   let total = 0;
   for (let i = traces.length - 1; i >= 0 && kept.length < max; i -= 1) {
-    total += traceSize(traces[i]);
-    if (kept.length && total > budget) break;
+    const size = traceSize(traces[i]);
+    if (size > budget) continue;
+    if (total + size > budget) break;
+    total += size;
     kept.push(traces[i]);
   }
   return kept.reverse();
