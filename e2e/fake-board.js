@@ -1,7 +1,9 @@
 // The friends board for the browser tests: a pure read of each member's own profile row (kept by
 // e2e/fake-supabase.js), shown only to mutual friends who are members too and labelled with the reader's
 // own name for them. It reads the friend lists kept by e2e/fake-races.js. `members` holds the accounts
-// that share. supabase/tests/friends-board.sql checks the migration itself; this mirrors its replies.
+// that share, and `versions` each account's sharing version: a share counts only when sent with the
+// current one, an opt-out always, and each that counts moves it on. supabase/tests/friends-board.sql
+// checks the migration itself; this mirrors its replies.
 const DAY_MS = 86400000;
 export const utcDay = (date = new Date()) => date.toISOString().slice(0, 10);
 export function mondayOf(date = new Date()) {
@@ -45,6 +47,8 @@ export class FakeBoard {
   constructor(auth) {
     this.auth = auth;
     this.members = new Set();
+    // Each account's sharing version: how many shares and opt-outs were applied (none yet is 0).
+    this.versions = new Map();
     // Every board call's action, in order.
     this.calls = [];
     // Set to stand in for a project where the migration has not been applied yet.
@@ -60,6 +64,14 @@ export class FakeBoard {
     // Set to delay the next reply by this many milliseconds: the board is read on arrival, and the reply
     // takes that long to get back.
     this.delayNextReply = 0;
+  }
+
+  version(account) { return this.versions.get(account) ?? 0; }
+
+  // An account that turned sharing on before the test (one change applied, as the service counts it).
+  joined(account) {
+    this.versions.set(account, this.version(account) + 1);
+    this.members.add(account);
   }
 
   emailOf(id) { return [...this.auth.users.values()].find((user) => user.id === id)?.email.toLowerCase(); }
@@ -87,15 +99,16 @@ export class FakeBoard {
       return { ...fields, daily: numbers?.daily ?? null, week: numbers?.week ?? null, ...(numbers ? { bests: numbers.bests } : {}) };
     };
     // Someone who doesn't share sees nobody, and nobody sees them.
-    if (!this.members.has(viewer)) return { date, weekStart, sharing: false, nextDay, rows: [] };
+    const sharingVersion = this.version(viewer);
+    if (!this.members.has(viewer)) return { date, weekStart, sharing: false, sharingVersion, nextDay, rows: [] };
     const mutual = [...this.listed(viewer)].filter(([account]) => this.members.has(account)
       && (this.auth.races.friends.get(account) || []).some((friend) => friend.friendId === viewer || friend.email === email));
-    return { date, weekStart, sharing: true, nextDay, rows: [row(viewer, { self: true, id: null, name: null }),
+    return { date, weekStart, sharing: true, sharingVersion, nextDay, rows: [row(viewer, { self: true, id: null, name: null }),
       ...mutual.map(([account, friend]) => row(account, { self: false, id: friend.id, name: friend.name }))
         .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))] };
   }
 
-  async handle(caller, { p_action: action }, reply) {
+  async handle(caller, { p_action: action, p_data: data }, reply) {
     this.calls.push(action);
     if (this.missing) return reply(404, { message: 'Could not find the function public.friends_board(p_action, p_data) in the schema cache' });
     if (!caller) return reply(401, { message: 'permission denied for function friends_board' });
@@ -105,9 +118,17 @@ export class FakeBoard {
       await held;
       if (this.missing) return reply(404, { message: 'Could not find the function public.friends_board(p_action, p_data) in the schema cache' });
     }
-    if (action === 'share') this.members.add(caller);
-    else if (action === 'unshare') this.members.delete(caller);
-    else if (action !== 'board') return reply(400, { message: 'Unknown board action.' });
+    // A share sent with any version but the current one (or none) changes nothing; the reply says.
+    if (action === 'share') {
+      const seen = data?.version;
+      if (Number.isSafeInteger(seen) && seen >= 0 && seen === this.version(caller)) {
+        this.versions.set(caller, seen + 1);
+        this.members.add(caller);
+      }
+    } else if (action === 'unshare') {
+      this.versions.set(caller, this.version(caller) + 1);
+      this.members.delete(caller);
+    } else if (action !== 'board') return reply(400, { message: 'Unknown board action.' });
     const result = this.board(caller);
     if ((action === 'share' || action === 'unshare') && this.holdNextReply) {
       const held = this.holdNextReply;

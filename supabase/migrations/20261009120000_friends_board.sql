@@ -6,15 +6,18 @@
 -- nothing yet until a newer build repairs it from the row's own data. The column is the owner's like the
 -- rest of the row: owner-only RLS, no new grants. The summary stays there, beside the history it is
 -- counted from, whether or not the account shares.
--- Sharing is opt-in: an account that shares has a row in race_private.board_members, and turning
--- sharing off deletes it, which takes the account off the board at once. Only members see the board,
+-- Sharing is opt-in: an account that shares has a row in race_private.board_members, and turning sharing
+-- off deletes it, which takes the account off the board at once. Changes to sharing apply in order,
+-- account-wide: each one the service applies moves the account's sharing version on, and a share counts
+-- only if sharing hasn't changed since the version its device last read, so a share that arrives late
+-- can't undo a newer opt-out from another device. An opt-out always counts. Only members see the board,
 -- and they see only friends who are members too. A row is shown only to mutual friends: you see someone
 -- when each of you has the other on your friend list, by account or by a confirmed email (resolved
 -- exactly as a typed invite is). Because both lists must agree, adding an email never reveals whether it
 -- belongs to an account, or anything about it, unless that account chose you too. Rows carry no name,
 -- email or account id; each reader labels a row with the name on their own list. Results are reported by
 -- browsers: friendly, unverified and unranked beyond the people each reader chose. Deleting the account
--- deletes both rows.
+-- deletes all of its rows.
 
 alter table public.profiles add column board jsonb
   check (board is null or (jsonb_typeof(board) = 'object' and pg_column_size(board) <= 16384));
@@ -25,6 +28,16 @@ create table race_private.board_members (
 );
 alter table race_private.board_members enable row level security;
 revoke all on race_private.board_members from public, anon, authenticated;
+
+-- Each account's sharing version: how many shares and opt-outs the service has applied for it. The row
+-- stays when sharing is turned off, so a share sent before an opt-out can be told from one sent after.
+-- An account without a row is at version 0.
+create table race_private.board_sharing (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  version bigint not null default 0 check (version >= 0)
+);
+alter table race_private.board_sharing enable row level security;
+revoke all on race_private.board_sharing from public, anon, authenticated;
 
 -- What a reader is shown of one profile row's summary: null unless it is stamped with the row's own
 -- `updated_at` (it describes that exact row); then today's daily and this week's practice. A summary
@@ -78,8 +91,9 @@ revoke all on function race_private.board_numbers(jsonb,timestamptz,date,date) f
 -- The viewer's own row, then one row per mutual friend who shares, each with the numbers from their own
 -- profile row (none yet when they have none). A viewer who doesn't share sees no rows at all. A daily
 -- result counts only for today's UTC date and practice time only for this UTC week; anything older reads
--- as nothing yet. Only the viewer learns their own sharing state. `nextDay` is the number of seconds to
--- the service's next 00:00 UTC, so a browser reads again then whatever its own clock says.
+-- as nothing yet. Only the viewer learns their own sharing state, and its version (`sharingVersion`), which
+-- a share is sent with. `nextDay` is the number of seconds to the service's next 00:00 UTC, so a browser
+-- reads again then whatever its own clock says.
 create function race_private.board_snapshot(p_viewer uuid)
 returns jsonb language sql stable set search_path = '' as $$
   with clock as (
@@ -88,7 +102,8 @@ returns jsonb language sql stable set search_path = '' as $$
     from (select (clock_timestamp() at time zone 'utc')::date as d) now_utc
   ),
   me as (
-    select exists(select 1 from race_private.board_members m where m.user_id = p_viewer) as sharing
+    select exists(select 1 from race_private.board_members m where m.user_id = p_viewer) as sharing,
+      coalesce((select s.version from race_private.board_sharing s where s.user_id = p_viewer), 0) as version
   ),
   listed as (
     -- One entry per account on the viewer's list; a row added from a race wins over a typed email.
@@ -113,7 +128,8 @@ returns jsonb language sql stable set search_path = '' as $$
     union all
     select m.account_id, m.friend_row, m.name, false from mutual m
   )
-  select jsonb_build_object('date', c.today, 'weekStart', c.week_start, 'sharing', me.sharing, 'nextDay', c.next_day,
+  select jsonb_build_object('date', c.today, 'weekStart', c.week_start, 'sharing', me.sharing, 'sharingVersion', me.version,
+    'nextDay', c.next_day,
     'rows', case when me.sharing then coalesce(
       -- Each row carries whatever parts board_numbers reads, nothing yet when it reads none.
       (select jsonb_agg(jsonb_build_object('self', p.self, 'id', p.friend_row, 'name', p.name, 'daily', null, 'week', null)
@@ -128,18 +144,35 @@ returns jsonb language sql stable set search_path = '' as $$
 $$;
 revoke all on function race_private.board_snapshot(uuid) from public, anon, authenticated;
 
--- 'board' reads it. 'share' makes the caller a member and 'unshare' removes them; both are idempotent,
--- so a repeat after a lost reply is answered as done, and nothing is ever refused. No numbers travel,
--- and nothing here writes a profile row: those are the owner's own writes.
+-- 'board' reads it. 'unshare' removes the caller from the board, always: an opt-out is never refused, and
+-- a repeat after a lost reply is answered as done. 'share' makes the caller a member only when sent with
+-- the account's current sharing version (`{"version": n}`, as its device last read it): after any change
+-- since, an opt-out from another device above all, it is refused and changes nothing, and the reply says
+-- whether the account shares. So is a share without a whole-number version: none is ever applied blind.
+-- Each change applied moves the version on by one, under that row's lock, so two changes to one account
+-- apply one after the other and a share racing an opt-out is checked against it. No numbers travel, and
+-- nothing here writes a profile row: those are the owner's own writes.
 create function race_private.board(p_action text, p_data jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   v_uid uuid := auth.uid();
+  v_seen bigint;
 begin
   if v_uid is null or not exists(select 1 from auth.users where id = v_uid) then raise exception 'Sign in to see your friends board.'; end if;
+  if p_action = 'share' or p_action = 'unshare' then
+    insert into race_private.board_sharing (user_id) values (v_uid) on conflict (user_id) do nothing;
+  end if;
   if p_action = 'share' then
-    insert into race_private.board_members (user_id) values (v_uid) on conflict (user_id) do nothing;
+    -- The cast comes after the pattern that guards it, in a statement of its own, so it never raises.
+    if jsonb_typeof(p_data->'version') = 'number' and p_data->>'version' ~ '^[0-9]{1,18}$' then
+      v_seen := (p_data->>'version')::bigint;
+    end if;
+    update race_private.board_sharing set version = version + 1 where user_id = v_uid and version = v_seen;
+    if found then
+      insert into race_private.board_members (user_id) values (v_uid) on conflict (user_id) do nothing;
+    end if;
   elsif p_action = 'unshare' then
+    update race_private.board_sharing set version = version + 1 where user_id = v_uid;
     delete from race_private.board_members where user_id = v_uid;
   elsif p_action is distinct from 'board' then
     raise exception 'Unknown board action.';

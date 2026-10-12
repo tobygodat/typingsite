@@ -68,7 +68,7 @@ const remembers = (page, user) => page.addInitScript((key) => {
 // summary yet: the first load writes one.
 async function sharing(page, supabase, user, runs, options) {
   seedProfile(supabase, user, runs, options);
-  supabase.board.members.add(user.id);
+  supabase.board.joined(user.id);
   await remembers(page, user);
 }
 // The summary in an account's own profile row.
@@ -90,7 +90,7 @@ function shares(supabase, user, bests) {
     conditions: shapeOf(key), score: { wpm: value.wpm, accuracy: value.accuracy }, elapsedMs: 30000, errors: 1, target: null, challengeDate: null, patterns: [] }));
   supabase.profiles.set(user.id, { data: { version: 2, profileId: randomUUID(), preferences: {}, attempts: [], runs, loops: [], seenTextIds: [], bests: {}, updatedAt: at },
     updated_at: at, board: { v: BOARD_V, at, days: {}, weeks: { [mondayOf()]: { seconds: 900, runs: 12 } }, bests } });
-  supabase.board.members.add(user.id);
+  supabase.board.joined(user.id);
 }
 
 // Ada has chosen Lin, Mara and Sam, and they chose her. Ada also has Ola, who never added her back,

@@ -22,12 +22,20 @@ begin
   perform set_config('role', 'none', true);
   return v_result;
 end $$;
+-- Turning sharing on as a browser does: sent with the sharing version its last read of the board gave.
+create function pg_temp.share() returns jsonb language plpgsql as $$
+begin
+  return pg_temp.board('share', jsonb_build_object('version', pg_temp.board('board')->'sharingVersion'));
+end $$;
 -- A profile save as a browser makes it over the API, as the caller: the data, `updated_at`, and the
 -- board column with these bests, stamped with the save (or, p_board_too false, as an older build, no
 -- board column at all).
 create function pg_temp.save(p_bests jsonb, p_board_too boolean default true) returns void language plpgsql as $$
 declare
-  v_at timestamptz := date_trunc('milliseconds', clock_timestamp());
+  -- At least a millisecond after the row's last save, so two saves made within one millisecond here
+  -- still move the row on, as two saves from a browser always do.
+  v_at timestamptz := greatest(date_trunc('milliseconds', clock_timestamp()),
+    (select p.updated_at + interval '1 millisecond' from public.profiles p where p.user_id = auth.uid()));
   v_monday date := (clock_timestamp() at time zone 'utc')::date - (extract(isodow from (clock_timestamp() at time zone 'utc')::date)::integer - 1);
   v_board jsonb := jsonb_build_object('v', 2, 'at', to_char(v_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'days', '{}'::jsonb,
     'weeks', jsonb_build_object(v_monday::text, jsonb_build_object('seconds', 600, 'runs', 9)), 'bests', p_bests);
@@ -100,7 +108,7 @@ begin
   board := pg_temp.board('board');
   if board->'rows' <> '[]'::jsonb then raise exception 'Bests of an account that does not share were shown: %', board; end if;
   -- Sharing, her row shows each shape's best as her profile row holds it.
-  board := pg_temp.board('share');
+  board := pg_temp.share();
   if pg_temp.own(board) is distinct from mine then raise exception 'Own bests were not shown as saved: %', board; end if;
   -- Alongside the rest of the summary.
   if board->'rows'->0->'week' is distinct from jsonb_build_object('seconds', 600, 'runs', 9) then
@@ -169,16 +177,16 @@ begin
   -- share, and not anyone while the reader doesn't share.
   perform set_config('request.jwt.claim.sub',lin::text,true);
   perform pg_temp.save(jsonb_build_object(k60, pg_temp.best(78, 96, '2026-10-06')));
-  board := pg_temp.board('share');
+  board := pg_temp.share();
   if pg_temp.named(board,'Ada') is distinct from mine then raise exception 'Lin does not see Ada''s bests: %', board; end if;
   perform set_config('request.jwt.claim.sub',ola::text,true);
   perform pg_temp.save(jsonb_build_object(k60, pg_temp.best(105, 99, '2026-10-06')));
-  perform pg_temp.board('share');
+  perform pg_temp.share();
   perform set_config('request.jwt.claim.sub',kai::text,true);
   perform pg_temp.save(jsonb_build_object(k60, pg_temp.best(99, 97, '2026-10-06')));
   board := pg_temp.board('board');
   if board->'rows' <> '[]'::jsonb or board::text like '%' || k60 || '%' then raise exception 'Someone who does not share saw bests: %', board; end if;
-  perform pg_temp.board('share');
+  perform pg_temp.share();
   perform set_config('request.jwt.claim.sub',ada::text,true);
   board := pg_temp.board('board');
   if jsonb_array_length(board->'rows') <> 2 or pg_temp.named(board,'Lin') is distinct from jsonb_build_object(k60, pg_temp.best(78, 96, '2026-10-06'))

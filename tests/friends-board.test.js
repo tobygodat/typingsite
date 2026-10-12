@@ -1,7 +1,7 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
-import { BOARD_V, boardColumn, boardCurrent, boardSummary, dailyOrder, dailyVersion, nextRead, practiceTime, readBoard, readDue, startSharing, stopSharing, weekOrder, weekStart } from '../src/friends-board.js';
+import { BOARD_V, boardColumn, boardCurrent, boardSummary, dailyOrder, dailyVersion, nextRead, practiceTime, readBoard, readDue, readSharing, sharingValue, startSharing, stopSharing, versionOf, weekOrder, weekStart } from '../src/friends-board.js';
 import { dailyPassage } from '../src/insights.js';
 
 const daily = { mode: 'quote', duration: null, count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any',
@@ -118,25 +118,47 @@ test('board order: fastest daily first, accuracy breaks a tie, nobody-yet last; 
   assert.deepEqual(weekOrder(rows).map((row) => row.name || 'you'), ['Lin', 'you', 'Ana', 'Kai', 'Sam']);
 });
 
-test('the board sends no numbers: reading, sharing and stopping, as the signed-in account', async () => {
+test('the board sends no numbers: reading, sharing (with only the sharing version it read) and stopping, as the signed-in account', async () => {
   const original = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, options) => {
     calls.push({ url, headers: options.headers, data: JSON.parse(options.body) });
-    return new Response(JSON.stringify({ date: '2026-10-09', weekStart: '2026-10-05', sharing: true, nextDay: 32400, rows: [] }));
+    return new Response(JSON.stringify({ date: '2026-10-09', weekStart: '2026-10-05', sharing: true, sharingVersion: 3, nextDay: 32400, rows: [] }));
   };
   try {
-    await readBoard(session);
-    await startSharing(session);
+    const read = await readBoard(session);
+    await startSharing(session, versionOf(read));
     await stopSharing(session);
     assert.match(calls[0].url, /\/rest\/v1\/rpc\/friends_board$/);
     assert.equal(calls[0].headers.Authorization, 'Bearer account-token');
     assert.deepEqual(calls.map((call) => call.data), [
       { p_action: 'board', p_data: {} },
-      { p_action: 'share', p_data: {} },
+      { p_action: 'share', p_data: { version: 3 } },
       { p_action: 'unshare', p_data: {} },
     ]);
   } finally { globalThis.fetch = original; }
+});
+
+test('a reply’s sharing version is a whole number, or none', () => {
+  assert.equal(versionOf({ sharingVersion: 0 }), 0);
+  assert.equal(versionOf({ sharingVersion: 41 }), 41);
+  for (const value of [undefined, null, -1, 1.5, '3', Number.MAX_SAFE_INTEGER + 2, NaN]) assert.equal(versionOf({ sharingVersion: value }), null);
+  assert.equal(versionOf(null), null);
+});
+
+test('a device keeps whether the account shares with the version that said so, in one value its tabs adopt together', () => {
+  assert.equal(sharingValue(true, 7), '1:7');
+  assert.equal(sharingValue(false, 0), '0:0');
+  assert.equal(sharingValue(false, null), '0', 'an opt-out not confirmed yet has no version');
+  for (const [value, version] of [[true, 7], [false, 0], [false, null], [true, Number.MAX_SAFE_INTEGER]]) {
+    assert.deepEqual(readSharing(sharingValue(value, version)), { sharing: value, version });
+  }
+  // Kept by a build before the version: the state, and no version, so a share reads the board first.
+  assert.deepEqual(readSharing('1'), { sharing: true, version: null });
+  assert.deepEqual(readSharing('0'), { sharing: false, version: null });
+  for (const junk of [null, undefined, '', 'true', '2', '1:', '1:-1', '1:1.5', '1:x', '0:9007199254740993', '0:12345678901234567', ' 1:3', '1:3 ']) {
+    assert.deepEqual(readSharing(junk), { sharing: null, version: null });
+  }
 });
 
 test('the profile row’s board column is the summary of its runs, stamped with the write', () => {
