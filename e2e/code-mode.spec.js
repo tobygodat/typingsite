@@ -121,6 +121,46 @@ test('the palette hides punctuation, numbers and word lists in code mode', async
   await search('word list', false);
 });
 
+test('custom text over code mode keeps its own conditions, and code closes the custom editor', async ({ page, supabase }) => {
+  const user = supabase.addUser('code-custom@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await page.locator('#mode-code').click();
+  await expect(page.locator('#condition-line')).toContainText('code ·');
+
+  const text = 'the quick brown fox jumps over the lazy dog';
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#mode-code')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#duration-options')).toBeHidden();
+  await expect(page.locator('#best')).toHaveText('Not counted');
+  await typeInto(page, text);
+  await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
+
+  // The code language underneath never reaches the custom run: its conditions are master's custom shape.
+  await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1);
+  const [run] = supabase.profileFor(user.email).runs;
+  expect(run.kind).toBe('custom');
+  expect(run.conditions).toMatchObject({ mode: 'custom', punctuation: false, numbers: false, wordList: null });
+  expect(run.conditions).not.toHaveProperty('codeLanguage');
+  expect(supabase.profileFor(user.email).bests).toEqual({});
+
+  // Choosing code again closes the custom editor and drops the custom mark.
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await page.locator('#mode-code').click();
+  await expect(page.locator('#custom-options')).toBeHidden();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#mode-code')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#duration-options')).toBeVisible();
+  await expect(page.locator('#duration-options [data-language]')).not.toHaveCount(0);
+  await expect(page.locator('#condition-line')).toContainText('code ·');
+  await expect(page.locator('#best')).toHaveText('Code runs aren’t ranked');
+});
+
 test('code mode screenshots', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const theme of ['dark', 'light']) {

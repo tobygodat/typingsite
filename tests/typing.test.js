@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  CUSTOM_MAX,
   compareAttempts,
+  customTextProblem,
   completeAttempt,
   conditionKey,
   createAttempt,
@@ -9,9 +11,12 @@ import {
   makeDrill,
   makePassage,
   metrics,
+  normalizeCustomText,
+  orderCustomText,
   passageComplete,
   recommendTarget,
   replayAttempt,
+  untypableCharacter,
   rawWpm,
   consistency,
   characterBreakdown,
@@ -295,4 +300,68 @@ test('every code snippet unindents to a non-empty single line the engine accepts
     assert.deepEqual([repeat.fresh, repeat.exhausted], [false, true], language);
   }
   assert.notEqual(conditionKey({ mode: 'code', codeLanguage: 'js' }), conditionKey({ mode: 'code', codeLanguage: 'go' }));
+});
+
+test('custom text keeps only what an English keyboard types, one unit per letter', () => {
+  const clean = (value) => normalizeCustomText(value);
+  // Invisible code points go silently: CGJ (Mn), ZWSP, ZWJ/ZWNJ, variation selectors, soft hyphen, bidi marks, BOM, controls.
+  assert.equal(clean('gra\u034Fph'), 'graph');
+  assert.equal(clean('zero\u200Bwidth jo\u200Din no\u200Cn'), 'zerowidth join non');
+  assert.equal(clean('ok\uFE0F'), 'ok');
+  assert.equal(clean('\uFEFFsoft\u00ADware left\u200Eto \u2066right\u2069 b\u0007ell'), 'software leftto right bell');
+  // Smart punctuation and compatibility forms become ASCII; whitespace collapses.
+  assert.equal(clean('  “It’s fine” — she said…\n\tok  '), '"It\'s fine" - she said... ok');
+  assert.equal(clean('ＡＢＣ\u00A0ﬁne'), 'ABC fine');
+  // Accents on Latin letters fold to the plain letter, composed or not.
+  assert.equal(clean('café résumé nai\u0308ve'), 'cafe resume naive');
+  for (const text of ['gra\u034Fph', 'ok\uFE0F', 'café', '“quoted”']) assert.equal(untypableCharacter(clean(text)), null);
+  // Visible characters outside the alphabet survive normalising so they can be named and refused.
+  assert.equal(untypableCharacter(clean('go 🚀 now')), '🚀');
+  assert.equal(untypableCharacter(clean('hello 世界')), '世');
+  assert.equal(untypableCharacter(clean('❤\uFE0F')), '❤');
+  assert.equal(untypableCharacter(clean('straße')), 'ß');
+  // The cap applies after expansion, so a saved passage is stable; Infinity measures the whole text.
+  assert.equal(clean('…'.repeat(1001)).length, CUSTOM_MAX);
+  assert.equal(normalizeCustomText('…'.repeat(1001), Infinity).length, 3003);
+  assert.equal(clean(clean('“a” — b…')), clean('“a” — b…'));
+});
+
+test('reordered custom text is never longer than the validated source', () => {
+  // One 2,000-character word and 500 one-letter words: sampling with replacement could draw the long word twice.
+  const long = 'a'.repeat(2000);
+  const source = [long, ...Array(500).fill('b')].join(' ');
+  assert.equal(source.length, 3000);
+  const limit = Math.min(source.length, CUSTOM_MAX);
+  let drewLong = 0;
+  for (let seed = 1; seed <= 500; seed += 1) {
+    let state = seed;
+    const random = () => ((state = (state * 16807) % 2147483647) / 2147483647);
+    const randomOrder = orderCustomText(source, 'random', random);
+    // Within the budget, and filled to it: a word that doesn't fit is skipped, not the end of the passage.
+    assert.ok(randomOrder.length >= limit - 1 && randomOrder.length <= limit, `seed ${seed}: ${randomOrder.length}`);
+    if (randomOrder.includes(long)) drewLong += 1;
+    const lopsided = orderCustomText(`${'a'.repeat(2998)} b`, 'random', random);
+    assert.ok(lopsided.length >= 2999 && lopsided.length <= 3000, `seed ${seed}: ${lopsided.length}`);
+    const shuffled = orderCustomText(source, 'shuffled', random);
+    assert.equal(shuffled.length, source.length);
+    assert.deepEqual(shuffled.split(' ').sort(), source.split(' ').sort());
+  }
+  assert.ok(drewLong > 0, 'the long word is still drawn sometimes');
+  assert.equal(orderCustomText(source, 'as-written'), source);
+  assert.equal(orderCustomText('', 'random'), '');
+});
+
+test('custom text must be typeable and long enough to time', () => {
+  const problem = (value) => customTextProblem(normalizeCustomText(value, Infinity))?.kind ?? null;
+  assert.equal(problem(''), 'empty');
+  assert.equal(problem(' \u200B '), 'empty');
+  // One letter finishes on the key that starts the clock; two short words under ten characters are still too quick.
+  assert.equal(problem('a'), 'short');
+  assert.equal(problem('hi there'), 'short');
+  assert.equal(problem('abcdefghijklmnop'), 'short');
+  assert.equal(problem('hello world'), null);
+  assert.equal(problem('“Hi,” I said.'), null);
+  assert.deepEqual(customTextProblem('go 🚀 now'), { kind: 'untypable', char: '🚀' });
+  assert.deepEqual(customTextProblem(normalizeCustomText(Array(501).fill('ab…').join(' '), Infinity)), { kind: 'long', length: 3005 });
+  assert.equal(problem(Array(500).fill('ab…').join(' ')), null);
 });
