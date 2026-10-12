@@ -353,7 +353,7 @@ kbd {
 .preferences { flex: none; }
 .preferences summary { list-style: none; }
 .preferences summary::-webkit-details-marker { display: none; }
-.preferences[open] summary { color: var(--text); background: var(--raised-2); }
+.preferences[open] > summary { color: var(--text); background: var(--raised-2); }
 
 .preferences-popover {
   position: absolute;
@@ -387,6 +387,15 @@ kbd {
 .preference-row > span { min-width: 0; display: grid; gap: 2px; }
 .preference-row strong { font-size: 15px; font-weight: 600; }
 .preference-row .select { width: 104px; height: 36px; font-size: 14px; }
+.preference-row[hidden] { display: none; }
+.pace-note { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); }
+.pace-note:empty { display: none; }
+.preference-row .pace-wpm { width: 104px; height: 36px; font-size: 14px; }
+
+.preference-category > summary { color: var(--muted); }
+.preference-category > summary::after { content: '+'; }
+.preference-category[open] > summary::after { content: '−'; }
+.preference-category > label { margin-left: var(--space-3); }
 
 .site-footer {
   padding: var(--space-8) 0 var(--space-6);
@@ -795,6 +804,7 @@ kbd {
 .shortcut-row { width: 100%; }
 
 .measure-row {
+  position: relative;
   padding-bottom: var(--space-6);
   margin-bottom: var(--space-6);
   border-bottom: 1px solid var(--hairline);
@@ -847,6 +857,7 @@ body[data-session="retest"] .practice-controls,
 body[data-session="retest"] .quote-options { display: none; }
 
 .live-stats {
+  position: relative;
   flex: none;
   display: flex;
   align-items: flex-end;
@@ -873,6 +884,18 @@ body[data-session="retest"] .quote-options { display: none; }
 
 .timer-stat strong { color: var(--accent); }
 
+/* Pace caret label: positioned out of flow so showing it never moves the passage. */
+.pace-label {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: var(--space-1);
+  color: var(--muted);
+  font: var(--text-mono)/1 var(--font-mono);
+  white-space: nowrap;
+}
+.pace-label[hidden] { display: none; }
+
 body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden; }
 
 /* While a run is in progress everything but the passage and the numbers steps back.
@@ -886,6 +909,32 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 
 body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
 body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
+
+/* Caps Lock warning: sits in the gap under the measure rule, so showing it moves nothing.
+   It is a warning, not chrome, so the running fade leaves it alone; it is a readable
+   sentence, so it is set in Literata. */
+.caps-warning {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-small)/1.5 var(--font-serif);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--dur-base) var(--ease-out), visibility 0s linear var(--dur-base);
+}
+
+.caps-warning[data-on="true"] {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--dur-base) var(--ease-out), visibility 0s;
+}
+
+/* Still run: next to the passage mid-run, the warning appears and leaves instantly. */
+body[data-running="true"] .caps-warning { transition: none; }
 
 /* ── Typing zone ────────────────────────────────────────────────────────── */
 
@@ -1233,12 +1282,34 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   gap: var(--space-3);
 }
 
-/* Values sit on one line even when a label wraps. */
-.run-card-facts div { display: flex; flex-direction: column; justify-content: space-between; gap: 4px; }
+/* Values sit on one line even when a label wraps; a cell never widens its track. */
+.run-card-facts div { display: flex; flex-direction: column; justify-content: space-between; gap: 4px; min-width: 0; }
 .run-card-facts dt { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.02em; }
 .run-card-facts dd { margin: 0; font-size: 24px; font-weight: 400; line-height: 1.1; letter-spacing: -0.02em; }
 .run-card-facts strong { font-weight: inherit; }
 .run-card-facts b { color: var(--muted); font-size: 16px; font-weight: 400; margin-left: 1px; }
+
+/* The secondary row: same labels, smaller numerals, no rule of its own. */
+.run-card-more { padding-top: 0; border-top: 0; }
+.run-card-more dd { font-size: var(--text-lead); }
+.run-card-more b { font-size: var(--text-label); }
+
+/* Words reached, static: plain ink, mistyped words in coral on the error tint. Past four lines it
+   scrolls. One word at a time is the tab stop; the chosen word is underlined and its pace shows in
+   the line below. The padding (offset by the margin) keeps a focused word's ring inside the scroller. */
+.run-card-wordlist { display: grid; gap: var(--space-2); }
+.run-card-words {
+  margin: 0 calc(var(--space-2) * -1);
+  padding: var(--space-1) var(--space-2);
+  max-height: calc(var(--text-label) * 1.7 * 4 + var(--space-1) * 2);
+  overflow-y: auto;
+  color: var(--muted);
+  font: var(--text-label)/1.7 var(--font-serif);
+}
+.run-card-words span { color: var(--text); border-radius: var(--radius-sm); cursor: pointer; }
+.run-card-words .word-miss { color: var(--danger); background: var(--danger-soft); }
+.run-card-words [aria-selected="true"] { text-decoration: underline; text-underline-offset: 3px; }
+.word-detail { margin: 0; color: var(--muted); font: var(--text-label)/1.45 var(--font-serif); font-variant-numeric: tabular-nums lining-nums; }
 
 .metric-note {
   margin: 0;
@@ -1907,8 +1978,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .challenge-toast { top: calc(var(--space-4) + 2 * (58px + var(--space-2))); }
 }
 
-/* A card taller than the viewport cannot stick without hiding its foot. */
-@media (max-height: 720px) {
+/* A card taller than the viewport cannot stick without hiding its foot. With the secondary facts,
+   a full words list and its pace line the card runs to about 980px, so it sticks (104px down) only
+   on tall screens. */
+@media (max-height: 1120px) {
   .run-card { position: static; }
 }
 
@@ -1999,4 +2072,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 @media (max-width: 360px) {
   #result-wpm { font-size: var(--text-numeral-narrow); }
+  /* Three tracks are about 73px here: values step down a size so "120.0 s" fits, and the
+     character breakdown takes its own row under raw wpm and consistency. */
+  .run-card-facts dd { font-size: var(--text-lead); }
+  .run-card-more { grid-template-columns: repeat(2, 1fr); }
+  .run-card-more div:last-child { grid-column: 1 / -1; }
 }
