@@ -235,6 +235,13 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
   return { missed, slow, timedCount: timed.length, medianWpm };
 }
 
+// What a word-practice passage asks for beyond plain letters, as test conditions: punctuation is any
+// character that isn't a letter, digit or space (a capital is a letter, so "The" alone isn't punctuation),
+// and numbers is any digit, which is never punctuation.
+export function practiceTextConditions(text) {
+  return { punctuation: /[^\p{L}\p{N} ]/u.test(text), numbers: /\p{N}/u.test(text) };
+}
+
 // Deterministic: the same words always build the same practice passage. It grows past `length`
 // when there are more words, so every word offered is in it.
 export function practiceWordsPassage(words, length = 40) {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, wordHistory } from '../src/typing.js';
-import { MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, evidenceRun, filterRuns, measuredKind, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
+import { MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, evidenceRun, filterRuns, measuredKind, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 test('missed and slowest words come from first tries and per-word speed', () => {
   const text = 'the cat sat on mat';
@@ -351,4 +351,12 @@ test('evidence runs are complete measured runs, never a daily passage shown befo
   // Recurring targets read the same rule: repeat daily attempts add no evidence.
   const repeats = Array.from({ length: 3 }, (_, i) => run(`r${i}`, { kind: 'daily', fresh: false }));
   assert.deepEqual(recurringTargets(repeats, [], conditions), []);
+});
+
+test('word-practice text needs punctuation only for a character that is not a letter, digit or space', () => {
+  // A capital is a letter, so a missed "The" alone isn't punctuation; a digit sets numbers, never punctuation.
+  assert.deepEqual(practiceTextConditions('The cat sat'), { punctuation: false, numbers: false });
+  assert.deepEqual(practiceTextConditions('table, cat'), { punctuation: true, numbers: false });
+  assert.deepEqual(practiceTextConditions('cat 42 The'), { punctuation: false, numbers: true });
+  assert.deepEqual(practiceTextConditions('9:30 cat'), { punctuation: true, numbers: true });
 });
