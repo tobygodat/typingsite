@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
-import { boardSummary, dailyOrder, dailyVersion, newId, practiceTime, publishSummary, readBoard, runsSince, shareSummary, stopSharing, weekOrder, weekStart } from '../src/friends-board.js';
+import { BOARD_V, boardColumn, boardCurrent, boardSummary, dailyOrder, dailyVersion, nextRead, practiceTime, readBoard, startSharing, stopSharing, weekOrder, weekStart } from '../src/friends-board.js';
 import { dailyPassage } from '../src/insights.js';
 
 const daily = { mode: 'quote', duration: null, count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any',
@@ -82,44 +82,62 @@ test('board order: fastest daily first, accuracy breaks a tie, nobody-yet last; 
   assert.deepEqual(weekOrder(rows).map((row) => row.name || 'you'), ['Lin', 'you', 'Ana', 'Kai', 'Sam']);
 });
 
-test('the board sends only the signed-in summary, as that account', async () => {
+test('the board sends no numbers: reading, sharing and stopping, as the signed-in account', async () => {
   const original = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, options) => {
     calls.push({ url, headers: options.headers, data: JSON.parse(options.body) });
-    return new Response(JSON.stringify({ date: '2026-10-09', weekStart: '2026-10-05', rows: [] }));
+    return new Response(JSON.stringify({ date: '2026-10-09', weekStart: '2026-10-05', sharing: true, nextDay: 32400, rows: [] }));
   };
   try {
-    const summary = boardSummary([dailyRun('daily', 80, 96)], dailyKey, now);
-    await publishSummary(session, summary);
     await readBoard(session);
-    await publishSummary(session, boardSummary([], dailyKey, now), { replace: true });
-    await shareSummary(session, summary);
+    await startSharing(session);
     await stopSharing(session);
     assert.match(calls[0].url, /\/rest\/v1\/rpc\/friends_board$/);
     assert.equal(calls[0].headers.Authorization, 'Bearer account-token');
-    assert.deepEqual(calls[0].data, { p_action: 'publish', p_data: summary });
-    assert.deepEqual(Object.keys(calls[0].data.p_data.daily).sort(), ['accuracy', 'attempts', 'date', 'version', 'wpm']);
-    assert.deepEqual(calls[1].data, { p_action: 'board', p_data: {} });
-    // A history clear or undo replaces the stored summary instead of being folded into it.
-    assert.deepEqual(calls[2].data, { p_action: 'replace', p_data: { daily: null, week: { start: '2026-10-05', seconds: 0, runs: 0 } } });
-    // Sharing is opt-in: turning it on sends the summary, turning it off sends nothing about the runs.
-    assert.deepEqual(calls[3].data, { p_action: 'share', p_data: summary });
-    assert.deepEqual(calls[4].data, { p_action: 'unshare', p_data: {} });
+    assert.deepEqual(calls.map((call) => call.data), [
+      { p_action: 'board', p_data: {} },
+      { p_action: 'share', p_data: {} },
+      { p_action: 'unshare', p_data: {} },
+    ]);
   } finally { globalThis.fetch = original; }
 });
 
-test('after a clear elsewhere, a summary counts only runs from the clear on', () => {
-  const runs = [run('before', { at: '2026-10-09T10:00:00Z' }), run('after', { at: '2026-10-09T12:00:00Z' }), run('undated', { at: null })];
-  assert.deepEqual(runsSince(runs, null).map((r) => r.id), ['before', 'after', 'undated']);
-  // The service's time, to the microsecond, as its replies carry it.
-  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00.123456+00:00').map((r) => r.id), ['after']);
-  assert.equal(boardSummary(runsSince(runs, '2026-10-09T11:00:00Z'), dailyKey, now).week.runs, 1);
-  // On a device whose clock reads an hour behind, a run it stamped 10:30 happened at 11:30 service time.
-  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00Z', 3600000).map((r) => r.id), ['before', 'after']);
-  // On one an hour ahead, a run it stamped 12:00 happened at 11:00, only just in.
-  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00Z', -3600000).map((r) => r.id), ['after']);
-  assert.deepEqual(runsSince(runs, '2026-10-09T11:00:00.001Z', -3600000).map((r) => r.id), []);
+test('the profile row’s board column is the summary of its runs, stamped with the write', () => {
+  const at = '2026-10-09T15:00:00.123Z';
+  const runs = [dailyRun('daily', 80, 96, { challengeDate: new Date().toISOString().slice(0, 10), at: new Date().toISOString() })];
+  const column = boardColumn(runs, dailyKey, at);
+  assert.equal(column.v, BOARD_V);
+  assert.equal(column.at, at);
+  assert.deepEqual({ daily: column.daily, week: column.week }, boardSummary(runs, dailyKey));
+  assert.deepEqual(Object.keys(column).sort(), ['at', 'daily', 'v', 'week']);
+  // Small enough for the column's 16 KB check by a wide margin.
+  assert.ok(JSON.stringify(column).length < 1024);
+});
+
+test('a row’s summary is current only while it is stamped with the row’s own updated_at, in this build’s shape', () => {
+  const at = '2026-10-09T15:00:00.123Z';
+  const board = boardColumn([], dailyKey, at);
+  assert.equal(boardCurrent({ updated_at: at, board }), true);
+  // The service writes timestamps back with an offset and microseconds; the same moment still matches.
+  assert.equal(boardCurrent({ updated_at: '2026-10-09T15:00:00.123+00:00', board }), true);
+  assert.equal(boardCurrent({ updated_at: '2026-10-09T17:00:00.123+02:00', board }), true);
+  // A later save that left the column alone (an older build), no column, or a column from before `v`.
+  assert.equal(boardCurrent({ updated_at: '2026-10-09T15:00:01.000Z', board }), false);
+  assert.equal(boardCurrent({ updated_at: at, board: null }), false);
+  assert.equal(boardCurrent({ updated_at: at }), false);
+  assert.equal(boardCurrent(null), false);
+  assert.equal(boardCurrent({ updated_at: at, board: { ...board, v: undefined } }), false);
+  assert.equal(boardCurrent({ updated_at: at, board: { ...board, v: BOARD_V - 1 } }), false);
+  assert.equal(boardCurrent({ updated_at: at, board: { ...board, at: 'yesterday' } }), false);
+});
+
+test('the next day’s read comes nextDay seconds after the reply arrived, and never without one', () => {
+  assert.equal(nextRead(1000, { nextDay: 30 }), 31000);
+  assert.equal(nextRead(1000, { nextDay: 0 }), 1000);
+  assert.equal(nextRead(1000, {}), null);
+  assert.equal(nextRead(1000, null), null);
+  assert.equal(nextRead(1000, { nextDay: '30' }), null);
 });
 
 test('a service without the board migration says it is being set up', async () => {
@@ -128,14 +146,4 @@ test('a service without the board migration says it is being set up', async () =
   try {
     await assert.rejects(readBoard(session), /being set up/);
   } finally { globalThis.fetch = original; }
-});
-
-test('clear ids are UUIDs even where crypto.randomUUID is missing (plain http on a LAN address)', () => {
-  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-  // An insecure context has getRandomValues but no randomUUID.
-  const insecure = { getRandomValues: (bytes) => globalThis.crypto.getRandomValues(bytes) };
-  const ids = Array.from({ length: 50 }, () => newId(insecure));
-  for (const id of ids) assert.match(id, uuid);
-  assert.equal(new Set(ids).size, ids.length);
-  assert.match(newId(), uuid);
 });

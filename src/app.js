@@ -25,7 +25,7 @@ import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
-import { createFriendsBoard } from './friends-board.js';
+import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './friends-board.js';
 import { listRaceInvites } from './multiplayer.js';
 import { dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
@@ -859,8 +859,6 @@ function finishPrimary(forcedElapsed = null) {
   $('typing-status').className = `badge ${valid ? 'badge-success' : 'badge-warning'}`;
   $('typing-status').textContent = valid ? 'Complete' : 'Interrupted';
   const saved = storeAttempt(completed);
-  // Signed in, today's daily result and this week's practice time go to the friends board.
-  friendsBoard?.schedulePublish();
 
   if (sessionKind === 'drill' && baselineAttempt) {
     if (trainingContext) trainingContext.drillCompleted = valid;
@@ -1536,8 +1534,6 @@ function clearHistory() {
   renderDaily();
   showBest();
   armPace();
-  // A clear lowers the published numbers, which an ordinary publish never does.
-  friendsBoard?.schedulePublish({ replace: 'clear' });
 }
 
 function undoClear() {
@@ -1549,14 +1545,12 @@ function undoClear() {
   clearTimeout(clearTimer);
   $('history-feedback').textContent = 'History restored.';
   $('undo-clear').hidden = true;
-  clearTimeout(clearTimer);
   applyPreferences();
   setModeControls();
   renderHistory();
   renderTraining();
   renderDaily();
-  friendsBoard?.schedulePublish({ replace: 'undo' });
-  clearTimer = setTimeout(() => { $('history-toast').hidden = true; }, 1600);
+  setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
 // ── Accounts ──────────────────────────────────────────────────────────────
@@ -1587,6 +1581,12 @@ function renderAccount() {
 
 const authRedirectTarget = () => `${location.origin}/`;
 
+const dailyKey = () => conditionKey(dailyConditions());
+// The friends board's summary of exactly the copy being written, stamped with that write
+// (src/friends-board.js). While an opt-out on this device is unconfirmed its writes carry none, so this
+// device shows nothing new on the board.
+const boardFor = (data) => (at) => (optOutPending(session) ? null : boardColumn(data.runs, dailyKey(), at));
+
 // Resolves true once the account row matches the device.
 async function pushProfile({ keepalive = false } = {}) {
   clearTimeout(syncTimer);
@@ -1594,9 +1594,10 @@ async function pushProfile({ keepalive = false } = {}) {
   if (!session) return false;
   try {
     session = await account.freshSession(session);
-    await account.pushCloudProfile(session, profile, { keepalive });
+    await account.pushCloudProfile(session, profile, { keepalive, board: boardFor(profile) });
     unsynced = false;
     setSyncState('synced');
+    friendsBoard?.pushed();
     return true;
   } catch {
     setSyncState(account.loadSession() ? 'offline' : 'expired');
@@ -1643,18 +1644,30 @@ async function syncOnLoad() {
         unsynced = false;
         setSyncState('synced');
       }
+      repairBoard(cloud);
     } else if (localAt > cloudAt || unsynced) {
       saveProfile();
       await pushProfile();
     } else {
       setSyncState('synced');
+      repairBoard(cloud);
     }
-    // A run finished before the check is sent now that this copy is known to be current.
+    // An opt-out kept on this device goes out now, and a device new to the account learns whether it shares.
     friendsBoard?.resume();
   } catch {
     // Offline or unreachable: edits stay on the device, unstamped, until a check succeeds.
     setSyncState(account.loadSession() ? 'offline' : 'expired');
   }
+}
+
+// A row whose board summary doesn't describe it (written before the board column existed, by an older
+// cached build, or without a part this build adds) is given one counted from that row's own data, when
+// this load writes nothing itself. The write is conditional on the row's version, so a row another save
+// has moved since is left alone. Not while an opt-out here is unconfirmed: this device shows nothing new.
+function repairBoard(cloud) {
+  if (syncTimer || boardCurrent(cloud) || optOutPending(session)) return;
+  account.repairBoard(session, boardColumn(normalizeProfile(cloud.data).runs, dailyKey(), cloud.updated_at), cloud.updated_at)
+    .then((sent) => { if (sent) friendsBoard?.pushed(); }, () => {});
 }
 
 // Puts the account's profile in the device cache, then starts over as that user.
@@ -2209,26 +2222,14 @@ inbox = createInbox({
     result: { label: 'Race again', run: (entry) => onlineRace.rematchRoom(entry.roomId, entry.conditions) },
   },
 });
-// Publishing waits for the account check (syncOnLoad resumes it), and only this tab's own changes are sent.
+// The board only reads: each account's numbers ride its own profile saves (pushProfile, repairBoard).
 // Whether the account shares is the board's own to know, from the service, not a synced preference.
 friendsBoard = createFriendsBoard({
   getSession: () => session,
-  canPublish: () => cloudChecked,
-  runs: () => profile.runs,
-  dailyKey: () => conditionKey(dailyConditions()),
-  isRunning: () => runActive || localRaceRunning(),
+  dailyKey,
   signIn: () => openAccountDialog('signin'),
   // The button that asks for this disappears with the board, so focus lands on the Online selector.
   openOnline: () => { onlineRace.open(); $('challenge-online').focus(); },
-  // Another device cleared after the clear this undo reverses: this tab keeps its restored history, but
-  // the board keeps the newer clear. Said quietly where the undo was made.
-  onUndoRefused: () => {
-    $('history-feedback').textContent = 'History restored here. The friends board keeps a newer clear from another device.';
-    $('undo-clear').hidden = true;
-    $('history-toast').hidden = false;
-    clearTimeout(clearTimer);
-    clearTimer = setTimeout(() => { $('history-toast').hidden = true; }, 5000);
-  },
 });
 onlineRace = createOnlineRace({
   getSession: () => session,

@@ -8,7 +8,7 @@ import { FakeBoard } from './fake-board.js';
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'apikey, authorization, content-type, prefer',
-  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS',
 };
 
 const base64url = (buffer) => buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -27,6 +27,14 @@ export class FakeSupabase {
     // Routed requests bypass context.setOffline, so offline tests flip this too.
     this.offline = false;
     this.holdProfiles = null;
+    // Set to a promise to hold the reply to the next profile write: it is stored on arrival, in order,
+    // and answered only once that settles, while later requests go through.
+    this.holdProfileWrite = null;
+    // Set to stand in for a project without the friends board's `board` column on profiles yet.
+    this.boardColumnMissing = false;
+    // Every profile write the fake took: { caller, method, updated_at, board } (board undefined when the
+    // write left it out).
+    this.profileWrites = [];
     this.races = new FakeRaces(this);
     this.board = new FakeBoard(this);
   }
@@ -66,6 +74,11 @@ export class FakeSupabase {
         await route.abort().catch(() => {});
       }
     });
+  }
+
+  // PostgREST's reply to a write naming a column its schema cache doesn't have.
+  missingBoard() {
+    return { code: 'PGRST204', details: null, hint: null, message: 'Could not find the \'board\' column of \'profiles\' in the schema cache' };
   }
 
   async handle(route) {
@@ -140,13 +153,38 @@ export class FakeSupabase {
         if (this.holdProfiles) await this.holdProfiles;
         const owner = (url.searchParams.get('user_id') || '').replace(/^eq\./, '');
         const row = owner === caller ? this.profiles.get(caller) : null;
-        return reply(200, row ? [{ data: row.data, updated_at: row.updated_at }] : []);
+        if (!row) return reply(200, []);
+        // select=*: every column the project has.
+        return reply(200, [{ user_id: caller, data: row.data, updated_at: row.updated_at, ...(this.boardColumnMissing ? {} : { board: row.board ?? null }) }]);
       }
 
+      // An upsert (resolution=merge-duplicates): a column the write leaves out keeps its stored value.
       case 'POST /rest/v1/profiles': {
         if (!caller || body.user_id !== caller) return reply(403, { message: 'new row violates row-level security policy' });
-        this.profiles.set(caller, { data: body.data, updated_at: body.updated_at });
+        if ('board' in body && this.boardColumnMissing) return reply(400, this.missingBoard());
+        const old = this.profiles.get(caller);
+        this.profiles.set(caller, { data: body.data, updated_at: body.updated_at, board: 'board' in body ? body.board : old?.board ?? null });
+        this.profileWrites.push({ caller, method: 'POST', updated_at: body.updated_at, board: body.board });
+        if (this.holdProfileWrite) {
+          const held = this.holdProfileWrite;
+          this.holdProfileWrite = null;
+          await held;
+        }
         return reply(201);
+      }
+
+      // A conditional update, as src/account.js repairs a row's summary: only the row still at that version.
+      case 'PATCH /rest/v1/profiles': {
+        if (!caller) return reply(401, { message: 'JWT expired' });
+        if ('board' in body && this.boardColumnMissing) return reply(400, this.missingBoard());
+        const owner = (url.searchParams.get('user_id') || '').replace(/^eq\./, '');
+        const at = (url.searchParams.get('updated_at') || '').replace(/^eq\./, '');
+        const row = owner === caller ? this.profiles.get(caller) : null;
+        if (row && Date.parse(row.updated_at) === Date.parse(at)) {
+          Object.assign(row, body);
+          this.profileWrites.push({ caller, method: 'PATCH', updated_at: row.updated_at, board: body.board });
+        }
+        return reply(204);
       }
 
       // A request the fake doesn't know means it no longer mirrors src/account.js: fail the test.

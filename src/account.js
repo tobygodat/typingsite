@@ -105,6 +105,7 @@ export async function request(path, { method = 'GET', body, token, headers = {},
     const message = data?.msg || data?.error_description || data?.message || data?.error || `Request failed (${response.status}).`;
     const error = new AuthError(message);
     error.status = response.status;
+    error.code = data?.code;
     throw error;
   }
   return data;
@@ -179,19 +180,66 @@ export async function signOut(session, { keepCache = false } = {}) {
   try { await request('/auth/v1/logout', { method: 'POST', token: session?.access_token }); } catch {}
 }
 
+// The whole row: `data`, `updated_at`, and the friends board's `board` once that column exists (`*`
+// never names a column the project lacks, so this works before the board's migration too).
 export async function fetchCloudProfile(session) {
-  const rows = await request(`/rest/v1/profiles?select=data,updated_at&user_id=eq.${session.user.id}`, { token: session.access_token });
+  const rows = await request(`/rest/v1/profiles?select=*&user_id=eq.${session.user.id}`, { token: session.access_token });
   return rows?.[0] || null;
 }
 
-export async function pushCloudProfile(session, data, { keepalive = false } = {}) {
-  await request('/rest/v1/profiles', {
+// The friends board's summary rides each profile write in the row's own `board` column
+// (src/friends-board.js), stamped with that write's `updated_at`. The board must never stop the profile
+// syncing: a write refused for that column (a project without it yet, PGRST204, or a summary its check
+// refuses) goes again without it, and the rest of this page load leaves it out.
+let boardOff = false;
+const refusesBoard = (error) => error?.status === 400 && ['PGRST204', '23514'].includes(error.code) && /board/.test(error.message || '');
+
+// `board(at)` gives the summary of exactly `data` for a write stamped `at` (null writes none). A row
+// written without it (by an older build, or after a refusal) keeps an older summary whose stamp no longer
+// matches the row, which the board then hides. Resolves to the stamp written.
+export async function pushCloudProfile(session, data, { keepalive = false, board } = {}) {
+  const at = new Date().toISOString();
+  const row = { user_id: session.user.id, data, updated_at: at };
+  const send = (body) => request('/rest/v1/profiles', {
     method: 'POST',
     token: session.access_token,
     keepalive,
     headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: { user_id: session.user.id, data, updated_at: new Date().toISOString() },
+    body,
   });
+  let column;
+  try { column = board && !boardOff ? board(at) : undefined; } catch { column = undefined; }
+  if (column !== undefined) {
+    try {
+      await send({ ...row, board: column });
+      return at;
+    } catch (error) {
+      if (!refusesBoard(error)) throw error;
+      boardOff = true;
+    }
+  }
+  await send(row);
+  return at;
+}
+
+// Writes a summary into the row's `board` column only while the row is still the version it was counted
+// from (its `updated_at` is `at`), so it can only ever describe that exact row: a row another write has
+// moved since is left alone, and that write carries its own summary. True when it was sent.
+export async function repairBoard(session, board, at) {
+  if (boardOff) return false;
+  try {
+    await request(`/rest/v1/profiles?user_id=eq.${session.user.id}&updated_at=eq.${encodeURIComponent(at)}`, {
+      method: 'PATCH',
+      token: session.access_token,
+      headers: { Prefer: 'return=minimal' },
+      body: { board },
+    });
+    return true;
+  } catch (error) {
+    if (!refusesBoard(error)) throw error;
+    boardOff = true;
+    return false;
+  }
 }
 
 export function loadCachedProfile(userId) {
