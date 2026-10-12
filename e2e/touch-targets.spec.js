@@ -189,6 +189,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       small.push(...await sweep(page, 'practice'));
       await page.locator('#mode-quote').click();
       small.push(...await sweep(page, 'practice, quote'));
+      // Custom text: its editor opens under the mode bar, with a text box, an order select and "Use this text".
+      await page.locator('#mode-custom').click();
+      await expect(page.locator('#custom-options')).toBeVisible();
+      small.push(...await sweep(page, 'practice, custom text'));
       await chooseWords(page, 10);
       small.push(...await sweep(page, 'practice, words'));
 
