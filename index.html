@@ -350,6 +350,19 @@
           <button id="clear-history" class="btn btn-ghost btn-sm danger-text" type="button" disabled>Clear history</button>
         </header>
 
+        <section id="standard-score" class="standard-score" aria-labelledby="standard-score-heading">
+          <div class="standard-score-heading">
+            <h2 id="standard-score-heading">Standard score</h2>
+            <button id="take-standard" class="btn btn-secondary btn-sm" type="button">Take the standard test</button>
+          </div>
+          <dl class="standard-figures">
+            <div><dt>best</dt><dd><strong id="standard-best" class="num">—</strong><span>wpm</span></dd></div>
+            <div><dt id="standard-median-label">median</dt><dd><strong id="standard-median" class="num">—</strong><span>wpm</span></dd></div>
+          </dl>
+          <p id="standard-score-note" class="result-note"></p>
+          <p id="standard-score-conditions" class="condition-copy"></p>
+        </section>
+
         <div id="progress-empty" class="empty-state">
           <h2>No practice runs yet.</h2>
           <p>Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.</p>
@@ -357,18 +370,6 @@
         </div>
 
         <div id="progress-content" hidden>
-          <section id="standard-score" class="standard-score" aria-labelledby="standard-score-heading">
-            <div class="standard-score-heading">
-              <h2 id="standard-score-heading">Standard score</h2>
-              <button id="take-standard" class="btn btn-secondary btn-sm" type="button">Take the standard test</button>
-            </div>
-            <dl class="standard-figures">
-              <div><dt>best</dt><dd><strong id="standard-best" class="num">—</strong><span>wpm</span></dd></div>
-              <div><dt id="standard-median-label">median</dt><dd><strong id="standard-median" class="num">—</strong><span>wpm</span></dd></div>
-            </dl>
-            <p id="standard-score-note" class="result-note"></p>
-            <p id="standard-score-conditions" class="condition-copy"></p>
-          </section>
           <div class="progress-filters">
             <label class="filter-field" for="progress-conditions">Test conditions
               <select id="progress-conditions" class="input"></select>

@@ -46,9 +46,12 @@ async function typeForAMinute(page, text) {
   }
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results', { timeout: 15_000 });
   // The speed graph draws in after the run; capture it once it has settled.
-  await page.waitForFunction(() => document.getAnimations()
-    .every((animation) => animation.playState !== 'running' || animation.effect?.getTiming().iterations === Infinity));
+  await settle(page);
 }
+
+// Waits out finite animations and transitions (the graph drawing in, a theme change's background fade).
+const settle = (page) => page.waitForFunction(() => document.getAnimations()
+  .every((animation) => animation.playState !== 'running' || animation.effect?.getTiming().iterations === Infinity));
 
 test('standard mode shows its recipe, locks the settings that would change it, and draws fresh text', async ({ page }) => {
   await openApp(page);
@@ -211,12 +214,88 @@ test('Progress shows the standard best and the median of recent runs with its co
   await expect(page.locator('#standard-median-label')).toHaveText('median of last 5 runs');
   await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs. Interrupted runs don’t count.');
   await expect(page.locator('#standard-score-conditions')).toContainText('physical keyboard');
+  // With history, the standard score still heads the page, above the filters.
+  await expect(page.locator('#progress-empty')).toBeHidden();
+  const standard = await page.locator('#standard-score').boundingBox();
+  expect(standard.y + standard.height).toBeLessThanOrEqual((await page.locator('.progress-filters').boundingBox()).y);
 
   await page.locator('#take-standard').click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#typing-input')).toBeFocused();
   await expect(page.locator('#best')).toHaveText('Best · 66 wpm');
+});
+
+const NO_STANDARD_RUNS = 'No standard runs yet. Every one is fresh text from the same fixed recipe, so the scores stay comparable.';
+
+// The standard score heads Progress on its own: with no practice history it sits above the empty state.
+async function expectStandardAboveEmptyState(page) {
+  await expect(page.locator('#progress-empty')).toBeVisible();
+  await expect(page.locator('#progress-content')).toBeHidden();
+  await expect(page.locator('#standard-score')).toBeVisible();
+  await expect(page.locator('#standard-best')).toHaveText('—');
+  await expect(page.locator('#standard-median')).toHaveText('—');
+  await expect(page.locator('#standard-score-note')).toHaveText(NO_STANDARD_RUNS);
+  await expect(page.locator('#take-standard')).toBeVisible();
+  const standard = await page.locator('#standard-score').boundingBox();
+  const empty = await page.locator('#progress-empty').boundingBox();
+  expect(standard.y + standard.height).toBeLessThanOrEqual(empty.y);
+}
+
+test('a fresh profile can find and start the standard test from Progress', async ({ page }, testInfo) => {
+  await openApp(page);
+  await openView(page, 'Progress');
+  await expectStandardAboveEmptyState(page);
+  // One filled action: the empty state's primary button. The standard test stays secondary.
+  await expect(page.locator('#progress-screen .btn-primary:visible')).toHaveCount(1);
+  await expect(page.locator('#take-standard')).toHaveClass(/btn-secondary/);
+
+  for (const [width, height] of [[1280, 800], [320, 568]]) {
+    await page.setViewportSize({ width, height });
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+    for (const id of ['#take-standard', '#standard-score-note', '#progress-empty .btn-primary']) {
+      const box = await page.locator(id).boundingBox();
+      expect(box.x + box.width, id).toBeLessThanOrEqual(width);
+    }
+    for (const theme of ['dark', 'light']) {
+      await page.emulateMedia({ colorScheme: theme });
+      await page.mouse.move(0, 0);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await settle(page);
+      if (width > 320) {
+        await page.screenshot({ path: shot(testInfo, `progress-fresh-${theme}.png`) });
+        continue;
+      }
+      // At 320px the empty state is below the fold: one shot from the top, one where the two meet.
+      await page.screenshot({ path: shot(testInfo, `progress-fresh-320-${theme}.png`) });
+      await page.locator('#standard-score-note').evaluate((node) => window.scrollTo(0, node.getBoundingClientRect().top + window.scrollY - 16));
+      await page.screenshot({ path: shot(testInfo, `progress-fresh-320-empty-${theme}.png`) });
+    }
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  await page.locator('#take-standard').click();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
+  await expect(page.locator('#typing-input')).toBeFocused();
+});
+
+test('a profile with only an interrupted standard run still shows the standard score on Progress', async ({ page, supabase }) => {
+  const user = supabase.addUser('interrupted@stilltype.test');
+  const data = seededProfile([60]);
+  data.runs = data.runs.filter((run) => run.interrupted);
+  data.seenTextIds = data.runs.map((run) => run.textId);
+  data.bests = {};
+  supabase.profiles.set(user.id, { data });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openView(page, 'Progress');
+  await expectStandardAboveEmptyState(page);
+  // There is history to clear, even though none of it counts.
+  await expect(page.locator('#clear-history')).toBeVisible();
+  await page.locator('#take-standard').click();
+  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('a standard best that outlives its runs in the kept history says so, not "no runs yet"', async ({ page, supabase }) => {

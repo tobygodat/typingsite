@@ -1514,7 +1514,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .history-detail dl, .run-detail dl { display: flex; flex-wrap: wrap; gap: var(--space-6); }
 .history-detail dt, .run-detail dt { font: var(--text-mono)/1.5 var(--font-mono); color: var(--muted); }
 .history-detail dd, .run-detail dd { margin: var(--space-2) 0 0; font-size: var(--text-lead); }
-/* Standard score: the one fixed recipe's best and recent median, above the filtered history. */
+/* Standard score: the one fixed recipe's best and recent median. It heads Progress on every profile,
+   above the empty state or the filtered history. */
 .standard-score {
   margin-bottom: var(--space-8);
   padding-bottom: var(--space-8);
@@ -1532,6 +1533,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .standard-figures strong { color: var(--text); font-family: var(--font-serif); font-size: var(--text-display); font-weight: 300; line-height: 1; letter-spacing: -0.035em; }
 .standard-score p { max-width: 64ch; margin: 0; }
 .standard-score .result-note { color: var(--muted); }
+/* The standard score's rule already divides it from the empty state, so the empty state drops its own. */
+.standard-score + .empty-state { padding-top: 0; border-top: 0; }
 
 .progress-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); }
 .filter-field { min-width: 0; display: grid; gap: var(--space-2); font-size: var(--text-small); }
