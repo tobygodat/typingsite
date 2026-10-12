@@ -22,6 +22,11 @@ begin
   perform set_config('role', 'none', true);
   return v_result;
 end $$;
+-- Turning sharing on as a browser does: sent with the sharing version its last read of the board gave.
+create function pg_temp.share(p_data jsonb default '{}') returns jsonb language plpgsql as $$
+begin
+  return pg_temp.board('share', p_data || jsonb_build_object('version', pg_temp.board('board')->'sharingVersion'));
+end $$;
 create function pg_temp.race(p_action text, p_room uuid, p_data jsonb, p_guest text) returns jsonb language plpgsql as $$
 declare
   v_result jsonb;
@@ -183,8 +188,8 @@ begin
 
   -- Sharing makes her a member; it carries no numbers (any sent are ignored), and a repeat is answered as
   -- done. She sees only herself, with what her profile row holds, until a friend chooses her back.
-  board := pg_temp.board('share',jsonb_build_object('daily',jsonb_build_object('wpm',399),'week',week));
-  board := pg_temp.board('share','{}');
+  board := pg_temp.share(jsonb_build_object('daily',jsonb_build_object('wpm',399),'week',week));
+  board := pg_temp.share();
   if not (board->>'sharing')::boolean or board->>'date' <> today::text or board->>'weekStart' <> monday::text
     or jsonb_array_length(board->'rows') <> 1 or not (board->'rows'->0->>'self')::boolean
     or board->'rows'->0->'daily' is distinct from shown_daily or board->'rows'->0->'week' is distinct from shown_week
@@ -322,7 +327,7 @@ begin
   at := pg_temp.stamp();
   perform pg_temp.save(at, pg_temp.col(at, jsonb_build_object('date',today,'version',v,'wpm',72,'accuracy',96,'attempts',1),
     jsonb_build_object('start',monday,'seconds',754,'runs',12)));
-  board := pg_temp.board('share');
+  board := pg_temp.share();
   if jsonb_array_length(board->'rows') <> 1 then raise exception 'A one-way friend appeared on the board.'; end if;
   -- Nor can Lin read or change Ada's row, board column included, directly.
   if pg_temp.peek(ada) <> 0 or pg_temp.peek(lin) <> 1 then raise exception 'Lin read Ada''s profile row, or not her own.'; end if;
@@ -366,7 +371,7 @@ begin
   -- An unconfirmed email never resolves, in either direction.
   perform set_config('request.jwt.claim.sub',kai::text,true);
   perform pg_temp.race('befriend',null,jsonb_build_object('email',ada_email,'name','Ada'),null);
-  board := pg_temp.board('share','{}');
+  board := pg_temp.share();
   if jsonb_array_length(board->'rows') <> 1 then raise exception 'An unconfirmed account saw a friend.'; end if;
   perform set_config('request.jwt.claim.sub',ada::text,true);
   perform pg_temp.race('befriend',null,jsonb_build_object('email',kai_email,'name','Kai'),null);
@@ -383,7 +388,7 @@ begin
 
   -- Once Sam shares, with no profile row yet, he shows with nothing yet; and someone on the list twice
   -- (raced, and typed by email) appears once, under the raced name.
-  perform pg_temp.board('share','{}');
+  perform pg_temp.share();
   perform set_config('request.jwt.claim.sub',ada::text,true);
   board := pg_temp.board('board','{}');
   if jsonb_array_length(board->'rows') <> 3 or board->'rows'->2->>'name' <> 'Sam from the race'
@@ -449,7 +454,7 @@ begin
 
   -- Turning sharing on again shows her row again, as her profile row holds it.
   perform set_config('request.jwt.claim.sub',ada::text,true);
-  board := pg_temp.board('share','{}');
+  board := pg_temp.share();
   if not (board->>'sharing')::boolean or board->'rows'->0->'week' is distinct from shown_week then
     raise exception 'Turning sharing on again failed: %', board;
   end if;
@@ -466,4 +471,113 @@ begin
   end if;
   raise notice 'Friends board privacy, opt-in membership, binding to the profile row, repairs, per-part limits, forged columns, mutual lists, dates and deletion checks passed.';
 end $smoke$;
+
+-- Changes to sharing apply in order, account-wide. Every share and opt-out the service applies moves the
+-- account's sharing version on by one, and every reply carries it. A share counts only when sent with
+-- the version the account is still at, so one that arrives after an opt-out made since is refused; an
+-- opt-out always counts.
+do $order$
+declare
+  eve uuid := gen_random_uuid();
+  finn uuid := gen_random_uuid();
+  gus uuid := gen_random_uuid();
+  board jsonb;
+  seen bigint;
+  bad jsonb;
+  denied boolean;
+begin
+  insert into auth.users (id,email,email_confirmed_at) values (eve,'board-order-' || eve::text || '@example.invalid',now()),
+    (finn,'board-order-' || finn::text || '@example.invalid',now()), (gus,'board-order-' || gus::text || '@example.invalid',now());
+  insert into race_private.friends(owner_id, friend_id, name) values (eve, finn, 'Finn'), (finn, eve, 'Eve');
+  perform set_config('request.jwt.claim.sub',finn::text,true);
+  perform pg_temp.share();
+  perform set_config('request.jwt.claim.sub',eve::text,true);
+  perform pg_temp.share();
+
+  -- One device turns Eve's sharing off, reads that, and turns it on again; that share is slow on its
+  -- way. Another device, still showing sharing on, turns it off, and the service confirms it. The share,
+  -- sent with the version from before that newer opt-out, arrives after it: it is refused, and its reply
+  -- says Eve doesn't share. Nobody sees her.
+  seen := (pg_temp.board('unshare')->>'sharingVersion')::bigint;
+  board := pg_temp.board('unshare');
+  if (board->>'sharing')::boolean or (board->>'sharingVersion')::bigint <> seen + 1 then
+    raise exception 'An opt-out from another device was not applied: %', board;
+  end if;
+  board := pg_temp.board('share', jsonb_build_object('version', seen));
+  if (board->>'sharing')::boolean or (board->>'sharingVersion')::bigint <> seen + 1 or board->'rows' <> '[]'::jsonb
+    or exists(select 1 from race_private.board_members where user_id = eve) then
+    raise exception 'A share sent before a newer opt-out undid it: %', board;
+  end if;
+  perform set_config('request.jwt.claim.sub',finn::text,true);
+  if jsonb_array_length(pg_temp.board('board')->'rows') <> 1 then raise exception 'Finn still sees Eve after her newer opt-out.'; end if;
+  -- Turned on again with the version that reply gave, it shares.
+  perform set_config('request.jwt.claim.sub',eve::text,true);
+  board := pg_temp.board('share', jsonb_build_object('version', seen + 1));
+  if not (board->>'sharing')::boolean or (board->>'sharingVersion')::bigint <> seen + 2 or jsonb_array_length(board->'rows') <> 2 then
+    raise exception 'A share after reading the opt-out was refused: %', board;
+  end if;
+
+  -- An opt-out always counts, whatever it is sent with, and moves the version on even when sharing is
+  -- already off: one that lands after a newer share turns sharing off, the safe way round.
+  seen := seen + 2;
+  foreach bad in array array['{}'::jsonb, jsonb_build_object('version', seen - 2), '{"version":"x"}'::jsonb, 'null'::jsonb, null] loop
+    board := pg_temp.board('unshare', bad);
+    seen := seen + 1;
+    if (board->>'sharing')::boolean or jsonb_typeof(board->'sharingVersion') is distinct from 'number'
+      or (board->>'sharingVersion')::bigint <> seen or board->'rows' <> '[]'::jsonb
+      or exists(select 1 from race_private.board_members where user_id = eve) then
+      raise exception 'An opt-out sent with % did not count: %', bad, board;
+    end if;
+  end loop;
+
+  -- A share without the account's version as a whole number is refused without raising: it changes
+  -- nothing, and the reply says Eve doesn't share. Text, a fraction, an older or a later version, one
+  -- past any integer, or no version at all.
+  foreach bad in array array['{}'::jsonb, '{"version":null}'::jsonb, jsonb_build_object('version', seen::text),
+    jsonb_build_object('version', seen + 0.5), jsonb_build_object('version', seen - 1), jsonb_build_object('version', seen + 1),
+    '{"version":-1}'::jsonb, '{"version":9223372036854775808}'::jsonb, '{"version":1e30}'::jsonb,
+    jsonb_build_object('version', jsonb_build_array(seen)), jsonb_build_object('version', jsonb_build_object('n', seen)),
+    to_jsonb(seen), jsonb_build_array(seen), '"x"'::jsonb, 'null'::jsonb, null] loop
+    denied := false;
+    begin board := pg_temp.board('share', bad);
+    exception when others then denied := true; end;
+    if denied or (board->>'sharing')::boolean or (board->>'sharingVersion')::bigint <> seen
+      or exists(select 1 from race_private.board_members where user_id = eve) then
+      raise exception 'A share sent with % was not refused quietly: %', bad, board;
+    end if;
+  end loop;
+
+  -- A new account starts at version 0, not sharing. Two of its devices that read that both turn sharing
+  -- on: the first shares, and the second is refused but answered as sharing, moving nothing. So an
+  -- opt-out after both still holds against either one sent again (a repeat after a lost reply).
+  perform set_config('request.jwt.claim.sub',gus::text,true);
+  board := pg_temp.board('board');
+  if (board->>'sharing')::boolean or board->'sharingVersion' is distinct from '0'::jsonb then
+    raise exception 'A new account did not start at version 0, not sharing: %', board;
+  end if;
+  board := pg_temp.board('share', '{"version":0}');
+  if not (board->>'sharing')::boolean or board->'sharingVersion' is distinct from '1'::jsonb then raise exception 'A first share did not share: %', board; end if;
+  board := pg_temp.board('share', '{"version":0}');
+  if not (board->>'sharing')::boolean or board->'sharingVersion' is distinct from '1'::jsonb then
+    raise exception 'A second share from the same version was not answered as sharing, or moved the version: %', board;
+  end if;
+  perform pg_temp.board('unshare');
+  board := pg_temp.board('share', '{"version":0}');
+  if (board->>'sharing')::boolean or board->'sharingVersion' is distinct from '2'::jsonb or exists(select 1 from race_private.board_members where user_id = gus) then
+    raise exception 'A share sent again after a newer opt-out undid it: %', board;
+  end if;
+
+  -- The versions are the service's own: out of the browser's reach, and deleted with the account.
+  if has_table_privilege('anon','race_private.board_sharing','SELECT')
+    or has_table_privilege('authenticated','race_private.board_sharing','SELECT')
+    or has_table_privilege('authenticated','race_private.board_sharing','INSERT')
+    or has_table_privilege('authenticated','race_private.board_sharing','UPDATE')
+    or has_table_privilege('authenticated','race_private.board_sharing','DELETE')
+    or not (select relrowsecurity from pg_class where oid = 'race_private.board_sharing'::regclass) then
+    raise exception 'The sharing versions are exposed.';
+  end if;
+  delete from auth.users where id in (eve, gus);
+  if exists(select 1 from race_private.board_sharing where user_id in (eve, gus)) then raise exception 'A deleted account kept its sharing version.'; end if;
+  raise notice 'Friends board sharing order checks passed.';
+end $order$;
 rollback;

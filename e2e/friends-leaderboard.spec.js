@@ -65,7 +65,7 @@ function shares(supabase, user, { daily = null, week = null } = {}) {
   };
   supabase.profiles.set(user.id, { data: profileData([], at), updated_at: at,
     board: { v: BOARD_V, at, days: keyed(daily, 'date'), weeks: keyed(week, 'start') } });
-  supabase.board.members.add(user.id);
+  supabase.board.joined(user.id);
 }
 const publish = (supabase, user, daily, seconds, runs) => shares(supabase, user, {
   daily: daily && { date: utcDay(), version: VERSION, ...daily }, week: { start: mondayOf(), seconds, runs } });
@@ -84,7 +84,7 @@ const remembers = (page, user, value = '1') => page.addInitScript(([key, known])
 // summary yet: the first load writes one.
 async function sharing(page, supabase, user, { runs = [], ...options } = {}) {
   seedProfile(supabase, user, runs, options);
-  supabase.board.members.add(user.id);
+  supabase.board.joined(user.id);
   await remembers(page, user);
 }
 
@@ -786,6 +786,106 @@ test('an opt-out still on its way is not undone by another device, and lands whe
     expect(supabase.board.calls.slice(mark)).not.toContain('share');
     expect(supabase.board.members.has(ada.id)).toBe(false);
   } finally { await context.close(); }
+});
+
+test('a share held on its way can’t undo an opt-out another device made meanwhile', async ({ page, browser, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  befriend(supabase, ada, lin, 'Lin');
+  befriend(supabase, lin, ada, 'Ada');
+  await sharing(page, supabase, ada, { runs: practiceThisWeek(3) });
+  publish(supabase, lin, { wpm: 78, accuracy: 96, attempts: 2 }, 2460, 37);
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await expect(page.locator('#board-week')).toContainText('Lin');
+  // Her laptop has the board open too, sharing on.
+  const laptopContext = await browser.newContext();
+  const laptop = await laptopContext.newPage();
+  const linContext = await browser.newContext();
+  const linPage = await linContext.newPage();
+  try {
+    await supabase.attach(laptop);
+    await openApp(laptop);
+    await signInWithEmail(laptop, 'ada@stilltype.test');
+    await openBoard(laptop);
+    await expect(laptop.locator('#share-board')).toBeChecked();
+
+    // On this device she turns sharing off, then on again; that share is held on its way.
+    await page.locator('#share-board').uncheck();
+    await expect(page.locator('#friends-board-status')).toHaveText('Your row is off the board.');
+    let land;
+    supabase.board.holdNext = new Promise((resolve) => { land = resolve; });
+    await page.locator('#share-board').check();
+    await expect.poll(() => supabase.board.holdNext === null).toBe(true);
+    // Meanwhile she turns sharing off on the laptop, and the service confirms it.
+    await laptop.locator('#share-board').uncheck();
+    await expect(laptop.locator('#friends-board-status')).toHaveText('Your row is off the board.');
+    expect(supabase.board.members.has(ada.id)).toBe(false);
+
+    // The held share arrives after that newer opt-out: it is refused, and this device's switch says why.
+    land();
+    await expect(page.locator('#friends-board-status')).toHaveText('Sharing was turned off on another device.');
+    await expect(page.locator('#share-board')).not.toBeChecked();
+    await expect(page.locator('#friends-board-off')).toBeVisible();
+    await expect(page.locator('#friends-board-lists')).toBeHidden();
+    expect(supabase.board.members.has(ada.id)).toBe(false);
+    // Nobody sees her: not Lin, and not her own laptop.
+    await supabase.attach(linPage);
+    await openApp(linPage);
+    await signInWithEmail(linPage, 'lin@stilltype.test');
+    await openBoard(linPage);
+    await expect(linPage.locator('#friends-board-lists')).toBeVisible();
+    await expect(linPage.locator('#friends-board-lists')).not.toContainText('Ada');
+    await refreshBoard(laptop);
+    await expect(laptop.locator('#friends-board-status')).toHaveText('Updated.');
+    await expect(laptop.locator('#share-board')).not.toBeChecked();
+    await expect(laptop.locator('#friends-board-lists')).toBeHidden();
+
+    // Turned on again here, now that this device has read the opt-out, it shares.
+    await page.locator('#share-board').check();
+    await expect(page.locator('#friends-board-lists')).toBeVisible();
+    await expect(page.locator('#friends-board-status')).toHaveText('');
+    expect(supabase.board.members.has(ada.id)).toBe(true);
+    await refreshBoard(linPage);
+    await expect(linPage.locator('#friends-board-lists')).toContainText('Ada');
+  } finally { await laptopContext.close(); await linContext.close(); }
+});
+
+test('a share waiting behind this device’s own opt-out counts only that opt-out, not another device’s', async ({ page, browser, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  const laptopContext = await browser.newContext();
+  const laptop = await laptopContext.newPage();
+  try {
+    await supabase.attach(laptop);
+    await openApp(laptop);
+    await signInWithEmail(laptop, 'ada@stilltype.test');
+    await openBoard(laptop);
+    await expect(laptop.locator('#share-board')).toBeChecked();
+    // Here she turns sharing off, held on its way, and straight back on: that share waits its turn.
+    const actions = boardActions(page);
+    let land;
+    supabase.board.holdNext = new Promise((resolve) => { land = resolve; });
+    await page.locator('#share-board').uncheck();
+    await expect.poll(() => supabase.board.holdNext === null).toBe(true);
+    await page.locator('#share-board').check();
+    // Then she turns it off on the laptop, which lands first.
+    await laptop.locator('#share-board').uncheck();
+    await expect(laptop.locator('#friends-board-status')).toHaveText('Your row is off the board.');
+    // This device's opt-out lands after it, and then the share, which was made before the laptop's
+    // opt-out: it doesn't count.
+    land();
+    await expect(page.locator('#friends-board-status')).toHaveText('Sharing was turned off on another device.');
+    await expect(page.locator('#share-board')).not.toBeChecked();
+    expect(actions).toEqual(['unshare', 'share']);
+    expect(supabase.board.members.has(ada.id)).toBe(false);
+    await expect.poll(() => optOutsKept(page)).toEqual([]);
+  } finally { await laptopContext.close(); }
 });
 
 test('turning sharing off takes your row off the board at once, and a device that missed it can’t share again', async ({ page, browser, supabase }) => {

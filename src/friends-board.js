@@ -155,13 +155,20 @@ function settleOptOut(session, id) {
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const OFF = 'Your row is off the board.';
 const PENDING = 'Your row comes off once the board can be reached.';
+const ELSEWHERE = 'Sharing was turned off on another device.';
 
-async function call(session, action) {
+// Every reply carries the account's sharing version: how many shares and opt-outs the service has
+// applied. A share is sent with the one its device last read, and counts only if sharing hasn't changed
+// since, so a share that arrives late can't undo a newer opt-out from another device. Null when a reply
+// has none.
+export const versionOf = (reply) => (Number.isSafeInteger(reply?.sharingVersion) && reply.sharingVersion >= 0 ? reply.sharingVersion : null);
+
+async function call(session, action, data = {}) {
   // Background polls may have rotated the refresh token; the newest stored copy for this account wins.
   const stored = loadSession();
   const active = await freshSession(stored?.user?.id === session.user.id ? stored : session);
   try {
-    return await request('/rest/v1/rpc/friends_board', { method: 'POST', token: active.access_token, body: { p_action: action, p_data: {} } });
+    return await request('/rest/v1/rpc/friends_board', { method: 'POST', token: active.access_token, body: { p_action: action, p_data: data } });
   } catch (error) {
     if (error.status === 404 || /schema cache|could not find.*function/i.test(error.message)) {
       throw new AuthError('The friends board is being set up. Please try again shortly.');
@@ -169,9 +176,10 @@ async function call(session, action) {
     throw error;
   }
 }
-// No numbers travel: the service reads them from each account's own profile row.
+// No numbers travel: the service reads them from each account's own profile row. A share carries only
+// the sharing version it is based on (see versionOf).
 export const readBoard = (session) => call(session, 'board');
-export const startSharing = (session) => call(session, 'share');
+export const startSharing = (session, version) => call(session, 'share', { version });
 export const stopSharing = (session) => call(session, 'unshare');
 
 export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, onShared = () => {} }) {
@@ -202,16 +210,29 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
   // yet: no sharing state from the service is accepted, and the opt-out is sent again before any other
   // board request. Kept across reloads.
   let unsharing = Boolean(getSession() && optOutPending(getSession()));
+  // The sharing version a share from this tab is sent with (see versionOf): the one in the last board
+  // this tab took, which is what its switch showed when it moved. A board taken while turning sharing on
+  // is on its way leaves it alone, since it may hold an opt-out made after the switch moved; this tab's
+  // own changes move it on one step each (see stepped). Null until this tab has read one: a share then
+  // reads the board first, so none is sent blind.
+  let version = null;
 
   // A board the service sent.
   function took(result) {
     board = result;
     rollAt = nextRead(result) ?? rollAt;
+    if (!turningOn) version = versionOf(result) ?? version;
+  }
+  // The reply to this tab's own change: one step past the version it knew means nothing else came in
+  // between, so the version after it is known too. Anything more stays unknown until this tab takes a
+  // board, and a share sent meanwhile is refused rather than counting a change this tab never showed.
+  function stepped(result) {
+    if (version !== null && versionOf(result) === version + 1) version += 1;
   }
   // The account doesn't share (any more). A tab that thought it shared says so in one line; one that
   // didn't know just knows now.
   function notSharing() {
-    if (sharing) note = 'Sharing was turned off on another device.';
+    if (sharing) note = ELSEWHERE;
     setSharing(false);
   }
   // Every reply says whether this account shares, and that is what this tab goes by: another device may
@@ -239,6 +260,7 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
   async function unshareNow(session, seq = toggles) {
     const id = optOutId(session);
     const result = await stopSharing(session);
+    stepped(result);
     settleOptOut(session, id);
     if (seq === toggles && !optOutPending(session)) {
       unsharing = false;
@@ -362,9 +384,10 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
   }
 
   // The switch on the board, and its palette command: the only way this device shares or stops. Turning
-  // sharing on makes this account a member, and your row shows whatever your profile row holds. Turning
-  // it off takes you off the board, retrying (resume, the next board request in any tab, or the next
-  // load) if that fails. Focus stays where it was.
+  // sharing on makes this account a member, and your row shows whatever your profile row holds, unless
+  // sharing was turned off elsewhere since this tab last read it: then the service refuses, and the
+  // switch stays off and says so. Turning it off takes you off the board, retrying (resume, the next
+  // board request in any tab, or the next load) if that fails. Focus stays where it was.
   async function setShare(on) {
     const session = getSession();
     if (!session) { render(); return; }
@@ -380,11 +403,25 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
       const kept = optOutId(session);
       try {
         const result = await inTurn(async () => {
-          if (kept !== null && optOutId(session) === kept) await unshareNow(session, seq);
-          return startSharing(session);
+          const off = kept !== null && optOutId(session) === kept ? await unshareNow(session, seq) : null;
+          // Never blind: a tab that has read no version reads it now (that opt-out's reply is such a read).
+          if (version === null) version = versionOf(off ?? await readBoard(session));
+          const reply = await startSharing(session, version);
+          // A refused share moved nothing.
+          if (reply?.sharing) stepped(reply);
+          return reply;
         });
         if (seq !== toggles) return;
         turningOn = false;
+        if (!result?.sharing) {
+          // Refused: sharing was turned off elsewhere after this tab last read it. It stays off.
+          unsharing = optOutPending(session);
+          setSharing(false);
+          note = ELSEWHERE;
+          took(result);
+          render();
+          return;
+        }
         unsharing = false;
         setSharing(true);
         took(result);
