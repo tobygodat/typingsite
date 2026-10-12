@@ -99,6 +99,40 @@ test('a change of exercise starts a fresh comparison, so harder settings never r
   }
 });
 
+// Custom text is never compared (metric contract): a slow custom run neither shows the line nor joins the
+// sitting, so the eighth practice test still rests on the same three earlier runs.
+test('a custom text run never joins the sitting or shows the break line', async ({ page }) => {
+  test.setTimeout(150_000);
+  await openApp(page);
+  await chooseWords(page, 10);
+  for (let i = 0; i < 7; i += 1) {
+    if (i) await again(page);
+    await run(page, i < 3 ? 0 : 40);
+  }
+  await expect(page.locator('#fatigue-notice')).toBeHidden();
+
+  await openView(page, 'Practice');
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill('the quick brown fox jumps over the lazy dog');
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await run(page, 60);
+  await expect(page.locator('#result-delta')).toContainText('not counted toward your best');
+  await expect(page.locator('#fatigue-notice')).toBeHidden();
+
+  await openView(page, 'Practice');
+  await chooseWords(page, 10);
+  await run(page, 40);
+  await expect(page.locator('#fatigue-notice')).toContainText('your last 5 runs this session are below the median of the 3 before them');
+
+  // A custom run after the line has shown takes it down rather than repeating it over a passage of your own.
+  await openView(page, 'Practice');
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-use').click();
+  await run(page, 60);
+  await expect(page.locator('#fatigue-notice')).toBeHidden();
+});
+
 // Seven runs that would tip into a notice on the eighth slow one, then history is cleared.
 async function clearedSitting(page) {
   await chooseWords(page, 10);

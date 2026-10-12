@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORPUS_VERSION, conditionKey, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, filterRuns, recurringTargets, retainRuns, trendRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage } from '../src/typing.js';
+import { MAX_NON_COMPARABLE_RUNS, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
@@ -98,4 +98,53 @@ test('fatigue speaks only when every recent run sits below the median of the ear
   assert.equal(fatigueSignal([60, 70, 58, 72, 58, 57, 56, 55, 54]).show, true);
   assert.equal(fatigueSignal([60, 60, 60, 60, 60, 60, 60, 60]).show, false, 'a flat sitting is not fatigue');
   assert.equal(fatigueSignal([80, 80, 80, NaN, 50, 50, 50, 50, 50]).show, true, 'non-numbers are ignored');
+});
+
+test('custom run records keep the score but no per-pair patterns', () => {
+  const typed = (kind) => {
+    const attempt = createAttempt({ id: kind, text: 'the then', kind, conditions });
+    [...'the then'].forEach((char, i) => attempt.events.push({ type: 'insert', text: char, position: i, accepted: true, offsetMs: i * 120 }));
+    return completeAttempt(attempt, { endedAt: 1000 });
+  };
+  const custom = runRecord(typed('custom'));
+  assert.equal('patterns' in custom, false);
+  assert.equal(custom.kind, 'custom');
+  assert.ok(custom.score.wpm > 0);
+  assert.ok(runRecord(typed('test')).patterns.length > 0);
+  // Retention never adds an empty pattern list back to a record that had none.
+  assert.equal('patterns' in retainRuns([custom, ...Array.from({ length: 130 }, (_, i) => run(String(i)))])[0], false);
+});
+
+test('custom runs keep their own budget and never displace practice history', () => {
+  const practice = Array.from({ length: 10 }, (_, i) => run(`p${i}`));
+  const custom = (count) => Array.from({ length: count }, (_, i) => run(`c${i}`, { kind: 'custom', patterns: undefined }));
+  // 130 custom runs after 10 practice runs: the practice runs are still inside the pattern window.
+  const afterSome = retainRuns([...practice, ...custom(130)]);
+  assert.deepEqual(afterSome.filter((r) => r.kind === 'test').map((r) => r.patterns.length), Array(10).fill(1));
+  // 1,100 custom runs evict no practice summary, and custom keeps only its newest 50.
+  const afterMany = retainRuns([...practice, ...custom(1100)]);
+  assert.equal(afterMany.filter((r) => r.kind === 'test').length, 10);
+  assert.equal(afterMany.filter((r) => r.kind === 'custom').length, MAX_NON_COMPARABLE_RUNS);
+  assert.equal(afterMany.at(-1).id, 'c1099');
+  assert.equal(afterMany.find((r) => r.kind === 'custom').id, 'c1050');
+  assert.equal(afterMany.some((r) => r.kind === 'custom' && 'patterns' in r && r.patterns !== undefined), false);
+  // Interleaved runs stay in the order they happened.
+  const mixed = Array.from({ length: 200 }, (_, i) => (i % 3 ? run(`m${i}`, { kind: 'custom', patterns: undefined }) : run(`m${i}`)));
+  const order = retainRuns(mixed).map((r) => Number(r.id.slice(1)));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+});
+
+test('a profile with only comparable runs is retained exactly as before', () => {
+  // The retention rule as it stood before custom text existed.
+  const previous = (runs) => {
+    const kept = runs.slice(-1000);
+    return kept.map((r, i) => (i < kept.length - 120 ? { ...r, patterns: [] } : r));
+  };
+  const kinds = ['test', 'retest', 'drill', 'daily'];
+  const legacy = Array.from({ length: 1100 }, (_, i) => run(String(i), { kind: kinds[i % kinds.length] }));
+  legacy[1050] = { ...legacy[1050], patterns: undefined };
+  legacy[500] = { ...legacy[500], patterns: undefined };
+  assert.equal(JSON.stringify(retainRuns(legacy)), JSON.stringify(previous(legacy)));
+  const short = legacy.slice(0, 40);
+  assert.equal(JSON.stringify(retainRuns(short)), JSON.stringify(previous(short)));
 });
