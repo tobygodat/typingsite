@@ -507,3 +507,34 @@ test.describe('short phone 375×553', () => {
     }
   });
 });
+
+// Custom text is never counted and can end inside a second: in either unit it shows no rate, and a unit
+// change while its card is shown redraws nothing into the blanks (no rate, no graph, no word pace).
+test('a custom run too quick to time shows no rate in cpm, before or after a unit change', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
+  await openApp(page);
+  await command(page, 'speed unit · cpm');
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill('hello world');
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#best')).toHaveText('Not counted');
+  await page.clock.pauseAt(new Date('2026-10-01T12:10:00Z'));
+  await page.locator('#typing-input').focus();
+  for (const key of 'hello world') {
+    await page.keyboard.type(key);
+    await page.clock.runFor(40);
+  }
+  await page.clock.resume();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toContainText('not counted toward your best');
+  await expect(page.locator('#announcement')).toContainText('Too quick to time');
+  for (const unit of ['cpm', 'wpm']) {
+    if (unit === 'wpm') await command(page, 'speed unit · wpm');
+    await expect(page.locator('#speed-unit')).toHaveValue(unit);
+    await expect(page.locator('#result-wpm')).toHaveText('—');
+    await expect(page.locator('#result-raw')).toHaveText('—');
+    await expect(page.locator('.run-card-graph')).toBeHidden();
+    const words = await page.locator('#result-words [role="option"]').evaluateAll((nodes) => nodes.map((word) => word.getAttribute('aria-label')).join(' '));
+    expect(words).not.toMatch(/wpm|cpm/);
+  }
+});
