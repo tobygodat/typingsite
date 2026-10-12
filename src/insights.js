@@ -20,10 +20,16 @@ function keyCounts(replay) {
   return [...keys.values()];
 }
 
+// Run kinds that are never compared, used as a baseline or mined for patterns (custom text). They keep no
+// trace or pattern evidence and are retained on their own small budget, so they can never push comparable
+// history out of the summary and pattern windows. Extend this set for any other kind like that.
+export const NON_COMPARABLE_KINDS = new Set(['custom']);
+export const MAX_NON_COMPARABLE_RUNS = 50;
+export const comparableKind = (kind) => !NON_COMPARABLE_KINDS.has(kind);
+
 export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
-  const evidence = summarizePatterns([attempt]);
-  return {
+  const record = {
     id: attempt.id, at, kind: attempt.kind, status: attempt.status,
     conditions: attempt.conditions, textId: attempt.textId, fresh: attempt.fresh,
     interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput),
@@ -31,17 +37,26 @@ export function runRecord(attempt, at = attempt.at || null) {
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
     firstDailyAttempt: attempt.firstDailyAttempt,
-    // Keep counts and each run's measured median, rather than another keystroke log.
-    patterns: evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]),
-    // Same eligibility as patterns (no drills, races or repeated dailies).
-    keys: evidence.attemptCount ? keyCounts(replay) : [],
-    keysVersion: KEY_COUNTS_VERSION,
   };
+  if (!comparableKind(attempt.kind)) return record;
+  const evidence = summarizePatterns([attempt]);
+  // Keep counts and each run's measured median, rather than another keystroke log.
+  record.patterns = evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
+  // Same eligibility as patterns (no drills, races, repeated dailies or non-comparable kinds).
+  record.keys = evidence.attemptCount ? keyCounts(replay) : [];
+  record.keysVersion = KEY_COUNTS_VERSION;
+  return record;
 }
 
+// Comparable runs keep the newest 1,000 summaries, the newest 120 with pattern evidence; other kinds keep their
+// newest 50. Order stays chronological, and a profile with only comparable runs is retained exactly as before.
 export function retainRuns(runs) {
-  const kept = runs.slice(-MAX_RUN_SUMMARIES);
-  return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS ? { ...run, patterns: [], keys: [] } : run);
+  const comparable = runs.filter((run) => comparableKind(run.kind));
+  const other = runs.filter((run) => !comparableKind(run.kind));
+  const kept = new Set([...comparable.slice(-MAX_RUN_SUMMARIES), ...other.slice(-MAX_NON_COMPARABLE_RUNS)]);
+  const withPatterns = new Set(comparable.slice(-MAX_PATTERN_RUNS));
+  return runs.filter((run) => kept.has(run))
+    .map((run) => (comparableKind(run.kind) && !withPatterns.has(run) ? { ...run, patterns: [], keys: [] } : run));
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
@@ -140,9 +155,10 @@ const directKeys = (run) => run.keysVersion === KEY_COUNTS_VERSION && Array.isAr
 // Compact run memory → per-key and per-pair totals. A key's miss rate is first-attempt errors on
 // that letter over its tries. Older summaries without per-letter counts fall back to their pairs
 // (a pair's first attempt is a try at its second letter), so they only count letters typed after
-// another letter; pairDerivedRuns says how many runs that applies to.
+// another letter; pairDerivedRuns says how many runs that applies to. Non-comparable kinds (custom text) are
+// never mined, even if a record carries counts.
 export function keyAnalysis(runs, limit = 8) {
-  const recent = runs.filter((r) => validRun(r) && ((r.patterns || []).length || directKeys(r)?.length))
+  const recent = runs.filter((r) => comparableKind(r.kind) && validRun(r) && ((r.patterns || []).length || directKeys(r)?.length))
     .slice(-MAX_PATTERN_RUNS);
   const keys = new Map();
   const pairs = new Map();

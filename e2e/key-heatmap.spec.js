@@ -1,7 +1,7 @@
 // Progress › Keys: per-key miss-rate heatmap and the "Pairs to watch" table from saved pattern memory.
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto } from './fixtures.js';
 
 const conditions = { mode: 'words', count: 25, duration: null, punctuation: false, quoteLength: null,
   difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
@@ -106,6 +106,32 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await section.screenshot({ path: shot(testInfo, 'keys-light.png') });
+});
+
+// Custom text is never mined (metric contract): a custom run full of missed "o"s leaves the heatmap,
+// its run count and the pairs table exactly as they were.
+test('a custom text run never reaches the key heatmap or pairs', async ({ page, supabase }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openKeys(page, supabase);
+  const heatmap = page.locator('#key-heatmap');
+  const key = (letter) => heatmap.locator('.key').filter({ hasText: new RegExp(`^${letter}$`) });
+  await expect(key('o')).toHaveAttribute('title', 'o: 42.9% miss · 84 samples');
+  const pairsBefore = await page.locator('#pairs-table tbody').innerText();
+
+  const text = 'the quick brown fox jumps over the lazy dog';
+  await openView(page, 'Practice');
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await typeInto(page, text.replaceAll('o', 'p'));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toContainText('not counted toward your best');
+
+  await openView(page, 'Progress');
+  await expect(page.locator('#key-note')).toContainText('2 saved runs');
+  await expect(key('o')).toHaveAttribute('title', 'o: 42.9% miss · 84 samples');
+  expect(await page.locator('#pairs-table tbody').innerText()).toBe(pairsBefore);
 });
 
 // Ten keys cannot each be 44px wide at 320px, so on touch the heatmap is a picture and a native
