@@ -4,6 +4,7 @@
 // presentational; a challenge run is its own kind and never a best, a trend or training evidence.
 import { request, freshSession, loadSession, AuthError } from './account.js';
 import { quoteCorpus, replayAttempt, textId } from './typing.js';
+import { comparableKind } from './insights.js';
 
 export const TRACE_VERSION = 1;
 export const MAX_TRACE_KEYS = 6000;
@@ -140,9 +141,11 @@ export function challengeText(attempt) {
   return end < 0 ? attempt.text : attempt.text.slice(0, end);
 }
 
-// The payload for one finished run, or null when it cannot be sent.
+// The payload for one finished run, or null when it cannot be sent. A run that is never compared (custom
+// text, or any other non-comparable kind) is never a ghost to race, whatever SENDABLE_KINDS says.
 export function challengePayload(attempt) {
-  if (!attempt || attempt.status !== 'complete' || attempt.interrupted || !SENDABLE_KINDS.includes(attempt.kind)) return null;
+  if (!attempt || attempt.status !== 'complete' || attempt.interrupted || !comparableKind(attempt.kind)
+    || !SENDABLE_KINDS.includes(attempt.kind)) return null;
   const trace = encodeTrace(attempt);
   if (!trace) return null;
   const passage = challengeText(attempt);

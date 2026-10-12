@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { challengeOutcome, challengePayload, challengeText, challengeTextId, encodeTrace, ghostPoints, offerText, outcomeRule,
-  resultText, sameScore, scoreTrace, sendChallenge, traceAttempt, traceBytes, traceTrouble, validTrace, MAX_TRACE_KEYS } from '../src/ghost-race.js';
+  resultText, sameScore, scoreTrace, sendChallenge, traceAttempt, traceBytes, traceTrouble, validTrace, MAX_TRACE_KEYS, SENDABLE_KINDS } from '../src/ghost-race.js';
 import { comparable, conditionKey, createAttempt, quoteCorpus, replayAttempt, summarizePatterns, textId } from '../src/typing.js';
 import { runRecord, trendRun } from '../src/insights.js';
 
@@ -122,6 +122,11 @@ test('only finished practice, retest and daily runs can be sent', () => {
   assert.equal(challengePayload(run(passage, { kind: 'drill' })), null);
   assert.equal(challengePayload(run(passage, { kind: 'challenge' })), null);
   assert.equal(challengePayload({ ...run(passage), status: 'interrupted' }), null);
+  // Custom text is never compared, so it is never a ghost to race, even if the sendable list grew to name it.
+  const custom = run(passage, { kind: 'custom', conditions: { mode: 'custom', duration: null, count: null, correctionPolicy: 'mandatory', customOrder: 'as-written' } });
+  assert.equal(challengePayload(custom), null);
+  SENDABLE_KINDS.push('custom');
+  try { assert.equal(challengePayload(custom), null); } finally { SENDABLE_KINDS.pop(); }
   // Stop on error finishes only on the exact text; continue on error finishes at its length.
   const slip = passage.slice(0, -1) + '!';
   assert.equal(challengePayload(run(slip)), null);

@@ -215,6 +215,51 @@ test('an interrupted or touch ghost race is not sent and can be raced again; the
   await expect(page.locator('#inbox-list [data-kind="challenge-result"]')).toContainText(/^Ada’s 8-word run: /);
 });
 
+// Custom text is never compared (metric contract): a custom run is never offered as a ghost, and a ghost race
+// taken from the inbox closes the custom editor and leaves Custom unmarked, as master's other sessions do.
+test('a custom run is never offered as a ghost, and racing a ghost closes the custom editor', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  const passage = 'river light patient words carry the quiet home';
+  supabase.challenges.seed(ada.id, lin.id, { name: 'Ada', label: 'Lin', passage,
+    conditions: { mode: 'words', count: 8, punctuation: false, wordList: '200', correctionPolicy: 'relaxed', textId: 'generated-test' },
+    trace: steadyTrace(passage, 140) });
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await expect(page.locator('#challenge-toast')).toBeVisible({ timeout: 12000 });
+  await page.locator('#challenge-toast-close').click();
+
+  // A practice run can be sent; a custom run, signed in all the same, cannot.
+  await chooseWords(page, 10);
+  await typeInto(page, await passageText(page), '#typing-input', { delay: 20 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#ghost-offer')).toBeVisible();
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  const text = 'the quick brown fox jumps over the lazy dog';
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await typeInto(page, text, '#typing-input', { delay: 20 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
+  await expect(page.locator('#ghost-offer')).toBeHidden();
+  await expect(page.locator('#ghost-result')).toBeHidden();
+
+  // The custom editor open on Practice, then the ghost race from the inbox: the editor closes and Custom is unmarked.
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await page.locator('#inbox-trigger').click();
+  await page.locator('#inbox-list [data-inbox-action="challenge"]').click();
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
+  await expect(page.locator('#custom-options')).toBeHidden();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#condition-line')).toContainText('ghost race');
+  await expect(page.locator('#accessible-passage')).toHaveText(passage);
+});
+
 test.describe('on a touch screen', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
