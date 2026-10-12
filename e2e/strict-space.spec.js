@@ -8,6 +8,7 @@ const TIMED_NOTE = 'timed runs end on the clock';
 const DRILL_NOTE = 'drills end on the clock';
 const DAILY_NOTE = 'the daily keeps its own rules';
 const RETEST_NOTE = 'a retest keeps its baseline’s rules';
+const RACE_NOTE = 'a race keeps the same rules for both players';
 // A realistic typing pace for the runs that end up in screenshots.
 const PACE = { delay: 140 };
 
@@ -491,6 +492,50 @@ test('a refused space in an interrupted challenge turn keeps its won’t count n
   await expect(page.locator('#race-help')).toHaveText(`${lost} ${STRICT_NOTICE}`);
   await page.keyboard.type(text[at]);
   await expect(page.locator('#race-help')).toHaveText(lost);
+});
+
+test('a one-keyboard race takes quick end whatever the practice shape, and keeps its rules for both players', async ({ page }) => {
+  await openApp(page);
+  // Practice is still the default timed run, but a race is an untimed quote, where quick end applies.
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-local').click();
+  await openSettings(page);
+  await expect(page.locator('#quick-end-toggle')).toBeEnabled();
+  await expect(page.locator('#quick-end-note')).toBeHidden();
+  await expect(page.locator('#rules-note')).toBeHidden();
+  await setSwitch(page, 'quick-end-toggle', false);
+
+  await page.locator('#start-local-race').click();
+  const text = await page.locator('#race-accessible-passage').textContent();
+  const typed = text.slice(0, -1) + wrongFor(text.at(-1));
+  await typeInto(page, typed, '#race-input');
+  await expect(page.locator('#race-help')).toHaveText(SUBMIT_NOTICE);
+  await page.keyboard.press('Space');
+  await expect(page.locator('#race-handoff')).toBeVisible();
+
+  // Between turns the race is under way: a switch changed now waits for the next race.
+  await openSettings(page);
+  await expect(page.locator('#rules-note')).toHaveText(RACE_NOTE);
+  await expect(page.locator('#quick-end-toggle')).toHaveAccessibleDescription(RACE_NOTE);
+  await setSwitch(page, 'quick-end-toggle', true);
+  await page.locator('#start-next-player').click();
+  // The passage is revealed before the second turn takes keys.
+  await expect(page.locator('#race-player')).toHaveText('Player two');
+  await expect(page.locator('#race-input')).toBeFocused();
+  await typeInto(page, typed, '#race-input');
+  await expect(page.locator('#race-help')).toHaveText(SUBMIT_NOTICE);
+  await page.keyboard.press('Space');
+  await expect(page.locator('#race-leaderboard')).toBeVisible();
+
+  // Once it's over the switches act on the next race, and the other tabs follow practice again.
+  await openSettings(page);
+  await expect(page.locator('#rules-note')).toBeHidden();
+  await expect(page.locator('#quick-end-toggle')).toBeEnabled();
+  await expect(page.locator('#quick-end-toggle')).toBeChecked();
+  await page.locator('#challenge-online').click();
+  await openSettings(page);
+  await expect(page.locator('#quick-end-toggle')).toBeDisabled();
+  await expect(page.locator('#quick-end-note')).toHaveText(TIMED_NOTE);
 });
 
 for (const scheme of ['dark', 'light']) {

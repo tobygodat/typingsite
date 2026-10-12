@@ -380,11 +380,13 @@ const RULE_NOTES = {
   daily: 'the daily keeps its own rules',
   retest: 'a retest keeps its baseline’s rules',
   custom: 'custom text keeps the default rules',
+  race: 'a race keeps the same rules for both players',
 };
 
 // Quick end only changes word and quote runs that let a mistake stand. Where the session can't take
 // it the switch is disabled but keeps its value, like punctuation in a quote test; #rules-note says
-// when the session keeps the rules it started with. Synced on every preference and view change.
+// when the session keeps the rules it started with. Synced on every preference, view and Challenge
+// tab change, and when a one-keyboard race starts or ends.
 function syncRules() {
   const limits = ruleLimits(ruleSession());
   $('strict-space-toggle').checked = prefs.strictSpace;
@@ -557,7 +559,7 @@ const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custo
 function sessionDurationMs(kind = sessionKind) {
   if (kind === 'daily') return null;
   if (kind === 'drill') return 60000;
-  if (kind === 'custom') return null;
+  if (kind === 'custom' || kind === 'race') return null;
   if (prefs.mode === 'time') return prefs.duration * 1000;
   return null;
 }
@@ -566,19 +568,25 @@ function sessionDurationMs(kind = sessionKind) {
 // kind, its timing and the conditions its run was built with), never from the test-shape
 // preferences: a drill started from a words baseline is still a timed minute. quickEnd names why
 // quick end does nothing there ('' when it applies); fixed names a session that keeps the rules it
-// started with (the daily's are set, a retest has to match its baseline, and custom text keeps the defaults).
+// started with (the daily's are set, a retest has to match its baseline, custom text keeps the
+// defaults, and a race under way keeps its own for both players).
 const FIXED_RULE_KINDS = ['daily', 'retest', 'custom'];
-function ruleLimits({ kind, run }) {
+function ruleLimits({ kind, run, fixed = FIXED_RULE_KINDS.includes(kind) }) {
   return {
-    fixed: FIXED_RULE_KINDS.includes(kind) ? kind : '',
+    fixed: fixed ? kind : '',
     quickEnd: sessionDurationMs(kind) !== null ? (kind === 'drill' ? 'drill' : 'timed')
       : run.correctionPolicy === 'relaxed' ? '' : 'stopOnError',
   };
 }
 
-// The session the rule switches act on: the run waiting or in progress or, once it's over, the next
-// one, which Run again makes the daily again, the same custom text or a practice run.
+// The session the rule switches act on. On the Challenge screen's one-keyboard tab it is the race:
+// the one under way, whose rules startRace fixed for both players, or else the next one. Elsewhere
+// it is the run waiting or in progress or, once it's over, the next one, which Run again makes the
+// daily again, the same custom text or a practice run.
 function ruleSession() {
+  if (document.body.dataset.view === 'compete' && onlineRace?.mode === 'local') {
+    return raceUnderWay() ? { kind: 'race', run: race.conditions, fixed: true } : { kind: 'race', run: raceConditions() };
+  }
   if (attempt && ['ready', 'running'].includes(attempt.status)) return { kind: sessionKind, run: attempt.conditions };
   const kind = sessionKind === 'daily' ? 'daily' : restartKind();
   return { kind, run: sessionConditions(kind) };
@@ -1591,10 +1599,20 @@ function buildKeyboard() {
   $('keyboard').replaceChildren(fragment);
 }
 
+// A one-keyboard race is a quote under the current settings, whatever the practice test shape.
+function raceConditions() {
+  return { ...conditions(), mode: 'quote', wordList: null, localRace: true };
+}
+
+// From its start until the second player finishes. Both turns are built from race.conditions.
+function raceUnderWay() {
+  return Boolean(race.conditions) && race.results.length < 2;
+}
+
 function startRace() {
   race = {
     passage: selectPassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', seenIds: [] }),
-    conditions: { ...conditions(), mode: 'quote', wordList: null, localRace: true },
+    conditions: raceConditions(),
     names: [$('player-one-name').value.trim() || 'Player one', $('player-two-name').value.trim() || 'Player two'],
     player: 0,
     attempt: null,
@@ -1611,6 +1629,7 @@ function startRace() {
   $('compete-setup').hidden = true;
   $('race-leaderboard').hidden = true;
   $('race-handoff').hidden = true;
+  syncRules();
   setupRacePlayer();
 }
 
@@ -1655,7 +1674,10 @@ function finishRacePlayer() {
     $('race-handoff').classList.remove('is-revealing');
     $('race-handoff').hidden = false;
     announce(`${race.names[0]} finished. Pass the keyboard to ${race.names[1]}.`);
-  } else renderRaceResults();
+  } else {
+    syncRules();
+    renderRaceResults();
+  }
 }
 
 function renderRaceResults() {
@@ -2500,6 +2522,8 @@ onlineRace = createOnlineRace({
   inbox,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
+  // The one-keyboard tab makes the race the session the rule switches act on.
+  onModeChange: syncRules,
   onPassageSeen(id) {
     if (!id || profile.seenTextIds.includes(id)) return;
     profile.seenTextIds.push(id);

@@ -23,7 +23,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox }) {
+export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, onModeChange, inbox }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -67,6 +67,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('compete-heading').textContent = value === 'online' ? 'A passage shared. A race together.' : value === 'daily' ? 'A passage for today.' : 'Same passage. One keyboard.';
     setRunning(false);
     if (value === 'online') { fx.relayout(); refreshInvites(); }
+    onModeChange?.();
   }
   function renderHome() {
     const signedIn = Boolean(getSession());
@@ -606,6 +607,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     rematchRoom: (roomId, conditions) => rematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions),
     // The race this tab is seated in and still waiting or racing, if any.
     get liveRoomId() { return room && !terminal(room) ? room.id : null; },
+    // Which Challenge tab shows: online, daily or local (one keyboard).
+    get mode() { return mode; },
     open() { navigate('compete'); setMode('online'); },
     onViewChange(view) {
       if (view === 'compete') { renderHome(); if (mode === 'online') { refreshInvites(); loadFriends(); fx.relayout(); } }
