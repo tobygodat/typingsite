@@ -186,6 +186,38 @@ test('a drill started from saved history keeps its retest on Train when left', a
   await expect.poll(beforeIds).toEqual(['saved-b', retest.id]);
 });
 
+// A custom text result hides Train's drill and retest, and is never a baseline. A drill started after it
+// shows them again, against the run before the custom text, so leaving it still offers that retest.
+test('a drill left after a custom text result keeps the earlier baseline’s retest', async ({ page }) => {
+  const custom = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await openView(page, 'Practice');
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(custom);
+  await page.locator('#custom-use').click();
+  await typeInto(page, custom);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#start-drill')).toBeHidden();
+  await expect(page.locator('#skip-to-retest')).toBeHidden();
+
+  await page.locator('#manual-heading').click();
+  await page.locator('#manual-target-input').fill('th');
+  await page.locator('#apply-manual-target').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await typeInto(page, (await passageText(page)).slice(0, 4));
+  await openView(page, 'Train');
+  await expect(page.locator('#start-drill')).toBeVisible();
+  await expect(page.locator('#skip-to-retest')).toBeVisible();
+  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 10-word retest.');
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await expect(page.locator('#condition-line')).toContainText('10 words');
+  expect(await passageText(page)).not.toBe(custom);
+});
+
 test('a manual drill works without a baseline', async ({ page }) => {
   await openApp(page);
   await openView(page, 'Train');
