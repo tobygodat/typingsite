@@ -91,10 +91,11 @@ export function graphemeCount(text, segmenter = GRAPHEMES) {
 
 // The kind of key that turned `before` (the text the counted keys built) into `after` (what the
 // field now holds), or null when no single counted key could have: an insert adds exactly the one
-// character it reports and removes nothing; Backspace and Delete remove exactly one character (a
-// selection is never one), and only Ctrl/⌥ word deletes may remove up to a word. Anything else
-// changed the text some other way, such as autocorrect, assistive text or an edit the browser
-// applied after it was refused, and is never counted.
+// character it reports (Enter, a line break; a typed character that reports none can't be checked)
+// and removes nothing; Backspace and Delete remove exactly one character (a selection is never
+// one), and only Ctrl/⌥ word deletes may remove up to a word. Anything else changed the text some
+// other way, such as autocorrect, assistive text or an edit the browser applied after it was
+// refused, and is never counted.
 export function keyedChange(before, after, { inputType = '', data = null } = {}) {
   const kind = keyedEdit(inputType);
   if (!kind) return null;
@@ -111,7 +112,7 @@ export function keyedChange(before, after, { inputType = '', data = null } = {})
     return (WORD_DELETES.has(inputType) ? countWords(removed) <= 1 : graphemeCount(removed) === 1) ? 'delete' : null;
   }
   const reported = inputType === 'insertText' ? data : '\n';
-  return !removed && [...added].length === 1 && (typeof reported !== 'string' || added === reported) ? 'insert' : null;
+  return !removed && [...added].length === 1 && added === reported ? 'insert' : null;
 }
 
 // Active time is the sum of the gaps between consecutive keys, where a gap longer than the pause

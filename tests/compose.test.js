@@ -174,6 +174,21 @@ test('a key counts only when the field changed by exactly that key; any other ch
   assert.equal(change('Tea', 'Tea', 'deleteContentBackward'), null);
 });
 
+test('a typed character counts only when the browser reports that same character', () => {
+  const change = (before, after, inputType, data) => keyedChange(before, after, { inputType, data });
+  assert.equal(change('a', 'ab', 'insertText', 'b'), 'insert');
+  // No character, an empty one or a different one can't be checked against the key, so it fails closed.
+  assert.equal(change('a', 'ab', 'insertText', null), null, 'null');
+  assert.equal(change('a', 'ab', 'insertText', undefined), null, 'missing');
+  assert.equal(change('a', 'ab', 'insertText', ''), null, 'empty');
+  assert.equal(change('a', 'ab', 'insertText', 'x'), null, 'another character');
+  // Enter reports no character; its line break is checked instead.
+  for (const type of ['insertLineBreak', 'insertParagraph']) {
+    assert.equal(change('a', 'a\n', type, null), 'insert', type);
+    assert.equal(change('a', 'ab', type, null), null, type);
+  }
+});
+
 test('Backspace and Delete remove one character; only a word delete may remove up to a word', () => {
   const change = (before, after, inputType) => keyedChange(before, after, { inputType });
   // A whole word reported as an ordinary Backspace or Delete is not one key.

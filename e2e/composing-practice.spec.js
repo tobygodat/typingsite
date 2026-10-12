@@ -477,6 +477,8 @@ test('an edit a refusal could not cancel, or one unlike its key, is never saved'
     [typed + phrase, { before: { inputType: 'insertText', data: phrase }, after: { inputType: 'insertText', data: phrase } }],
     // A counted key whose change isn't that key: the field no longer matches the recorded text.
     [`${typed.replace('bus', 'tram')}x`, { after: { inputType: 'insertText', data: 'x' } }],
+    // One character reported as typed but with no character to check it against.
+    [`${typed}x`, { before: { inputType: 'insertText', data: null }, after: { inputType: 'insertText', data: null } }],
   ];
   for (const [value, events] of edits) {
     await typePaced(page, [...typed], 230);
