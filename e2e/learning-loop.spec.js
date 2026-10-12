@@ -1,4 +1,5 @@
-import { quoteCorpus } from '../src/typing.js';
+import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt, quoteCorpus } from '../src/typing.js';
+import { runRecord } from '../src/insights.js';
 import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, freshTextCheck, openView, signInWithEmail } from './fixtures.js';
 
 const translateY = (page) => page.locator('#text-display').evaluate((node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).m42);
@@ -120,6 +121,69 @@ test('leaving a drill for another view ends it without drawing a retest passage'
   await expect.poll(() => runs().length).toBe(4);
   await expect.poll(() => added().some((id) => id.startsWith('daily-'))).toBe(true);
   expect(added().filter((id) => !id.startsWith('daily-'))).toEqual([]);
+});
+
+// A saved 25-word run with a "th" slip every fourth character, so two of them make a recurring target.
+const savedConditions = { mode: 'words', count: 25, duration: null, punctuation: false, quoteLength: null,
+  difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
+  language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
+function savedTrace(id, at) {
+  const text = Array(25).fill('the').join(' ');
+  const attempt = createAttempt({ id, text, textId: id, conditions: savedConditions });
+  attempt.startedAt = 0;
+  attempt.events = [...text].map((char, position) => ({ type: 'insert', text: position % 4 === 1 ? 'x' : char,
+    position, offsetMs: position * 100, accepted: true }));
+  return { ...completeAttempt(attempt, { endedAt: text.length * 100 }), at, fresh: true };
+}
+
+test('a drill started from saved history keeps its retest on Train when left', async ({ page, supabase }) => {
+  const user = supabase.addUser('saved@stilltype.test');
+  const traces = [savedTrace('saved-a', '2026-09-28T12:00:00Z'), savedTrace('saved-b', '2026-09-29T12:00:00Z')];
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: traces,
+    runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt: '2026-09-29T12:00:00Z' } });
+  const profile = () => supabase.profileFor(user.email);
+  const beforeIds = () => profile()?.loops?.map((loop) => loop.beforeAttemptId);
+  await openApp(page);
+  // Signing in reloads the page, so no run has been shown in this tab: only the saved runs can be the baseline.
+  await signInWithEmail(page, user.email);
+  await openView(page, 'Train');
+  await expect(page.locator('#skip-to-retest')).toBeDisabled();
+
+  // A recurring target, left mid-drill for Progress.
+  await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await typeInto(page, (await passageText(page)).slice(0, 8));
+  await openView(page, 'Progress');
+  await expect.poll(() => profile()?.runs?.map((run) => `${run.kind} ${run.status}`)).toEqual(['test complete', 'test complete', 'drill interrupted']);
+  await openView(page, 'Train');
+  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect(page.locator('#recommendation-title')).toHaveText('Practice “th”');
+  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 25-word retest.');
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await expect(page.locator('#condition-line')).toContainText('25 words');
+  await completePassage(page);
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect.poll(beforeIds).toEqual(['saved-b']);
+  const retest = profile().runs.at(-1);
+  expect(retest.kind).toBe('retest');
+
+  // After another reload, a comparison row's drill left before its first key keeps the retest too,
+  // now against that retest as the newest compatible run.
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await page.reload();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openView(page, 'Progress');
+  await page.locator('.history-summary').click();
+  await page.locator('.history-detail').getByRole('button', { name: 'Practice “th” again' }).click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await openView(page, 'Train');
+  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await completePassage(page);
+  await expect.poll(beforeIds).toEqual(['saved-b', retest.id]);
 });
 
 test('a manual drill works without a baseline', async ({ page }) => {

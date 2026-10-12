@@ -858,6 +858,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
 
   if (sessionKind === 'drill' && baselineAttempt) {
     if (trainingContext) trainingContext.drillCompleted = valid;
+    // Train already offers this retest: startDrill() rendered its actions.
     if (replacing) return;
     announce(valid ? 'Drill complete. Retest ready.' : 'Drill interrupted. Retest ready.');
     startRetest();
@@ -926,14 +927,7 @@ function renderResults(completed, saved) {
     activeRecommendation = trainingRecommendation(completed.conditions);
     selectedTarget = activeRecommendation.target;
   }
-  $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
-  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
-  $('recommendation-meta').textContent = baselineAttempt
-    ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
-    : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
-  $('start-drill').disabled = !counted;
-  $('skip-to-retest').disabled = !counted || !baselineAttempt;
-  renderEvidenceList(activeRecommendation.evidence);
+  renderRecommendation(counted);
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again' : 'Run again';
   renderTraining();
   renderDaily();
@@ -941,6 +935,20 @@ function renderResults(completed, saved) {
   announce(saved
     ? `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy.`
     : `${replay.score.wpm} wpm, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+}
+
+// Train's drill and retest actions, from the current recommendation and baseline. Runs after each result
+// and as each drill starts, so a drill left before its end still offers its retest even when its baseline
+// came from saved history (practiceTarget) and no result has been shown in this tab.
+function renderRecommendation(counted = true) {
+  $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
+  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
+  $('recommendation-meta').textContent = baselineAttempt
+    ? `About 1 min, then a fresh ${retestLength(baselineAttempt.conditions)} retest.`
+    : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
+  $('start-drill').disabled = !counted;
+  $('skip-to-retest').disabled = !counted || baselineAttempt?.status !== 'complete';
+  renderEvidenceList(activeRecommendation.evidence);
 }
 
 function renderEvidenceList(evidence) {
@@ -1016,11 +1024,14 @@ function renderComparison(before, after, saved) {
 }
 
 function startDrill() {
-  selectedTarget = activeRecommendation?.target || null;
+  // startDaily() drops the recommendation, so a stale Start drill falls back to a general drill.
+  activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
+  selectedTarget = activeRecommendation.target || null;
   const source = baselineAttempt?.conditions;
   if (source) restoreConditions(source);
   trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false };
   trainingContext.drill = { target: selectedTarget, duration: 60, wordList: prefs.wordList, textVersion: makeDrill(selectedTarget, prefs.wordList).textVersion };
+  renderRecommendation();
   resetSession('drill', { focus: true });
 }
 
