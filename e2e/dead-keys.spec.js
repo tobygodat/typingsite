@@ -32,9 +32,21 @@ async function accentKeys(page) {
     async windowsPair(key, code, ...inputs) {
       await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
       await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
+      await this.windowsKey(key, code, ...inputs);
+    },
+    // One key on Windows: its keydown, then the plain inputs it types.
+    async windowsKey(key, code, ...inputs) {
       await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code });
       for (const text of inputs) await cdp.send('Input.insertText', { text });
       await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code });
+    },
+    // Windows: an accent key held past its repeats (their keydowns are cancelled), then let go. Each repeat
+    // commits the pending mark or leaves a new one, so a mark may still be pending for the next key.
+    async windowsHeld() {
+      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
+      await this.deadKeyRepeat();
+      await this.deadKeyRepeat();
+      await this.releaseDeadKey();
     },
     // Chrome on macOS sends the key that ends a composition first, as keyCode 229, then the commit
     // (render_widget_host_view_cocoa.mm, keyEvent:).
@@ -690,6 +702,37 @@ test('a held accent key is key repeat on Linux too, where its repeats arrive as 
   await keys.processKey('Space');
   await keys.commit('"');
   expect(await scored(page)).toEqual({ correct: 2, wrong: 1, value: `${text.slice(0, 2)}"` });
+});
+
+test('on Windows, a mark a held accent key leaves pending is repeat too, with all the next key types', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 2));
+  const unscored = { correct: 2, wrong: 0, value: text.slice(0, 2) };
+  const code = (key) => (key === ' ' ? 'Space' : /^[a-z]$/i.test(key) ? `Key${key.toUpperCase()}` : '');
+
+  // No composition marks the pending mark: once the key is let go, the next key commits it as plain text,
+  // as one input (â, ^h) or two (^ then h), the mark alone after a space, or both marks from the accent key
+  // pressed again. The repeats show the notice already, so it is cleared to see the commit's own.
+  for (const [key, ...inputs] of [['a', 'â'], ['h', '^h'], ['h', '^', 'h'], [' ', '^'], ['Dead', '^', '^']]) {
+    await keys.windowsHeld();
+    await page.evaluate(() => { document.querySelector('#input-help').textContent = ''; });
+    await keys.windowsKey(key, key === 'Dead' ? 'Quote' : code(key), ...inputs);
+    expect(await scored(page), inputs.join('|')).toEqual(unscored);
+    await expect(page.locator('#input-help'), inputs.join('|')).toHaveText('Key repeat ignored.');
+  }
+
+  // The next key press types as usual, and so does a key after a held one that left no mark pending.
+  await page.keyboard.type(text[2]);
+  expect(await scored(page)).toEqual({ correct: 3, wrong: 0, value: text.slice(0, 3) });
+  await keys.windowsHeld();
+  await keys.windowsKey(text[3], code(text[3]), text[3]);
+  expect(await scored(page)).toEqual({ correct: 4, wrong: 0, value: text.slice(0, 4) });
+  await typeInto(page, text.slice(4));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-accuracy')).toHaveText('100');
 });
 
 test('another accent key pressed while one is held types its own mark, whichever order the events come in', async ({ page }) => {

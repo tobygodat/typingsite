@@ -158,7 +158,8 @@ let composition = null;
 let heldDeadKey = null;
 // Windows has no composition: the key pressed after an accent key types the mark and, where they don't
 // combine, itself, which can come as two inputs ("h). The mark waits for the key's own input, so the two
-// are scored together: { type, attempt, key (that key), mark (its first input, once it came), at }.
+// are scored together: { type, attempt, key (that key), mark (its first input, once it came), at,
+// repeated (the accent key was held: what the key types to commit its pending mark is repeat too) }.
 let accentPair = null;
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
@@ -838,12 +839,15 @@ function beforeTypingInput(event, type = 'primary') {
     showInputNotice(type, NOTICES.multiCharacter, { sticky: true });
     return;
   }
-  if (heldDeadKey) { // Windows: a held accent key's repeats arrive as plain text (^^)
+  // Windows: the key pressed after an accent key may type the mark first, with its own input to follow.
+  const pair = accentPair?.type === type ? accentPair : null;
+  // Windows: a held accent key's repeats arrive as plain text (^^), and so does the next key's commit of a
+  // mark they left pending (â, ^h, or ^ then h): all that key types, unless it types just itself.
+  if (heldDeadKey || (pair?.repeated && (pair.key === null || event.data !== pair.key))) {
+    if (pair?.repeated) pair.key = null;
     showInputNotice(type, NOTICES.repeat, { speak: false });
     return;
   }
-  // Windows: the key pressed after an accent key may type the mark first, with its own input to follow.
-  const pair = accentPair?.type === type ? accentPair : null;
   accentPair = null;
   if (pair && keys.length === 1 && keys[0] !== pair.key && deadMark(keys[0]) && pair.attempt === inputAttempt(type)) {
     accentPair = Object.assign(pair, { mark: keys[0], at: now() });
@@ -860,7 +864,7 @@ function wireComposition(input, type) {
   // The last key pressed in the field: Chrome and Firefox send an accent key (Dead) before its composition.
   let lastKey = null;
   // An accent key was the last key but modifiers, and opened no composition: Windows, where the next key
-  // types its mark as plain text.
+  // types its mark as plain text. 'held' if it was repeating: no composition marks a mark it leaves pending.
   let afterAccent = false;
   // Tab commits a pending mark on its way to the next control: dropped, like any mark as focus leaves.
   const drop = () => {
@@ -888,12 +892,15 @@ function wireComposition(input, type) {
     heldDeadKey = repeat ? { mark: session?.mark ?? heldDeadKey?.mark ?? null } : null;
     lastKey = event.key;
     // Windows: the key after an accent key types the mark, then itself if they don't combine ("h; a space
-    // types the mark alone).
-    if (!COMPOSING_KEYS.has(event.key)) {
-      accentPair = afterAccent && composition?.type !== type && [...event.key].length === 1 && event.key !== ' '
-        ? { type, attempt: inputAttempt(type), key: event.key, mark: null, at: 0 } : null;
+    // types the mark alone). After a held one, that key (a space, or the accent key again, too) commits any
+    // mark the repeats left pending, so what it types is repeat (repeated) until the next key.
+    const held = afterAccent === 'held' && !repeat;
+    if (!COMPOSING_KEYS.has(event.key) || event.key === 'Dead') {
+      accentPair = afterAccent && composition?.type !== type
+        && (held ? [...event.key].length === 1 || event.key === 'Dead' : [...event.key].length === 1 && event.key !== ' ')
+        ? { type, attempt: inputAttempt(type), key: event.key, mark: null, at: 0, repeated: held } : null;
     }
-    afterAccent = event.key === 'Dead' || (afterAccent && COMPOSING_KEYS.has(event.key));
+    afterAccent = event.key === 'Dead' ? (repeat ? 'held' : true) : COMPOSING_KEYS.has(event.key) && afterAccent;
   });
   // Letting go of a held accent key ends its repeats; what it left pending stays repeated.
   input.addEventListener('keyup', (event) => { if (event.key === 'Dead') heldDeadKey = null; });
