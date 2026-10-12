@@ -3,10 +3,16 @@ import { conditionKey, replayAttempt, summarizePatterns, textId } from './typing
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
 
+// Run kinds that are never compared, used as a baseline or mined for patterns (custom text). They keep no
+// trace or pattern evidence and are retained on their own small budget, so they can never push comparable
+// history out of the summary and pattern windows. Extend this set for any other kind like that.
+export const NON_COMPARABLE_KINDS = new Set(['custom']);
+export const MAX_NON_COMPARABLE_RUNS = 50;
+export const comparableKind = (kind) => !NON_COMPARABLE_KINDS.has(kind);
+
 export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
-  const evidence = summarizePatterns([attempt]);
-  return {
+  const record = {
     id: attempt.id, at, kind: attempt.kind, status: attempt.status,
     conditions: attempt.conditions, textId: attempt.textId, fresh: attempt.fresh,
     interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput),
@@ -14,22 +20,24 @@ export function runRecord(attempt, at = attempt.at || null) {
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
     firstDailyAttempt: attempt.firstDailyAttempt,
-    // Keep counts and each run's measured median, rather than another keystroke log.
-    patterns: evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]),
   };
+  if (!comparableKind(attempt.kind)) return record;
+  // Keep counts and each run's measured median, rather than another keystroke log.
+  record.patterns = summarizePatterns([attempt]).pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
+  return record;
 }
 
-// Pattern counts stay on the newest MAX_PATTERN_RUNS summaries that carry any, so drills, races of
-// your best and interrupted runs (which carry none) never push real evidence out of that window.
+// Comparable runs keep the newest 1,000 summaries, and pattern counts stay on the newest 120 of those that carry
+// any, so drills, races of your best and interrupted runs (which carry none) never push real evidence out of that
+// window. Other kinds keep their newest 50 and carry no counts, so they never displace comparable history either.
+// Order stays chronological, and a profile with only comparable runs is retained exactly as before custom text.
 export function retainRuns(runs) {
-  const kept = runs.slice(-MAX_RUN_SUMMARIES);
-  let withPatterns = 0;
-  for (let i = kept.length - 1; i >= 0; i -= 1) {
-    if (!kept[i].patterns?.length) continue;
-    withPatterns += 1;
-    if (withPatterns > MAX_PATTERN_RUNS) kept[i] = { ...kept[i], patterns: [] };
-  }
-  return kept;
+  const comparable = runs.filter((run) => comparableKind(run.kind)).slice(-MAX_RUN_SUMMARIES);
+  const other = runs.filter((run) => !comparableKind(run.kind)).slice(-MAX_NON_COMPARABLE_RUNS);
+  const kept = new Set([...comparable, ...other]);
+  const withPatterns = new Set(comparable.filter((run) => run.patterns?.length).slice(-MAX_PATTERN_RUNS));
+  return runs.filter((run) => kept.has(run))
+    .map((run) => (comparableKind(run.kind) && run.patterns?.length && !withPatterns.has(run) ? { ...run, patterns: [] } : run));
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;

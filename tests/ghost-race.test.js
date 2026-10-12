@@ -132,3 +132,13 @@ test('races stay out of bests, trends, fresh comparisons and pattern evidence', 
   const records = [runRecord({ ...race, id: 'r1' }), runRecord({ ...race, id: 'r2' })].map((r) => ({ ...r, at: '2026-10-01T12:00:00Z' }));
   assert.deepEqual(recurringTargets(records, [], words), []);
 });
+
+test('a custom text run is never raced, even if a best names it', () => {
+  // Custom runs never set a best or keep a trace; a stray best pointing at one still has no ghost to race.
+  const custom = { ...words, mode: 'custom', count: null, wordList: null, customOrder: 'as-written' };
+  const run = trace('custom', { kind: 'custom', conditions: custom });
+  const option = raceableBest(profileWith(run, [run]), conditionKey(custom));
+  assert.equal(option.available, false);
+  assert.equal(option.reason, 'no-trace');
+  assert.equal(option.trace, null);
+});

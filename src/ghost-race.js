@@ -2,6 +2,7 @@
 // replays that run's recorded keystroke positions over time. Pure functions only. The ghost caret is
 // drawn by src/motion.js and is never scored; the race result compares two replays of event logs.
 import { conditionKey, replayAttempt } from './typing.js';
+import { comparableKind } from './insights.js';
 
 export const GHOST_RACE = 'ghost-race';
 
@@ -9,11 +10,12 @@ const hasInput = (trace) => (trace?.events || []).some((event) => event.type ===
 
 // The best for these conditions, and its trace when the newest kept traces still hold it.
 // reason: 'no-best' (nothing to race) or 'no-trace' (the best's keystrokes are no longer kept).
+// A run of a kind that is never compared (custom text) is never a best, so it is never raced either.
 export function raceableBest(profile, key) {
   const best = key ? profile?.bests?.[key] : null;
   if (!best) return { available: false, reason: 'no-best', best: null, trace: null };
   const trace = (profile.attempts || []).find((attempt) => attempt.id === best.attemptId);
-  if (!trace?.text || !hasInput(trace) || trace.status !== 'complete' || conditionKey(trace.conditions) !== key) {
+  if (!trace?.text || !hasInput(trace) || trace.status !== 'complete' || !comparableKind(trace.kind) || conditionKey(trace.conditions) !== key) {
     return { available: false, reason: 'no-trace', best, trace: null };
   }
   return { available: true, reason: null, best, trace };

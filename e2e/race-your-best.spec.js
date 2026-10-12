@@ -171,6 +171,43 @@ test('a race at other conditions leaves the drill and retest on the baseline’s
   await expect(page.locator('#condition-line')).toContainText('25 words');
 });
 
+// Custom text is never a best, so it has no ghost to race: no offer on its run card or in the palette. A race
+// is a session of its own, so starting one closes the custom editor, and the custom text waits behind Custom.
+test('custom text is never raced, and a race closes the custom editor', async ({ page }) => {
+  const custom = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect(page.locator('#race-best')).toBeVisible();
+
+  await openView(page, 'Practice');
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(custom);
+  await page.locator('#custom-use').click();
+  await typeInto(page, custom);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#race-best')).toBeHidden();
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('race');
+  await expect(page.locator('#palette-list')).not.toContainText('race your best');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#palette')).toBeHidden();
+
+  // Run again keeps the custom text; the editor opened over it closes when a race of the words best starts.
+  await page.locator('#run-again').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await page.locator('#mode-custom').click();
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await openView(page, 'Progress');
+  await page.locator('#progress-race-start').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'ghost-race');
+  await expect(page.locator('#custom-options')).toBeHidden();
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#condition-line')).toContainText('10 words');
+  expect(await passageText(page)).not.toBe(custom);
+});
+
 test('an unavailable notice stacks above the history Undo instead of covering it', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
