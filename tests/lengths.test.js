@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LENGTHS, isPresetLength, isValidLength, normalizeLengthPreferences, parseCustomLength } from '../src/lengths.js';
-import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, conditionKey, createAttempt, makePassage, selectPassage, timedWordSupply } from '../src/typing.js';
+import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, conditionKey, createAttempt, makePassage, selectPassage, timedCharacterSupply } from '../src/typing.js';
 import { MAX_TRACES, TRACE_BUDGET, retainTraces } from '../src/insights.js';
+import { wordListIds } from '../src/words.js';
 
 // The conditions object exactly as app.js builds it for a time or word test.
 const shape = (mode, length) => ({
@@ -107,22 +108,57 @@ test('custom lengths are remembered, and broken values fall back to the defaults
   assert.deepEqual(normalizeLengthPreferences({ duration: '30', count: null }), { duration: 30, count: 25, customDuration: null, customCount: null });
 });
 
-test('presets keep the same 1,600-word timed passage; long custom times get enough words for 300 wpm', () => {
-  for (const seconds of [0, 15, 30, 45, 60, 120, 320]) assert.equal(timedWordSupply(seconds), 1600, String(seconds));
-  assert.equal(timedWordSupply(321), 1605);
-  assert.equal(timedWordSupply(600), 3000);
-  // Same random draws, same text: nothing changes for a preset.
-  assert.equal(makePassage('time', 0, false, seeded(), '200', false, 120), makePassage('time', 0, false, seeded(), '200'));
-  const long = makePassage('time', 0, false, seeded(), '200', false, 600);
-  assert.equal(long.split(' ').length, 3000);
-  // 300 wpm for ten minutes is 3,000 five-character words.
-  assert.ok(long.length >= 300 * 5 * 10, `${long.length} characters`);
-  assert.equal(selectPassage({ mode: 'time', duration: 600, random: seeded() }).text.split(' ').length, 3000);
+test('presets keep master’s 1,600-word timed passages byte for byte; longer times are topped up to the supply', () => {
+  assert.equal(timedCharacterSupply(0), 0);
+  assert.equal(timedCharacterSupply(120), 3000);
+  assert.equal(timedCharacterSupply(600), 15000);
+  // The text ids master gives makePassage('time', 0, punctuation, seeded(), list, numbers) for every list and setting.
+  const master = {
+    '200:plain': 'generated-1vlvygv', '200:punctuation': 'generated-j880b5', '200:plain+numbers': 'generated-15iwpdi', '200:punctuation+numbers': 'generated-w8q3hy',
+    '1k:plain': 'generated-12z5wah', '1k:punctuation': 'generated-uwen6z', '1k:plain+numbers': 'generated-remgnk', '1k:punctuation+numbers': 'generated-1jk9ia8',
+    '5k:plain': 'generated-1d07ywh', '5k:punctuation': 'generated-13rcxbz', '5k:plain+numbers': 'generated-8v94bw', '5k:punctuation+numbers': 'generated-cok5m2',
+    '10k:plain': 'generated-1429i8l', '10k:punctuation': 'generated-h937hb', '10k:plain+numbers': 'generated-18l0oza', '10k:punctuation+numbers': 'generated-1d353dq',
+  };
+  for (const [key, id] of Object.entries(master)) {
+    const [list, setting] = key.split(':');
+    for (const seconds of [0, ...LENGTHS.time.presets]) {
+      const passage = selectPassage({ mode: 'time', duration: seconds, punctuation: setting.startsWith('punctuation'), numbers: setting.endsWith('+numbers'), wordList: list, random: seeded() });
+      assert.equal(passage.id, id, `${key} at ${seconds} s`);
+      assert.equal(passage.text.split(' ').length, 1600);
+    }
+  }
+  // Ten minutes on the shortest list with numbers on: 1,600 words are not enough, so more are drawn after them,
+  // the same ones for the same seed, until the finished text holds 15,000 characters and little more.
+  const long = makePassage('time', 0, false, seeded(), '200', true, 600);
+  assert.equal(long, makePassage('time', 0, false, seeded(), '200', true, 600));
+  assert.ok(long.startsWith(makePassage('time', 0, false, seeded(), '200', true)));
+  assert.ok(long.length >= 15000 && long.length < 15000 * 1.02, `${long.length} characters`);
+  assert.ok(long.split(' ').slice(1600).some((word) => /^\d+$/.test(word)));
   assert.equal(selectPassage({ mode: 'words', count: 500, random: seeded() }).text.split(' ').length, 500);
-  // Numbers ride on the same supply: a long custom time with numbers on keeps every word slot.
-  const numbered = selectPassage({ mode: 'time', duration: 600, numbers: true, random: seeded() }).text.split(' ');
-  assert.equal(numbered.length, 3000);
-  assert.ok(numbered.some((word) => /^\d+$/.test(word)));
+});
+
+// 300 wpm is 300 five-character words a minute: 25 characters for every second on the clock.
+const supplyFor = (seconds) => (seconds * 300 * 5) / 60;
+
+test('every timed passage holds enough text for 300 wpm until the clock runs out, with numbers and punctuation', () => {
+  const short = [];
+  let combo = 0;
+  for (const list of wordListIds) for (const numbers of [false, true]) for (const punctuation of [false, true]) {
+    combo += 1;
+    // Every allowed duration, each on its own seed, then many seeds at 320 s and 600 s, where the 200 list
+    // with numbers on used to run a couple of hundred characters short.
+    const cases = [];
+    for (let seconds = LENGTHS.time.min; seconds <= LENGTHS.time.max; seconds += 1) cases.push([seconds, seconds * 16 + combo]);
+    for (let seed = 1; seed <= 40; seed += 1) cases.push([320, seed], [LENGTHS.time.max, seed]);
+    for (const [seconds, seed] of cases) {
+      const text = makePassage('time', 0, punctuation, seeded(seed), list, numbers, seconds);
+      if (text.length < supplyFor(seconds)) short.push(`${list} ${punctuation ? 'punctuation' : 'plain'}${numbers ? '+numbers' : ''} ${seconds} s, seed ${seed}: ${text.length} of ${supplyFor(seconds)}`);
+    }
+    // The app's own path passes the duration through to the same passage.
+    const { text } = selectPassage({ mode: 'time', duration: LENGTHS.time.max, punctuation, numbers, wordList: list, random: seeded(combo) });
+    if (text.length < supplyFor(LENGTHS.time.max)) short.push(`selectPassage ${list} ${punctuation ? 'punctuation' : 'plain'}${numbers ? '+numbers' : ''}: ${text.length}`);
+  }
+  assert.equal(short.length, 0, `${short.length} passages run out before the clock, e.g.\n${short.slice(0, 8).join('\n')}`);
 });
 
 // A finished trace as the app stores it: every keystroke an event, one error in 33 corrected.

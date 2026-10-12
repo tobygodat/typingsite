@@ -53,8 +53,8 @@ function punctuate(words) {
 
 // Roughly 1 word in 8 becomes a 1–4 digit number, drawn from the same random source so a
 // seeded passage stays reproducible. A passage that drew none still gets one, so short
-// tests with numbers on always contain a number.
-function numberize(words, random) {
+// tests with numbers on always contain a number (words added to a passage skip that rule).
+function numberize(words, random, atLeastOne = true) {
   const number = () => {
     const digits = 1 + Math.floor(random() * 4);
     const low = digits === 1 ? 0 : 10 ** (digits - 1);
@@ -66,22 +66,37 @@ function numberize(words, random) {
     drawn = true;
     return number();
   });
-  if (!drawn && result.length) result[Math.floor(random() * result.length)] = number();
+  if (atLeastOne && !drawn && result.length) result[Math.floor(random() * result.length)] = number();
   return result;
 }
 
-// 1,600 words keeps even a 300 WPM typist supplied for the 120 s preset. A custom time longer than
-// 320 s gets five words a second, which still covers 300 WPM on the shortest list (4.2 letters a word).
-export function timedWordSupply(seconds = 0) {
-  return Math.max(1600, Math.ceil((Number(seconds) || 0) * 5));
+// A timed passage holds enough text for a 300 WPM typist until the clock runs out: 300 five-character
+// words a minute, or 25 characters a second.
+export function timedCharacterSupply(seconds = 0) {
+  return Math.ceil(((Number(seconds) || 0) * 300 * 5) / 60);
 }
 
 export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST, numbers = false, seconds = 0) {
   if (mode === 'quote') return quoteCorpus[Math.floor(random() * quoteCorpus.length)].text;
   const bank = wordList(list);
-  let words = Array.from({ length: mode === 'time' ? timedWordSupply(seconds) : count }, () => bank[Math.floor(random() * bank.length)]);
+  const draw = () => bank[Math.floor(random() * bank.length)];
+  const finish = (all) => (punctuation ? punctuate(all) : all).join(' ');
+  // Every timed test starts from 1,600 words: at least 3,199 characters, more than 120 s at 300 WPM needs,
+  // so a preset passage is never topped up and stays exactly what it was.
+  let words = Array.from({ length: mode === 'time' ? 1600 : count }, draw);
   if (numbers) words = numberize(words, random);
-  return (punctuation ? punctuate(words) : words).join(' ');
+  let text = finish(words);
+  // Numbers are often shorter than the words they replace, so the supply is measured on the finished text
+  // and a longer time is topped up until it holds enough. Each round adds about the words the shortfall
+  // needs at the passage's own average length, and draws them after all the others, so a seed still gives
+  // one passage.
+  const supply = mode === 'time' ? timedCharacterSupply(seconds) : 0;
+  while (text.length < supply) {
+    const extra = Array.from({ length: Math.ceil(((supply - text.length) * words.length) / text.length) }, draw);
+    words = words.concat(numbers ? numberize(extra, random, false) : extra);
+    text = finish(words);
+  }
+  return text;
 }
 
 export function textId(text) {
