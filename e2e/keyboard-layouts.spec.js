@@ -285,6 +285,45 @@ test('a saved profile from before layouts reads as QWERTY and keeps its best', a
   await expect(page.locator('#best')).toHaveText('Best · 72 wpm');
 });
 
+test('custom text keeps master’s custom key on any layout, and a layout change keeps the custom passage', async ({ page, supabase }) => {
+  const user = supabase.addUser('custom-layout@stilltype.test');
+  const text = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openSettings(page);
+  await page.locator('#layout-select').selectOption('dvorak');
+  await page.keyboard.press('Escape');
+
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await expect(page.locator('#condition-line')).not.toContainText('dvorak');
+  await expect(page.locator('#best')).toHaveText('Not counted');
+
+  // Like the word list, the layout keeps a custom passage rather than dropping back to a generated one.
+  await openSettings(page);
+  await page.locator('#layout-select').selectOption('colemak');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#condition-line')).toContainText('custom text');
+  expect(await passageText(page)).toBe(text);
+
+  await typeInto(page, text);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-delta')).toContainText('not counted toward your best');
+  await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1);
+  const saved = supabase.profileFor(user.email);
+  const [run] = saved.runs;
+  expect(run.kind).toBe('custom');
+  // The custom key names no layout, so it is the same key master writes, and nothing became a best.
+  expect(run.conditions.layout).toBe('qwerty');
+  expect(conditionKey(run.conditions)).not.toContain('layout-');
+  expect(conditionKey(run.conditions)).toBe(conditionKey({ ...run.conditions, layout: undefined }));
+  expect(run.patterns).toBeUndefined();
+  expect(saved.bests).toEqual({});
+});
+
 test('screenshots: Dvorak with the finger map, settings, and a result', async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   for (const theme of ['dark', 'light']) {
