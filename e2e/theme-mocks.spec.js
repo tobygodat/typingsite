@@ -9,7 +9,7 @@ const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/th
 async function pickTheme(page, theme) {
   await page.mouse.move(5, 5);
   await page.mouse.move(40, 40);
-  await page.locator('.preferences summary').click();
+  await page.locator('.preferences > summary').click();
   await page.locator('#theme-select').selectOption(theme);
   await page.keyboard.press('Escape');
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
