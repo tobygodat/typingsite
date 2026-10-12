@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, wordHistory } from '../src/typing.js';
-import { MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
+import { MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, filterRuns, measuredKind, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 test('missed and slowest words come from first tries and per-word speed', () => {
   const text = 'the cat sat on mat';
@@ -328,4 +328,16 @@ test('missed-word practice is not comparable, so it never pushes practice runs o
   // The two uncounted kinds share one budget of the newest 50.
   assert.equal(kept.filter((r) => !comparableKind(r.kind)).length, MAX_NON_COMPARABLE_RUNS);
   assert.equal(kept.find((r) => r.kind === 'missed').id, 'w10');
+});
+
+test('only tests, retests and daily runs are measured; a drill is comparable for retention but never measured', () => {
+  for (const kind of ['test', 'retest', 'daily']) assert.equal(measuredKind(kind), true, kind);
+  for (const kind of ['drill', 'missed', 'custom']) assert.equal(measuredKind(kind), false, kind);
+  // comparableKind only splits retention budgets, so a drill's synthetic text still counts there.
+  assert.equal(comparableKind('drill'), true);
+  // Recurring targets read the same measured kinds: a drill's target-heavy patterns never become evidence.
+  const drills = Array.from({ length: 3 }, (_, i) => run(`d${i}`, { kind: 'drill', target: 'th' }));
+  assert.deepEqual(recurringTargets(drills, [], conditions), []);
+  const measured = ['test', 'retest', 'daily'].map((kind, i) => run(`m${i}`, { kind }));
+  assert.deepEqual(recurringTargets(measured, [], conditions).map((p) => [p.pair, p.runs]), [['th', 3]]);
 });

@@ -33,7 +33,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { comparableKind, dailyPassage, filterRuns, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { comparableKind, dailyPassage, filterRuns, measuredKind, missedAndSlowWords, practiceWordsPassage, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 
 const MAX_STORED_ATTEMPTS = 24;
@@ -952,10 +952,11 @@ function renderCard(completed) {
 
 // Offer the words this run tripped on or was slowest through as their own uncounted run. The
 // slowest are one timing each, so they show their speed beside the run's median, not a weakness.
-// Only a comparable run is mined for words: custom text and word practice itself (any non-comparable
-// kind) offer none, as they keep no best. Run again repeats a word-practice passage.
+// Only a measured run (test, retest or daily) is mined for words: a drill's text is synthetic and
+// target-heavy, and custom text and word practice itself keep no best. Run again repeats a
+// word-practice passage.
 function renderPracticeWords(completed) {
-  const mined = completed.status === 'complete' && comparableKind(completed.kind);
+  const mined = completed.status === 'complete' && measuredKind(completed.kind);
   const { missed, slow, timedCount, medianWpm } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
   const words = [...missed, ...slow.map((item) => item.word)];
   const button = $('practice-words');
@@ -975,6 +976,11 @@ function renderPracticeWords(completed) {
   const text = practiceWordsPassage(words);
   button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
   button.onclick = () => {
+    // The run whose words are practised is the baseline for the fresh retest offered afterward, as a
+    // finished practice or daily run is. A retest doesn't set it on finishing, so set it here; its
+    // drill context is done with, so the next comparison records no drill.
+    baselineAttempt = completed;
+    trainingContext = null;
     wordsPassage = { id: `missed-${textId(text)}`, text, fresh: false, words };
     resetSession('missed', { focus: true });
   };

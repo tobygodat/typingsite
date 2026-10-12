@@ -10,6 +10,12 @@ export const NON_COMPARABLE_KINDS = new Set(['custom', 'missed']);
 export const MAX_NON_COMPARABLE_RUNS = 50;
 export const comparableKind = (kind) => !NON_COMPARABLE_KINDS.has(kind);
 
+// Run kinds that measure typing on ordinary text at the run's own conditions: practice tests, retests and daily
+// runs. Only these are mined for recurring patterns or for missed words to practise. Narrower than comparableKind,
+// which only splits retention budgets and so includes drills: their synthetic, target-heavy text is never measured.
+export const MEASURED_KINDS = new Set(['test', 'retest', 'daily']);
+export const measuredKind = (kind) => MEASURED_KINDS.has(kind);
+
 export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
   const record = {
@@ -69,7 +75,7 @@ export function weeklyChange(runs, key, date = new Date()) {
 
 export function recurringTargets(runs, loops, compatibleConditions) {
   const key = conditionKey(compatibleConditions);
-  const eligible = runs.filter((r) => validRun(r) && ['test', 'retest', 'daily'].includes(r.kind)
+  const eligible = runs.filter((r) => validRun(r) && measuredKind(r.kind)
     && (r.kind !== 'daily' || r.fresh !== false)
     && conditionKey(r.conditions) === key).slice(-MAX_PATTERN_RUNS);
   const pairs = new Map();
