@@ -21,6 +21,9 @@ const MIRRORED = [
   'white-space', 'overflow-wrap', 'word-break', 'line-break', 'hyphens',
 ];
 
+const VERTICAL = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown']);
+const AT_CARET = new Set(['Backspace', 'Delete', 'Enter', 'Home', 'ArrowLeft', 'ArrowRight']);
+
 export function drawCaret(input) {
   const wrap = input.parentElement;
   const layer = document.createElement('div');
@@ -36,6 +39,35 @@ export function drawCaret(input) {
   input.after(layer);
   wrap.dataset.caret = 'drawn';
   let focused = document.activeElement === input;
+  // Where a wrapped line breaks, one offset is both the end of a line and the start of the next. The
+  // browser shows its caret on one or the other by what moved it there, and a textarea doesn't say
+  // which, so this follows the same moves: End (or Cmd+Right) keeps it at the end of the line, and
+  // so does typing, which keeps it just after what was typed (a space typed at the start of a line
+  // joins the spaces ending the line before); Up, Down, Page Up and Page Down take the side nearest
+  // the x they set out from; a click or tap takes the line it hit; deleting, Home, Left and Right
+  // put it at the start of the next line.
+  let move = { side: 'start' };
+  // The side a move settled on, kept while the caret stays at that offset (so scrolling never flips it).
+  let settled = null;
+  let lastX = 0;
+
+  function moved(next) {
+    move = next;
+    settled = null;
+  }
+
+  function sideFor(at, end, start, top) {
+    if (settled?.at === at) return settled.side;
+    let side = 'start';
+    if (move.side) side = move.side;
+    else if ('x' in move) side = Math.abs(end.x - move.x) < Math.abs(start.x - move.x) ? 'end' : 'start';
+    else if ('y' in move) {
+      const off = (spot) => Math.abs(top + spot.y + spot.height / 2 - move.y);
+      side = off(end) < off(start) ? 'end' : 'start';
+    }
+    settled = { at, side };
+    return side;
+  }
 
   function hide() {
     bar.hidden = true;
@@ -61,29 +93,78 @@ export function drawCaret(input) {
     layer.style.height = `${input.clientHeight}px`;
 
     // The text up to the caret, then the rest of it in a marker, so the line breaks fall where the
-    // field's do; a zero-width space stands in when the caret is at the very end.
+    // field's do. Two places can show the caret: the start of the text after it (the marker) and the
+    // end of the text before it on its own line. On an empty line only a zero-width space can stand
+    // in for the start; after other text nothing is added, since a stand-in after a space hung past a
+    // full line would wrap to a line the field doesn't have.
     const value = input.value;
+    const lineStart = at === 0 || value[at - 1] === '\n';
+    const lineEnd = at === value.length || value[at] === '\n';
     mirror.textContent = value.slice(0, at);
-    marker.textContent = value.slice(at) || '​';
-    mirror.append(marker);
-    const letter = marker.getClientRects()[0] || marker.getBoundingClientRect();
+    let start = null;
+    let end = null;
+    if (lineStart || !lineEnd) {
+      marker.textContent = (lineEnd ? '\u200B' : '') + value.slice(at);
+      mirror.append(marker);
+      start = marker.getClientRects()[0] || marker.getBoundingClientRect();
+    }
+    if (!lineStart) {
+      const range = document.createRange();
+      range.setStart(mirror.firstChild, value.lastIndexOf('\n', at - 1) + 1);
+      range.setEnd(mirror.firstChild, at);
+      const rects = range.getClientRects();
+      const last = rects[rects.length - 1];
+      if (last) end = { left: last.right, top: last.top, height: last.height };
+    }
     const origin = mirror.getBoundingClientRect();
-    const x = letter.left - origin.left - input.clientLeft - input.scrollLeft;
-    const y = letter.top - origin.top - input.clientTop - input.scrollTop;
-    const height = letter.height;
+    const place = (rect) => rect && ({
+      x: rect.left - origin.left - input.clientLeft - input.scrollLeft,
+      y: rect.top - origin.top - input.clientTop - input.scrollTop,
+      height: rect.height,
+    });
+    start = place(start);
+    end = place(end);
     // The writing never stays in the page beyond the field itself.
     mirror.textContent = '';
+    if (!start && !end) {
+      hide();
+      return;
+    }
+    let spot = start || end;
+    if (start && end && Math.abs(start.y - end.y) > start.height / 2) {
+      spot = sideFor(at, end, start, field.top + input.clientTop) === 'end' ? end : start;
+    }
 
-    bar.style.height = `${height}px`;
-    bar.style.transform = `translate(${x}px, ${y}px)`;
+    // Kept inside the field, so all 2px show at the start of a line and after a space hung past its end.
+    const x = Math.min(Math.max(spot.x, 1), input.clientWidth - 1);
+    lastX = x;
+    bar.style.height = `${spot.height}px`;
+    bar.style.transform = `translate(${x}px, ${spot.y}px)`;
     bar.hidden = false;
   }
 
   input.addEventListener('focus', () => { focused = true; update(); });
   input.addEventListener('blur', () => { focused = false; hide(); });
-  for (const type of ['input', 'select', 'scroll', 'compositionupdate', 'compositionend']) input.addEventListener(type, update);
-  // Arrow keys, clicks and drags move the selection without an input event.
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'End' || (event.metaKey && event.key === 'ArrowRight')) moved({ side: 'end' });
+    else if (VERTICAL.has(event.key)) {
+      // Measured now, before the key moves it (the last selectionchange may not have run yet): the
+      // x the browser keeps to from line to line.
+      if (!('x' in move)) update();
+      moved({ x: 'x' in move ? move.x : lastX });
+    }
+    else if (event.key.length === 1 || AT_CARET.has(event.key)) moved({ side: 'start' });
+  });
+  input.addEventListener('pointerdown', (event) => moved({ y: event.clientY }));
+  input.addEventListener('input', (event) => {
+    moved({ side: event.inputType?.startsWith('insert') ? 'end' : 'start' });
+    update();
+  });
+  for (const type of ['select', 'scroll', 'compositionupdate', 'compositionend']) input.addEventListener(type, update);
+  // Arrow keys, clicks and drags move the selection without an input event; a click can also keep
+  // the offset and change only the line it is shown on.
   document.addEventListener('selectionchange', () => { if (focused) update(); });
+  input.addEventListener('pointerup', () => { if (focused) update(); });
   // A new window width or text size wraps the writing again; a late font changes letter widths.
   if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (focused) update(); }).observe(input);
   document.fonts?.addEventListener?.('loadingdone', () => { if (focused) update(); });

@@ -679,14 +679,34 @@ const caretBox = (page) => page.locator('.compose-caret').evaluate((node) => {
   return { x: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom };
 });
 
-// The drawn caret stands at one edge of a character, as tall as its letters, within a few pixels.
+// The drawn caret stands at one edge of a character, as tall as its letters, within a few pixels,
+// and never past the field's edges (a space hung past the end of a line is wider than the field).
 async function expectCaretAt(page, index, edge) {
   await expect.poll(async () => {
     const want = await charRect(page, index);
     const got = await caretBox(page);
-    return Math.max(Math.abs(got.x - want[edge]), Math.abs(got.top - want.top), Math.abs(got.bottom - want.bottom));
+    const [left, right] = await page.locator('#compose-input').evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      return [box.left + node.clientLeft, box.left + node.clientLeft + node.clientWidth];
+    });
+    const x = Math.min(Math.max(want[edge], left + 1), right - 1);
+    return Math.max(Math.abs(got.x - x), Math.abs(got.top - want.top), Math.abs(got.bottom - want.bottom));
   }, { message: `caret at the ${edge} of character ${index}` }).toBeLessThanOrEqual(3);
 }
+
+// How much of the drawn caret the field's clip leaves on screen: all 2px of it, at its full height.
+async function expectWholeCaret(page) {
+  await expect.poll(() => page.locator('.compose-caret').evaluate((node) => {
+    const bar = node.getBoundingClientRect();
+    const clip = node.parentElement.getBoundingClientRect();
+    const width = Math.min(bar.right, clip.right) - Math.max(bar.left, clip.left);
+    const height = Math.min(bar.bottom, clip.bottom) - Math.max(bar.top, clip.top);
+    return { width: Math.round(Math.max(0, width) * 10) / 10, height: Math.round(Math.max(0, height) - bar.height) };
+  }), { message: 'the whole caret is in view' }).toEqual({ width: 2, height: 0 });
+}
+
+// Where the field wraps a line: a character on a lower line than the one before it.
+const wrapsBefore = async (page, index) => (await charRect(page, index)).top > (await charRect(page, index - 1)).top + 1;
 
 const caretMotion = (page) => page.locator('.compose-caret').evaluate((node) => ({
   animations: node.getAnimations().length,
@@ -725,6 +745,7 @@ test.describe('without caret-animation', () => {
     expect(Math.abs(start.x - field.left)).toBeLessThanOrEqual(3);
     expect(start.top).toBeGreaterThanOrEqual(field.top);
     expect(start.bottom).toBeLessThanOrEqual(field.top + field.line);
+    await expectWholeCaret(page);
     expect(await caretMotion(page)).toEqual({ animations: 0, animation: 'none', transition: 'none' });
     await input.evaluate((node) => node.blur());
     await expect(caret).toBeHidden();
@@ -801,9 +822,117 @@ test.describe('without caret-animation', () => {
     await expect(input).toHaveValue('');
     await expect(input).toBeFocused();
     await expect(caret).toBeVisible();
+    // The next prompt may take another line, so this is measured from the field, not the page.
     const again = await caretBox(page);
-    expect(Math.abs(again.x - start.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(again.top - start.top)).toBeLessThanOrEqual(1);
+    const moved = await input.evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return { left: rect.left + node.clientLeft + parseFloat(style.paddingLeft), top: rect.top + node.clientTop + parseFloat(style.paddingTop) };
+    });
+    expect(Math.abs((again.x - moved.left) - (start.x - field.left))).toBeLessThanOrEqual(1);
+    expect(Math.abs((again.top - moved.top) - (start.top - field.top))).toBeLessThanOrEqual(1);
+    await expectWholeCaret(page);
+  });
+
+  test('a space typed at the end of a full last line keeps the caret on that line, in view', async ({ page }) => {
+    await startPausedClock(page);
+    await openCompose(page);
+    const input = page.locator('#compose-input');
+    // Two lines and a little, then a word that fills the third line to within one narrow letter.
+    await typePaced(page, [...'The kitchen was quiet, so I read by the window until the light came up over the roofs and the street began to fill. Later '], 60);
+    const overflows = () => input.evaluate((node) => node.scrollHeight > node.clientHeight);
+    for (const letter of 'mi') {
+      while (!(await overflows())) await typePaced(page, [letter], 60);
+      await typePaced(page, ['\b'], 60);
+    }
+    expect(await overflows()).toBe(false);
+    const last = (await input.inputValue()).length - 1;
+    const line = await charRect(page, last);
+    const right = await input.evaluate((node) => node.getBoundingClientRect().left + node.clientLeft + node.clientWidth);
+    await expectCaretAt(page, last, 'right');
+
+    // Spaces after it hang past the edge: the field neither wraps nor scrolls, and the caret stays
+    // on that line, whole, as far right as the field goes.
+    for (let index = 0; index < 3; index += 1) {
+      await typePaced(page, [' '], 60);
+      expect(await input.evaluate((node) => node.scrollTop)).toBe(0);
+      await expect(page.locator('.compose-caret')).toBeVisible();
+      await expect.poll(async () => Math.abs((await caretBox(page)).top - line.top)).toBeLessThanOrEqual(3);
+      expect((await caretBox(page)).x).toBeGreaterThanOrEqual(Math.min(line.right, right - 1) - 1);
+      await expectWholeCaret(page);
+    }
+    expect(Math.abs((await caretBox(page)).x - (right - 1))).toBeLessThanOrEqual(1);
+  });
+
+  test('at a wrapped line the caret shows on the line the key or click left it on', async ({ page }) => {
+    await startPausedClock(page);
+    await openCompose(page);
+    const input = page.locator('#compose-input');
+    const at = () => input.evaluate((node) => node.selectionStart);
+    // Thirteen words run onto a second line; a long word after them goes whole to the third.
+    const words = 'word '.repeat(13);
+    await typePaced(page, [...words, 'm'], 60);
+    while (!(await wrapsBefore(page, words.length))) await typePaced(page, ['m'], 60);
+    const third = words.length;
+
+    // End on the first line stops at its last space, which is also where the second line starts:
+    // the caret shows at the end of the first.
+    await page.keyboard.press('Control+Home');
+    await page.keyboard.press('End');
+    const second = await at();
+    expect(await wrapsBefore(page, second)).toBe(true);
+    expect(second).toBeLessThan(third - 5);
+    await expectCaretAt(page, second - 1, 'right');
+    await page.keyboard.press('Home');
+    await expect.poll(at).toBe(0);
+    await expectCaretAt(page, 0, 'left');
+    await page.keyboard.press('End');
+    await expectCaretAt(page, second - 1, 'right');
+
+    // Right and back again, or Home, keep it at the start of the next line.
+    await page.keyboard.press('ArrowRight');
+    await expectCaretAt(page, second, 'right');
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(at).toBe(second);
+    await expectCaretAt(page, second, 'left');
+
+    // A click past the end of the first line puts it there; a click at the start of the second, there.
+    const first = await charRect(page, second - 1);
+    const next = await charRect(page, second);
+    const field = await input.boundingBox();
+    await page.mouse.click(field.x + field.width - 2, (first.top + first.bottom) / 2);
+    await expect.poll(at).toBe(second);
+    await expectCaretAt(page, second - 1, 'right');
+    await page.mouse.click(next.left + 1, (next.top + next.bottom) / 2);
+    await expect.poll(at).toBe(second);
+    await expectCaretAt(page, second, 'left');
+
+    // Down from the end of the first line lands past the end of the short second one, and stays on
+    // it; Up from the start of the third keeps to the start of the second.
+    await page.keyboard.press('Control+Home');
+    await page.keyboard.press('End');
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(at).toBe(third);
+    await expectCaretAt(page, third - 1, 'right');
+    await page.keyboard.press('Control+End');
+    await page.keyboard.press('Home');
+    await expect.poll(at).toBe(third);
+    await expectCaretAt(page, third, 'left');
+    await page.keyboard.press('ArrowUp');
+    await expect.poll(at).toBe(second);
+    await expectCaretAt(page, second, 'left');
+
+    // Typing there writes at the start of the second line, where the caret is shown, and deleting
+    // brings it back there. A space typed there joins the spaces ending the first line, and the
+    // caret follows it there, as the browser shows it.
+    await typePaced(page, ['a'], 60);
+    await expectCaretAt(page, second, 'right');
+    await typePaced(page, ['\b'], 60);
+    await expect.poll(at).toBe(second);
+    await expectCaretAt(page, second, 'left');
+    await typePaced(page, [' '], 60);
+    expect(await wrapsBefore(page, second + 1)).toBe(true);
+    await expectCaretAt(page, second, 'right');
   });
 
   test('drawn caret screenshots, dark and light', async ({ page }, testInfo) => {
