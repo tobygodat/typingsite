@@ -16,6 +16,20 @@ declare
   keys text := 'The quick bx' || chr(8) || 'rown fox jumps over the lazy dog.';
   relaxed_keys text := 'The quick brown fox jumps over the lazy dog!';
   trace jsonb;
+  timed_trace jsonb := jsonb_build_object('v', 1, 'k', 'the quick', 't', (select jsonb_agg(200) from generate_series(1, 9)), 'e', 15000);
+  -- Conditions exactly as the browser sends them (src/app.js conditions() plus textId and sourceKind).
+  words_conditions jsonb := '{"mode":"words","duration":null,"count":10,"punctuation":false,"numbers":false,"quoteLength":null,
+    "difficulty":null,"wordList":"200","inputClass":"physical-keyboard","correctionPolicy":"mandatory","language":"en",
+    "corpus":"original-en-v5","metricVersion":"stilltype-metrics-v1","textId":"generated-1x2y3z","sourceKind":"test"}';
+  timed_conditions jsonb := '{"mode":"time","duration":15,"count":null,"punctuation":true,"numbers":true,"quoteLength":null,
+    "difficulty":null,"wordList":"1k","inputClass":"touch","correctionPolicy":"relaxed","language":"en",
+    "corpus":"original-en-v5","metricVersion":"stilltype-metrics-v1","textId":"generated-abc","sourceKind":"retest"}';
+  quote_conditions jsonb := '{"mode":"quote","duration":null,"count":null,"punctuation":false,"numbers":false,"quoteLength":"medium",
+    "difficulty":"any","wordList":null,"inputClass":"physical-keyboard","correctionPolicy":"mandatory","language":"en",
+    "corpus":"original-en-v5","metricVersion":"stilltype-metrics-v1","textId":"medium-gentle-01","sourceKind":"test"}';
+  daily_conditions jsonb := '{"mode":"quote","duration":null,"count":null,"punctuation":true,"numbers":false,"quoteLength":"medium",
+    "difficulty":"any","wordList":null,"inputClass":"physical-keyboard","correctionPolicy":"relaxed","language":"en",
+    "corpus":"original-en-v5","metricVersion":"stilltype-metrics-v1","textId":"daily-generated-9q8w7e","sourceKind":"daily"}';
   friend_lin uuid;
   friend_kim uuid;
   friend_nobody uuid;
@@ -119,21 +133,48 @@ begin
   end loop;
   denied := false;
   begin perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada',
-    'passage', long_passage, 'duration', 15, 'trace', jsonb_build_object('v', 1, 'k', 'the', 't', '[0,200,200]'::jsonb, 'e', 14000)));
-  exception when others then denied := true; end;
+    'passage', long_passage, 'duration', 15, 'conditions', timed_conditions, 'trace', jsonb_build_object('v', 1, 'k', 'the', 't', '[0,200,200]'::jsonb, 'e', 14000)));
+  exception when others then denied := sqlerrm = 'That run is outside the challenge limits.'; end;
   if not denied then raise exception 'A timed run off its clock was sent.'; end if;
   denied := false;
   begin perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada',
     'passage', passage, 'trace', trace || jsonb_build_object('pad', repeat('x', 70000))));
   exception when others then denied := true; end;
   if not denied then raise exception 'An oversized trace was sent.'; end if;
+  -- Conditions are the sender's browser data, shown to the recipient and copied into their run: only the
+  -- keys the app sends, each with a value it can set up again. Each of these runs is otherwise sendable.
+  foreach view in array array[
+    '{"corpus": {}}', '{"mode": "words", "wordList": 200}', '{"mode": "words", "colour": "red"}', '[]', '"words"',
+    '{"mode": "words", "count": "10"}', '{"mode": "words", "count": 0}', '{"mode": "words", "count": 2.5}',
+    '{"mode": "words", "punctuation": "yes"}', '{"mode": "words", "numbers": null}', '{"mode": "sprint"}',
+    '{"mode": "quote", "quoteLength": "epic"}', '{"mode": "quote", "difficulty": 3}', '{"mode": "words", "wordList": "50k"}',
+    '{"mode": "words", "inputClass": "voice"}', '{"mode": "words", "correctionPolicy": ["relaxed"]}', '{"mode": "words", "language": "fr"}',
+    '{"mode": "words", "corpus": "1k · you lost"}', '{"mode": "words", "metricVersion": "stilltype-metrics-v2"}',
+    '{"mode": "words", "textId": 5}', '{"mode": "words", "textId": ""}', '{"mode": "words", "sourceKind": "drill"}',
+    '{"mode": "time", "duration": 15}', '{"mode": "time"}', '{"mode": "words", "duration": 30}'
+  ]::jsonb[] loop
+    denied := false;
+    begin perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada',
+      'passage', passage, 'conditions', view, 'trace', trace));
+    exception when others then denied := sqlerrm = 'Invalid challenge conditions.'; end;
+    if not denied then raise exception 'Sent conditions the app can''t set up again: %', view; end if;
+  end loop;
+  -- A timed run says so, on the challenge's own clock.
+  foreach view in array array['{}', '{"mode": "words"}', '{"mode": "time"}', '{"mode": "time", "duration": 30}', '{"mode": "time", "duration": "15"}']::jsonb[] loop
+    denied := false;
+    begin perform public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada',
+      'passage', long_passage, 'duration', 15, 'conditions', view, 'trace', timed_trace));
+    exception when others then denied := sqlerrm = 'Invalid challenge conditions.'; end;
+    if not denied then raise exception 'Sent a 15-second run under conditions %', view; end if;
+  end loop;
+  if exists(select 1 from race_private.challenges) then raise exception 'A refused send stored a challenge.'; end if;
 
   sent := public.challenge_action('send', null, jsonb_build_object('requestId', request, 'friendId', friend_lin, 'displayName', 'Ada',
-    'passage', passage, 'conditions', '{"mode":"words","count":10,"correctionPolicy":"mandatory"}'::jsonb, 'trace', trace));
+    'passage', passage, 'conditions', words_conditions, 'trace', trace));
   challenge := (sent->>'id')::uuid;
   -- A retry with the same request id (after a lost reply) gets the same challenge back: one row.
   view := public.challenge_action('send', null, jsonb_build_object('requestId', request, 'friendId', friend_lin, 'displayName', 'Ada',
-    'passage', passage, 'conditions', '{"mode":"words","count":10,"correctionPolicy":"mandatory"}'::jsonb, 'trace', trace));
+    'passage', passage, 'conditions', words_conditions, 'trace', trace));
   if view <> sent or (select count(*) from race_private.challenges where sender_id = ada) <> 1 then
     raise exception 'A repeated send was stored twice: %', view;
   end if;
@@ -143,6 +184,7 @@ begin
   exception when others then denied := true; end;
   if not denied then raise exception 'A send without a request id was accepted.'; end if;
   if sent->>'role' <> 'sent' or sent->>'name' <> 'Lin from work' or sent->>'status' <> 'open' or sent->'sender'->>'wpm' <> '78'
+    or sent->'conditions' <> words_conditions
     or sent ? 'passage' or sent ? 'trace' or sent::text like '%' || lin || '%' or sent::text like '%' || ada || '%' then
     raise exception 'Sent challenge view is wrong or exposes identities: %', sent;
   end if;
@@ -241,12 +283,17 @@ begin
   if sent->>'status' <> 'open' or (select recipient_id from race_private.challenges where id = (sent->>'id')::uuid) is not null then
     raise exception 'An unknown email was not handled like a typed invitation.';
   end if;
+  -- A quote run and a daily run are sent with the conditions the browser gives them.
+  foreach view in array array[quote_conditions, daily_conditions] loop
+    sent := public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_nobody, 'displayName', 'Ada',
+      'passage', passage, 'conditions', view, 'trace', trace));
+    if sent->'conditions' <> view then raise exception 'Browser conditions were not stored as sent: %', sent; end if;
+  end loop;
 
   -- Timed runs keep their clock: the finish line is the time, not the passage.
   sent := public.challenge_action('send', null, jsonb_build_object('requestId', gen_random_uuid(), 'friendId', friend_lin, 'displayName', 'Ada', 'passage', long_passage,
-    'duration', 15, 'conditions', '{"mode":"time","duration":15,"correctionPolicy":"relaxed"}'::jsonb,
-    'trace', jsonb_build_object('v', 1, 'k', 'the quick', 't', (select jsonb_agg(200) from generate_series(1, 9)), 'e', 15000)));
-  if sent->>'duration' <> '15' or sent->'sender'->>'wpm' <> '7' then raise exception 'Timed challenge misread: %', sent; end if;
+    'duration', 15, 'conditions', timed_conditions, 'trace', timed_trace));
+  if sent->>'duration' <> '15' or sent->'sender'->>'wpm' <> '7' or sent->'conditions' <> timed_conditions then raise exception 'Timed challenge misread: %', sent; end if;
   perform set_config('request.jwt.claim.sub', lin::text, true);
   view := public.challenge_action('finish', (sent->>'id')::uuid, jsonb_build_object('trace',
     jsonb_build_object('v', 1, 'k', 'the quick brown', 't', (select jsonb_agg(200) from generate_series(1, 15)), 'e', 15000)));
@@ -335,6 +382,6 @@ begin
     end if;
   end loop;
 
-  raise notice 'Ghost challenge privacy, RLS, trace scoring, timed runs, expiry, cleanup, quota, retry and inbox list checks passed.';
+  raise notice 'Ghost challenge privacy, RLS, trace scoring, conditions, timed runs, expiry, cleanup, quota, retry and inbox list checks passed.';
 end $smoke$;
 rollback;

@@ -32,7 +32,7 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listFriends, listRaceInvites } from './multiplayer.js';
-import { CHALLENGE_DAYS, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
+import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { comparableKind, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
@@ -1514,19 +1514,24 @@ function ghostPassage() {
 async function startGhostRace(id) {
   if (onlineRace?.liveRoomId) { showAccountToast('Leave your online race before starting a ghost race.'); return; }
   let view;
+  let conditions;
   try {
     view = await getChallenge(session, id);
     if (view.role !== 'received' || view.status !== 'open' || typeof view.passage !== 'string' || !validTrace(view.trace)) {
       throw new Error(view.status === 'done' ? 'You have already raced this run.'
         : view.status === 'expired' ? 'This ghost race has expired.' : 'That ghost race is unavailable.');
     }
+    // The conditions come from the sender's browser and are copied into this run, so they are never
+    // taken on trust: a run this app can't set up the same way would not be a fair race.
+    conditions = challengeConditions(view.conditions, view.duration ?? null);
+    if (!conditions) throw new Error('This ghost race was recorded with settings this app can’t reproduce, so it can’t be raced fairly.');
   } catch (error) {
     showAccountToast(error.message);
     return;
   }
   if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
   if (race.attempt?.status === 'running') markRaceInterrupted();
-  ghostRace = { id, name: view.name, passage: view.passage, conditions: view.conditions || {}, duration: view.duration || null,
+  ghostRace = { id, name: view.name, passage: view.passage, conditions, duration: view.duration ?? null,
     points: ghostPoints(view.trace, view.passage.length), sender: view.sender, result: null, run: null, state: 'ready' };
   // As with the daily: someone else's text ends any drill-and-retest cycle in progress.
   baselineAttempt = null;
@@ -1578,26 +1583,37 @@ function renderGhostResult() {
 async function submitGhostRun() {
   const ghost = ghostRace;
   if (!ghost?.trace || !session) return;
+  // The run this request finishes. The service records it either way, and its result reaches the inbox.
+  const { run, trace } = ghost;
   ghost.state = 'sending';
   renderGhostResult();
+  let view = null;
+  let failure = null;
   try {
-    const view = await finishChallenge(session, ghost.id, ghost.trace);
-    // The service's stored result is the one that counts. A retry after a lost reply gets this run's
-    // back; a finish already sent from another try or device stands instead of this one.
-    const local = scoreTrace(ghost.trace, ghost.passage, { relaxed: ghost.run.conditions.correctionPolicy === 'relaxed' });
-    ghost.result = view.result;
-    ghost.sender = view.sender || ghost.sender;
-    ghost.state = sameScore(view.result, local) ? 'sent' : 'kept';
+    view = await finishChallenge(session, ghost.id, trace);
     const id = `challenge:${ghost.id}`;
     inbox?.notify({ id, kind: 'challenge-result', challengeId: ghost.id, closed: false, until: null, completedAt: view.completedAt, text: resultText(view) });
     inbox?.deliver(id);
   } catch (error) {
-    ghost.state = 'failed';
-    ghost.error = error;
+    failure = error;
   }
-  if (ghostRace !== ghost) return;
+  // The panel shows the reply only while the results on screen are still this run's: once a later run
+  // has finished (after Run again, a restart or another race), its result never gains this panel.
+  if (ghostRace !== ghost || ghost.run !== run || lastCompleted !== run) return;
+  if (failure) {
+    ghost.state = 'failed';
+    ghost.error = failure;
+  } else {
+    // The service's stored result is the one that counts. A retry after a lost reply gets this run's
+    // back; a finish already sent from another try or device stands instead of this one.
+    const local = scoreTrace(trace, ghost.passage, { relaxed: run.conditions.correctionPolicy === 'relaxed' });
+    ghost.result = view.result;
+    ghost.sender = view.sender || ghost.sender;
+    ghost.state = sameScore(view.result, local) ? 'sent' : 'kept';
+  }
   renderGhostResult();
-  announce(`${$('ghost-result-heading').textContent} ${$('ghost-result-status').textContent}`);
+  // Spoken only on the results view: a run started meanwhile is not interrupted.
+  if (document.body.dataset.view === 'results') announce(`${$('ghost-result-heading').textContent} ${$('ghost-result-status').textContent}`);
 }
 
 let offerFriends = [];

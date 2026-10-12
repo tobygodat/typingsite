@@ -184,11 +184,36 @@ begin
     if jsonb_typeof(p_data->'passage') is distinct from 'string' or length(v_passage) not between 10 and 4000 or v_passage ~ '[^ -~]' then
       raise exception 'This run’s text can’t be sent as a challenge.';
     end if;
-    v_conditions := coalesce(p_data->'conditions', '{}'::jsonb);
-    if jsonb_typeof(v_conditions) <> 'object' or octet_length(v_conditions::text) > 2000 then raise exception 'Invalid challenge conditions.'; end if;
     if coalesce(jsonb_typeof(p_data->'duration'), 'null') <> 'null' then
       if p_data->>'duration' not in ('15', '30', '60', '120') then raise exception 'Invalid challenge length.'; end if;
       v_duration := (p_data->>'duration')::integer;
+    end if;
+    -- The test conditions are shown to the recipient and copied into their run, so only the keys the app
+    -- sends, each with a value it can set up again (challengeConditions in src/ghost-race.js mirrors this).
+    -- Every score here is metric v1. A timed run says so, on the challenge's own clock; any other has none.
+    v_conditions := coalesce(p_data->'conditions', '{}'::jsonb);
+    if jsonb_typeof(v_conditions) <> 'object' or octet_length(v_conditions::text) > 2000
+      or exists(select 1 from jsonb_each(v_conditions) c(key, value) where not coalesce(case c.key
+        when 'mode' then c.value in ('"time"', '"words"', '"quote"')
+        when 'duration' then jsonb_typeof(c.value) in ('number', 'null')
+        when 'count' then c.value = 'null' or c.value::text ~ '^([1-9][0-9]{0,2}|1000)$'
+        when 'punctuation' then jsonb_typeof(c.value) = 'boolean'
+        when 'numbers' then jsonb_typeof(c.value) = 'boolean'
+        when 'quoteLength' then c.value in ('"any"', '"short"', '"medium"', '"long"', 'null')
+        when 'difficulty' then c.value in ('"any"', '"gentle"', '"steady"', '"precise"', 'null')
+        when 'wordList' then c.value in ('"200"', '"1k"', '"5k"', '"10k"', 'null')
+        when 'inputClass' then c.value in ('"physical-keyboard"', '"touch"')
+        when 'correctionPolicy' then c.value in ('"mandatory"', '"relaxed"')
+        when 'language' then c.value = '"en"'
+        when 'corpus' then jsonb_typeof(c.value) = 'string' and (c.value #>> '{}') ~ '^[a-z0-9]+(-[a-z0-9]+)*-v[0-9]{1,3}$'
+          and length(c.value #>> '{}') <= 40
+        when 'metricVersion' then c.value = '"stilltype-metrics-v1"'
+        when 'textId' then jsonb_typeof(c.value) = 'string' and (c.value #>> '{}') ~ '^[ -~]{1,120}$'
+        when 'sourceKind' then c.value in ('"test"', '"retest"', '"daily"')
+        else false end, false))
+      or (coalesce(v_conditions->>'mode', '') = 'time') <> (v_duration is not null)
+      or coalesce(v_conditions->'duration', 'null') <> coalesce(to_jsonb(v_duration), 'null') then
+      raise exception 'Invalid challenge conditions.';
     end if;
     v_score := race_private.trace_score(v_passage, p_data->'trace', v_duration, v_conditions->>'correctionPolicy' is not distinct from 'relaxed');
     if v_duration is null and not (v_score->>'finished')::boolean then raise exception 'Finish the run before sending it.'; end if;

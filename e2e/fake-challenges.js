@@ -1,9 +1,10 @@
 // Ghost challenges for the fake Supabase, shared by independent browser contexts. It mirrors the
 // rules of race_private.challenge_action (friend-only recipients, seven-day expiry, one reply, scores
-// recomputed from each trace, a repeated send or finish answered with what is stored);
+// recomputed from each trace, only conditions the app can reproduce, a repeated send or finish answered
+// with what is stored); `seed` skips the send checks, so a test can start from a row the service refuses;
 // supabase/tests/ghost-challenges.sql checks the real thing.
 import { randomUUID } from 'node:crypto';
-import { scoreTrace, validTrace } from '../src/ghost-race.js';
+import { challengeConditions, scoreTrace, validTrace } from '../src/ghost-race.js';
 
 const DAY = 86400000;
 // Rows listed beyond every open challenge and every result from the last week.
@@ -14,8 +15,10 @@ export class FakeChallenges {
   constructor(auth) {
     this.auth = auth;
     this.rows = new Map();
-    // With `held` set to an array, a send's reply waits until a test calls the release pushed onto it.
+    // With `held` set to an array, the reply to a write named in `holding` (a send, unless a test names
+    // others) waits until a test calls the release pushed onto it. The write itself is already done.
     this.held = null;
+    this.holding = new Set(['send']);
     // Each action named here once more does its write and then loses its reply, as when a connection
     // drops after the database commits.
     this.lost = new Set();
@@ -67,7 +70,7 @@ export class FakeChallenges {
     // A write's reply, unless the test has it lost or held.
     const answer = (json) => {
       if (this.lost.delete(action)) return drop();
-      if (action === 'send' && this.held) return new Promise((release) => this.held.push(release)).then(() => reply(200, json));
+      if (this.held && this.holding.has(action)) return new Promise((release) => this.held.push(release)).then(() => reply(200, json));
       return reply(200, json);
     };
     if (!caller) return reply(401, { message: 'permission denied for function challenge_action' });
@@ -84,8 +87,10 @@ export class FakeChallenges {
         if (typeof data.passage !== 'string' || data.passage.length < 10 || data.passage.length > 4000 || /[^ -~]/.test(data.passage)) {
           return failure('This run’s text can’t be sent as a challenge.');
         }
+        const conditions = challengeConditions(data.conditions === undefined ? {} : data.conditions, data.duration ?? null);
+        if (!conditions) return failure('Invalid challenge conditions.');
         const row = this.seed(caller, recipient, { name, label: friend.name, passage: data.passage,
-          conditions: data.conditions || {}, duration: data.duration || null, trace: data.trace, requestId: data.requestId });
+          conditions, duration: data.duration ?? null, trace: data.trace, requestId: data.requestId });
         return answer(this.view(row, caller));
       }
       if (action === 'list') return reply(200, this.list(caller));

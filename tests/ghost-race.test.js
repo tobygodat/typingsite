@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { challengeOutcome, challengePayload, challengeText, challengeTextId, encodeTrace, ghostPoints, offerText, outcomeRule,
+import { challengeConditions, challengeOutcome, challengePayload, challengeText, challengeTextId, encodeTrace, ghostPoints, offerText, outcomeRule,
   resultText, sameScore, scoreTrace, sendChallenge, traceAttempt, traceBytes, traceTrouble, validTrace, MAX_TRACE_KEYS, SENDABLE_KINDS } from '../src/ghost-race.js';
-import { comparable, conditionKey, createAttempt, quoteCorpus, replayAttempt, summarizePatterns, textId } from '../src/typing.js';
+import { comparable, conditionKey, createAttempt, quoteCorpus, replayAttempt, summarizePatterns, textId, CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { runRecord, trendRun } from '../src/insights.js';
 
 const passage = 'The quick brown fox jumps over the lazy dog.';
@@ -131,6 +131,45 @@ test('only finished practice, retest and daily runs can be sent', () => {
   const slip = passage.slice(0, -1) + '!';
   assert.equal(challengePayload(run(slip)), null);
   assert.ok(challengePayload(run(slip, { conditions: { mode: 'words', count: 9, correctionPolicy: 'relaxed' } })));
+});
+
+// What conditions() in src/app.js gives a 10-word practice run.
+const browserConditions = { mode: 'words', duration: null, count: 10, punctuation: false, numbers: false, quoteLength: null, difficulty: null,
+  wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'mandatory', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
+test('a challenge carries only conditions this app can set up again, and a received one is checked, not trusted', () => {
+  // What the browser sends is accepted as it is, for word, timed, quote and daily runs.
+  const words = challengePayload(run(passage, { conditions: browserConditions }));
+  assert.deepEqual(words.conditions, { ...browserConditions, textId: 'quote-fox', sourceKind: 'test' });
+  assert.deepEqual(challengeConditions(words.conditions, words.duration), words.conditions);
+  const timed = { ...browserConditions, mode: 'time', duration: 30, count: null, inputClass: 'touch', correctionPolicy: 'relaxed', textId: 'generated-abc', sourceKind: 'retest' };
+  assert.deepEqual(challengeConditions(timed, 30), timed);
+  const quote = { ...browserConditions, mode: 'quote', count: null, quoteLength: 'medium', difficulty: 'any', wordList: null, textId: 'medium-gentle-01', sourceKind: 'test' };
+  assert.deepEqual(challengeConditions(quote, null), quote);
+  const daily = { ...quote, punctuation: true, correctionPolicy: 'relaxed', textId: 'daily-generated-9q8w7e', sourceKind: 'daily' };
+  assert.deepEqual(challengeConditions(daily, null), daily);
+  // No key is required: a row with fewer keys is raced with what it says.
+  assert.deepEqual(challengeConditions({}, null), {});
+  // A wrong type, a key this app doesn't know or a value it never sends is refused, never thrown on.
+  for (const bad of [{ corpus: {} }, { mode: 'words', wordList: 200 }, { mode: 'words', colour: 'red' }, { mode: 'words', count: '10' },
+    { mode: 'words', count: 2.5 }, { mode: 'words', punctuation: 'yes' }, { mode: 'words', inputClass: 'voice' }, { mode: 'sprint' },
+    { mode: 'words', metricVersion: 'stilltype-metrics-v2' }, { mode: 'words', sourceKind: 'drill' }, { mode: 'words', corpus: '1k · you lost' },
+    { mode: 'words', textId: 5 }, JSON.parse('{"__proto__": {"mode": "words"}}'), null, [], 'words']) {
+    assert.equal(challengeConditions(bad, null), null, JSON.stringify(bad));
+  }
+  // A timed run says so, on the challenge's own clock; any other run has none.
+  assert.equal(challengeConditions({ mode: 'time', duration: 30 }, null), null);
+  assert.equal(challengeConditions({ mode: 'time', duration: 30 }, 15), null);
+  assert.equal(challengeConditions({ mode: 'time' }, 30), null);
+  assert.equal(challengeConditions({ mode: 'words' }, 30), null);
+  assert.equal(challengeConditions({ mode: 'time', duration: 45 }, 45), null);
+  // A run whose own conditions the service would refuse is never offered.
+  assert.equal(challengePayload(run(passage, { conditions: { ...browserConditions, punctuation: null } })), null);
+  // The inbox claims no shape for conditions it can't read.
+  const received = { role: 'received', name: 'Ada', duration: null, conditions: { corpus: {} },
+    sender: { wpm: 72, elapsedMs: 44000, correct: 130 }, result: { wpm: 65, elapsedMs: 41200, correct: 125 } };
+  assert.equal(offerText(received), 'Ada challenged you to beat their run.');
+  assert.equal(resultText(received), 'Ada’s run: you finished first · you 65 wpm, Ada 72 wpm.');
 });
 
 test('a passage race is led by the earlier finish, a timed race by the text kept, and both are worded once', () => {

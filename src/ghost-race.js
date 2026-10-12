@@ -3,7 +3,8 @@
 // stores and scores (supabase/migrations/20261009100000_ghost_challenges.sql). The ghost is
 // presentational; a challenge run is its own kind and never a best, a trend or training evidence.
 import { request, freshSession, loadSession, AuthError } from './account.js';
-import { quoteCorpus, replayAttempt, textId } from './typing.js';
+import { METRIC_VERSION, quoteCorpus, replayAttempt, textId } from './typing.js';
+import { wordListIds } from './words.js';
 import { comparableKind } from './insights.js';
 
 export const TRACE_VERSION = 1;
@@ -120,6 +121,43 @@ export function ghostPoints(trace, textLength) {
 
 export const challengeDuration = (conditions = {}) => conditions.mode === 'time' && TIMED.includes(conditions.duration) ? conditions.duration : null;
 
+// Every test condition a challenge may carry, with the values this app sends and can set up again. The
+// service refuses any other (supabase/migrations/20261009100000_ghost_challenges.sql); a received row is
+// still checked here, since its conditions come from another browser and are copied into this one's run.
+const oneOf = (...values) => (value) => values.includes(value);
+const orNull = (rule) => (value) => value === null || rule(value);
+const isBoolean = (value) => typeof value === 'boolean';
+const CONDITION_RULES = {
+  mode: oneOf('time', 'words', 'quote'),
+  // Checked against the challenge's own clock in challengeConditions.
+  duration: orNull((value) => TIMED.includes(value)),
+  count: orNull((value) => Number.isInteger(value) && value >= 1 && value <= 1000),
+  punctuation: isBoolean,
+  numbers: isBoolean,
+  quoteLength: orNull(oneOf('any', 'short', 'medium', 'long')),
+  difficulty: orNull(oneOf('any', 'gentle', 'steady', 'precise')),
+  wordList: orNull(oneOf(...wordListIds)),
+  inputClass: oneOf('physical-keyboard', 'touch'),
+  correctionPolicy: oneOf('mandatory', 'relaxed'),
+  language: oneOf('en'),
+  corpus: (value) => typeof value === 'string' && value.length <= 40 && /^[a-z0-9]+(-[a-z0-9]+)*-v\d{1,3}$/.test(value),
+  // Every score here is metric v1, so a run claiming another metric can't be compared.
+  metricVersion: oneOf(METRIC_VERSION),
+  textId: (value) => typeof value === 'string' && /^[ -~]{1,120}$/.test(value),
+  sourceKind: oneOf(...SENDABLE_KINDS),
+};
+
+// A challenge's conditions as this app can race them, or null when they can't be: a key it doesn't know
+// or a value it doesn't send means the run can't be set up the same way, so it is refused, not guessed.
+// A timed run says so, on the challenge's own clock (`duration`); any other run has no clock.
+export function challengeConditions(conditions, duration = null) {
+  if (!conditions || typeof conditions !== 'object' || Array.isArray(conditions)) return null;
+  if (duration !== null && !TIMED.includes(duration)) return null;
+  const known = Object.entries(conditions).every(([key, value]) => Object.hasOwn(CONDITION_RULES, key) && CONDITION_RULES[key](value));
+  if (!known || (conditions.mode === 'time') !== (duration !== null) || (conditions.duration ?? null) !== duration) return null;
+  return { ...conditions };
+}
+
 function furthestTyped(attempt) {
   let typed = 0;
   let furthest = 0;
@@ -151,17 +189,14 @@ export function challengePayload(attempt) {
   const passage = challengeText(attempt);
   if (passage.length < 10 || passage.length > MAX_CHALLENGE_TEXT || !/^[ -~]+$/.test(passage)) return null;
   const duration = challengeDuration(attempt.conditions);
+  // Only conditions the service accepts and a friend's app can set up again.
+  const conditions = challengeConditions({ ...attempt.conditions, textId: attempt.textId, sourceKind: attempt.kind }, duration);
+  if (!conditions) return null;
   const relaxed = attempt.conditions?.correctionPolicy === 'relaxed';
   const score = scoreTrace(trace, passage, { relaxed });
   if (!duration && !score.finished) return null;
   if (duration && trace.e !== duration * 1000) return null;
-  return {
-    passage,
-    duration,
-    conditions: { ...attempt.conditions, textId: attempt.textId, sourceKind: attempt.kind },
-    trace,
-    score,
-  };
+  return { passage, duration, conditions, trace, score };
 }
 
 export function describeShape(conditions = {}, duration = null) {
@@ -202,22 +237,28 @@ export function outcomeRule({ duration, conditions }) {
   return conditions?.correctionPolicy === 'relaxed' ? 'More correct characters per minute leads.' : 'The earlier finish leads.';
 }
 
+// "25-word " for a listed challenge, or nothing when its conditions can't be read: no shape is claimed then.
+function shapeOf(challenge) {
+  const conditions = challengeConditions(challenge.conditions, challenge.duration ?? null);
+  return conditions ? `${describeShape(conditions, challenge.duration)} ` : '';
+}
+
 export function offerText(challenge) {
-  return `${challenge.name} challenged you to beat their ${describeShape(challenge.conditions, challenge.duration)} run.`;
+  return `${challenge.name} challenged you to beat their ${shapeOf(challenge)}run.`;
 }
 
 // "Lin raced your 25-word run: Lin finished first · you 72 wpm, Lin 65 wpm."
 export function resultText(challenge) {
   const leader = challengeOutcome(challenge);
   if (!leader) return '';
-  const shape = describeShape(challenge.conditions, challenge.duration);
+  const shape = shapeOf(challenge);
   const self = challenge.role === 'received' ? 'recipient' : 'sender';
   const them = challenge.name;
   const mine = self === 'recipient' ? challenge.result.wpm : challenge.sender.wpm;
   const theirs = self === 'recipient' ? challenge.sender.wpm : challenge.result.wpm;
   const verb = leader === 'tie' ? '' : leadVerb(challenge, leader);
   const who = leader === 'tie' ? 'a tie' : leader === self ? `you ${verb}` : `${them} ${verb}`;
-  const subject = self === 'recipient' ? `${them}’s ${shape} run` : `${them} raced your ${shape} run`;
+  const subject = self === 'recipient' ? `${them}’s ${shape}run` : `${them} raced your ${shape}run`;
   return `${subject}: ${who} · you ${mine} wpm, ${them} ${theirs} wpm.`;
 }
 
