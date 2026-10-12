@@ -385,6 +385,32 @@ test('a friend change waiting behind a slow friend-list read holds up only the f
   await expect.poll(() => supabase.races.friendList(host.id)).toEqual([]);
 });
 
+test('a removal the service made but whose answer never came back still leaves the friend list as the service holds it', async ({ page, supabase }) => {
+  const host = supabase.addUser('host@stilltype.test');
+  await saveFriend(supabase, host, 'kim@stilltype.test');
+  await saveFriend(supabase, host, 'lin@stilltype.test');
+  await page.clock.install();
+  await openApp(page);
+  await signInWithEmail(page, 'host@stilltype.test');
+  await openView(page, 'Challenge');
+  const rows = page.locator('.online-friend-row');
+  await expect(rows).toHaveText([/kim@stilltype\.test/, /lin@stilltype\.test/]);
+  // Kim's removal reaches the service, which makes it, but its answer doesn't come back.
+  const releaseRemove = supabase.races.hold('unfriend');
+  await page.getByRole('button', { name: 'Remove kim from friends' }).click();
+  await arrived(supabase, 'unfriend');
+  expect(supabase.races.friendList(host.id).map((friend) => friend.name)).toEqual(['lin']);
+  await expect(rows).toHaveCount(2);
+  // After fifteen seconds the page gives up on that answer and reads the list again, still on Challenge.
+  await page.clock.fastForward(15000);
+  await expect(page.locator('#online-error')).toContainText('taking too long');
+  await expect(rows).toHaveText([/lin@stilltype\.test/]);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'compete');
+  // The late answer changes nothing.
+  releaseRemove();
+  await expect(rows).toHaveText([/lin@stilltype\.test/]);
+});
+
 test('a pressed race control keeps keyboard focus while its request is out, and the other race controls wait', async ({ page, supabase }, testInfo) => {
   const host = supabase.addUser('host@stilltype.test');
   const kim = supabase.addUser('kim@stilltype.test');

@@ -120,12 +120,12 @@ test('a removal made while a save is still out is sent after it, so the save’s
   assert.deepEqual(shown, [['kim', 'lin'], ['lin']]);
 });
 
-test('a failed save neither drops nor holds up the friend list read before or after it', async () => {
+test('a failed save holds up no read of the friend list, and a read already waiting behind it is the read that follows it', async () => {
   const { sent, send, names } = friendService();
   let shown = null;
-  const friends = queueFriendRequests((list) => { shown = list; });
+  const friends = queueFriendRequests((list) => { shown = list; }, { load: send('friends') });
   // A slow first read, then a background save that fails.
-  const reading = friends.reload(send('friends'));
+  const reading = friends.reload();
   const saving = friends.change(send('befriend lin'));
   await settle();
   sent[0].resolve(['kim']);
@@ -135,30 +135,36 @@ test('a failed save neither drops nor holds up the friend list read before or af
   sent[1].reject(new Error('offline'));
   await assert.rejects(saving, /offline/);
   assert.deepEqual(shown, ['kim']);
-  // A save that fails first leaves the read queued behind it to apply.
-  const failing = friends.change(send('befriend ada'));
-  const after = friends.reload(send('friends'));
+  // The save may still have been made, so the list is read again straight away.
   await settle();
-  sent[2].reject(new Error('offline'));
+  sent[2].resolve(['kim', 'lin']);
+  await settle();
+  assert.deepEqual(shown, ['kim', 'lin']);
+  // A save that fails with a read already queued behind it is followed by that read, not another.
+  const failing = friends.change(send('befriend ada'));
+  const after = friends.reload();
+  await settle();
+  sent[3].reject(new Error('offline'));
   await assert.rejects(failing, /offline/);
   await settle();
-  sent[3].resolve(['kim', 'lin']);
+  sent[4].resolve(['ada', 'kim', 'lin']);
   await after;
-  assert.deepEqual(shown, ['kim', 'lin']);
-  assert.deepEqual(names(), ['friends', 'befriend lin', 'befriend ada', 'friends']);
+  await settle();
+  assert.deepEqual(shown, ['ada', 'kim', 'lin']);
+  assert.deepEqual(names(), ['friends', 'befriend lin', 'friends', 'befriend ada', 'friends']);
 });
 
 test('friend-list reloads queued back to back go as one, and never ahead of a change', async () => {
   const { sent, send, names } = friendService();
   let shown = null;
-  const friends = queueFriendRequests((list) => { shown = list; });
-  const first = friends.reload(send('friends'));
-  const second = friends.reload(send('friends'));
-  const third = friends.reload(send('friends'));
+  const friends = queueFriendRequests((list) => { shown = list; }, { load: send('friends') });
+  const first = friends.reload();
+  const second = friends.reload();
+  const third = friends.reload();
   assert.equal(second, first);
   assert.equal(third, first);
   const removing = friends.change(send('unfriend kim'));
-  const last = friends.reload(send('friends'));
+  const last = friends.reload();
   assert.notEqual(last, first);
   await settle();
   sent[0].resolve(['kim', 'lin']);
@@ -177,9 +183,9 @@ test('friend-list reloads queued back to back go as one, and never ahead of a ch
 test('a friend-list request that never answers gives up after the limit, aborts its fetch, and lets the next one go', { timeout: 5000 }, async () => {
   const { sent, send, names } = friendService();
   const shown = [];
-  const friends = queueFriendRequests((list) => { shown.push(list); }, { limit: 20 });
+  const friends = queueFriendRequests((list) => { shown.push(list); }, { load: send('friends'), limit: 20 });
   // A list read stalls (the connection never answers), and a removal is queued behind it.
-  const stalled = friends.reload(send('friends'));
+  const stalled = friends.reload();
   const removing = friends.change(send('unfriend kim'));
   await assert.rejects(stalled, /taking too long/);
   assert.equal(sent[0].signal.aborted, true);
@@ -190,6 +196,54 @@ test('a friend-list request that never answers gives up after the limit, aborts 
   sent[1].resolve(['lin']);
   await removing;
   assert.deepEqual(shown, [['lin']]);
+});
+
+test('a change that gives up may still have been made, so the list is read before the change queued behind it', { timeout: 5000 }, async () => {
+  const { sent, send, names } = friendService();
+  const shown = [];
+  const friends = queueFriendRequests((list) => { shown.push(list); }, { load: send('friends'), limit: 20 });
+  // Kim's removal reaches the service, which makes it, but its answer never comes back; Lin is saved behind it.
+  const removing = friends.change(send('unfriend kim'));
+  const saving = friends.change(send('befriend lin'));
+  await assert.rejects(removing, /taking too long/);
+  await settle();
+  assert.deepEqual(names(), ['unfriend kim', 'friends']);
+  // The read shows what the service holds: Kim is gone. Only then does the save go.
+  sent[1].resolve(['ada']);
+  await settle();
+  assert.deepEqual(shown, [['ada']]);
+  assert.deepEqual(names(), ['unfriend kim', 'friends', 'befriend lin']);
+  sent[2].resolve(['ada', 'lin']);
+  await saving;
+  assert.deepEqual(shown, [['ada'], ['ada', 'lin']]);
+});
+
+test('a change that fails is followed by a read of the list, before the next change or straight away', async () => {
+  const { sent, send, names } = friendService();
+  const shown = [];
+  const friends = queueFriendRequests((list) => { shown.push(list); }, { load: send('friends') });
+  // Kim's removal fails with a save waiting: the list is read first.
+  const removing = friends.change(send('unfriend kim'));
+  const saving = friends.change(send('befriend lin'));
+  await settle();
+  sent[0].reject(new Error('offline'));
+  await assert.rejects(removing, /offline/);
+  await settle();
+  assert.deepEqual(names(), ['unfriend kim', 'friends']);
+  sent[1].resolve(['kim']);
+  await settle();
+  sent[2].resolve(['kim', 'lin']);
+  await saving;
+  // A removal fails with nothing waiting: the list is read at once.
+  const again = friends.change(send('unfriend kim'));
+  await settle();
+  sent[3].reject(new Error('offline'));
+  await assert.rejects(again, /offline/);
+  await settle();
+  assert.deepEqual(names(), ['unfriend kim', 'friends', 'befriend lin', 'unfriend kim', 'friends']);
+  sent[4].resolve(['lin']);
+  await settle();
+  assert.deepEqual(shown, [['kim'], ['kim', 'lin'], ['lin']]);
 });
 
 test('friend-list calls hand their abort signal to fetch', async () => {

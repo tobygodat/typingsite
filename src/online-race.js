@@ -52,7 +52,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   // The empty list's copy from index.html; a failed first read shows its error there until a read succeeds.
   const noFriends = $('online-friends-empty').textContent;
   // Every friend-list request goes through this queue, one at a time, and each reply is the list.
-  const friendRequests = multiplayer.queueFriendRequests((list) => { friends = list; friendsLoaded = true; renderFriends(); });
+  const friendRequests = multiplayer.queueFriendRequests((list) => { friends = list; friendsLoaded = true; renderFriends(); },
+    { load: (signal) => multiplayer.listFriends(getSession(), signal) });
   let befriended = false;
   const fx = createTypingFx($('online-stage').querySelector('.online-typing-wrap'), $('online-text-display'), { ensureCharacters: (index) => textView?.ensureForward(index) });
 
@@ -197,7 +198,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   }
   async function loadFriends() {
     if (!getSession()) return;
-    try { await friendRequests.reload((signal) => multiplayer.listFriends(getSession(), signal)); }
+    try { await friendRequests.reload(); }
     catch (failure) { if (!friendsLoaded) renderFriends(failure); }
   }
   function newRace() {

@@ -66,32 +66,50 @@ function sendWithin(send, limit) {
 }
 // This tab's friend-list requests (list, befriend, unfriend) never overlap: each is sent only once
 // the one before it has settled (answered, failed or given up), and every reply is the whole list,
-// applied as it lands. So the list shown is always the newest the service has given. A failed
-// request applies nothing and holds nothing up. A reload queued behind another that hasn't been sent
-// yet is that same reload.
-export function queueFriendRequests(apply, { limit = FRIEND_REQUEST_MS } = {}) {
+// applied as it lands. So the list shown is always the newest the service has given. A failed read
+// applies nothing and holds nothing up. A change that fails or gives up may still have been made (an
+// aborted fetch can't take back what the service already did), so the next request sent is a read
+// of the list from `load`, ahead of anything already waiting, and the list shown catches up with the
+// service. A reload queued behind another that hasn't been sent yet is that same reload.
+export function queueFriendRequests(apply, { load, limit = FRIEND_REQUEST_MS } = {}) {
   let last = Promise.resolve();
+  let waiting = 0;
   let waitingReload = null;
-  function queue(send) {
-    const applied = last.then(() => sendWithin(send, limit)).then((list) => { apply(list); return list; });
-    last = applied.catch(() => {});
+  let unsure = false; // a change failed or gave up, and no list has answered since
+  async function go(request, change) {
+    if (unsure && change) await go(load).catch(() => {});
+    try {
+      const list = await sendWithin(request, limit);
+      unsure = false;
+      apply(list);
+      return list;
+    } catch (failure) {
+      if (change) unsure = true;
+      throw failure;
+    }
+  }
+  function queue(request, change = false) {
+    waiting += 1;
+    const applied = last.then(() => { waiting -= 1; return go(request, change); });
+    last = applied.catch(() => { if (change && !waiting) requests.reload().catch(() => {}); });
     return applied;
   }
-  return {
-    reload(send) {
+  const requests = {
+    reload() {
       if (waitingReload) return waitingReload;
       const reload = queue((signal) => {
         if (waitingReload === reload) waitingReload = null;
-        return send(signal);
+        return load(signal);
       });
       waitingReload = reload;
       return reload;
     },
     change(send) {
       waitingReload = null;
-      return queue(send);
+      return queue(send, true);
     },
   };
+  return requests;
 }
 export const listRaceInvites = (session) => session ? action(session, 'invites') : Promise.resolve([]);
 export function joinRace(session, { roomId, inviteToken, displayName, guestToken }) {
