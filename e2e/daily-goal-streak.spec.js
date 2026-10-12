@@ -1,5 +1,5 @@
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
-import { test, expect, openApp, chooseWords, completePassage, openView, openSettings, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, chooseWords, completePassage, openView, openSettings, signInWithEmail, typeInto } from './fixtures.js';
 
 test('daily goal line and practice calendar render on Progress', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -184,5 +184,23 @@ test('drills alone count toward daily practice and the empty trend copy agrees',
   await expect(page.locator('#goal-line')).toHaveText(/^Today (<1|\d+) min · 1-day streak$/);
   await expect(page.locator('#progress-empty')).toBeVisible();
   await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');
-  await expect(page.locator('#progress-empty-copy')).toContainText('Drills and daily runs count toward your daily practice.');
+  await expect(page.locator('#progress-empty-copy')).toContainText('Drills, daily and custom runs count toward your daily practice.');
+});
+
+// Custom text is never compared, but it is real practice: its minutes count toward the goal and streak,
+// while it still adds no trend point.
+test('a custom text run counts toward daily practice but not the trend', async ({ page }) => {
+  const text = 'the quick brown fox jumps over the lazy dog';
+  await openApp(page);
+  await page.locator('#mode-custom').click();
+  await page.locator('#custom-text').fill(text);
+  await page.locator('#custom-use').click();
+  await typeInto(page, text);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await openView(page, 'Progress');
+  await expect(page.locator('#practice-goal')).toBeVisible();
+  await expect(page.locator('#goal-line')).toHaveText(/^Today (<1|\d+) min · 1-day streak$/);
+  await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '1');
+  await expect(page.locator('#progress-content')).toBeHidden();
+  await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');
 });

@@ -3,10 +3,16 @@ import { conditionKey, replayAttempt, summarizePatterns, textId } from './typing
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
 
+// Run kinds that are never compared, used as a baseline or mined for patterns (custom text). They keep no
+// trace or pattern evidence and are retained on their own small budget, so they can never push comparable
+// history out of the summary and pattern windows. Extend this set for any other kind like that.
+export const NON_COMPARABLE_KINDS = new Set(['custom']);
+export const MAX_NON_COMPARABLE_RUNS = 50;
+export const comparableKind = (kind) => !NON_COMPARABLE_KINDS.has(kind);
+
 export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
-  const evidence = summarizePatterns([attempt]);
-  return {
+  const record = {
     id: attempt.id, at, kind: attempt.kind, status: attempt.status,
     // The calendar day where the run happened, so a later reader in another zone keeps the same day.
     day: at ? dayKey(at) : null,
@@ -16,14 +22,28 @@ export function runRecord(attempt, at = attempt.at || null) {
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
     firstDailyAttempt: attempt.firstDailyAttempt,
-    // Keep counts and each run's measured median, rather than another keystroke log.
-    patterns: evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]),
   };
+  if (!comparableKind(attempt.kind)) return record;
+  // Keep counts and each run's measured median, rather than another keystroke log.
+  record.patterns = summarizePatterns([attempt]).pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
+  return record;
 }
 
+// The summaries retention keeps, each budget counted on its own: the newest 1,000 comparable runs and the
+// newest 50 of the other kinds. retainHistory archives the time of every run outside this set.
+function retainedSummaries(runs) {
+  const comparable = runs.filter((run) => comparableKind(run.kind));
+  const other = runs.filter((run) => !comparableKind(run.kind));
+  return new Set([...comparable.slice(-MAX_RUN_SUMMARIES), ...other.slice(-MAX_NON_COMPARABLE_RUNS)]);
+}
+
+// Comparable runs keep the newest 1,000 summaries, the newest 120 with pattern evidence; other kinds keep their
+// newest 50. Order stays chronological, and a profile with only comparable runs is retained exactly as before.
 export function retainRuns(runs) {
-  const kept = runs.slice(-MAX_RUN_SUMMARIES);
-  return kept.map((run, i) => i < kept.length - MAX_PATTERN_RUNS ? { ...run, patterns: [] } : run);
+  const kept = retainedSummaries(runs);
+  const withPatterns = new Set(runs.filter((run) => comparableKind(run.kind)).slice(-MAX_PATTERN_RUNS));
+  return runs.filter((run) => kept.has(run))
+    .map((run) => (comparableKind(run.kind) && !withPatterns.has(run) ? { ...run, patterns: [] } : run));
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
@@ -124,8 +144,11 @@ export function validPracticeDays(value) {
   return Object.fromEntries(Object.entries(value).filter(([key, ms]) => DAY.test(key) && Number.isFinite(ms) && ms > 0));
 }
 
+// Custom runs are real practice, so their time counts toward the goal like any other kind (it is a time total,
+// not a comparison), and a custom run that falls outside its own 50-run budget leaves its time here too.
 export function retainHistory(runs, practiceDays = {}) {
-  const days = addRunTime({ ...practiceDays }, runs.slice(0, Math.max(0, runs.length - MAX_RUN_SUMMARIES)));
+  const retained = retainedSummaries(runs);
+  const days = addRunTime({ ...practiceDays }, runs.filter((run) => !retained.has(run)));
   const kept = Object.keys(days).sort().slice(-MAX_PRACTICE_DAYS);
   return { runs: retainRuns(runs), practiceDays: Object.fromEntries(kept.map((key) => [key, Math.round(days[key])])) };
 }

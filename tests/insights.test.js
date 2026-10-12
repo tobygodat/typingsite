@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { completeAttempt, CORPUS_VERSION, conditionKey, createAttempt, quoteCorpus, selectPassage } from '../src/typing.js';
-import { dailyPassage, dayKey, filterRuns, goalMinutes, MAX_RUN_SUMMARIES, minutesByDay, practiceLevel, practiceStreak, recurringTargets, retainHistory, retainRuns, runDay, runRecord, trendRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage } from '../src/typing.js';
+import { MAX_NON_COMPARABLE_RUNS, dailyPassage, dayKey, filterRuns, goalMinutes, MAX_RUN_SUMMARIES, minutesByDay, practiceLevel, practiceStreak, recurringTargets, retainHistory, retainRuns, runDay, runRecord, trendRun, weeklyChange } from '../src/insights.js';
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
@@ -119,6 +119,22 @@ test('practice minutes outlive the run summaries that retention drops', () => {
   assert.deepEqual(retainHistory(kept.runs, kept.practiceDays), kept, 'retaining again moves nothing twice');
 });
 
+test('custom runs count as practice time, and their time outlives their own retention budget', () => {
+  const at = (back) => new Date(2026, 9, 8 - back, 12).toISOString();
+  // Ten older custom runs fall outside the 50-run custom budget; comparable runs fill exactly their own budget.
+  const custom = Array.from({ length: MAX_NON_COMPARABLE_RUNS + 10 }, (_, i) => run(`c${i}`, { kind: 'custom', patterns: undefined, at: at(i < 10 ? 3 : 1), elapsedMs: 60000 }));
+  const tests = Array.from({ length: MAX_RUN_SUMMARIES }, (_, i) => run(`t${i}`, { at: at(0), elapsedMs: 30000 }));
+  const runs = [...custom, ...tests];
+  const before = minutesByDay(runs);
+  assert.equal(before[dayKey(at(3))], 10, 'custom minutes count toward the day');
+  const kept = retainHistory(runs);
+  assert.equal(kept.runs.filter((r) => r.kind === 'custom').length, MAX_NON_COMPARABLE_RUNS);
+  assert.equal(kept.runs.filter((r) => r.kind === 'test').length, MAX_RUN_SUMMARIES, 'custom runs push no comparable run out');
+  assert.deepEqual(kept.practiceDays, { [dayKey(at(3))]: 600000 });
+  assert.deepEqual(minutesByDay(kept.runs, kept.practiceDays), before);
+  assert.deepEqual(retainHistory(kept.runs, kept.practiceDays), kept, 'retaining again moves nothing twice');
+});
+
 test('a run keeps the day it was practised on, whichever time zone reads it later', () => {
   const zone = process.env.TZ;
   try {
@@ -142,4 +158,53 @@ test('a run keeps the day it was practised on, whichever time zone reads it late
     if (zone === undefined) delete process.env.TZ;
     else process.env.TZ = zone;
   }
+});
+
+test('custom run records keep the score but no per-pair patterns', () => {
+  const typed = (kind) => {
+    const attempt = createAttempt({ id: kind, text: 'the then', kind, conditions });
+    [...'the then'].forEach((char, i) => attempt.events.push({ type: 'insert', text: char, position: i, accepted: true, offsetMs: i * 120 }));
+    return completeAttempt(attempt, { endedAt: 1000 });
+  };
+  const custom = runRecord(typed('custom'));
+  assert.equal('patterns' in custom, false);
+  assert.equal(custom.kind, 'custom');
+  assert.ok(custom.score.wpm > 0);
+  assert.ok(runRecord(typed('test')).patterns.length > 0);
+  // Retention never adds an empty pattern list back to a record that had none.
+  assert.equal('patterns' in retainRuns([custom, ...Array.from({ length: 130 }, (_, i) => run(String(i)))])[0], false);
+});
+
+test('custom runs keep their own budget and never displace practice history', () => {
+  const practice = Array.from({ length: 10 }, (_, i) => run(`p${i}`));
+  const custom = (count) => Array.from({ length: count }, (_, i) => run(`c${i}`, { kind: 'custom', patterns: undefined }));
+  // 130 custom runs after 10 practice runs: the practice runs are still inside the pattern window.
+  const afterSome = retainRuns([...practice, ...custom(130)]);
+  assert.deepEqual(afterSome.filter((r) => r.kind === 'test').map((r) => r.patterns.length), Array(10).fill(1));
+  // 1,100 custom runs evict no practice summary, and custom keeps only its newest 50.
+  const afterMany = retainRuns([...practice, ...custom(1100)]);
+  assert.equal(afterMany.filter((r) => r.kind === 'test').length, 10);
+  assert.equal(afterMany.filter((r) => r.kind === 'custom').length, MAX_NON_COMPARABLE_RUNS);
+  assert.equal(afterMany.at(-1).id, 'c1099');
+  assert.equal(afterMany.find((r) => r.kind === 'custom').id, 'c1050');
+  assert.equal(afterMany.some((r) => r.kind === 'custom' && 'patterns' in r && r.patterns !== undefined), false);
+  // Interleaved runs stay in the order they happened.
+  const mixed = Array.from({ length: 200 }, (_, i) => (i % 3 ? run(`m${i}`, { kind: 'custom', patterns: undefined }) : run(`m${i}`)));
+  const order = retainRuns(mixed).map((r) => Number(r.id.slice(1)));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+});
+
+test('a profile with only comparable runs is retained exactly as before', () => {
+  // The retention rule as it stood before custom text existed.
+  const previous = (runs) => {
+    const kept = runs.slice(-1000);
+    return kept.map((r, i) => (i < kept.length - 120 ? { ...r, patterns: [] } : r));
+  };
+  const kinds = ['test', 'retest', 'drill', 'daily'];
+  const legacy = Array.from({ length: 1100 }, (_, i) => run(String(i), { kind: kinds[i % kinds.length] }));
+  legacy[1050] = { ...legacy[1050], patterns: undefined };
+  legacy[500] = { ...legacy[500], patterns: undefined };
+  assert.equal(JSON.stringify(retainRuns(legacy)), JSON.stringify(previous(legacy)));
+  const short = legacy.slice(0, 40);
+  assert.equal(JSON.stringify(retainRuns(short)), JSON.stringify(previous(short)));
 });
