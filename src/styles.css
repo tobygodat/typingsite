@@ -1232,9 +1232,6 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 .key.target { color: var(--text); border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
 .key.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); transform: translateY(2px); }
 
-/* Still run: key presses show instantly while typing. */
-body[data-running="true"] .key { transition: none; }
-
 /* The finger map: a split keyboard, one column per finger, labelled under each column with a rule.
    Learned keys read in the text colour; the lesson's new keys get the full green edge. */
 .finger-map {
