@@ -1261,7 +1261,8 @@ function storeAttempt(completed) {
   return saved;
 }
 
-function finishPrimary(forcedElapsed = null) {
+// `replacing`: another session or view takes over at once, so a drill draws no retest passage to throw away.
+function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   if (!attempt || attempt.status !== 'running') return;
   // A pending accent mark isn't a keystroke; disabling the field commits it, and that is ignored. Nor can
   // the disabled field hear a held accent key let go.
@@ -1286,6 +1287,8 @@ function finishPrimary(forcedElapsed = null) {
 
   if (sessionKind === 'drill' && baselineAttempt) {
     if (trainingContext) trainingContext.drillCompleted = valid;
+    // Train already offers this retest: startDrill() rendered its actions.
+    if (replacing) return;
     announce(valid ? 'Drill complete. Retest ready.' : 'Drill interrupted. Retest ready.');
     startRetest();
     return;
@@ -1357,18 +1360,7 @@ function renderResults(completed, saved) {
     activeRecommendation = trainingRecommendation(completed.conditions);
     selectedTarget = activeRecommendation.target;
   }
-  $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
-  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
-  $('recommendation-meta').textContent = baselineAttempt
-    ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
-    : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
-  $('start-drill').disabled = !counted;
-  $('skip-to-retest').disabled = !counted || !baselineAttempt;
-  // Custom text is never mined for targets or kept as a baseline, so its results offer no drill or retest:
-  // the recommendation would come from other runs and the retest would measure a different text.
-  const compared = comparableKind(completed.kind);
-  for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = !compared;
-  renderEvidenceList(activeRecommendation.evidence);
+  renderRecommendation(counted, comparableKind(completed.kind));
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again' : 'Run again';
   renderTraining();
   renderDaily();
@@ -1376,6 +1368,25 @@ function renderResults(completed, saved) {
   announce(saved
     ? `${speed}, ${replay.score.accuracy}% accuracy.`
     : `${speed}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+}
+
+// Train's drill and retest actions, from the current recommendation and baseline. Runs after each result
+// and as each drill starts, so a drill left before its end still offers its retest even when its baseline
+// came from saved history (practiceTarget) and no result has been shown in this tab.
+// `compared` is false after a custom text result (any non-comparable kind): that text is never mined for
+// targets or kept as a baseline, so Train offers no drill or retest for it. A drill started later shows them again.
+function renderRecommendation(counted = true, compared = true) {
+  // After startDaily() there is no recommendation: show the general drill Start drill falls back to.
+  activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
+  $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
+  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
+  $('recommendation-meta').textContent = baselineAttempt
+    ? `About 1 min, then a fresh ${retestLength(baselineAttempt.conditions)} retest.`
+    : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
+  $('start-drill').disabled = !counted;
+  $('skip-to-retest').disabled = !counted || baselineAttempt?.status !== 'complete';
+  for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = !compared;
+  renderEvidenceList(activeRecommendation.evidence);
 }
 
 function renderEvidenceList(evidence) {
@@ -1454,11 +1465,14 @@ function renderComparison(before, after, saved) {
 }
 
 function startDrill() {
-  selectedTarget = activeRecommendation?.target || null;
+  // startDaily() drops the recommendation, so a stale Start drill falls back to a general drill.
+  activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
+  selectedTarget = activeRecommendation.target || null;
   const source = baselineAttempt?.conditions;
   if (source) restoreConditions(source);
   trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false };
   trainingContext.drill = { target: selectedTarget, duration: 60, wordList: prefs.wordList, textVersion: makeDrill(selectedTarget, prefs.wordList).textVersion };
+  renderRecommendation();
   resetSession('drill', { focus: true });
 }
 
@@ -1517,9 +1531,10 @@ function navigate(view) {
     switchView('practice');
     return;
   }
+  // Leaving mid-drill draws no retest passage to throw away; Train's retest button draws one when asked.
   if (attempt?.status === 'running' && view !== 'practice') {
     markInterrupted(NOTICES.leftSurface);
-    finishPrimary();
+    finishPrimary(null, { replacing: true });
   }
   if (race.attempt?.status === 'running' && view !== 'compete') markRaceInterrupted();
   switchView(view);
@@ -1802,11 +1817,13 @@ function todayPassage() {
 }
 
 function startDaily() {
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
   if (race.attempt?.status === 'running') markRaceInterrupted();
   baselineAttempt = null;
   trainingContext = null;
   activeRecommendation = null;
+  // The baseline is gone, so Train no longer offers the drill's retest.
+  renderRecommendation();
   resetSession('daily', { focus: true });
 }
 
