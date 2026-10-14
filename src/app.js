@@ -27,7 +27,7 @@ import {
   characterBreakdown,
   wordHistory,
 } from './typing.js';
-import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
+import { wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
@@ -36,36 +36,13 @@ import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { listRaceInvites } from './multiplayer.js';
-import { comparableKind, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { comparableKind, dailyChallengeId, dailyPassage, filterRuns, recurringTargets, runRecord, settleDailyFirsts, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
+import { CUSTOM_ORDERS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
-const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
-const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const defaultPreferences = {
-  mode: 'time',
-  duration: 30,
-  count: 25,
-  punctuation: false,
-  numbers: false,
-  quoteLength: 'medium',
-  difficulty: 'any',
-  wordList: DEFAULT_WORD_LIST,
-  fontSize: '28',
-  liveMetrics: false,
-  keyboard: false,
-  stopOnError: false,
-  focusMode: false,
-  theme: 'system',
-  customText: '',
-  customOrder: 'as-written',
-  paceCaret: 'off',
-  paceWpm: 80,
-};
-
-const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
 let customOpen = false;
 
 function customPassage() {
@@ -76,22 +53,6 @@ function customPassage() {
 
 const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
 
-const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
-const clampPace = (value) => Math.min(300, Math.max(10, Math.round(Number(value) || 80)));
-
-function emptyProfile() {
-  return {
-    version: 2,
-    profileId: uid(),
-    preferences: { ...defaultPreferences },
-    attempts: [],
-    runs: [],
-    loops: [],
-    seenTextIds: [],
-    bests: {},
-  };
-}
-
 let storageAvailable = true;
 // No session means guest mode: default settings, and nothing leaves this tab.
 let session = account.loadSession();
@@ -100,45 +61,42 @@ let syncTimer = 0;
 // otherwise a boot-time save (marking the first passage seen) would make a stale cache look newer.
 let cloudChecked = false;
 let unsynced = false;
-
-function validPreferences(value) {
-  if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
-  const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
-  value.customText = customTextProblem(customText) ? '' : customText;
-  if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
-  if (!PACE_MODES.includes(value.paceCaret)) value.paceCaret = 'off';
-  value.paceWpm = clampPace(value.paceWpm);
-  return value;
-}
-
-function normalizeProfile(parsed) {
-  if (parsed?.version !== 2) return emptyProfile();
-  const traces = Array.isArray(parsed.attempts) ? parsed.attempts : [];
-  const records = Array.isArray(parsed.runs) ? parsed.runs : traces.map((trace) => {
-    // Older traces did not have wall-clock dates. Preserve unknown dates rather than invent them.
-    const loop = parsed.loops?.find((l) => l.afterAttemptId === trace.id);
-    const best = Object.values(parsed.bests || {}).find((b) => b.attemptId === trace.id);
-    return runRecord(trace, trace.at || loop?.at || best?.at || null);
-  });
-  return {
-    ...emptyProfile(),
-    ...parsed,
-    preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences }),
-    attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
-    runs: retainRuns(records),
-    loops: Array.isArray(parsed.loops) ? parsed.loops : [],
-    seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
-    bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
-  };
-}
+// Counts saves, so a push can tell whether anything changed while it was waiting on the network.
+let localEdits = 0;
+// The account row's updated_at as last merged here: the version a conditional write expects to replace.
+let lastCloudAt = null;
+// The device cache as this tab last wrote it, or took it in holding everything this tab had written;
+// different text means another tab wrote since.
+let cacheText = null;
+let lastPull = 0;
+let cacheWaiting = false;
+// Another tab signed this account out, or the device is now signed in as someone else
+// (followSessionElsewhere): this tab saves and sends nothing more for it, and starts again as the device
+// now is once no run is in progress.
+let signedOutElsewhere = false;
+// A sign-out in another tab that sent everything names the copy of the device cache it sent before
+// removing it (account.signOut). Its stamp is kept here until that removal is heard, so a copy removed
+// that wasn't the one sent goes back for the next sign-in (finishFollow).
+let pendingSignOut = null;
+// The device cache as the last push that left nothing unsent stored it: what a sign-out here has sent.
+// absorbCache moves cacheText, never this, so another tab's save taken in since never looks sent.
+let sentText = null;
+const PULL_INTERVAL_MS = 15000;
 
 function loadProfile() {
   if (!session) return emptyProfile();
-  return normalizeProfile(account.loadCachedProfile(session.user.id));
+  cacheText = account.loadCachedProfileText(session.user.id);
+  try { return normalizeProfile(JSON.parse(cacheText)); } catch { return emptyProfile(); }
 }
 
 let profile = loadProfile();
-let prefs = profile.preferences;
+// The preferences in use. profile.preferences is what is stored and synced (only the settings chosen,
+// never a default filled in: see normalizeProfile); merges change only that, and these follow it where
+// that can't disturb a run (followStoredPreferences).
+let prefs = preferencesInUse(profile.preferences);
+// prefs as last committed or followed. A difference is an edit made in this tab.
+let livePreferences = JSON.stringify(prefs);
+let preferencesWaiting = false;
 let sessionKind = 'practice';
 let passage = null;
 let attempt = null;
@@ -179,7 +137,16 @@ let selectedTarget = null;
 let trainingContext = null;
 let resultBestBefore = null;
 let clearSnapshot = null;
+let clearedAt = null;
 let clearTimer = null;
+// For each clear still in force here, the copies merged here that it removed history from, as they were
+// before it, so its Undo from any tab brings all of it back (account.mergeAndHold): { [marker]: [copy, …] }.
+// A list goes back only with its own clear's undo. In memory only.
+let heldClears = {};
+// The history clears this tab had applied when its training state (baseline, results on show) was last
+// checked against them, and where an older build's clear left history starting (legacyClearedAt).
+let trainingClears = account.clearsApplied(profile);
+let trainingLegacyAt = profile.legacyClearedAt || '';
 
 let race = {
   passage: null,
@@ -196,18 +163,103 @@ let race = {
 // Signed in, the profile is cached on this device and synced to the account shortly after.
 // A guest's profile lives only in memory, so there is nothing to fail.
 function saveProfile() {
-  profile.preferences = { ...prefs };
-  profile.attempts = profile.attempts.slice(-MAX_STORED_ATTEMPTS);
-  profile.runs = retainRuns(profile.runs);
-  if (!session) return true;
+  commitPreferences();
+  account.capHistory(profile);
+  if (!session || signedOutElsewhere) return true;
   unsynced = true;
+  localEdits += 1;
   if (cloudChecked) {
-    profile.updatedAt = new Date().toISOString();
+    account.stampProfile(profile);
     clearTimeout(syncTimer);
-    syncTimer = setTimeout(pushProfile, 1500);
+    syncTimer = setTimeout(pushWhenIdle, 1500);
   }
-  storageAvailable = account.cacheProfile(session.user.id, profile);
+  storageAvailable = storeLocally();
   return storageAvailable;
+}
+
+// The device cache is shared by every tab signed in to this account. Whatever another tab wrote since
+// this one last read it is merged in first, so no tab overwrites another's runs or settings.
+function storeLocally() {
+  const userId = session.user.id;
+  const stored = account.loadCachedProfileText(userId);
+  // Signed out here (the sign-out removed the copy this tab had read, or kept it and left its marker), or
+  // someone else signed in: this tab's copy must not come back. A session that only ended (its refresh
+  // was refused) keeps caching, as before, so the next sign-in on this device merges these runs into the
+  // account.
+  const current = account.loadSession()?.user.id;
+  if ((current && current !== userId) || (stored === null && cacheText !== null)) return false;
+  if (signedOutElsewhere || account.signedOut(userId)) return false;
+  if (stored && stored !== cacheText) {
+    try {
+      absorb(JSON.parse(stored));
+      // Shown once the current step (often preparing a passage) has finished.
+      setTimeout(showMerged);
+    } catch {}
+  }
+  const text = JSON.stringify(profile);
+  const saved = account.cacheProfileText(userId, text);
+  if (saved) cacheText = text;
+  return saved;
+}
+
+// Records preference edits made in this tab (only the settings that changed, on top of the stored ones,
+// which may already hold a newer change from elsewhere) and stamps each for syncing. `chosen` names
+// settings the person just picked: stamped even when the pick matches what is shown, so it outranks a
+// different value from another tab or device that was waiting to apply.
+function commitPreferences(chosen = []) {
+  const json = JSON.stringify(prefs);
+  if (json === livePreferences && !chosen.length) return;
+  const before = JSON.parse(livePreferences);
+  const edited = Object.keys(prefs).filter((key) => prefs[key] !== before[key] || chosen.includes(key));
+  const stamps = profile.preferencesAt || {};
+  profile.preferences = { ...profile.preferences, ...Object.fromEntries(edited.map((key) => [key, prefs[key]])) };
+  profile.preferencesAt = { ...stamps, ...Object.fromEntries(edited.map((key) => [key, account.stampAfter(stamps[key])])) };
+  livePreferences = json;
+}
+
+// Saves after the person picks settings, stamping the ones picked (see commitPreferences).
+function saveChoice(...keys) {
+  commitPreferences(keys);
+  return saveProfile();
+}
+
+// Settings that only change how things look. Everything else is a test condition.
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'focusMode'];
+
+const runInProgress = () => runActive || localRaceRunning();
+const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
+// A practice passage nobody has started typing. Newer test conditions from elsewhere replace it, as a
+// change of conditions here would; retests, drills and the daily keep the conditions they started with.
+const untouchedPractice = () => sessionKind === 'practice' && attempt?.status === 'ready' && !attempt.events.length;
+
+// Brings the preferences in use up to the stored ones once that can't disturb a run: nothing changes
+// mid-run, and test conditions wait while a passage is prepared, so the passage on screen always
+// matches the controls around it. resetSession passes conditions: true as it prepares the next one.
+function followStoredPreferences({ conditions = !attemptPrepared() } = {}) {
+  commitPreferences();
+  if (runInProgress()) {
+    preferencesWaiting = true;
+    return;
+  }
+  const stored = { ...defaultPreferences, ...profile.preferences };
+  const next = { ...prefs };
+  let changedConditions = false;
+  preferencesWaiting = false;
+  for (const key of new Set([...Object.keys(stored), ...Object.keys(prefs)])) {
+    if (next[key] === stored[key]) continue;
+    if (!conditions && !DISPLAY_PREFERENCES.includes(key)) {
+      preferencesWaiting = true;
+      continue;
+    }
+    next[key] = stored[key];
+    if (!DISPLAY_PREFERENCES.includes(key)) changedConditions = true;
+  }
+  const json = JSON.stringify(next);
+  if (json === livePreferences) return;
+  prefs = validPreferences(next);
+  livePreferences = JSON.stringify(prefs);
+  applyPreferences();
+  if (changedConditions) setModeControls();
 }
 
 // Caps Lock warning: read from the modifier state on each key event in the typing field.
@@ -288,8 +340,32 @@ function setRunning(running) {
     runActive = running;
     inbox?.runChanged();
   }
+  if (!running) flushDeferredSync();
   showChrome(!running);
 }
+
+// Changes from other tabs and devices held back while a run was in progress, taken in as soon as none
+// is: when a run, race turn or race ends, is interrupted or restarts, or the view changes. The data merges
+// at once, so the run that just ended is labelled and stored against it and the next passage is drawn
+// from it; the screen catches up just after.
+function flushDeferredSync() {
+  if (runInProgress()) return;
+  if (signedOutElsewhere) {
+    // A sign-out that sent everything reloads once its removal of the cache is heard (finishFollow).
+    if (pendingSignOut === null) location.reload();
+    return;
+  }
+  if (cacheWaiting && absorbCache()) setTimeout(showMerged);
+  if (preferencesWaiting) followStoredPreferences();
+  forgetClearedTraining();
+}
+
+// A one-keyboard race never sets runActive; its turns start, end and restart here.
+function raceRunChanged() {
+  inbox?.runChanged();
+  flushDeferredSync();
+}
+
 // Skip no-op writes on every keystroke.
 function showChrome(shown) {
   const value = String(!shown);
@@ -387,9 +463,13 @@ function setModeControls() {
   $('duration-options').hidden = custom || prefs.mode === 'quote';
   document.querySelector('.compact-switch').hidden = custom;
   const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
-  const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
-  $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
-    const button = document.createElement('button');
+  // The length buttons are relabelled in place rather than rebuilt, so one holding keyboard focus keeps
+  // it when conditions change from another tab or device.
+  const lengths = $('duration-options');
+  const existing = [...lengths.querySelectorAll(':scope > button')];
+  existing.slice(values.length).forEach((button) => button.remove());
+  values.forEach((value, index) => {
+    const button = existing[index] || lengths.appendChild(document.createElement('button'));
     const selected = value === (prefs.mode === 'time' ? prefs.duration : prefs.count);
     button.type = 'button';
     button.textContent = value;
@@ -397,8 +477,7 @@ function setModeControls() {
     button.className = selected ? 'is-active' : '';
     button.setAttribute('aria-pressed', String(selected));
     button.setAttribute('aria-label', `${value} ${prefs.mode === 'time' ? 'seconds' : 'words'}`);
-    return button;
-  }));
+  });
   showBest();
   requestAnimationFrame(() => updateGlides());
 }
@@ -562,6 +641,10 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
+  // The next passage is prepared with the newest stored preferences, including any from elsewhere. A
+  // retest or drill keeps its baseline's conditions (restoreConditions), through a restart too; newer
+  // ones from elsewhere wait until it is over.
+  followStoredPreferences({ conditions: kind !== 'retest' && kind !== 'drill' });
   primaryNotice = '';
   const kindChanged = sessionKind !== kind;
   sessionKind = kind;
@@ -667,7 +750,7 @@ function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
     race.startTime = stamp;
     race.attempt.status = 'running';
     race.attempt.startedAt = 0;
-    inbox?.runChanged();
+    raceRunChanged();
   }
 }
 
@@ -1091,9 +1174,14 @@ function armPace() {
   showPace();
 }
 
-function setPaceCaret(mode) {
+// A pick, even of the pace shown, is stamped (saveChoice), so a different one waiting from elsewhere
+// doesn't replace it when a drill or retest ends. The custom speed is stamped only when it was on show:
+// typed in (`speed`), or kept by picking custom again. Picking custom from another pace shows a speed
+// nobody chose here, so a speed chosen elsewhere outranks it.
+function setPaceCaret(mode, { speed = false } = {}) {
+  const speedShown = speed || (mode === 'custom' && prefs.paceCaret === 'custom');
   prefs.paceCaret = mode;
-  saveProfile();
+  saveChoice('paceCaret', ...(speedShown ? ['paceWpm'] : []));
   armPace();
 }
 
@@ -1147,6 +1235,8 @@ function updateLive(reset = false, at = now()) {
 
 function storeAttempt(completed) {
   completed.at = new Date().toISOString();
+  // Shown as the day's first attempt, it is a repeat if another device's earlier attempt arrived since.
+  if (completed.kind === 'daily') completed.firstDailyAttempt = settleDailyFirsts([...profile.runs, completed]).at(-1).firstDailyAttempt;
   const key = conditionKey(completed.conditions);
   const score = completed.summary.score;
   const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
@@ -1158,7 +1248,14 @@ function storeAttempt(completed) {
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
     profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
   }
-  if (eligibleBest && completed.textId && !profile.seenTextIds.includes(completed.textId)) profile.seenTextIds.push(completed.textId);
+  // The passage was marked seen when shown (resetSession). A merge with a copy that had cleared history
+  // can drop marks it can't date, as it does for a passage only shown; one that was then typed, even
+  // in an interrupted run or a daily attempt, is marked again.
+  if (completed.kind !== 'drill') {
+    for (const id of [completed.textId, completed.kind === 'daily' ? dailyChallengeId(completed.challengeDate) : null]) {
+      if (id && !profile.seenTextIds.includes(id)) profile.seenTextIds.push(id);
+    }
+  }
   const saved = saveProfile();
   showBest();
   return saved;
@@ -1328,9 +1425,10 @@ function renderComparison(before, after, saved) {
     $('comparison-sample').textContent = `${trainedTarget} · ${beforePattern.timings.length} before · ${afterPattern.timings.length} after`;
   } else {
     $('comparison-timing').textContent = '—';
-    $('comparison-sample').textContent = trainedTarget
-      ? `${trainedTarget} · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
-      : `keystrokes · ${before?.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
+    $('comparison-sample').textContent = !before ? 'no baseline'
+      : trainedTarget
+        ? `${trainedTarget} · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
+        : `keystrokes · ${before.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
   }
   let comparisonSaved = saved;
   if (comparison.comparable && saved) {
@@ -1349,7 +1447,9 @@ function renderComparison(before, after, saved) {
     });
     comparisonSaved = saveProfile();
   }
-  $('comparison-caveat').textContent = `${comparison.reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
+  // No baseline: a clear from another tab or device removed it while this retest was under way.
+  const reason = before ? comparison.reason : 'Your history was cleared, so there is no baseline to compare with.';
+  $('comparison-caveat').textContent = `${reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
   renderHistory();
 }
 
@@ -1369,7 +1469,11 @@ function startRetest() {
   resetSession('retest', { focus: true });
 }
 
+// A drill or retest runs at its baseline's conditions without recording them as a settings edit: the
+// saved settings, including a pick from another tab or device made meanwhile, apply again once it ends
+// (resetSession leaves them waiting), and a restore never outranks a choice someone made.
 function restoreConditions(source) {
+  commitPreferences();
   prefs = {
     ...prefs,
     mode: source.mode,
@@ -1382,7 +1486,7 @@ function restoreConditions(source) {
     wordList: source.wordList || prefs.wordList,
     stopOnError: source.correctionPolicy !== 'relaxed',
   };
-  profile.preferences = prefs;
+  livePreferences = JSON.stringify(prefs);
   applyPreferences();
   setModeControls();
 }
@@ -1409,7 +1513,7 @@ function navigate(view) {
   if (view === 'practice') {
     // A custom passage that is ready or under way is practice too, so going to Practice keeps it.
     const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom') && !['complete', 'interrupted'].includes(attempt.status);
-    if (!current) resetSession('practice');
+    if (!current || (preferencesWaiting && untouchedPractice())) resetSession('practice');
     switchView('practice');
     return;
   }
@@ -1442,7 +1546,7 @@ function markRaceInterrupted() {
   race.attempt.interrupted = true;
   race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
   showInputNotice('race', NOTICES.raceFocusLost, { speak: false });
-  inbox?.runChanged();
+  raceRunChanged();
 }
 
 // A one-keyboard race keeps the chrome, but its passage is still being typed.
@@ -1769,7 +1873,7 @@ function setupRacePlayer() {
   heldDeadKey = null;
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
-  inbox?.runChanged();
+  raceRunChanged();
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
   $('race-status').textContent = `Player ${race.player + 1} of 2`;
@@ -1798,7 +1902,7 @@ function finishRacePlayer() {
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
   race.attempt = completed;
-  inbox?.runChanged();
+  raceRunChanged();
   race.results.push({ name: race.names[race.player], attempt: completed });
   $('race-input').disabled = true;
   $('race-stage').hidden = true;
@@ -1847,13 +1951,9 @@ function renderRaceResults() {
   announce('Challenge complete.');
 }
 
-function clearHistory() {
-  clearSnapshot = JSON.stringify(profile);
-  profile.attempts = [];
-  profile.runs = [];
-  profile.loops = [];
-  profile.seenTextIds = [];
-  profile.bests = {};
+// What this tab holds in memory about the runs a clear removes: the baseline, the drill and retest it
+// offers, and the results on show.
+function forgetTraining() {
   baselineAttempt = null;
   trainingContext = null;
   selectedTarget = null;
@@ -1874,6 +1974,45 @@ function clearHistory() {
   $('comparison-panel').hidden = true;
   $('start-drill').disabled = true;
   $('skip-to-retest').disabled = true;
+}
+
+// A clear made in another tab or on another device arrives as stored data only. When it covers the
+// baseline or the run on show, as a merge into a copy that hadn't heard of it decides, this tab forgets
+// them as the clearing tab did. Dates are checked against a marker this tab hadn't applied only, so a run
+// made here after this tab knew of a clear is never taken for a cleared one, an older clear back in force
+// after a newer one's undo included. Named records are checked on every merge: no copy keeps one, and an
+// older clear's names can arrive while the newest marker stays the same. An older build's clear that
+// arrives (a new legacyClearedAt) took a run dated at or before it only if the merged history lacks it.
+// Never mid-run: flushDeferredSync checks again when the run ends, so a drill then stands alone and a
+// retest makes no comparison with the cleared run.
+function forgetClearedTraining() {
+  if (runInProgress()) return;
+  const marker = profile.historyClearedAt || null;
+  const arrived = marker && !trainingClears.has(marker) ? marker : null;
+  trainingClears = account.clearsApplied(profile);
+  const legacyStart = profile.legacyClearedAt || '';
+  const legacyAt = legacyStart !== trainingLegacyAt ? legacyStart : '';
+  trainingLegacyAt = legacyStart;
+  if (!baselineAttempt && !lastCompleted) return;
+  const named = account.clearedIds(profile);
+  const takenByLegacy = (record) => Boolean(legacyAt) && (record.at || '') <= legacyAt
+    && !profile.runs.some((run) => run.id === record.id);
+  const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id)
+    || takenByLegacy(record));
+  if (!cleared(baselineAttempt) && !cleared(lastCompleted)) return;
+  forgetTraining();
+  renderTraining();
+}
+
+function clearHistory() {
+  clearSnapshot = JSON.stringify(profile);
+  // Copies elsewhere drop what they hold from before this moment when they merge with this one. What
+  // they held is kept here as this tab merges them (account.mergeAndHold), for Undo.
+  profile = account.clearProfile(profile);
+  clearedAt = profile.historyClearedAt;
+  heldClears = account.joinHolds(heldClears, { [clearedAt]: [normalizeProfile(JSON.parse(clearSnapshot))] });
+  trainingClears = account.clearsApplied(profile);
+  forgetTraining();
   const saved = saveProfile();
   $('clear-dialog').close();
   $('history-toast').hidden = false;
@@ -1891,15 +2030,20 @@ function clearHistory() {
 
 function undoClear() {
   if (!clearSnapshot) return;
-  try { profile = JSON.parse(clearSnapshot); } catch { return; }
-  prefs = profile.preferences;
+  let snapshot;
+  try { snapshot = normalizeProfile(JSON.parse(clearSnapshot)); } catch { return; }
+  // Restores the history even if the clear has already synced, keeping anything added since: this tab's
+  // own copy from just before it, and whatever the clear removed from the account row or another tab as
+  // they merged here (held for it), as far as clears still in force allow.
+  ({ merged: profile, holds: heldClears } = account.undoClearHere(heldClears, profile, clearedAt, snapshot));
   saveProfile();
   clearSnapshot = null;
   clearTimeout(clearTimer);
   $('history-feedback').textContent = 'History restored.';
   $('undo-clear').hidden = true;
-  applyPreferences();
-  setModeControls();
+  followStoredPreferences();
+  showBest();
+  armPace();
   renderHistory();
   renderTraining();
   renderDaily();
@@ -1934,67 +2078,247 @@ function renderAccount() {
 
 const authRedirectTarget = () => `${location.origin}/`;
 
-// Resolves true once the account row matches the device.
-async function pushProfile({ keepalive = false } = {}) {
+// Whether this tab still belongs to the user a sync started for. Another tab can sign out, or in as
+// someone else, while a request is out; the sync then stops and writes nothing here. A tab that heard of
+// a sign-out elsewhere stays out even if the same account has signed in again since: it reloads first.
+function signedInAs(userId) {
+  return !signedOutElsewhere && session?.user.id === userId && account.loadSession()?.user.id === userId;
+}
+
+// Folds another copy of this account's profile (the account row, or another tab's cache) into memory.
+// Only stored data changes here; showMerged() brings the screen up to date. Returns whether it changed.
+function absorb(data) {
+  if (data?.version !== 2) return false;
+  const before = account.syncSignature(profile);
+  ({ merged: profile, holds: heldClears } = account.mergeAndHold(heldClears, profile, normalizeProfile(data)));
+  return account.syncSignature(profile) !== before;
+}
+
+// After a merge: preferences follow where they can't disturb a run, and only the visible history view
+// re-renders, and not while someone is using it. Nothing takes focus or announces anything, and
+// nothing changes mid-run; Progress, Train and Challenge re-render whenever they are next shown.
+function showMerged() {
+  followStoredPreferences();
+  if (runInProgress()) return;
+  forgetClearedTraining();
+  // Newer test conditions wait while a passage is prepared; one nobody has started is prepared again
+  // with them, as a page load did before merging (the practice screen only; navigate does it on the
+  // way back). Focus stays where it is.
+  if (preferencesWaiting && untouchedPractice() && document.body.dataset.view === 'practice') resetSession('practice');
+  showBest();
+  // A best, average or last-run pace follows the merged history, as it follows a clear here.
+  armPace();
+  const view = document.body.dataset.view;
+  const screen = document.querySelector(`[data-screen="${view}"]`);
+  const inUse = screen?.contains(document.activeElement) || screen?.querySelector('details[open]');
+  if (view === 'progress' && !inUse) renderHistory();
+  if (view === 'compete') renderDaily();
+}
+
+// Merges the device cache if another tab has written it since this tab last read it. Only the data:
+// returns whether it changed, and the caller shows it (showMerged). Writes only to put back what the
+// cache lacks: tabs read and write it separately, so two saves at the same moment can each write a copy
+// read before the other's, leaving out a run that may exist nowhere else yet. A tab holding nothing
+// more than the cache writes nothing, so tabs settle instead of echoing each other. If that write is
+// refused (a sign-out elsewhere is under way), cacheText stays this tab's own last write: the copy taken
+// in lacks it, and a repair of the sign-out's removal must still put it back (finishFollow).
+function absorbCache() {
+  cacheWaiting = false;
+  if (!session || !signedInAs(session.user.id)) return false;
+  const text = account.loadCachedProfileText(session.user.id);
+  if (!text || text === cacheText) return false;
+  try {
+    const data = JSON.parse(text);
+    const changed = absorb(data);
+    const own = cacheText;
+    cacheText = text;
+    if (data?.version === 2 && !account.sameProfile(profile, normalizeProfile(data)) && !storeLocally()) cacheText = own;
+    return changed;
+  } catch {
+    return false;
+  }
+}
+
+function noteCloudAt(updatedAt) {
+  if (updatedAt && !(Date.parse(lastCloudAt) >= Date.parse(updatedAt))) lastCloudAt = updatedAt;
+}
+
+// Pushes wait for the run in progress to end, so network and merge work never lands mid-run.
+function pushWhenIdle() {
+  if (runInProgress()) {
+    syncTimer = setTimeout(pushWhenIdle, 1500);
+    return;
+  }
+  pushProfile();
+}
+
+// One push at a time, each reading the account row afresh. Resolves true once the row holds this tab's edits.
+let pushQueue = Promise.resolve();
+function pushProfile(options = {}) {
   clearTimeout(syncTimer);
   syncTimer = 0;
+  const run = pushQueue.then(() => pushOnce(options));
+  pushQueue = run.catch(() => {});
+  return run;
+}
+
+// Read the row, merge, then write only if the row is still the version read. If another writer got in
+// between, the write matches nothing: read again and merge again, three times at most. The merged copy
+// is kept here and in the device cache.
+async function pushOnce({ cloud: known } = {}) {
   if (!session) return false;
-  try {
-    session = await account.freshSession(session);
-    await account.pushCloudProfile(session, profile, { keepalive });
-    unsynced = false;
+  if (!unsynced) {
     setSyncState('synced');
     return true;
+  }
+  const userId = session.user.id;
+  // Checked before refreshing too: a tab still holding an account another tab has signed out of must
+  // not refresh it, nor end whichever session the device holds now.
+  if (!signedInAs(userId)) return false;
+  try {
+    session = await account.freshSession(session);
+    if (!signedInAs(userId)) return false;
+    let cloud = known;
+    for (let tries = 0; tries < 3; tries += 1) {
+      if (cloud === undefined) {
+        cloud = await account.fetchCloudProfile(session);
+        if (!signedInAs(userId)) return false;
+      }
+      const edits = localEdits;
+      const theirs = cloud?.data?.version === 2 ? normalizeProfile(cloud.data) : null;
+      const { merged, holds: pushHolds } = theirs ? account.mergeAndHold(heldClears, profile, theirs) : { merged: profile, holds: heldClears };
+      let written;
+      if (theirs && account.sameProfile(merged, theirs)) written = cloud.updated_at;
+      else if (cloud) written = await account.updateCloudProfile(session, merged, cloud.updated_at);
+      else written = await account.insertCloudProfile(session, merged);
+      if (!signedInAs(userId)) return false;
+      if (written) {
+        // What this merge held joins what is held now. Holds are only added to, and a list goes back only
+        // with its clear's undo (twice changes nothing), so an Undo or a clear made here while the write
+        // was out still holds and releases everything.
+        heldClears = account.joinHolds(heldClears, pushHolds);
+        noteCloudAt(written);
+        absorb(merged);
+        const kept = storeLocally();
+        // Done unless this tab saved again, or took in another tab's save, while the write was out:
+        // that goes up with the next push.
+        if (edits === localEdits && account.sameProfile(profile, merged)) {
+          unsynced = false;
+          sentText = kept ? cacheText : null;
+        } else if (!syncTimer) syncTimer = setTimeout(pushWhenIdle, 1500);
+        showMerged();
+        setSyncState(unsynced ? 'syncing' : 'synced');
+        return !unsynced;
+      }
+      cloud = undefined;
+    }
+    // Lost every race: the edits stay here, and the next save, return to this tab or load merges them.
+    setSyncState('offline');
+    return false;
   } catch {
     setSyncState(account.loadSession() ? 'offline' : 'expired');
     return false;
   }
 }
 
+// A hidden page may never run again, so it gets one conditional write of what this tab holds, made only
+// if the account row is still the version last merged here (which this tab's copy contains). If that
+// loses, the edits wait in the device cache for the pending push, the next return or the next load.
+async function pushOnHide() {
+  if (!session || !syncTimer || !lastCloudAt) return;
+  const userId = session.user.id;
+  const edits = localEdits;
+  if (!signedInAs(userId)) return;
+  try {
+    session = await account.freshSession(session);
+    if (!signedInAs(userId)) return;
+    const written = await account.updateCloudProfile(session, profile, lastCloudAt, { keepalive: true });
+    if (!written || !signedInAs(userId)) return;
+    noteCloudAt(written);
+    if (edits === localEdits) {
+      unsynced = false;
+      setSyncState('synced');
+    }
+  } catch {}
+}
+
+// Brings in what other devices saved: when the tab comes back into view (at most every 15 s) and when
+// the connection returns. With edits pending here it pushes instead, which reads and merges first.
+async function pullProfile({ force = false } = {}) {
+  if (!session || !cloudChecked || runInProgress()) return;
+  if (!force && Date.now() - lastPull < PULL_INTERVAL_MS) return;
+  lastPull = Date.now();
+  if (unsynced) {
+    await pushProfile();
+    return;
+  }
+  const userId = session.user.id;
+  if (!signedInAs(userId)) return;
+  try {
+    session = await account.freshSession(session);
+    if (!signedInAs(userId)) return;
+    const cloud = await account.fetchCloudProfile(session);
+    if (!cloud || !signedInAs(userId)) return;
+    if (absorb(cloud.data)) {
+      storeLocally();
+      showMerged();
+    }
+    noteCloudAt(cloud.updated_at);
+    // A tab can hold what the row lacks without saving anything itself: another tab's save taken in from
+    // the device cache, whose own push failed or never ran. It goes up from here, as on load.
+    if (unsynced || !account.sameProfile(profile, normalizeProfile(cloud.data))) {
+      unsynced = true;
+      await pushProfile({ cloud });
+    } else setSyncState('synced');
+  } catch {
+    setSyncState(account.loadSession() ? 'offline' : 'expired');
+  }
+}
+
 function adoptProfile(data) {
   profile = normalizeProfile(data);
-  prefs = profile.preferences;
-  account.cacheProfile(session.user.id, profile);
+  prefs = preferencesInUse(profile.preferences);
+  livePreferences = JSON.stringify(prefs);
+  storeLocally();
   applyPreferences();
   setModeControls();
   renderHistory();
   if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice');
 }
 
-// The newer of the device cache and the account row wins; the other side is brought up to date.
+// The device's copy and the account row are merged, and whatever the row lacks goes up.
 async function syncOnLoad() {
   if (!session) return;
+  const userId = session.user.id;
   try {
     session = await account.freshSession(session);
     const cloud = await account.fetchCloudProfile(session);
-    if (cloudChecked) return;
+    if (cloudChecked || !signedInAs(userId)) return;
     cloudChecked = true;
-    const localAt = profile.updatedAt || '';
-    const cloudAt = cloud?.data?.updatedAt || '';
+    lastPull = Date.now();
     if (!cloud) {
       // History from before accounts existed goes to the first account that has none of its own.
       // Taken only once the account is known to be empty, so a failed fetch leaves it in place.
       const legacy = account.takeLegacyProfile();
       if (legacy?.version === 2) {
         profile = account.mergeProfiles(profile, normalizeProfile(legacy));
-        prefs = profile.preferences;
+        prefs = preferencesInUse(profile.preferences);
       }
       // Stored and sent before anything re-renders, so the import can't be left half done.
       saveProfile();
       await pushProfile();
       if (legacy?.version === 2) adoptProfile(profile);
-    } else if (cloudAt > localAt) {
-      // Edits made here before the check (usually just the passage marked seen) give way to the newer row.
-      adoptProfile(cloud.data);
-      if (!syncTimer) {
-        unsynced = false;
-        setSyncState('synced');
-      }
-    } else if (localAt > cloudAt || unsynced) {
-      saveProfile();
-      await pushProfile();
     } else {
-      setSyncState('synced');
+      absorb(cloud.data);
+      noteCloudAt(cloud.updated_at);
+      storeLocally();
+      showMerged();
+      // Edits made here before the check (usually the passage marked seen), or kept on this device
+      // since an earlier visit, go up; otherwise the row already holds everything.
+      if (unsynced || !account.sameProfile(profile, normalizeProfile(cloud.data))) {
+        unsynced = true;
+        await pushProfile({ cloud });
+      } else setSyncState('synced');
     }
   } catch {
     // Offline or unreachable: edits stay on the device, unstamped, until a check succeeds.
@@ -2002,24 +2326,63 @@ async function syncOnLoad() {
   }
 }
 
-// Puts the account's profile in the device cache, then starts over as that user.
-// A device copy newer than the account row (unsynced when last signed out) is kept for syncOnLoad.
+// Puts the account's profile in the device cache, then starts over as that user. A device copy kept
+// at sign-out (edits that hadn't synced) is merged with the row rather than replaced.
 async function enterAccount(newSession) {
+  account.clearSignedOut(newSession.user.id);
   try {
     const cloud = await account.fetchCloudProfile(newSession);
     const cached = account.loadCachedProfile(newSession.user.id);
-    if (cloud && (cloud.data?.updatedAt || '') >= (cached?.updatedAt || '')) account.cacheProfile(newSession.user.id, cloud.data);
+    if (cloud?.data?.version === 2) {
+      account.cacheProfile(newSession.user.id, cached?.version === 2
+        ? account.mergeSynced(normalizeProfile(cached), normalizeProfile(cloud.data))
+        : cloud.data);
+    }
   } catch {}
   location.reload();
 }
 
 async function signOutAccount() {
   closeAccountMenu();
+  const userId = session.user.id;
+  // What this ends is the account's sign-in on the device as it stands now. That may be newer than this
+  // tab's: a guest tab may have signed in to the account since, with no sign-out between. Every tab of the
+  // account then signs out, as tabs that share one sign-in do.
+  const stored = account.loadSession();
+  if (!signedOutElsewhere && stored?.user.id === userId) session = stored;
+  const ending = session;
+  // Another tab signed out, or in as someone else, before this sign-out (this tab has followed:
+  // followSessionElsewhere), or signed out or in as anyone (the same account included) while it waits on
+  // the network: this sign-out stops here, and the tab starts again as the device now is. Whatever the
+  // device holds (another session included) stays.
+  // Checked again after every wait; account.signOut checks the stored session once more.
+  const overtaken = () => {
+    const now = account.loadSession();
+    if (!signedOutElsewhere && (!now || account.sameSignIn(now, ending))) return false;
+    // Followed: after hearing the cache removed, for a sign-out elsewhere that sent everything (finishFollow).
+    if (pendingSignOut === null) location.reload();
+    return true;
+  };
+  if (overtaken()) return;
   await onlineRace?.leave();
+  if (overtaken()) return;
   inbox?.forget();
-  const synced = !unsynced || await pushProfile();
-  // Unsynced edits stay on this device and go up the next time this account signs in here.
-  await account.signOut(session, { keepCache: !synced });
+  // Every tab signed in here shares the device cache, and another tab's latest save may not have reached
+  // the account yet (its push still waiting, or failing). So the cache is merged and pushed before it
+  // goes; the push reads the row and writes only what the row lacks. A second round covers a save that
+  // lands during the first. If the account can't be reached, or the cache changes again, the cache stays
+  // and goes up the next time this account signs in here.
+  let synced = false;
+  for (let round = 0; round < 2 && !synced; round += 1) {
+    absorbCache();
+    unsynced = true;
+    synced = await pushProfile();
+    if (overtaken()) return;
+    // Unreachable (requests time out, see account.request) or refused: another round would only wait again.
+    if (!synced && $('account').dataset.sync !== 'syncing') break;
+  }
+  // The cache goes only if it still holds what the last push sent, checked as it is removed.
+  await account.signOut(session, { sentText: synced ? sentText : null });
   location.reload();
 }
 
@@ -2123,15 +2486,88 @@ function bindAccount() {
     // Only one corner panel at a time; a keyboard open sends no pointerdown to close the other.
     if (menu.open) { document.querySelector('.preferences')?.removeAttribute('open'); $('inbox').open = false; }
   });
-  // Unsynced changes go out when the tab is hidden; anything too large for that syncs on the next load.
+  // Unsynced changes go out when the tab is hidden (anything too large for that waits for the next
+  // push or load); other devices' changes come in when it is shown again.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && syncTimer) pushProfile({ keepalive: true });
+    if (document.visibilityState === 'hidden') pushOnHide();
+    else pullProfile();
   });
   addEventListener('online', () => {
     if (!session) return;
     if (!cloudChecked) syncOnLoad();
-    else if (unsynced) pushProfile();
+    else pullProfile({ force: true });
   });
+  // Another tab signed in to this account saved: merge its copy. Only what the copy lacks is written back
+  // (absorbCache), so tabs settle rather than echo each other. Mid-run the merge waits; the save at the
+  // end of the run merges it then. While this tab follows a sign-out that sent everything, only that
+  // sign-out's removal of the cache matters (finishFollow).
+  addEventListener('storage', (event) => {
+    if (!session) return;
+    if (pendingSignOut !== null) {
+      finishFollow(event);
+      return;
+    }
+    if (signedOutElsewhere || followSessionElsewhere(event)) return;
+    if (event.key !== account.profileKey(session.user.id)) return;
+    if (runInProgress()) cacheWaiting = true;
+    else if (absorbCache()) showMerged();
+  });
+}
+
+// Another tab signed this account out, either way: keeping unsent edits leaves its marker
+// (account.signedOutKey), and sending everything first removes the device cache, after a marker naming
+// the copy it sent, which this tab hears first (finishFollow then hears the removal). Any other removal
+// of the cache, such as cleared site data, counts the same. Or the device now holds another account's
+// session. This tab then starts again as the device now is, once any run in progress ends
+// (flushDeferredSync): as a guest, or as whoever has signed in since, the same account included. The run
+// is kept in memory only. A session that only expired (a refused refresh removes the session and nothing
+// else) is not followed: this tab keeps caching for the next sign-in. Nor is a new sign-in to this account
+// with no sign-out between (a guest tab signing in): the account and its cache are the same, and this tab
+// takes up the newer sign-in before its next request (account.freshSession) and as it signs out
+// (signOutAccount). Returns whether it followed.
+function followSessionElsewhere(event) {
+  const userId = session.user.id;
+  const current = account.loadSession()?.user.id;
+  const signedOut = event.key === null
+    || (event.key === account.signedOutKey(userId) && event.newValue !== null)
+    || (event.key === account.profileKey(userId) && event.newValue === null)
+    || (event.key === account.SESSION_KEY && (current ? current !== userId : account.signedOut(userId)));
+  if (!signedOut) return false;
+  signedOutElsewhere = true;
+  clearTimeout(syncTimer);
+  syncTimer = 0;
+  // A sign-out that sent everything removes the cache next: this tab waits to hear it (finishFollow).
+  const sent = event.key === account.signedOutKey(userId) ? sentStamp(event.newValue) : null;
+  if (sent !== null) pendingSignOut = sent;
+  else if (!runInProgress()) location.reload();
+  return true;
+}
+
+function sentStamp(markerText) {
+  try {
+    const sent = JSON.parse(markerText)?.sent;
+    return typeof sent === 'string' ? sent : null;
+  } catch {
+    return null;
+  }
+}
+
+// The rest of following a sign-out that sent everything (pendingSignOut). The signing-out tab can't yet
+// see a save made here, or in another tab, just before it removed the cache: the removal names the copy
+// it removed (oldValue), and one that isn't the copy sent goes back for the next sign-in
+// (account.restoreUnsent), together with what this tab last saved, or took in holding all it saved
+// (cacheText; see absorbCache). Never this tab's memory: a run finished after hearing of the sign-out,
+// or still in progress, stays out. Only storage changes, so this happens mid-run too; the tab then starts
+// again as the device now is once no run is in progress. A cleared storage, or the marker removed
+// without the cache, finishes with nothing to put back.
+function finishFollow(event) {
+  const userId = session.user.id;
+  const cacheRemoved = event.key === account.profileKey(userId) && event.newValue === null;
+  const finished = cacheRemoved || event.key === null || (event.key === account.signedOutKey(userId) && event.newValue === null);
+  if (!finished) return;
+  if (cacheRemoved) account.restoreUnsent(userId, event.oldValue, pendingSignOut, cacheText);
+  pendingSignOut = null;
+  if (!runInProgress()) location.reload();
 }
 
 // Finishes a Google or email-confirmation return; the page reloads as the signed-in user.
@@ -2221,7 +2657,7 @@ function bindEvents() {
     customOpen = false;
     prefs.mode = button.dataset.mode;
     setModeControls();
-    saveProfile();
+    saveChoice('mode');
     resetSession('practice', { focus: true });
   }));
   $('duration-options').addEventListener('click', (event) => {
@@ -2230,7 +2666,7 @@ function bindEvents() {
     if (prefs.mode === 'time') prefs.duration = Number(button.dataset.length);
     else prefs.count = Number(button.dataset.length);
     setModeControls();
-    saveProfile();
+    saveChoice('mode', prefs.mode === 'time' ? 'duration' : 'count');
     resetSession('practice', { focus: true });
   });
   $('punctuation-toggle').addEventListener('change', (event) => {
@@ -2255,7 +2691,7 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
-  $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(event.target.value); setPaceCaret('custom'); });
+  $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(event.target.value); setPaceCaret('custom', { speed: true }); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
@@ -2443,6 +2879,8 @@ function openCustom(open = true) {
 }
 
 // Signed in, the text is kept with the other preferences; a guest's preferences live only in memory.
+// Using it is a pick of the text and order shown, stamped even when they match what is stored, so a text
+// waiting from another tab doesn't replace it as the passage is prepared.
 function useCustomText() {
   const text = normalizeCustomText($('custom-text').value, Infinity);
   const error = customErrorMessage(customTextProblem(text));
@@ -2453,7 +2891,7 @@ function useCustomText() {
   }
   prefs.customText = text;
   prefs.customOrder = CUSTOM_ORDERS.includes($('custom-order').value) ? $('custom-order').value : 'as-written';
-  saveProfile();
+  saveChoice('customText', 'customOrder');
   customOpen = false;
   resetSession('custom', { focus: true });
   setModeControls();
@@ -2465,7 +2903,7 @@ function setTestShape(mode, length) {
   if (mode === 'time' && length) prefs.duration = length;
   if (mode === 'words' && length) prefs.count = length;
   setModeControls();
-  saveProfile();
+  saveChoice('mode', ...(length && mode !== 'quote' ? [mode === 'time' ? 'duration' : 'count'] : []));
   resetSession('practice', { focus: true });
 }
 
@@ -2487,7 +2925,7 @@ function setStopOnError(enabled) {
 function setWordList(id, kind = restartKind()) {
   prefs.wordList = id;
   applyPreferences();
-  saveProfile();
+  saveChoice('wordList');
   resetSession(kind, { focus: true });
 }
 
@@ -2519,8 +2957,8 @@ function paletteCommands(query) {
     ...[['off', 'off'], ['best', 'personal best'], ['average', 'average'], ['last', 'last run'], ['custom', 'custom']].map(([mode, name]) => (
       { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: prefs.paceCaret === mode ? 'on' : '', on: prefs.paceCaret === mode, run: () => setPaceCaret(mode) })),
     { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
-    ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
-    ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
+    ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
+    ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
