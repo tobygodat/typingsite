@@ -96,11 +96,13 @@ const storeSignIn = (data) => storeSession(sessionFrom(data, base64url(crypto.ge
 
 // A request that hasn't finished by then fails as unreachable, so nothing waiting behind it (the push
 // queue, sign-out) can hang on a stalled connection; edits stay on the device, as offline. A keepalive
-// request (a page being hidden) is left to the browser.
+// request (a page being hidden) is left to the browser. A caller's own signal (a queue's deadline)
+// aborts it as well.
 export const REQUEST_TIMEOUT_MS = 15000;
 
-export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false } = {}) {
-  const signal = !keepalive && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
+export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false, signal: callerSignal } = {}) {
+  const timeout = !keepalive && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
+  const signal = timeout && callerSignal && typeof AbortSignal.any === 'function' ? AbortSignal.any([timeout, callerSignal]) : callerSignal || timeout;
   let response;
   let text;
   try {
