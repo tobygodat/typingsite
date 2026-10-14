@@ -117,6 +117,7 @@ export async function request(path, { method = 'GET', body, token, headers = {},
         ...headers,
       },
       body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
     text = await response.text();
   } catch {
@@ -128,6 +129,7 @@ export async function request(path, { method = 'GET', body, token, headers = {},
     const message = data?.msg || data?.error_description || data?.message || data?.error || `Request failed (${response.status}).`;
     const error = new AuthError(message);
     error.status = response.status;
+    if (data?.error_code) error.code = data.error_code;
     throw error;
   }
   return data;
@@ -177,8 +179,9 @@ export async function completeRedirect(href) {
   return storeSignIn({ ...redirect, user });
 }
 
-// Returns a session with a usable access token, refreshing it if it is about to expire.
-export async function freshSession(session = loadSession()) {
+// Returns a session with a usable access token, refreshing it if it is about to expire. signal lets
+// a caller with a deadline give up on the refresh.
+export async function freshSession(session = loadSession(), { signal } = {}) {
   if (!session) return null;
   // Background polls (race, inbox) may already have rotated this user's refresh token; a stale
   // copy would be rejected and end the session, so the newest stored one wins. Two refreshes in
@@ -187,7 +190,7 @@ export async function freshSession(session = loadSession()) {
   if (stored?.user?.id === session.user?.id && stored.expires_at >= session.expires_at) session = stored;
   if (session.expires_at - 60 > Date.now() / 1000) return session;
   try {
-    const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token } });
+    const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token }, signal });
     // Stored only over the session it refreshed: another tab may have signed out, or in as someone else
     // (the same account included, whose new session that sign-out's logout didn't end), since this tab
     // read it. Either way it is still the sign-in it refreshed.
@@ -291,6 +294,96 @@ export function restoreUnsent(userId, removedText, sent, savedText) {
   if (!copy) return false;
   const stored = storedProfile(loadCachedProfileText(userId));
   return cacheProfileText(userId, JSON.stringify(stored ? mergeSynced(stored, copy) : copy));
+}
+
+// Deleting an account is one server step: the delete-account Edge Function
+// (supabase/functions/delete-account) checks the caller's token and deletes the auth user, and the
+// profile, race rooms, race seats and friend rows go with it through ON DELETE CASCADE.
+export const DELETE_ACCOUNT_PATH = '/functions/v1/delete-account';
+
+export const DELETE_COPY = {
+  session: 'Your session has ended, so nothing was deleted. Sign out, sign in again, then delete your account.',
+  missing: 'Account deletion isn’t switched on yet, so nothing was deleted. Try again later.',
+  unavailable: 'Account deletion isn’t available right now, so nothing was deleted. Try again later.',
+  failed: 'Your account couldn’t be deleted just now, so nothing changed. Try again in a moment.',
+  offline: 'Can’t reach the account service. Check your connection and try again.',
+};
+
+// One deadline for the whole deletion, long enough for a slow cold start. The session refresh, the
+// function call and the check after it all share it, so past it the dialog unlocks with an error
+// instead of waiting on, however the steps add up.
+const DELETE_TIMEOUT_MS = 30000;
+
+// Asks the Auth server whether the account still exists: true once it reports the user gone, false
+// while it still knows them, null if it can't say (including when the deadline runs out first).
+async function accountGone(current, signal) {
+  try {
+    return (await request('/auth/v1/user', { token: current.access_token, signal }))?.id === current.user.id ? false : null;
+  } catch (error) {
+    return error.code === 'user_not_found' ? true : null;
+  }
+}
+
+// Resolves once the account is gone; otherwise throws an AuthError whose message says what happened.
+// Signing out and clearing this device are left to the caller, for after success only.
+export async function deleteAccount(session) {
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), DELETE_TIMEOUT_MS);
+  try {
+    return await deleteBefore(session, deadline.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Each step gets whatever time is left before the deadline; a step it cuts off counts as no reply.
+async function deleteBefore(session, signal) {
+  let current;
+  try {
+    current = await freshSession(session, { signal });
+  } catch (error) {
+    // A rejected refresh token means the session is over; anything else is the service or the network.
+    const ended = error.status >= 400 && error.status < 500;
+    throw new AuthError(ended ? DELETE_COPY.session : error.status ? DELETE_COPY.failed : DELETE_COPY.offline);
+  }
+  if (!current) throw new AuthError(DELETE_COPY.session);
+  let status = 0;
+  try {
+    await request(DELETE_ACCOUNT_PATH, { method: 'POST', token: current.access_token, body: {}, signal });
+    return;
+  } catch (error) {
+    status = error.status || 0;
+  }
+  if (status === 404) throw new AuthError(DELETE_COPY.missing);
+  const refused = status === 401 || status === 403;
+  // Any 5xx is ambiguous: the function's 500 when deleteUser committed but its reply was lost, or a
+  // gateway's 502, 503 or 504 after the function finished. Other answers are clear refusals.
+  const serverError = status >= 500;
+  if (status && !refused && !serverError) throw new AuthError(DELETE_COPY.failed);
+  // A refused token, a server error or no reply (a function that isn't deployed can fail this way in
+  // a browser, when the platform's not-found reply has no CORS headers). Each time the account may
+  // already be gone: deleted by this request when its reply was lost, or from another device. The
+  // Auth server settles it, within what is left of the deadline.
+  const gone = await accountGone(current, signal);
+  if (gone) return;
+  if (refused) throw new AuthError(DELETE_COPY.session);
+  if (serverError) throw new AuthError(DELETE_COPY.failed);
+  // Say nothing was deleted only if the account is confirmed to still exist.
+  throw new AuthError(gone === false ? DELETE_COPY.unavailable : DELETE_COPY.offline);
+}
+
+// After a confirmed deletion: the session and this account's device cache go, nothing is sent. The
+// signed-out marker goes first, so other tabs of the account stop saving for it at the first change they
+// hear (a session removed without one reads as expired, and those tabs would keep caching), and last, so
+// nothing about the account stays on the device.
+export function forgetAccount(session) {
+  const userId = session?.user?.id;
+  if (userId) writeJson(signedOutKey(userId), true);
+  remove(SESSION_KEY);
+  if (userId) {
+    remove(profileKey(userId));
+    clearSignedOut(userId);
+  }
 }
 
 export async function fetchCloudProfile(session) {

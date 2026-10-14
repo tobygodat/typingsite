@@ -35,7 +35,7 @@ import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
-import { listRaceInvites } from './multiplayer.js';
+import { forgetRace, listRaceInvites } from './multiplayer.js';
 import { comparableKind, dailyChallengeId, dailyPassage, filterRuns, recurringTargets, runRecord, settleDailyFirsts, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 import { CUSTOM_ORDERS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
@@ -1087,6 +1087,7 @@ const NOTICES = {
   leftSurface: 'You left mid-run, so it won’t count.',
   paletteOpened: 'Commands opened mid-run, so it won’t count.',
   suggestOpened: 'Suggestions opened mid-run, so it won’t count.',
+  deleteOpened: 'Account deletion opened mid-run, so it won’t count.',
   raceFocusLost: 'Focus lost. Esc to restart this turn.',
 };
 
@@ -1993,6 +1994,13 @@ function forgetTraining() {
   $('skip-to-retest').disabled = true;
 }
 
+// Empties history in memory and on the results screen once the account is deleted, when there is
+// nothing left to save to (clear history keeps its marker and Undo; see clearHistory).
+function wipeHistory() {
+  profile = emptyProfile();
+  forgetTraining();
+}
+
 // A clear made in another tab or on another device arrives as stored data only. When it covers the
 // baseline or the run on show, as a merge into a copy that hadn't heard of it decides, this tab forgets
 // them as the clearing tab did. Dates are checked against a marker this tab hadn't applied only, so a run
@@ -2407,6 +2415,77 @@ function closeAccountMenu() {
   $('account').open = false;
 }
 
+// Account deletion. The server deletes first (account.deleteAccount); only a confirmed deletion
+// signs this device out and clears it. Any failure leaves the session, cache and history untouched.
+const DELETE_WORD = 'delete';
+const DELETED_NOTICE = 'stilltype-account-deleted';
+let deletingAccount = false;
+
+function openDeleteAccount() {
+  if (!session) return;
+  // The dialog gives focus back to whatever had it, and the menu's own button is about to be hidden.
+  if ($('account').contains(document.activeElement)) $('account-trigger').focus();
+  closeAccountMenu();
+  // Typing the confirmation word must never land in, or time, a run.
+  markInterrupted(NOTICES.deleteOpened);
+  markRaceInterrupted();
+  $('confirm-delete-input').value = '';
+  $('confirm-delete-account').disabled = true;
+  $('delete-account-error').textContent = '';
+  $('delete-account-dialog').showModal();
+  $('confirm-delete-input').focus();
+}
+
+function setDeleting(pending) {
+  deletingAccount = pending;
+  // Focus waits on the read-only input, so disabling the button doesn't drop it to the page.
+  if (pending) $('confirm-delete-input').focus();
+  $('delete-account-form').setAttribute('aria-busy', String(pending));
+  $('delete-account-status').textContent = pending ? 'Deleting your account…' : '';
+  $('confirm-delete-account').textContent = pending ? 'Deleting…' : 'Delete account';
+  $('confirm-delete-account').disabled = pending || $('confirm-delete-input').value !== DELETE_WORD;
+  $('confirm-delete-input').readOnly = pending;
+  $('cancel-delete-account').disabled = pending;
+}
+
+async function deleteAccountNow() {
+  if (!session || deletingAccount || $('confirm-delete-input').value !== DELETE_WORD) return;
+  $('delete-account-error').textContent = '';
+  setDeleting(true);
+  try {
+    await account.deleteAccount(session);
+  } catch (error) {
+    setDeleting(false);
+    $('delete-account-error').textContent = error.message;
+    if (!account.loadSession()) setSyncState('expired');
+    $('confirm-delete-input').focus();
+    return;
+  }
+  // The account is gone, so nothing may be saved or sent for it again. The inbox finds its device
+  // entries through the session, so it forgets before the session goes.
+  clearTimeout(syncTimer);
+  syncTimer = 0;
+  unsynced = false;
+  inbox?.forget();
+  forgetRace();
+  const deleted = session;
+  session = null;
+  account.forgetAccount(deleted);
+  wipeHistory();
+  try { sessionStorage.setItem(DELETED_NOTICE, '1'); } catch {}
+  location.reload();
+}
+
+// Shown once, after the reload that follows a deletion. Nothing else about the account remains.
+function noticeDeletedAccount() {
+  let deleted = false;
+  try {
+    deleted = sessionStorage.getItem(DELETED_NOTICE) === '1';
+    sessionStorage.removeItem(DELETED_NOTICE);
+  } catch {}
+  if (deleted && !session) showAccountToast('Account deleted. You’re in guest mode.', 'done');
+}
+
 let accountMode = 'create';
 
 function openAccountDialog(mode) {
@@ -2458,7 +2537,9 @@ async function submitAccount(event) {
   }
 }
 
-function showAccountToast(message) {
+// tone 'done' marks a completed action; the default marks a problem.
+function showAccountToast(message, tone = 'problem') {
+  $('account-toast').dataset.tone = tone;
   $('account-feedback').textContent = message;
   $('account-toast').hidden = false;
   clearTimeout(showAccountToast.timer);
@@ -2485,6 +2566,14 @@ function bindAccount() {
   $('account-google').addEventListener('click', continueWithGoogle);
   $('account-dialog-google').addEventListener('click', continueWithGoogle);
   $('account-signout').addEventListener('click', signOutAccount);
+  $('account-delete').addEventListener('click', openDeleteAccount);
+  $('confirm-delete-input').addEventListener('input', (event) => {
+    if (!deletingAccount) $('confirm-delete-account').disabled = event.target.value !== DELETE_WORD;
+  });
+  $('delete-account-form').addEventListener('submit', (event) => { event.preventDefault(); deleteAccountNow(); });
+  $('cancel-delete-account').addEventListener('click', () => $('delete-account-dialog').close());
+  // While the request is out, the dialog stays: its answer decides what happens next.
+  $('delete-account-dialog').addEventListener('cancel', (event) => { if (deletingAccount) event.preventDefault(); });
   $('account-form').addEventListener('submit', submitAccount);
   $('account-switch').addEventListener('click', () => openAccountDialog(accountMode === 'create' ? 'signin' : 'create'));
   $('account-cancel').addEventListener('click', () => $('account-dialog').close());
@@ -2531,7 +2620,8 @@ function bindAccount() {
   });
 }
 
-// Another tab signed this account out, either way: keeping unsent edits leaves its marker
+// Another tab signed this account out (or deleted it: account.forgetAccount leaves the marker first),
+// either way: keeping unsent edits leaves its marker
 // (account.signedOutKey), and sending everything first removes the device cache, after a marker naming
 // the copy it sent, which this tab hears first (finishFollow then hears the removal). Any other removal
 // of the cache, such as cleared site data, counts the same. Or the device now holds another account's
@@ -2810,7 +2900,7 @@ function bindEvents() {
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open || $('suggest-dialog').open) return;
+    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open || $('delete-account-dialog').open || $('suggest-dialog').open) return;
     if (event.key === 'Escape' && preferences.open) {
       event.preventDefault();
       preferences.open = false;
@@ -2980,7 +3070,10 @@ function paletteCommands(query) {
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
     ...(session
-      ? [{ group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount }]
+      ? [
+        { group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount },
+        { group: 'account', label: 'delete account…', keywords: 'remove erase close account data privacy', run: openDeleteAccount },
+      ]
       : [
         { group: 'account', label: 'create account…', keywords: 'sign up register save login', run: () => openAccountDialog('create') },
         { group: 'account', label: 'sign in…', keywords: 'log in login account', run: () => openAccountDialog('signin') },
@@ -3097,6 +3190,7 @@ document.fonts?.ready.then(() => { primaryFx.relayout(); updateGlides({ instant:
 console.info('stilltype · ↑ ↑ ↓ ↓ ← → ← → b a');
 
 if (!storageAvailable) announce('Storage is unavailable. Results last only in this tab.');
+noticeDeletedAccount();
 completeAuthRedirect();
 syncOnLoad();
 inbox.refresh();

@@ -29,7 +29,9 @@ Train also shows recurring letter pairs across recent matching runs. Each target
 
 Clear history requires typing `clear` and offers an immediate Undo. It includes daily results. Signed-in accounts retain 1,000 compact run summaries and pattern counts for the newest 120 runs, alongside 24 full attempt traces. Comparisons remain until cleared. Guests keep this history only for the tab.
 
-Press ⌘K (Ctrl-K on Windows and Linux) for commands: go to a view, restart, change the test mode or length, toggle punctuation, switch theme or text size, toggle live metrics, the keyboard or focus mode, and clear local history. Opening it mid-run takes that run out of comparisons.
+Signed in, **Delete my account** in the account menu (or "delete account…" in the command palette) requires typing `delete`. The server deletes the account first, and its profile, race rooms, race seats and friend rows go with it; only then does this device sign out and clear that account's cache. If anything fails, including a server that hasn't been set up for it yet, the dialog says so and nothing changes. There is no undo. Feature suggestions were never linked to an account, so they stay.
+
+Press ⌘K (Ctrl-K on Windows and Linux) for commands: go to a view, restart, change the test mode or length, toggle punctuation, switch theme or text size, toggle live metrics, the keyboard or focus mode, and clear local history; signed in, also sign out or delete the account. Opening it mid-run takes that run out of comparisons.
 
 The settings control changes theme (system, dark or light), passage size, live metrics, the keyboard display and focus mode. Preferences survive reload. Focus mode has an explicit exit; Escape also leaves it.
 
@@ -40,6 +42,8 @@ Challenge opens **Online** play. Sign in to host, enter a race name, then either
 A guest link admits one opponent. After joining, a separate tab-scoped credential lets that guest reconnect without allowing someone else with the invitation link to take their seat. Leaving closes the room for both players. These are friendly, unranked races; scores never enter personal progress or bests. Choose **One keyboard** for the original local challenge.
 
 The backend migration is in `supabase/migrations/20260930085227_online_races.sql`; deploy it to the Supabase project configured in `src/account.js` before serving the updated frontend. It provides one `race_action` RPC over protected private tables, so static hosting needs no WebSocket server or new runtime dependency. See [online race implementation and verification](docs/online-races.md).
+
+Account deletion runs in the Edge Function `supabase/functions/delete-account/`. Deploy it with `supabase functions deploy delete-account`, keeping the default JWT verification. Apply `supabase/migrations/20261009140000_forget_deleted_race_opener.sql` with it (`supabase db push`): every foreign key to `auth.users` already cascades, and that migration clears the one user id kept as text, the quota key on rooms. `supabase/tests/account-deletion.sql` checks both. Until it is deployed, Delete my account reports that deletion isn't switched on yet and deletes nothing.
 
 GitHub Actions runs unit tests, the static build and Chromium browser checks on pull requests and pushes to `master`. Browser failure traces are retained for seven days.
 
@@ -57,4 +61,4 @@ The app uses native HTML/CSS/JavaScript. Its visual system, Afterimage (Literata
 - [Research summary](docs/research/summary.md)
 - [ML evaluation plan](docs/ml-data-evaluation.md)
 
-Accounts use Supabase Auth (email/password and Google) with one row-level-secured profile per user; tabs and devices merge their copies of it rather than overwrite each other. Guests save nothing. There is no learned recommender or public matchmaking. An immediate retest is feedback, not proof of lasting learning.
+Accounts use Supabase Auth (email/password and Google) with one row-level-secured profile per user; tabs and devices merge their copies of it rather than overwrite each other. Guests save nothing, and members can delete their account and everything saved to it themselves. There is no learned recommender or public matchmaking. An immediate retest is feedback, not proof of lasting learning.
