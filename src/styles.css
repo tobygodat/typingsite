@@ -68,6 +68,7 @@
   --raised-2: rgba(255, 255, 255, 0.085);
   --text: #ece8e1;
   --muted: #a39e96;
+  --placeholder: rgba(163, 158, 150, 0.8);
   --hairline: rgba(255, 255, 255, 0.075);
   --hairline-strong: rgba(255, 255, 255, 0.15);
   --outline: #7d7972;
@@ -92,17 +93,18 @@
   --raised-2: rgba(27, 26, 25, 0.07);
   --text: #1b1a19;
   --muted: #6b665e;
+  --placeholder: rgba(107, 102, 94, 0.92);
   --hairline: rgba(27, 26, 25, 0.1);
   --hairline-strong: rgba(27, 26, 25, 0.2);
   --outline: #857f75;
-  --accent: #2e7d4f;
+  --accent: #217245;
   --accent-ink: #fbf9f5;
   --accent-soft: rgba(46, 125, 79, 0.11);
-  --danger: #b4432c;
-  --danger-soft: rgba(180, 67, 44, 0.1);
+  --danger: #ad3d26;
+  --danger-soft: rgba(180, 67, 44, 0.12);
   --warning: #8a5a00;
   --selection: #e3dccf;
-  --ghost: #4f5bc4;
+  --ghost: #434db5;
   --shadow-float: 0 8px 24px rgba(70, 56, 30, 0.12);
   --card-top: #fffdf9;
   --card-bottom: #efeae1;
@@ -585,8 +587,14 @@ kbd {
     transform var(--dur-quick) var(--ease-out);
 }
 
-.btn:active:not(:disabled) { transform: scale(0.98); }
-.btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.btn:active:not(:disabled, [aria-disabled="true"]) { transform: scale(0.98); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.38; cursor: not-allowed; }
+/* A waiting control (aria-disabled) can hold keyboard focus. Its focus ring stays at full strength,
+   so its own colours dim to the same 38% instead of the whole box. */
+.btn[aria-disabled="true"]:focus-visible { opacity: 1; color: color-mix(in srgb, var(--text) 38%, transparent); }
+.btn-primary[aria-disabled="true"]:focus-visible { color: color-mix(in srgb, var(--accent-ink) 38%, transparent); background: color-mix(in srgb, var(--accent) 38%, transparent); }
+.btn-secondary[aria-disabled="true"]:focus-visible { border-color: color-mix(in srgb, var(--hairline-strong) 38%, transparent); }
+.btn-ghost[aria-disabled="true"]:focus-visible { color: color-mix(in srgb, var(--muted) 38%, transparent); }
 
 .btn-primary {
   background: var(--accent);
@@ -594,19 +602,19 @@ kbd {
   font-weight: 600;
 }
 
-.btn-primary:hover:not(:disabled) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
+.btn-primary:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
 
 .btn-secondary { border-color: var(--hairline-strong); }
-.btn-secondary:hover:not(:disabled) { background: var(--raised-2); }
+.btn-secondary:hover:not(:disabled, [aria-disabled="true"]) { background: var(--raised-2); }
 .btn-ghost { color: var(--muted); }
-.btn-ghost:hover:not(:disabled) { color: var(--text); background: var(--raised-2); }
+.btn-ghost:hover:not(:disabled, [aria-disabled="true"]) { color: var(--text); background: var(--raised-2); }
 .btn-danger { color: var(--danger); border-color: color-mix(in oklab, var(--danger) 40%, transparent); }
-.btn-danger:hover:not(:disabled) { background: var(--danger-soft); }
+.btn-danger:hover:not(:disabled, [aria-disabled="true"]) { background: var(--danger-soft); }
 .btn-sm { height: 34px; padding: 0 12px; font-size: 14px; }
 
 /* A quiet destructive action (e.g. a ghost "Clear history" button). */
 .danger-text { color: var(--danger); }
-.danger-text:hover:not(:disabled) { color: var(--danger); background: var(--danger-soft); }
+.danger-text:hover:not(:disabled, [aria-disabled="true"]) { color: var(--danger); background: var(--danger-soft); }
 
 .input {
   height: var(--control);
@@ -620,7 +628,8 @@ kbd {
   transition: border-color var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
 }
 
-.input::placeholder { color: var(--muted); opacity: 0.8; }
+/* opacity: 1 overrides the browser's own placeholder fade, so the token alone sets the contrast. */
+.input::placeholder { color: var(--placeholder); opacity: 1; }
 .input:focus-visible { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .input[aria-invalid="true"] { border-color: var(--danger); }
 .select { padding-right: 8px; cursor: pointer; }
@@ -1249,7 +1258,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .run-card-graph { margin: 0; display: grid; gap: var(--space-2); }
 
 .speed-graph { aspect-ratio: 16 / 9; margin-inline: -4px; }
-.speed-graph svg { display: block; overflow: visible; }
+/* Drawn at the container's pixel size. Capping it at the container keeps the old drawing from
+   holding the card at its old width when the window narrows, so the observer sees the new width
+   and redraws; until then it scales evenly rather than stretching. */
+.speed-graph svg { display: block; max-width: 100%; height: auto; overflow: visible; }
 
 .graph-axis { stroke: var(--hairline-strong); stroke-width: 1; }
 .graph-grid { stroke: var(--hairline); stroke-width: 1; }
@@ -1773,7 +1785,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   font-size: 19px;
 }
 
-#palette-input::placeholder { color: var(--muted); }
+#palette-input::placeholder { color: var(--muted); opacity: 1; }
 
 .palette-scroll {
   position: relative;
@@ -2050,8 +2062,27 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .nav-label-short { display: inline; }
 }
 
-@media (pointer: coarse) {
+/* Any coarse pointer keeps a 44px minimum target. any-pointer, not pointer: a touchscreen laptop or
+   a tablet with a trackpad reports its fine pointer as primary, and a finger still reaches every
+   control. e2e/touch-targets.spec.js measures every control; touch-targets-hybrid.spec.js checks
+   the hybrid case. Text-sized controls reach into the space around them with a transparent ::after,
+   so neither the layout nor the focus ring moves. Relative position keeps that reach above the
+   content after it. */
+@media (any-pointer: coarse) {
   .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
+  .footer-link, .run-detail summary, .daily-challenge summary { position: relative; }
+  .footer-link::after, .run-detail summary::after, .daily-challenge summary::after { content: ""; position: absolute; }
+  /* 12px mono on a 1.5 line is 18px, 34px with its own 8px padding: 16px more, down into the
+     footer's own padding, makes 50 and stays off the line before it. */
+  .footer-link::after { inset: 0 0 calc(var(--space-4) * -1); }
+  /* "View passage" and "Your daily results": a 27px line, 51px with 12px each side. */
+  .run-detail summary::after, .daily-challenge summary::after { inset: calc(var(--space-3) * -1) 0; }
+  .toast-close { min-width: var(--control); }
+  /* Chart points: 48px tall and up to 48px wide, so the reach through the centre clears 44 at any
+     sub-pixel offset, but never wider than the gap to the next point (see progress-view.js).
+     The date labels are drawn over the end points; taps pass through every axis label. */
+  .trend-hit { rx: min(var(--space-6), var(--trend-step) / 2); ry: var(--space-6); }
+  .trend-label { pointer-events: none; }
 }
 
 @media (max-width: 760px) {

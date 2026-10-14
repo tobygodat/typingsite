@@ -346,8 +346,9 @@ test('a deletion that gets no answer gives up within 30 seconds in all and chang
   const confirm = page.locator('#confirm-delete-account');
 
   // The page clock keeps flowing while the test acts, so "still busy" is checked with room to spare
-  // and "done" just past 30 s, where separate per-request timeouts would still be waiting.
-  const givesUpWithin30s = async (call) => {
+  // and "done" just past the point it gives up: 30 s for the whole deletion, or sooner when one request
+  // reaches the account service's own timeout (account.REQUEST_TIMEOUT_MS, 15 s) first.
+  const givesUpWithin30s = async (call, { busyAt = 25_000, doneAt = 30_500 } = {}) => {
     const saved = await localState(page);
     await openDeleteDialog(page);
     await page.keyboard.type('delete', { delay: 60 });
@@ -355,11 +356,11 @@ test('a deletion that gets no answer gives up within 30 seconds in all and chang
     await confirm.click();
     await expect.poll(() => supabase.requests.slice(before)).toContain(call);
     await expect(form).toHaveAttribute('aria-busy', 'true');
-    await page.clock.fastForward(25_000);
+    await page.clock.fastForward(busyAt);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();
     await expect(form).toHaveAttribute('aria-busy', 'true');
-    await page.clock.fastForward(5_500);
+    await page.clock.fastForward(doneAt - busyAt);
     await expect(page.locator('#delete-account-error')).toHaveText('Can’t reach the account service. Check your connection and try again.');
     await expect(form).toHaveAttribute('aria-busy', 'false');
     await expect(page.locator('#delete-account-status')).toHaveText('');
@@ -378,9 +379,10 @@ test('a deletion that gets no answer gives up within 30 seconds in all and chang
   supabase.blackholed.add(FUNCTION_CALL).add('GET /auth/v1/user');
   await givesUpWithin30s(FUNCTION_CALL);
 
-  // An hour on, the token needs refreshing first, and the refresh hangs as well.
+  // An hour on, the token needs refreshing first, and the refresh hangs as well. The refresh gives up at
+  // the account service's request timeout, before the deletion's own deadline.
   supabase.blackholed.add('POST /auth/v1/token');
   await page.clock.setSystemTime(Date.now() + 3_600_000);
-  await givesUpWithin30s('POST /auth/v1/token?grant_type=refresh_token');
+  await givesUpWithin30s('POST /auth/v1/token?grant_type=refresh_token', { busyAt: 12_000, doneAt: 15_500 });
   expect(supabase.deletedUsers).toEqual([]);
 });

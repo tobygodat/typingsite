@@ -31,8 +31,8 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
     test('results fit after a run at a human pace', async ({ page }) => {
       await openApp(page);
       await chooseWords(page, 10);
-      // About 60 wpm. Automation's instant typing scores in the hundreds, and below ~354px some
-      // three-digit scores overflow the run card (112px numeral plus its unit): a known defect.
+      // About 60 wpm, a human pace; automation's instant typing scores hundreds or thousands.
+      // Three-digit scores at the narrowest width have their own check below.
       await typeInto(page, await passageText(page), '#typing-input', { delay: 200 });
       await expect(page.locator('#run-card')).toBeVisible();
       expect(Number(await page.locator('#result-wpm').textContent())).toBeLessThan(100);
@@ -40,6 +40,47 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
     });
   });
 }
+
+test.describe('narrow run card', () => {
+  test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+
+  test('a three-digit score and its unit fit inside the run card at 320px', async ({ page }) => {
+    await openApp(page);
+    await chooseWords(page, 10);
+    await typeInto(page, await passageText(page), '#typing-input', { delay: 120 });
+    await expect(page.locator('#run-card')).toBeVisible();
+    // Figures are tabular, so any three digits are as wide as 188. Under 360px the numeral steps
+    // down to --text-numeral-narrow; 361 and 360 sit either side of that step. Narrowing from 390
+    // also checks that the speed graph, drawn at its old width, gives the card back.
+    await page.locator('#result-wpm').evaluate((node) => { node.textContent = '188'; });
+    for (const width of [390, 361, 360, 320]) {
+      await page.setViewportSize({ width, height: 640 });
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${width}px page`).toBe(0);
+      const fit = await page.evaluate(() => {
+        const card = document.querySelector('#run-card');
+        const style = getComputedStyle(card);
+        const box = card.getBoundingClientRect();
+        const inner = { left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight) };
+        const rect = (selector) => { const r = document.querySelector(selector).getBoundingClientRect(); return { left: r.left, right: r.right }; };
+        const score = document.querySelector('.run-card-score');
+        return { page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          overflow: card.scrollWidth - card.clientWidth, score: score.scrollWidth - score.clientWidth,
+          inner, numeral: rect('#result-wpm'), unit: rect('.run-card-unit'), card: { left: box.left, right: box.right },
+          shell: rect('.app-shell') };
+      });
+      expect(fit.page, `${width}px page`).toBe(0);
+      expect(fit.overflow, `${width}px card`).toBe(0);
+      expect(fit.score, `${width}px score row`).toBe(0);
+      // The card keeps inside the page gutters, give or take a sub-pixel.
+      expect(fit.card.left, `${width}px card left`).toBeGreaterThanOrEqual(fit.shell.left - 0.5);
+      expect(fit.card.right, `${width}px card right`).toBeLessThanOrEqual(fit.shell.right + 0.5);
+      for (const part of ['numeral', 'unit']) {
+        expect(fit[part].left, `${width}px ${part} left`).toBeGreaterThanOrEqual(fit.inner.left);
+        expect(fit[part].right, `${width}px ${part} right`).toBeLessThanOrEqual(fit.inner.right);
+      }
+    }
+  });
+});
 
 test('desktop keeps the dock at the top and the passage at three lines', async ({ page }) => {
   await openApp(page);

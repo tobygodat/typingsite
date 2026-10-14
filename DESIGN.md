@@ -8,6 +8,7 @@ colors:
   raised-2: "rgba(255, 255, 255, 0.085)"
   text: "#ece8e1"
   muted: "#a39e96"
+  placeholder: "rgba(163, 158, 150, 0.8)"
   hairline: "rgba(255, 255, 255, 0.075)"
   hairline-strong: "rgba(255, 255, 255, 0.15)"
   outline: "#7d7972"
@@ -27,17 +28,18 @@ colors:
   raised-2-light: "rgba(27, 26, 25, 0.07)"
   text-light: "#1b1a19"
   muted-light: "#6b665e"
+  placeholder-light: "rgba(107, 102, 94, 0.92)"
   hairline-light: "rgba(27, 26, 25, 0.1)"
   hairline-strong-light: "rgba(27, 26, 25, 0.2)"
   outline-light: "#857f75"
-  accent-light: "#2e7d4f"
+  accent-light: "#217245"
   accent-ink-light: "#fbf9f5"
   accent-soft-light: "rgba(46, 125, 79, 0.11)"
-  danger-light: "#b4432c"
-  danger-soft-light: "rgba(180, 67, 44, 0.1)"
+  danger-light: "#ad3d26"
+  danger-soft-light: "rgba(180, 67, 44, 0.12)"
   warning-light: "#8a5a00"
   selection-light: "#e3dccf"
-  ghost-light: "#4f5bc4"
+  ghost-light: "#434db5"
   card-top-light: "#fffdf9"
   card-bottom-light: "#efeae1"
 typography:
@@ -202,10 +204,10 @@ Density is low and deliberate. The practice screen centres the passage with the 
 
 ## Colors
 
-A warm, low-chroma neutral ramp with one green and one coral. The palette is defined twice, once for dark (`:root`, `[data-theme="dark"]`) and once for light (`[data-theme="light"]`), with identical token names. Frontmatter keys ending in `-light` are the light-theme values of the same token.
+A warm, low-chroma neutral ramp with one green and one coral. The palette is defined twice, once for dark (`:root`, `[data-theme="dark"]`) and once for light (`[data-theme="light"]`), with identical token names. Frontmatter keys ending in `-light` are the light-theme values of the same token. Both themes hold a contrast floor against what is behind it, translucent washes and mistyped-letter tints included (`tests/contrast.test.js`): text at least 4.5:1, and the caret, the ghost caret, the text-coloured focus ring, the accent border of a focused input and input outlines at least 3:1. Disabled controls, the blurred challenge-handoff veil and the dimmed idle and unfocused caret are deliberate exceptions.
 
 ### Primary
-- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. Focus rings on inputs use its soft tint (accent-soft). Text on a green fill uses accent-ink.
+- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. A focused input's border turns accent and gains a soft accent-soft ring; the accent border is the focus cue that carries the contrast. Text on a green fill uses accent-ink.
 
 ### Secondary
 - **Ember Coral** (danger): mistyped letters, the blocked caret, regressions, destructive actions and field errors. It is always paired with a second cue (a tint or a word) and never used alone.
@@ -221,6 +223,7 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 - **Raised Wash** (raised-2): the translucent hover and selection wash under nav items, ghost buttons, the gliding pill and the palette highlight.
 - **Bone** (text): primary text and correctly typed letters.
 - **Pumice** (muted): untyped passage letters, secondary copy, labels and inactive navigation.
+- **Placeholder**: input placeholder text, a translucent muted (80% in dark, 92% in light) so it stays quieter than typed text.
 - **Hairline / Strong Hairline**: rules between sections and rows (hairline), and the borders of raised surfaces, keys and secondary buttons (hairline-strong).
 - **Field Outline** (outline): input borders.
 - **Card Stock** (card-top to card-bottom): the run card's 165-degree gradient, a subtle paper-stock sheen that sits only on that card.
@@ -267,7 +270,7 @@ A single centred column, `min(1080px, 100% - 48px)` wide (100% - 32px under 760p
 - **Results:** a two-column grid (run card 320–400px, copy fluid, 64px gap). The run card is sticky at 104px from the top. Under 900px it stacks, with the card centred at up to 420px, and it stops sticking when the viewport is 1120px tall or less, since the full card runs to about 980px.
 - **Progress / Challenge:** heading row, then hairline-separated rows on fixed column grids that collapse to two columns under 900px and 760px.
 - **Spacing:** a 4px-based scale (4, 8, 12, 16, 24, 32, 40, 56, 64). Section breaks are 32px of padding above a hairline rule. Row padding is 12px (evidence) or 24px (history, race results).
-- **Breakpoints:** 900px (results and tables stack), 760px (dock moves to the bottom, keyboard and shortcuts hidden, type steps down), 360px (nav tightens; run-card stat values step down to 20px and the character breakdown takes its own row), max-height 1120px (run card un-sticks). Coarse pointers keep a 44px minimum target.
+- **Breakpoints:** 900px (results and tables stack), 760px (dock moves to the bottom, keyboard and shortcuts hidden, type steps down), 360px (nav tightens; run-card stat values step down to 20px and the character breakdown takes its own row), max-height 1120px (run card un-sticks). Any coarse pointer keeps a 44px minimum target (`any-pointer: coarse`, so a touchscreen laptop whose primary pointer is its trackpad counts too), checked for every visible control by `e2e/touch-targets.spec.js` and on a hybrid desktop by `e2e/touch-targets-hybrid.spec.js`; text-sized controls (the footer link, plain disclosures) reach it with a transparent `::after`, so neither the text nor the focus ring moves.
 
 ### Named Rules
 **The Rules-Not-Boxes Rule.** Sections are separated by a 1px hairline and space, never by a card. If a region is not a floating object or the run card, it has no background and no border box.
@@ -306,7 +309,7 @@ Mode and length pickers are a 14px frame with a hairline border, holding 36px Li
 
 ### Inputs / Fields
 - **Style:** raised fill, 1px outline border, 12px corners, 44px tall, 16px text.
-- **Focus:** the border turns accent and gains a 3px accent-soft ring.
+- **Focus:** the border turns accent and gains a 3px accent-soft ring. The accent border is the focus cue and holds 3:1; the accent-soft ring is a supplementary tint (about 1.15:1) and is not relied on for contrast.
 - **Error:** a coral border (`aria-invalid`) and a 14px coral message below.
 - **Switch:** a 38×22 track (hairline-strong, accent when on) with a text-coloured knob that slides 16px.
 
@@ -320,7 +323,7 @@ A 7px dot in the current colour, followed by a lowercase 12px mono word, coloure
 
 ### Progress, recurring patterns and daily challenge
 
-Progress keeps the editorial column: condition/period fields, two charts, run rows, then drill/retest rows, all separated by space and rules. Corrected WPM uses the green line; accuracy uses the neutral text line. Axis labels show each chart's scale. Chart points have 44px hit areas, keyboard activation and accessible labels that open the corresponding run. Charts stack on mobile and redraw at the available width. Run and comparison disclosures expose their details without adding cards.
+Progress keeps the editorial column: condition/period fields, two charts, run rows, then drill/retest rows, all separated by space and rules. Corrected WPM uses the green line; accuracy uses the neutral text line. Axis labels show each chart's scale. Chart points have 44px hit areas (48px when any pointer is coarse, where the axis labels let taps through), narrowed to the gap between neighbouring points when runs are dense so a tap always opens the point under it; the run rows below are the full-size equivalent. Points have keyboard activation and accessible labels that open the corresponding run. Charts stack on mobile and redraw at the available width. Run and comparison disclosures expose their details without adding cards.
 
 The training memory section sits below the existing drill actions. Pair headings and counts use Literata; each row offers a neutral bordered button to practice the target again. Sample counts, matching conditions, last practice and later fresh observations stay adjacent to the target.
 

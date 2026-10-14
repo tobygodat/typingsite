@@ -61,4 +61,4 @@ The app uses native HTML/CSS/JavaScript. Its visual system, Afterimage (Literata
 - [Research summary](docs/research/summary.md)
 - [ML evaluation plan](docs/ml-data-evaluation.md)
 
-Accounts use Supabase Auth (email/password and Google) with one row-level-secured profile per user; guests save nothing, and members can delete their account and everything saved to it themselves. There is no learned recommender or public matchmaking. An immediate retest is feedback, not proof of lasting learning.
+Accounts use Supabase Auth (email/password and Google) with one row-level-secured profile per user; tabs and devices merge their copies of it rather than overwrite each other. Guests save nothing, and members can delete their account and everything saved to it themselves. There is no learned recommender or public matchmaking. An immediate retest is feedback, not proof of lasting learning.
