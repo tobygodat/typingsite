@@ -261,6 +261,48 @@ function printable(text) {
   return typeof text === 'string' && text.length > 0 && !/[\r\n]/u.test(text);
 }
 
+// Accent (dead) keys reach the page as a short composition: the mark shows, then the next key commits
+// one character (ä, or " after space) or, where the pair has no composed form, the mark and that key ("h).
+// Which compositions are an accent key's is decided by where they came from (accentComposition); what one
+// commits must then be what a Latin keyboard's keys type, or it is IME text, which isn't keyboard input.
+const DEAD_MARKS = new Set([...'\'"`~^´¨ˆ˜ˇ˘˚°¸˛˝˙¯']);
+// A combining accent is a mark too, except the invisible grapheme joiner (U+034F) among them.
+export const deadMark = (char) => DEAD_MARKS.has(char) || (/^[̀-ͯ]$/u.test(char) && !/\p{Default_Ignorable_Code_Point}/u.test(char));
+// What a key on a Latin keyboard types: printable ASCII or Latin-1 (AZERTY's ² £ § µ), a Latin letter
+// (é ø ł ẽ), or a digit, punctuation mark, symbol or space no other script owns (’ — … ≠ ⁴ €, a narrow
+// no-break space), which a layout's own keys type and an accent key can commit after its mark. Not another
+// script's letter, digit or punctuation (अ ж १ ।), an East Asian form (the ideographic space, CJK
+// punctuation, vertical, small and full-width forms), anything invisible (soft hyphen) or a pictograph
+// (© ❤), which emoji pickers commit through compositions too. An astral character is two UTF-16 units, so
+// it would move the caret two letters.
+const LATIN_KEY = /^(?:[\x20-\x7E\u00A0-\u00FF]|\p{Script=Latin}|(?=[\p{N}\p{P}\p{S}\p{Zs}])[\p{scx=Common}\p{scx=Inherited}\p{scx=Latin}])$/u;
+const NOT_A_KEY = /[\p{Default_Ignorable_Code_Point}\p{Extended_Pictographic}\u3000-\u303F\uFE10-\uFE6F\uFF00-\uFFEF]/u;
+const keyChar = (char) => char.length === 1 && (deadMark(char) || LATIN_KEY.test(char)) && !NOT_A_KEY.test(char);
+
+// Where a composition came from. An accent key's opens with that key's keydown (key Dead) in Chrome and
+// Firefox. Safari sends the keydown after the mark shows, and Chromium on Linux sends key Process for every
+// key its input method takes, so there the mark itself, shown first and on its own, says so. Any other
+// composition is an input method's (Pinyin, Telex, Hindi, Korean), whatever it commits: even one letter
+// from it is not a key press.
+export const accentComposition = ({ key = null, preview = null } = {}) => key === 'Dead'
+  || (typeof preview === 'string' && preview.length === 1 && deadMark(preview));
+
+// What an accent key's composition types: the one or two keys it committed, or null for anything else.
+export function composedKeys(text) {
+  const chars = [...(text ?? '').normalize('NFC')];
+  if (chars.length > 2 || !chars.every(keyChar)) return null;
+  if (chars.length === 2 && !deadMark(chars[0])) return null;
+  return chars;
+}
+
+// A later key of an accent commit (the h of "h) that the passage has no place left for: it was pressed while
+// the last letter was still to come, so it is a mistake against that letter and is not kept. A key that is
+// that letter ("" on a closing ") records nothing, as a plain key after the passage ends isn't recorded.
+export function carriedKey(attempt, char, offsetMs) {
+  const position = attempt.text.length - 1;
+  return char === attempt.text[position] ? null : { type: 'insert', text: char, position, accepted: false, offsetMs };
+}
+
 // Custom text is held to the passage alphabet: printable ASCII, which every corpus passage uses and an
 // English keyboard types one key at a time without an input method. Each letter is then one UTF-16 unit,
 // which is how replay indexes the passage. About ten minutes of typing: each keystroke replays the whole
@@ -622,7 +664,9 @@ export function consistency(attempt, replay = replayAttempt(attempt)) {
 }
 
 // The finished text, letter by letter: correct and incorrect (still wrong at the finish) in the
-// kept text; extra = keystrokes past the passage end; missed = letters left untyped inside the
+// kept text; extra = keystrokes past the passage end, including a key an accent commit carried past
+// it (recorded against the last letter once the passage is full, not kept; a key refused inside the
+// passage is not extra); missed = letters left untyped inside the
 // last word the run reached. Slips fixed along the way are first-try errors, not incorrect.
 export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
   const target = attempt.text;
@@ -636,7 +680,7 @@ export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
     if (event.type !== 'insert' || !printable(event.text)) continue;
     for (let n = [...event.text].length; n > 0; n -= 1) {
       const position = Number.isInteger(event.position) ? event.position : length;
-      if (position >= target.length) extra += 1;
+      if (position >= target.length || (event.accepted === false && length >= target.length)) extra += 1;
       else if (event.accepted !== false) length += 1;
     }
   }
