@@ -9,7 +9,7 @@ Node.js 20 or newer. The app itself has no dependencies; `npm install` is only n
 ```sh
 npm run dev
 npm test
-npm run build   # static build in dist/, used by Vercel
+npm run build   # static build in dist/, served by Cloudflare (wrangler.jsonc)
 npm run test:e2e   # Playwright browser verification (e2e/), after npm install
 ```
 
