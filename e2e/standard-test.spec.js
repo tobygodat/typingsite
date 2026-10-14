@@ -507,8 +507,9 @@ test('screenshots', async ({ page, supabase }, testInfo) => {
   await page.keyboard.press('Escape');
   await typeForAMinute(page, await passageText(page));
   const wpm = Number(await page.locator('#result-wpm').textContent());
+  // One key every 95 ms is at most 60000 / (95 × 5) ≈ 126 wpm; how close a run gets depends on the machine.
   expect(wpm).toBeGreaterThanOrEqual(30);
-  expect(wpm).toBeLessThanOrEqual(110);
+  expect(wpm).toBeLessThanOrEqual(130);
   await page.mouse.move(0, 0);
   await page.screenshot({ path: shot(testInfo, 'run-card-dark.png') });
 

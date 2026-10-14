@@ -2114,6 +2114,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
    content after it. */
 @media (any-pointer: coarse) {
   .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
+  /* A short mode ("time") among five on a 320px phone is narrower than 44px: the row still fits. */
+  .segmented button { min-width: var(--control); }
   .footer-link, .run-detail summary, .daily-challenge summary { position: relative; }
   .footer-link::after, .run-detail summary::after, .daily-challenge summary::after { content: ""; position: absolute; }
   /* 12px mono on a 1.5 line is 18px, 34px with its own 8px padding: 16px more, down into the
