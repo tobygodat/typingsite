@@ -1376,6 +1376,8 @@ function renderResults(completed, saved) {
 // `compared` is false after a custom text result (any non-comparable kind): that text is never mined for
 // targets or kept as a baseline, so Train offers no drill or retest for it. A drill started later shows them again.
 function renderRecommendation(counted = true, compared = true) {
+  // After startDaily() there is no recommendation: show the general drill Start drill falls back to.
+  activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
   $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
   $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
@@ -1820,6 +1822,8 @@ function startDaily() {
   baselineAttempt = null;
   trainingContext = null;
   activeRecommendation = null;
+  // The baseline is gone, so Train no longer offers the drill's retest.
+  renderRecommendation();
   resetSession('daily', { focus: true });
 }
 

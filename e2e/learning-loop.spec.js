@@ -121,6 +121,11 @@ test('leaving a drill for another view ends it without drawing a retest passage'
   await expect.poll(() => runs().length).toBe(4);
   await expect.poll(() => added().some((id) => id.startsWith('daily-'))).toBe(true);
   expect(added().filter((id) => !id.startsWith('daily-'))).toEqual([]);
+  // The daily dropped the drill's baseline, so Train offers a standalone drill and no retest.
+  await openView(page, 'Train');
+  await expect(page.locator('#skip-to-retest')).toBeDisabled();
+  await expect(page.locator('#start-drill')).toBeEnabled();
+  await expect(page.locator('#recommendation-meta')).toContainText('standalone drill');
 });
 
 // A saved 25-word run with a "th" slip every fourth character, so two of them make a recurring target.
