@@ -2052,8 +2052,27 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .nav-label-short { display: inline; }
 }
 
-@media (pointer: coarse) {
+/* Any coarse pointer keeps a 44px minimum target. any-pointer, not pointer: a touchscreen laptop or
+   a tablet with a trackpad reports its fine pointer as primary, and a finger still reaches every
+   control. e2e/touch-targets.spec.js measures every control; touch-targets-hybrid.spec.js checks
+   the hybrid case. Text-sized controls reach into the space around them with a transparent ::after,
+   so neither the layout nor the focus ring moves. Relative position keeps that reach above the
+   content after it. */
+@media (any-pointer: coarse) {
   .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
+  .footer-link, .run-detail summary, .daily-challenge summary { position: relative; }
+  .footer-link::after, .run-detail summary::after, .daily-challenge summary::after { content: ""; position: absolute; }
+  /* 12px mono on a 1.5 line is 18px, 34px with its own 8px padding: 16px more, down into the
+     footer's own padding, makes 50 and stays off the line before it. */
+  .footer-link::after { inset: 0 0 calc(var(--space-4) * -1); }
+  /* "View passage" and "Your daily results": a 27px line, 51px with 12px each side. */
+  .run-detail summary::after, .daily-challenge summary::after { inset: calc(var(--space-3) * -1) 0; }
+  .toast-close { min-width: var(--control); }
+  /* Chart points: 48px tall and up to 48px wide, so the reach through the centre clears 44 at any
+     sub-pixel offset, but never wider than the gap to the next point (see progress-view.js).
+     The date labels are drawn over the end points; taps pass through every axis label. */
+  .trend-hit { rx: min(var(--space-6), var(--trend-step) / 2); ry: var(--space-6); }
+  .trend-label { pointer-events: none; }
 }
 
 @media (max-width: 760px) {
