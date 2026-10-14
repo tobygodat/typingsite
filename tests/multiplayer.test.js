@@ -251,11 +251,16 @@ test('friend-list calls hand their abort signal to fetch', async () => {
   const signals = [];
   globalThis.fetch = async (url, options) => { signals.push(options.signal); return new Response('[]'); };
   try {
-    const { signal } = new AbortController();
+    const controller = new AbortController();
+    const { signal } = controller;
     await listFriends(session, signal);
     await addFriend(session, { email: 'lin@example.com' }, signal);
     await removeFriend(session, roomId, signal);
     await addFriendFromRace(session, { roomId }, signal);
-    assert.deepEqual(signals, [signal, signal, signal, signal]);
+    // Each fetch gets the queue's signal, joined with the account service's own request timeout.
+    assert.equal(signals.length, 4);
+    assert.ok(signals.every((sent) => sent instanceof AbortSignal && !sent.aborted));
+    controller.abort();
+    assert.ok(signals.every((sent) => sent.aborted));
   } finally { globalThis.fetch = original; }
 });
