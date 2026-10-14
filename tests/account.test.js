@@ -699,3 +699,18 @@ test('forgetting a deleted account removes its session and device cache, sends n
     assert.deepEqual(calls, []);
   });
 });
+
+test('forgetting a deleted account marks it signed out before the session goes, then leaves no marker', async () => {
+  await withAccountService(() => reply(200), async (calls, store) => {
+    store.set('stilltype-session-v1', '{}');
+    store.set(profileKey('u1'), '{}');
+    // Other tabs hear these changes in this order, so the first already stops their saving.
+    const changes = [];
+    const { setItem, removeItem } = globalThis.localStorage;
+    globalThis.localStorage.setItem = (key, value) => { changes.push(['set', key]); setItem(key, value); };
+    globalThis.localStorage.removeItem = (key) => { changes.push(['remove', key]); removeItem(key); };
+    forgetAccount(liveSession());
+    assert.deepEqual(changes, [['set', signedOutKey('u1')], ['remove', SESSION_KEY], ['remove', profileKey('u1')], ['remove', signedOutKey('u1')]]);
+    assert.deepEqual([...store.keys()], []);
+  });
+});

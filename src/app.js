@@ -2620,7 +2620,8 @@ function bindAccount() {
   });
 }
 
-// Another tab signed this account out, either way: keeping unsent edits leaves its marker
+// Another tab signed this account out (or deleted it: account.forgetAccount leaves the marker first),
+// either way: keeping unsent edits leaves its marker
 // (account.signedOutKey), and sending everything first removes the device cache, after a marker naming
 // the copy it sent, which this tab hears first (finishFollow then hears the removal). Any other removal
 // of the cache, such as cleared site data, counts the same. Or the device now holds another account's

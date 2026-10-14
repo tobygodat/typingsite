@@ -294,6 +294,33 @@ test('a lost reply still finishes the deletion, and another open tab follows it'
   await other.close();
 });
 
+test('a tab mid-run when the account is deleted saves nothing for it, and reloads as a guest once the run ends', async ({ page, supabase }) => {
+  supabase.addUser(ADA);
+  await openApp(page);
+  await signInWithEmail(page, ADA);
+  const other = await page.context().newPage();
+  await supabase.attach(other);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'member');
+  await chooseWords(other, 10);
+  const text = await passageText(other);
+  await typeInto(other, text.slice(0, 5));
+  await expect(other.locator('body')).toHaveAttribute('data-running', 'true');
+
+  await openDeleteDialog(page);
+  await page.keyboard.type('delete', { delay: 60 });
+  await Promise.all([page.waitForEvent('load'), page.keyboard.press('Enter')]);
+  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+  expect(supabase.users.has(ADA)).toBe(false);
+
+  // The run in progress is left alone; when it ends the tab saves nothing and starts again as a guest.
+  await Promise.all([other.waitForEvent('load'), typeInto(other, text.slice(5))]);
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
+  expect(await storageKeys(other)).toEqual([]);
+  expect(await storageKeys(page)).toEqual([]);
+  await other.close();
+});
+
 test('a server error after the account was deleted still finishes the deletion', async ({ page, supabase }) => {
   supabase.addUser(ADA);
   await openApp(page);

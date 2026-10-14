@@ -372,10 +372,18 @@ async function deleteBefore(session, signal) {
   throw new AuthError(gone === false ? DELETE_COPY.unavailable : DELETE_COPY.offline);
 }
 
-// After a confirmed deletion: the session and this account's device cache go, nothing is sent.
+// After a confirmed deletion: the session and this account's device cache go, nothing is sent. The
+// signed-out marker goes first, so other tabs of the account stop saving for it at the first change they
+// hear (a session removed without one reads as expired, and those tabs would keep caching), and last, so
+// nothing about the account stays on the device.
 export function forgetAccount(session) {
+  const userId = session?.user?.id;
+  if (userId) writeJson(signedOutKey(userId), true);
   remove(SESSION_KEY);
-  if (session?.user?.id) remove(profileKey(session.user.id));
+  if (userId) {
+    remove(profileKey(userId));
+    clearSignedOut(userId);
+  }
 }
 
 export async function fetchCloudProfile(session) {
