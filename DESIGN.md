@@ -8,6 +8,7 @@ colors:
   raised-2: "rgba(255, 255, 255, 0.085)"
   text: "#ece8e1"
   muted: "#a39e96"
+  placeholder: "rgba(163, 158, 150, 0.8)"
   hairline: "rgba(255, 255, 255, 0.075)"
   hairline-strong: "rgba(255, 255, 255, 0.15)"
   outline: "#7d7972"
@@ -27,17 +28,18 @@ colors:
   raised-2-light: "rgba(27, 26, 25, 0.07)"
   text-light: "#1b1a19"
   muted-light: "#6b665e"
+  placeholder-light: "rgba(107, 102, 94, 0.92)"
   hairline-light: "rgba(27, 26, 25, 0.1)"
   hairline-strong-light: "rgba(27, 26, 25, 0.2)"
   outline-light: "#857f75"
-  accent-light: "#2e7d4f"
+  accent-light: "#217245"
   accent-ink-light: "#fbf9f5"
   accent-soft-light: "rgba(46, 125, 79, 0.11)"
-  danger-light: "#b4432c"
+  danger-light: "#ad3d26"
   danger-soft-light: "rgba(180, 67, 44, 0.12)"
   warning-light: "#8a5a00"
   selection-light: "#e3dccf"
-  ghost-light: "#4f5bc4"
+  ghost-light: "#434db5"
   card-top-light: "#fffdf9"
   card-bottom-light: "#efeae1"
 typography:
@@ -202,10 +204,10 @@ Density is low and deliberate. The practice screen centres the passage with the 
 
 ## Colors
 
-A warm, low-chroma neutral ramp with one green and one coral. The palette is defined twice, once for dark (`:root`, `[data-theme="dark"]`) and once for light (`[data-theme="light"]`), with identical token names. Frontmatter keys ending in `-light` are the light-theme values of the same token.
+A warm, low-chroma neutral ramp with one green and one coral. The palette is defined twice, once for dark (`:root`, `[data-theme="dark"]`) and once for light (`[data-theme="light"]`), with identical token names. Frontmatter keys ending in `-light` are the light-theme values of the same token. Both themes hold a contrast floor against what is behind it, translucent washes and mistyped-letter tints included (`tests/contrast.test.js`): text at least 4.5:1, and the caret, the ghost caret, the text-coloured focus ring, the accent border of a focused input and input outlines at least 3:1. Disabled controls, the blurred challenge-handoff veil and the dimmed idle and unfocused caret are deliberate exceptions.
 
 ### Primary
-- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. Focus rings on inputs use its soft tint (accent-soft). Text on a green fill uses accent-ink.
+- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. A focused input's border turns accent and gains a soft accent-soft ring; the accent border is the focus cue that carries the contrast. Text on a green fill uses accent-ink.
 
 ### Secondary
 - **Ember Coral** (danger): mistyped letters, the blocked caret, regressions, destructive actions and field errors. It is always paired with a second cue (a tint or a word) and never used alone.
@@ -221,6 +223,7 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 - **Raised Wash** (raised-2): the translucent hover and selection wash under nav items, ghost buttons, the gliding pill and the palette highlight.
 - **Bone** (text): primary text and correctly typed letters.
 - **Pumice** (muted): untyped passage letters, secondary copy, labels and inactive navigation.
+- **Placeholder**: input placeholder text, a translucent muted (80% in dark, 92% in light) so it stays quieter than typed text.
 - **Hairline / Strong Hairline**: rules between sections and rows (hairline), and the borders of raised surfaces, keys and secondary buttons (hairline-strong).
 - **Field Outline** (outline): input borders.
 - **Card Stock** (card-top to card-bottom): the run card's 165-degree gradient, a subtle paper-stock sheen that sits only on that card.
@@ -306,7 +309,7 @@ Mode and length pickers are a 14px frame with a hairline border, holding 36px Li
 
 ### Inputs / Fields
 - **Style:** raised fill, 1px outline border, 12px corners, 44px tall, 16px text.
-- **Focus:** the border turns accent and gains a 3px accent-soft ring.
+- **Focus:** the border turns accent and gains a 3px accent-soft ring. The accent border is the focus cue and holds 3:1; the accent-soft ring is a supplementary tint (about 1.15:1) and is not relied on for contrast.
 - **Error:** a coral border (`aria-invalid`) and a 14px coral message below.
 - **Switch:** a 38×22 track (hairline-strong, accent when on) with a text-coloured knob that slides 16px.
 
