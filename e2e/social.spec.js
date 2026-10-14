@@ -451,9 +451,11 @@ test('a pressed race control keeps keyboard focus while its request is out, and 
     // The others are dimmed as disabled. The pressed one dims its colours instead of the whole box,
     // so its focus ring stays at full strength in the text colour.
     expect(await page.getByRole('button', { name: 'Challenge kim' }).evaluate((node) => getComputedStyle(node).opacity)).toBe('0.38');
-    const look = await challenge.evaluate((node) => ({ opacity: getComputedStyle(node).opacity, ring: getComputedStyle(node).outlineColor,
-      text: getComputedStyle(document.body).color, focusVisible: node.matches(':focus-visible') }));
-    expect(look).toEqual({ opacity: '1', ring: look.text, text: look.text, focusVisible: true });
+    // The theme follows the emulated scheme through the app's change listener, so wait for it to land.
+    const look = () => challenge.evaluate((node) => ({ opacity: getComputedStyle(node).opacity, ring: getComputedStyle(node).outlineColor,
+      text: getComputedStyle(document.body).color, theme: document.documentElement.dataset.theme, focusVisible: node.matches(':focus-visible') }));
+    await expect.poll(async () => { const { ring, text, ...rest } = await look(); return { ...rest, ringIsText: ring === text }; })
+      .toEqual({ opacity: '1', ringIsText: true, theme, focusVisible: true });
     const path = process.env.SCREENSHOTS ? `docs/screenshots/social-rematch-flake/challenge-busy-${theme}.png` : testInfo.outputPath(`challenge-busy-${theme}.png`);
     await page.screenshot({ path });
   }
