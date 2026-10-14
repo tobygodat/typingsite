@@ -22,6 +22,7 @@ const SHELL = [
   '/src/multiplayer.js',
   '/src/online-race.js',
   '/src/palette.js',
+  '/src/profile.js',
   '/src/progress-view.js',
   '/src/typing.js',
   '/src/words.js',

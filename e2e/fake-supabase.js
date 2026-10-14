@@ -1,14 +1,25 @@
 // An in-memory stand-in for the Supabase endpoints src/account.js calls, installed with page.route,
 // so account flows run without a network or a real project. Row access mirrors the owner-only policy:
-// a token only ever sees its own profile row.
+// a token only ever sees its own profile row. Profile writes behave as PostgREST does for what the app
+// uses: eq filters on PATCH, return=representation (an empty array when nothing matched) and the two
+// POST conflict resolutions. updated_at comes back in Postgres's +00:00 form, as timestamptz does.
 import { createHash, randomUUID } from 'node:crypto';
 import { FakeRaces } from './fake-races.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'apikey, authorization, content-type, prefer',
-  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS',
 };
+
+// timestamptz as PostgREST returns it, and equality as Postgres compares it (by instant, not by text).
+const pgTime = (value) => new Date(value).toISOString().replace('Z', '+00:00');
+const sameInstant = (a, b) => Number.isFinite(Date.parse(a)) && Date.parse(a) === Date.parse(b);
+const eqFilter = (url, column) => {
+  const value = url.searchParams.get(column);
+  return value?.startsWith('eq.') ? value.slice(3) : null;
+};
+const pick = (row, select) => (select ? Object.fromEntries(select.split(',').map((column) => [column, row[column]])) : row);
 
 const base64url = (buffer) => buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
@@ -18,6 +29,8 @@ export class FakeSupabase {
     this.tokens = new Map();
     this.refreshTokens = new Map();
     this.profiles = new Map();
+    // Every profile write and how many rows it changed, so tests can see conditional writes lose.
+    this.writes = [];
     this.requests = [];
     this.errors = [];
     this.googleEnabled = false;
@@ -25,6 +38,8 @@ export class FakeSupabase {
     this.googleCodes = new Map();
     // Routed requests bypass context.setOffline, so offline tests flip this too.
     this.offline = false;
+    // How long issued access tokens last. Under a minute, every request refreshes first.
+    this.sessionSeconds = 3600;
     this.races = new FakeRaces(this);
   }
 
@@ -38,6 +53,13 @@ export class FakeSupabase {
     return this.profiles.get(this.users.get(email)?.id)?.data || null;
   }
 
+  // Tests may seed rows without updated_at; the column defaults to now(), as in the migration.
+  rowFor(userId) {
+    const row = this.profiles.get(userId);
+    if (row && !row.updated_at) row.updated_at = pgTime(Date.now());
+    return row || null;
+  }
+
   issueSession(user) {
     const access = randomUUID();
     const refresh = randomUUID();
@@ -47,8 +69,8 @@ export class FakeSupabase {
       access_token: access,
       token_type: 'bearer',
       refresh_token: refresh,
-      expires_in: 3600,
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_in: this.sessionSeconds,
+      expires_at: Math.floor(Date.now() / 1000) + this.sessionSeconds,
       user: { id: user.id, email: user.email },
     };
   }
@@ -126,20 +148,53 @@ export class FakeSupabase {
         return route.fulfill({ status: 302, headers: { location: back.toString() } });
       }
 
+      // Supabase's default (global) sign-out ends every session of the user: their refresh tokens stop working.
       case 'POST /auth/v1/logout':
+        for (const [token, user] of this.refreshTokens) if (user.id === caller) this.refreshTokens.delete(token);
         return reply(204);
 
       case 'GET /rest/v1/profiles': {
         if (!caller) return reply(401, { message: 'JWT expired' });
         const owner = (url.searchParams.get('user_id') || '').replace(/^eq\./, '');
-        const row = owner === caller ? this.profiles.get(caller) : null;
+        const row = owner === caller ? this.rowFor(caller) : null;
         return reply(200, row ? [{ data: row.data, updated_at: row.updated_at }] : []);
       }
 
+      // An insert; on a conflict with the existing row, merge-duplicates replaces it (an upsert) and
+      // ignore-duplicates leaves it, returning no rows.
       case 'POST /rest/v1/profiles': {
         if (!caller || body.user_id !== caller) return reply(403, { message: 'new row violates row-level security policy' });
-        this.profiles.set(caller, { data: body.data, updated_at: body.updated_at });
-        return reply(201);
+        const prefer = request.headers().prefer || '';
+        const exists = Boolean(this.rowFor(caller));
+        if (exists && !/resolution=(merge|ignore)-duplicates/.test(prefer)) {
+          return reply(409, { code: '23505', message: 'duplicate key value violates unique constraint "profiles_pkey"' });
+        }
+        const rows = [];
+        if (!exists || /resolution=merge-duplicates/.test(prefer)) {
+          const row = { user_id: caller, data: body.data, updated_at: pgTime(body.updated_at || Date.now()) };
+          this.profiles.set(caller, row);
+          rows.push(row);
+        }
+        this.writes.push({ method: 'POST', matched: rows.length });
+        return /return=representation/.test(prefer) ? reply(201, rows.map((row) => pick(row, url.searchParams.get('select')))) : reply(201);
+      }
+
+      // An update of the rows matching every eq filter. Row-level security hides other users' rows,
+      // so a filter on someone else's user_id matches nothing rather than failing.
+      case 'PATCH /rest/v1/profiles': {
+        if (!caller) return reply(401, { message: 'JWT expired' });
+        const prefer = request.headers().prefer || '';
+        const row = this.rowFor(caller);
+        const owner = eqFilter(url, 'user_id');
+        const seen = eqFilter(url, 'updated_at');
+        const matches = Boolean(row) && (owner === null || owner === caller) && (seen === null || sameInstant(seen, row.updated_at));
+        if (matches) {
+          if ('data' in body) row.data = body.data;
+          if ('updated_at' in body) row.updated_at = pgTime(body.updated_at);
+        }
+        this.writes.push({ method: 'PATCH', matched: Number(matches) });
+        if (!/return=representation/.test(prefer)) return reply(204);
+        return reply(200, matches ? [pick(row, url.searchParams.get('select'))] : []);
       }
 
       // A request the fake doesn't know means it no longer mirrors src/account.js: fail the test.
