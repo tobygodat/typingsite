@@ -582,7 +582,7 @@ function applyPreferences() {
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
   keybindingEditor?.refresh();
-  $('restart-key-hint').textContent = bindingLabel(prefs.keybindings.restart);
+  document.querySelectorAll('.restart-key-hint').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.restart); });
   $('restart-button').title = prefs.keybindings.restart ? `Restart test (${bindingLabel(prefs.keybindings.restart)})` : 'Restart test';
   $('exit-focus-hint').textContent = bindingLabel(prefs.keybindings.exitFocus);
   for (const [id, action] of [['restart-button', 'restart'], ['palette-trigger', 'commands'], ['exit-focus', 'exitFocus']]) {
@@ -4256,7 +4256,8 @@ function bindEvents() {
       }
       return;
     }
-    if (composeOpen && active === $('compose-input') && matchesBinding(event, prefs.keybindings.restart)) {
+    if (composeOpen && active === $('compose-input') && matchesBinding(event, prefs.keybindings.restart)
+      && !(event.key === 'Enter' && compose.isRunning())) {
       event.preventDefault();
       if (!event.repeat) compose.restart();
       return;

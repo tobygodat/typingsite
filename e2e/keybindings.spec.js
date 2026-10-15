@@ -290,3 +290,20 @@ test('Mod+Alt cannot bypass the AltGr safety rule', async ({ page }) => {
   await expect(page.locator('#keybinding-commands')).toHaveAttribute('aria-invalid', 'true');
   await expect(page.locator('#keybinding-commands-error')).toContainText('AltGr');
 });
+
+
+test('composing keeps its finish command and configured restart hint', async ({ page }) => {
+  await openApp(page);
+  await editBindings(page, { restart: 'F2' });
+  await saveBindings(page);
+  await page.locator('#mode-compose').click();
+  await expect(page.locator('.compose-shortcut .restart-key-hint')).toHaveText('f2');
+  await typeInto(page, 'my words', '#compose-input');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#compose-input')).toHaveValue('my words');
+  await page.keyboard.press('F2');
+  await expect(page.locator('#compose-input')).toHaveValue('');
+  await typeInto(page, 'more words', '#compose-input');
+  await page.keyboard.press('Control+Enter');
+  await expect(page.locator('#compose-result')).toBeVisible();
+});
