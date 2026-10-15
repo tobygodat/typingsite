@@ -62,6 +62,8 @@ test('fail on any error ends a local challenge turn as failed', async ({ page })
   await typeInto(page, text.slice(0, 5) + (text[5] === 'x' ? 'z' : 'x'), '#race-input');
   await expect(page.locator('#race-handoff')).toBeVisible();
   await page.locator('#start-next-player').click();
+  await expect(page.locator('#race-input')).toBeVisible();
+  await expect(page.locator('#race-input')).toBeEditable();
   await typeInto(page, text, '#race-input');
   await expect(page.locator('#race-leaderboard')).toBeVisible();
   await expect(page.locator('#race-winner')).toHaveText('A fair result needs two uninterrupted runs.');
