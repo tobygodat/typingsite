@@ -4,7 +4,7 @@ import {
   HISTORY, MAX_STORED_ATTEMPTS, capHistory, clearProfile, insertCloudProfile, joinHolds, mergeAndHold, mergeSynced, revokeClear,
   sameProfile, stampAfter, undoClearHere, updateCloudProfile,
 } from '../src/account.js';
-import { MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
+import { recordPracticeTime, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
 import { MAX_COMPOSITIONS } from '../src/compose.js';
 import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 import { conditionKey } from '../src/typing.js';
@@ -1350,4 +1350,35 @@ test('compositions from a stale copy never drop ones saved elsewhere, a clear ta
   assert.deepEqual(mergeSynced(stale, cleared).compositions, []);
   const { merged } = undoClearHere({}, mergeSynced(cleared, stale), cleared.historyClearedAt, before);
   assert.deepEqual(ids(merged.compositions), ['c1', 'c2']);
+});
+
+test('daily practice archives survive sync, retention and clear undo without double counting', () => {
+  const run = (id, n) => item(id, n, { kind: 'test', status: 'complete', interrupted: false, elapsedMs: 60000 });
+  const all = Array.from({ length: MAX_RUN_SUMMARIES + 20 }, (_, n) => run(`r${n}`, n));
+  const a = capHistory(profile({ runs: all.slice(0, MAX_RUN_SUMMARIES + 10) }));
+  const b = capHistory(profile({ runs: all }));
+  const merged = mergeSynced(a, b);
+  const ms = (copy) => copy.runs.reduce((sum, r) => sum + r.elapsedMs, 0) + Object.values(copy.practiceDays).reduce((sum, n) => sum + n, 0);
+  assert.equal(ms(merged), all.length * 60000);
+  assert.equal(ms(mergeSynced(merged, a)), all.length * 60000);
+  const cleared = clearProfile(merged);
+  assert.deepEqual(cleared.practiceDays, {});
+  assert.deepEqual(mergeSynced(cleared, b).practiceDays, {}, 'a stale copy cannot restore cleared archive days');
+  const restored = undoClearHere({}, cleared, cleared.historyClearedAt, merged).merged;
+  assert.equal(ms(restored), all.length * 60000);
+});
+
+
+test('lesson and composing time share the archive without entering measured runs or doubling on sync', () => {
+  const lesson = recordPracticeTime({}, minute(1), 60000);
+  const both = recordPracticeTime(lesson, minute(2), 30000);
+  const local = profile({ practiceDays: both });
+  const cloud = profile({ practiceDays: lesson });
+  const merged = mergeSynced(local, cloud);
+  assert.deepEqual(merged.runs, []);
+  assert.deepEqual(Object.values(merged.practiceDays), [90000]);
+  assert.deepEqual(mergeSynced(merged, local).practiceDays, merged.practiceDays);
+  const cleared = clearProfile(merged);
+  assert.deepEqual(mergeSynced(cleared, local).practiceDays, {});
+  assert.deepEqual(undoClearHere({}, cleared, cleared.historyClearedAt, merged).merged.practiceDays, both);
 });

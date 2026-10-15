@@ -4,7 +4,7 @@ import { correctionPreference, customTextProblem, normalizeCustomText } from './
 import { normalizeKeybindings } from './keybindings.js';
 import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
-import { retainRuns, runRecord, settleDailyFirsts } from './insights.js';
+import { DAILY_GOALS, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
 import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
 
@@ -31,6 +31,7 @@ export const defaultPreferences = {
   focusMode: false,
   keybindings: normalizeKeybindings(),
   theme: 'system',
+  dailyGoal: 0,
   customText: '',
   customOrder: 'as-written',
   paceCaret: 'off',
@@ -49,6 +50,7 @@ export function emptyProfile() {
     preferences: {},
     attempts: [],
     runs: [],
+    practiceDays: {},
     loops: [],
     seenTextIds: [],
     bests: {},
@@ -63,6 +65,7 @@ export function validPreferences(value) {
   value.quickEnd = value.quickEnd !== false;
   value.correction = correctionPreference(value);
   value.stopOnError = value.correction === 'mandatory';
+  if (!DAILY_GOALS.includes(value.dailyGoal)) value.dailyGoal = 0;
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
   value.layout = normalizeLayout(value.layout);
   value.fingerMap = value.fingerMap === true;
@@ -118,7 +121,7 @@ export function normalizeProfile(parsed) {
     preferences: storedPreferences(rawPreferences),
     ...(Object.keys(preferencesAt).length ? { preferencesAt } : {}),
     attempts: settleDailyFirsts(traces),
-    runs: retainRuns(settleDailyFirsts(records)),
+    ...retainHistory(settleDailyFirsts(records), validPracticeDays(parsed.practiceDays)),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
     bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
