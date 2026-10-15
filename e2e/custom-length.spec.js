@@ -354,7 +354,7 @@ for (const width of [320, 390]) {
     // The message sits in the gap under the row: one line, clear of the numbers below.
     const note = await message(page).boundingBox();
     const row = await page.locator('.practice-controls').boundingBox();
-    const measure = await page.locator('.measure-row').boundingBox();
+    const measure = await page.locator('#typing-form .measure-row').boundingBox();
     expect(note.y).toBeGreaterThanOrEqual(row.y + row.height - 1);
     expect(note.y + note.height).toBeLessThanOrEqual(measure.y + 1);
     expect(note.height).toBeLessThan(26);
