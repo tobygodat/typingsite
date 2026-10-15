@@ -401,6 +401,8 @@ kbd {
 .pace-note:empty { display: none; }
 .preference-row .pace-wpm { width: 104px; height: 36px; font-size: 14px; }
 
+.preference-action { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
+
 .preference-category > summary { color: var(--muted); }
 .preference-category > summary::after { content: '+'; }
 .preference-category[open] > summary::after { content: '−'; }
@@ -2317,7 +2319,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 #clear-dialog,
 #account-dialog,
 #delete-account-dialog,
-#suggest-dialog {
+#suggest-dialog,
+#import-dialog {
   width: min(460px, calc(100% - 32px));
   padding: 0;
   border: 1px solid var(--hairline-strong);
@@ -2330,12 +2333,14 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 #clear-dialog[open],
 #account-dialog[open],
 #delete-account-dialog[open],
-#suggest-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
+#suggest-dialog[open],
+#import-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
 #delete-account-dialog::backdrop,
-#suggest-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
-:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #delete-account-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
+#suggest-dialog::backdrop,
+#import-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #delete-account-dialog, #suggest-dialog, #import-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
 
 .account-fields { display: grid; gap: var(--space-3); }
 .account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
@@ -2367,6 +2372,22 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .textarea { height: auto; min-height: 132px; padding: var(--space-3) 14px; line-height: 1.5; resize: vertical; }
 .suggest-meta { margin-top: calc(var(--space-4) * -1); display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); }
 .suggest-meta .field-error { margin: 0; }
+/* Import from Monkeytype: a paste box, then a report of what was brought over and what was left. */
+#import-dialog { width: min(520px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.import-text { font: var(--text-label)/1.5 var(--font-mono); }
+.import-meta { margin-top: calc(var(--space-4) * -1); display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4); }
+.import-meta .field-error { margin: 0; }
+.import-meta .btn { flex: none; }
+.import-group { display: grid; gap: var(--space-2); }
+.import-group h3 { margin: 0; font-weight: 400; }
+.import-group[hidden] { display: none; }
+.import-rows { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hairline); }
+.import-rows li { padding: var(--space-2) 0; border-bottom: 1px solid var(--hairline); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--space-4); align-items: baseline; }
+.import-setting { font-weight: 600; }
+.import-value { text-align: right; }
+.import-from { grid-column: 1 / -1; color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); overflow-wrap: anywhere; }
+.import-reason { grid-column: 1 / -1; color: var(--muted); font-size: var(--text-label); }
+
 .suggest-count { flex: none; color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); letter-spacing: 0.02em; }
 .suggest-trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
