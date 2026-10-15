@@ -404,3 +404,16 @@ test('lessons name their QWERTY finger map and preserve the chosen practice layo
   await openView(page, 'Practice');
   await expect(page.locator('#condition-line')).toContainText('dvorak');
 });
+
+
+test('explicit layout reselect is recorded as a fresh preference choice', async ({ page, supabase }) => {
+  const user = supabase.addUser('choice-46@stilltype.test');
+  const stamp = '2000-01-01T00:00:00.000Z';
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { layout: "qwerty" }, preferencesAt: { layout: stamp },
+    attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, updatedAt: stamp } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await runCommand(page, 'layout · qwerty');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferencesAt?.layout).not.toBe(stamp);
+  expect(supabase.profileFor(user.email).preferences.layout).toEqual("qwerty");
+});
