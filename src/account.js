@@ -2,7 +2,7 @@
 // keeps no runtime dependencies. With no session the visitor is a guest and nothing is stored.
 // The publishable key is meant for browsers; row-level security limits every row to its owner.
 import { retainCompositions } from './compose.js';
-import { dailyChallengeId, retainRuns, settleDailyFirsts, trendRun } from './insights.js';
+import { mergePracticeDays, retainHistory, validPracticeDays, dayKey, dailyChallengeId, retainRuns, settleDailyFirsts, trendRun } from './insights.js';
 import { conditionKey } from './typing.js';
 
 const SUPABASE_URL = 'https://bicbyljexprkaedakofa.supabase.co';
@@ -514,7 +514,8 @@ const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const recordId = (item) => String(item.id ?? JSON.stringify(item));
 
 export function capHistory(profile) {
-  for (const [name, { keep }] of Object.entries(HISTORY)) profile[name] = keep(list(profile[name]));
+  Object.assign(profile, retainHistory(list(profile.runs), validPracticeDays(profile.practiceDays)));
+  for (const [name, { keep }] of Object.entries(HISTORY)) if (name !== 'runs') profile[name] = keep(list(profile[name]));
   return profile;
 }
 
@@ -597,7 +598,7 @@ export function clearProfile(profile) {
   }
   for (const best of Object.values(profile.bests || {})) if ((best?.at || '') > marker && best.attemptId) ahead.add(String(best.attemptId));
   const named = liveNamed([...known, ...[...ahead].map((id) => [marker, id])], undone);
-  const cleared = setClears({ ...profile, bests: {}, seenTextIds: [], ...(profile.lessons ? { lessons: {} } : {}) }, marker, heard, heard);
+  const cleared = setClears({ ...profile, bests: {}, seenTextIds: [], practiceDays: {}, ...(profile.lessons ? { lessons: {} } : {}) }, marker, heard, heard);
   for (const name of Object.keys(HISTORY)) cleared[name] = [];
   if (named.length) cleared.historyClearedIds = named;
   else delete cleared.historyClearedIds;
@@ -685,7 +686,7 @@ const legacyStart = (side) => (savedByOlderBuild(side) ? historyStart(side) : st
 // doesn't know) are passed through.
 const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt',
   'historyClearedAt', 'appliedClears', 'heardClears', 'historyClearedIds', 'undoneClears', 'legacyClearedAt', 'updatedAt',
-  'mergeStamp', 'profileId']);
+  'mergeStamp', 'profileId', 'practiceDays']);
 
 // Lesson progress (src/lessons.js): { [lesson id]: { tries, last, passed } }, where last and passed are
 // results dated `at`. A side judged by a clear it hadn't applied keeps only what is dated after it: a lesson
@@ -799,6 +800,9 @@ export function mergeSynced(local, cloud) {
     const shown = shownBy(Object.keys(HISTORY).flatMap((name) => kept[name]));
     const gone = shownBy(taken);
     kept.seenTextIds = list(side.seenTextIds).filter((id) => shown.has(id) || (!stale && !behind && !gone.has(id)));
+    const cutoff = [stale ? clearedAt : null, behind ? legacyAt : null].filter(Boolean).sort().at(-1);
+    const cutoffDay = cutoff ? dayKey(cutoff.slice(0, 24)) : null;
+    kept.practiceDays = Object.fromEntries(Object.entries(validPracticeDays(side.practiceDays)).filter(([day]) => !cutoffDay || day > cutoffDay));
     kept.stale = stale;
     return kept;
   };
@@ -819,7 +823,9 @@ export function mergeSynced(local, cloud) {
       byId.set(id, byId.has(id) ? fuller(byId.get(id), item) : item);
     }
     // Settled before the caps, so the day's earliest attempt is found even if the cap then drops it.
-    merged[name] = keep(settleDailyFirsts([...byId.values()].sort((a, b) => compare(a[at] || '', b[at] || '') || compare(recordId(a), recordId(b)))));
+    const union = settleDailyFirsts([...byId.values()].sort((a, b) => compare(a[at] || '', b[at] || '') || compare(recordId(a), recordId(b))));
+    if (name === 'runs') Object.assign(merged, retainHistory(union, mergePracticeDays(mine, theirs, union)));
+    else merged[name] = keep(union);
   }
   merged.bests = { ...theirs.bests };
   for (const [key, best] of Object.entries(mine.bests)) {
@@ -927,7 +933,7 @@ export function undoClearHere(holds, current, marker, before) {
 export function syncSignature(profile) {
   const sorted = (object) => Object.keys(object || {}).sort().map((key) => [key, object[key]]);
   const rest = Object.keys(profile).filter((key) => profile[key] !== undefined && !(key in HISTORY)
-    && !['bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt'].includes(key)).sort();
+    && !['bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt', 'practiceDays'].includes(key)).sort();
   return JSON.stringify([
     Object.keys(HISTORY).map((name) => list(profile[name]).map((item) => [item.id, item.patterns?.length ?? null, item.firstDailyAttempt ?? null])),
     sorted(profile.bests).map(([key, best]) => [key, best?.wpm, best?.at, best?.attemptId]),
@@ -935,6 +941,7 @@ export function syncSignature(profile) {
     sorted(profile.preferences),
     sorted(stampsOf(profile)),
     sorted(profile.lessons),
+    sorted(validPracticeDays(profile.practiceDays)),
     rest.map((key) => [key, profile[key]]),
   ]);
 }
@@ -949,12 +956,14 @@ export function mergeProfiles(base, extra) {
   for (const [key, best] of Object.entries(base.bests)) {
     if (!bests[key] || best.wpm >= bests[key].wpm) bests[key] = best;
   }
-  const baseIsNew = Object.keys(HISTORY).every((key) => !base[key]?.length);
+  const baseIsNew = Object.keys(HISTORY).every((key) => !base[key]?.length) && !Object.keys(base.practiceDays || {}).length;
+  const runs = byId([...(extra.runs || []), ...(base.runs || [])]);
   return {
     ...base,
     preferences: baseIsNew ? extra.preferences : base.preferences,
     attempts: byId([...extra.attempts, ...base.attempts]),
-    runs: byId([...(extra.runs || []), ...(base.runs || [])]),
+    runs,
+    practiceDays: mergePracticeDays(base, extra, runs),
     loops: byId([...extra.loops, ...base.loops]),
     seenTextIds: [...new Set([...extra.seenTextIds, ...base.seenTextIds])],
     bests,
