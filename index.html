@@ -272,6 +272,7 @@
             <button id="mode-time" type="button" data-mode="time" aria-pressed="true" class="is-active">time</button>
             <button id="mode-words" type="button" data-mode="words" aria-pressed="false">words</button>
             <button id="mode-quote" type="button" data-mode="quote" aria-pressed="false">quote</button>
+            <button id="mode-code" type="button" data-mode="code" aria-pressed="false">code</button>
             <button id="mode-standard" type="button" data-mode="standard" aria-pressed="false">standard</button>
             <button id="mode-compose" type="button" data-compose aria-pressed="false">compose</button>
             <button id="mode-custom" type="button" aria-pressed="false" aria-controls="custom-options" aria-expanded="false">custom</button>
@@ -285,6 +286,12 @@
             <form id="custom-length-form" class="custom-length" novalidate hidden>
               <input id="custom-length-input" class="custom-length-input" type="text" inputmode="numeric" enterkeyhint="done" maxlength="12" autocomplete="off" spellcheck="false" placeholder="5–600" aria-label="custom time in seconds, 5 to 600" aria-describedby="custom-length-error">
             </form>
+          </div>
+          <div id="code-options" class="segmented compact glide" role="group" aria-label="Code language" data-glide="pressed" hidden>
+            <button type="button" data-language="js" aria-pressed="true" class="is-active">js</button>
+            <button type="button" data-language="python" aria-pressed="false">python</button>
+            <button type="button" data-language="go" aria-pressed="false">go</button>
+            <button type="button" data-language="rust" aria-pressed="false">rust</button>
           </div>
           <label id="punctuation-switch" class="compact-switch" for="punctuation-toggle">
             <input id="punctuation-toggle" class="switch" type="checkbox">

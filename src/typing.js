@@ -776,7 +776,8 @@ export const INPUT_CLASSES = ['physical-keyboard', 'touch'];
 // The standard recipe version is appended only when present, so every other key stays as it was.
 export function conditionKey(conditions = {}) {
   const key = [
-    conditions.mode,
+    // Code runs key by language; other modes keep their existing keys.
+    conditions.mode === 'code' ? `code-${conditions.codeLanguage || 'js'}` : conditions.mode,
     conditions.duration || '',
     conditions.count || '',
     // Numbers ride on the same segment so keys saved before the toggle existed stay unchanged.

@@ -471,6 +471,42 @@ test('generated passages draw from the selected common-word list', async () => {
   assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
 });
 
+test('every code snippet unindents to a non-empty single line the engine accepts', async () => {
+  const { CODE_LANGUAGES, CODE_SNIPPETS, MAX_CODE_TOKEN, codePassage, unindent } = await import('../src/code-snippets.js');
+  for (const language of CODE_LANGUAGES) {
+    assert.ok(CODE_SNIPPETS[language].length >= 6, language);
+    for (const snippet of CODE_SNIPPETS[language]) {
+      const text = unindent(snippet);
+      assert.ok(text.length > 0, snippet);
+      assert.match(text, /^[\x20-\x7e]+$/u, text);
+      assert.doesNotMatch(text, /^ | $| {2}/u, text);
+      for (const token of text.split(' ')) assert.ok(token.length <= MAX_CODE_TOKEN, token);
+    }
+    assert.equal(codePassage(language).language, language);
+    const seenIds = [];
+    for (const _ of CODE_SNIPPETS[language]) {
+      const next = codePassage(language, { seenIds });
+      assert.deepEqual([next.fresh, next.exhausted], [true, false], language);
+      seenIds.push(next.id);
+    }
+    const repeat = codePassage(language, { seenIds });
+    assert.deepEqual([repeat.fresh, repeat.exhausted], [false, true], language);
+  }
+  assert.notEqual(conditionKey({ mode: 'code', codeLanguage: 'js' }), conditionKey({ mode: 'code', codeLanguage: 'go' }));
+  assert.notEqual(conditionKey({ mode: 'code', codeLanguage: 'js' }), conditionKey({ mode: 'words', count: 25 }));
+
+  // A code token is no word to practise: a missed code run records no missed words, a prose run does.
+  const { runRecord } = await import('../src/insights.js');
+  const missed = (conditions) => {
+    const attempt = createAttempt({ id: 'c', text: 'const total', textId: 'c', conditions });
+    attempt.startedAt = 0;
+    attempt.events = [...'cxnst total'].map((char, position) => ({ type: 'insert', text: char, position, offsetMs: position * 100, accepted: true }));
+    return runRecord({ ...completeAttempt(attempt, { endedAt: 1100 }), kind: 'test', fresh: true }).missedWords;
+  };
+  assert.equal(missed({ mode: 'code', codeLanguage: 'js', correctionPolicy: 'relaxed' }), undefined);
+  assert.deepEqual(missed({ mode: 'time', duration: 30, correctionPolicy: 'relaxed' }), ['const']);
+});
+
 test('minimums wait out a five-second, twenty-character grace and judge the shown numbers', () => {
   assert.equal(MINIMUM_GRACE_MS, 5000);
   assert.equal(MINIMUM_GRACE_CHARACTERS, 20);

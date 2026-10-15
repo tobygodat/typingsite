@@ -45,6 +45,7 @@ import {
   wordHistory,
 } from './typing.js';
 import { wordListIds } from './words.js';
+import { DEFAULT_CODE_LANGUAGE, codePassage } from './code-snippets.js';
 import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength } from './lengths.js';
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
@@ -371,10 +372,11 @@ function settingsConditions(inputClass = 'physical-keyboard') {
     duration: prefs.mode === 'time' ? prefs.duration : null,
     count: prefs.mode === 'words' ? prefs.count : null,
     punctuation: prefs.punctuation,
-    numbers: prefs.mode === 'quote' ? false : Boolean(prefs.numbers),
+    numbers: ['quote', 'code'].includes(prefs.mode) ? false : Boolean(prefs.numbers),
     quoteLength: prefs.mode === 'quote' ? prefs.quoteLength : null,
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
-    wordList: prefs.mode === 'quote' ? null : prefs.wordList,
+    wordList: ['quote', 'code'].includes(prefs.mode) ? null : prefs.wordList,
+    ...(prefs.mode === 'code' ? { codeLanguage: prefs.codeLanguage, punctuation: true } : {}),
     inputClass,
     layout: inputLayout(inputClass),
     correctionPolicy: prefs.correction,
@@ -423,22 +425,28 @@ const inputName = (value) => inputLabel(value);
 // Custom text has its own condition key, so it can never share a best, trend or retest with a test.
 // It builds on the person's own settings, never the standard recipe: with standard selected underneath,
 // a custom run keeps its own correction rule and gets no recipe, so its key is the same as in any mode.
+// Settings add a language only in code mode, so it is dropped too.
 function customConditions() {
-  return { ...settingsConditions(), mode: 'custom', duration: null, count: null, punctuation: false, numbers: false,
+  const { codeLanguage, ...base } = settingsConditions();
+  return { ...base, mode: 'custom', duration: null, count: null, punctuation: false, numbers: false,
     quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, strictSpace: false, quickEnd: true, customOrder: prefs.customOrder };
 }
 
 function describeConditions(value = conditions()) {
   // The recipe name stands for its punctuation, numbers and quote, keeping the run card's line short.
   if (value.mode === 'standard') return `${recipeLabel(value.recipe)} · ${value.duration} s · 1k–10k mix · ${conditionTail(value)}`;
+  if (value.mode === 'code') {
+    const { input, correction, corpus, metric } = conditionParts(value);
+    return [`code · ${value.codeLanguage || DEFAULT_CODE_LANGUAGE}`, input, correction, corpus, metric, 'not counted toward bests'].join(' · ');
+  }
   return Object.values(conditionParts(value)).join(' · ');
 }
 
 // Minimums ride along on the conditions line without joining the conditions key. The standard test
 // has none: it is one fixed measurement, and a personal filter on which of its runs count would lift
-// its score.
+// its score. Code runs have none either: they are never counted, so there is nothing for a minimum to guard.
 function practiceMinimums() {
-  if (prefs.mode === 'standard') return null;
+  if (prefs.mode === 'standard' || prefs.mode === 'code') return null;
   const minimums = {};
   if (prefs.minAccuracy) minimums.accuracy = prefs.minAccuracy;
   if (prefs.minWpm) minimums.wpm = prefs.minWpm;
@@ -576,6 +584,8 @@ function currentBestKey() {
 
 function showBest() {
   const key = currentBestKey();
+  // Code runs have their own key but never set a best. (A custom session over code says it isn't counted.)
+  if (key && (attempt?.conditions || conditions()).mode === 'code') { $('best').textContent = 'Code runs aren’t ranked'; return; }
   const best = key && profile.bests[key];
   $('best').textContent = !key ? 'Not counted' : best ? `Best · ${best.wpm} wpm` : 'No best yet';
 }
@@ -710,11 +720,13 @@ const standardLocked = () => prefs.mode === 'standard' && sessionKind !== 'custo
 
 function syncLockedSettings() {
   const standard = standardLocked();
-  $('punctuation-toggle').disabled = prefs.mode === 'quote' || standard;
+  // Quotes and code snippets are fixed text, so these settings don't apply to them.
+  const fixed = ['quote', 'code'].includes(prefs.mode);
+  $('punctuation-toggle').disabled = fixed || standard;
   $('punctuation-toggle').checked = standard || prefs.punctuation;
-  $('numbers-toggle').disabled = prefs.mode === 'quote' || standard;
+  $('numbers-toggle').disabled = fixed || standard;
   $('numbers-toggle').checked = standard || Boolean(prefs.numbers);
-  $('word-list').disabled = prefs.mode === 'quote' || standard;
+  $('word-list').disabled = fixed || standard;
   // The recipe's value exists only while standard is selected, so type-ahead can never pick it.
   const recipeOption = $('word-list').querySelector('option[value="standard"]');
   if (standard && !recipeOption) $('word-list').append(new Option('1k–10k', 'standard'));
@@ -744,7 +756,14 @@ function setModeControls() {
   $('standard-options').hidden = custom || composeOpen || prefs.mode !== 'standard';
   $('standard-recipe').textContent = `${recipeSummary()} · ${correctionLabel(standardConditions().correctionPolicy)}`;
   syncLockedSettings();
-  $('duration-options').hidden = custom || composeOpen || prefs.mode === 'quote' || prefs.mode === 'standard';
+  $('duration-options').hidden = custom || composeOpen || ['quote', 'standard', 'code'].includes(prefs.mode);
+  // Custom text and composing hide the code language row, as they do the lengths.
+  $('code-options').hidden = custom || composeOpen || prefs.mode !== 'code';
+  $('code-options').querySelectorAll('[data-language]').forEach((button) => {
+    const selected = button.dataset.language === prefs.codeLanguage;
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
   document.querySelector('.compact-switch').hidden = custom || composeOpen;
   showMinimumNote();
   if (custom || composeOpen || prefs.mode === "standard") closeCustomLength();
@@ -1039,8 +1058,10 @@ function updateCharacterStates(characters, typed, target, start = 0) {
   markWords(characters, typed.length);
 }
 
-// Repeats are for open practice only: a retest always needs text the profile hasn't seen.
+// Repeats are for open practice only: a retest always needs text the profile hasn't seen. Code snippets
+// come round again once each has been shown, marked not fresh, whatever the repeat setting.
 function choosePassage(extraSeen = [], { allowRepeats = false } = {}) {
+  if (prefs.mode === 'code') return { ...codePassage(prefs.codeLanguage, { seenIds: [...profile.seenTextIds, ...extraSeen] }), corpus: CORPUS_VERSION };
   return selectPassage({
     mode: prefs.mode,
     count: prefs.count,
@@ -1941,8 +1962,8 @@ function storeAttempt(completed) {
   const key = conditionKey(completed.conditions);
   const score = completed.summary.score;
   // Repeated text is saved and listed, but only fresh text can set a best. Bests stored before repeat quotes
-  // are left as they are, whatever text set them.
-  const eligibleBest = trendRun(completed);
+  // are left as they are, whatever text set them. Code runs are their own condition and never set a best.
+  const eligibleBest = trendRun(completed) && completed.conditions?.mode !== 'code';
   resultBestBefore = profile.bests[key] || null;
   // A custom passage is never fresh either, but it is never compared, so it has no passage best to chase.
   resultPassageBefore = completed.fresh === false && comparableKind(completed.kind) ? passageBest(profile.runs, completed) : null;
@@ -2028,10 +2049,16 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
     return;
   }
 
-  if ((sessionKind === 'practice' || sessionKind === 'daily') && valid) {
-    // Familiar text flatters the score, so a repeated passage can't be the baseline for a fresh retest.
-    baselineAttempt = completed.fresh === false ? null : completed;
-    trainingContext = null;
+  if (sessionKind === 'practice' || sessionKind === 'daily') {
+    // A code run is never a baseline, so it drops the earlier one rather than retest against it.
+    if (completed.conditions?.mode === 'code') {
+      baselineAttempt = null;
+      trainingContext = null;
+    } else if (valid) {
+      // Familiar text flatters the score, so a repeated passage can't be the baseline for a fresh retest.
+      baselineAttempt = completed.fresh === false ? null : completed;
+      trainingContext = null;
+    }
   }
   renderResults(completed, saved);
   if (sessionKind === 'retest') renderComparison(baselineAttempt, completed, saved);
@@ -2146,6 +2173,7 @@ function resultHeadline(completed) {
   if (completed.kind === 'challenge') return 'Ghost race complete · not counted toward your best';
   if (completed.kind === 'missed') return 'Word practice complete · not counted toward your best';
   if (completed.kind === 'custom') return 'Custom text complete · not counted toward your best';
+  if (completed.conditions?.mode === 'code') return 'Code run complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
   if (completed.fresh === false) {
     // A repeat chases its own passage, never the personal best.
@@ -2166,6 +2194,9 @@ function retestLength(value) {
   if (value.mode === 'words') return `${value.count}-word`;
   return value.quoteLength && value.quoteLength !== 'any' ? `${value.quoteLength} quote` : 'quote';
 }
+
+// Code runs never become retest baselines, so a drill at code settings always stands alone.
+const CODE_DRILL_NOTE = 'A standalone drill. Code runs have no fresh-text retest.';
 
 // Records the run the results view now shows; Watch replay appears only when it has a trace. A custom run
 // (any non-comparable kind) keeps no trace, so, as with its best, it offers no replay.
@@ -2232,6 +2263,7 @@ function renderRecommendation(counted = true, compared = true, completed = null)
     : completed?.stopped ? 'Runs under your minimums aren’t counted. Change them in settings.' : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
     ? `About 1 min, then a fresh ${retestLength(baselineAttempt.conditions)} retest.`
+    : completed?.conditions?.mode === 'code' ? CODE_DRILL_NOTE
     : repeatedResult(completed)
       ? 'A standalone drill. Repeated text stays out of your best, trends and retests; finish a run on fresh text for a comparable retest.'
       : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
@@ -2364,8 +2396,12 @@ function layoutMismatch(source) {
 // A drill or retest runs at its baseline's conditions without recording them as a settings edit: the
 // saved settings, including a pick from another tab or device made meanwhile, apply again once it ends
 // (resetSession leaves them waiting), and a restore never outranks a choice someone made.
+// Only what the source's mode varies is restored: fields a mode fixes in conditions() (code's punctuation,
+// numbers and word list; quote's numbers) keep the person's own prose settings.
 function restoreConditions(source) {
   commitPreferences();
+  const code = source.mode === 'code';
+  const prose = !['quote', 'code'].includes(source.mode);
   // The standard recipe carries its own settings; restoring it must not overwrite the person's.
   if (source.mode === 'standard') prefs = { ...prefs, mode: 'standard' };
   else prefs = {
@@ -2373,11 +2409,12 @@ function restoreConditions(source) {
     mode: source.mode,
     duration: source.duration || prefs.duration,
     count: source.count || prefs.count,
-    punctuation: Boolean(source.punctuation),
-    numbers: Boolean(source.numbers),
+    punctuation: code ? prefs.punctuation : Boolean(source.punctuation),
+    numbers: prose ? Boolean(source.numbers) : prefs.numbers,
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
+    codeLanguage: source.codeLanguage || prefs.codeLanguage,
     correction: correctionPreference({ correction: source.correctionPolicy, stopOnError: source.correctionPolicy !== 'relaxed' }),
     stopOnError: source.correctionPolicy === 'mandatory',
   };
@@ -2574,11 +2611,12 @@ function targetButton(target, source) {
 }
 
 // The newest retained run that can anchor a fresh-text retest, at `source` conditions when given.
-// Older corpus or standard recipe versions need a new baseline.
+// Older corpus or standard recipe versions need a new baseline; a code run is never one.
 function retainedBaseline(source = null) {
   return [...profile.attempts].reverse().find((a) => {
     const wanted = source || a.conditions;
     return a.status === 'complete' && !a.interrupted && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
+      && a.conditions?.mode !== 'code'
       && (!source || conditionKey(a.conditions) === conditionKey(source)) && wanted.corpus === CORPUS_VERSION
       && (wanted.mode !== 'standard' || wanted.recipe === STANDARD_VERSION);
   }) || null;
@@ -2588,12 +2626,14 @@ function practiceTarget(target, source) {
   baselineAttempt = retainedBaseline({ ...source, layout: inputLayout(source.inputClass) });
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
+  const code = source.mode === 'code';
   activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
     reason: baselineAttempt ? `You chose “${target}”. A retained run at these conditions is your baseline.`
-      : `You chose “${target}”. Finish a new practice run afterward to establish a retest baseline.`,
+      : code ? `You chose “${target}”. Code runs have no fresh-text retest.`
+        : `You chose “${target}”. Finish a new practice run afterward to establish a retest baseline.`,
     evidence: summarizePatterns(profile.attempts, 20, source) };
   startDrill();
-  if (!baselineAttempt) $('session-description').textContent = 'Standalone drill. Finish a new practice run afterward for a comparable retest.';
+  if (!baselineAttempt) $('session-description').textContent = code ? CODE_DRILL_NOTE : 'Standalone drill. Finish a new practice run afterward for a comparable retest.';
 }
 
 // The run just finished always counts toward its own recommendation, even when its trace was too large to keep.
@@ -4730,6 +4770,14 @@ function bindEvents() {
     saveChoice('mode');
     resetSession('practice', { focus: true, leaveCompose: true });
   }));
+  $('code-options').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-language]');
+    if (!button) return;
+    prefs.codeLanguage = button.dataset.language;
+    setModeControls();
+    saveChoice('mode', 'codeLanguage');
+    resetSession('practice', { focus: true });
+  });
   $('duration-options').addEventListener('click', (event) => {
     const button = event.target.closest('[data-length]');
     if (!button) return;
@@ -5287,7 +5335,7 @@ function paletteCommands(query) {
   // During a custom session, a ghost race or composing no test shape is current (a custom session marks "custom text").
   const shape = (mode, length) => !composeOpen && comparableKind(sessionKind) && prefs.mode === mode && (mode === 'quote' || mode === 'standard' || (mode === 'time' ? prefs.duration : prefs.count) === length);
   // The standard recipe fixes these; like quote mode, the palette leaves out what can't change.
-  const fixedText = prefs.mode === 'quote' || standardLocked();
+  const fixedText = ['quote', 'code'].includes(prefs.mode) || standardLocked();
   const commands = [
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),

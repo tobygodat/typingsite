@@ -824,12 +824,21 @@ kbd {
 .segmented button:hover,
 .segmented button[aria-pressed="true"] { color: var(--text); }
 
+/* Seven modes share one row with the lengths, punctuation and "learn to type" at 1280px, so the mode
+   buttons sit a little closer than other segmented controls. */
+.mode-options { gap: 0; }
+.mode-options button { padding: 0 var(--space-3); }
+
 .segmented.compact button,
 .segmented.compact .custom-length-input {
   min-width: 46px;
   padding: 0 8px;
   font: 500 13px/1 var(--font-mono);
 }
+
+/* Code language names are readable words, so they set in Literata like the mode buttons and the
+   word "custom". */
+.segmented.compact button[data-language] { font: 400 var(--text-small)/1 var(--font-serif); }
 
 /* The custom length: the pill becomes a short field in place, with no box of its own beyond the
    focus ring. Pill and field share one width, so the row never jumps, and the message sits in the
@@ -2754,7 +2763,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .mode-options { flex-wrap: wrap; justify-content: center; max-width: 100%; }
   /* Two rows at most: mode and punctuation, then lengths. */
   .practice-controls { margin-bottom: var(--space-6); gap: var(--space-2); }
-  #duration-options { order: 1; }
+  #duration-options, #code-options { order: 1; }
   .segmented button, .segmented .custom-length-input { height: 40px; padding: 0 var(--space-2); }
   .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
@@ -2801,7 +2810,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (max-width: 360px) {
-  /* Five modes fit the 288px column. */
+  /* The mode buttons tighten so each wrapped row fits the 288px column. */
   .segmented button { padding: 0 var(--space-1); font-size: var(--text-label); }
   .nav-item { padding: 0 2px; font-size: 13px; }
   .nav-label-full { display: none; }

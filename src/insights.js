@@ -65,8 +65,9 @@ export function runRecord(attempt, at = attempt.at || null) {
   record.keys = evidence.attemptCount ? keyCounts(replay) : [];
   record.keysVersion = KEY_COUNTS_VERSION;
   // The words missed on the first try, for "words you keep missing": only from runs pattern memory
-  // reads, so a run without the field (older, trimmed or not eligible) is no evidence either way.
-  if (evidenceRun(record)) record.missedWords = missedAndSlowWords(attempt, 0).missed.slice(0, MAX_MISSED_WORDS);
+  // reads, so a run without the field (older, trimmed or not eligible) is no evidence either way. A code
+  // snippet's tokens are not words to practise, so code runs record none.
+  if (evidenceRun(record) && record.conditions?.mode !== 'code') record.missedWords = missedAndSlowWords(attempt, 0).missed.slice(0, MAX_MISSED_WORDS);
   return record;
 }
 
