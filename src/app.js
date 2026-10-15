@@ -4,6 +4,7 @@ import {
   CUSTOM_MIN_CHARS,
   CUSTOM_MIN_WORDS,
   METRIC_VERSION,
+  awaitingSubmit,
   RATE_FLOOR_MS,
   STANDARD_SECONDS,
   STANDARD_VERSION,
@@ -17,13 +18,20 @@ import {
   conditionKey,
   createAttempt,
   customTextProblem,
+  inputRules,
   deadMark,
   makeDrill,
   normalizeCustomText,
   normalizeManualTarget,
   orderCustomText,
   passageComplete,
+  correctionPreference,
+  blocksOnError,
+  allowsBackspace,
+  failureFor,
+  failureAtEnd,
   recommendTarget,
+  refusesSpace,
   replayAttempt,
   selectPassage,
   standardConditions,
@@ -36,9 +44,11 @@ import {
 } from './typing.js';
 import { wordListIds } from './words.js';
 import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength } from './lengths.js';
+import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
+import { normalizeKeybindings, matchesBinding, bindingLabel, ariaShortcuts, createKeybindingEditor } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
@@ -153,6 +163,7 @@ let wordsPassage = null;
 let missedListWords = [];
 const ghostOn = () => prefs.paceCaret !== 'off';
 let palette = null;
+let keybindingEditor = null;
 let onlineRace = null;
 let inbox = null;
 let friendsBoard = null;
@@ -164,6 +175,8 @@ let resultBestBefore = null;
 let clearSnapshot = null;
 let clearedAt = null;
 let clearTimer = null;
+let keyboardBuilt = '';
+let keyboardTarget = null;
 // Composing practice takes the passage's place on the practice screen; see openCompose.
 let composeOpen = false;
 let compose = null;
@@ -209,6 +222,7 @@ let race = {
   results: [],
   characters: [],
   textView: null,
+  notice: '',
 };
 
 // Signed in, the profile is cached on this device and synced to the account shortly after.
@@ -261,7 +275,7 @@ function commitPreferences(chosen = []) {
   const json = JSON.stringify(prefs);
   if (json === livePreferences && !chosen.length) return;
   const before = JSON.parse(livePreferences);
-  const edited = Object.keys(prefs).filter((key) => prefs[key] !== before[key] || chosen.includes(key));
+  const edited = Object.keys(prefs).filter((key) => (key === 'keybindings' ? JSON.stringify(prefs[key]) !== JSON.stringify(before[key]) : prefs[key] !== before[key]) || chosen.includes(key));
   const stamps = profile.preferencesAt || {};
   profile.preferences = { ...profile.preferences, ...Object.fromEntries(edited.map((key) => [key, prefs[key]])) };
   profile.preferencesAt = { ...stamps, ...Object.fromEntries(edited.map((key) => [key, account.stampAfter(stamps[key])])) };
@@ -275,7 +289,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'focusMode', 'dailyGoal'];
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'keybindings', 'dailyGoal'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -297,7 +311,7 @@ function followStoredPreferences({ conditions = !attemptPrepared() } = {}) {
   let changedConditions = false;
   preferencesWaiting = false;
   for (const key of new Set([...Object.keys(stored), ...Object.keys(prefs)])) {
-    if (next[key] === stored[key]) continue;
+    if (key === 'keybindings' ? JSON.stringify(next[key]) === JSON.stringify(stored[key]) : next[key] === stored[key]) continue;
     if (!conditions && !DISPLAY_PREFERENCES.includes(key)) {
       preferencesWaiting = true;
       continue;
@@ -350,7 +364,10 @@ function settingsConditions(inputClass = 'physical-keyboard') {
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
     wordList: prefs.mode === 'quote' ? null : prefs.wordList,
     inputClass,
-    correctionPolicy: prefs.stopOnError ? 'mandatory' : 'relaxed',
+    layout: inputLayout(inputClass),
+    correctionPolicy: prefs.correction,
+    strictSpace: prefs.strictSpace,
+    quickEnd: prefs.quickEnd,
     language: 'en',
     corpus: CORPUS_VERSION,
     metricVersion: METRIC_VERSION,
@@ -358,11 +375,12 @@ function settingsConditions(inputClass = 'physical-keyboard') {
 }
 
 function conditions(inputClass = 'physical-keyboard') {
-  return prefs.mode === 'standard' ? standardConditions(inputClass) : settingsConditions(inputClass);
+  return prefs.mode === 'standard' ? { ...standardConditions(inputClass), layout: inputLayout(inputClass) } : settingsConditions(inputClass);
 }
 
+const CORRECTION_LABELS = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
 function correctionLabel(policy) {
-  return policy === 'relaxed' ? 'continue on error' : 'stop on error';
+  return CORRECTION_LABELS[policy || 'mandatory'] || 'stop on error';
 }
 
 // "standard v1": the recipe name as people read it, then what the recipe fixes.
@@ -371,7 +389,7 @@ const recipeSummary = (value = standardConditions()) => `${recipeLabel(value.rec
 
 // What every condition line ends with: input, correction rule and versions.
 function conditionTail(value) {
-  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
+  const input = inputLabel(value);
   return `${input} · ${correctionLabel(value.correctionPolicy)} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
 }
 
@@ -382,20 +400,20 @@ function conditionParts(value = conditions()) {
     language: value.wordList ? `english ${value.wordList}` : 'english',
     length: value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`,
     text: value.mode === 'quote' ? value.difficulty || 'any difficulty' : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`,
-    input: value.inputClass === 'touch' ? 'touch input' : 'physical keyboard',
-    correction: value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error',
+    input: inputLabel(value),
+    correction: `${correctionLabel(value.correctionPolicy)}${describeRules(value)}`,
     corpus: `corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')}`,
     metric: 'metric v1',
   };
 }
-const inputName = (value) => (value.inputClass === 'touch' ? 'touch input' : 'physical keyboard');
+const inputName = (value) => inputLabel(value);
 
 // Custom text has its own condition key, so it can never share a best, trend or retest with a test.
 // It builds on the person's own settings, never the standard recipe: with standard selected underneath,
 // a custom run keeps its own correction rule and gets no recipe, so its key is the same as in any mode.
 function customConditions() {
   return { ...settingsConditions(), mode: 'custom', duration: null, count: null, punctuation: false, numbers: false,
-    quoteLength: null, difficulty: null, wordList: null, customOrder: prefs.customOrder };
+    quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, strictSpace: false, quickEnd: true, customOrder: prefs.customOrder };
 }
 
 function describeConditions(value = conditions()) {
@@ -404,7 +422,25 @@ function describeConditions(value = conditions()) {
   return Object.values(conditionParts(value)).join(' · ');
 }
 
-// A drill is always one minute of generated text, whatever the baseline was.
+// Strict space and quick end appear only when they differ from the defaults, as in conditionKey.
+const RULE_LABELS = { 'strict-space': 'strict space', 'quick-end-off': 'quick end off' };
+function describeRules(value) {
+  return inputRules(value).map((rule) => ` · ${RULE_LABELS[rule]}`).join('');
+}
+
+// A drill is always one minute of generated text, whatever the baseline was. Its conditions record
+// quick end at the default (sessionConditions), so only rules that applied are listed.
+// The layout setting describes a physical keyboard, so touch runs always keep the default key.
+function inputLayout(inputClass) {
+  return inputClass === 'touch' ? DEFAULT_LAYOUT : prefs.layout;
+}
+
+// The layout is named only when it isn't QWERTY; runs saved before layouts existed read as QWERTY.
+function inputLabel(value) {
+  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
+  return isDefaultLayout(value.layout) ? input : `${input} · ${layoutLabel(value.layout)}`;
+}
+
 function describeRun(run) {
   if (run.kind === 'lesson') return describeLesson(run);
   if (run.kind === 'challenge') return `ghost race · ${describeConditions(run.conditions)}`;
@@ -412,7 +448,7 @@ function describeRun(run) {
   if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words${run.conditions.punctuation ? ' · punctuation' : ''}${run.conditions.numbers ? ' · numbers' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
   if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
+  return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}${describeRules(run.conditions)}`;
 }
 
 function describeLesson(run) {
@@ -501,7 +537,7 @@ function showChrome(shown) {
 // so it says it isn't counted rather than showing the best for the time or word settings underneath it.
 // The run's input class picks the best, so a touch run never shows the physical-keyboard one, or the reverse.
 function currentBestKey() {
-  return comparableKind(sessionKind) ? conditionKey(conditions(attempt?.conditions.inputClass)) : null;
+  return comparableKind(sessionKind) ? conditionKey(attempt?.conditions || conditions()) : null;
 }
 
 function showBest() {
@@ -558,19 +594,64 @@ function applyPreferences() {
   $('font-size').value = prefs.fontSize;
   $('live-toggle').checked = prefs.liveMetrics;
   $('keyboard-toggle').checked = prefs.keyboard;
-  $('stop-on-error-toggle').checked = prefs.stopOnError;
+  syncRules();
+  $('finger-toggle').checked = prefs.fingerMap;
+  $('finger-row').hidden = !prefs.keyboard;
+  $('correction-select').value = prefs.correction;
   $('focus-toggle').checked = prefs.focusMode;
   $('keyboard').hidden = !prefs.keyboard && sessionKind !== 'lesson';
+  renderKeyboard();
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
   $('numbers-toggle').checked = Boolean(prefs.numbers);
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  keybindingEditor?.refresh();
+  document.querySelectorAll('.restart-key-hint').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.restart); });
+  $('restart-button').title = prefs.keybindings.restart ? `Restart test (${bindingLabel(prefs.keybindings.restart)})` : 'Restart test';
+  $('exit-focus-hint').textContent = bindingLabel(prefs.keybindings.exitFocus);
+  for (const [id, action] of [['restart-button', 'restart'], ['palette-trigger', 'commands'], ['exit-focus', 'exitFocus']]) {
+    const shortcuts = ariaShortcuts(prefs.keybindings[action]);
+    if (shortcuts) $(id).setAttribute('aria-keyshortcuts', shortcuts);
+    else $(id).removeAttribute('aria-keyshortcuts');
+  }
+  document.querySelectorAll('.command-key').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.commands); });
+  $('layout-select').value = prefs.layout;
   $('daily-goal').value = String(prefs.dailyGoal);
   syncLockedSettings();
   armPace();
   showBest();
+}
+
+// Why a rule switch can't change the session on hand, shown under it and read as its description.
+const RULE_NOTES = {
+  drill: 'drills end on the clock',
+  timed: 'timed runs end on the clock',
+  stopOnError: 'quick end applies only to free correction',
+  daily: 'the daily keeps its own rules',
+  retest: 'a retest keeps its baseline’s rules',
+  custom: 'custom text keeps the default rules',
+  race: 'a race keeps the same rules for both players',
+  lesson: 'a lesson keeps its own rules',
+  missed: 'word practice keeps the default rules',
+  challenge: 'a ghost race keeps its sender’s rules',
+  standard: 'the standard test keeps its own rules',
+};
+
+// Quick end only changes word and quote runs that let a mistake stand. Where the session can't take
+// it the switch is disabled but keeps its value, like punctuation in a quote test; #rules-note says
+// when the session keeps the rules it started with. Synced on every preference, view and Challenge
+// tab change, and when a one-keyboard race starts or ends.
+function syncRules() {
+  const limits = ruleLimits(ruleSession());
+  $('strict-space-toggle').checked = prefs.strictSpace;
+  $('quick-end-toggle').checked = prefs.quickEnd;
+  $('quick-end-toggle').disabled = Boolean(limits.quickEnd);
+  for (const [id, reason] of [['quick-end-note', limits.quickEnd], ['rules-note', limits.fixed]]) {
+    $(id).textContent = RULE_NOTES[reason] || '';
+    $(id).hidden = !reason;
+  }
 }
 
 // The standard test fixes word list, punctuation, numbers and correction. Their controls show the
@@ -590,8 +671,8 @@ function syncLockedSettings() {
   if (standard && !recipeOption) $('word-list').append(new Option('1k–10k', 'standard'));
   if (!standard) recipeOption?.remove();
   $('word-list').value = standard ? 'standard' : prefs.wordList;
-  $('stop-on-error-toggle').disabled = standard;
-  $('stop-on-error-toggle').checked = standard || prefs.stopOnError;
+  $('correction-select').disabled = standard;
+  $('correction-select').value = standard ? 'mandatory' : prefs.correction;
   document.querySelectorAll('.preference-lock').forEach((note) => { note.hidden = !standard; });
 }
 
@@ -901,14 +982,59 @@ function choosePassage(extraSeen = []) {
 const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custom' : 'practice');
 
 // Daily and missed-word passages run to the end of their text, whatever the practice shape is.
-function sessionDurationMs() {
-  if (sessionKind === 'challenge') return ghostRace?.duration ? ghostRace.duration * 1000 : null;
-  if (['daily', 'lesson', 'missed'].includes(sessionKind)) return null;
-  if (sessionKind === 'drill') return 60000;
-  if (sessionKind === 'custom') return null;
+function sessionDurationMs(kind = sessionKind) {
+  if (kind === 'challenge') return ghostRace?.duration ? ghostRace.duration * 1000 : null;
+  if (['daily', 'lesson', 'missed', 'race'].includes(kind)) return null;
+  if (kind === 'drill') return 60000;
+  if (kind === 'custom') return null;
   if (prefs.mode === 'time') return prefs.duration * 1000;
   if (prefs.mode === 'standard') return STANDARD_SECONDS * 1000;
   return null;
+}
+
+// Why strict space and quick end can't change a session's run, read from the session itself (its
+// kind, its timing and the conditions its run was built with), never from the test-shape
+// preferences: a drill started from a words baseline is still a timed minute. quickEnd names why
+// quick end does nothing there ('' when it applies); fixed names a session that keeps the rules it
+// started with (the daily's are set, a retest has to match its baseline, custom text keeps the
+// defaults, and a race under way keeps its own for both players).
+const FIXED_RULE_KINDS = ['daily', 'retest', 'custom', 'lesson', 'missed', 'challenge'];
+function ruleLimits({ kind, run, fixed = FIXED_RULE_KINDS.includes(kind) }) {
+  return {
+    fixed: run.mode === 'standard' ? 'standard' : fixed ? kind : '',
+    quickEnd: sessionDurationMs(kind) !== null ? (kind === 'drill' ? 'drill' : 'timed')
+      : run.correctionPolicy === 'relaxed' ? '' : 'stopOnError',
+  };
+}
+
+// The session the rule switches act on. On the Challenge screen's one-keyboard tab it is the race:
+// the one under way, whose rules startRace fixed for both players, or else the next one. Elsewhere
+// it is the run waiting or in progress or, once it's over, the next one, which Run again makes the
+// daily again, the same custom text or a practice run.
+function ruleSession() {
+  if (document.body.dataset.view === 'compete' && onlineRace?.mode === 'local') {
+    return raceUnderWay() ? { kind: 'race', run: race.conditions, fixed: true } : { kind: 'race', run: raceConditions() };
+  }
+  if (attempt && ['ready', 'running'].includes(attempt.status)) return { kind: sessionKind, run: attempt.conditions };
+  const kind = sessionKind === 'daily' ? 'daily' : restartKind();
+  return { kind, run: sessionConditions(kind) };
+}
+
+// The conditions a new run of this kind is built with. The daily's rules are fixed and a retest
+// takes its baseline's, whatever the switches say now. A rule that can't change the run is recorded
+// at its default, so a drill's conditions and key never carry quick end.
+function sessionConditions(kind, run = conditions()) {
+  if (kind === 'daily') return dailyConditions();
+  if (kind === 'custom') return customConditions();
+  if (kind === 'lesson') return lessonConditions();
+  if (kind === 'challenge') return ghostConditions();
+  if (kind === 'missed') return { ...run, strictSpace: false, quickEnd: true };
+  if (kind === 'retest' && baselineAttempt) {
+    run.strictSpace = baselineAttempt.conditions.strictSpace === true;
+    run.quickEnd = baselineAttempt.conditions.quickEnd !== false;
+  }
+  if (ruleLimits({ kind, run }).quickEnd) run.quickEnd = true;
+  return run;
 }
 
 function configureSessionCopy() {
@@ -1023,7 +1149,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: { ...runConditions, inputClass: activationInput },
+    conditions: { ...sessionConditions(kind, runConditions), inputClass: activationInput },
   });
   if (kind === 'challenge') attempt.challengeId = ghostRace.id;
   if (kind === 'daily') {
@@ -1056,7 +1182,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   return true;
 }
 
-function showUnavailableRetest(reason) {
+function showUnavailableRetest(reason, sample = 'no matching fresh text') {
   switchView('results');
   $('comparison-panel').hidden = false;
   $('comparison-panel').dataset.outcome = 'unavailable';
@@ -1064,7 +1190,7 @@ function showUnavailableRetest(reason) {
   $('comparison-accuracy').textContent = '—';
   $('comparison-timing').textContent = '—';
   $('comparison-wpm').textContent = '—';
-  $('comparison-sample').textContent = 'no matching fresh text';
+  $('comparison-sample').textContent = sample;
   $('comparison-caveat').textContent = reason;
   announce(reason);
 }
@@ -1148,15 +1274,30 @@ function pushInsert(char, type = 'primary', at = now(), carried = false) {
   const targetAttempt = type === 'primary' ? attempt : race.attempt;
   startAttempt(targetAttempt, type, at);
   const replay = replayAttempt(targetAttempt);
-  const unresolved = targetAttempt.conditions.correctionPolicy !== 'relaxed'
+  const offsetMs = offsetFor(type, at);
+  const position = replay.typed.length;
+  const unresolved = blocksOnError(targetAttempt.conditions.correctionPolicy)
     && replay.typed.length > 0
     && replay.typed.at(-1) !== targetAttempt.text[replay.typed.length - 1];
-  const offsetMs = offsetFor(type, at);
-  let event = { type: 'insert', text: char, position: replay.typed.length, accepted: true, offsetMs };
-  if (unresolved) event = { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs };
-  else if (carried && replay.typed.length >= targetAttempt.text.length) event = carriedKey(targetAttempt, char, offsetMs);
+  if (unresolved) {
+    targetAttempt.events.push({ type: 'blocked-insert', text: char, position: position - 1, offsetMs: offsetMs });
+    return { previousLength: position, blocked: 'unresolved' };
+  }
+  // The passage is typed but its last word has a mistake: space finishes the run as it stands.
+  // Other keys have no position left to land on, so they are not recorded.
+  if (awaitingSubmit(targetAttempt, replay.typed)) {
+    if (char !== ' ') return { previousLength: position, blocked: 'submit' };
+    targetAttempt.events.push({ type: 'submit', offsetMs: offsetMs });
+    return { previousLength: position, blocked: false, submit: true };
+  }
+  if (refusesSpace(targetAttempt.conditions, targetAttempt.text, position, char)) {
+    targetAttempt.events.push({ type: 'insert', text: char, position, accepted: false, offsetMs: offsetMs });
+    return { previousLength: position, blocked: 'space', failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
+  }
+  let event = { type: 'insert', text: char, position, accepted: true, offsetMs };
+  if (carried && position >= targetAttempt.text.length) event = carriedKey(targetAttempt, char, offsetMs);
   if (event) targetAttempt.events.push(event);
-  return { previousLength: replay.typed.length, blocked: unresolved };
+  return { previousLength: position, blocked: false, failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
 }
 
 function pushDelete(type = 'primary') {
@@ -1210,8 +1351,20 @@ function refuseComposition(type) {
 function typeKeys(keys, type, at = now()) {
   if (!keys.length || !acceptingInput(type, at)) return;
   const room = inputAttempt(type).text.length - currentReplay(type).typed.length;
+  const target = inputAttempt(type);
   const changes = keys.map((key, index) => pushInsert(key, type, at, room > 0 && index >= room));
+  const failure = changes.find((change) => change.failed)?.failed;
+  if (changes.some((change) => change.submit)) {
+    if (type === 'primary') finishPrimary();
+    else finishRacePlayer();
+    return;
+  }
+  if (failure) { target.interrupted = true; target.failed = failure; }
   refreshAfterInput(type, changes[0].previousLength, changes.at(-1).blocked, at);
+  if (failure && target.status === 'running') {
+    if (type === 'primary') finishPrimary();
+    else finishRacePlayer();
+  }
 }
 
 // What a composition committed, scored once the key that ended it is known. A mark pending when focus
@@ -1306,6 +1459,7 @@ function beforeTypingInput(event, type = 'primary') {
   if (compositionInput || event.isComposing || composition?.type === type) return;
   if (event.inputType?.startsWith('delete')) {
     event.preventDefault();
+    if (!allowsBackspace(inputAttempt(type).conditions.correctionPolicy)) return;
     const previousLength = pushDelete(type);
     refreshAfterInput(type, previousLength);
     return;
@@ -1457,6 +1611,8 @@ function wireComposition(input, type) {
 // typed characters; only IME text (any composition no accent key opened) is refused.
 const NOTICES = {
   blocked: 'Fix the underlined letter.',
+  strictSpace: 'Strict space is on. Type the next letter.',
+  submit: 'The last word has a mistake. Fix it, or press space to finish.',
   paste: 'Paste is off. Type the passage.',
   composition: 'IME input isn’t scored. Esc to restart.',
   multiCharacter: 'One key at a time. Esc to restart.',
@@ -1474,11 +1630,23 @@ const NOTICES = {
 };
 
 function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
+  if (prefs.keybindings.restart !== 'Escape') {
+    const hint = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} to restart` : 'Restart shortcut is disabled';
+    message = message.replace('Esc to restart', hint);
+  }
   if (type === 'primary') {
     $('input-help').textContent = message;
     if (sticky) primaryNotice = message;
-  } else $('race-help').textContent = message;
+  } else {
+    $('race-help').textContent = message;
+    if (sticky) race.notice = message;
+  }
   if (speak) announce(message);
+}
+
+// A strict space or quick end notice never hides why a run won't count; it follows that notice.
+function withRule(sticky, rule) {
+  return sticky ? `${sticky} ${rule}` : rule;
 }
 
 function refusePaste(type) {
@@ -1503,14 +1671,24 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   let outcome = 'delete';
   if (blocked) outcome = 'blocked';
   else if (length > previousLength) outcome = lastCorrect ? 'correct' : 'wrong';
-  (isPrimary ? primaryFx : raceFx).update(length, outcome, length > 0 && !lastCorrect);
+  // A refused space is a miss at the letter it skipped: that letter is tinted until the next key,
+  // so the coral caret always sits beside a tinted letter.
+  if (blocked === 'space') characters[length].className = 'char wrong';
+  (isPrimary ? primaryFx : raceFx).update(length, outcome, (length > 0 && !lastCorrect) || blocked === 'space');
   textView.trimBehind(length);
+  const waiting = awaitingSubmit(targetAttempt, replay.typed);
+  const rule = blocked === 'space' ? NOTICES.strictSpace : waiting ? NOTICES.submit : '';
+  // Said once when the space is refused or the run starts waiting, and again if a key is ignored.
+  if (blocked === 'space' || (waiting && (length > previousLength || blocked === 'submit'))) announce(rule);
   if (isPrimary) {
     setRunning(true);
-    $('input-help').textContent = blocked ? NOTICES.blocked : primaryNotice;
+    $('input-help').textContent = rule ? withRule(primaryNotice, rule) : blocked ? NOTICES.blocked : primaryNotice;
     updateLive(false, at);
     if (sessionDurationMs() === null && passageComplete(targetAttempt, replay.typed)) finishPrimary();
   } else {
+    const help = $('race-help');
+    if (rule) help.textContent = withRule(race.notice, rule);
+    else if ([NOTICES.strictSpace, NOTICES.submit].some((notice) => help.textContent.endsWith(notice))) help.textContent = race.notice || (prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.');
     updateRaceProgress(replay);
     if (passageComplete(targetAttempt, replay.typed)) finishRacePlayer();
   }
@@ -1579,6 +1757,7 @@ function setPaceCaret(mode, { speed = false } = {}) {
 }
 
 function markKeyboardTargets(target) {
+  keyboardTarget = target;
   const letters = new Set((target || '').toLowerCase());
   $('keyboard').querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
@@ -1653,6 +1832,18 @@ function storeAttempt(completed) {
   return saved;
 }
 
+// The end of a run (the timer, the passage end) is a word boundary for the failure
+// policies, so a wrong letter typed just before the timer runs out still fails the run.
+function markEndFailure(target) {
+  if (target.interrupted) return;
+  const failed = failureAtEnd(target.conditions.correctionPolicy, target.text, replayAttempt(target).typed);
+  if (!failed) return;
+  target.interrupted = true;
+  target.failed = failed;
+}
+
+const failedDrill = (completed) => completed.kind === 'drill' && Boolean(completed.failed);
+
 // `replacing`: another session or view takes over at once, so a drill draws no retest passage to throw away.
 function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   if (!attempt || attempt.status !== 'running') return;
@@ -1664,17 +1855,19 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   clearInterval(ticker);
   ticker = null;
   const endedAt = forcedElapsed ?? offsetFor();
+  markEndFailure(attempt);
   const valid = !attempt.interrupted && !attempt.unsupportedInput;
   const completed = completeAttempt(attempt, { endedAt, status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = attempt.interrupted;
   completed.unsupportedInput = attempt.unsupportedInput;
   completed.fresh = attempt.fresh;
+  if (attempt.failed) completed.failed = attempt.failed;
   attempt = completed;
   $('typing-input').disabled = true;
   primaryFx.finish();
   setRunning(false);
   $('typing-status').className = `badge ${valid ? 'badge-success' : 'badge-warning'}`;
-  $('typing-status').textContent = valid ? 'Complete' : 'Interrupted';
+  $('typing-status').textContent = valid ? 'Complete' : completed.failed ? 'Failed' : 'Interrupted';
   // Lessons keep their own progress and never enter runs, traces or bests.
   if (sessionKind === 'lesson') {
     finishLesson(completed, valid);
@@ -1682,7 +1875,9 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   }
   const saved = storeAttempt(completed);
 
-  if (sessionKind === 'drill' && baselineAttempt) {
+  // A drill the correction setting failed shows its result like any failed run, so it can be tried
+  // again or skipped to the retest; a finished or interrupted drill goes straight on to the retest.
+  if (sessionKind === 'drill' && baselineAttempt && !completed.failed) {
     if (trainingContext) trainingContext.drillCompleted = valid;
     // Train already offers this retest: startDrill() rendered its actions.
     if (replacing) return;
@@ -1710,7 +1905,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   }
   switchView('results');
   renderCard(completed);
-  $('run-again').focus({ preventScroll: true });
+  $(failedDrill(completed) ? 'start-drill' : 'run-again').focus({ preventScroll: true });
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -1720,7 +1915,7 @@ function renderCard(completed) {
   const kind = completed.kind === 'challenge' ? 'ghost race' : completed.kind !== 'test' ? completed.kind : completed.conditions.mode === 'standard' ? 'standard' : 'practice';
   const at = new Date();
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
-  $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
+  $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}${completed.failed ? ` · failed · ${completed.failed}` : ''}`;
   $('run-card').hidden = false;
   const graph = $('speed-graph').closest('figure');
   graph.hidden = !rateShown(completed);
@@ -1799,6 +1994,7 @@ function practiseMissedList() {
 }
 
 function resultHeadline(completed) {
+  if (completed.failed) return `failed · ${completed.failed}`;
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
   if (completed.kind === 'challenge') return 'Ghost race complete · not counted toward your best';
@@ -1841,7 +2037,7 @@ function renderResults(completed, saved) {
   $('result-delta').textContent = resultHeadline(completed);
   // A retest reports a failed save once, in the comparison caveat.
   $('result-comparison-note').textContent = [
-    counted ? '' : 'Focus or input changed during the run, so it isn’t counted.',
+    counted ? '' : completed.failed ? 'The correction setting ended this run, so it isn’t counted.' : 'Focus or input changed during the run, so it isn’t counted.',
     saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
   ].filter(Boolean).join(' ');
 
@@ -1852,16 +2048,17 @@ function renderResults(completed, saved) {
   // Custom text and ghost races are never mined for targets or kept as a baseline, so their results offer no drill or retest:
   // the recommendation would come from other runs and the retest would measure a different text. Word
   // practice isn't compared either, but like a drill it leads on to a retest of the run its words came from.
-  renderRecommendation(counted, comparableKind(completed.kind) || completed.kind === 'missed');
+  renderRecommendation(counted || failedDrill(completed), comparableKind(completed.kind) || completed.kind === 'missed', completed);
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again' : 'Run again';
   renderTraining();
   renderDaily();
   $('comparison-panel').hidden = true;
+  const failure = completed.failed ? `${completed.kind === 'drill' ? 'Drill' : 'Run'} failed, ${completed.failed}. ` : '';
   $('ghost-result').hidden = completed.kind !== 'challenge';
   renderGhostOffer(completed);
   announce(saved
-    ? `${speed}, ${replay.score.accuracy}% accuracy.`
-    : `${speed}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+    ? `${failure}${speed}, ${replay.score.accuracy}% accuracy.`
+    : `${failure}${speed}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
 }
 
 // Train's drill and retest actions, from the current recommendation and baseline. Runs after each result
@@ -1869,15 +2066,16 @@ function renderResults(completed, saved) {
 // came from saved history (practiceTarget) and no result has been shown in this tab.
 // `compared` is false after a custom text result (any non-comparable kind): that text is never mined for
 // targets or kept as a baseline, so Train offers no drill or retest for it. A drill started later shows them again.
-function renderRecommendation(counted = true, compared = true) {
+function renderRecommendation(counted = true, compared = true, completed = null) {
   // After startDaily() there is no recommendation: show the general drill Start drill falls back to.
   activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
   $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
-  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
+  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : completed?.failed ? 'This run failed under the correction setting.' : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
     ? `About 1 min, then a fresh ${retestLength(baselineAttempt.conditions)} retest.`
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
   $('start-drill').disabled = !counted;
+  $('start-drill').textContent = completed && failedDrill(completed) ? 'Try drill again' : 'Start drill';
   $('skip-to-retest').disabled = !counted || baselineAttempt?.status !== 'complete';
   for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = !compared;
   renderEvidenceList(activeRecommendation.evidence);
@@ -1962,19 +2160,36 @@ function startDrill() {
   // startDaily() drops the recommendation, so a stale Start drill falls back to a general drill.
   activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
   selectedTarget = activeRecommendation.target || null;
+  const mismatch = baselineAttempt ? layoutMismatch(baselineAttempt.conditions) : "";
+  if (mismatch) baselineAttempt = null;
   const source = baselineAttempt?.conditions;
   if (source) restoreConditions(source);
   trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false };
   trainingContext.drill = { target: selectedTarget, duration: 60, wordList: prefs.wordList, textVersion: makeDrill(selectedTarget, prefs.wordList).textVersion };
   renderRecommendation();
   resetSession('drill', { focus: true });
+  if (mismatch) $('session-description').textContent = `Standalone drill. ${mismatch}`;
 }
 
 function startRetest() {
   if (!baselineAttempt || baselineAttempt.status !== 'complete') return;
   const source = baselineAttempt.conditions;
+  const mismatch = layoutMismatch(source);
+  if (mismatch) {
+    showUnavailableRetest(mismatch, 'different keyboard layout');
+    return;
+  }
   restoreConditions(source);
   resetSession('retest', { focus: true });
+}
+
+// The layout is set in the operating system, not here, so restoring conditions never switches it.
+// A baseline typed on another layout (a missing layout means QWERTY) can't be retested on this one.
+// A touch baseline never used the setting, so the setting can't block it.
+function layoutMismatch(source) {
+  const layout = normalizeLayout(source?.layout);
+  if (source?.inputClass === 'touch' || layout === prefs.layout) return '';
+  return `The baseline was typed on ${layoutLabel(layout)}. Switch the keyboard layout back to ${layoutLabel(layout)} to retest it.`;
 }
 
 // A drill or retest runs at its baseline's conditions without recording them as a settings edit: the
@@ -1994,7 +2209,8 @@ function restoreConditions(source) {
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
-    stopOnError: source.correctionPolicy !== 'relaxed',
+    correction: correctionPreference({ correction: source.correctionPolicy, stopOnError: source.correctionPolicy !== 'relaxed' }),
+    stopOnError: source.correctionPolicy === 'mandatory',
   };
   livePreferences = JSON.stringify(prefs);
   applyPreferences();
@@ -2011,6 +2227,7 @@ function switchView(view) {
     else control.removeAttribute('aria-current');
   });
   setRunning(false);
+  syncRules();
   // Pills in a hidden screen measured zero width; remeasure every group now it is visible.
   updateGlides();
   if (view === 'progress') renderHistory();
@@ -2025,7 +2242,10 @@ function navigate(view) {
   if (view === 'practice') {
     // A custom passage that is ready or under way is practice too, so going to Practice keeps it.
     const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom') && !['complete', 'interrupted'].includes(attempt.status);
+    // A waiting passage is rebuilt, as the same kind, if strict space or quick end changed while another screen showed.
+    const staleRules = current && inputRules(attempt.conditions).join() !== inputRules(sessionConditions(sessionKind)).join();
     if (!current || (preferencesWaiting && untouchedPractice())) resetSession('practice');
+    else if (staleRules) resetSession(sessionKind);
     switchView('practice');
     return;
   }
@@ -2059,7 +2279,7 @@ function markRaceInterrupted() {
   if (race.attempt?.status !== 'running' || race.attempt.interrupted) return;
   race.attempt.interrupted = true;
   race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
-  showInputNotice('race', NOTICES.raceFocusLost, { speak: false });
+  showInputNotice('race', NOTICES.raceFocusLost, { sticky: true, speak: false });
   raceRunChanged();
 }
 
@@ -2195,8 +2415,7 @@ function retainedBaseline(source = null) {
 }
 
 function practiceTarget(target, source) {
-  // Use a retained, compatible baseline when possible.
-  baselineAttempt = retainedBaseline(source);
+  baselineAttempt = retainedBaseline({ ...source, layout: inputLayout(source.inputClass) });
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
   activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
@@ -2273,13 +2492,14 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 // one touch run can't replace a keyboard score. The other class's best is named in the note.
 function renderStandardScore() {
   const scoreFor = (inputClass) => {
-    const key = conditionKey(standardConditions(inputClass));
+    const key = conditionKey({ ...standardConditions(inputClass), layout: inputLayout(inputClass) });
     return standardScore(profile.runs, key, profile.bests[key]?.wpm ?? null);
   };
   const keyboard = scoreFor('physical-keyboard');
   const touch = scoreFor('touch');
   const onTouch = standardInputClass(keyboard, touch) === 'touch';
-  const source = standardConditions(onTouch ? 'touch' : 'physical-keyboard');
+  const sourceInput = onTouch ? 'touch' : 'physical-keyboard';
+  const source = { ...standardConditions(sourceInput), layout: inputLayout(sourceInput) };
   const score = onTouch ? touch : keyboard;
   const other = onTouch ? keyboard : touch;
   setText($('standard-best'), score.best ?? '—');
@@ -2605,9 +2825,10 @@ function renderComposeHistory() {
   }));
 }
 
+// Everyone types the daily passage under the same rules, whatever their practice settings.
 function dailyConditions() {
   return { ...settingsConditions(), mode: 'quote', duration: null, count: null, punctuation: true, numbers: false,
-    quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
+    quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', strictSpace: false, quickEnd: true, corpus: CORPUS_VERSION };
 }
 
 function todayPassage() {
@@ -2633,14 +2854,15 @@ function renderDaily() {
   const completed = profile.runs.filter((r) => r.kind === 'daily' && validRun(r));
   const today = completed.filter((r) => r.challengeDate === daily.day && conditionKey(r.conditions) === conditionKey(dailyConditions()));
   const best = [...today].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
+  const layout = isDefaultLayout(prefs.layout) ? '' : ` in ${layoutLabel(prefs.layout)}`;
   $('daily-status').textContent = best
-    ? `Today’s best: ${best.score.wpm} wpm · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard.${session ? '' : ' Sign in to save future results beyond this tab.'}`
-    : `No completed physical-keyboard attempt today.${session ? ' Your results save to your account.' : ' Results last in this tab; sign in to save future attempts.'}`;
+    ? `Today’s best: ${best.score.wpm} wpm · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard${layout}.${session ? '' : ' Sign in to save future results beyond this tab.'}`
+    : `No completed physical-keyboard attempt${layout} today.${session ? ' Your results save to your account.' : ' Results last in this tab; sign in to save future attempts.'}`;
   $('daily-history-panel').hidden = !completed.length;
   $('daily-history').replaceChildren(...[...completed].reverse().slice(0, 30).map((run) => {
     const row = element('div', '', 'daily-result');
     row.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
-      element('span', `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`));
+      element('span', `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${inputLabel(run.conditions)}`));
     return row;
   }));
 }
@@ -2712,7 +2934,7 @@ function finishLesson(completed, valid) {
       saved = saveProfile();
     }
   }
-  lessonResult = { index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, recorded, at, touch, saved, valid };
+  lessonResult = { failed: completed.failed, index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, recorded, at, touch, saved, valid };
   switchView('learn');
   announce(`${lessonHeadline(lessonResult)} ${score.accuracy}% accuracy, ${score.wpm} wpm.`);
   // Show the result from the top of the page, or from the result itself when the page is too short.
@@ -2731,7 +2953,7 @@ function lessonResultHeld(result, progress) {
 
 function lessonHeadline(result) {
   const n = result.index + 1;
-  if (!result.valid) return `Lesson ${n} interrupted · not counted`;
+  if (!result.valid) return result.failed ? `Lesson ${n} failed · ${result.failed} · not counted` : `Lesson ${n} interrupted · not counted`;
   if (!result.recorded) return `Lesson ${n} is locked · not counted`;
   if (result.touch) return `Lesson ${n} on touch input · doesn’t unlock`;
   const next = nextLessonIndex(profile.lessons);
@@ -2788,8 +3010,8 @@ function renderLessons() {
     const repeat = [`Repeat lesson ${n}`, start(result.index)];
     heading = lessonHeadline(result);
     if (!result.valid) {
-      status = ['interrupted', 'badge-warning'];
-      copy = 'Focus or input changed during the run, so it doesn’t count toward unlocking.';
+      status = [result.failed ? 'failed' : 'interrupted', 'badge-warning'];
+      copy = result.failed ? 'The correction setting ended this lesson, so it doesn’t count toward unlocking.' : 'Focus or input changed during the run, so it doesn’t count toward unlocking.';
       primary = [`Try lesson ${n} again`, start(result.index)];
     } else if (!result.recorded) {
       status = ['not counted', 'badge-neutral'];
@@ -2848,7 +3070,7 @@ function renderLessons() {
   const fresh = complete ? [] : LESSONS[next].keys;
   renderFingerMap($('lesson-keyboard'), { known: lessonKeys(complete ? LESSONS.length - 1 : next - 1), fresh });
   $('finger-caption-keys').textContent = complete ? 'every key learned' : `green edge: lesson ${next + 1}’s keys`;
-  $('lesson-save-note').textContent = `${session ? 'Lesson progress saves to your account.' : 'Lesson progress lasts for this tab; sign in to save future lessons.'} Lessons stay out of your bests, progress charts and retests.`;
+  $('lesson-save-note').textContent = `${isDefaultLayout(prefs.layout) ? '' : 'Lessons teach QWERTY finger positions. Use QWERTY in your operating system for these lessons; your practice layout setting is kept. '}${session ? 'Lesson progress saves to your account.' : 'Lesson progress lasts for this tab; sign in to save future lessons.'} Lessons stay out of your bests, progress charts and retests.`;
 
   $('lesson-list').replaceChildren(...LESSONS.map((lesson, index) => {
     const entry = progress[lesson.id];
@@ -2895,7 +3117,7 @@ const GHOST_CONDITION_KEYS = ['mode', 'duration', 'count', 'punctuation', 'numbe
 const inputOf = (value = {}) => value.inputClass === 'touch' ? 'touch' : 'physical-keyboard';
 // A run that wasn't sent for these reasons can be raced again; a failed send is retried as is.
 const RACE_AGAIN = ['interrupted', 'unsendable', 'unreplayable', 'other-input'];
-const inputLabel = (value) => inputOf(value) === 'touch' ? 'touch input' : 'a physical keyboard';
+const ghostInputLabel = (value) => inputOf(value) === 'touch' ? 'touch input' : 'a physical keyboard';
 
 // The sender's test conditions, so the same finish rule applies; the input class is this device's.
 function ghostConditions() {
@@ -3015,7 +3237,7 @@ function renderGhostResult() {
     interrupted: 'Focus or input changed during the run. Race again to send a finished run.',
     unsendable: 'A run of more than 6,000 keys can’t be sent. Race again with fewer corrections.',
     unreplayable: 'This run included an emoji or a similar character, which a ghost race can’t replay. Race again to send a run.',
-    'other-input': `${ghost.name} typed on ${inputLabel(ghost.conditions)} and this run used ${inputLabel(ghost.run.conditions)}; the two are never compared. Race again on ${inputLabel(ghost.conditions)} to send a run.`,
+    'other-input': `${ghost.name} typed on ${ghostInputLabel(ghost.conditions)} and this run used ${ghostInputLabel(ghost.run.conditions)}; the two are never compared. Race again on ${ghostInputLabel(ghost.conditions)} to send a run.`,
   }[ghost.state] || '';
   const again = RACE_AGAIN.includes(ghost.state);
   const action = $('ghost-result-action');
@@ -3133,25 +3355,53 @@ async function sendGhost(event) {
   }
 }
 
+// The legend follows the chosen layout; typed characters are never remapped. The optional finger
+// map shades each key by the finger that types it (data-hand, data-finger) and splits the hands.
 function buildKeyboard() {
+  const signature = `${prefs.layout}:${prefs.fingerMap}`;
+  if (signature === keyboardBuilt) return;
+  keyboardBuilt = signature;
   const keyboard = $('keyboard');
-  keyboard.classList.remove('finger-map');
-  keyboard.removeAttribute('role');
-  keyboard.setAttribute('aria-label', 'On-screen keyboard');
+  keyboard.dataset.layout = prefs.layout;
+  keyboard.dataset.fingers = String(prefs.fingerMap);
+  keyboard.classList.remove("finger-map");
+  keyboard.removeAttribute("role");
+  keyboard.setAttribute("aria-label", "On-screen keyboard");
   const fragment = document.createDocumentFragment();
-  ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', ' '].forEach((keys) => {
+  for (const keys of keyboardRows(prefs.layout)) {
     const row = document.createElement('div');
     row.className = 'key-row';
-    for (const letter of keys) {
+    for (const { key: letter, hand, finger, column } of keys) {
       const key = document.createElement('span');
       key.className = `key${letter === ' ' ? ' space' : ''}`;
       key.dataset.key = letter;
-      key.textContent = letter === ' ' ? 'space' : letter;
+      key.dataset.hand = hand;
+      key.dataset.finger = finger;
+      key.dataset.column = String(column);
+      const label = letter === ' ' ? 'space' : letter;
+      if (prefs.fingerMap) {
+        // The initial and band are hidden from screen readers, so each key says its finger in words,
+        // as one phrase ("f, left index"); the printed cap is unchanged.
+        const cap = element('span', label);
+        cap.setAttribute('aria-hidden', 'true');
+        key.append(cap, element('span', `${label}, ${hand === 'both' ? 'thumbs' : `${hand} ${finger}`}`, 'sr-only'));
+      } else key.textContent = label;
       row.append(key);
     }
     fragment.append(row);
-  });
+  }
+  if (prefs.fingerMap) {
+    const legend = document.createElement('p');
+    legend.className = 'finger-legend';
+    legend.append(...FINGERS.map((finger) => {
+      const item = element('span', finger);
+      item.dataset.finger = finger;
+      return item;
+    }), element('span', 'space · thumbs'));
+    fragment.append(legend);
+  }
   keyboard.replaceChildren(fragment);
+  markKeyboardTargets(keyboardTarget);
 }
 
 // A split keyboard where each column belongs to one finger, labelled underneath; thumbs take the space bar.
@@ -3201,14 +3451,24 @@ function renderFingerMap(container, { known = [], fresh = [] } = {}) {
 function renderKeyboard() {
   const lesson = sessionKind === 'lesson';
   if (lesson) renderFingerMap($('keyboard'), { known: lessonKeys(lessonIndex - 1), fresh: LESSONS[lessonIndex].keys });
-  else if ($('keyboard').classList.contains('finger-map')) buildKeyboard();
+  else { if ($('keyboard').classList.contains('finger-map')) keyboardBuilt = ''; buildKeyboard(); }
   $('keyboard').hidden = !prefs.keyboard && !lesson;
+}
+
+// A one-keyboard race is a quote under the current settings, whatever the practice test shape.
+function raceConditions() {
+  return { ...conditions(), mode: 'quote', wordList: null, localRace: true };
+}
+
+// From its start until the second player finishes. Both turns are built from race.conditions.
+function raceUnderWay() {
+  return Boolean(race.conditions) && race.results.length < 2;
 }
 
 function startRace() {
   race = {
     passage: selectPassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', seenIds: [] }),
-    conditions: { ...settingsConditions(), mode: 'quote', wordList: null, localRace: true },
+    conditions: raceConditions(),
     names: [$('player-one-name').value.trim() || 'Player one', $('player-two-name').value.trim() || 'Player two'],
     player: 0,
     attempt: null,
@@ -3216,6 +3476,7 @@ function startRace() {
     results: [],
     characters: [],
     textView: null,
+    notice: '',
   };
   if (race.passage?.id && !profile.seenTextIds.includes(race.passage.id)) {
     profile.seenTextIds.push(race.passage.id);
@@ -3224,6 +3485,7 @@ function startRace() {
   $('compete-setup').hidden = true;
   $('race-leaderboard').hidden = true;
   $('race-handoff').hidden = true;
+  syncRules();
   setupRacePlayer();
 }
 
@@ -3233,6 +3495,7 @@ function setupRacePlayer() {
   heldDeadKey = null;
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
+  race.notice = '';
   raceRunChanged();
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
@@ -3244,7 +3507,7 @@ function setupRacePlayer() {
   raceFx.reset(race.characters);
   $('race-accessible-passage').textContent = race.passage.text;
   updateRaceProgress(replayAttempt(race.attempt));
-  $('race-help').textContent = 'Esc restarts.';
+  $('race-help').textContent = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.';
   $('race-input').focus({ preventScroll: true });
 }
 
@@ -3255,12 +3518,14 @@ function updateRaceProgress(replay) {
 }
 
 function finishRacePlayer() {
+  markEndFailure(race.attempt);
   if (composition?.type === 'race') composition = null;
   if (accentPair?.type === 'race') accentPair = null;
   heldDeadKey = null;
   const valid = !race.attempt.interrupted && !race.attempt.unsupportedInput;
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
+  if (race.attempt.failed) completed.failed = race.attempt.failed;
   race.attempt = completed;
   raceRunChanged();
   race.results.push({ name: race.names[race.player], attempt: completed });
@@ -3273,7 +3538,10 @@ function finishRacePlayer() {
     $('race-handoff').classList.remove('is-revealing');
     $('race-handoff').hidden = false;
     announce(`${race.names[0]} finished. Pass the keyboard to ${race.names[1]}.`);
-  } else renderRaceResults();
+  } else {
+    syncRules();
+    renderRaceResults();
+  }
 }
 
 function renderRaceResults() {
@@ -3298,7 +3566,7 @@ function renderRaceResults() {
     name.textContent = result.name;
     const speed = document.createElement('span');
     speed.className = 'num';
-    speed.textContent = result.attempt.status === 'complete' ? `${score.wpm} wpm` : 'interrupted';
+    speed.textContent = result.attempt.status === 'complete' ? `${score.wpm} wpm` : result.attempt.failed ? `failed · ${result.attempt.failed}` : 'interrupted';
     const accuracy = document.createElement('span');
     accuracy.className = 'num';
     accuracy.textContent = `${score.accuracy}% accuracy`;
@@ -3337,6 +3605,7 @@ function forgetTraining() {
   $('ghost-result').hidden = true;
   renderGhostOffer(null);
   $('start-drill').disabled = true;
+  $('start-drill').textContent = 'Start drill';
   $('skip-to-retest').disabled = true;
 }
 
@@ -4215,9 +4484,18 @@ function bindEvents() {
   $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()));
   $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
+  keybindingEditor = createKeybindingEditor({
+    form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => prefs.keybindings,
+    onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
+  });
+  keybindingEditor.refresh();
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
-  $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
+  $('finger-toggle').addEventListener('change', (event) => { prefs.fingerMap = event.target.checked; applyPreferences(); saveChoice('fingerMap'); });
+  $('layout-select').addEventListener('change', (event) => setLayout(event.target.value));
+  $('correction-select').addEventListener('change', (event) => setCorrection(event.target.value));
+  $('strict-space-toggle').addEventListener('change', (event) => setInputRule('strictSpace', event.target.checked));
+  $('quick-end-toggle').addEventListener('change', (event) => setInputRule('quickEnd', event.target.checked));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
@@ -4258,6 +4536,7 @@ function bindEvents() {
     activationInput = startedBy(event);
     if (activationInput !== 'touch' || !['ready', 'running'].includes(attempt?.status) || attempt.conditions.inputClass === 'touch') return;
     attempt.conditions.inputClass = 'touch';
+    attempt.conditions.layout = inputLayout('touch');
     $('condition-line').textContent = describeRun(attempt);
     showBest();
     if (attempt.status === 'ready') armPace();
@@ -4271,7 +4550,7 @@ function bindEvents() {
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   const replayView = createReplayView($('replay-dialog'));
   $('watch-replay').addEventListener('click', () => replayView.open(shownResult));
-  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(sessionKind === 'missed' ? 'missed' : restartKind(), { focus: true, leaveCompose: true }));
+  $('run-again').addEventListener('click', runAgain);
   $('result-words').addEventListener('keydown', moveWordFocus);
   $('result-words').addEventListener('focusin', (event) => {
     const word = event.target.closest('[role="option"]');
@@ -4368,38 +4647,64 @@ function bindEvents() {
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    // An open dialog (palette, replay, account, clear, suggestion, or any later one) owns the
-    // keyboard, so its native Escape closes it rather than leaving focus mode or restarting.
-    if (document.querySelector('dialog[open]')) return;
-    if (event.key === 'Escape' && preferences.open) {
+    if (event.defaultPrevented) return;
+    // A held space that submitted a run (quick end off) must not also press Run again.
+    if (event.repeat && event.key === ' ' && document.activeElement === $('run-again')) {
       event.preventDefault();
-      preferences.open = false;
-      preferences.querySelector('summary').focus();
       return;
     }
-    if (event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key)) && (document.activeElement === $('typing-input') || document.activeElement === $('race-input'))) {
+    const typing = document.activeElement === $('typing-input') || document.activeElement === $('race-input');
+    if (typing && event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key))) {
       event.preventDefault();
       showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
       return;
     }
-    if (event.key === 'Escape' && prefs.focusMode) {
-      event.preventDefault();
-      prefs.focusMode = false;
-      applyPreferences();
-      saveProfile();
-      focusPractice();
-    } else if (event.key === 'Escape' && document.activeElement === $('compose-input')) {
-      event.preventDefault();
-      compose.restart();
-    } else if (event.key === 'Escape' && document.activeElement === $('typing-input')) {
-      event.preventDefault();
-      resetSession(sessionKind, { focus: true });
-    } else if (event.key === 'Escape' && document.activeElement === $('race-input')) {
-      event.preventDefault();
-      setupRacePlayer();
+    if (((event.isComposing || event.keyCode === 229) && !activeAccentComposition()) || event.getModifierState?.('AltGraph')) return;
+    if (document.querySelector('dialog[open]')) {
+      if (palette?.isOpen() && matchesAppBinding(event, prefs.keybindings.commands)) {
+        event.preventDefault();
+        if (!event.repeat) palette.close();
+      }
+      return;
     }
+    const menuOpen = preferences.open || $('account').open || $('inbox').open;
+    if (menuOpen && event.key === 'Escape') {
+      if (preferences.open && !keybindingEditor.isRecording()) {
+        event.preventDefault();
+        keybindingEditor.stopRecording();
+        preferences.open = false;
+        preferences.querySelector(':scope > summary').focus();
+      }
+      return;
+    }
+    const active = document.activeElement;
+    const onTypingSurface = ['typing-input', 'race-input', 'online-input', 'compose-input'].includes(active?.id);
+    const editable = active?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+    if (!keybindingEditor.isRecording() && (!editable || onTypingSurface) && matchesAppBinding(event, prefs.keybindings.commands)) {
+      event.preventDefault();
+      if (!event.repeat) palette.open();
+      return;
+    }
+    if (menuOpen) return;
+    if (prefs.focusMode && (!editable || onTypingSurface) && matchesAppBinding(event, prefs.keybindings.exitFocus)) {
+      event.preventDefault();
+      if (!event.repeat) {
+        prefs.focusMode = false;
+        applyPreferences();
+        saveProfile();
+        focusPractice();
+      }
+      return;
+    }
+    if (composeOpen && active === $('compose-input') && matchesAppBinding(event, prefs.keybindings.restart)
+      && !(event.key === 'Enter' && compose.isRunning())) {
+      event.preventDefault();
+      if (!event.repeat) compose.restart();
+      return;
+    }
+    if (quickRestart(event)) return;
     document.querySelectorAll('.key').forEach((key) => key.classList.toggle('active', key.dataset.key === event.key.toLowerCase()));
-  });
+  }, true);
   document.addEventListener('keyup', () => document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active')));
   window.addEventListener('blur', () => {
     document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active'));
@@ -4408,7 +4713,7 @@ function bindEvents() {
     markRaceInterrupted();
   });
   document.addEventListener('pointerdown', (event) => {
-    if (preferences.open && !preferences.contains(event.target)) preferences.open = false;
+    if (preferences.open && !preferences.contains(event.target)) { preferences.open = false; keybindingEditor.stopRecording(); }
   });
 
   // The chrome fades while typing; a real mouse nudge (not layout-induced jitter) brings it back.
@@ -4497,13 +4802,78 @@ function togglePreference(key) {
   if (document.body.dataset.view === 'practice') focusPractice();
 }
 
-function setStopOnError(enabled) {
-  if (prefs.stopOnError === enabled) return;
-  prefs.stopOnError = enabled;
+function setCorrection(policy) {
+  if (standardLocked()) return;
+  prefs.correction = correctionPreference({ correction: policy });
+  prefs.stopOnError = prefs.correction === 'mandatory';
   applyPreferences();
-  saveProfile();
+  saveChoice('correction', 'stopOnError');
   // A lesson stays a lesson and custom text stays custom; any other session restarts as practice.
   if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : restartKind());
+}
+
+// Strict space and quick end change how a run is scored, so a change on the practice screen starts
+// the session again as the same kind: a drill stays a drill. A session that can't take it (quick
+// end in a timed run, the daily, a retest, custom text) carries on and the preference waits for a run it applies
+// to; the switch's note says why. Other screens stay put, and a practice passage left waiting there
+// is rebuilt when practice is shown again (navigate).
+function setInputRule(key, enabled) {
+  const changed = prefs[key] !== enabled;
+  prefs[key] = enabled;
+  applyPreferences();
+  saveChoice(key);
+  if (!changed) return;
+  const limits = ruleLimits(ruleSession());
+  if (limits.fixed || (key === 'quickEnd' && limits.quickEnd)) return;
+  if (document.body.dataset.view === 'practice') resetSession(sessionKind);
+}
+
+function activeAccentComposition() {
+  return Boolean(composition && !composition.refused
+    && accentComposition({ key: composition.key, preview: composition.mark }));
+}
+
+function matchesAppBinding(event, binding) {
+  return matchesBinding(event, binding, { allowAccentComposition: activeAccentComposition() });
+}
+
+// Restart only owns the typing surfaces, bare practice/results page, and run-again.
+// Controls retain their native activation and Tab navigation; online rooms cannot restart.
+function quickRestart(event) {
+  if (!matchesAppBinding(event, prefs.keybindings.restart)) return false;
+  const view = document.body.dataset.view;
+  const active = document.activeElement;
+  const onInput = active === $('typing-input');
+  const onLocalRace = active === $('race-input');
+  const onPage = !active || active === document.body || active === document.documentElement;
+  const onRunAgain = event.key !== 'Tab' && view === 'results' && active === $('run-again');
+  if (!onInput && !onLocalRace && !onRunAgain && !(onPage && (view === 'practice' || view === 'results'))) return false;
+  if (event.key === 'Enter' && (onLocalRace ? race.attempt : attempt)?.status === 'running') return false;
+  event.preventDefault();
+  if (!event.repeat) {
+    if (onLocalRace) setupRacePlayer();
+    else restartTest();
+  }
+  return true;
+}
+
+// One restart, one new passage: the result card runs again as its button does; anywhere
+// else the current test restarts as esc does.
+function restartTest() {
+  if (document.body.dataset.view === 'results') runAgain();
+  else if (composeOpen) compose.restart();
+  else resetSession(sessionKind, { focus: true });
+}
+
+function runAgain() {
+  if (sessionKind === 'daily') startDaily();
+  else resetSession(sessionKind === 'missed' ? 'missed' : restartKind(), { focus: true, leaveCompose: true });
+}
+
+// The key that restarts from where focus sits. On the result card that is the focused run-again
+// button (the palette hands focus back to it), which tab moves past and enter activates.
+function restartHint() {
+  return document.body.dataset.view === 'results' && prefs.keybindings.restart === 'Tab' ? 'enter' : bindingLabel(prefs.keybindings.restart);
 }
 
 function setWordList(id, kind = restartKind()) {
@@ -4538,6 +4908,27 @@ function customLengthCommand(mode) {
   };
 }
 
+// The layout is a test condition, like the word list, so changing it starts a new run. Like the word list,
+// it keeps a custom passage: custom runs are never compared, so their key never names a layout.
+function setLayout(id, kind = restartKind()) {
+  const next = normalizeLayout(id);
+  const changed = prefs.layout !== next;
+  prefs.layout = next;
+  applyPreferences();
+  saveChoice('layout');
+  if (changed) resetSession(kind, { focus: true });
+}
+
+// The finger map is drawn on the on-screen keyboard, so turning it on shows the keyboard too.
+function toggleFingerMap() {
+  const show = !(prefs.keyboard && prefs.fingerMap);
+  prefs.fingerMap = show;
+  if (show) prefs.keyboard = true;
+  applyPreferences();
+  saveChoice('fingerMap', ...(show ? ['keyboard'] : []));
+  if (document.body.dataset.view === 'practice') $('typing-input').focus({ preventScroll: true });
+}
+
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
   const missedWords = recurringMissedWords(profile.runs).words.length;
@@ -4554,11 +4945,7 @@ function paletteCommands(query) {
     { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
     { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
-    // Like Esc: a lesson starts again as a lesson, composing gets a fresh field; anything else starts practice again.
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => (sessionKind === 'lesson' ? resetSession('lesson', { focus: true }) : inPractice((kind) => {
-      if (composeOpen) compose.restart();
-      else resetSession(kind, { focus: true });
-    })) },
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartHint(), run: restartTest },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: () => startLesson(nextLessonIndex(profile.lessons)) }]),
     { group: 'test', label: 'practice words you keep missing', keywords: 'missed words mistakes errors practise recurring list', hint: `${missedWords} words`, disabled: missedWords < 2, run: practiseRecurringWords },
@@ -4574,13 +4961,17 @@ function paletteCommands(query) {
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: fixedText, run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
     { group: 'test', label: 'numbers', keywords: 'digits figures', hint: onOff(prefs.numbers), on: Boolean(prefs.numbers), disabled: fixedText, run: () => { prefs.numbers = !prefs.numbers; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: fixedText, run: () => inPractice((kind) => setWordList(id, kind)) })),
+    ...layoutIds.map((id) => ({ group: 'test', label: `layout · ${layoutLabel(id)}`, keywords: 'keyboard alternative remap', hint: prefs.layout === id ? 'current' : '', on: prefs.layout === id, run: () => setLayout(id) })),
     ...[['off', 'off'], ['best', 'personal best'], ['average', 'average'], ['last', 'last run'], ['custom', 'custom']].map(([mode, name]) => (
       { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: prefs.paceCaret === mode ? 'on' : '', on: prefs.paceCaret === mode, run: () => setPaceCaret(mode) })),
-    { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, disabled: standardLocked(), run: () => setStopOnError(!prefs.stopOnError) },
+    ...Object.entries(CORRECTION_LABELS).map(([policy, name]) => ({ group: 'test', label: `correction · ${policy === 'relaxed' ? 'free' : name}`, keywords: 'mistakes correction continue stop error backspace fail expert master confidence', hint: prefs.correction === policy ? 'current' : '', on: prefs.correction === policy, disabled: standardLocked(), run: () => setCorrection(policy) })),
+    { group: 'test', label: 'strict space', keywords: 'space bar early skip word mistakes input', hint: onOff(prefs.strictSpace), on: prefs.strictSpace, run: () => setInputRule('strictSpace', !prefs.strictSpace) },
+    { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
+    { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(prefs.keyboard && prefs.fingerMap), on: prefs.keyboard && prefs.fingerMap, run: toggleFingerMap },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
     ...(session
       ? [
@@ -4592,6 +4983,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'sign in…', keywords: 'log in login account', run: () => openAccountDialog('signin') },
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
+    { group: 'help', label: 'keybindings…', keywords: 'settings shortcuts restart keyboard', run: () => { const settings = document.querySelector('.preferences'); settings.open = true; document.querySelector('.keybindings-category').open = true; $('keybinding-restart').focus(); } },
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: !hasAnyHistory(), run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
@@ -4612,6 +5004,7 @@ function bindPalette() {
     onOpen: () => {
       document.querySelector('.preferences')?.removeAttribute('open');
       closeAccountMenu();
+      $('inbox').open = false;
       markInterrupted(NOTICES.paletteOpened);
       compose.interrupt(NOTICES.composePalette);
       markRaceInterrupted();
@@ -4719,6 +5112,8 @@ onlineRace = createOnlineRace({
   board: friendsBoard,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
+  // The one-keyboard tab makes the race the session the rule switches act on.
+  onModeChange: syncRules,
   onPassageSeen(id) {
     if (!id || profile.seenTextIds.includes(id)) return;
     profile.seenTextIds.push(id);

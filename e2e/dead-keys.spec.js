@@ -424,7 +424,7 @@ test('without composition (Windows), a mark and letter sent together are two key
 test('stop on error still blocks keys after a wrong accent commit', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
-  await page.locator('#stop-on-error-toggle').check();
+  await page.locator('#correction-select').selectOption('mandatory');
   await page.keyboard.press('Escape');
   const keys = await accentKeys(page);
   const text = await quoteWithMarks(page);
@@ -1209,7 +1209,7 @@ test('a commit on a passage’s last letter counts every key in it before the ru
   for (const [way, commit] of Object.entries(ways)) {
     if (way === 'stopOnError') {
       await openSettings(page);
-      await page.locator('#stop-on-error-toggle').check();
+      await page.locator('#correction-select').selectOption('mandatory');
       await page.keyboard.press('Escape');
       await expect(page.locator('#condition-line')).toContainText('stop on error');
     }

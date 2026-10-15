@@ -1,5 +1,6 @@
 import { DEFAULT_WORD_LIST, wordList } from './words.js';
 import { additionalQuotes, drillWords } from './corpus.js';
+import { isDefaultLayout } from './layouts.js';
 
 export const METRIC_VERSION = 'stilltype-metrics-v1';
 export const EVENT_VERSION = 'stilltype-events-v1';
@@ -272,9 +273,79 @@ export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', c
   };
 }
 
+// Correction policies. 'relaxed' (free) and 'mandatory' (stop on error) predate
+// the others; each value is its own comparison key so bests never mix.
+export const CORRECTION_POLICIES = ['relaxed', 'mandatory', 'no-backspace', 'fail-word', 'fail-any'];
+
+// Older profiles stored a boolean stopOnError; map it to free/stop.
+export function correctionPreference(preferences = {}) {
+  if (CORRECTION_POLICIES.includes(preferences.correction)) return preferences.correction;
+  return preferences.stopOnError ? 'mandatory' : 'relaxed';
+}
+
+export const blocksOnError = (policy) => (policy || 'mandatory') === 'mandatory';
+export const allowsBackspace = (policy) => policy !== 'no-backspace';
+
+// Why inserting `char` at the end of `typed` fails the run, or null. A space or the
+// passage's last letter closes a word; the whole prefix is checked so a letter typed
+// in place of a space can't slip through.
+export function failureFor(policy, text, typed, char) {
+  if (policy === 'fail-any' && char !== text[typed.length]) return 'wrong key';
+  if (policy === 'fail-word' && (char === ' ' || typed.length === text.length - 1)) return failureAtEnd(policy, text, typed + char);
+  return null;
+}
+
+// Why a run that stops at `typed` fails, or null. The end of a run (the timer, the
+// passage end) is a word boundary, so an unfinished word with a wrong letter fails.
+export function failureAtEnd(policy, text, typed) {
+  if (typed === text.slice(0, typed.length)) return null;
+  if (policy === 'fail-any') return 'wrong key';
+  if (policy === 'fail-word') return 'word error';
+  return null;
+}
+
+// Quick end decides how a word or quote run ends when its last word has a mistake. It only
+// matters where a mistake can stand: stop on error already needs every letter right, and a timed
+// run ends on the clock.
+export function quickEndApplies(conditions = {}) {
+  return conditions.mode !== 'time' && conditions.correctionPolicy === 'relaxed';
+}
+
+function lastWordCorrect(text, typed) {
+  const start = text.lastIndexOf(' ') + 1;
+  return typed.slice(start, text.length) === text.slice(start);
+}
+
+// Quick end (the default, and the only rule before the setting existed) finishes on the last
+// letter, right or wrong. With it off, a mistake in the last word holds the run for a fix or a
+// space (see awaitingSubmit).
+
+// Quick end off, the whole passage typed and a mistake in the last word: space submits it as it stands.
+export function awaitingSubmit(attempt, typed) {
+  return typed.length >= attempt.text.length && quickEndApplies(attempt.conditions) && !passageComplete(attempt, typed);
+}
+
+// Strict space: a space is taken only where the passage has one. Anywhere else it is recorded
+// as a wrong key at that position (an insert with accepted: false, which replay has always
+// scored without moving the caret), so the rest of the word stays in place.
+export function refusesSpace(conditions = {}, text, position, char) {
+  return conditions.strictSpace === true && char === ' ' && position < text.length && text[position] !== ' ';
+}
+
+// Input rules away from the defaults, in the order conditionKey appends them. Defaults add
+// nothing, so runs saved before these settings existed keep their keys.
+export function inputRules(conditions = {}) {
+  const rules = [];
+  if (conditions.strictSpace === true) rules.push('strict-space');
+  if (conditions.quickEnd === false && quickEndApplies(conditions)) rules.push('quick-end-off');
+  return rules;
+}
+
 export function passageComplete(attempt, typed) {
-  return typed.length >= attempt.text.length
-    && (attempt.conditions.correctionPolicy === 'relaxed' || typed === attempt.text);
+  if (typed.length < attempt.text.length) return false;
+  if (typed === attempt.text) return true;
+  if (blocksOnError(attempt.conditions.correctionPolicy)) return false;
+  return attempt.conditions.quickEnd !== false || !quickEndApplies(attempt.conditions) || lastWordCorrect(attempt.text, typed);
 }
 
 export function printable(text) {
@@ -660,7 +731,6 @@ export const TEST_COUNTS = [10, 25, 50, 100];
 export const QUOTE_LENGTHS = ['any', 'short', 'medium', 'long'];
 export const QUOTE_DIFFICULTIES = ['any', 'gentle', 'steady', 'precise'];
 export const INPUT_CLASSES = ['physical-keyboard', 'touch'];
-export const CORRECTION_POLICIES = ['mandatory', 'relaxed'];
 
 // The standard recipe version is appended only when present, so every other key stays as it was.
 export function conditionKey(conditions = {}) {
@@ -677,8 +747,10 @@ export function conditionKey(conditions = {}) {
     conditions.correctionPolicy || 'mandatory',
     conditions.corpus || CORPUS_VERSION,
     conditions.metricVersion || METRIC_VERSION,
+    ...inputRules(conditions),
   ].join(':');
-  return conditions.recipe ? `${key}:${conditions.recipe}` : key;
+  const recipeKey = conditions.recipe ? `${key}:${conditions.recipe}` : key;
+  return isDefaultLayout(conditions.layout) ? recipeKey : `${recipeKey}:layout-${conditions.layout}`;
 }
 
 export function comparable(before, after) {
