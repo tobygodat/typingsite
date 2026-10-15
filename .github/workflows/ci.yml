@@ -30,13 +30,13 @@ jobs:
   # The browser suite is nearly all of CI's time, and a runner has two cores, so it is split
   # across parallel runners instead of more workers on one.
   browser:
-    name: Browser checks (${{ matrix.shard }}/6)
+    name: Browser checks (${{ matrix.shard }}/8)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,7 +45,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e -- --workers=2 --shard=${{ matrix.shard }}/6
+      - run: npm run test:e2e -- --workers=2 --shard=${{ matrix.shard }}/8
       - name: Save failure traces
         if: failure()
         uses: actions/upload-artifact@v4
