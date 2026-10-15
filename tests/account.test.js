@@ -772,3 +772,10 @@ test('forgetting a deleted account marks it signed out before the session goes, 
     assert.deepEqual([...store.keys()], []);
   });
 });
+
+
+test('an account with archived practice keeps its settings during legacy adoption', () => {
+  const base = { ...stored([]), preferences: { theme: 'dark' }, practiceDays: { '2026-10-01': 60000 } };
+  const legacy = { ...stored([]), preferences: { theme: 'light' } };
+  assert.equal(mergeProfiles(base, legacy).preferences.theme, 'dark');
+});

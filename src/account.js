@@ -956,7 +956,7 @@ export function mergeProfiles(base, extra) {
   for (const [key, best] of Object.entries(base.bests)) {
     if (!bests[key] || best.wpm >= bests[key].wpm) bests[key] = best;
   }
-  const baseIsNew = Object.keys(HISTORY).every((key) => !base[key]?.length);
+  const baseIsNew = Object.keys(HISTORY).every((key) => !base[key]?.length) && !Object.keys(base.practiceDays || {}).length;
   const runs = byId([...(extra.runs || []), ...(base.runs || [])]);
   return {
     ...base,
