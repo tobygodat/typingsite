@@ -5,6 +5,7 @@ import {
   CUSTOM_MIN_CHARS,
   CUSTOM_MIN_WORDS,
   METRIC_VERSION,
+  RATE_FLOOR_MS,
   STANDARD_SECONDS,
   STANDARD_VERSION,
   accentComposition,
@@ -50,6 +51,7 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
 import { MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 import { DEFAULT_SPEED_UNIT, ghostResultSpeed, formatSpeed, normalizeSpeedUnit, rawSpeedDefinition, speedDefinition, speedValue, wpmFromSpeed } from './units.js';
+import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
 import { createCompose } from './compose-view.js';
 import {
@@ -146,7 +148,10 @@ const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCh
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-let lastCompleted = null;
+// The completed run the results view shows: its numbers, run card graph and Watch replay. Only
+// showResult sets it. `attempt` moves on without it (a drill whose retest is unavailable, the
+// next run), so nothing on the results view reads `attempt`.
+let shownResult = null;
 let wordsPassage = null;
 // The words the Train list last drew, so its button can tell when the runs changed underneath.
 let missedListWords = [];
@@ -160,8 +165,8 @@ let activeRecommendation = null;
 let selectedTarget = null;
 let trainingContext = null;
 let resultBestBefore = null;
-// What the results screen shows, kept so a speed unit change can redraw it in place.
-let shownResult = null;
+let shownBestBefore = null;
+let replayView = null;
 let shownComparison = null;
 let clearSnapshot = null;
 let clearedAt = null;
@@ -1462,10 +1467,9 @@ function markKeyboardTargets(target) {
   $('keyboard').querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
 
-// The live readout shows no rate until a second has passed: before that it is noise. Custom text (any
-// non-comparable kind) can be short enough to finish inside that second, so its run card follows the same
-// floor. Built-in passages take far longer than a second to type, so their card is unchanged.
-const RATE_FLOOR_MS = 1000;
+// The live readout shows no rate until RATE_FLOOR_MS has passed. Custom text (any non-comparable kind) can
+// be short enough to finish inside that second, so its run card follows the same floor. Built-in passages
+// take far longer than a second to type, so their card is unchanged.
 const rateShown = (completed) => comparableKind(completed.kind) || completed.summary.elapsedMs >= RATE_FLOOR_MS;
 
 function updateLive(reset = false, at = now()) {
@@ -1597,7 +1601,6 @@ const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', '
 
 // Draw after the results view is shown so the graph has its size.
 function renderCard(completed) {
-  lastCompleted = completed;
   const kind = completed.kind === 'challenge' ? 'ghost race' : completed.kind !== 'test' ? completed.kind : completed.conditions.mode === 'standard' ? 'standard' : 'practice';
   const at = new Date();
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
@@ -1696,8 +1699,8 @@ function resultHeadline(completed, bestBefore) {
 // to time (custom text inside a second) shows no rate in either unit.
 function renderResultSpeed() {
   if (!shownResult) return;
-  $('result-wpm').textContent = rateShown(shownResult.completed) ? speedNumber(shownResult.completed.summary.score.wpm) : '—';
-  $('result-delta').textContent = resultHeadline(shownResult.completed, shownResult.bestBefore);
+  $('result-wpm').textContent = rateShown(shownResult) ? speedNumber(shownResult.summary.score.wpm) : '—';
+  $('result-delta').textContent = resultHeadline(shownResult, shownBestBefore);
 }
 
 function retestLength(value) {
@@ -1707,13 +1710,21 @@ function retestLength(value) {
   return value.quoteLength && value.quoteLength !== 'any' ? `${value.quoteLength} quote` : 'quote';
 }
 
+// Records the run the results view now shows; Watch replay appears only when it has a trace. A custom run
+// (any non-comparable kind) keeps no trace, so, as with its best, it offers no replay.
+function showResult(completed) {
+  shownResult = completed;
+  shownBestBefore = completed ? resultBestBefore : null;
+  $('watch-replay').hidden = !completed?.events?.length || !comparableKind(completed.kind);
+}
+
 function renderResults(completed, saved) {
   activeRecommendation ||= recommendTarget([], completed.conditions);
   const replay = completed.summary;
   const counted = completed.status === 'complete';
   const firstErrors = replay.firstAttempts.filter((item) => !item.correct).length;
   const spoken = rateShown(completed) ? speed(replay.score.wpm) : 'Too quick to time';
-  shownResult = { completed, bestBefore: resultBestBefore };
+  showResult(completed);
   renderResultSpeed();
   $('result-accuracy').textContent = replay.score.accuracy;
   $('result-errors').textContent = firstErrors;
@@ -2699,7 +2710,7 @@ function renderLessons() {
 }
 
 function renderFirstRun() {
-  $('train-learn').hidden = Boolean(lastCompleted || profile.runs.length || profile.attempts.length);
+  $('train-learn').hidden = Boolean(shownResult || profile.runs.length || profile.attempts.length);
 }
 
 // ── Ghost races ───────────────────────────────────────────────────────────
@@ -2860,7 +2871,7 @@ async function submitGhostRun() {
   }
   // The panel shows the reply only while the results on screen are still this run's: once a later run
   // has finished (after Run again, a restart or another race), its result never gains this panel.
-  if (ghostRace !== ghost || ghost.run !== run || lastCompleted !== run) return;
+  if (ghostRace !== ghost || ghost.run !== run || shownResult !== run) return;
   if (failure) {
     ghost.state = 'failed';
     ghost.error = failure;
@@ -3150,7 +3161,7 @@ function forgetTraining() {
   $('result-comparison-note').textContent = '';
   $('run-card-stamp').textContent = 'no run yet';
   $('run-card').hidden = true;
-  lastCompleted = null;
+  showResult(null);
   $('speed-graph').replaceChildren();
   $('recommendation-title').textContent = 'Finish a run to get a drill.';
   $('recommendation-evidence').textContent = '';
@@ -3186,13 +3197,13 @@ function forgetClearedTraining() {
   const legacyStart = profile.legacyClearedAt || '';
   const legacyAt = legacyStart !== trainingLegacyAt ? legacyStart : '';
   trainingLegacyAt = legacyStart;
-  if (!baselineAttempt && !lastCompleted) return;
+  if (!baselineAttempt && !shownResult) return;
   const named = account.clearedIds(profile);
   const takenByLegacy = (record) => Boolean(legacyAt) && (record.at || '') <= legacyAt
     && !profile.runs.some((run) => run.id === record.id);
   const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id)
     || takenByLegacy(record));
-  if (!cleared(baselineAttempt) && !cleared(lastCompleted)) return;
+  if (!cleared(baselineAttempt) && !cleared(shownResult)) return;
   forgetTraining();
   renderTraining();
 }
@@ -4087,6 +4098,8 @@ function bindEvents() {
   document.addEventListener('beforeinput', () => { typedCount += 1; }, true);
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
+  replayView = createReplayView($('replay-dialog'), { speedUnit: () => prefs.speedUnit });
+  $('watch-replay').addEventListener('click', () => replayView.open(shownResult));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(sessionKind === 'missed' ? 'missed' : restartKind(), { focus: true, leaveCompose: true }));
   $('result-words').addEventListener('keydown', moveWordFocus);
   $('result-words').addEventListener('focusin', (event) => {
@@ -4184,7 +4197,9 @@ function bindEvents() {
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open || $('delete-account-dialog').open || $('suggest-dialog').open) return;
+    // An open dialog (palette, replay, account, clear, suggestion, or any later one) owns the
+    // keyboard, so its native Escape closes it rather than leaving focus mode or restarting.
+    if (document.querySelector('dialog[open]')) return;
     if (event.key === 'Escape' && preferences.open) {
       event.preventDefault();
       preferences.open = false;
@@ -4349,21 +4364,22 @@ function renderSpeeds() {
   }
   renderResultSpeed();
   if (shownResult) {
-    $('result-raw').textContent = rateShown(shownResult.completed) ? speedNumber(rawWpm(shownResult.completed, shownResult.completed.summary)) : '—';
+    $('result-raw').textContent = rateShown(shownResult) ? speedNumber(rawWpm(shownResult, shownResult.summary)) : '—';
     labelWords();
     selectWord(wordIndex);
   }
   // A hidden graph is only cleared here; the resize observer redraws it when results are shown. A run too
   // quick to time has no graph at all.
-  if (lastCompleted && rateShown(lastCompleted)) renderSpeedGraph($('speed-graph'), lastCompleted, { animate: false, unit: prefs.speedUnit });
+  if (shownResult && rateShown(shownResult)) renderSpeedGraph($('speed-graph'), shownResult, { animate: false, unit: prefs.speedUnit });
   if (shownComparison?.comparable) $('comparison-wpm').textContent = signedSpeed(shownComparison.wpmDelta);
   if (document.body.dataset.view === 'progress') rerenderHistory();
   if (ghostOn()) $('egg-feedback').textContent = ghostMessage();
   renderDaily();
   renderLessons();
-  if (shownResult) renderPracticeWords(shownResult.completed);
+  if (shownResult) renderPracticeWords(shownResult);
   if (ghostRace?.run?.status === 'complete') renderGhostResult();
   compose?.refreshSpeed();
+  replayView?.refreshSpeed();
   friendsBoard?.refreshSpeed();
   if (!$('race-leaderboard').hidden && race.results.length === 2) renderRaceResults();
   onlineRace?.refreshSpeed();
@@ -4503,8 +4519,8 @@ new ResizeObserver(() => {
   const graph = $('speed-graph');
   const width = Math.round(graph.clientWidth);
   // Sub-pixel layout settling is ignored so it cannot cut the first draw short.
-  if (!lastCompleted || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
-  renderSpeedGraph(graph, lastCompleted, { animate: false, unit: prefs.speedUnit });
+  if (!shownResult || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
+  renderSpeedGraph(graph, shownResult, { animate: false, unit: prefs.speedUnit });
 }).observe($('speed-graph'));
 let trendWidth = 0;
 new ResizeObserver(() => {
