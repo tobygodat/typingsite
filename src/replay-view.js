@@ -30,7 +30,8 @@ export function createReplayView(dialog) {
   let frame = 0;
   let lastNow = 0;
   let drawn = [];
-  let scored = null; // the replay second and position the stats were last computed at
+  let misses = []; // attempt-clock offsets of the run's first-try misses
+  let scored = null; // the replay second, misses due and position the stats were last computed at
 
   const length = () => span.end - span.start;
 
@@ -70,15 +71,18 @@ export function createReplayView(dialog) {
   }
 
   // Like practice's readout, the numbers change once per replay second (no rate before RATE_FLOOR_MS),
-  // and the last frame shows the exact final score, the run card's.
+  // and the last frame shows the exact final score, the run card's. A first-try miss coming due also
+  // refreshes accuracy and errors, on the frame its letter turns coral; wpm waits for the second.
   function drawStats() {
     const done = position >= length();
     const second = done ? Infinity : Math.floor(position / 1000);
-    if (scored && scored.second === second && position >= scored.position) return;
-    scored = { second, position };
+    const due = misses.filter((offsetMs) => offsetMs <= span.start + position).length;
+    const tick = !scored || scored.second !== second || position < scored.position;
+    if (!tick && scored.due === due) return;
+    scored = { second, due, position };
     const { wpm, accuracy, errors, elapsedMs } = replayScoreAt(attempt, span.start + position);
     const rated = done || elapsedMs >= RATE_FLOOR_MS;
-    wpmText.textContent = rated ? wpm : '—';
+    if (tick) wpmText.textContent = rated ? wpm : '—';
     accuracyText.textContent = rated ? accuracy : '—';
     errorsText.textContent = errors;
     errorsUnit.textContent = errors === 1 ? 'error' : 'errors';
@@ -146,6 +150,7 @@ export function createReplayView(dialog) {
       attempt = finished;
       span = replaySpan(finished);
       typedAt = replayCursor(finished);
+      misses = finished.summary.firstAttempts.filter((first) => !first.correct).map((first) => first.offsetMs);
       position = 0;
       scored = null;
       // Open first: mounting measures where the lines break.
