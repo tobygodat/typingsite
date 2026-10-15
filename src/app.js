@@ -4067,7 +4067,7 @@ function bindEvents() {
   keybindingEditor.refresh();
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
-  $('finger-toggle').addEventListener('change', (event) => { prefs.fingerMap = event.target.checked; applyPreferences(); saveProfile(); });
+  $('finger-toggle').addEventListener('change', (event) => { prefs.fingerMap = event.target.checked; applyPreferences(); saveChoice('fingerMap'); });
   $('layout-select').addEventListener('change', (event) => setLayout(event.target.value));
   $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
@@ -4435,11 +4435,11 @@ function inPractice(change) {
 // it keeps a custom passage: custom runs are never compared, so their key never names a layout.
 function setLayout(id, kind = restartKind()) {
   const next = normalizeLayout(id);
-  if (prefs.layout === next) return;
+  const changed = prefs.layout !== next;
   prefs.layout = next;
   applyPreferences();
-  saveProfile();
-  resetSession(kind, { focus: true });
+  saveChoice('layout');
+  if (changed) resetSession(kind, { focus: true });
 }
 
 // The finger map is drawn on the on-screen keyboard, so turning it on shows the keyboard too.
@@ -4448,7 +4448,7 @@ function toggleFingerMap() {
   prefs.fingerMap = show;
   if (show) prefs.keyboard = true;
   applyPreferences();
-  saveProfile();
+  saveChoice('fingerMap', ...(show ? ['keyboard'] : []));
   if (document.body.dataset.view === 'practice') $('typing-input').focus({ preventScroll: true });
 }
 
