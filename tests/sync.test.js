@@ -1277,3 +1277,37 @@ test('profile writes are conditional: an update names the version it replaces, a
     globalThis.fetch = originalFetch;
   }
 });
+
+// Lesson progress (src/lessons.js) is merged lesson by lesson, never taken whole from the copy saved later.
+const result = (n, wpm = 20, accuracy = 96) => ({ wpm, accuracy, at: minute(n), inputClass: 'physical-keyboard' });
+test('lesson progress from a stale copy never replaces newer progress, from either side', () => {
+  // This device passed lessons 1 and 2; a stale device, saved later, only ever tried lesson 1.
+  const here = profile({ updatedAt: minute(10), mergeStamp: minute(10), lessons: { l1: { tries: 2, last: result(3), passed: result(2) }, l2: { tries: 1, last: result(5), passed: result(5) } } });
+  const stale = profile({ updatedAt: minute(20), mergeStamp: minute(20), lessons: { l1: { tries: 1, last: result(1, 10, 80), passed: null } } });
+  const merged = mergeSynced(here, stale);
+  assert.deepEqual(mergeSynced(stale, here).lessons, merged.lessons);
+  assert.deepEqual(merged.lessons.l2, here.lessons.l2);
+  // The most tries, the later last result, and the first pass.
+  assert.deepEqual(merged.lessons.l1, { tries: 2, last: result(3), passed: result(2) });
+  assert.ok(sameProfile(mergeSynced(here, stale), mergeSynced(stale, here)));
+  // Tries on two devices: the earlier pass stands, the later last try shows.
+  const other = profile({ lessons: { l1: { tries: 3, last: result(8, 30, 99), passed: result(1, 25, 97) } } });
+  assert.deepEqual(mergeSynced(here, other).lessons.l1, { tries: 3, last: result(8, 30, 99), passed: result(1, 25, 97) });
+  assert.deepEqual(mergeSynced(other, here).lessons.l1, mergeSynced(here, other).lessons.l1);
+});
+
+test('a clear takes lesson progress from a copy that missed it, and its undo gives it back', () => {
+  const before = normalizeProfile(profile({ lessons: { l1: { tries: 2, last: result(3), passed: result(2) } } }));
+  const cleared = clearProfile(before);
+  assert.deepEqual(cleared.lessons, {});
+  // A stale device that never heard of the clear brings nothing back.
+  assert.deepEqual(mergeSynced(cleared, before).lessons, {});
+  assert.deepEqual(mergeSynced(before, cleared).lessons, {});
+  // Tries made after the clear count; a pass from before it doesn't.
+  const after = new Date(Date.parse(cleared.historyClearedAt.split('~')[0]) + 60000).toISOString();
+  const later = profile({ lessons: { l1: { tries: 3, last: { ...result(0), at: after }, passed: result(2) } } });
+  assert.deepEqual(mergeSynced(cleared, later).lessons.l1, { tries: 3, last: { ...result(0), at: after }, passed: null });
+  // Undo here restores it, whatever the row had merged since.
+  const { merged } = undoClearHere({}, mergeSynced(cleared, before), cleared.historyClearedAt, before);
+  assert.deepEqual(merged.lessons, before.lessons);
+});
