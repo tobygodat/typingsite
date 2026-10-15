@@ -1,4 +1,4 @@
-import { test, expect, openApp, chooseWords, passageText, typeInto } from './fixtures.js';
+import { test, expect, openApp, chooseWords, passageText, signInWithEmail, typeInto } from './fixtures.js';
 
 // Mock themes are opt-in proposals (token swaps in styles.css). Each must apply, persist like
 // dark/light, and paint a ground that differs from both shipped themes.
@@ -76,7 +76,7 @@ test('switching to a theme with other fonts remeasures the pills and the caret m
   const text = await passageText(page);
   await typeInto(page, text.slice(0, 9));
   await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
-  expect(await pillGap(page)).toBeLessThanOrEqual(1);
+  await expect.poll(() => pillGap(page)).toBeLessThanOrEqual(1);
   for (const theme of ['terminal', 'swiss']) {
     // The settings select's own change handler, without the Escape that would restart the run.
     await page.locator('#theme-select').evaluate((select, value) => { select.value = value; select.dispatchEvent(new Event('change')); }, theme);
@@ -142,3 +142,15 @@ for (const theme of ['paper', 'swiss', 'eink']) {
     await page.screenshot({ path: shot(testInfo, `${theme}-midrun`) });
   });
 }
+
+test('a proposal theme survives an account save and reload', async ({ page, supabase }) => {
+  supabase.addUser('theme@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'theme@stilltype.test');
+  await pickTheme(page, 'terminal');
+  await expect.poll(() => supabase.profileFor('theme@stilltype.test')?.preferences?.theme).toBe('terminal');
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'terminal');
+  await pickTheme(page, 'system');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', /^(dark|light)$/);
+});

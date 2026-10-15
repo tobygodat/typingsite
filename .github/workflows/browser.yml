@@ -1,0 +1,41 @@
+name: Browser checks
+
+# The Playwright suite runs only when asked: Actions → Browser checks → Run workflow (pick the
+# branch), or `gh workflow run browser.yml --ref <branch>`. Every push runs only ci.yml, which
+# keeps Actions minutes down; run `npm run test:e2e` locally before merging.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # A runner has two cores, so the suite is split across parallel runners instead of more workers on one.
+  browser:
+    name: Browser checks (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e -- --workers=2 --shard=${{ matrix.shard }}/4
+      - name: Save failure traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure-traces-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 7
