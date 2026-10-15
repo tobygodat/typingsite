@@ -19,8 +19,8 @@ function codeErrorTrace(id, at) {
 test('code mode serves a python snippet and keeps the run out of bests', async ({ page }) => {
   await openApp(page);
   await page.locator('#mode-code').click();
-  await page.locator('#duration-options [data-language="python"]').click();
-  await expect(page.locator('#duration-options [data-language="python"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#code-options [data-language="python"]').click();
+  await expect(page.locator('#code-options [data-language="python"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#condition-line')).toContainText('code · python');
   const text = await passageText(page);
   expect(text).toMatch(/[:(]/);
@@ -40,7 +40,7 @@ test('code snippets stay inside the typing area at 320px with large text', async
   await page.locator('#font-size').evaluate((select) => { select.value = '36'; select.dispatchEvent(new Event('change')); });
   await page.locator('#mode-code').click();
   for (const language of ['js', 'python', 'go', 'rust']) {
-    await page.locator(`#duration-options [data-language="${language}"]`).click();
+    await page.locator(`#code-options [data-language="${language}"]`).click();
     for (let i = 0; i < 6; i += 1) {
       const clipped = await page.evaluate(() => {
         const area = document.getElementById('typing-wrap').getBoundingClientRect();
@@ -134,7 +134,7 @@ test('custom text over code mode keeps its own conditions, and code closes the c
   await page.locator('#custom-use').click();
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#mode-code')).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.locator('#duration-options')).toBeHidden();
+  await expect(page.locator('#code-options')).toBeHidden();
   await expect(page.locator('#best')).toHaveText('Not counted');
   await typeInto(page, text);
   await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
@@ -155,8 +155,8 @@ test('custom text over code mode keeps its own conditions, and code closes the c
   await expect(page.locator('#custom-options')).toBeHidden();
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('#mode-code')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#duration-options')).toBeVisible();
-  await expect(page.locator('#duration-options [data-language]')).not.toHaveCount(0);
+  await expect(page.locator('#code-options')).toBeVisible();
+  await expect(page.locator('#duration-options')).toBeHidden();
   await expect(page.locator('#condition-line')).toContainText('code ·');
   await expect(page.locator('#best')).toHaveText('Code runs aren’t ranked');
 });
@@ -167,7 +167,7 @@ test('code mode screenshots', async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
     await page.locator('#mode-code').click();
-    await page.locator('#duration-options [data-language="js"]').click();
+    await page.locator('#code-options [data-language="js"]').click();
     await expect(page.locator('#condition-line')).toContainText('code · js');
     await page.mouse.move(10, 10);
     await page.waitForTimeout(300);

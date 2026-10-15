@@ -1,9 +1,13 @@
 // Typing-surface motion: a spring-driven caret, line scrolling, and an optional
-// ghost pacer. Nothing decorative moves while a run is in progress. Everything
-// here is presentational; scoring never reads from it.
+// ghost caret (the pace caret, or a friend's recorded run in a ghost race) that
+// glides through the letters rather than hopping from one to the next.
+// Everything here is presentational; scoring never reads from it.
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const IDLE_AFTER_MS = 800;
+// A recorded run glides into each key over at most this long, so it moves at the
+// friend's speed while typing and still waits out their pauses.
+const REPLAY_GLIDE_MS = 150;
 
 function spring(stiffness, damping) {
   return { value: 0, target: 0, velocity: 0, stiffness, damping };
@@ -47,7 +51,8 @@ export function createTypingFx(wrap, display, options = {}) {
   const ghostCaret = document.createElement('span');
   ghostCaret.className = 'ghost-caret is-hidden';
   for (const node of [caret, ghostCaret]) node.setAttribute('aria-hidden', 'true');
-  const ghost = { cps: 0, start: 0, frame: 0, index: -1, armed: false };
+  // A pacer moves at `cps`; a recorded run follows `points`, [ms from the first key, characters typed].
+  const ghost = { cps: 0, points: null, cursor: 0, start: 0, frame: 0, spot: null, armed: false };
 
   const caretX = spring(1400, 70);
   const caretY = spring(1400, 70);
@@ -123,31 +128,62 @@ export function createTypingFx(wrap, display, options = {}) {
     if (!frame) frame = requestAnimationFrame(tick);
   }
 
-  function placeGhost(index) {
-    if (!characters.length) return;
-    const target = characters[Math.min(index, characters.length - 1)];
-    const hidden = ghostCaret.classList.contains('is-hidden');
-    if (index === ghost.index && (target?.isConnected ? !hidden : hidden)) return;
-    ghost.index = index;
+  // Where the ghost sits at `index` (a letter's left edge, or past the last letter), measured
+  // once per letter: in between, the frame only moves the caret along that letter's width.
+  function ghostSpot(index) {
+    if (ghost.spot?.index === index && ghost.spot.target?.isConnected) return ghost.spot;
     options.ensureCharacters?.(index);
-    if (!target?.isConnected) {
-      ghostCaret.classList.add('is-hidden');
-      return;
-    }
+    const target = characters[Math.min(index, characters.length - 1)];
+    if (!target?.isConnected) return { index, hidden: true };
     const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 60;
-    ghostCaret.classList.remove('is-hidden');
     let { left, top } = offsetIn(target, display);
-    if (index >= characters.length) left += target.offsetWidth;
+    const width = target.offsetWidth;
+    if (index >= characters.length) left += width;
     const row = Math.floor((top + lineHeight * 0.25) / lineHeight) * lineHeight;
-    ghostCaret.style.transform = `translate3d(${left}px, ${row}px, 0)`;
+    ghost.spot = { index, target, hidden: false, left, row, width: index >= characters.length ? 0 : width };
+    return ghost.spot;
+  }
+
+  // `at` is a position in characters, fractional while the ghost is between two letters.
+  function placeGhost(at) {
+    if (!characters.length) return;
+    const clamped = Math.max(0, Math.min(at, characters.length));
+    const index = Math.floor(clamped);
+    const spot = ghostSpot(index);
+    ghostCaret.classList.toggle('is-hidden', spot.hidden);
+    if (spot.hidden) return;
+    const left = spot.left + (clamped - index) * spot.width;
+    ghostCaret.style.transform = `translate3d(${left}px, ${spot.row}px, 0)`;
+  }
+
+  // A recorded run's position at `elapsed`: still between keys, gliding into the next one.
+  function replayAt(elapsed) {
+    const { points } = ghost;
+    while (ghost.cursor < points.length && points[ghost.cursor][0] <= elapsed) ghost.cursor += 1;
+    const [fromTime, from] = ghost.cursor ? points[ghost.cursor - 1] : [0, 0];
+    const next = points[ghost.cursor];
+    if (!next || reducedMotion.matches) return from;
+    const glide = Math.min(REPLAY_GLIDE_MS, next[0] - fromTime);
+    const progress = glide > 0 ? (elapsed - (next[0] - glide)) / glide : 0;
+    return progress > 0 ? from + (next[1] - from) * Math.min(1, progress) : from;
   }
 
   function ghostTick(now) {
     ghost.frame = 0;
     if (!ghost.armed || !ghost.start) return;
-    const index = Math.floor(((now - ghost.start) / 1000) * ghost.cps);
-    placeGhost(Math.min(index, characters.length));
-    if (index < characters.length) ghost.frame = requestAnimationFrame(ghostTick);
+    const elapsed = now - ghost.start;
+    let at;
+    let done;
+    if (ghost.points) {
+      at = replayAt(elapsed);
+      done = ghost.cursor >= ghost.points.length;
+    } else {
+      // The pacer moves continuously at its speed, so it glides through each letter.
+      at = (elapsed / 1000) * ghost.cps;
+      done = at >= characters.length;
+    }
+    placeGhost(at);
+    if (!done) ghost.frame = requestAnimationFrame(ghostTick);
   }
 
   function stopGhost() {
@@ -165,7 +201,8 @@ export function createTypingFx(wrap, display, options = {}) {
       display.style.transform = '';
       wrap.dataset.blocked = 'false';
       stopGhost();
-      ghost.index = -1;
+      ghost.spot = null;
+      ghost.cursor = 0;
       display.append(ghostCaret, caret);
       ghostCaret.classList.toggle('is-hidden', !ghost.armed);
       if (ghost.armed) requestAnimationFrame(() => { if (ghost.armed) placeGhost(0); });
@@ -200,7 +237,10 @@ export function createTypingFx(wrap, display, options = {}) {
       arm(cps, startTime = 0) {
         ghost.armed = cps > 0;
         ghost.cps = cps;
-        ghost.index = -1;
+        ghost.points = null;
+        ghost.cursor = 0;
+        ghost.spot = null;
+        ghostCaret.removeAttribute('data-replay');
         if (!ghost.armed) {
           stopGhost();
           ghostCaret.classList.add('is-hidden');
@@ -211,8 +251,22 @@ export function createTypingFx(wrap, display, options = {}) {
           placeGhost(0);
         }
       },
+      // A friend's recorded run: the ghost glides to where their caret was at each of their keys.
+      replay(points) {
+        stopGhost();
+        ghost.points = points?.length ? points : null;
+        ghost.armed = Boolean(ghost.points);
+        ghost.cps = 0;
+        ghost.cursor = 0;
+        ghost.spot = null;
+        ghostCaret.toggleAttribute('data-replay', ghost.armed);
+        ghostCaret.classList.toggle('is-hidden', !ghost.armed);
+        if (ghost.armed) placeGhost(0);
+      },
       run(startTime) {
-        if (!ghost.armed || reducedMotion.matches) return;
+        // The pacer is decoration and stays put under reduced motion. A recorded run is the race
+        // itself, so under reduced motion it still steps from key to key, with no glide.
+        if (!ghost.armed || (reducedMotion.matches && !ghost.points)) return;
         ghost.start = startTime;
         if (!ghost.frame) ghost.frame = requestAnimationFrame(ghostTick);
       },
@@ -224,7 +278,7 @@ export function createTypingFx(wrap, display, options = {}) {
     },
 
     relayout() {
-      ghost.index = -1;
+      ghost.spot = null;
       if (!characters.length) return;
       line = -1;
       snapNext = true;
