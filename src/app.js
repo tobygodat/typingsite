@@ -4,6 +4,7 @@ import {
   CUSTOM_MIN_CHARS,
   CUSTOM_MIN_WORDS,
   METRIC_VERSION,
+  RATE_FLOOR_MS,
   STANDARD_SECONDS,
   STANDARD_VERSION,
   accentComposition,
@@ -47,6 +48,7 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
+import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
 import { createCompose } from './compose-view.js';
 import {
@@ -141,7 +143,10 @@ const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCh
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-let lastCompleted = null;
+// The completed run the results view shows: its numbers, run card graph and Watch replay. Only
+// showResult sets it. `attempt` moves on without it (a drill whose retest is unavailable, the
+// next run), so nothing on the results view reads `attempt`.
+let shownResult = null;
 let wordsPassage = null;
 // The words the Train list last drew, so its button can tell when the runs changed underneath.
 let missedListWords = [];
@@ -1433,10 +1438,9 @@ function markKeyboardTargets(target) {
   $('keyboard').querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
 
-// The live readout shows no rate until a second has passed: before that it is noise. Custom text (any
-// non-comparable kind) can be short enough to finish inside that second, so its run card follows the same
-// floor. Built-in passages take far longer than a second to type, so their card is unchanged.
-const RATE_FLOOR_MS = 1000;
+// The live readout shows no rate until RATE_FLOOR_MS has passed. Custom text (any non-comparable kind) can
+// be short enough to finish inside that second, so its run card follows the same floor. Built-in passages
+// take far longer than a second to type, so their card is unchanged.
 const rateShown = (completed) => comparableKind(completed.kind) || completed.summary.elapsedMs >= RATE_FLOOR_MS;
 
 function updateLive(reset = false, at = now()) {
@@ -1568,7 +1572,6 @@ const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', '
 
 // Draw after the results view is shown so the graph has its size.
 function renderCard(completed) {
-  lastCompleted = completed;
   const kind = completed.kind === 'challenge' ? 'ghost race' : completed.kind !== 'test' ? completed.kind : completed.conditions.mode === 'standard' ? 'standard' : 'practice';
   const at = new Date();
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
@@ -1670,11 +1673,19 @@ function retestLength(value) {
   return value.quoteLength && value.quoteLength !== 'any' ? `${value.quoteLength} quote` : 'quote';
 }
 
+// Records the run the results view now shows; Watch replay appears only when it has a trace. A custom run
+// (any non-comparable kind) keeps no trace, so, as with its best, it offers no replay.
+function showResult(completed) {
+  shownResult = completed;
+  $('watch-replay').hidden = !completed?.events?.length || !comparableKind(completed.kind);
+}
+
 function renderResults(completed, saved) {
   activeRecommendation ||= recommendTarget([], completed.conditions);
   const replay = completed.summary;
   const counted = completed.status === 'complete';
   const firstErrors = replay.firstAttempts.filter((item) => !item.correct).length;
+  showResult(completed);
   const speed = rateShown(completed) ? `${replay.score.wpm} wpm` : 'Too quick to time';
   $('result-wpm').textContent = rateShown(completed) ? replay.score.wpm : '—';
   $('result-accuracy').textContent = replay.score.accuracy;
@@ -2723,7 +2734,7 @@ function renderLessons() {
 }
 
 function renderFirstRun() {
-  $('train-learn').hidden = Boolean(lastCompleted || profile.runs.length || profile.attempts.length);
+  $('train-learn').hidden = Boolean(shownResult || profile.runs.length || profile.attempts.length);
 }
 
 // ── Ghost races ───────────────────────────────────────────────────────────
@@ -2884,7 +2895,7 @@ async function submitGhostRun() {
   }
   // The panel shows the reply only while the results on screen are still this run's: once a later run
   // has finished (after Run again, a restart or another race), its result never gains this panel.
-  if (ghostRace !== ghost || ghost.run !== run || lastCompleted !== run) return;
+  if (ghostRace !== ghost || ghost.run !== run || shownResult !== run) return;
   if (failure) {
     ghost.state = 'failed';
     ghost.error = failure;
@@ -3170,7 +3181,7 @@ function forgetTraining() {
   $('result-comparison-note').textContent = '';
   $('run-card-stamp').textContent = 'no run yet';
   $('run-card').hidden = true;
-  lastCompleted = null;
+  showResult(null);
   $('speed-graph').replaceChildren();
   $('recommendation-title').textContent = 'Finish a run to get a drill.';
   $('recommendation-evidence').textContent = '';
@@ -3206,13 +3217,13 @@ function forgetClearedTraining() {
   const legacyStart = profile.legacyClearedAt || '';
   const legacyAt = legacyStart !== trainingLegacyAt ? legacyStart : '';
   trainingLegacyAt = legacyStart;
-  if (!baselineAttempt && !lastCompleted) return;
+  if (!baselineAttempt && !shownResult) return;
   const named = account.clearedIds(profile);
   const takenByLegacy = (record) => Boolean(legacyAt) && (record.at || '') <= legacyAt
     && !profile.runs.some((run) => run.id === record.id);
   const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id)
     || takenByLegacy(record));
-  if (!cleared(baselineAttempt) && !cleared(lastCompleted)) return;
+  if (!cleared(baselineAttempt) && !cleared(shownResult)) return;
   forgetTraining();
   renderTraining();
 }
@@ -4111,6 +4122,8 @@ function bindEvents() {
   document.addEventListener('beforeinput', () => { typedCount += 1; }, true);
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
+  const replayView = createReplayView($('replay-dialog'));
+  $('watch-replay').addEventListener('click', () => replayView.open(shownResult));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(sessionKind === 'missed' ? 'missed' : restartKind(), { focus: true, leaveCompose: true }));
   $('result-words').addEventListener('keydown', moveWordFocus);
   $('result-words').addEventListener('focusin', (event) => {
@@ -4208,7 +4221,9 @@ function bindEvents() {
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open || $('delete-account-dialog').open || $('suggest-dialog').open) return;
+    // An open dialog (palette, replay, account, clear, suggestion, or any later one) owns the
+    // keyboard, so its native Escape closes it rather than leaving focus mode or restarting.
+    if (document.querySelector('dialog[open]')) return;
     if (event.key === 'Escape' && preferences.open) {
       event.preventDefault();
       preferences.open = false;
@@ -4472,8 +4487,8 @@ new ResizeObserver(() => {
   const graph = $('speed-graph');
   const width = Math.round(graph.clientWidth);
   // Sub-pixel layout settling is ignored so it cannot cut the first draw short.
-  if (!lastCompleted || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
-  renderSpeedGraph(graph, lastCompleted, { animate: false });
+  if (!shownResult || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
+  renderSpeedGraph(graph, shownResult, { animate: false });
 }).observe($('speed-graph'));
 let trendWidth = 0;
 new ResizeObserver(() => {
