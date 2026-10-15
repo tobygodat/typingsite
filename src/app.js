@@ -712,6 +712,7 @@ function commitCustomLength({ leaving = false } = {}) {
   }
   closeCustomLength();
   if (prefs.mode === mode && prefs[spec.key] === result.value) {
+    saveChoice('mode', spec.key, ...(!isPresetLength(mode, result.value) ? [spec.customKey] : []));
     if (!leaving) $('typing-input').focus({ preventScroll: true });
     return;
   }
@@ -719,7 +720,7 @@ function commitCustomLength({ leaving = false } = {}) {
   prefs[spec.key] = result.value;
   if (!isPresetLength(mode, result.value)) prefs[spec.customKey] = result.value;
   setModeControls();
-  saveProfile();
+  saveChoice('mode', spec.key, ...(!isPresetLength(mode, result.value) ? [spec.customKey] : []));
   // Focus stays wherever the person went when they left the field.
   resetSession('practice', { focus: !leaving });
 }
