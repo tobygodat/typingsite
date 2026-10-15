@@ -323,7 +323,7 @@ test('stop on error: a blocked letter swaps the notice for its hint without movi
   await openApp(page);
   await shortGentleQuotes(page);
   await openTestContent(page);
-  await page.locator('#stop-on-error-toggle').setChecked(true);
+  await page.locator('#correction-select').selectOption('mandatory');
   await page.locator('#repeat-quotes-toggle').setChecked(true);
   await page.keyboard.press('Escape');
   await page.locator('#restart-button').click();

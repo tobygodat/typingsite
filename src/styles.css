@@ -20,6 +20,7 @@
   --text-mono: 12px;
   --text-label: 14px;
   --text-small: 15px;
+  --text-field: 16px;
   --text-body: 17px;
   --text-lead: 20px;
   --text-title: 30px;
@@ -38,6 +39,7 @@
   --space-14: 56px;
   --space-16: 64px;
 
+  --radius-cell: 2px;
   --radius-sm: 6px;
   --radius: 10px;
   --radius-control: 12px;
@@ -46,6 +48,9 @@
   --radius-full: 999px;
 
   --control: 44px;
+  --layout-select-width: 128px;
+  --heat-key: 52px;
+  --heat-gap: 6px;
   --content-max: 1080px;
 
   /* Motion: every duration scales from one place and drops to zero for reduced motion. */
@@ -68,20 +73,29 @@
   --raised-2: rgba(255, 255, 255, 0.085);
   --text: #ece8e1;
   --muted: #a39e96;
+  --placeholder: rgba(163, 158, 150, 0.8);
   --hairline: rgba(255, 255, 255, 0.075);
   --hairline-strong: rgba(255, 255, 255, 0.15);
   --outline: #7d7972;
   --accent: #8fd18a;
   --accent-ink: #0f1a0e;
   --accent-soft: rgba(143, 209, 138, 0.13);
+  --practice-level-1: rgba(143, 209, 138, 0.3);
+  --practice-level-2: rgba(143, 209, 138, 0.55);
+  --practice-level-3: rgba(143, 209, 138, 0.8);
   --danger: #ff8a6b;
   --danger-soft: rgba(255, 138, 107, 0.16);
+  --heat-1: rgba(255, 138, 107, 0.18);
+  --heat-2: rgba(255, 138, 107, 0.36);
+  --heat-3: rgba(255, 138, 107, 0.56);
   --warning: #e0b565;
   --selection: #34322e;
   --ghost: #b9c3ff;
   --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
   --card-top: #1f1e1c;
   --card-bottom: #121211;
+  /* Finger map: one neutral band behind alternate fingers (index, ring). Not a colour. */
+  --finger-band: rgba(255, 255, 255, 0.1);
 }
 
 :root[data-theme="light"] {
@@ -92,20 +106,28 @@
   --raised-2: rgba(27, 26, 25, 0.07);
   --text: #1b1a19;
   --muted: #6b665e;
+  --placeholder: rgba(107, 102, 94, 0.92);
   --hairline: rgba(27, 26, 25, 0.1);
   --hairline-strong: rgba(27, 26, 25, 0.2);
   --outline: #857f75;
-  --accent: #2e7d4f;
+  --accent: #217245;
   --accent-ink: #fbf9f5;
   --accent-soft: rgba(46, 125, 79, 0.11);
-  --danger: #b4432c;
+  --practice-level-1: rgba(46, 125, 79, 0.3);
+  --practice-level-2: rgba(46, 125, 79, 0.55);
+  --practice-level-3: rgba(46, 125, 79, 0.8);
+  --danger: #ad3d26;
   --danger-soft: rgba(180, 67, 44, 0.12);
+  --heat-1: rgba(180, 67, 44, 0.08);
+  --heat-2: rgba(180, 67, 44, 0.24);
+  --heat-3: rgba(180, 67, 44, 0.44);
   --warning: #8a5a00;
   --selection: #e3dccf;
-  --ghost: #4f5bc4;
+  --ghost: #434db5;
   --shadow-float: 0 8px 24px rgba(70, 56, 30, 0.12);
   --card-top: #fffdf9;
   --card-bottom: #efeae1;
+  --finger-band: rgba(27, 26, 25, 0.05);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -382,12 +404,40 @@ kbd {
 .preference-row:hover { background: var(--raised-2); }
 .preference-row > span { min-width: 0; display: grid; gap: 2px; }
 .preference-row strong { font-size: 15px; font-weight: 600; }
+/* A row whose control can't change right now doesn't invite a click. */
+.preference-row:has(:disabled) { cursor: default; }
+.preference-row:has(:disabled):hover { background: none; }
+.preference-note { color: var(--muted); font-size: var(--text-label); line-height: 1.35; }
 .preference-row .select { width: 104px; height: 36px; font-size: 14px; }
+.preference-row #correction-select { width: 180px; }
+/* Wide enough for its longest option, colemak-dh, beside the native arrow. */
+.preference-row #layout-select { width: var(--layout-select-width); }
+/* A sub-setting of the row above it (finger map under keyboard): indented and a little shorter. */
+.preference-sub { min-height: var(--control); padding-inline-start: var(--space-6); }
+.preference-sub strong { font-weight: 500; color: var(--muted); }
+.preference-lock { color: var(--muted); font: italic var(--text-label)/1.4 var(--font-serif); }
+.preference-row:has(:disabled) { cursor: default; }
+.preference-row:has(:disabled):hover { background: transparent; }
 .preference-row[hidden] { display: none; }
 .pace-note { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); }
 .pace-note:empty { display: none; }
 .preference-row .pace-wpm { width: 104px; height: 36px; font-size: 14px; }
 
+.keybindings-category { border-top: 1px solid var(--hairline-strong); margin-top: var(--space-2); padding: var(--space-2); }
+.keybindings-category > summary { min-height: var(--control); display: flex; align-items: center; gap: var(--space-2); cursor: pointer; font-size: var(--text-small); font-weight: 600; }
+.keybindings-category > summary::after { content: ' +'; color: var(--muted); }
+.keybindings-category[open] > summary::after { content: ' −'; }
+.keybindings-category p { font-size: var(--text-small); color: var(--muted); }
+.keybinding-row { margin-block: var(--space-4); }
+.keybinding-row label { display: block; font-size: var(--text-small); margin-bottom: var(--space-2); }
+.keybinding-controls, .keybinding-actions { display: flex; align-items: center; gap: var(--space-2); }
+.keybinding-controls .input { min-width: 0; flex: 1; font: var(--text-fine)/1.5 var(--font-mono); }
+.keybinding-controls .btn { flex: none; }
+.keybindings-category .btn { height: var(--control); }
+.keybindings-category .keybinding-error { color: var(--danger); margin-top: var(--space-2); }
+.keybinding-error:empty { display: none; }
+.keybinding-controls [aria-invalid="true"] { border-color: var(--danger); }
+.keybinding-controls [aria-pressed="true"] { outline: 2px solid var(--accent); }
 .preference-category > summary { color: var(--muted); }
 .preference-category > summary::after { content: '+'; }
 .preference-category[open] > summary::after { content: '−'; }
@@ -477,7 +527,8 @@ kbd {
   animation: fade-in var(--dur-quick) var(--ease-out);
 }
 
-/* Inbox: unread entries are counted on the envelope; the list keeps the newest thirty. */
+/* Inbox: unread entries are counted on the envelope. The list scrolls: it keeps every open ghost race and
+   the week's ghost race results, then the newest thirty others. */
 .corner-trigger { position: relative; }
 
 .inbox-count {
@@ -585,8 +636,14 @@ kbd {
     transform var(--dur-quick) var(--ease-out);
 }
 
-.btn:active:not(:disabled) { transform: scale(0.98); }
-.btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.btn:active:not(:disabled, [aria-disabled="true"]) { transform: scale(0.98); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.38; cursor: not-allowed; }
+/* A waiting control (aria-disabled) can hold keyboard focus. Its focus ring stays at full strength,
+   so its own colours dim to the same 38% instead of the whole box. */
+.btn[aria-disabled="true"]:focus-visible { opacity: 1; color: color-mix(in srgb, var(--text) 38%, transparent); }
+.btn-primary[aria-disabled="true"]:focus-visible { color: color-mix(in srgb, var(--accent-ink) 38%, transparent); background: color-mix(in srgb, var(--accent) 38%, transparent); }
+.btn-secondary[aria-disabled="true"]:focus-visible { border-color: color-mix(in srgb, var(--hairline-strong) 38%, transparent); }
+.btn-ghost[aria-disabled="true"]:focus-visible { color: color-mix(in srgb, var(--muted) 38%, transparent); }
 
 .btn-primary {
   background: var(--accent);
@@ -594,19 +651,19 @@ kbd {
   font-weight: 600;
 }
 
-.btn-primary:hover:not(:disabled) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
+.btn-primary:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
 
 .btn-secondary { border-color: var(--hairline-strong); }
-.btn-secondary:hover:not(:disabled) { background: var(--raised-2); }
+.btn-secondary:hover:not(:disabled, [aria-disabled="true"]) { background: var(--raised-2); }
 .btn-ghost { color: var(--muted); }
-.btn-ghost:hover:not(:disabled) { color: var(--text); background: var(--raised-2); }
+.btn-ghost:hover:not(:disabled, [aria-disabled="true"]) { color: var(--text); background: var(--raised-2); }
 .btn-danger { color: var(--danger); border-color: color-mix(in oklab, var(--danger) 40%, transparent); }
-.btn-danger:hover:not(:disabled) { background: var(--danger-soft); }
+.btn-danger:hover:not(:disabled, [aria-disabled="true"]) { background: var(--danger-soft); }
 .btn-sm { height: 34px; padding: 0 12px; font-size: 14px; }
 
 /* A quiet destructive action (e.g. a ghost "Clear history" button). */
 .danger-text { color: var(--danger); }
-.danger-text:hover:not(:disabled) { color: var(--danger); background: var(--danger-soft); }
+.danger-text:hover:not(:disabled, [aria-disabled="true"]) { color: var(--danger); background: var(--danger-soft); }
 
 .input {
   height: var(--control);
@@ -620,7 +677,8 @@ kbd {
   transition: border-color var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
 }
 
-.input::placeholder { color: var(--muted); opacity: 0.8; }
+/* opacity: 1 overrides the browser's own placeholder fade, so the token alone sets the contrast. */
+.input::placeholder { color: var(--placeholder); opacity: 1; }
 .input:focus-visible { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .input[aria-invalid="true"] { border-color: var(--danger); }
 .select { padding-right: 8px; cursor: pointer; }
@@ -720,6 +778,7 @@ kbd {
 }
 
 .practice-controls {
+  position: relative;
   margin: 0 auto var(--space-14);
   display: flex;
   flex-wrap: wrap;
@@ -739,7 +798,8 @@ kbd {
 
 .segmented .glide-pill { border-radius: var(--radius); }
 
-.segmented button {
+.segmented button,
+.segmented .custom-length-input {
   height: 36px;
   padding: 0 15px;
   border: 0;
@@ -753,11 +813,41 @@ kbd {
 .segmented button:hover,
 .segmented button[aria-pressed="true"] { color: var(--text); }
 
-.segmented.compact button {
+.segmented.compact button,
+.segmented.compact .custom-length-input {
   min-width: 46px;
   padding: 0 8px;
   font: 500 13px/1 var(--font-mono);
 }
+
+/* The custom length: the pill becomes a short field in place, with no box of its own beyond the
+   focus ring. Pill and field share one width, so the row never jumps, and the message sits in the
+   gap under the row, so the passage never moves. The word "custom" is Literata like the mode
+   options; only a number in the pill is mono, like the presets beside it. */
+.custom-length { display: flex; }
+.segmented.compact #custom-length { min-width: var(--space-16); padding: 0 var(--space-1); }
+.segmented.compact #custom-length:not(.is-active) { font: 400 var(--text-small)/1 var(--font-serif); }
+.segmented .custom-length-input { width: var(--space-16); color: var(--text); text-align: center; }
+.custom-length-input::placeholder { color: var(--muted); opacity: 1; }
+/* A coral hairline, as on other fields, paired with the message's words; no tint, so the
+   placeholder keeps its contrast. */
+.custom-length-input[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--danger); }
+
+.custom-length-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  min-height: 0;
+  margin: var(--space-1) 0 0;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* Focus mode hides the row; the palette's "custom time…" shows it while the field is open, and a
+   message left by an invalid entry stays readable until the run starts. */
+body[data-focus-mode="true"] .practice-controls[data-editing],
+body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visible; }
 
 .compact-switch {
   height: 44px;
@@ -774,6 +864,27 @@ kbd {
 }
 
 .compact-switch:hover { color: var(--text); }
+
+/* A quiet text action: the "learn to type" entry in the mode area and the first-run links. */
+.quiet-link {
+  min-height: var(--control);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-small);
+  text-decoration: underline;
+  text-decoration-color: var(--hairline-strong);
+  text-underline-offset: 3px;
+  transition: color var(--dur-quick) var(--ease-out), text-decoration-color var(--dur-quick) var(--ease-out);
+}
+
+.quiet-link:hover { color: var(--text); text-decoration-color: currentColor; }
+
+.first-run-learn { margin: 0; color: var(--muted); font-size: var(--text-small); }
+.first-run-learn .quiet-link { min-height: 0; padding: var(--space-1) 0; font-size: inherit; color: var(--text); }
+.section-heading .first-run-learn { margin-top: var(--space-3); }
 .compact-switch .switch { width: 30px; height: 18px; }
 .compact-switch .switch::before { width: 12px; height: 12px; }
 .compact-switch .switch:checked::before { transform: translateX(12px); }
@@ -795,6 +906,19 @@ kbd {
 }
 
 .quote-options .input { width: 128px; height: 38px; font-size: 14px; }
+
+/* The standard test's fixed recipe, in the quote options' place. The lock notes live in settings. */
+.standard-options {
+  margin: calc(var(--space-10) * -1) auto var(--space-10);
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-label);
+  text-align: center;
+}
+
+.standard-options p { margin: 0; }
 
 /* Bring your own text: an open section on a hairline rule, not a box (only floating objects are raised).
    It sits beside the passage, so it appears instantly, without a fade. */
@@ -846,6 +970,8 @@ kbd {
   font-size: var(--text-display);
   line-height: 1.05;
   letter-spacing: -0.025em;
+  /* A ghost race names the sender, whose name can be one long unbroken word. */
+  overflow-wrap: anywhere;
 }
 
 #session-description {
@@ -867,8 +993,12 @@ body[data-session="practice"] .live-stats { justify-content: flex-start; }
 
 body[data-session="drill"] .practice-controls,
 body[data-session="drill"] .quote-options,
+body[data-session="lesson"] .practice-controls,
+body[data-session="lesson"] .quote-options,
+body[data-session="drill"] .standard-options,
 body[data-session="retest"] .practice-controls,
-body[data-session="retest"] .quote-options { display: none; }
+body[data-session="retest"] .quote-options,
+body[data-session="retest"] .standard-options { display: none; }
 
 .live-stats {
   position: relative;
@@ -918,12 +1048,14 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 .corner,
 .practice-controls,
 .quote-options,
+.standard-options,
 .custom-options,
 .shortcut-row,
-.site-footer { transition: opacity var(--dur-base) var(--ease-out); }
+.site-footer,
+.compose-another { transition: opacity var(--dur-base) var(--ease-out); }
 
-body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .custom-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
-body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .custom-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
+body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
+body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { pointer-events: none; }
 
 /* Caps Lock warning: sits in the gap under the measure rule, so showing it moves nothing.
    It is a warning, not chrome, so the running fade leaves it alone; it is a readable
@@ -967,9 +1099,17 @@ body[data-running="true"] .caps-warning { transition: none; }
   mask-image: linear-gradient(to bottom, transparent 0, #000 var(--space-3), #000 calc(100% - var(--space-4)), transparent 100%);
 }
 
-body[data-font-size="22"] .typing-wrap { --passage-size: 29px; }
-body[data-font-size="28"] .typing-wrap { --passage-size: 36px; }
-body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
+body[data-font-size="22"] :is(.typing-wrap, .compose-wrap) { --passage-size: 29px; }
+body[data-font-size="28"] :is(.typing-wrap, .compose-wrap) { --passage-size: 36px; }
+body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44px; }
+
+/* A lesson passage is about 60 characters, at most two lines from 901px wide at every text size.
+   It reserves two lines there and sits closer to the finger map, so the map's finger names and
+   thumbs row stay above the fold on a laptop screen (721px tall and up). */
+@media (min-width: 901px) {
+  body[data-session="lesson"] .typing-wrap { height: calc(var(--typing-line) * 2); margin-bottom: var(--space-6); }
+  body[data-session="lesson"] #keyboard { margin-top: var(--space-4); }
+}
 
 #text-display,
 #race-text-display,
@@ -1087,6 +1227,9 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   background: var(--ghost);
 }
 
+/* In a ghost race the caret is the opponent, so it is drawn at full strength (3:1 against the page). */
+.ghost-caret[data-replay] { opacity: 1; }
+
 .ghost-caret.is-hidden { opacity: 0; }
 
 #typing-input,
@@ -1123,7 +1266,8 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   overflow: hidden;
 }
 
-#progress-bar {
+#progress-bar,
+#compose-progress-bar {
   display: block;
   height: 100%;
   background: var(--accent);
@@ -1131,6 +1275,10 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   transform-origin: left center;
   transition: transform calc(140ms * var(--motion-scale)) linear;
 }
+
+/* The composing clock ticks every 100 ms, so its line steps with the clock instead of gliding under
+   the writing. Never transitioned: a pointer nudge clears data-running while the minute runs on. */
+#compose-progress-bar { transition: none; }
 
 /* ── Practice footer, keyboard, focus ───────────────────────────────────── */
 
@@ -1180,19 +1328,176 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 
 .shortcut-row span { display: inline-flex; align-items: center; gap: 6px; }
 .shortcut-row kbd { margin-right: 2px; }
+.shortcut-row .compose-shortcut,
+body[data-compose="true"] .shortcut-row .practice-shortcut { display: none; }
+body[data-compose="true"] .shortcut-row .compose-shortcut { display: inline-flex; }
+
+/* ── Composing ──────────────────────────────────────────────────────────── */
+
+/* A prompt and an open writing field in the passage's place: no target text, no box. */
+.compose-form { width: 100%; }
+
+/* The prompt sits left and the clock right, unlike open practice, which shows only numbers. */
+body[data-session="practice"] .compose-measure { justify-content: space-between; }
+.compose-intro { min-width: 0; display: grid; gap: var(--space-2); }
+
+.compose-prompt {
+  max-width: 34ch;
+  margin: 0;
+  font-size: var(--text-title);
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+.compose-side {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-6);
+}
+
+.compose-wrap {
+  --compose-line: calc(var(--passage-size) * 1.6);
+  margin: var(--space-2) 0 var(--space-6);
+}
+
+/* Three lines like the passage, scrolling inside, so the page never moves while you write. No
+   scrollbar appears beside the writing, and the caret holds still instead of blinking. */
+#compose-input {
+  display: block;
+  width: 100%;
+  height: calc(var(--compose-line) * 3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  resize: none;
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: transparent;
+  color: var(--text);
+  caret-color: var(--accent);
+  caret-animation: manual;
+  font-family: var(--font-serif);
+  font-size: var(--passage-size);
+  font-weight: 400;
+  line-height: var(--compose-line);
+  letter-spacing: -0.004em;
+}
+
+#compose-input::-webkit-scrollbar { display: none; }
+#compose-input::placeholder { color: var(--muted); opacity: 1; font-style: italic; }
+
+/* Where `caret-animation` isn't supported, src/compose-caret.js makes the native caret transparent
+   (it still edits, selects and composes) and draws this one in its place: the accent, solid, moved
+   instantly and never animated. Chromium keeps the native caret above and none of this applies. */
+.compose-wrap[data-caret="drawn"] { position: relative; }
+.compose-wrap[data-caret="drawn"] #compose-input { caret-color: transparent; }
+.compose-caret-layer { position: absolute; overflow: hidden; pointer-events: none; }
+
+.compose-caret-mirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  margin: 0;
+  border-style: solid;
+  border-color: transparent;
+  visibility: hidden;
+}
+
+.compose-caret {
+  position: absolute;
+  top: 0;
+  left: -1px;
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  animation: none;
+  transition: none;
+}
+
+@media (forced-colors: active) {
+  .compose-caret { forced-color-adjust: none; background: CanvasText; }
+}
+
+/* Finished: the writing and the clock stop being "current". */
+.compose-form[data-state="done"] #compose-input { color: var(--muted); }
+.compose-form[data-state="done"] .timer-stat strong { color: var(--muted); }
+
+.compose-notes { min-width: 0; display: grid; gap: var(--space-1); }
+.compose-help,
+.compose-privacy { margin: 0; color: var(--muted); font-size: var(--text-small); }
+.compose-help { font-style: italic; }
+.compose-help:empty { display: none; }
+
+.compose-result { padding-top: var(--space-6); display: grid; gap: var(--space-4); }
+.compose-result h2 { margin: 0; font-size: var(--text-lead); line-height: 1.3; }
+
+.compose-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.compose-facts div { display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-1); }
+.compose-facts dt { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.02em; }
+
+.compose-facts dd {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  color: var(--muted);
+  font: var(--text-mono)/1.2 var(--font-mono);
+}
+
+.compose-facts strong {
+  color: var(--text);
+  font-family: var(--font-serif);
+  font-size: var(--text-display);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.compose-result .metric-note { max-width: 72ch; }
+
+.compose-result-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+}
+
+.compose-saved { margin: 0; color: var(--muted); font-size: var(--text-small); }
+.compose-result-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* Composing has no best, so the footer doesn't show the copy-test one beside it. */
+body[data-compose="true"] .personal-best { visibility: hidden; }
 
 .keyboard {
+  --key: 40px;
+  --key-gap: 5px;
+  --key-pitch: calc(var(--key) + var(--key-gap));
   margin: var(--space-6) auto var(--space-4);
   display: grid;
   justify-content: center;
-  gap: 5px;
+  gap: var(--key-gap);
 }
 
-.key-row { display: flex; justify-content: center; gap: 5px; }
+/* The thirty main keys keep a real row stagger: home a quarter key in, bottom three quarters. */
+.key-row { display: flex; gap: var(--key-gap); }
+.key-row:nth-child(2) { padding-inline-start: calc(var(--key-pitch) / 4); }
+.key-row:nth-child(3) { padding-inline-start: calc(var(--key-pitch) * 3 / 4); }
+.key-row:nth-child(4) { justify-content: center; }
 
 .key {
-  width: 40px;
-  height: 40px;
+  width: var(--key);
+  height: var(--key);
   border: 1px solid var(--hairline-strong);
   border-bottom-width: 3px;
   border-radius: var(--radius);
@@ -1203,17 +1508,114 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   transition: color var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out), border-color var(--dur-micro) var(--ease-out);
 }
 
-.key.space { width: 240px; }
+.key.space { width: calc(var(--key) * 6); }
 .key.target { color: var(--text); border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
 .key.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); transform: translateY(2px); }
+
+/* Finger map: each key carries a small mono initial for the finger that types it (i, m, r, p), so it
+   reads without shading, in forced colours too. A faint band behind alternate fingers (index, ring)
+   keeps neighbouring fingers apart, and the two hands sit apart. Letters keep their colours, so drill
+   targets still stand out. :where() keeps these below .key.target and .key.active. */
+:where(.keyboard[data-fingers="true"]) [data-finger="index"] { --finger-mark: "i"; --finger-shade: var(--finger-band); }
+:where(.keyboard[data-fingers="true"]) [data-finger="middle"] { --finger-mark: "m"; }
+:where(.keyboard[data-fingers="true"]) [data-finger="ring"] { --finger-mark: "r"; --finger-shade: var(--finger-band); }
+:where(.keyboard[data-fingers="true"]) [data-finger="pinky"] { --finger-mark: "p"; }
+:where(.keyboard[data-fingers="true"]) .key { position: relative; background-color: var(--finger-shade, transparent); }
+:where(.keyboard[data-fingers="true"]) .key::after {
+  content: var(--finger-mark) / "";
+  position: absolute;
+  right: var(--space-1);
+  bottom: 1px;
+  color: var(--muted);
+  font: 400 var(--text-fine)/1 var(--font-mono);
+}
+.key.active::after { color: inherit; }
+:where(.keyboard[data-fingers="true"]) .key[data-column="5"] { margin-inline-start: var(--space-3); }
+
+.finger-legend {
+  margin: var(--space-2) 0 0;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  color: var(--muted);
+  font: var(--text-fine)/1 var(--font-mono);
+  letter-spacing: 0.03em;
+}
+
+.finger-legend span { display: inline-flex; align-items: center; gap: var(--space-2); }
+.finger-legend [data-finger]::before {
+  content: var(--finger-mark) / "";
+  width: var(--space-6);
+  height: var(--space-6);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  background: var(--finger-shade, transparent);
+}
+
+/* The finger map: a split keyboard, one column per finger, labelled under each column with a rule.
+   Learned keys read in the text colour; the lesson's new keys get the full green edge. */
+.finger-map {
+  --key-size: 40px;
+  grid-template-columns: auto auto;
+  column-gap: var(--space-6);
+  row-gap: var(--space-2);
+}
+
+.finger-hand {
+  display: grid;
+  grid-template-columns: repeat(5, var(--key-size));
+  grid-template-rows: repeat(3, var(--key-size)) auto;
+  gap: 5px;
+}
+
+.finger-hand .finger-label { align-self: start; }
+.finger-map .key { width: auto; height: auto; }
+.finger-map .key.is-known { color: var(--text); }
+/* The caption points at this edge, so it is the full accent (3:1 or more against the ground in both themes). */
+.finger-map .key.target { border-color: var(--accent); }
+
+/* A name wider than its column ("middle") overflows evenly on both sides, and without extra letter
+   spacing it keeps more than a space's width from the next name. */
+.finger-label {
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--hairline-strong);
+  display: flex;
+  justify-content: center;
+  color: var(--muted);
+  font: var(--text-fine)/1.3 var(--font-mono);
+  white-space: nowrap;
+}
+
+.finger-label-short,
+.finger-map > .finger-legend { display: none; }
+
+.finger-map > .finger-legend { margin-top: var(--space-1); color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); text-align: center; }
+
+.finger-thumbs {
+  grid-column: 1 / -1;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Space sits centred under the two hands, with its label beside it. */
+.finger-thumbs .key.space { width: calc(var(--key-size) * 6); height: var(--key-size); margin-left: calc(var(--space-3) + 6ch); }
+.finger-thumbs .finger-label { width: 6ch; padding: 0; border: 0; justify-content: flex-start; }
+.finger-map > .finger-legend { grid-column: 1 / -1; }
 
 body[data-focus-mode="true"] .dock-zone,
 body[data-focus-mode="true"] .corner,
 body[data-focus-mode="true"] .practice-controls,
 body[data-focus-mode="true"] .quote-options,
+body[data-focus-mode="true"] .standard-options,
 body[data-focus-mode="true"] .shortcut-row,
 body[data-focus-mode="true"] .site-footer,
-body[data-focus-mode="true"] .session-intro { visibility: hidden; }
+body[data-focus-mode="true"] .session-intro,
+body[data-focus-mode="true"] .compose-another { visibility: hidden; }
 
 .exit-focus {
   position: fixed;
@@ -1255,7 +1657,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .run-card-graph { margin: 0; display: grid; gap: var(--space-2); }
 
 .speed-graph { aspect-ratio: 16 / 9; margin-inline: -4px; }
-.speed-graph svg { display: block; overflow: visible; }
+/* Drawn at the container's pixel size. Capping it at the container keeps the old drawing from
+   holding the card at its old width when the window narrows, so the observer sees the new width
+   and redraws; until then it scales evenly rather than stretching. */
+.speed-graph svg { display: block; max-width: 100%; height: auto; overflow: visible; }
 
 .graph-axis { stroke: var(--hairline-strong); stroke-width: 1; }
 .graph-grid { stroke: var(--hairline); stroke-width: 1; }
@@ -1341,6 +1746,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 .run-card .condition-copy { font-size: var(--text-fine); }
+/* The practice offer's evidence is sentences about the words, so it takes the word pace line's
+   Literata (.word-detail), one sentence per line. */
+.practice-evidence { white-space: pre-line; overflow-wrap: anywhere; }
+.run-card-practice { justify-self: start; align-self: start; margin-inline-start: calc((var(--space-4) + var(--space-1)) * -1); }
 
 .results-copy { min-width: 0; display: grid; gap: var(--space-10); padding-top: var(--space-2); }
 
@@ -1372,6 +1781,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   font-size: var(--text-title);
   line-height: 1.2;
   letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
 }
 
 .comparison-rows {
@@ -1463,6 +1873,21 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .input-action { display: flex; gap: var(--space-2); max-width: 460px; }
 .input-action .input { flex: 1; }
 
+/* Ghost races: the offer is another quiet disclosure; the result reads like the race results. */
+.ghost-offer-copy { max-width: 60ch; margin: var(--space-3) 0 0; color: var(--muted); font-size: var(--text-small); }
+.ghost-offer-form { margin-top: var(--space-4); display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3) var(--space-4); }
+.ghost-offer-form .filter-field { flex: 1 1 180px; }
+#ghost-offer-empty .btn { margin-top: var(--space-3); }
+.ghost-offer > .result-note { margin: var(--space-3) 0 0; }
+.ghost-offer > .field-error:empty { display: none; }
+
+.ghost-result .race-results { margin-top: var(--space-6); }
+.ghost-result .race-result-row { grid-template-columns: minmax(0, 1fr) repeat(3, auto); gap: var(--space-2) var(--space-6); padding: var(--space-4) 0; }
+.ghost-result .race-result-row strong { overflow-wrap: anywhere; }
+.comparison-panel.ghost-result > p { margin-top: var(--space-4); }
+.comparison-panel.ghost-result > p:empty { display: none; }
+.ghost-result > .btn { margin-top: var(--space-4); }
+
 /* ── Progress ───────────────────────────────────────────────────────────── */
 
 .page-heading {
@@ -1519,7 +1944,48 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .history-detail dl, .run-detail dl { display: flex; flex-wrap: wrap; gap: var(--space-6); }
 .history-detail dt, .run-detail dt { font: var(--text-mono)/1.5 var(--font-mono); color: var(--muted); }
 .history-detail dd, .run-detail dd { margin: var(--space-2) 0 0; font-size: var(--text-lead); }
+/* Standard score: the one fixed recipe's best and recent median. It heads Progress on every profile,
+   above the empty state or the filtered history. */
+.standard-score {
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-8);
+  border-bottom: 1px solid var(--hairline);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.standard-score-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-4); }
+.standard-score h2 { margin: 0; font-size: var(--text-title); font-weight: 400; }
+.standard-figures { margin: var(--space-2) 0 0; display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-14); }
+.standard-figures dt { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
+.standard-figures dd { margin: var(--space-2) 0 0; display: flex; align-items: baseline; gap: 6px; color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
+/* Longhands, so the shorthand can't reset .num's tabular figures. */
+.standard-figures strong { color: var(--text); font-family: var(--font-serif); font-size: var(--text-display); font-weight: 300; line-height: 1; letter-spacing: -0.035em; }
+.standard-score p { max-width: 64ch; margin: 0; }
+.standard-score .result-note { color: var(--muted); }
+/* The standard score's rule already divides it from the empty state, so the empty state drops its own. */
+.standard-score + .empty-state { padding-top: 0; border-top: 0; }
+
 .progress-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+/* Daily goal: static calendar, accent at four steps (--practice-level-1…3, then --accent); empty days sit on the hairline. */
+.practice-goal { display: grid; gap: var(--space-3); margin-bottom: var(--space-8); }
+.goal-line { margin: 0; font-family: var(--font-serif); font-size: var(--text-body); font-variant-numeric: tabular-nums; }
+.goal-label { margin-right: var(--space-1); color: var(--muted); font: 500 var(--text-fine)/1 var(--font-mono); }
+.goal-calendar {
+  display: grid; grid-template-rows: repeat(7, var(--space-3)); grid-auto-flow: column; grid-auto-columns: var(--space-3);
+  gap: var(--space-1); justify-content: start;
+}
+.goal-day-picker { display: none; }
+.goal-day-picker .input { width: 100%; min-width: 0; max-width: 100%; }
+.goal-day { display: grid; place-items: center; border-radius: var(--radius-cell); background: var(--hairline); }
+.goal-day[data-level="1"] { background: var(--practice-level-1); }
+.goal-day[data-level="2"] { background: var(--practice-level-2); }
+.goal-day[data-level="3"] { background: var(--practice-level-3); }
+.goal-day[data-level="4"] { background: var(--accent); }
+/* Goal met: a centre dot in accent-ink (≥3:1 on both green steps in both themes), so it never rests on colour alone. */
+.goal-day[data-goal="met"]::after { content: ""; width: var(--space-1); height: var(--space-1); border-radius: var(--radius-full); background: var(--accent-ink); }
+/* The focused or hovered day, in words. One line is reserved so the page below never shifts. */
+.goal-caption { min-height: 1lh; margin: 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums; }
 .filter-field { min-width: 0; display: grid; gap: var(--space-2); font-size: var(--text-small); }
 .progress-filters .filter-field:first-child { flex: 1; }
 .filter-field select { width: 100%; max-width: 100%; text-overflow: ellipsis; }
@@ -1537,11 +2003,57 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .trend-dot:hover, .trend-dot:focus { fill: var(--accent); stroke: var(--text); }
 .progress-section, .training-memory, .daily-challenge { padding: var(--space-8) 0; border-top: 1px solid var(--hairline); }
 .progress-section h2, .training-memory h2, .daily-challenge h2, .local-challenge-heading { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
+
+/* Keys: static heatmap, coral steps only, no motion. Rows stagger by half a key, then a whole key. */
+.key-heatmap { justify-content: start; gap: var(--heat-gap); margin: var(--space-4) 0 var(--space-3); }
+.key-heatmap .key-row { justify-content: start; gap: var(--heat-gap); }
+.key-heatmap .key-row:nth-child(2) { padding-left: calc(var(--heat-key) / 2); }
+.key-heatmap .key-row:nth-child(3) { padding-left: var(--heat-key); }
+.key-heatmap .key { width: var(--heat-key); height: var(--heat-key); align-content: center; gap: var(--space-1); color: var(--text); background: var(--heat, transparent); border-color: var(--heat-edge, var(--hairline-strong)); transition: none; border-bottom-width: 1px; cursor: pointer; }
+:is(.key-heatmap .key, .heat-legend li)[data-heat="1"] { --heat: var(--heat-1); }
+:is(.key-heatmap .key, .heat-legend li)[data-heat="2"] { --heat: var(--heat-2); }
+:is(.key-heatmap .key, .heat-legend li)[data-heat="3"] { --heat: var(--heat-3); --heat-edge: var(--danger); }
+.key-heatmap .key[data-heat="none"] { border-style: dashed; color: var(--outline); }
+.key-heatmap .key[data-selected="true"] { outline: 2px solid var(--text); outline-offset: 2px; }
+.key-heatmap[aria-hidden="true"] { pointer-events: none; }
+.key-rate { font: 400 var(--text-mono)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.key[data-heat="1"] .key-rate { color: var(--muted); }
+.heat-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-4); padding: 0; list-style: none; font: 400 var(--text-mono)/1.4 var(--font-mono); color: var(--muted); }
+.heat-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
+.heat-legend li::before { content: ""; width: var(--space-4); height: var(--space-4); border: 1px solid var(--heat-edge, var(--hairline-strong)); border-radius: var(--radius-sm); background: var(--heat, transparent); }
+.heat-legend li[data-heat="none"]::before { border-style: dashed; border-color: var(--outline); }
+.key-select-field { margin: 0 0 var(--space-3); }
+.key-detail { margin: 0 0 var(--space-6); font-variant-numeric: tabular-nums lining-nums; }
+.pairs-heading { margin: 0 0 var(--space-2); font-size: var(--text-lead); font-weight: 400; }
+.pairs-table { border-collapse: collapse; font-size: var(--text-small); }
+.pairs-table th { font: 500 var(--text-mono)/1.4 var(--font-mono); color: var(--muted); text-align: left; padding: var(--space-2) var(--space-6) var(--space-2) 0; border-bottom: 1px solid var(--hairline); }
+.pairs-table td { padding: var(--space-2) var(--space-6) var(--space-2) 0; border-bottom: 1px solid var(--hairline); }
+.pairs-table td.num { font-variant-numeric: tabular-nums; }
+.pair-bar { display: block; height: 3px; margin-top: var(--space-1); border-radius: var(--radius-full); background: var(--danger); }
+@media (min-width: 1100px) {
+  .keys-layout { display: grid; grid-template-columns: min-content minmax(0, 1fr); gap: var(--space-14); align-items: start; }
+  .keys-pairs .pairs-heading { margin-top: var(--space-4); }
+  .keys-pairs .pairs-table { width: 100%; }
+}
+@media (max-width: 600px) {
+  .key-heatmap { --heat-key: var(--space-8); display: grid; grid-template-columns: minmax(0, 1fr); }
+  .key-heatmap .key { flex: 1 1 0; min-width: 0; max-width: var(--heat-key); }
+  .key-rate { display: none; }
+  .pairs-table { width: 100%; }
+  .pairs-table th, .pairs-table td { padding-right: var(--space-2); }
+}
 .training-memory { margin-top: var(--space-8); }
 .training-target, .run-row, .daily-result { padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
 .training-target { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: center; }
 .training-target h3 { margin: 0; font-size: var(--text-lead); }
 .training-target p { margin: var(--space-2) 0 0; font-size: var(--text-small); color: var(--muted); }
+.training-memory.missed-words { margin-top: 0; }
+.missed-words > .result-note { max-width: 60ch; margin: 0; }
+.missed-words-list { margin: var(--space-4) 0 var(--space-6); padding: 0; list-style: none; }
+.missed-word { padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-1) var(--space-4); }
+.missed-word:first-child { border-top: 1px solid var(--hairline); }
+.missed-word-text { min-width: 0; font-size: var(--text-lead); overflow-wrap: anywhere; }
+.missed-word .num { color: var(--muted); font-size: var(--text-small); }
 .run-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3); }
 .run-summary strong { font-size: var(--text-lead); font-weight: 400; }
 .run-summary span { color: var(--muted); }
@@ -1551,11 +2063,96 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .daily-challenge > p { color: var(--muted); max-width: 60ch; }
 .daily-result { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-4); }
 .daily-result span { color: var(--muted); }
+.compose-row { padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); display: grid; gap: var(--space-1); }
+.compose-row-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); }
+.compose-row-main strong { font-size: var(--text-lead); font-weight: 400; }
+.compose-row-main span { color: var(--muted); }
+.compose-row p { margin: 0; color: var(--muted); }
+.compose-history .result-note { margin: 0 0 var(--space-2); max-width: 72ch; color: var(--muted); }
 .local-challenge-heading { margin-top: var(--space-8); }
+
+/* ── Learn to type ──────────────────────────────────────────────────────── */
+
+.learn-screen .page-heading p { max-width: 60ch; margin: var(--space-3) 0 0; color: var(--muted); }
+
+.learn-layout {
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--hairline);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-16);
+  align-items: start;
+}
+
+.lesson-current { min-width: 0; display: grid; justify-items: start; gap: var(--space-3); scroll-margin-top: calc(var(--space-4) + 58px + var(--space-6)); }
+.lesson-current h2 { margin: 0; font-size: var(--text-title); line-height: 1.2; letter-spacing: -0.015em; }
+.lesson-current > p { max-width: 56ch; margin: 0; }
+#lesson-current-copy { color: var(--muted); }
+#lesson-current-meta:empty { display: none; }
+
+.lesson-facts {
+  width: 100%;
+  margin: var(--space-2) 0;
+  padding: var(--space-4) 0;
+  border-block: 1px solid var(--hairline);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+/* Labels, values, targets and met words line up across the four facts, even when a label wraps. */
+.lesson-facts > div { grid-row: span 4; display: grid; grid-template-rows: subgrid; row-gap: var(--space-1); align-items: end; }
+.lesson-facts .status { align-self: start; }
+.lesson-facts dt { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.02em; }
+.lesson-facts dd { margin: 0; font-size: var(--text-title); font-weight: 300; line-height: 1.1; letter-spacing: -0.02em; }
+.lesson-facts dd.lesson-need { color: var(--muted); font-size: var(--text-small); font-weight: 400; letter-spacing: 0; }
+.lesson-facts dd.status { font: 500 var(--text-mono)/1.3 var(--font-mono); letter-spacing: 0.02em; }
+
+.lesson-actions { margin-top: var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.finger-figure { margin: 0; display: grid; gap: var(--space-3); justify-items: center; }
+.finger-figure .keyboard { margin: 0; }
+
+.finger-caption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-1) var(--space-4);
+  color: var(--muted);
+  font: var(--text-fine)/1.4 var(--font-mono);
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+
+.lesson-list-section { margin-top: var(--space-10); padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
+.lesson-list-section h2 { margin: 0 0 var(--space-2); font-size: var(--text-title); font-weight: 400; }
+.lesson-list-section .result-note { max-width: 60ch; margin: 0 0 var(--space-4); color: var(--muted); }
+.lesson-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hairline); }
+
+.lesson-row {
+  min-height: calc(var(--control) + var(--space-4));
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--hairline);
+  display: grid;
+  grid-template-columns: var(--space-8) minmax(0, 1fr) minmax(0, auto) 88px;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.lesson-number { color: var(--muted); font-size: var(--text-lead); }
+.lesson-row-main { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.lesson-keys { display: inline-flex; gap: var(--space-1); }
+.lesson-keys kbd { color: var(--text); }
+.lesson-row[data-state="locked"] .lesson-keys kbd { color: var(--muted); }
+.lesson-row-note { color: var(--muted); font-size: var(--text-small); }
+.lesson-row-detail { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: var(--space-1) var(--space-3); }
+.lesson-row-numbers { color: var(--muted); font-size: var(--text-small); }
+.lesson-row .btn { justify-self: end; grid-column: 4; }
 
 /* ── Challenge ──────────────────────────────────────────────────────────── */
 
-.challenge-modes { display: flex; gap: var(--space-2); margin-bottom: var(--space-8); }
+.challenge-modes { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-8); }
 .challenge-modes [aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .online-copy { color: var(--muted); font-size: var(--text-small); }
 .online-optional { font-size: var(--text-fine); }
@@ -1591,6 +2188,31 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .online-typing-wrap { margin-top: var(--space-6); }
 #online-connection:not(:empty) { color: var(--warning); }
 #online-help { min-height: var(--space-6); }
+
+/* Friends board: two ruled lists, today's daily and this week's practice. Nothing on the board is
+   coloured: your row is marked by the word "You". */
+.friends-board { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
+.friends-board-copy { max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
+.friends-board-guest { display: grid; justify-items: start; gap: var(--space-4); margin: var(--space-6) 0; }
+.friends-board-guest p { margin: 0; max-width: 60ch; }
+.friends-board-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); margin: var(--space-6) 0; }
+.board-column h3 { margin: 0; font-size: var(--text-lead); font-weight: 400; }
+.board-column .condition-copy { margin: var(--space-1) 0 var(--space-3); }
+.board-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--hairline); }
+.board-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline); }
+.board-name { overflow-wrap: anywhere; }
+.board-value { grid-column: 2; grid-row: 1 / span 2; align-self: center; white-space: nowrap; }
+.board-value strong { font-size: var(--text-title); font-weight: 300; line-height: 1; letter-spacing: -0.015em; }
+.board-unit { color: var(--muted); font: var(--text-mono)/1.5 var(--font-mono); }
+.board-detail { color: var(--muted); font-size: var(--text-small); }
+.friends-board-share { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: var(--space-4) 0; }
+.friends-board-off { margin: 0; max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
+/* Bests: one test shape at a time, picked with the same labelled select as Progress, then ruled rows. */
+.board-shape { margin-top: var(--space-3); }
+.board-bests .condition-copy { margin-top: var(--space-2); }
+.friends-board-note { margin: var(--space-3) 0 0; color: var(--muted); font-size: var(--text-small); }
+.friends-board-empty { margin-bottom: var(--space-6); }
+.friends-board-empty p { margin: 0 0 var(--space-3); max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
 
 @media (max-width: 760px) {
   .online-setup, .online-players { grid-template-columns: 1fr; }
@@ -1779,7 +2401,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   font-size: 19px;
 }
 
-#palette-input::placeholder { color: var(--muted); }
+#palette-input::placeholder { color: var(--muted); opacity: 1; }
 
 .palette-scroll {
   position: relative;
@@ -1838,6 +2460,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 #clear-dialog,
 #account-dialog,
+#replay-dialog,
+#delete-account-dialog,
 #suggest-dialog {
   width: min(460px, calc(100% - 32px));
   padding: 0;
@@ -1850,11 +2474,15 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 #clear-dialog[open],
 #account-dialog[open],
+#delete-account-dialog[open],
+#replay-dialog[open],
 #suggest-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
+#delete-account-dialog::backdrop,
+#replay-dialog::backdrop,
 #suggest-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
-:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
+:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #delete-account-dialog, #replay-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
 
 .account-fields { display: grid; gap: var(--space-3); }
 .account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
@@ -1880,9 +2508,46 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .dialog-content h2 { margin: var(--space-2) 0; font-size: 26px; }
 .dialog-content p { margin: 0; color: var(--muted); }
 .dialog-content > label { display: grid; gap: var(--space-2); color: var(--muted); font-size: 14px; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
 
 #suggest-dialog { width: min(520px, calc(100% - 32px)); }
+
+/* Watch replay: the passage at reading size, instant letter states, a caret that jumps. */
+#replay-dialog { width: min(760px, calc(100% - 32px)); }
+#replay-dialog .dialog-actions { flex-wrap: wrap; }
+/* On a narrow dialog the readout wraps below the title. */
+.replay-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2) var(--space-4); }
+.replay-readout { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); }
+/* Number and unit share one baseline: the number in Literata, the unit a small mono label. */
+.replay-stat { display: flex; align-items: baseline; gap: var(--space-1); color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
+.replay-stat-value { color: var(--text); font: var(--text-lead)/1 var(--font-serif); font-variant-numeric: tabular-nums; }
+/* At most three lines, like the live passage; replay-view.js keeps the caret on the first two.
+   The inline padding (offset by the margin) keeps a line-start caret clear of the clip. */
+.replay-text {
+  --replay-line: 1.75em;
+  max-height: calc(var(--replay-line) * 3);
+  margin-inline: calc(var(--space-1) * -1);
+  padding-inline: var(--space-1);
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-serif);
+  font-size: var(--text-lead);
+  line-height: var(--replay-line);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font-variant-ligatures: none;
+}
+.replay-text .char.is-caret::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -1.5px;
+  width: 3px;
+  height: 1.15em;
+  margin-top: -0.55em;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
 .textarea { height: auto; min-height: 132px; padding: var(--space-3) 14px; line-height: 1.5; resize: vertical; }
 .suggest-meta { margin-top: calc(var(--space-4) * -1); display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); }
 .suggest-meta .field-error { margin: 0; }
@@ -1915,8 +2580,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 .toast .status-dot { color: var(--accent); }
-.account-toast { padding-right: 20px; }
+.account-toast { padding-right: 20px; width: max-content; }
 .account-toast .status-dot { color: var(--warning); }
+.account-toast[data-tone="done"] .status-dot { color: var(--accent); }
 .egg-toast { padding-right: 20px; bottom: calc(var(--space-6) + 64px); }
 
 /* A race challenge drops in under the corner buttons, then leaves after TOAST_MS in src/inbox.js. */
@@ -1948,6 +2614,11 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
+
+/* Beside the finger map, a lesson result needs about 340px for its four facts. */
+@media (max-width: 1000px) {
+  .learn-layout { grid-template-columns: minmax(0, 1fr); gap: var(--space-10); }
+}
 
 @media (max-width: 900px) {
   .results-layout { grid-template-columns: 1fr; gap: var(--space-10); }
@@ -1999,7 +2670,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .dock-settings { width: var(--control); padding: 0; justify-content: center; }
   .dock-settings .dock-label { display: none; }
 
-  .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, 100%); max-height: calc(100svh - 62px - var(--space-10)); }
+  .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, 100%); max-height: calc(100svh - 62px - var(--space-10) - var(--control) - var(--space-3) - env(safe-area-inset-bottom)); }
 
   /* The dock moves to the bottom; the corner stays top right and scrolls with the page. */
   .app-shell { padding-top: var(--space-10); }
@@ -2014,24 +2685,43 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .screen { padding-top: var(--space-8); }
   .typing-screen { min-height: auto; padding-top: var(--space-6); }
 
+  /* Six modes (with standard and compose) are wider than a phone column: the mode group wraps onto a
+     second line rather than scroll sideways; the selection pill follows its button to either line. */
+  .mode-options { flex-wrap: wrap; justify-content: center; max-width: 100%; }
   /* Two rows at most: mode and punctuation, then lengths. */
   .practice-controls { margin-bottom: var(--space-6); gap: var(--space-2); }
   #duration-options { order: 1; }
-  .segmented button { height: 40px; padding: 0 12px; }
-  .segmented.compact button { min-width: 44px; padding: 0 6px; }
+  .segmented button, .segmented .custom-length-input { height: 40px; padding: 0 var(--space-2); }
+  .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
-  .quote-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
+  .quote-options, .standard-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
   .quote-options .input { width: 112px; }
 
   .measure-row { flex-direction: column; align-items: stretch; gap: var(--space-4); }
   .live-stats { justify-content: space-between; gap: var(--space-4); }
   body[data-session="practice"] .live-stats { gap: var(--space-8); }
   .live-stat strong { font-size: 40px; }
-  body[data-font-size="22"] .typing-wrap { --passage-size: 22px; }
-  body[data-font-size="28"] .typing-wrap { --passage-size: 26px; }
-  body[data-font-size="36"] .typing-wrap { --passage-size: 32px; }
+  body[data-font-size="22"] :is(.typing-wrap, .compose-wrap) { --passage-size: 22px; }
+  body[data-font-size="28"] :is(.typing-wrap, .compose-wrap) { --passage-size: 26px; }
+  body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 32px; }
+  .compose-side { justify-content: space-between; }
+  .compose-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .compose-result-foot { flex-direction: column; align-items: stretch; }
+  .compose-result-actions { flex-direction: column-reverse; }
   .shortcut-row { display: none; }
-  .keyboard { display: none; }
+  .keyboard:not(.key-heatmap) { display: none; }
+  /* The finger map stays in lessons, sized to the column; its labels shorten to a letter. */
+  .keyboard.finger-map { --key-size: calc((100vw - 32px - var(--space-4) - 40px) / 10); display: grid; column-gap: var(--space-4); }
+  .finger-label-full { display: none; }
+  .finger-label-short { display: inline; }
+  .finger-map > .finger-legend { display: block; }
+  .finger-map .key { font-size: var(--text-fine); }
+  .lesson-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lesson-current { scroll-margin-top: var(--space-4); }
+  .lesson-row { grid-template-columns: var(--space-6) minmax(0, 1fr) auto; gap: var(--space-2) var(--space-3); }
+  .lesson-row-detail { grid-column: 2; grid-row: 2; justify-content: flex-start; }
+  .lesson-row .btn { grid-column: 3; grid-row: 1 / span 2; }
+  label[for="keyboard-toggle"], #finger-row { display: none; }
   .site-footer { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: var(--space-2); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
@@ -2047,13 +2737,44 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (max-width: 360px) {
+  /* Five modes fit the 288px column. */
+  .segmented button { padding: 0 var(--space-1); font-size: var(--text-label); }
   .nav-item { padding: 0 2px; font-size: 13px; }
   .nav-label-full { display: none; }
   .nav-label-short { display: inline; }
 }
 
-@media (pointer: coarse) {
-  .btn, .input, .nav-item, .segmented button, .icon-control { min-height: 44px; }
+/* Any coarse pointer keeps a 44px minimum target. any-pointer, not pointer: a touchscreen laptop or
+   a tablet with a trackpad reports its fine pointer as primary, and a finger still reaches every
+   control. e2e/touch-targets.spec.js measures every control; touch-targets-hybrid.spec.js checks
+   the hybrid case. Text-sized controls reach into the space around them with a transparent ::after,
+   so neither the layout nor the focus ring moves. Relative position keeps that reach above the
+   content after it. */
+@media (any-pointer: coarse) {
+  .goal-day-picker { display: block; }
+  .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control { min-height: 44px; }
+  /* A short mode ("time") among five on a 320px phone is narrower than 44px: the row still fits. */
+  .segmented button { min-width: var(--control); }
+  .footer-link, .run-detail summary, .daily-challenge summary { position: relative; }
+  .footer-link::after, .run-detail summary::after, .daily-challenge summary::after { content: ""; position: absolute; }
+  /* 12px mono on a 1.5 line is 18px, 34px with its own 8px padding: 16px more, down into the
+     footer's own padding, makes 50 and stays off the line before it. */
+  .footer-link::after { inset: 0 0 calc(var(--space-4) * -1); }
+  /* "View passage" and "Your daily results": a 27px line, 51px with 12px each side. */
+  .run-detail summary::after, .daily-challenge summary::after { inset: calc(var(--space-3) * -1) 0; }
+  .toast-close { min-width: var(--control); }
+  /* Chart points: 48px tall and up to 48px wide, so the reach through the centre clears 44 at any
+     sub-pixel offset, but never wider than the gap to the next point (see progress-view.js).
+     The date labels are drawn over the end points; taps pass through every axis label. */
+  .trend-hit { rx: min(var(--space-6), var(--trend-step) / 2); ry: var(--space-6); }
+  .trend-label { pointer-events: none; }
+  /* A link inside a sentence still gets a full touch target; the negative margin keeps its line from growing. */
+  .first-run-learn .quiet-link { min-height: var(--control); margin-block: calc((var(--control) - 1lh) / -2); }
+  /* The custom text panel rises into the space under the controls row (only its top padding and rule);
+     the row paints above it, so "learn to type" keeps its whole 44px. */
+  .practice-controls { position: relative; z-index: 1; }
+  /* Under 16px, iOS zooms the page in to type, and leaves it zoomed. The width stays shared with the pill. */
+  .segmented.compact .custom-length-input { padding: 0 var(--space-1); font-size: var(--text-field); }
 }
 
 @media (max-width: 760px) {
@@ -2062,6 +2783,11 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .training-target { grid-template-columns: 1fr; }
   .training-target button { justify-self: start; }
   .daily-heading { flex-direction: column; }
+  .friends-board-lists { grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
+}
+
+@media (max-width: 560px) {
+  .ghost-result .race-result-row { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 360px) {
