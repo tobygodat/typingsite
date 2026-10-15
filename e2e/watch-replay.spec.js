@@ -240,6 +240,7 @@ const shotPath = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshot
 
 // For the screenshots: a 50-word run typed at a steady human pace (about 75 wpm) on a paused
 // clock, with one miss a few lines in that stays on screen for a beat before the backspace.
+// Returns when the miss was typed, in ms from the first key: half a second into a second.
 async function finishLongRunWithMiss(page) {
   await page.clock.install();
   await openApp(page);
@@ -249,24 +250,34 @@ async function finishLongRunWithMiss(page) {
   const miss = text[at] === 'x' ? 'z' : 'x';
   await page.clock.pauseAt(Date.now() + 1000);
   await page.locator('#typing-input').focus();
+  let elapsed = 0;
   const typeAtPace = async (keys) => {
     for (const key of keys) {
       await page.keyboard.type(key);
-      await page.clock.fastForward(key === ' ' ? 190 : 100 + (key.charCodeAt(0) % 4) * 12);
+      const gap = key === ' ' ? 190 : 100 + (key.charCodeAt(0) % 4) * 12;
+      await page.clock.fastForward(gap);
+      elapsed += gap;
     }
   };
-  await typeAtPace(text.slice(0, at) + miss);
+  await typeAtPace(text.slice(0, at));
+  // A hesitation of over a second puts the miss mid-second, away from the stats' once-a-second
+  // refresh, with no letters typed in that second before it: the rate on the miss's frame is lower.
+  const hesitation = 1000 + ((1500 - (elapsed % 1000)) % 1000);
+  await page.clock.fastForward(hesitation);
+  const missAt = elapsed + hesitation;
+  await typeAtPace(miss);
   await page.clock.fastForward(700);
   await page.keyboard.press('Backspace');
   await page.clock.fastForward(150);
   await typeAtPace(text.slice(at));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-errors')).toHaveText('1');
+  return missAt;
 }
 
 test('the replay stats tick once a second from "—" and end on the run card', async ({ page }) => {
   test.setTimeout(60_000);
-  await finishLongRunWithMiss(page);
+  const missAt = await finishLongRunWithMiss(page);
   const card = await runCard(page);
   await page.locator('#watch-replay').click();
   const dialog = page.locator('#replay-dialog');
@@ -283,13 +294,19 @@ test('the replay stats tick once a second from "—" and end on the run card', a
   await page.clock.fastForward(500);
   expect(await replayStats(page)).toEqual(second);
 
-  // Past the miss, the error shows and accuracy drops.
+  // The frame the miss turns coral, half a second before the next tick, also counts the error and
+  // drops accuracy; wpm waits for the tick.
   const wrong = page.locator('#replay-text .char.wrong');
-  for (let step = 0; step < 600 && !(await wrong.count()); step += 1) await page.clock.fastForward(100);
-  await page.clock.fastForward(1000);
-  await expect(page.locator('#replay-errors')).toHaveText('1');
+  await page.clock.fastForward(missAt - 100 - (900 + 200 + 500));
+  await expect(wrong).toHaveCount(0);
+  const clean = await replayStats(page);
+  expect(clean).toMatchObject({ accuracy: '100', errors: '0' });
+  await page.clock.fastForward(150);
+  await expect(wrong).toHaveCount(1);
+  const missed = await replayStats(page);
+  expect(missed).toMatchObject({ wpm: clean.wpm, errors: '1' });
+  expect(missed.accuracy).not.toBe('100');
   await expect(page.locator('#replay-errors-unit')).toHaveText('error');
-  await expect(page.locator('#replay-accuracy')).not.toHaveText('100');
 
   await page.clock.fastForward(60_000);
   await expect(dialog).toHaveAttribute('data-state', 'done');
