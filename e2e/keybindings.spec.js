@@ -307,3 +307,17 @@ test('composing keeps its finish command and configured restart hint', async ({ 
   await page.keyboard.press('Control+Enter');
   await expect(page.locator('#compose-result')).toBeVisible();
 });
+
+
+test('explicit keybindings reselect is recorded as a fresh preference choice', async ({ page, supabase }) => {
+  const user = supabase.addUser('choice-19@stilltype.test');
+  const stamp = '2000-01-01T00:00:00.000Z';
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { keybindings: {"restart": "Escape", "commands": "Mod+K", "exitFocus": "Escape"} }, preferencesAt: { keybindings: stamp },
+    attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, updatedAt: stamp } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await editBindings(page, {});
+  await saveBindings(page);
+  await expect.poll(() => supabase.profileFor(user.email)?.preferencesAt?.keybindings).not.toBe(stamp);
+  expect(supabase.profileFor(user.email).preferences.keybindings).toEqual({"restart": "Escape", "commands": "Mod+K", "exitFocus": "Escape"});
+});
