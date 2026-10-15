@@ -2,7 +2,8 @@
  * Stilltype.
  * Literata on near-black (or warm paper), one green, and a speed graph on the
  * card of every finished run. Tokens first, then shell, then screens. See DESIGN.md.
- * Motion rule: nothing decorative moves while a run is in progress.
+ * Motion rule: fluid. Motion may live on the typing surface mid-run when it helps
+ * someone follow the run; it scales to zero under reduced motion.
  */
 
 @font-face { font-family: "Geist Mono"; src: url("/src/fonts/geist-mono-400.ttf") format("truetype"); font-weight: 400; font-display: swap; }
@@ -1095,7 +1096,7 @@ body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options
   transition: opacity var(--dur-base) var(--ease-out), visibility 0s;
 }
 
-/* Still run: next to the passage mid-run, the warning appears and leaves instantly. */
+/* Next to the passage mid-run, the warning appears and leaves instantly. */
 body[data-running="true"] .caps-warning { transition: none; }
 
 /* ── Typing zone ────────────────────────────────────────────────────────── */
