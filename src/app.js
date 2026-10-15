@@ -1551,7 +1551,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   }
   // Only practice tests join the sitting; custom text (any non-comparable kind) never does, so a passage of your
   // own can neither suggest a break nor stand in the median that later runs are held against.
-  const sittingKey = sessionKind === 'practice' && valid && completed.kind === 'test' && comparableKind(completed.kind)
+  const sittingKey = sessionKind === 'practice' && valid && completed.kind === 'test' && trendRun(completed)
     ? conditionKey(completed.conditions) : null;
   if (sittingKey) sitting.runs.push({ id: completed.id, key: sittingKey, wpm: completed.summary.score.wpm });
   renderResults(completed, saved);
