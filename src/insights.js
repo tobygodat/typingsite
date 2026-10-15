@@ -63,14 +63,6 @@ export function runRecord(attempt, at = attempt.at || null) {
   return record;
 }
 
-// The summaries retention keeps, each budget counted on its own: the newest 1,000 comparable runs and the
-// newest 50 of the other kinds. retainHistory archives the time of every run outside this set.
-function retainedSummaries(runs) {
-  const comparable = runs.filter((run) => comparableKind(run.kind));
-  const other = runs.filter((run) => !comparableKind(run.kind));
-  return new Set([...comparable.slice(-MAX_RUN_SUMMARIES), ...other.slice(-MAX_NON_COMPARABLE_RUNS)]);
-}
-
 // Comparable runs keep the newest 1,000 summaries, the newest 120 with pattern evidence; other kinds keep their
 // newest 50. Order stays chronological, and a profile with only comparable runs is retained exactly as before.
 // Missed words stay only on the newest 120 runs the list counts, so the profile stays small. Counting those
@@ -229,10 +221,11 @@ export function validPracticeDays(value) {
 // Custom runs are real practice, so their time counts toward the goal like any other kind (it is a time total,
 // not a comparison), and a custom run that falls outside its own 50-run budget leaves its time here too.
 export function retainHistory(runs, practiceDays = {}) {
-  const retained = retainedSummaries(runs);
-  const days = addRunTime({ ...practiceDays }, runs.filter((run) => !retained.has(run)));
+  const keptRuns = retainRuns(runs);
+  const retainedIds = new Set(keptRuns.map((run) => run.id));
+  const days = addRunTime({ ...practiceDays }, runs.filter((run) => !retainedIds.has(run.id)));
   const kept = Object.keys(days).sort().slice(-MAX_PRACTICE_DAYS);
-  return { runs: retainRuns(runs), practiceDays: Object.fromEntries(kept.map((key) => [key, Math.round(days[key])])) };
+  return { runs: keptRuns, practiceDays: Object.fromEntries(kept.map((key) => [key, Math.round(days[key])])) };
 }
 
 // The archive when two copies of a profile meet, given their merged runs (de-duplicated by id). An archived
