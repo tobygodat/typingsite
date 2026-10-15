@@ -3251,7 +3251,7 @@ function undoClear() {
   renderTraining();
   renderDaily();
   followLessonProgress();
-  setTimeout(() => { $('history-toast').hidden = true; }, 1600);
+  clearTimer = setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
 // ── Accounts ──────────────────────────────────────────────────────────────
