@@ -113,3 +113,12 @@ test('unknown or missing layouts normalise to QWERTY', () => {
   assert.equal(layoutLabel('colemak-dh'), 'colemak-dh');
   assert.deepEqual(keyboardRows('azerty')[0].map((entry) => entry.key).join(''), 'qwertyuiop');
 });
+
+test('friends best shapes keep alternate layouts separate', async () => {
+  const { shapeOf, boardShapes } = await import('../src/friends-board.js');
+  const shape = { mode: 'words', count: 25, wordList: '200', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
+  const key = conditionKey({ ...shape, layout: 'dvorak' });
+  assert.equal(shapeOf(key).layout, 'dvorak');
+  assert.equal(shapeOf(key.replace('layout-dvorak', 'layout-unknown')), null);
+  assert.equal(boardShapes([{ bests: { [key]: { wpm: 60 } } }])[0].key, key);
+});

@@ -46,6 +46,7 @@
   --radius-full: 999px;
 
   --control: 44px;
+  --layout-select-width: 128px;
   --heat-key: 52px;
   --heat-gap: 6px;
   --content-max: 1080px;
@@ -397,7 +398,7 @@ kbd {
 .preference-row strong { font-size: 15px; font-weight: 600; }
 .preference-row .select { width: 104px; height: 36px; font-size: 14px; }
 /* Wide enough for its longest option, colemak-dh, beside the native arrow. */
-.preference-row #layout-select { width: 128px; }
+.preference-row #layout-select { width: var(--layout-select-width); }
 /* A sub-setting of the row above it (finger map under keyboard): indented and a little shorter. */
 .preference-sub { min-height: var(--control); padding-inline-start: var(--space-6); }
 .preference-sub strong { font-weight: 500; color: var(--muted); }

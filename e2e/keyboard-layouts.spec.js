@@ -385,3 +385,22 @@ test('screenshot: settings on a phone', async ({ page }, testInfo) => {
   });
   expect(fit).toEqual({ inside: true, clipped: false, optionFits: true, overflow: 0 });
 });
+
+
+test('lessons name their QWERTY finger map and preserve the chosen practice layout', async ({ page }) => {
+  await openApp(page);
+  await runCommand(page, 'layout · dvorak');
+  await runCommand(page, 'learn to type');
+  await expect(page.locator('#lesson-save-note')).toContainText('Lessons teach QWERTY finger positions');
+  await page.locator('#lesson-primary').click();
+  await expect(page.locator('#keyboard')).toHaveClass(/finger-map/);
+  await expect(page.locator('#keyboard .finger-hand-left [data-key="f"]')).toHaveClass(/target/);
+  await expect(page.locator('#keyboard .finger-hand-right [data-key="j"]')).toHaveClass(/target/);
+  await typeInto(page, await passageText(page));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'learn');
+  await openSettings(page);
+  await expect(page.locator('#layout-select')).toHaveValue('dvorak');
+  await page.keyboard.press('Escape');
+  await openView(page, 'Practice');
+  await expect(page.locator('#condition-line')).toContainText('dvorak');
+});

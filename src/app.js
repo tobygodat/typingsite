@@ -2673,7 +2673,7 @@ function renderLessons() {
   const fresh = complete ? [] : LESSONS[next].keys;
   renderFingerMap($('lesson-keyboard'), { known: lessonKeys(complete ? LESSONS.length - 1 : next - 1), fresh });
   $('finger-caption-keys').textContent = complete ? 'every key learned' : `green edge: lesson ${next + 1}’s keys`;
-  $('lesson-save-note').textContent = `${session ? 'Lesson progress saves to your account.' : 'Lesson progress lasts for this tab; sign in to save future lessons.'} Lessons stay out of your bests, progress charts and retests.`;
+  $('lesson-save-note').textContent = `${isDefaultLayout(prefs.layout) ? '' : 'Lessons teach QWERTY finger positions. Use QWERTY in your operating system for these lessons; your practice layout setting is kept. '}${session ? 'Lesson progress saves to your account.' : 'Lesson progress lasts for this tab; sign in to save future lessons.'} Lessons stay out of your bests, progress charts and retests.`;
 
   $('lesson-list').replaceChildren(...LESSONS.map((lesson, index) => {
     const entry = progress[lesson.id];
