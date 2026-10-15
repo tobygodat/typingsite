@@ -12,7 +12,7 @@ async function pickTheme(page, theme) {
   await page.locator('.preferences > summary').click();
   await page.locator('#theme-select').selectOption(theme);
   await page.keyboard.press('Escape');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', theme === 'system' ? /^(dark|light)$/ : theme);
 }
 
 const bodyBackground = (page) => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -80,7 +80,7 @@ test('switching to a theme with other fonts remeasures the pills and the caret m
   for (const theme of ['terminal', 'swiss']) {
     // The settings select's own change handler, without the Escape that would restart the run.
     await page.locator('#theme-select').evaluate((select, value) => { select.value = value; select.dispatchEvent(new Event('change')); }, theme);
-    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme === 'system' ? /^(dark|light)$/ : theme);
     await expect.poll(() => pillGap(page), { message: `${theme} pills` }).toBeLessThanOrEqual(1);
     await expect.poll(async () => { const gap = await caretGap(page); return gap.onLine && gap.x <= 1; }, { message: `${theme} caret` }).toBe(true);
   }
@@ -93,7 +93,7 @@ test('the quote and custom rows sit clear of the mode bar in every theme', async
     - document.querySelector('.practice-controls').getBoundingClientRect().bottom), row);
   for (const theme of ['dark', 'light', ...MOCKS]) {
     await page.locator('#theme-select').evaluate((select, value) => { select.value = value; select.dispatchEvent(new Event('change')); }, theme);
-    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme === 'system' ? /^(dark|light)$/ : theme);
     await page.locator('#mode-quote').click();
     await expect(page.locator('#quote-options')).toBeVisible();
     expect(await gap('quote-options'), `${theme} quote`).toBeGreaterThanOrEqual(8);
