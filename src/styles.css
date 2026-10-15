@@ -2585,7 +2585,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .dock-settings { width: var(--control); padding: 0; justify-content: center; }
   .dock-settings .dock-label { display: none; }
 
-  .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, 100%); max-height: calc(100svh - 62px - var(--space-10)); }
+  .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, 100%); max-height: calc(100svh - 62px - var(--space-10) - var(--control)); }
 
   /* The dock moves to the bottom; the corner stays top right and scrolls with the page. */
   .app-shell { padding-top: var(--space-10); }
