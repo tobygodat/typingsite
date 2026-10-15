@@ -3,7 +3,15 @@
 import { randomUUID } from 'node:crypto';
 
 export class FakeRaces {
-  constructor(auth) { this.auth = auth; this.rooms = new Map(); this.friends = new Map(); }
+  constructor(auth) { this.auth = auth; this.rooms = new Map(); this.friends = new Map(); this.holds = new Map(); }
+
+  // Holds the reply to the next request with this action: the service applies it on arrival, and the
+  // answer comes back only once the test calls the returned release, while later requests go through.
+  hold(action) {
+    let release;
+    this.holds.set(action, new Promise((resolve) => { release = resolve; }));
+    return () => release();
+  }
 
   friendList(owner) {
     return (this.friends.get(owner) || []).map(({ id, name, email, friendId }) => ({ id, name, account: Boolean(friendId), ...(email ? { email } : {}) }))
@@ -41,7 +49,10 @@ export class FakeRaces {
       wpm: 0, accuracy: 100, elapsed: 0, sequence: 0, typed: '', keystrokes: 0, errors: 0 };
   }
 
-  handle(caller, { p_action: action, p_room_id: id, p_data: data = {}, p_guest_token: guestToken }, reply) {
+  handle(caller, { p_action: action, p_room_id: id, p_data: data = {}, p_guest_token: guestToken }, answer) {
+    const held = this.holds.get(action);
+    this.holds.delete(action);
+    const reply = held ? async (status, json) => { await held; return answer(status, json); } : answer;
     const failure = (message) => reply(400, { message });
     if (action === 'invites') return reply(200, [...this.rooms.values()]
       .filter((room) => room.invitedUser === caller && caller && room.status === 'waiting' && Date.parse(room.expiresAt) > Date.now()
