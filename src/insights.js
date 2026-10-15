@@ -228,6 +228,16 @@ export function retainHistory(runs, practiceDays = {}) {
   return { runs: keptRuns, practiceDays: Object.fromEntries(kept.map((key) => [key, Math.round(days[key])])) };
 }
 
+// Completed learning activities that keep no copy-run summary (lessons and composing) put their
+// actual practice time straight into the same bounded archive. Composing supplies active time.
+export function recordPracticeTime(practiceDays, at, elapsedMs) {
+  const days = validPracticeDays(practiceDays);
+  const day = dayKey(at);
+  if (!DAY.test(day) || !Number.isFinite(elapsedMs) || elapsedMs <= 0) return days;
+  days[day] = (days[day] || 0) + elapsedMs;
+  return retainHistory([], days).practiceDays;
+}
+
 // The archive when two copies of a profile meet, given their merged runs (de-duplicated by id). An archived
 // day holds the time of runs that are gone, so it can't be matched by run id, and two copies of one person's
 // history archive the same runs: adding the archives would count those runs twice, and so would keeping one

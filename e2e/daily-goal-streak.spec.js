@@ -1,5 +1,5 @@
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
-import { dayKey } from '../src/insights.js';
+import { dayKey, goalMinutes } from '../src/insights.js';
 import { test, expect, openApp, chooseWords, completePassage, openView, openSettings, signInWithEmail, typeInto } from './fixtures.js';
 
 test('daily goal line and practice calendar render on Progress', async ({ page }) => {
@@ -272,4 +272,78 @@ test('a pre-accounts profile past the summary limit brings its archived practice
   const archived = days.nth((await days.count()) - 1 - 20);
   await expect(archived).toHaveAttribute('aria-label', /: 12 min$/);
   await expect(archived).not.toHaveAttribute('data-level', '0');
+});
+
+
+test('recorded lessons and composing active time increase the daily practice goal without entering measured runs', async ({ page, supabase }) => {
+  test.setTimeout(90000);
+  const user = supabase.addUser('learning-goal@stilltype.test');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openSettings(page);
+  await page.locator('#daily-goal').selectOption('5');
+  await page.keyboard.press('Escape');
+  await page.clock.install({ time: new Date('2026-10-15T12:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-10-15T12:00:01Z'));
+  const totals = () => Object.values(supabase.profiles.get(user.id)?.data.practiceDays || {}).reduce((sum, ms) => sum + ms, 0);
+  const typePaced = async (selector, text, gap) => {
+    await page.locator(selector).focus();
+    for (const letter of text) {
+      await page.keyboard.type(letter);
+      await page.clock.runFor(gap);
+    }
+  };
+  await page.locator('#open-lessons').click();
+  await page.locator('#lesson-primary').click();
+  const lessonText = await page.locator('#accessible-passage').textContent();
+  await typePaced('#typing-input', lessonText, 250);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'learn');
+  await page.clock.runFor(1800);
+  await expect.poll(totals).toBeGreaterThan(0);
+  const lessonMs = totals();
+  await openView(page, 'Progress');
+  await expect(page.locator('#goal-line')).toHaveText(`Today ${goalMinutes(lessonMs / 60000)} / 5 min · 0-day streak`);
+  await openView(page, 'Practice');
+  await page.locator('#mode-compose').click();
+  await typePaced('#compose-input', 'A few sentences of my own are still typing practice, and their active time belongs in the goal.', 400);
+  await page.locator('#compose-done').click();
+  await expect(page.locator('#compose-result')).toBeVisible();
+  await page.clock.runFor(1800);
+  await expect.poll(totals).toBeGreaterThan(lessonMs);
+  const saved = supabase.profiles.get(user.id).data;
+  expect(totals()).toBe(lessonMs + saved.compositions[0].activeMs);
+  expect(saved.runs).toEqual([]);
+  expect(saved.attempts).toEqual([]);
+  expect(saved.bests).toEqual({});
+  await openView(page, 'Progress');
+  await expect(page.locator('#goal-line')).toHaveText(`Today ${goalMinutes(totals() / 60000)} / 5 min · 0-day streak`);
+});
+
+
+test.describe('calendar on a touch device', () => {
+  test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+  test('the native day picker owns selection and keeps the dense picture out of the tab order', async ({ page }) => {
+    await openApp(page);
+    await openView(page, 'Progress');
+    await expect(page.locator('#practice-goal')).toBeHidden();
+    await openView(page, 'Practice');
+    await chooseWords(page, 10);
+    await completePassage(page);
+    await openView(page, 'Progress');
+    const picker = page.getByLabel('Practice day', { exact: true });
+    await expect(picker).toBeVisible();
+    expect((await picker.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await expect(page.locator('#goal-calendar')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('#goal-calendar [tabindex]')).toHaveCount(0);
+    const first = await picker.locator('option').first().getAttribute('value');
+    await picker.focus();
+    await picker.selectOption(first);
+    await expect(page.locator('#goal-caption')).toHaveText(/^Sun, [A-Z][a-z]{2} \d{1,2} · 0 min$/);
+    // Keyboard selection remains available on a hybrid; no tiny calendar cell becomes a target.
+    await picker.press('ArrowDown');
+    await expect(page.locator('#goal-caption')).toHaveText(/^Mon, [A-Z][a-z]{2} \d{1,2} · 0 min$/);
+    await expect(picker).toBeFocused();
+    await expect(page.locator('#goal-calendar [tabindex]')).toHaveCount(0);
+  });
 });

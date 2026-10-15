@@ -45,7 +45,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { fatigueSignal, DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { fatigueSignal, DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 import { promptText } from './compose.js';
 import { createCompose } from './compose-view.js';
@@ -2308,6 +2308,9 @@ const focusedGoalDay = () => ($('goal-calendar').contains(document.activeElement
 function renderGoal(date = new Date()) {
   goalDay = dayKey(date);
   const byDay = minutesByDay(profile.runs, profile.practiceDays);
+  const coarse = matchMedia('(any-pointer: coarse)').matches;
+  const picker = $('goal-day-select');
+  const selectedDay = picker.value || goalDay;
   $('practice-goal').hidden = Object.keys(byDay).length === 0;
   const goal = prefs.dailyGoal;
   const streak = practiceStreak(byDay, goal, date);
@@ -2321,18 +2324,25 @@ function renderGoal(date = new Date()) {
     cell.dataset.level = String(practiceLevel(minutes, goal));
     if (met) cell.dataset.goal = 'met';
     cell.setAttribute('role', 'img');
-    cell.tabIndex = -1;
+    if (!coarse) cell.tabIndex = -1;
+    cell.dataset.day = dayKey(day);
     cell.setAttribute('aria-label', `${day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}: ${goalMinutes(minutes)} min${met ? ', goal met' : ''}`);
     cell.dataset.caption = [day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), `${goalMinutes(minutes)} min`, met && 'goal met'].filter(Boolean).join(' · ');
     cells.push(cell);
   }
-  cells.at(-1).tabIndex = 0;
+  if (!coarse) cells.at(-1).tabIndex = 0;
+  // On touch and hybrids the native 44px picker owns selection; the dense cells are only a picture.
+  if (coarse) $('goal-calendar').setAttribute('aria-hidden', 'true');
+  else $('goal-calendar').removeAttribute('aria-hidden');
+  picker.replaceChildren(...cells.map((cell) => new Option(cell.getAttribute('aria-label'), cell.dataset.day)));
+  picker.value = cells.some((cell) => cell.dataset.day === selectedDay) ? selectedDay : goalDay;
   const practised = cells.filter((cell) => cell.dataset.level !== '0').length;
   const hadFocus = Boolean(focusedGoalDay());
   $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last 18 weeks: ${practised} days with practice. Arrow keys move between days.`);
   captionGoalDay(null);
   $('goal-calendar').replaceChildren(...cells);
-  if (hadFocus) cells.at(-1).focus();
+  if (hadFocus && !coarse) cells.at(-1).focus();
+  if (document.activeElement === picker) captionGoalDay(cells.find((cell) => cell.dataset.day === picker.value));
 }
 
 function moveGoalFocus(event) {
@@ -2360,7 +2370,7 @@ function renderHistory() {
   const goalOnly = !hasProgress && !$('practice-goal').hidden;
   $('progress-empty-title').textContent = goalOnly ? 'No speed trend yet.' : 'No practice runs yet.';
   $('progress-empty-copy').textContent = goalOnly
-    ? 'Drills, daily and custom runs count toward your daily practice. Finish a practice run to chart speed and accuracy. Daily results are in Challenge.'
+    ? 'Drills, daily and custom runs count toward your daily practice. Recorded lessons and composing active time count too. Finish a practice run to chart speed and accuracy. Daily results are in Challenge.'
     : 'Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.';
   $('progress-content').hidden = !hasProgress;
   const hasHistory = hasAnyHistory();
@@ -2564,6 +2574,7 @@ function finishLesson(completed, valid) {
     recorded = run.recorded;
     if (recorded) {
       profile.lessons = run.progress;
+      profile.practiceDays = recordPracticeTime(profile.practiceDays, at, elapsedMs);
       saved = saveProfile();
     }
   }
@@ -4078,6 +4089,8 @@ function bindEvents() {
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveChoice('dailyGoal'); renderGoal(); });
+  $('goal-day-select').addEventListener('change', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
+  $('goal-day-select').addEventListener('focus', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
   $('goal-calendar').addEventListener('keydown', moveGoalFocus);
   $('goal-calendar').addEventListener('focusin', (event) => captionGoalDay(event.target));
   $('goal-calendar').addEventListener('focusout', (event) => { if (!$('goal-calendar').contains(event.relatedTarget)) captionGoalDay(null); });
@@ -4523,6 +4536,7 @@ compose = createCompose({
   signedIn: () => Boolean(session),
   save(record) {
     profile.compositions.push(record);
+    profile.practiceDays = recordPracticeTime(profile.practiceDays, record.at, record.activeMs);
     return saveProfile();
   },
 });
