@@ -4,6 +4,7 @@ import {
   challengeFor, cleanRedirectUrl, deleteAccount, DELETE_ACCOUNT_PATH, DELETE_COPY, forgetAccount, freshSession, MAX_SUGGESTION, mergeProfiles, mergeSynced, parseAuthRedirect, profileKey, restoreUnsent,
   sameProfile, sameSignIn, SESSION_KEY, signedOutKey, signIn, signOut, suggestionRow, textStamp, unsentCopy,
 } from '../src/account.js';
+import { MAX_RUN_SUMMARIES, minutesByDay, retainHistory } from '../src/insights.js';
 
 test('PKCE challenge matches the RFC 7636 example', async () => {
   assert.equal(await challengeFor('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'), 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
@@ -47,6 +48,43 @@ test('the pre-accounts profile folds into an account without losing either side'
   assert.deepEqual(used.loops.map((loop) => loop.id), ['l1']);
   assert.deepEqual(used.seenTextIds, ['q1', 'q2', 'q3']);
   assert.deepEqual(used.bests, { time30: { wpm: 80 }, words25: { wpm: 65 } });
+});
+
+// Archived practice days hold the time of runs retention dropped, so they can't be matched by run id.
+const practiced = (id, back, minutes) => ({ id, at: new Date(2026, 9, 8 - back, 12).toISOString(), kind: 'test',
+  status: 'complete', interrupted: false, elapsedMs: minutes * 60000 });
+const stored = (runs) => ({ preferences: {}, attempts: [], loops: [], seenTextIds: [], bests: {}, ...retainHistory(runs) });
+
+test('an empty account takes the pre-accounts archive of practice days as it is', () => {
+  // Twenty more runs than the summary window: the oldest twenty, on one day, are archived by normalization.
+  const history = Array.from({ length: MAX_RUN_SUMMARIES + 20 }, (_, i) => practiced(`r${i}`, i < 20 ? 40 : 1 + (i % 9), 0.5));
+  const legacy = stored(history);
+  assert.equal(Object.keys(legacy.practiceDays).length, 1);
+  const adopted = mergeProfiles({ ...stored([]), practiceDays: {} }, legacy);
+  assert.deepEqual(adopted.practiceDays, legacy.practiceDays);
+  assert.deepEqual(minutesByDay(adopted.runs, adopted.practiceDays), minutesByDay(history));
+});
+
+test('two archives of one history merge by the larger day total, never the sum, and count no run twice', () => {
+  // The same person's history on two copies: one has seen 30 more runs and archived 30 more of the oldest,
+  // runs the other copy still keeps as summaries.
+  const history = Array.from({ length: MAX_RUN_SUMMARIES + 40 }, (_, i) => practiced(`r${i}`, Math.floor((MAX_RUN_SUMMARIES + 39 - i) / 25), 0.5));
+  const longer = stored(history);
+  const shorter = stored(history.slice(0, MAX_RUN_SUMMARIES + 10));
+  const truth = minutesByDay(history);
+  for (const [base, extra] of [[longer, shorter], [shorter, longer]]) {
+    const merged = mergeProfiles(base, extra);
+    assert.deepEqual(minutesByDay(merged.runs, merged.practiceDays), truth);
+    const kept = retainHistory(merged.runs, merged.practiceDays);
+    assert.deepEqual(minutesByDay(kept.runs, kept.practiceDays), truth, 'retention after the merge moves time, never adds it');
+  }
+
+  // Different runs archived on the same day can't be told apart from the same runs twice, so the larger
+  // total stands for the day rather than the sum; a day only one side archived comes across whole.
+  const a = { ...stored([]), practiceDays: { '2025-03-01': 10 * 60000, '2025-03-02': 60000 } };
+  const b = { ...stored([]), practiceDays: { '2025-03-01': 4 * 60000, '2025-03-05': 2 * 60000 } };
+  assert.deepEqual(mergeProfiles(a, b).practiceDays, { '2025-03-01': 10 * 60000, '2025-03-02': 60000, '2025-03-05': 2 * 60000 });
+  assert.deepEqual(mergeProfiles(b, a).practiceDays, mergeProfiles(a, b).practiceDays);
 });
 
 test('an account whose only history is composing keeps its own settings on import', () => {
@@ -733,4 +771,11 @@ test('forgetting a deleted account marks it signed out before the session goes, 
     assert.deepEqual(changes, [['set', signedOutKey('u1')], ['remove', SESSION_KEY], ['remove', profileKey('u1')], ['remove', signedOutKey('u1')]]);
     assert.deepEqual([...store.keys()], []);
   });
+});
+
+
+test('an account with archived practice keeps its settings during legacy adoption', () => {
+  const base = { ...stored([]), preferences: { theme: 'dark' }, practiceDays: { '2026-10-01': 60000 } };
+  const legacy = { ...stored([]), preferences: { theme: 'light' } };
+  assert.equal(mergeProfiles(base, legacy).preferences.theme, 'dark');
 });

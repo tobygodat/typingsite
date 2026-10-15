@@ -3,7 +3,7 @@
 import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { customTextProblem, normalizeCustomText } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
-import { retainRuns, runRecord, settleDailyFirsts } from './insights.js';
+import { DAILY_GOALS, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
 import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
 
@@ -26,6 +26,7 @@ export const defaultPreferences = {
   sound: DEFAULT_SOUND_MODE,
   soundVolume: DEFAULT_SOUND_VOLUME,
   theme: 'system',
+  dailyGoal: 0,
   customText: '',
   customOrder: 'as-written',
   paceCaret: 'off',
@@ -44,6 +45,7 @@ export function emptyProfile() {
     preferences: {},
     attempts: [],
     runs: [],
+    practiceDays: {},
     loops: [],
     seenTextIds: [],
     bests: {},
@@ -54,6 +56,7 @@ export function emptyProfile() {
 }
 
 export function validPreferences(value) {
+  if (!DAILY_GOALS.includes(value.dailyGoal)) value.dailyGoal = 0;
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
   value.sound = normalizeSoundMode(value.sound);
   value.soundVolume = normalizeSoundVolume(value.soundVolume);
@@ -95,7 +98,7 @@ export function normalizeProfile(parsed) {
     ...parsed,
     preferences: storedPreferences(parsed.preferences),
     attempts: settleDailyFirsts(traces),
-    runs: retainRuns(settleDailyFirsts(records)),
+    ...retainHistory(settleDailyFirsts(records), validPracticeDays(parsed.practiceDays)),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
     bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
