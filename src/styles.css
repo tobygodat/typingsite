@@ -39,6 +39,7 @@
   --space-14: 56px;
   --space-16: 64px;
 
+  --radius-cell: 2px;
   --radius-sm: 6px;
   --radius: 10px;
   --radius-control: 12px;
@@ -78,6 +79,9 @@
   --accent: #8fd18a;
   --accent-ink: #0f1a0e;
   --accent-soft: rgba(143, 209, 138, 0.13);
+  --practice-level-1: rgba(143, 209, 138, 0.3);
+  --practice-level-2: rgba(143, 209, 138, 0.55);
+  --practice-level-3: rgba(143, 209, 138, 0.8);
   --danger: #ff8a6b;
   --danger-soft: rgba(255, 138, 107, 0.16);
   --heat-1: rgba(255, 138, 107, 0.18);
@@ -106,6 +110,9 @@
   --accent: #217245;
   --accent-ink: #fbf9f5;
   --accent-soft: rgba(46, 125, 79, 0.11);
+  --practice-level-1: rgba(46, 125, 79, 0.3);
+  --practice-level-2: rgba(46, 125, 79, 0.55);
+  --practice-level-3: rgba(46, 125, 79, 0.8);
   --danger: #ad3d26;
   --danger-soft: rgba(180, 67, 44, 0.12);
   --heat-1: rgba(180, 67, 44, 0.08);
@@ -1875,6 +1882,25 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .standard-score + .empty-state { padding-top: 0; border-top: 0; }
 
 .progress-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+/* Daily goal: static calendar, accent at four steps (--practice-level-1…3, then --accent); empty days sit on the hairline. */
+.practice-goal { display: grid; gap: var(--space-3); margin-bottom: var(--space-8); }
+.goal-line { margin: 0; font-family: var(--font-serif); font-size: var(--text-body); font-variant-numeric: tabular-nums; }
+.goal-label { margin-right: var(--space-1); color: var(--muted); font: 500 var(--text-fine)/1 var(--font-mono); }
+.goal-calendar {
+  display: grid; grid-template-rows: repeat(7, var(--space-3)); grid-auto-flow: column; grid-auto-columns: var(--space-3);
+  gap: var(--space-1); justify-content: start;
+}
+.goal-day-picker { display: none; }
+.goal-day-picker .input { width: 100%; min-width: 0; max-width: 100%; }
+.goal-day { display: grid; place-items: center; border-radius: var(--radius-cell); background: var(--hairline); }
+.goal-day[data-level="1"] { background: var(--practice-level-1); }
+.goal-day[data-level="2"] { background: var(--practice-level-2); }
+.goal-day[data-level="3"] { background: var(--practice-level-3); }
+.goal-day[data-level="4"] { background: var(--accent); }
+/* Goal met: a centre dot in accent-ink (≥3:1 on both green steps in both themes), so it never rests on colour alone. */
+.goal-day[data-goal="met"]::after { content: ""; width: var(--space-1); height: var(--space-1); border-radius: var(--radius-full); background: var(--accent-ink); }
+/* The focused or hovered day, in words. One line is reserved so the page below never shifts. */
+.goal-caption { min-height: 1lh; margin: 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums; }
 .filter-field { min-width: 0; display: grid; gap: var(--space-2); font-size: var(--text-small); }
 .progress-filters .filter-field:first-child { flex: 1; }
 .filter-field select { width: 100%; max-width: 100%; text-overflow: ellipsis; }
@@ -2639,6 +2665,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
    so neither the layout nor the focus ring moves. Relative position keeps that reach above the
    content after it. */
 @media (any-pointer: coarse) {
+  .goal-day-picker { display: block; }
   .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control { min-height: 44px; }
   /* A short mode ("time") among five on a 320px phone is narrower than 44px: the row still fits. */
   .segmented button { min-width: var(--control); }
