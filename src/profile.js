@@ -1,6 +1,7 @@
 // The stored profile's shape: the settings' defaults, and how a stored copy (this device's cache, another
 // tab's, the account row) is read before anything uses or merges it (normalizeProfile).
 import { correctionPreference, customTextProblem, normalizeCustomText } from './typing.js';
+import { normalizeKeybindings } from './keybindings.js';
 import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { retainRuns, runRecord, settleDailyFirsts } from './insights.js';
@@ -28,6 +29,7 @@ export const defaultPreferences = {
   strictSpace: false,
   quickEnd: true,
   focusMode: false,
+  keybindings: normalizeKeybindings(),
   theme: 'system',
   customText: '',
   customOrder: 'as-written',
@@ -64,6 +66,8 @@ export function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
   value.layout = normalizeLayout(value.layout);
   value.fingerMap = value.fingerMap === true;
+  value.keybindings = normalizeKeybindings(value.keybindings, value.restartKey);
+  delete value.restartKey;
   const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
   value.customText = customTextProblem(customText) ? '' : customText;
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
@@ -85,9 +89,10 @@ export const preferencesInUse = (stored) => validPreferences({ ...defaultPrefere
 function storedPreferences(raw) {
   const stored = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const valid = preferencesInUse(stored);
-  const result = Object.fromEntries(Object.keys(stored).map((key) => [key, valid[key]]));
-  if (Object.hasOwn(stored, 'stopOnError') && !Object.hasOwn(stored, 'correction')) result.correction = valid.correction;
-  return result;
+  const normalized = Object.fromEntries(Object.keys(stored).filter((key) => key !== 'restartKey').map((key) => [key, valid[key]]));
+  if (!Object.hasOwn(stored, 'keybindings') && Object.hasOwn(stored, 'restartKey')) normalized.keybindings = normalizeKeybindings(null, stored.restartKey);
+  if (Object.hasOwn(stored, 'stopOnError') && !Object.hasOwn(stored, 'correction')) normalized.correction = valid.correction;
+  return normalized;
 }
 
 export function normalizeProfile(parsed) {
