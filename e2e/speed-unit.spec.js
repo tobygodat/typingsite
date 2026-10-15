@@ -578,3 +578,17 @@ test('standard scores display cpm while profile bests remain stored in wpm', asy
   await expect(page.locator('#standard-best + span')).toHaveText('cpm');
   expect(supabase.profileFor(user.email).bests[conditionKey(conditions)].wpm).toBe(66);
 });
+
+
+test('explicit speedUnit reselect is recorded as a fresh preference choice', async ({ page, supabase }) => {
+  const user = supabase.addUser('choice-40@stilltype.test');
+  const stamp = '2000-01-01T00:00:00.000Z';
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { speedUnit: "wpm" }, preferencesAt: { speedUnit: stamp },
+    attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, updatedAt: stamp } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openSettings(page);
+  await page.locator('#speed-unit').selectOption('wpm');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferencesAt?.speedUnit).not.toBe(stamp);
+  expect(supabase.profileFor(user.email).preferences.speedUnit).toEqual("wpm");
+});
