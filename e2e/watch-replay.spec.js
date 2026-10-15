@@ -91,7 +91,9 @@ test('Watch replay plays the run the results show, not a drill whose retest was 
   await expect(page.locator('#watch-replay')).toBeHidden();
   await openView(page, 'practice');
   await page.locator('#mode-quote').click();
+  await note();
   await page.locator('#quote-length').selectOption('medium');
+  await note();
   await page.locator('#quote-difficulty').selectOption('gentle');
   for (let tries = 0; seen.size < pool.length && tries < pool.length + 3; tries += 1) {
     await note();
