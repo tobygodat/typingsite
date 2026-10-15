@@ -47,6 +47,7 @@ import {
 import { wordListIds } from './words.js';
 import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength } from './lengths.js';
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
+import { normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
@@ -92,6 +93,7 @@ let syncTimer = 0;
 // otherwise a boot-time save (marking the first passage seen) would make a stale cache look newer.
 let cloudChecked = false;
 let unsynced = false;
+
 // Counts saves, so a push can tell whether anything changed while it was waiting on the network.
 let localEdits = 0;
 // The account row's updated_at as last merged here: the version a conditional write expects to replace.
@@ -299,7 +301,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'keybindings', 'dailyGoal'];
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'keybindings', 'dailyGoal'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -619,11 +621,13 @@ function updateGlides(options) {
 
 function applyPreferences() {
   document.body.dataset.fontSize = prefs.fontSize;
+  document.body.dataset.wordHighlight = prefs.wordHighlight;
   primaryFx.relayout();
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
   document.body.dataset.keyboard = String(prefs.keyboard);
   document.body.dataset.focusMode = String(prefs.focusMode);
   $('font-size').value = prefs.fontSize;
+  $('word-highlight').value = prefs.wordHighlight;
   $('live-toggle').checked = prefs.liveMetrics;
   $('keyboard-toggle').checked = prefs.keyboard;
   syncRules();
@@ -903,6 +907,27 @@ function setCustomLengthFromPalette(mode) {
   openCustomLength(mode);
 }
 
+// Word groups per rendered passage, so the word highlight can follow the caret. Every view marks
+// its current and next word; body[data-word-highlight] picks which one (if any) is tinted, so the
+// setting applies at once to every passage on screen. Presentational: scoring never reads it.
+const passageWords = new WeakMap();
+
+function markWords(characters, position) {
+  const words = passageWords.get(characters);
+  if (!words) return;
+  const { current, next } = wordsAt(words.indexes, words.elements.length, position);
+  if (current !== words.current) {
+    words.elements[words.current]?.classList.remove('word-current');
+    words.elements[current]?.classList.add('word-current');
+    words.current = current;
+  }
+  if (next !== words.next) {
+    words.elements[words.next]?.classList.remove('word-next');
+    words.elements[next]?.classList.add('word-next');
+    words.next = next;
+  }
+}
+
 function renderText(display, text) {
   const words = text.split(' ');
   const characters = [];
@@ -952,6 +977,8 @@ function renderText(display, text) {
   display.replaceChildren();
   appendWords(100);
   characters[0]?.classList.add('current');
+  passageWords.set(characters, { indexes: wordIndexes(text), elements: groups.map(([group]) => group), current: -1, next: -1 });
+  markWords(characters, 0);
   return {
     characters,
     ensureAhead(position) {
@@ -1009,6 +1036,7 @@ function updateCharacterStates(characters, typed, target, start = 0) {
     // Only touch changed characters so settled letters keep their finished animation.
     if (characters[index].className !== state) characters[index].className = state;
   }
+  markWords(characters, typed.length);
 }
 
 // Repeats are for open practice only: a retest always needs text the profile hasn't seen.
@@ -4736,6 +4764,7 @@ function bindEvents() {
   $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()));
   $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
+  $('word-highlight').addEventListener('change', (event) => setWordHighlight(event.target.value));
   keybindingEditor = createKeybindingEditor({
     form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => prefs.keybindings,
     onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
@@ -5190,6 +5219,13 @@ function setMinimum(key, value) {
   } else if (attempt.status === 'running') resetSession('practice');
 }
 
+// A display preference like text size: it never restarts the run or enters the test conditions.
+function setWordHighlight(mode) {
+  prefs.wordHighlight = normalizeWordHighlight(mode);
+  applyPreferences();
+  saveChoice('wordHighlight');
+}
+
 function setWordList(id, kind = restartKind()) {
   if (!wordListIds.includes(id)) return;
   prefs.wordList = id;
@@ -5286,6 +5322,8 @@ function paletteCommands(query) {
     ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? `${value} wpm` : 'off'}`, keywords: 'min wpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
+    // Named "this word" / "next word" so no mode reads like the palette's "current" hint.
+    ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(prefs.keyboard && prefs.fingerMap), on: prefs.keyboard && prefs.fingerMap, run: toggleFingerMap },

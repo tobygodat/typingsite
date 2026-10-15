@@ -74,6 +74,40 @@ test('an account hosts a guest across separate contexts, shares progress and fin
   } finally { await context.close(); }
 });
 
+// The online passage marks words through its own input handler and its resume path.
+test('the word highlight follows the online caret, including a resumed prefix', async ({ page, browser, supabase }) => {
+  const tinted = () => page.locator('#online-text-display .word').evaluateAll((nodes) => nodes
+    .filter((node) => [...node.children].some((char) => !char.classList.contains('wrong') && getComputedStyle(char).backgroundColor !== 'rgba(0, 0, 0, 0)'))
+    .map((node) => Number(node.dataset.wordIndex)));
+  const room = await hostRace(page, supabase);
+  await openSettings(page);
+  await page.locator('#word-highlight').selectOption('current');
+  await page.keyboard.press('Escape');
+  await expect.poll(() => supabase.profileFor('host@stilltype.test')?.preferences.wordHighlight, { timeout: 8000 }).toBe('current');
+  const { context, guest, errors } = await guestPage(browser, supabase, await page.locator('#online-guest-link').inputValue());
+  try {
+    await guest.locator('#online-guest-name').fill('Lin');
+    await guest.locator('#join-online-race').click();
+    await expect(page.locator('#online-players')).toContainText('Lin');
+    await page.locator('#online-ready').click();
+    await guest.locator('#online-ready').click();
+    await expect(page.locator('#online-input')).toBeEnabled({ timeout: 12000 });
+    expect(await tinted()).toEqual([0]);
+    const words = (await page.locator('#online-accessible-passage').textContent()).split(' ');
+    const first = `${words[0]} `;
+    await typeInto(page, first, '#online-input', { delay: 60 });
+    expect(await tinted()).toEqual([1]);
+    // After a reload the acknowledged prefix is redrawn, and the highlight resumes on the next word.
+    await expect.poll(() => room.players[0].typed).toBe(first);
+    await page.reload();
+    await expect(page.locator('#online-input')).toHaveValue(first);
+    expect(await tinted()).toEqual([1]);
+    await typeInto(page, `${words[1]} `, '#online-input', { delay: 60 });
+    expect(await tinted()).toEqual([2]);
+    expect(errors).toEqual([]);
+  } finally { await context.close(); }
+});
+
 test('account invitations appear only in the invited account inbox', async ({ page, browser, supabase }) => {
   supabase.addUser('friend@stilltype.test');
   const room = await hostRace(page, supabase, 'friend@stilltype.test');

@@ -37,6 +37,7 @@ const SHELL = [
   '/src/progress-view.js',
   '/src/replay-view.js',
   '/src/typing.js',
+  '/src/word-highlight.js',
   '/src/words.js',
   '/src/fonts/literata-roman.woff2',
   '/src/fonts/literata-italic.woff2',

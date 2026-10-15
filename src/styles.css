@@ -91,6 +91,8 @@
   --heat-3: rgba(255, 138, 107, 0.56);
   --warning: #e0b565;
   --selection: #34322e;
+  /* The word highlight: a faint wash of the text colour, light enough that untyped (muted) letters keep 4.5:1. */
+  --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
   --ghost: #b9c3ff;
   --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
   --card-top: #1f1e1c;
@@ -124,6 +126,7 @@
   --heat-3: rgba(180, 67, 44, 0.44);
   --warning: #8a5a00;
   --selection: #e3dccf;
+  --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
   --ghost: #434db5;
   --shadow-float: 0 8px 24px rgba(70, 56, 30, 0.12);
   --card-top: #fffdf9;
@@ -409,7 +412,8 @@ kbd {
 .preference-row:has(:disabled) { cursor: default; }
 .preference-row:has(:disabled):hover { background: none; }
 .preference-note { color: var(--muted); font-size: var(--text-label); line-height: 1.35; }
-.preference-row .select { width: 104px; height: 36px; font-size: 14px; }
+/* Wide enough for the longest options ("next word", "personal best") without clipping. */
+.preference-row .select { width: 116px; height: 36px; font-size: 14px; }
 /* Two narrow selects share one row (minimum accuracy and speed). */
 .preference-row > .preference-pair { flex: none; display: flex; gap: var(--space-2); }
 .preference-pair .select { width: auto; padding-left: 10px; }
@@ -426,7 +430,7 @@ kbd {
 .preference-row[hidden] { display: none; }
 .pace-note { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); }
 .pace-note:empty { display: none; }
-.preference-row .pace-wpm { width: 104px; height: 36px; font-size: 14px; }
+.preference-row .pace-wpm { width: 116px; height: 36px; font-size: 14px; }
 
 .preference-action { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
 
@@ -1172,6 +1176,24 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
   background: var(--danger-soft);
 }
 
+/* Word highlight (settings): a quiet tint on the current or next word. It is a letter state like
+   the ones above: it moves with the caret from word to word at once, with no transition of its own.
+   It is neutral, so it never reads as the green current-state accent or the coral miss. The tint
+   sits on the word's letters, not the word, and skips a miss, so a miss keeps exactly its own
+   coral tint over whatever the passage sits on. */
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:not(.wrong) {
+  background: var(--word-highlight);
+  transition: none;
+}
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:first-child {
+  border-start-start-radius: var(--radius-sm);
+  border-end-start-radius: var(--radius-sm);
+}
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:last-child {
+  border-start-end-radius: var(--radius-sm);
+  border-end-end-radius: var(--radius-sm);
+}
+
 /* Forced colours strip the tint, so keep the mark as a system highlight. */
 @media (forced-colors: active) {
   .char.wrong,
@@ -1180,6 +1202,10 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
     color: MarkText;
     background: Mark;
   }
+
+  /* The word tint is stripped too; a system-colour outline marks the word instead. */
+  body[data-word-highlight="current"] .word.word-current,
+  body[data-word-highlight="next"] .word.word-next { outline: 1px solid CanvasText; }
 }
 
 .caret {
