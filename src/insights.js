@@ -116,28 +116,9 @@ export const validRun = (run) => run.status === 'complete' && !run.interrupted;
 // text) is never one, whatever kind list it might later share.
 export const practiceRun = (run) => validRun(run) && comparableKind(run.kind) && ['test', 'retest'].includes(run.kind);
 // Two exclusions meet here: by kind (comparableKind, above) and by text, since only fresh text counts toward
-// bests, trends and weekly medians: repeated text (fresh: false) flatters a score.
+// bests, trends and weekly medians: repeated text (fresh: false) flatters a score. Bests are judged only as
+// they are set: one stored before repeat quotes (perhaps by an exhausted pool's fallback) stays as it is.
 export const trendRun = (run) => practiceRun(run) && run.fresh !== false;
-
-// Before repeat quotes, a run on an exhausted quote pool (fresh: false) could set a best. A best now records
-// `fresh: true`, since only fresh text sets one. An older, unmarked best is checked against its run while that
-// run is retained: fresh text marks it, so the answer outlives the summary; repeated text gives way to the best
-// saved fresh run at its conditions, or the best goes. An unmarked best whose run has already left the window
-// can't be checked and is kept as stored: unrecorded freshness counts as fresh everywhere else, and recomputing
-// it from the window would swap a genuine old best for a lower recent one.
-export function freshBests(bests, runs) {
-  const byId = new Map(runs.map((r) => [r.id, r]));
-  const kept = {};
-  for (const [key, best] of Object.entries(bests)) {
-    const source = best?.fresh === true ? null : byId.get(best?.attemptId);
-    if (!source) { kept[key] = best; continue; }
-    if (source.fresh !== false) { kept[key] = { ...best, fresh: true }; continue; }
-    const top = runs.filter((r) => trendRun(r) && conditionKey(r.conditions) === key)
-      .reduce((a, r) => (!a || r.score.wpm > a.score.wpm ? r : a), null);
-    if (top) kept[key] = { wpm: top.score.wpm, attemptId: top.id, at: top.at, fresh: true };
-  }
-  return kept;
-}
 
 // The best earlier completed run on this exact passage and conditions: the score a repeat chases.
 // It is derived from saved summaries and never becomes a personal best.

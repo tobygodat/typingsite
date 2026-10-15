@@ -1845,7 +1845,8 @@ function storeAttempt(completed) {
   if (completed.kind === 'daily') completed.firstDailyAttempt = settleDailyFirsts([...profile.runs, completed]).at(-1).firstDailyAttempt;
   const key = conditionKey(completed.conditions);
   const score = completed.summary.score;
-  // Repeated text is saved and listed, but only fresh text can set a best.
+  // Repeated text is saved and listed, but only fresh text can set a best. Bests stored before repeat quotes
+  // are left as they are, whatever text set them.
   const eligibleBest = trendRun(completed);
   resultBestBefore = profile.bests[key] || null;
   // A custom passage is never fresh either, but it is never compared, so it has no passage best to chase.
@@ -1855,8 +1856,7 @@ function storeAttempt(completed) {
   if (comparableKind(completed.kind)) profile.attempts.push(completed);
   profile.runs.push(runRecord(completed));
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
-    // The best says its text was fresh, so freshBests never needs its run once the summary leaves the window.
-    profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString(), fresh: true };
+    profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
   }
   // The passage was marked seen when shown (resetSession). A merge with a copy that had cleared history
   // can drop marks it can't date, as it does for a passage only shown; one that was then typed, even

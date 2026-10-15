@@ -5,7 +5,7 @@ import { correctionPreference, customTextProblem, normalizeCustomText } from './
 import { normalizeKeybindings } from './keybindings.js';
 import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
-import { DAILY_GOALS, freshBests, retainTraces, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
+import { DAILY_GOALS, retainTraces, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
 import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
 
@@ -121,18 +121,18 @@ export function normalizeProfile(parsed) {
     const best = Object.values(parsed.bests || {}).find((b) => b.attemptId === trace.id);
     return runRecord(trace, trace.at || loop?.at || best?.at || null);
   });
-  const history = retainHistory(settleDailyFirsts(records), validPracticeDays(parsed.practiceDays));
   return {
     ...emptyProfile(),
     ...parsed,
     preferences: storedPreferences(rawPreferences),
     ...(Object.keys(preferencesAt).length ? { preferencesAt } : {}),
     attempts: retainTraces(settleDailyFirsts(traces)),
-    ...history,
+    ...retainHistory(settleDailyFirsts(records), validPracticeDays(parsed.practiceDays)),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
-    // Repeated text never holds a best, including one an exhausted quote pool set before repeat quotes.
-    bests: parsed.bests && typeof parsed.bests === 'object' ? freshBests(parsed.bests, history.runs) : {},
+    // Stored bests are kept exactly as saved, including any an exhausted quote pool set before repeat quotes:
+    // only a run from now on needs fresh text to set one (storeAttempt).
+    bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
     lessons: normalizeLessonProgress(parsed.lessons),
     compositions: normalizeCompositions(parsed.compositions),
   };

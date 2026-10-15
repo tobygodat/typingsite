@@ -258,8 +258,7 @@ test('clearing history makes a queued repeat fresh text, which can set a best', 
   await expect.poll(() => cloud()?.runs.map((r) => r.id !== first)).toEqual([true]);
   const profile = cloud();
   expect(profile.runs[0]).toMatchObject({ fresh: true });
-  // The best records that its text was fresh, so it stays checked after its summary leaves the window.
-  expect(Object.values(profile.bests)).toEqual([expect.objectContaining({ attemptId: profile.runs[0].id, fresh: true })]);
+  expect(Object.values(profile.bests)).toEqual([expect.objectContaining({ attemptId: profile.runs[0].id })]);
 });
 
 test('clearing history relabels an exhausted-pool repeat, and undo puts the label back', async ({ page }) => {

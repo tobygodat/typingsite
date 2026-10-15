@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { normalizeProfile } from '../src/profile.js';
 import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, summarizePatterns } from '../src/typing.js';
-import { KEY_COUNTS_VERSION, MAX_RUN_SUMMARIES, NON_COMPARABLE_KINDS, evidenceRun, filterRuns, freshBests, keyAnalysis, passageBest, practiceRun, recurringMissedWords, recurringTargets, retainRuns, standardScore, trendRun, weeklyChange } from '../src/insights.js';
+import { KEY_COUNTS_VERSION, NON_COMPARABLE_KINDS, evidenceRun, filterRuns, keyAnalysis, passageBest, practiceRun, recurringMissedWords, recurringTargets, standardScore, trendRun, weeklyChange } from '../src/insights.js';
 
 const bucket = quoteCorpus.filter((q) => q.difficulty === 'gentle' && q.text.split(/\s+/).length <= 30).map((q) => q.id);
 const quote = (overrides) => selectPassage({ mode: 'quote', quoteLength: 'short', difficulty: 'gentle', ...overrides });
@@ -109,38 +110,14 @@ test('a repeat chases the best earlier run on the same passage and conditions', 
   assert.equal(passageBest(runs, current).id, 'second');
 });
 
-test('a best that an exhausted quote pool set before repeat quotes falls back to the best saved fresh run', () => {
+test('a best stored before repeat quotes is kept as saved on load, even one an exhausted pool set', () => {
   const key = conditionKey(conditions);
-  const older = summary('older', { score: { wpm: 64, accuracy: 97 } });
   const fresh = summary('fresh', { score: { wpm: 70, accuracy: 98 } });
   const exhausted = summary('exhausted', { fresh: false, score: { wpm: 95, accuracy: 100 } });
-  const elsewhere = { wpm: 80, attemptId: 'not-retained', at: '2026-01-01T00:00:00Z' };
-  const legacy = { [key]: { wpm: 95, attemptId: 'exhausted', at: '2026-10-08T12:00:00Z' }, other: elsewhere };
-  assert.deepEqual(freshBests(legacy, [older, fresh, exhausted]), { [key]: { wpm: 70, attemptId: 'fresh', at: fresh.at, fresh: true }, other: elsewhere });
-  assert.deepEqual(freshBests(legacy, [exhausted]), { other: elsewhere }, 'with no fresh run saved, the best goes');
-  const honest = { [key]: { wpm: 70, attemptId: 'fresh', at: fresh.at } };
-  assert.deepEqual(freshBests(honest, [fresh, exhausted]), { [key]: { ...honest[key], fresh: true } }, 'a best set by fresh text is kept, now marked fresh');
-});
-
-test('a best keeps its freshness, so the check outlives its run summary', () => {
-  const key = conditionKey(conditions);
-  const fresh = summary('fresh', { score: { wpm: 70, accuracy: 98 } });
-  // A best saved before bests recorded their text is checked while its run is retained, and the answer is kept.
-  const checked = freshBests({ [key]: { wpm: 70, attemptId: 'fresh', at: fresh.at } }, [fresh]);
-  assert.deepEqual(checked, { [key]: { wpm: 70, attemptId: 'fresh', at: fresh.at, fresh: true } });
-  // Over 1,000 later runs push its summary out of the window; the best still says its text was fresh.
-  const later = Array.from({ length: MAX_RUN_SUMMARIES }, (_, i) => summary(`later-${i}`, { score: { wpm: 60, accuracy: 98 } }));
-  const retained = retainRuns([fresh, ...later]);
-  assert.equal(retained.some((r) => r.id === 'fresh'), false);
-  assert.deepEqual(freshBests(checked, retained), checked);
-
-  // An unmarked best whose run had already left the window can't be checked, even if an exhausted pool set it.
-  // It is kept as stored and stays unmarked: unrecorded freshness counts as fresh everywhere else, and recomputing
-  // from the window would swap a genuine old best for a lower recent one.
-  const evicted = retainRuns([summary('exhausted', { fresh: false, score: { wpm: 95, accuracy: 100 } }), ...later]);
-  assert.equal(evicted.some((r) => r.id === 'exhausted'), false);
-  const unchecked = { [key]: { wpm: 95, attemptId: 'exhausted', at: fresh.at } };
-  assert.deepEqual(freshBests(unchecked, evicted), unchecked);
+  const stored = { [key]: { wpm: 95, attemptId: 'exhausted', at: exhausted.at }, other: { wpm: 80, attemptId: 'not-retained', at: '2026-01-01T00:00:00Z' } };
+  const loaded = normalizeProfile({ version: 2, runs: [fresh, exhausted], bests: structuredClone(stored) });
+  assert.deepEqual(loaded.bests, stored, 'nothing re-checks an old best against its run');
+  assert.equal(loaded.runs.find((r) => r.id === 'exhausted').fresh, false, 'its run stays repeated text, out of trends');
 });
 
 test('custom text is excluded by kind as well as by freshness: never listed, trended, chased or a best', () => {
@@ -151,10 +128,8 @@ test('custom text is excluded by kind as well as by freshness: never listed, tre
   assert.equal(practiceRun(now), false);
   assert.equal(trendRun(now), false);
   assert.equal(passageBest([earlier, now], now), null, 'a custom run has no passage best to chase');
-  const key = conditionKey(customConditions);
-  assert.deepEqual(freshBests({ [key]: { wpm: 120, attemptId: 'custom-1', at: earlier.at } }, [earlier, now]), {});
 
-  // The gate reads comparableKind, so any kind added to NON_COMPARABLE_KINDS drops out of all four at once.
+  // The gate reads comparableKind, so any kind added to NON_COMPARABLE_KINDS drops out of all three at once.
   const fresh = summary('fresh-retest', { kind: 'retest' });
   const later = summary('later-retest', { kind: 'retest', fresh: false });
   assert.equal(trendRun(fresh), true);
@@ -163,7 +138,6 @@ test('custom text is excluded by kind as well as by freshness: never listed, tre
     assert.equal(practiceRun(fresh), false);
     assert.equal(trendRun(fresh), false);
     assert.equal(passageBest([fresh, later], later), null);
-    assert.deepEqual(freshBests({ [conditionKey(conditions)]: { wpm: 99, attemptId: 'later-retest', at: later.at } }, [fresh, later]), {});
   } finally {
     NON_COMPARABLE_KINDS.delete('retest');
   }
