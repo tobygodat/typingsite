@@ -1,0 +1,16 @@
+// Production hosting: a Cloudflare Worker serving the static build in dist/ (npm run build).
+// .github/workflows/ci.yml deploys it after its checks pass on every push to master.
+{
+  "$schema": "https://unpkg.com/wrangler@4.151.0/config-schema.json",
+  "name": "stilltype",
+  "compatibility_date": "2026-10-14",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist",
+    // / serves index.html and /index.html redirects to it, so sw.js caches the shell as '/'.
+    "html_handling": "auto-trailing-slash",
+    // Anything outside the build 404s, as with server.mjs.
+    "not_found_handling": "none"
+  }
+}

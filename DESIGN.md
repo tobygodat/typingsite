@@ -8,6 +8,7 @@ colors:
   raised-2: "rgba(255, 255, 255, 0.085)"
   text: "#ece8e1"
   muted: "#a39e96"
+  placeholder: "rgba(163, 158, 150, 0.8)"
   hairline: "rgba(255, 255, 255, 0.075)"
   hairline-strong: "rgba(255, 255, 255, 0.15)"
   outline: "#7d7972"
@@ -16,6 +17,9 @@ colors:
   accent-soft: "rgba(143, 209, 138, 0.13)"
   danger: "#ff8a6b"
   danger-soft: "rgba(255, 138, 107, 0.16)"
+  heat-1: "rgba(255, 138, 107, 0.18)"
+  heat-2: "rgba(255, 138, 107, 0.36)"
+  heat-3: "rgba(255, 138, 107, 0.56)"
   warning: "#e0b565"
   selection: "#34322e"
   ghost: "#b9c3ff"
@@ -27,19 +31,25 @@ colors:
   raised-2-light: "rgba(27, 26, 25, 0.07)"
   text-light: "#1b1a19"
   muted-light: "#6b665e"
+  placeholder-light: "rgba(107, 102, 94, 0.92)"
   hairline-light: "rgba(27, 26, 25, 0.1)"
   hairline-strong-light: "rgba(27, 26, 25, 0.2)"
   outline-light: "#857f75"
-  accent-light: "#2e7d4f"
+  accent-light: "#217245"
   accent-ink-light: "#fbf9f5"
   accent-soft-light: "rgba(46, 125, 79, 0.11)"
-  danger-light: "#b4432c"
+  danger-light: "#ad3d26"
   danger-soft-light: "rgba(180, 67, 44, 0.12)"
+  heat-1-light: "rgba(180, 67, 44, 0.08)"
+  heat-2-light: "rgba(180, 67, 44, 0.24)"
+  heat-3-light: "rgba(180, 67, 44, 0.44)"
   warning-light: "#8a5a00"
   selection-light: "#e3dccf"
-  ghost-light: "#4f5bc4"
+  ghost-light: "#434db5"
   card-top-light: "#fffdf9"
   card-bottom-light: "#efeae1"
+  finger-band: "rgba(255, 255, 255, 0.1)"
+  finger-band-light: "rgba(27, 26, 25, 0.05)"
 typography:
   numeral:
     fontFamily: "Literata, Iowan Old Style, Palatino Linotype, Palatino, Book Antiqua, Georgia, serif"
@@ -202,17 +212,17 @@ Density is low and deliberate. The practice screen centres the passage with the 
 
 ## Colors
 
-A warm, low-chroma neutral ramp with one green and one coral. The palette is defined twice, once for dark (`:root`, `[data-theme="dark"]`) and once for light (`[data-theme="light"]`), with identical token names. Frontmatter keys ending in `-light` are the light-theme values of the same token.
+A warm, low-chroma neutral ramp with one green and one coral. The palette is defined twice, once for dark (`:root`, `[data-theme="dark"]`) and once for light (`[data-theme="light"]`), with identical token names. Frontmatter keys ending in `-light` are the light-theme values of the same token. Both themes hold a contrast floor against what is behind it, translucent washes and mistyped-letter tints included (`tests/contrast.test.js`): text at least 4.5:1, and the caret, the ghost caret, the text-coloured focus ring, the accent border of a focused input and input outlines at least 3:1. Disabled controls, the blurred challenge-handoff veil and the dimmed idle and unfocused caret are deliberate exceptions.
 
 ### Primary
-- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. Focus rings on inputs use its soft tint (accent-soft). Text on a green fill uses accent-ink.
+- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. A focused input's border turns accent and gains a soft accent-soft ring; the accent border is the focus cue that carries the contrast. Text on a green fill uses accent-ink.
 
 ### Secondary
-- **Ember Coral** (danger): mistyped letters, the blocked caret, regressions, destructive actions and field errors. It is always paired with a second cue (a tint or a word) and never used alone.
+- **Ember Coral** (danger): mistyped letters, the blocked caret, regressions, destructive actions and field errors. It is always paired with a second cue (a tint or a word) and never used alone. Three coral heat tints (heat-1 to heat-3) shade only the Progress key heatmap, where each shaded key also prints its miss rate and a legend names the steps.
 - **Lamp Amber** (warning): interrupted runs and mixed comparison outcomes only.
 
 ### Tertiary
-- **Ghost Periwinkle** (ghost): used only for the hidden ghost pacer: its caret, its palette entry and its toast mark. It never appears anywhere else.
+- **Ghost Periwinkle** (ghost): used only for ghost carets — the hidden ghost pacer (its caret, its palette entry and its toast mark) and a friend's recorded run in a ghost race. It never appears anywhere else.
 
 ### Neutral
 - **Warm Near-Black / Warm Paper** (ground): the page.
@@ -221,6 +231,7 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 - **Raised Wash** (raised-2): the translucent hover and selection wash under nav items, ghost buttons, the gliding pill and the palette highlight.
 - **Bone** (text): primary text and correctly typed letters.
 - **Pumice** (muted): untyped passage letters, secondary copy, labels and inactive navigation.
+- **Placeholder**: input placeholder text, a translucent muted (80% in dark, 92% in light) so it stays quieter than typed text.
 - **Hairline / Strong Hairline**: rules between sections and rows (hairline), and the borders of raised surfaces, keys and secondary buttons (hairline-strong).
 - **Field Outline** (outline): input borders.
 - **Card Stock** (card-top to card-bottom): the run card's 165-degree gradient, a subtle paper-stock sheen that sits only on that card.
@@ -267,7 +278,7 @@ A single centred column, `min(1080px, 100% - 48px)` wide (100% - 32px under 760p
 - **Results:** a two-column grid (run card 320–400px, copy fluid, 64px gap). The run card is sticky at 104px from the top. Under 900px it stacks, with the card centred at up to 420px, and it stops sticking when the viewport is 1120px tall or less, since the full card runs to about 980px.
 - **Progress / Challenge:** heading row, then hairline-separated rows on fixed column grids that collapse to two columns under 900px and 760px.
 - **Spacing:** a 4px-based scale (4, 8, 12, 16, 24, 32, 40, 56, 64). Section breaks are 32px of padding above a hairline rule. Row padding is 12px (evidence) or 24px (history, race results).
-- **Breakpoints:** 900px (results and tables stack), 760px (dock moves to the bottom, keyboard and shortcuts hidden, type steps down), 360px (nav tightens; run-card stat values step down to 20px and the character breakdown takes its own row), max-height 1120px (run card un-sticks). Coarse pointers keep a 44px minimum target.
+- **Breakpoints:** 900px (results and tables stack), 760px (dock moves to the bottom, keyboard and shortcuts hidden, type steps down), 360px (nav tightens; run-card stat values step down to 20px and the character breakdown takes its own row), max-height 1120px (run card un-sticks). Any coarse pointer keeps a 44px minimum target (`any-pointer: coarse`, so a touchscreen laptop whose primary pointer is its trackpad counts too), checked for every visible control by `e2e/touch-targets.spec.js` and on a hybrid desktop by `e2e/touch-targets-hybrid.spec.js`; text-sized controls (the footer link, plain disclosures) reach it with a transparent `::after`, so neither the text nor the focus ring moves.
 
 ### Named Rules
 **The Rules-Not-Boxes Rule.** Sections are separated by a 1px hairline and space, never by a card. If a region is not a floating object or the run card, it has no background and no border box.
@@ -306,7 +317,7 @@ Mode and length pickers are a 14px frame with a hairline border, holding 36px Li
 
 ### Inputs / Fields
 - **Style:** raised fill, 1px outline border, 12px corners, 44px tall, 16px text.
-- **Focus:** the border turns accent and gains a 3px accent-soft ring.
+- **Focus:** the border turns accent and gains a 3px accent-soft ring. The accent border is the focus cue and holds 3:1; the accent-soft ring is a supplementary tint (about 1.15:1) and is not relied on for contrast.
 - **Error:** a coral border (`aria-invalid`) and a 14px coral message below.
 - **Switch:** a 38×22 track (hairline-strong, accent when on) with a text-coloured knob that slides 16px.
 
@@ -320,19 +331,29 @@ A 7px dot in the current colour, followed by a lowercase 12px mono word, coloure
 
 ### Progress, recurring patterns and daily challenge
 
-Progress keeps the editorial column: condition/period fields, two charts, run rows, then drill/retest rows, all separated by space and rules. Corrected WPM uses the green line; accuracy uses the neutral text line. Axis labels show each chart's scale. Chart points have 44px hit areas, keyboard activation and accessible labels that open the corresponding run. Charts stack on mobile and redraw at the available width. Run and comparison disclosures expose their details without adding cards.
+Progress keeps the editorial column: condition/period fields, two charts, run rows, then drill/retest rows, all separated by space and rules. Corrected WPM uses the green line; accuracy uses the neutral text line. Axis labels show each chart's scale. Chart points have 44px hit areas (48px when any pointer is coarse, where the axis labels let taps through), narrowed to the gap between neighbouring points when runs are dense so a tap always opens the point under it; the run rows below are the full-size equivalent. Points have keyboard activation and accessible labels that open the corresponding run. Charts stack on mobile and redraw at the available width. Run and comparison disclosures expose their details without adding cards.
 
 The training memory section sits below the existing drill actions. Pair headings and counts use Literata; each row offers a neutral bordered button to practice the target again. Sample counts, matching conditions, last practice and later fresh observations stay adjacent to the target.
 
 Challenge opens with the daily passage and its one filled-green action, followed by the shared-keyboard section with a neutral Start button. The daily date/reset uses the existing condition label; result history uses hairline-separated rows. First and repeat attempts, previously displayed passages and input classes are written explicitly.
 
+The optional on-screen keyboard shows the thirty main keys with a real row stagger (home a quarter key in, bottom three quarters) and a space bar, labelled for the chosen layout. Its finger map puts a small mono initial (i, m, r, p) in the corner of each key for the finger that types it, so it reads without telling shades apart and survives forced colours; a faint neutral band (`--finger-band`, never a hue) sits behind alternate fingers (index, ring) so neighbouring fingers stay apart. Letters keep their muted/text colours, so drill targets still stand out, and muted text on the band stays at 4.5:1 or more in both themes. The two hands sit a little apart, and a mono legend repeats the initials. Screen readers hear each key as one phrase ("f, left index") from visually hidden text, only while the map is on. Colemak-DH follows its ANSI angle mod. Below 760px the keyboard and both of its settings rows are hidden.
+
 Below 360px, the run-card WPM uses `--text-numeral-narrow` (80px); the existing mobile size is now `--text-numeral-mobile` (112px).
 
 ### Typing zone (signature)
-Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint (no underline). The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost pacer is a 2px periwinkle bar at 70% opacity.
+Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint (no underline). The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost pacer is a 2px periwinkle bar at 70% opacity; in a ghost race the same bar, at full opacity because it is the opponent, replays a friend's recorded keystrokes, stepping from key to key with no transition.
+
+### Composing practice
+"compose" joins the mode segments. The passage block becomes a prompt at title size with a mono conditions line, the green countdown on the right and a ghost "Another prompt" that steps back while writing. The writing field is open, like the passage: no fill and no border, Literata at the passage size, three lines tall and scrolling inside with no scrollbar, with the field’s own accent caret held solid (`caret-animation: manual`) and a muted italic placeholder. Where `caret-animation` isn’t supported, the native caret turns transparent (it still edits, selects and composes) and `src/compose-caret.js` draws a solid 2px accent bar, as tall as the letters, at the collapsed selection, measured from a hidden mirror of the field and kept whole inside it; where a line wraps it stands on the line the last key or click left it on, as the browser’s own caret does. It jumps with each key, click, scroll or re-wrap, never glides, fades or blinks, and shows only while the field is focused, nothing is selected and the session isn’t finished. The time line sits under it, then a one-line privacy note, the green Done and the start-over icon after it, so Tab from the field reaches Done first. The result follows on the same page: a lead-size heading, four facts in the live-stat style (48px light Literata, mono units and labels), an italic metric definition, the saved note and one green "Write another". The finished writing and the clock turn muted, and the field leaves the tab order. Nothing in it animates. It has no spring caret: a free-typing field has no letter positions for one to glide between.
 
 ### Run card (signature)
 A static print: 22px corners, 22px padding, a strong hairline border, and the card-stock gradient. From top to bottom it holds a mono date stamp, the 16:9 speed graph (an SVG line chart: a 2px accent line of wpm per second, averaged over a trailing three seconds; a dotted muted line at the final wpm; coral dots on the line where mistakes happened; hairline gridlines at 0, half and top with 12px mono labels, and a mono time axis), a one-line mono legend, which draws once over about 450ms (`--dur-develop`), the numeral WPM with a mono unit, a three-column facts list (mono labels, 24px Literata values), an italic 13px metric note, and the mono conditions line. It does not tilt, shine or animate after the graph has drawn.
+
+### Learn to type and the finger map
+The learn screen is an editorial column like Progress: the page heading, then the current lesson (or the last lesson result) beside the finger map, then hairline-separated lesson rows with keys as `kbd` caps, the fingers in words, a status word (passed in green, next in green, locked muted) and Literata numbers. The current block holds the screen's one filled-green action. A lesson result lists accuracy, wpm, first-try errors and time as Literata numbers under mono labels; each target sits under its number with a status word, "met" (green) or "not met" (muted). Nothing about a missed target is coral: it isn't an error or a regression.
+
+The finger map is the on-screen keyboard split into two hands, with each column labelled underneath by its finger (pinky, ring, middle, index) over a strong hairline rule, and the space bar labelled "thumbs". Learned keys read in the text colour, keys not yet learned stay muted, and the current lesson's keys get a full green edge (the caption points at it, so it keeps 3:1 against the ground in both themes). Finger names wider than their column overflow evenly on both sides. It shows on the learn screen and under the passage for the whole of a lesson, whatever the keyboard setting; from 901px wide a lesson reserves two passage lines (its passage is about 60 characters), so the finger names and thumbs row stay above the fold at 721px tall, and the lesson's description keeps only the short key-pair label; under 760px the keys shrink to the column and the finger names shorten to a letter, with a one-line legend. Its accessible name lists every finger's keys. The entry point is a quiet underlined "learn to type" text button at the end of the practice controls, plus first-run links on Train and Progress; there is no banner.
 
 ### Command palette
 A 600px opaque raised panel with 22px corners over a flat dim. It has a 62px search row (19px input) and 46px option rows with a 6px state dot (accent when selected). Mono group labels and mono hints sit on the right. It enters and exits with a 4px lift and fade over 150ms.
@@ -357,7 +378,7 @@ Opaque raised pills of 16px radius at the bottom centre, with a status dot and 1
 - **Don't** reintroduce the effects removed after the critique: a streak glow or caret aura, a letter ink trail (letters landing lit and cooling), an error shake, digit pop-ins or number reels, a word underline or lens sweeping through the glyphs, run-card tilt, glare or foil, glass surfaces, a live rhythm strip, or blur reveals on restart and results.
 - **Don't** use backdrop-filter, translucent surfaces or coloured glows. Floating surfaces are opaque raised stock with the one float shadow. (The challenge handoff's blurred passage veil is a concealment device that hides the next player's text. It is not a reveal effect and must not spread elsewhere.)
 - **Don't** add kickers or eyebrows above headings, and don't use uppercase tracked labels.
-- **Don't** add a second accent. Periwinkle belongs to the ghost pacer alone, and amber to interrupted and mixed results alone.
+- **Don't** add a second accent. Periwinkle belongs to ghost carets alone, and amber to interrupted and mixed results alone.
 - **Don't** box ordinary sections as cards. The run card is the one card.
 - **Don't** move the app back toward the retired Ash system: no blue call to action, no Geist sans, no dark-only rule, no mono status pills.
 - **Don't** invest in the wordmark. "Stilltype" is a working title, and the brand stays an italic word and a green full stop.

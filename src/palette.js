@@ -139,6 +139,12 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     const option = event.target.closest('[role="option"]');
     if (option) run(Number(option.dataset.index));
   });
+  // A press on an option or the backdrop leaves focus in the search field, as Enter and Escape do.
+  // Otherwise the browser focuses the dialog and puts the selection on the pressed text; close then
+  // returns focus to the typing input without moving the selection there, so keys type nothing.
+  dialog.addEventListener('mousedown', (event) => {
+    if (event.target === dialog || list.contains(event.target)) event.preventDefault();
+  });
   dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
   dialog.addEventListener('click', (event) => { if (event.target === dialog) close(); });
   trigger?.addEventListener('click', open);

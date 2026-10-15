@@ -14,7 +14,7 @@ export function parseBinding(value, action) {
   const mods = parts.map(alias);
   if (!key || modifiers.includes(key) || mods.some((mod) => !modifiers.includes(mod)) || new Set(mods).size !== mods.length
     || (mods.includes('Mod') && (mods.includes('Ctrl') || mods.includes('Meta')))) return { error: 'Use a key such as Escape, Tab, Enter, F2 or Ctrl+Shift+E.' };
-  if (mods.includes('Ctrl') && mods.includes('Alt')) return { error: 'Ctrl+Alt is reserved for AltGr typing.' };
+  if ((mods.includes('Ctrl') || mods.includes('Mod')) && mods.includes('Alt')) return { error: 'Ctrl+Alt is reserved for AltGr typing.' };
   if (mods.includes('Ctrl') && mods.includes('Meta')) return { error: 'Choose Ctrl, Meta or Mod, not Ctrl and Meta together.' };
   if (key === 'Tab' && mods.length) return { error: 'Modified Tab is reserved for focus and browser navigation.' };
   if (key === 'Escape' && mods.length) return { error: 'Use Escape without modifiers so menus can dismiss it.' };
@@ -91,13 +91,17 @@ export function ariaShortcuts(binding) {
 export function createKeybindingEditor({ form, status, getBindings, onSave }) {
   const actions = Object.keys(DEFAULT_KEYBINDINGS);
   let recording = null;
+  let renderedBindings = null;
   const input = (action) => form.querySelector(`[name="${action}"]`);
   const feedback = (message) => { status.textContent = message; };
   function stopRecording() {
     recording = null;
     form.querySelectorAll('[data-record]').forEach((button) => button.setAttribute('aria-pressed', 'false'));
   }
-  function refresh() {
+  function refresh({ force = false } = {}) {
+    const signature = JSON.stringify(getBindings());
+    if (!force && signature === renderedBindings) return;
+    renderedBindings = signature;
     stopRecording();
     for (const action of actions) {
       input(action).value = getBindings()[action];
@@ -122,7 +126,7 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
   });
   form.querySelector('[data-reset-bindings]').addEventListener('click', () => {
     onSave({ ...DEFAULT_KEYBINDINGS });
-    refresh();
+    refresh({ force: true });
     feedback('Default keybindings restored.');
   });
   form.querySelectorAll('[data-record]').forEach((button) => button.addEventListener('click', () => {

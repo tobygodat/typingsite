@@ -271,3 +271,22 @@ test('test content and keybindings coexist, and resetting bindings preserves num
   await expect(page.locator('#condition-line')).not.toContainText('numbers');
   await expect(page.locator('#restart-key-hint')).toHaveText('esc');
 });
+
+test('unsaved binding edits survive unrelated settings updates', async ({ page }) => {
+  await openApp(page);
+  await editBindings(page, { restart: 'Ctrl+Shift+E' });
+  await page.locator('#font-size').selectOption('36');
+  await expect(page.locator('#keybinding-restart')).toHaveValue('Ctrl+Shift+E');
+  await page.locator('#live-toggle').check();
+  await expect(page.locator('#keybinding-restart')).toHaveValue('Ctrl+Shift+E');
+  await saveBindings(page);
+  await expect(page.locator('#restart-button')).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+E');
+});
+
+test('Mod+Alt cannot bypass the AltGr safety rule', async ({ page }) => {
+  await openApp(page);
+  await editBindings(page, { commands: 'Mod+Alt+K' });
+  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
+  await expect(page.locator('#keybinding-commands')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#keybinding-commands-error')).toContainText('AltGr');
+});

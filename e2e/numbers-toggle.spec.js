@@ -38,7 +38,8 @@ test('numbers live in test content settings, default off, and keep practice best
   await page.locator('#word-list').selectOption('1k');
   await expect(page.locator('#condition-line')).toContainText('english 1k');
   await page.locator('#word-list').selectOption('200');
-  await page.getByLabel('numbers', { exact: true }).check();
+  // By role: the label also holds the hidden "fixed for standard" note, which isn't part of its name.
+  await page.getByRole('checkbox', { name: 'numbers', exact: true }).check();
   await expect(page.locator('#condition-line')).toContainText('numbers');
   await expect.poll(() => passageText(page)).toMatch(/\d/);
   await expect(page.locator('#best')).toHaveText('No best yet');
