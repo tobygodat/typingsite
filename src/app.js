@@ -1395,6 +1395,7 @@ function renderKeys(runs) {
     return row;
   }));
   selectHeatKey(heatKey, { focus: hadFocus && !picture });
+  const topRate = Math.max(...analysis.pairs.map((p) => p.missRate));
   const rows = analysis.pairs.map((p) => {
     const tr = document.createElement('tr');
     // Denominator: runs with at least MIN_PATTERN_SAMPLES clean intervals for this pair.
@@ -1403,8 +1404,12 @@ function renderKeys(runs) {
       ? `Slower than your median in ${p.slowRuns} of ${p.timedRuns} ${p.timedRuns === 1 ? 'run' : 'runs'} with at least ${MIN_PATTERN_SAMPLES} clean intervals`
       : `No run has ${MIN_PATTERN_SAMPLES} clean intervals for this pair yet`;
     if (!p.timedRuns) slow.append(element('span', ` ${slow.title}`, 'sr-only'));
-    tr.append(element('td', `“${p.pair}”`), element('td', `${pct(p.missRate)} (${p.errors})`, 'num'),
-      slow, element('td', String(p.samples), 'num'));
+    const rate = element('td', `${pct(p.missRate)} (${p.errors})`, 'num');
+    const bar = element('span', '', 'pair-bar');
+    bar.setAttribute('aria-hidden', 'true');
+    bar.style.width = `${topRate ? (p.missRate / topRate) * 100 : 0}%`;
+    rate.append(bar);
+    tr.append(element('td', `“${p.pair}”`), rate, slow, element('td', String(p.samples), 'num'));
     return tr;
   });
   $('pairs-table').querySelector('tbody').replaceChildren(...rows);

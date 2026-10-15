@@ -76,6 +76,20 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   await expect(pairRow('ro').locator('td').nth(2)).toHaveText(/^—/);
   await expect(pairRow('ro').locator('td').nth(2)).toHaveAttribute('title', 'No run has 10 clean intervals for this pair yet');
   await expect(pairRow('do').locator('td').nth(2)).toHaveText('2 of 2');
+  // Each error rate has a bar scaled to the highest rate in the table.
+  const bars = await rows.evaluateAll((trs) => trs.map((tr) => ({
+    rate: parseFloat(tr.cells[1].textContent), width: tr.querySelector('.pair-bar').getBoundingClientRect().width })));
+  const top = bars.reduce((a, b) => (b.rate > a.rate ? b : a));
+  expect(top.width).toBeGreaterThan(0);
+  expect(bars.some((bar) => bar.rate < top.rate)).toBe(true);
+  for (const bar of bars) expect(bar.width).toBeCloseTo((top.width * bar.rate) / top.rate, 0);
+  await expect(rows.first().locator('.pair-bar')).toHaveAttribute('aria-hidden', 'true');
+
+  // Wide screens put the pairs beside the keyboard.
+  const keyboardBox = await heatmap.boundingBox();
+  const tableBox = await page.locator('#pairs-table').boundingBox();
+  expect(tableBox.x).toBeGreaterThan(keyboardBox.x + keyboardBox.width);
+  expect(tableBox.y).toBeLessThan(keyboardBox.y + keyboardBox.height);
 
   // The heatmap is one tab stop; arrow keys move between keys and the line below shows the numbers.
   const detail = page.locator('#key-detail');
@@ -173,7 +187,9 @@ test.describe('coarse pointer at 320px', () => {
       expect(target.height, target.id).toBeGreaterThanOrEqual(44);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
-    // The legend wraps inside the column.
+    // Narrow screens stack the pairs under the keyboard, and the legend wraps inside the column.
+    const keyboardBox = await heatmap.boundingBox();
+    expect((await page.locator('#pairs-table').boundingBox()).y).toBeGreaterThan(keyboardBox.y + keyboardBox.height);
     const legend = page.locator('#heat-legend');
     expect(await legend.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(0);
     await expect(heatmap.locator('.key-rate').first()).toBeHidden();

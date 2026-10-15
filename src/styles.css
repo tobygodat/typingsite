@@ -1565,6 +1565,12 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .pairs-table th { font: 500 var(--text-mono)/1.4 var(--font-mono); color: var(--muted); text-align: left; padding: var(--space-2) var(--space-6) var(--space-2) 0; border-bottom: 1px solid var(--hairline); }
 .pairs-table td { padding: var(--space-2) var(--space-6) var(--space-2) 0; border-bottom: 1px solid var(--hairline); }
 .pairs-table td.num { font-variant-numeric: tabular-nums; }
+.pair-bar { display: block; height: 3px; margin-top: var(--space-1); border-radius: var(--radius-full); background: var(--danger); }
+@media (min-width: 1100px) {
+  .keys-layout { display: grid; grid-template-columns: min-content minmax(0, 1fr); gap: var(--space-14); align-items: start; }
+  .keys-pairs .pairs-heading { margin-top: var(--space-4); }
+  .keys-pairs .pairs-table { width: 100%; }
+}
 @media (max-width: 600px) {
   .key-heatmap { --heat-key: var(--space-8); display: grid; grid-template-columns: minmax(0, 1fr); }
   .key-heatmap .key { flex: 1 1 0; min-width: 0; max-width: var(--heat-key); }
