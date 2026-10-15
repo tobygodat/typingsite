@@ -410,6 +410,21 @@ kbd {
 .pace-note:empty { display: none; }
 .preference-row .pace-wpm { width: 104px; height: 36px; font-size: 14px; }
 
+.keybindings-category { border-top: 1px solid var(--hairline-strong); margin-top: var(--space-2); padding: var(--space-2); }
+.keybindings-category > summary { min-height: var(--control); display: flex; align-items: center; gap: var(--space-2); cursor: pointer; font-size: var(--text-small); font-weight: 600; }
+.keybindings-category > summary::after { content: ' +'; color: var(--muted); }
+.keybindings-category[open] > summary::after { content: ' −'; }
+.keybindings-category p { font-size: var(--text-small); color: var(--muted); }
+.keybinding-row { margin-block: var(--space-4); }
+.keybinding-row label { display: block; font-size: var(--text-small); margin-bottom: var(--space-2); }
+.keybinding-controls, .keybinding-actions { display: flex; align-items: center; gap: var(--space-2); }
+.keybinding-controls .input { min-width: 0; flex: 1; font: var(--text-fine)/1.5 var(--font-mono); }
+.keybinding-controls .btn { flex: none; }
+.keybindings-category .btn { height: var(--control); }
+.keybindings-category .keybinding-error { color: var(--danger); margin-top: var(--space-2); }
+.keybinding-error:empty { display: none; }
+.keybinding-controls [aria-invalid="true"] { border-color: var(--danger); }
+.keybinding-controls [aria-pressed="true"] { outline: 2px solid var(--accent); }
 .preference-category > summary { color: var(--muted); }
 .preference-category > summary::after { content: '+'; }
 .preference-category[open] > summary::after { content: '−'; }

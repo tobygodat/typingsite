@@ -39,6 +39,7 @@ import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layo
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
+import { normalizeKeybindings, matchesBinding, bindingLabel, ariaShortcuts, createKeybindingEditor } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
@@ -153,6 +154,7 @@ let wordsPassage = null;
 let missedListWords = [];
 const ghostOn = () => prefs.paceCaret !== 'off';
 let palette = null;
+let keybindingEditor = null;
 let onlineRace = null;
 let inbox = null;
 let friendsBoard = null;
@@ -263,7 +265,7 @@ function commitPreferences(chosen = []) {
   const json = JSON.stringify(prefs);
   if (json === livePreferences && !chosen.length) return;
   const before = JSON.parse(livePreferences);
-  const edited = Object.keys(prefs).filter((key) => prefs[key] !== before[key] || chosen.includes(key));
+  const edited = Object.keys(prefs).filter((key) => (key === 'keybindings' ? JSON.stringify(prefs[key]) !== JSON.stringify(before[key]) : prefs[key] !== before[key]) || chosen.includes(key));
   const stamps = profile.preferencesAt || {};
   profile.preferences = { ...profile.preferences, ...Object.fromEntries(edited.map((key) => [key, prefs[key]])) };
   profile.preferencesAt = { ...stamps, ...Object.fromEntries(edited.map((key) => [key, account.stampAfter(stamps[key])])) };
@@ -277,7 +279,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'focusMode', 'fingerMap'];
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'keybindings'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -299,7 +301,7 @@ function followStoredPreferences({ conditions = !attemptPrepared() } = {}) {
   let changedConditions = false;
   preferencesWaiting = false;
   for (const key of new Set([...Object.keys(stored), ...Object.keys(prefs)])) {
-    if (next[key] === stored[key]) continue;
+    if (key === 'keybindings' ? JSON.stringify(next[key]) === JSON.stringify(stored[key]) : next[key] === stored[key]) continue;
     if (!conditions && !DISPLAY_PREFERENCES.includes(key)) {
       preferencesWaiting = true;
       continue;
@@ -584,6 +586,16 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  keybindingEditor?.refresh();
+  document.querySelectorAll('.restart-key-hint').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.restart); });
+  $('restart-button').title = prefs.keybindings.restart ? `Restart test (${bindingLabel(prefs.keybindings.restart)})` : 'Restart test';
+  $('exit-focus-hint').textContent = bindingLabel(prefs.keybindings.exitFocus);
+  for (const [id, action] of [['restart-button', 'restart'], ['palette-trigger', 'commands'], ['exit-focus', 'exitFocus']]) {
+    const shortcuts = ariaShortcuts(prefs.keybindings[action]);
+    if (shortcuts) $(id).setAttribute('aria-keyshortcuts', shortcuts);
+    else $(id).removeAttribute('aria-keyshortcuts');
+  }
+  document.querySelectorAll('.command-key').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.commands); });
   $('layout-select').value = prefs.layout;
   syncLockedSettings();
   armPace();
@@ -1347,6 +1359,10 @@ const NOTICES = {
 };
 
 function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
+  if (prefs.keybindings.restart !== 'Escape') {
+    const hint = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} to restart` : 'Restart shortcut is disabled';
+    message = message.replace('Esc to restart', hint);
+  }
   if (type === 'primary') {
     $('input-help').textContent = message;
     if (sticky) primaryNotice = message;
@@ -3092,7 +3108,7 @@ function setupRacePlayer() {
   raceFx.reset(race.characters);
   $('race-accessible-passage').textContent = race.passage.text;
   updateRaceProgress(replayAttempt(race.attempt));
-  $('race-help').textContent = 'Esc restarts.';
+  $('race-help').textContent = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.';
   $('race-input').focus({ preventScroll: true });
 }
 
@@ -4055,6 +4071,11 @@ function bindEvents() {
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
+  keybindingEditor = createKeybindingEditor({
+    form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => prefs.keybindings,
+    onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
+  });
+  keybindingEditor.refresh();
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
   $('finger-toggle').addEventListener('change', (event) => { prefs.fingerMap = event.target.checked; applyPreferences(); saveChoice('fingerMap'); });
@@ -4114,7 +4135,7 @@ function bindEvents() {
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   const replayView = createReplayView($('replay-dialog'));
   $('watch-replay').addEventListener('click', () => replayView.open(shownResult));
-  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(sessionKind === 'missed' ? 'missed' : restartKind(), { focus: true, leaveCompose: true }));
+  $('run-again').addEventListener('click', runAgain);
   $('result-words').addEventListener('keydown', moveWordFocus);
   $('result-words').addEventListener('focusin', (event) => {
     const word = event.target.closest('[role="option"]');
@@ -4211,38 +4232,59 @@ function bindEvents() {
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    // An open dialog (palette, replay, account, clear, suggestion, or any later one) owns the
-    // keyboard, so its native Escape closes it rather than leaving focus mode or restarting.
-    if (document.querySelector('dialog[open]')) return;
-    if (event.key === 'Escape' && preferences.open) {
-      event.preventDefault();
-      preferences.open = false;
-      preferences.querySelector('summary').focus();
-      return;
-    }
-    if (event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key)) && (document.activeElement === $('typing-input') || document.activeElement === $('race-input'))) {
+    if (event.defaultPrevented) return;
+    const typing = document.activeElement === $('typing-input') || document.activeElement === $('race-input');
+    if (typing && event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key))) {
       event.preventDefault();
       showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
       return;
     }
-    if (event.key === 'Escape' && prefs.focusMode) {
-      event.preventDefault();
-      prefs.focusMode = false;
-      applyPreferences();
-      saveProfile();
-      focusPractice();
-    } else if (event.key === 'Escape' && document.activeElement === $('compose-input')) {
-      event.preventDefault();
-      compose.restart();
-    } else if (event.key === 'Escape' && document.activeElement === $('typing-input')) {
-      event.preventDefault();
-      resetSession(sessionKind, { focus: true });
-    } else if (event.key === 'Escape' && document.activeElement === $('race-input')) {
-      event.preventDefault();
-      setupRacePlayer();
+    if (((event.isComposing || event.keyCode === 229) && !activeAccentComposition()) || event.getModifierState?.('AltGraph')) return;
+    if (document.querySelector('dialog[open]')) {
+      if (palette?.isOpen() && matchesAppBinding(event, prefs.keybindings.commands)) {
+        event.preventDefault();
+        if (!event.repeat) palette.close();
+      }
+      return;
     }
+    const menuOpen = preferences.open || $('account').open || $('inbox').open;
+    if (menuOpen && event.key === 'Escape') {
+      if (preferences.open && !keybindingEditor.isRecording()) {
+        event.preventDefault();
+        keybindingEditor.stopRecording();
+        preferences.open = false;
+        preferences.querySelector(':scope > summary').focus();
+      }
+      return;
+    }
+    const active = document.activeElement;
+    const onTypingSurface = ['typing-input', 'race-input', 'online-input', 'compose-input'].includes(active?.id);
+    const editable = active?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+    if (!keybindingEditor.isRecording() && (!editable || onTypingSurface) && matchesAppBinding(event, prefs.keybindings.commands)) {
+      event.preventDefault();
+      if (!event.repeat) palette.open();
+      return;
+    }
+    if (menuOpen) return;
+    if (prefs.focusMode && (!editable || onTypingSurface) && matchesAppBinding(event, prefs.keybindings.exitFocus)) {
+      event.preventDefault();
+      if (!event.repeat) {
+        prefs.focusMode = false;
+        applyPreferences();
+        saveProfile();
+        focusPractice();
+      }
+      return;
+    }
+    if (composeOpen && active === $('compose-input') && matchesAppBinding(event, prefs.keybindings.restart)
+      && !(event.key === 'Enter' && compose.isRunning())) {
+      event.preventDefault();
+      if (!event.repeat) compose.restart();
+      return;
+    }
+    if (quickRestart(event)) return;
     document.querySelectorAll('.key').forEach((key) => key.classList.toggle('active', key.dataset.key === event.key.toLowerCase()));
-  });
+  }, true);
   document.addEventListener('keyup', () => document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active')));
   window.addEventListener('blur', () => {
     document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active'));
@@ -4251,7 +4293,7 @@ function bindEvents() {
     markRaceInterrupted();
   });
   document.addEventListener('pointerdown', (event) => {
-    if (preferences.open && !preferences.contains(event.target)) preferences.open = false;
+    if (preferences.open && !preferences.contains(event.target)) { preferences.open = false; keybindingEditor.stopRecording(); }
   });
 
   // The chrome fades while typing; a real mouse nudge (not layout-induced jitter) brings it back.
@@ -4349,6 +4391,54 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : restartKind());
 }
 
+function activeAccentComposition() {
+  return Boolean(composition && !composition.refused
+    && accentComposition({ key: composition.key, preview: composition.mark }));
+}
+
+function matchesAppBinding(event, binding) {
+  return matchesBinding(event, binding, { allowAccentComposition: activeAccentComposition() });
+}
+
+// Restart only owns the typing surfaces, bare practice/results page, and run-again.
+// Controls retain their native activation and Tab navigation; online rooms cannot restart.
+function quickRestart(event) {
+  if (!matchesAppBinding(event, prefs.keybindings.restart)) return false;
+  const view = document.body.dataset.view;
+  const active = document.activeElement;
+  const onInput = active === $('typing-input');
+  const onLocalRace = active === $('race-input');
+  const onPage = !active || active === document.body || active === document.documentElement;
+  const onRunAgain = event.key !== 'Tab' && view === 'results' && active === $('run-again');
+  if (!onInput && !onLocalRace && !onRunAgain && !(onPage && (view === 'practice' || view === 'results'))) return false;
+  if (event.key === 'Enter' && (onLocalRace ? race.attempt : attempt)?.status === 'running') return false;
+  event.preventDefault();
+  if (!event.repeat) {
+    if (onLocalRace) setupRacePlayer();
+    else restartTest();
+  }
+  return true;
+}
+
+// One restart, one new passage: the result card runs again as its button does; anywhere
+// else the current test restarts as esc does.
+function restartTest() {
+  if (document.body.dataset.view === 'results') runAgain();
+  else if (composeOpen) compose.restart();
+  else resetSession(sessionKind, { focus: true });
+}
+
+function runAgain() {
+  if (sessionKind === 'daily') startDaily();
+  else resetSession(sessionKind === 'missed' ? 'missed' : restartKind(), { focus: true, leaveCompose: true });
+}
+
+// The key that restarts from where focus sits. On the result card that is the focused run-again
+// button (the palette hands focus back to it), which tab moves past and enter activates.
+function restartHint() {
+  return document.body.dataset.view === 'results' && prefs.keybindings.restart === 'Tab' ? 'enter' : bindingLabel(prefs.keybindings.restart);
+}
+
 function setWordList(id, kind = restartKind()) {
   if (!wordListIds.includes(id)) return;
   prefs.wordList = id;
@@ -4402,11 +4492,7 @@ function paletteCommands(query) {
     { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
     { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
-    // Like Esc: a lesson starts again as a lesson, composing gets a fresh field; anything else starts practice again.
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => (sessionKind === 'lesson' ? resetSession('lesson', { focus: true }) : inPractice((kind) => {
-      if (composeOpen) compose.restart();
-      else resetSession(kind, { focus: true });
-    })) },
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartHint(), run: restartTest },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: () => startLesson(nextLessonIndex(profile.lessons)) }]),
     { group: 'test', label: 'practice words you keep missing', keywords: 'missed words mistakes errors practise recurring list', hint: `${missedWords} words`, disabled: missedWords < 2, run: practiseRecurringWords },
@@ -4440,6 +4526,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'sign in…', keywords: 'log in login account', run: () => openAccountDialog('signin') },
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
+    { group: 'help', label: 'keybindings…', keywords: 'settings shortcuts restart keyboard', run: () => { const settings = document.querySelector('.preferences'); settings.open = true; document.querySelector('.keybindings-category').open = true; $('keybinding-restart').focus(); } },
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: !hasAnyHistory(), run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
@@ -4460,6 +4547,7 @@ function bindPalette() {
     onOpen: () => {
       document.querySelector('.preferences')?.removeAttribute('open');
       closeAccountMenu();
+      $('inbox').open = false;
       markInterrupted(NOTICES.paletteOpened);
       compose.interrupt(NOTICES.composePalette);
       markRaceInterrupted();
