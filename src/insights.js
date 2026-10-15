@@ -40,6 +40,8 @@ export function runRecord(attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
   const record = {
     id: attempt.id, at, kind: attempt.kind, status: attempt.status,
+    // The calendar day where the run happened, so a later reader in another zone keeps the same day.
+    day: at ? dayKey(at) : null,
     conditions: attempt.conditions, textId: attempt.textId, fresh: attempt.fresh,
     interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput),
     score: replay.score, elapsedMs: replay.elapsedMs,
@@ -178,6 +180,109 @@ export function recurringTargets(runs, loops, compatibleConditions) {
     })
     .sort((a, b) => Number(b.review) - Number(a.review) || b.errors / b.observations - a.errors / a.observations
       || b.slowRuns - a.slowRuns || a.pair.localeCompare(b.pair));
+}
+
+// Daily practice goal: minutes practised per local calendar day, from the run summaries and the archive.
+export const DAILY_GOALS = [0, 5, 10, 15, 30];
+
+export function dayKey(value) {
+  const d = new Date(value);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+// The day recorded with the run; older summaries without one fall back to their timestamp here.
+export function runDay(run) {
+  if (DAY.test(run.day)) return run.day;
+  const key = run.at ? dayKey(run.at) : '';
+  return DAY.test(key) ? key : null;
+}
+
+// Interrupted runs keep their clock going after focus is lost, so only valid runs count as practice.
+function addRunTime(totals, runs) {
+  for (const run of runs) {
+    const key = runDay(run);
+    if (!validRun(run) || !key || !(run.elapsedMs > 0)) continue;
+    totals[key] = (totals[key] || 0) + run.elapsedMs;
+  }
+  return totals;
+}
+
+// Runs that retention drops leave their time behind as whole milliseconds per day, so the calendar
+// and streak outlive the run summaries. Only the newest MAX_PRACTICE_DAYS practised days are kept.
+export const MAX_PRACTICE_DAYS = 730;
+
+export function validPracticeDays(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([key, ms]) => DAY.test(key) && Number.isFinite(ms) && ms > 0));
+}
+
+// Custom runs are real practice, so their time counts toward the goal like any other kind (it is a time total,
+// not a comparison), and a custom run that falls outside its own 50-run budget leaves its time here too.
+export function retainHistory(runs, practiceDays = {}) {
+  const keptRuns = retainRuns(runs);
+  const retainedIds = new Set(keptRuns.map((run) => run.id));
+  const days = addRunTime({ ...practiceDays }, runs.filter((run) => !retainedIds.has(run.id)));
+  const kept = Object.keys(days).sort().slice(-MAX_PRACTICE_DAYS);
+  return { runs: keptRuns, practiceDays: Object.fromEntries(kept.map((key) => [key, Math.round(days[key])])) };
+}
+
+// Completed learning activities that keep no copy-run summary (lessons and composing) put their
+// actual practice time straight into the same bounded archive. Composing supplies active time.
+export function recordPracticeTime(practiceDays, at, elapsedMs) {
+  const days = validPracticeDays(practiceDays);
+  const day = dayKey(at);
+  if (!DAY.test(day) || !Number.isFinite(elapsedMs) || elapsedMs <= 0) return days;
+  days[day] = (days[day] || 0) + elapsedMs;
+  return retainHistory([], days).practiceDays;
+}
+
+// The archive when two copies of a profile meet, given their merged runs (de-duplicated by id). An archived
+// day holds the time of runs that are gone, so it can't be matched by run id, and two copies of one person's
+// history archive the same runs: adding the archives would count those runs twice, and so would keeping one
+// side's archive beside runs the other side still keeps as summaries. What each copy says of a day (its archive
+// plus its own runs that day) is time really practised, and so is the merged runs' time. The day keeps the
+// largest of those, so no run counts twice; its archive is that total less the merged runs' time, which the
+// calendar adds back. An empty copy (a new account) takes the other's archive as it is. The trade-off:
+// different runs that two copies never shared, archived on the same day, count as the larger day, not the sum.
+export function mergePracticeDays(a, b, runs) {
+  const own = (side) => validPracticeDays(side.practiceDays);
+  const total = (side) => addRunTime(own(side), Array.isArray(side.runs) ? side.runs : []);
+  const [first, second, merged] = [total(a), total(b), addRunTime({}, runs)];
+  const days = {};
+  for (const key of [...new Set([...Object.keys(own(a)), ...Object.keys(own(b))])].sort()) {
+    const rest = Math.round(Math.max(first[key] || 0, second[key] || 0) - (merged[key] || 0));
+    if (rest > 0) days[key] = rest;
+  }
+  return days;
+}
+
+export function minutesByDay(runs, practiceDays = {}) {
+  const totals = addRunTime({ ...practiceDays }, runs);
+  for (const key of Object.keys(totals)) totals[key] /= 60000;
+  return totals;
+}
+
+// Whole minutes rounded down, so a day short of the goal never reads as meeting it.
+export const goalMinutes = (minutes) => (minutes > 0 && minutes < 1 ? '<1' : String(Math.floor(minutes || 0)));
+
+// Consecutive days meeting the goal (or with any practice when the goal is off), ending today.
+// An unfinished today does not break the streak until the day is over.
+export function practiceStreak(byDay, goal = 0, date = new Date()) {
+  const met = (d) => (goal ? (byDay[dayKey(d)] || 0) >= goal : (byDay[dayKey(d)] || 0) > 0);
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  if (!met(day)) day.setDate(day.getDate() - 1);
+  let streak = 0;
+  while (met(day)) { streak += 1; day.setDate(day.getDate() - 1); }
+  return streak;
+}
+
+// 0 = no practice, 1–4 = increasing share of the goal (10 minutes when the goal is off).
+export function practiceLevel(minutes, goal = 0) {
+  if (!(minutes > 0)) return 0;
+  const ratio = minutes / (goal || 10);
+  return ratio < 0.5 ? 1 : ratio < 1 ? 2 : ratio < 2 ? 3 : 4;
 }
 
 // Words missed on the first try in at least two of the newest 120 runs that recorded missed words,
