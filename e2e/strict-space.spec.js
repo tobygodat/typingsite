@@ -211,7 +211,7 @@ test('quick end is disabled where it changes nothing, and the palette follows', 
   await page.locator('#correction-select').selectOption('mandatory');
   await expect(page.locator('#quick-end-toggle')).toBeDisabled();
   await expect(page.locator('#quick-end-toggle')).toBeChecked();
-  await expect(page.locator('#quick-end-note')).toHaveText('this correction policy fixes how the run ends');
+  await expect(page.locator('#quick-end-note')).toHaveText('quick end applies only to free correction');
   await page.locator('#correction-select').selectOption('relaxed');
   await expect(page.locator('#quick-end-toggle')).toBeEnabled();
   await expect(page.locator('#quick-end-toggle')).toBeChecked();

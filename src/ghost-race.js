@@ -193,6 +193,7 @@ export function challengePayload(attempt) {
   const source = { ...attempt.conditions, textId: attempt.textId, sourceKind: attempt.kind };
   if (source.strictSpace === false) delete source.strictSpace;
   if (source.quickEnd === true) delete source.quickEnd;
+  if (source.layout === 'qwerty') delete source.layout;
   const conditions = challengeConditions(source, duration);
   if (!conditions) return null;
   const relaxed = attempt.conditions?.correctionPolicy === 'relaxed';

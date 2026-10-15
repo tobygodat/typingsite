@@ -1,6 +1,7 @@
 // The stored profile's shape: the settings' defaults, and how a stored copy (this device's cache, another
 // tab's, the account row) is read before anything uses or merges it (normalizeProfile).
 import { correctionPreference, customTextProblem, normalizeCustomText } from './typing.js';
+import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { retainRuns, runRecord, settleDailyFirsts } from './insights.js';
 import { normalizeLessonProgress } from './lessons.js';
@@ -17,6 +18,8 @@ export const defaultPreferences = {
   quoteLength: 'medium',
   difficulty: 'any',
   wordList: DEFAULT_WORD_LIST,
+  layout: DEFAULT_LAYOUT,
+  fingerMap: false,
   fontSize: '28',
   liveMetrics: false,
   keyboard: false,
@@ -59,6 +62,8 @@ export function validPreferences(value) {
   value.correction = correctionPreference(value);
   value.stopOnError = value.correction === 'mandatory';
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  value.layout = normalizeLayout(value.layout);
+  value.fingerMap = value.fingerMap === true;
   const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
   value.customText = customTextProblem(customText) ? '' : customText;
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
@@ -87,6 +92,14 @@ function storedPreferences(raw) {
 
 export function normalizeProfile(parsed) {
   if (parsed?.version !== 2) return emptyProfile();
+  const rawPreferences = { ...(parsed.preferences || {}) };
+  const preferencesAt = { ...(parsed.preferencesAt || {}) };
+  const oldChoice = preferencesAt.stopOnError || '';
+  const newChoice = preferencesAt.correction || '';
+  if (Object.hasOwn(rawPreferences, 'stopOnError') && (!Object.hasOwn(rawPreferences, 'correction') || oldChoice > newChoice)) {
+    rawPreferences.correction = correctionPreference({ stopOnError: rawPreferences.stopOnError });
+    if (oldChoice) preferencesAt.correction = oldChoice;
+  }
   const traces = Array.isArray(parsed.attempts) ? parsed.attempts : [];
   const records = Array.isArray(parsed.runs) ? parsed.runs : traces.map((trace) => {
     // Older traces did not have wall-clock dates. Preserve unknown dates rather than invent them.
@@ -97,7 +110,8 @@ export function normalizeProfile(parsed) {
   return {
     ...emptyProfile(),
     ...parsed,
-    preferences: storedPreferences(parsed.preferences),
+    preferences: storedPreferences(rawPreferences),
+    ...(Object.keys(preferencesAt).length ? { preferencesAt } : {}),
     attempts: settleDailyFirsts(traces),
     runs: retainRuns(settleDailyFirsts(records)),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],

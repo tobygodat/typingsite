@@ -743,3 +743,19 @@ test('stored correction preferences migrate without filling unchosen settings', 
   assert.deepEqual(normalizeProfile({ version: 2, preferences: { stopOnError: true } }).preferences,
     { stopOnError: true, correction: 'mandatory' });
 });
+
+test('a newer stop-on-error edit from an older client beats a stale correction preference', async () => {
+  const { normalizeProfile } = await import('../src/profile.js');
+  const { mergeSynced } = await import('../src/account.js');
+  const first = '2026-10-14T01:00:00.000Z';
+  const second = '2026-10-14T02:00:00.000Z';
+  const newerBuild = normalizeProfile({ version: 2, preferences: { correction: 'fail-any', stopOnError: false },
+    preferencesAt: { correction: first, stopOnError: first } });
+  const olderBuild = normalizeProfile({ version: 2, preferences: { correction: 'fail-any', stopOnError: true },
+    preferencesAt: { correction: first, stopOnError: second } });
+  for (const merged of [mergeSynced(newerBuild, olderBuild), mergeSynced(olderBuild, newerBuild)]) {
+    assert.equal(merged.preferences.correction, 'mandatory');
+    assert.equal(merged.preferencesAt.correction, second);
+  }
+  assert.equal(newerBuild.preferences.correction, 'fail-any');
+});
