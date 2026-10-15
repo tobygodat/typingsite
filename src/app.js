@@ -1210,7 +1210,9 @@ function showPace() {
   $('pace-label').hidden = !on;
   $('pace-label').textContent = on ? `pace ${pace.wpm} wpm` : '';
   $('pace-select').value = prefs.paceCaret;
-  $('pace-wpm').value = prefs.paceWpm;
+  // A speed being typed in stays as typed when this redraws (another tab's save taken in, say): setting
+  // the field would drop the edit without a change event. Leaving the field saves it and redraws.
+  if (document.activeElement !== $('pace-wpm')) $('pace-wpm').value = prefs.paceWpm;
   $('pace-custom').hidden = prefs.paceCaret !== 'custom';
   $('pace-note').textContent = on && prefs.paceCaret !== 'custom' ? (pace.fallback ? 'no runs yet — 60 wpm' : `${pace.wpm} wpm`) : '';
   document.body.dataset.ghost = on ? 'on' : 'off';
@@ -2889,6 +2891,8 @@ function bindEvents() {
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
   $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(event.target.value); setPaceCaret('custom', { speed: true }); });
+  // Left unedited, it shows any speed that arrived while it had focus (see showPace).
+  $('pace-wpm').addEventListener('blur', showPace);
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
