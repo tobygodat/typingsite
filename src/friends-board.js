@@ -11,6 +11,7 @@
 import { request, freshSession, loadSession, AuthError } from './account.js';
 import { CORPUS_VERSION, CORRECTION_POLICIES, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS,
   conditionKey } from './typing.js';
+import { isValidLength } from './lengths.js';
 import { wordListIds } from './words.js';
 import { comparableKind, dailyPassage, trendRun, validRun } from './insights.js';
 
@@ -156,8 +157,8 @@ export function shapeOf(key) {
     language: 'en', corpus, metricVersion };
   const quote = mode === 'quote';
   const written = SHAPE_MODES.includes(mode)
-    && (mode === 'time' ? TEST_DURATIONS.includes(conditions.duration) : !duration)
-    && (mode === 'words' ? TEST_COUNTS.includes(conditions.count) : !count)
+    && (mode === 'time' ? isValidLength('time', conditions.duration) : !duration)
+    && (mode === 'words' ? isValidLength('words', conditions.count) : !count)
     && (quote ? QUOTE_LENGTHS.includes(quoteLength) && QUOTE_DIFFICULTIES.includes(difficulty) && !wordList && !numbers
       : !quoteLength && !difficulty && wordListIds.includes(wordList))
     && INPUT_CLASSES.includes(inputClass) && CORRECTION_POLICIES.includes(correctionPolicy)

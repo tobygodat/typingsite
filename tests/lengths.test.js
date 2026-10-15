@@ -198,3 +198,12 @@ test('long custom runs keep fewer full traces, so the device cache stays inside 
   assert.deepEqual(retainTraces(traces, { budget: 10 }), []);
   assert.deepEqual(retainTraces([]), []);
 });
+
+test('friends board understands custom test length condition keys', async () => {
+  const { shapeOf } = await import('../src/friends-board.js');
+  const time = { mode: 'time', duration: 45, wordList: '200', correctionPolicy: 'relaxed' };
+  const words = { mode: 'words', count: 35, wordList: '200', correctionPolicy: 'relaxed' };
+  assert.equal(shapeOf(conditionKey(time)).duration, 45);
+  assert.equal(shapeOf(conditionKey(words)).count, 35);
+  assert.equal(shapeOf(conditionKey({ ...time, duration: 601 })), null);
+});
