@@ -534,10 +534,12 @@ test('while a race request is out, the toast’s and the inbox’s Join wait vis
   await page.locator('#inbox-trigger').click();
   const inboxJoin = page.locator('#inbox-list [data-inbox-action="invite"]');
   await expect(inboxJoin).toHaveAttribute('aria-disabled', 'true');
-  // The inbox keeps polling while it waits; each answer draws the list again, and focus stays on the Join.
+  // The inbox keeps polling while it waits, and focus stays on the Join. (A poll that repeats what is
+  // shown leaves the list alone; one that changes it redraws it around the focused control.)
   await inboxJoin.focus();
-  const redraws = await countRedraws(page, '#inbox-list');
-  await expect.poll(async () => { await page.evaluate(() => dispatchEvent(new Event('online'))); return redraws(); }).toBeGreaterThan(0);
+  const polls = () => supabase.requests.filter((request) => request.startsWith('POST /rest/v1/rpc/race_action')).length;
+  const before = polls();
+  await expect.poll(async () => { await page.evaluate(() => dispatchEvent(new Event('online'))); return polls(); }).toBeGreaterThan(before);
   await expect(inboxJoin).toBeFocused();
   // A click past the dimmed look does nothing, and the inbox stays open on it.
   await inboxJoin.click({ force: true });
