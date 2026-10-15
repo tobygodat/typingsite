@@ -2,6 +2,13 @@
 Read HANDOFF.md first — current state, the work queue, and the decisions already made.
 PRODUCT.md holds durable product truth (users, purpose, metric contract, accessibility floor).
 
+## Before asking to merge
+CI runs only unit tests and the build on each push; the browser suite does not run automatically,
+to save GitHub Actions minutes. Run it locally and report the result in the PR:
+`npm test`, `npm run build`, then `npm run test:e2e` (`CHROMIUM=/usr/bin/chromium` if Playwright's
+own browser isn't installed). On GitHub it runs only on request (Actions → Browser checks → Run
+workflow), so do not trigger it yourself unless asked.
+
 ## Design system: Afterimage
 The redesign shipped on 22 September 2026 is the binding visual system. Follow DESIGN.md and the
 shipped app: the tokens at the top of src/styles.css (dark and light sets; there are no separate

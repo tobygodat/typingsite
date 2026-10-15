@@ -390,3 +390,15 @@ test('a one-keyboard challenge plays once per key', async ({ page }) => {
   await page.keyboard.press('Backspace');
   expect(await plays(page)).toEqual(['click', 'tick', 'click']);
 });
+
+test('composing uses clicks for accepted keys and deletion without an error tick', async ({ page }) => {
+  await stubAudio(page);
+  await openApp(page);
+  await chooseSound(page, 'clicks-errors');
+  await page.locator('#mode-compose').click();
+  await firstKey(page, 'a', 1, '#compose-input');
+  await typeInto(page, 'b', '#compose-input');
+  await page.keyboard.press('Backspace');
+  await expect.poll(() => plays(page)).toEqual(['click', 'click']);
+  expect((await sound(page)).builtDuring).toEqual([]);
+});
