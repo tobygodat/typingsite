@@ -1,4 +1,4 @@
-import { test, expect, chooseWords, completePassage, openApp, openView, passageText, typeInto } from './fixtures.js';
+import { test, expect, chooseWords, completePassage, openApp, openView, passageText, signInWithEmail, typeInto } from './fixtures.js';
 
 // Committed docs screenshots are only rewritten when SCREENSHOTS is set; normal runs write to test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/error-modes/${name}` : testInfo.outputPath(name));
@@ -208,4 +208,22 @@ test('a failure policy applies to custom text and keeps its passage', async ({ p
   await expect(page.locator('#condition-line')).toContainText('custom text');
   expect(await passageText(page)).toBe(custom);
   await expect(page.locator('#best')).toHaveText('Not counted');
+});
+
+test('correction choices survive account save, reload and a fixed standard run', async ({ page, supabase }) => {
+  supabase.addUser('correction@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'correction@stilltype.test');
+  await chooseCorrection(page, 'no-backspace');
+  await expect.poll(() => supabase.profileFor('correction@stilltype.test')?.preferences?.correction).toBe('no-backspace');
+  await page.reload();
+  await expect(page.locator('#condition-line')).toContainText('no backspace');
+  await page.locator('#mode-standard').click();
+  await expect(page.locator('#condition-line')).toContainText('stop on error');
+  await page.locator('details.preferences > summary').click();
+  await expect(page.locator('#correction-select')).toBeDisabled();
+  await expect(page.locator('#correction-select')).toHaveValue('mandatory');
+  await page.locator('details.preferences > summary').click();
+  await page.locator('#mode-time').click();
+  await expect(page.locator('#condition-line')).toContainText('no backspace');
 });

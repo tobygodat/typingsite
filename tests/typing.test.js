@@ -2,9 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CUSTOM_MAX,
+  EVENT_VERSION,
+  accentComposition,
+  METRIC_VERSION,
+  carriedKey,
   compareAttempts,
   customTextProblem,
   completeAttempt,
+  composedKeys,
   conditionKey,
   createAttempt,
   editStats,
@@ -20,10 +25,18 @@ import {
   blocksOnError,
   failureFor,
   failureAtEnd,
+  quoteCorpus,
   recommendTarget,
   replayAttempt,
+  selectPassage,
+  STANDARD_SECONDS,
+  STANDARD_VERSION,
+  standardConditions,
+  standardPassage,
+  textId,
   untypableCharacter,
   rawWpm,
+  summarizePatterns,
   consistency,
   characterBreakdown,
   wordHistory,
@@ -237,6 +250,167 @@ test('relaxed correction completes with retained errors and a distinct compariso
   assert.notEqual(conditionKey(relaxed.conditions), conditionKey({ correctionPolicy: 'mandatory' }));
 });
 
+test('an accent-key commit is one or two typed keys; IME text is not', () => {
+  for (const [text, keys] of [
+    ['"', ['"']], [' ', [' ']], ['ä', ['ä']], ['ä', ['ä']],
+    ['"h', ['"', 'h']], ["'t", ["'", 't']], ['´q', ['´', 'q']], ['́q', ['́', 'q']], ['""', ['"', '"']],
+    // Caron, dot above and dot below are accent marks, though Unicode also lists them for Bopomofo or kana.
+    ['ˇs', ['ˇ', 's']], ['˙z', ['˙', 'z']], ['\u0323q', ['\u0323', 'q']],
+    ['', []],
+  ]) assert.deepEqual(composedKeys(text), keys, JSON.stringify(text));
+  // Kana punctuation (ー ・ ゛ ゠) is Script=Common, but only a kana IME types it.
+  for (const text of ['ab', 'ni', '"hi', '你', 'あ', 'ㅎ', '한', 'ａ', '。', 'ー', '・', '゛', '゠', '"ー', '\n', '"\n']) {
+    assert.equal(composedKeys(text), null, JSON.stringify(text));
+  }
+});
+
+test('an emoji committed through a composition is not an accent key', () => {
+  // Emoji pickers and phone keyboards commit through composition too. An astral emoji is two UTF-16
+  // units, so typing it would move the caret two letters; pictographs, presentation selectors, joined
+  // sequences, flags and keycaps aren't one passage character either.
+  for (const text of [
+    '😀', '👍', '❤', '☺', '✌', '❤️', '☺️', '✌️', '👍🏽', '👩‍💻', '🇫🇷', '1️⃣', '#️⃣',
+    '"😀', '´😀', '"❤', '~☺', '‍', '️', '"️', '⃣',
+  ]) assert.equal(composedKeys(text), null, JSON.stringify(text));
+});
+
+test('an invisible code point committed through a composition is not an accent key', () => {
+  // U+034F combining grapheme joiner sits among the combining accents but is default-ignorable: it shows
+  // nothing, so typing it would move the caret over a letter nobody sees.
+  for (const text of ['͏', '͏a', '"͏', '­', '​', '⁠', '﻿', '᠋']) {
+    assert.equal(composedKeys(text), null, JSON.stringify(text));
+  }
+});
+
+test('every mark and letter a real accent key commits is still typed', () => {
+  // A mark on its own (the dead key, then space) on US-International, UK-Extended, German, French AZERTY
+  // and BÉPO, Spanish, Portuguese, Swedish/Norwegian, Czech and Polish. ~ is a math symbol, ° an other
+  // symbol and ˇ a modifier letter, so a whitelist by general category would refuse some of them.
+  for (const mark of ['"', "'", '`', '~', '^', '´', '¨', '°', 'ˇ', '˙', '˛', '˘', '˝', '¸', '¯', '˚', 'ˆ', '˜']) {
+    assert.deepEqual(composedKeys(mark), [mark], mark);
+  }
+  // A composed letter, or BÉPO's currency key (€). Its Greek key (α) types no Latin letter: see below.
+  for (const letter of ['ä', 'é', 'è', 'ê', 'ë', 'ï', 'ñ', 'ã', 'õ', 'ç', 'å', 'ø', 'ů', 'ő', 'ű', 'ž', 'č', 'ř', 'ě', 'ż', 'ą', 'ę', 'ł', 'ś', 'ẽ', 'ŵ', '€']) {
+    assert.deepEqual(composedKeys(letter), [letter], letter);
+  }
+  // The mark and the key it doesn't combine with: Windows US-International sends ~e, not ẽ. A layout's
+  // own keys (AZERTY's ², £ and §) can follow a mark too.
+  for (const pair of ['^q', '~e', '`x', '¨k', '´t', '°x', 'ˇx', '˙q', '˛b', '¸k', '˝a', "'1", '"#', '"é', '~~', '^ ', '¨²', '^£', '´§']) {
+    assert.deepEqual(composedKeys(pair), [...pair], pair);
+  }
+  // Punctuation, symbols and spaces past Latin-1 that Latin layouts' own keys type, alone or after a mark
+  // (a slip, but keys): Windows US-International's AltGr+0 (’), macOS Option+Shift+- (—) and Option+[ (“),
+  // Linux's dead circumflex then 4 (⁴), a no-break space, an ellipsis, ≠ and the middle dot.
+  for (const text of ['⁴', '’', '—', '…', '≠', ' ', ' ', '·', "'’", '"—', '"“', '^–', '"…', '^≠', '" ']) {
+    assert.deepEqual(composedKeys(text), [...text], JSON.stringify(text));
+  }
+});
+
+test('a one-letter commit from another script’s input method is not an accent key', () => {
+  // Hindi, Korean, Hebrew, Russian, Greek, Thai and Arabic input methods commit one letter through a
+  // composition too. Accent keys type Latin: a mark, a letter with a diacritic, or the mark and the next key.
+  for (const text of ['अ', 'ㅎ', 'ש', 'ж', 'α', 'ก', 'ع', '"ж', '´अ', 'ˇש', '¨α']) {
+    assert.equal(composedKeys(text), null, JSON.stringify(text));
+  }
+  // Nor another script's digits or punctuation (Devanagari, Arabic), or East Asian forms no script owns:
+  // the ideographic space, CJK punctuation, vertical, small and full-width forms.
+  for (const text of ['१', '٣', '।', '،', '"।', '　', '"　', '、', '〜', '︐', '﹐', '＄']) {
+    assert.equal(composedKeys(text), null, JSON.stringify(text));
+  }
+});
+
+test('only a composition an accent key opened is scored as one', () => {
+  // Chrome and Firefox send the accent key (Dead) before its composition. Safari sends it after the mark
+  // shows, and Chromium on Linux sends key Process for every key its input method takes, so there the
+  // mark, shown first and on its own, says where the composition came from.
+  for (const origin of [
+    { key: 'Dead', preview: '"' }, { key: 'Dead', preview: '¤' }, { key: 'Dead' },
+    { key: 'Process', preview: '^' }, { preview: '´' }, { preview: '¨' }, { preview: '\u0301' },
+  ]) assert.equal(accentComposition(origin), true, JSON.stringify(origin));
+  // An input method's composition opens on what it composes (Pinyin, Telex, Hindi, Korean, Russian, kana),
+  // whatever it commits in the end: one letter from it is still not a key press.
+  for (const origin of [
+    {}, { key: 'Process' }, { key: 'Process', preview: 'a' }, { key: 'n', preview: 'n' }, { preview: 'अ' },
+    { key: 'Process', preview: 'ж' }, { preview: 'ㅎ' }, { preview: 'ä' }, { preview: 'ă' }, { preview: '""' },
+    { preview: '' }, { preview: 'あ' }, { preview: '\u034F' }, { key: 'Shift', preview: 'a' },
+  ]) assert.equal(accentComposition(origin), false, JSON.stringify(origin));
+});
+
+test('a key a commit carries past the passage end is a mistake against the last letter, or nothing', () => {
+  // "h committed on a passage's last letter ("): the mark is kept, and the h, pressed while the last
+  // letter was still to come, is a mistake against it and not kept. A key that is that letter ("" on a
+  // closing ") adds nothing, as a plain key after the passage ends isn't recorded either: it can't raise
+  // accuracy after a slip.
+  const run = (extra, slip = false) => {
+    const attempt = createAttempt({ id: 'e', text: 'go"', textId: 'e', conditions: {} });
+    attempt.events = [...'go"'].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: position * 100 }));
+    if (slip) attempt.events.unshift({ type: 'insert', text: 'x', position: 0, accepted: true, offsetMs: 0 }, { type: 'delete', count: 1, offsetMs: 0 });
+    const carried = extra === null ? null : carriedKey(attempt, extra, 200);
+    if (carried) attempt.events.push(carried);
+    attempt.startedAt = 0;
+    return completeAttempt(attempt, { endedAt: 200 });
+  };
+  const wrong = run('h');
+  assert.equal(wrong.typed, 'go"');
+  assert.deepEqual(wrong.events.at(-1), { type: 'insert', text: 'h', position: 2, accepted: false, offsetMs: 200 });
+  assert.equal(wrong.summary.insertions, 4);
+  assert.equal(wrong.summary.mistakes, 1);
+  assert.equal(wrong.summary.score.accuracy, 75);
+  assert.ok(wrong.summary.firstAttempts.every((entry) => entry.correct));
+  assert.ok(passageComplete(wrong, wrong.typed));
+  assert.deepEqual(characterBreakdown(wrong), { correct: 3, incorrect: 0, extra: 1, missed: 0 });
+  const doubled = run('"');
+  assert.equal(doubled.summary.insertions, 3);
+  assert.equal(doubled.summary.score.accuracy, 100);
+  assert.deepEqual(characterBreakdown(doubled), { correct: 3, incorrect: 0, extra: 0, missed: 0 });
+  // After a slip, a doubled mark scores exactly as the plain closing " does (3 of 4), not 4 of 5.
+  const plainAfterSlip = run(null, true);
+  assert.equal(plainAfterSlip.summary.score.accuracy, 75);
+  assert.deepEqual(run('"', true).summary, plainAfterSlip.summary);
+  assert.equal(run('h', true).summary.score.accuracy, 60);
+});
+
+test('a refused key inside the passage is not extra in the character breakdown', () => {
+  // A key recorded but not kept at a position the passage still has (as a strict space rule refuses a
+  // space typed where a letter belongs) is a mistake there, not a keystroke past the passage end.
+  const attempt = createAttempt({ id: 'r', text: 'go on', textId: 'r', conditions: {} });
+  attempt.events = [
+    ...[...'go '].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: position * 100 })),
+    { type: 'insert', text: ' ', position: 3, accepted: false, offsetMs: 300 },
+    ...[...'on'].map((char, i) => ({ type: 'insert', text: char, position: 3 + i, accepted: true, offsetMs: 400 + i * 100 })),
+  ];
+  assert.deepEqual(characterBreakdown(attempt), { correct: 5, incorrect: 0, extra: 0, missed: 0 });
+});
+
+test('a mark and letter committed together replay like two key presses', () => {
+  const run = (offsets) => {
+    const attempt = createAttempt({ id: 'q', text: 'say "hi"', textId: 'q', conditions: {} });
+    attempt.events = [...'say "hi"'].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: offsets[position] }));
+    attempt.startedAt = 0;
+    return completeAttempt(attempt, { endedAt: 1000 });
+  };
+  // Typed as separate keys, then with the mark and "h" committed together at 400 ms (the "h" key).
+  const keys = run([0, 80, 160, 240, 320, 400, 480, 560]);
+  const commit = run([0, 80, 160, 240, 400, 400, 480, 560]);
+  for (const field of ['typed', 'insertions', 'correctInsertions', 'mistakes', 'score']) assert.deepEqual(commit.summary[field], keys.summary[field], field);
+  assert.deepEqual(commit.summary.firstAttempts.map((entry) => entry.correct), keys.summary.firstAttempts.map((entry) => entry.correct));
+  // The shared commit time gives "h a 0 ms interval; pattern evidence (letter pairs only) never sees it.
+  assert.ok(commit.summary.pairTimings.some((entry) => entry.pair === '"h' && entry.durationMs === 0));
+  const patterns = summarizePatterns([commit]);
+  assert.deepEqual(patterns, summarizePatterns([keys]));
+  assert.deepEqual(patterns.pairs.map((entry) => entry.pair).sort(), ['ay', 'hi', 'sa']);
+  assert.equal(patterns.personalMedianMs, 80);
+
+  // A composed vowel where the mark belongs is one insertion and one mistake.
+  const wrong = createAttempt({ id: 'w', text: '"a', textId: 'w', conditions: {} });
+  wrong.events = [{ type: 'insert', text: 'ä', position: 0, accepted: true, offsetMs: 0 }];
+  const replay = replayAttempt(wrong);
+  assert.equal(replay.insertions, 1);
+  assert.equal(replay.mistakes, 1);
+  assert.equal(METRIC_VERSION, 'stilltype-metrics-v1');
+  assert.equal(EVENT_VERSION, 'stilltype-events-v1');
+});
+
 test('recommendations stay general below the evidence threshold', () => {
   const attempt = createAttempt({ id: 'a', text: 'the', textId: 'one', conditions: {} });
   attempt.events = [
@@ -318,6 +492,70 @@ test('correction policies map old preferences, fail on errors and keep separate 
   assert.equal(keys.size, CORRECTION_POLICIES.length);
 });
 
+test('condition keys without a standard recipe stay byte-identical', () => {
+  const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null,
+    wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en' };
+  assert.equal(conditionKey(practice), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
+  assert.equal(conditionKey({ ...practice, recipe: null }), conditionKey(practice));
+  assert.equal(conditionKey({}), ':::plain::::physical-keyboard:mandatory:original-en-v5:stilltype-metrics-v1');
+});
+
+test('the standard test is its own condition, versioned by recipe', () => {
+  const standard = standardConditions();
+  assert.equal(STANDARD_VERSION, 'standard-v1');
+  assert.equal(STANDARD_SECONDS, 60);
+  assert.deepEqual({ mode: standard.mode, duration: standard.duration, punctuation: standard.punctuation, wordList: standard.wordList,
+    correctionPolicy: standard.correctionPolicy, recipe: standard.recipe }, { mode: 'standard', duration: 60, punctuation: true,
+    wordList: null, correctionPolicy: 'mandatory', recipe: 'standard-v1' });
+  assert.equal(conditionKey(standard), 'standard:60::punctuation::::physical-keyboard:mandatory:original-en-v5:stilltype-metrics-v1:standard-v1');
+  // Even a time test that happens to share its length, punctuation and policy never shares a best.
+  const lookalike = { mode: 'time', duration: 60, punctuation: true, wordList: '10k', correctionPolicy: 'mandatory' };
+  assert.notEqual(conditionKey(standard), conditionKey(lookalike));
+  assert.notEqual(conditionKey(standard), conditionKey({ ...standard, recipe: 'standard-v2' }));
+  assert.notEqual(conditionKey(standard), conditionKey(standardConditions('touch')));
+});
+
+test('standard text is fresh per seed, reproducible from it, and follows the v1 recipe', async () => {
+  const { wordList } = await import('../src/words.js');
+  const vocabulary = new Set([...wordList('1k'), ...wordList('5k'), ...wordList('10k')]);
+  for (const seed of [0, 1, 7, 2026, 4294967295]) {
+    const passage = standardPassage(seed);
+    assert.equal(passage.text, standardPassage(seed).text);
+    assert.equal(passage.id, `standard-v1-${seed.toString(36)}`);
+    assert.equal(passage.recipe, 'standard-v1');
+    // Printable ASCII only. (Where " is a dead key, browsers report composition, which isn't scored.)
+    assert.match(passage.text, /^[\x20-\x7e]+$/, 'printable ASCII only');
+    assert.ok(!passage.text.includes('  '));
+    assert.ok(passage.text.length >= 2500, 'enough text for a full minute');
+    // One quote segment: the second sentence, in double quotation marks, generated like the rest.
+    assert.equal(passage.text.split('"').length, 3);
+    assert.match(passage.text, /^[A-Z][^.?"]*[.?] "[A-Z][^"]*[.?]" [A-Z]/);
+    const generated = passage.text.replace(/"/g, '').split(' ');
+    assert.ok(generated.some((word) => /^\d+[,.?]?$/.test(word)), 'some numbers');
+    assert.ok(generated.some((word) => /,$/.test(word)) && generated.some((word) => /\.$/.test(word)), 'commas and full stops');
+    const words = generated.map((word) => word.replace(/[,.?]$/, '')).filter((word) => !/^\d+$/.test(word));
+    // Every word, the quote's included, comes from the lists: nothing is drawn from the quote corpus.
+    assert.ok(words.every((word) => word === 'I' || vocabulary.has(word.toLowerCase())), 'only list words');
+    assert.ok(!quoteCorpus.some((item) => passage.text.includes(item.text.split(/[.?]/)[0])), 'no corpus quote');
+    const lower = new Set([...wordList('1k'), ...wordList('5k')]);
+    assert.ok(words.some((word) => !lower.has(word.toLowerCase())), 'reaches the 10k band');
+    assert.ok(words.filter((word) => wordList('1k').includes(word.toLowerCase())).length > words.length / 2, 'mostly common words');
+  }
+  assert.notEqual(standardPassage(1).text, standardPassage(2).text);
+  // Pinned output: if this changes, the recipe changed, so bump STANDARD_VERSION (or CORPUS_VERSION for list edits).
+  assert.equal(textId(standardPassage(1).text), 'generated-1a2f41n');
+});
+
+test('standard passages ignore practice filters and skip seen seeds', () => {
+  let calls = 0;
+  const random = () => [0.1, 0.1, 0.2][Math.min(calls++, 2)];
+  const first = selectPassage({ mode: 'standard', wordList: '200', punctuation: false, random: () => 0.1 });
+  assert.equal(first.text, standardPassage(Math.floor(0.1 * 4294967296)).text);
+  const next = selectPassage({ mode: 'standard', seenIds: [first.id], random });
+  assert.equal(next.id, standardPassage(Math.floor(0.2 * 4294967296)).id);
+  assert.equal(next.fresh, true);
+});
+
 test('custom text keeps only what an English keyboard types, one unit per letter', () => {
   const clean = (value) => normalizeCustomText(value);
   // Invisible code points go silently: CGJ (Mn), ZWSP, ZWJ/ZWNJ, variation selectors, soft hyphen, bidi marks, BOM, controls.
@@ -380,4 +618,14 @@ test('custom text must be typeable and long enough to time', () => {
   assert.deepEqual(customTextProblem('go 🚀 now'), { kind: 'untypable', char: '🚀' });
   assert.deepEqual(customTextProblem(normalizeCustomText(Array(501).fill('ab…').join(' '), Infinity)), { kind: 'long', length: 3005 });
   assert.equal(problem(Array(500).fill('ab…').join(' ')), null);
+});
+
+test('stored correction preferences migrate without filling unchosen settings', async () => {
+  const { normalizeProfile, preferencesInUse } = await import('../src/profile.js');
+  assert.equal(preferencesInUse({}).correction, 'relaxed');
+  assert.equal(preferencesInUse({ stopOnError: true }).correction, 'mandatory');
+  assert.equal(preferencesInUse({ correction: 'fail-word' }).stopOnError, false);
+  assert.deepEqual(normalizeProfile({ version: 2, preferences: {} }).preferences, {});
+  assert.deepEqual(normalizeProfile({ version: 2, preferences: { stopOnError: true } }).preferences,
+    { stopOnError: true, correction: 'mandatory' });
 });
