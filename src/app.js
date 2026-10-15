@@ -1898,6 +1898,9 @@ function renderTraining() {
 function renderMissedWords() {
   const { runs, inputClass, recurring, words } = recurringMissedWords(profile.runs);
   const enough = words.length >= 2;
+  // A redraw that hides the button while it has focus (a clear from another device, say) leaves focus on
+  // the section, not lost to the page.
+  const hadFocus = document.activeElement === $('practice-missed-list');
   const input = inputClass === 'touch' ? 'touch input' : 'a physical keyboard';
   $('missed-words-note').textContent = enough
     ? `First-try misses in your last ${runs} complete tests, retests and new daily passages on ${input}, all other test conditions together, up to ${MAX_MISSED_WORDS} words a run. Word practice, custom text and drills aren’t counted.`
@@ -1912,6 +1915,7 @@ function renderMissedWords() {
   $('missed-words-list').hidden = !enough;
   missedListWords = enough ? words.map((item) => item.word) : [];
   $('practice-missed-list').hidden = !enough;
+  if (hadFocus && !enough) $('missed-words-heading').focus();
   $('practice-missed-list').textContent = `Practice these ${words.length} words`;
   // The run card can offer "Practice these N words" too, so the name says which words these are.
   $('practice-missed-list').setAttribute('aria-label', `Practice these ${words.length} words you keep missing`);

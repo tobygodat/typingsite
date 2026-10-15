@@ -295,11 +295,12 @@ async function holdNextProfileFetch(page) {
   return { fetched, release };
 }
 
-test('a list left stale by a sync is checked when pressed: redrawn, and never a silent no-op', async ({ page, supabase }) => {
+test('a list left stale by a sync is checked when pressed, and a clear elsewhere redraws it without losing focus', async ({ page, supabase }) => {
   const user = supabase.addUser('stale@stilltype.test');
   const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
-  const row = (traces, updatedAt) => ({ data: { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: traces,
-    runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt } });
+  // Saved as this build saves (mergeStamp), so copies merge rather than the later one replacing the other.
+  const row = (traces, updatedAt, extra = {}) => ({ data: { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: traces,
+    runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt, mergeStamp: updatedAt, ...extra } });
   const shownWords = async () => (await listRows(page)).map(([word]) => word).sort();
   supabase.profiles.set(user.id, row([trace('a', day(4), ['their', 'because']), trace('b', day(3), ['their', 'because'])], day(3)));
   await openApp(page);
@@ -308,7 +309,7 @@ test('a list left stale by a sync is checked when pressed: redrawn, and never a 
   // Reloads with the account row held back and draws Train from the device copy. Someone practises
   // the list and comes back to it (adopting a row over a plain test would reset it and switch to
   // Practice); then `traces`, saved meanwhile on another device, arrive. Focus waits on the button.
-  const syncUnderList = async (shown, traces) => {
+  const syncUnderList = async (shown, traces, extra = {}, { stale = true } = {}) => {
     const { fetched, release } = await holdNextProfileFetch(page);
     await page.reload();
     await fetched;
@@ -319,29 +320,31 @@ test('a list left stale by a sync is checked when pressed: redrawn, and never a 
     await expect(page.locator('#session-title')).toHaveText('Practice words you keep missing');
     await openView(page, 'Train');
     await page.locator('#practice-missed-list').focus();
-    supabase.profiles.set(user.id, row(traces, new Date().toISOString()));
+    const at = new Date().toISOString();
+    supabase.profiles.set(user.id, row(traces, at, typeof extra === 'function' ? extra(at) : extra));
     release();
     await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
     // The precondition: the newer row is in, and Train still shows the old words.
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-    expect(await shownWords()).toEqual([...shown].sort());
+    if (stale) expect(await shownWords()).toEqual([...shown].sort());
   };
 
-  // Different words now: the press practises the words the runs hold, not the stale ones.
+  // Different words now: the press practises the words the runs hold, not the stale ones. The other
+  // device's runs merge with these, so all four recur.
   await syncUnderList(['their', 'because'], [trace('c', day(2), ['river', 'garden']), trace('d', day(1), ['river', 'garden'])]);
   await page.keyboard.press('Enter');
   await expect(page.locator('#session-title')).toHaveText('Practice words you keep missing');
-  expect(new Set((await passageText(page)).split(' '))).toEqual(new Set(['river', 'garden']));
+  expect(new Set((await passageText(page)).split(' '))).toEqual(new Set(['river', 'garden', 'their', 'because']));
 
-  // History cleared elsewhere: the press redraws the list, starts nothing, says so, and keeps focus
-  // in the section rather than on the button it just hid.
-  await syncUnderList(['river', 'garden'], []);
-  await page.keyboard.press('Enter');
+  // History cleared elsewhere: the clear applies as it arrives (with the training it removed), so the
+  // list is redrawn at once; focus moves to the section rather than staying on the button it hid, and
+  // Enter starts nothing.
+  await syncUnderList(['river', 'garden', 'their', 'because'], [], (at) => ({ historyClearedAt: `${at}~elsewhere` }), { stale: false });
   await expect(page.locator('#missed-words-note')).toHaveText(/^Not enough evidence yet: no runs counted so far\./);
   await expect(page.locator('#missed-words-list')).toBeHidden();
   await expect(page.locator('#practice-missed-list')).toBeHidden();
   await expect(page.locator('#missed-words-heading')).toBeFocused();
-  await expect(page.locator('#announcement')).toHaveText('Fewer than two words to practice now. The list has been updated.');
+  await page.keyboard.press('Enter');
   // Every session start switches to Practice, so staying on Train means nothing started.
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
 });
