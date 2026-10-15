@@ -431,6 +431,34 @@ test('choosing the shape already shown keeps it over a different one waiting fro
   expect(errors).toEqual([]);
 });
 
+// A custom pace being typed in one tab stays as typed when another tab saves meanwhile: taking in that
+// save redraws the settings, which must not put back the stored speed under the cursor.
+test('a custom pace being typed is kept when another tab saves before it is left', async ({ page, context, supabase }) => {
+  supabase.addUser(EMAIL);
+  const errors = [];
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  const other = await extraPage(context, supabase, errors);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openSettings(other);
+  await other.locator('#pace-select').selectOption('custom');
+  await expect.poll(() => cloud(supabase)?.preferences.paceCaret, { timeout: 15000 }).toBe('custom');
+  await other.locator('#pace-wpm').fill('120');
+
+  // The first tab finishes a run; the other takes in that save while its field still holds 120.
+  await chooseWords(page, 10);
+  await typeInto(page, await passageText(page));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(other.locator('#best')).not.toHaveText('No best yet');
+  await expect(other.locator('#pace-wpm')).toHaveValue('120');
+
+  await other.locator('#pace-wpm').press('Tab');
+  await expect(other.locator('#pace-label')).toHaveText('pace 120 wpm');
+  await expect.poll(() => cloud(supabase)?.preferences.paceWpm, { timeout: 15000 }).toBe(120);
+  expect(errors).toEqual([]);
+});
+
 // A retest runs at the settings shown, so a pace another tab picks meanwhile waits here. Picking the pace
 // already shown, from the palette, is a choice like any other: it stays once the retest is over. A custom
 // pace keeps the speed shown with it.
