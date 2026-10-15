@@ -2,6 +2,10 @@ import { conditionKey, printable, replayAttempt, summarizePatterns, textId } fro
 
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
+export const MAX_TRACES = 24;
+// Characters of JSON for the full traces together. One 600 s trace at 130 wpm is about 1.5 million,
+// and a browser allows about 5 million per site, so long custom-time runs keep fewer traces than 24.
+export const TRACE_BUDGET = 2_500_000;
 // Per-letter first-attempt counts saved with each run. Summaries without this version predate
 // them and fall back to pair-derived counts, which miss letters at the start of a word.
 export const KEY_COUNTS_VERSION = 1;
@@ -82,6 +86,29 @@ export function retainRuns(runs) {
     const { missedWords, ...rest } = run;
     return { ...(trimWords ? rest : run), ...(trimPatterns ? { patterns: [], keys: [] } : {}) };
   });
+}
+
+const traceSizes = new WeakMap();
+function traceSize(trace) {
+  if (!trace || typeof trace !== 'object') return JSON.stringify(trace ?? null).length;
+  if (!traceSizes.has(trace)) traceSizes.set(trace, JSON.stringify(trace).length);
+  return traceSizes.get(trace);
+}
+
+// The newest full traces, at most MAX_TRACES and within TRACE_BUDGET. A run loses only its trace: bests,
+// trends and recurring evidence read the compact summaries. A trace over the whole budget on its own (ten
+// minutes past ~215 wpm, or a key held down) is never kept, even the newest, so the cache stays bounded.
+export function retainTraces(traces, { max = MAX_TRACES, budget = TRACE_BUDGET } = {}) {
+  const kept = [];
+  let total = 0;
+  for (let i = traces.length - 1; i >= 0 && kept.length < max; i -= 1) {
+    const size = traceSize(traces[i]);
+    if (size > budget) continue;
+    if (total + size > budget) break;
+    total += size;
+    kept.push(traces[i]);
+  }
+  return kept.reverse();
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;

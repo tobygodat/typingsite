@@ -241,15 +241,20 @@
             <button id="mode-custom" type="button" aria-pressed="false" aria-controls="custom-options" aria-expanded="false">custom</button>
           </div>
           <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
-            <button type="button" aria-pressed="false" aria-label="15 seconds">15</button>
-            <button type="button" aria-pressed="true" aria-label="30 seconds" class="is-active">30</button>
-            <button type="button" aria-pressed="false" aria-label="60 seconds">60</button>
-            <button type="button" aria-pressed="false" aria-label="120 seconds">120</button>
+            <button type="button" data-length="15" aria-pressed="false" aria-label="15 seconds">15</button>
+            <button type="button" data-length="30" aria-pressed="true" aria-label="30 seconds" class="is-active">30</button>
+            <button type="button" data-length="60" aria-pressed="false" aria-label="60 seconds">60</button>
+            <button type="button" data-length="120" aria-pressed="false" aria-label="120 seconds">120</button>
+            <button id="custom-length" type="button" aria-pressed="false" aria-label="custom time">custom</button>
+            <form id="custom-length-form" class="custom-length" novalidate hidden>
+              <input id="custom-length-input" class="custom-length-input" type="text" inputmode="numeric" enterkeyhint="done" maxlength="12" autocomplete="off" spellcheck="false" placeholder="5–600" aria-label="custom time in seconds, 5 to 600" aria-describedby="custom-length-error">
+            </form>
           </div>
           <label id="punctuation-switch" class="compact-switch" for="punctuation-toggle">
             <input id="punctuation-toggle" class="switch" type="checkbox">
             <span>punctuation</span>
           </label>
+          <p id="custom-length-error" class="field-error custom-length-error" role="alert"></p>
           <button id="open-lessons" class="quiet-link" type="button" data-action="open-lessons">learn to type</button>
         </div>
 

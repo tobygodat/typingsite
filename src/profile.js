@@ -1,10 +1,11 @@
 // The stored profile's shape: the settings' defaults, and how a stored copy (this device's cache, another
 // tab's, the account row) is read before anything uses or merges it (normalizeProfile).
+import { normalizeLengthPreferences } from './lengths.js';
 import { correctionPreference, customTextProblem, normalizeCustomText } from './typing.js';
 import { normalizeKeybindings } from './keybindings.js';
 import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
-import { DAILY_GOALS, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
+import { DAILY_GOALS, retainTraces, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
 import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
 
@@ -14,6 +15,8 @@ export const defaultPreferences = {
   mode: 'time',
   duration: 30,
   count: 25,
+  customDuration: null,
+  customCount: null,
   punctuation: false,
   numbers: false,
   quoteLength: 'medium',
@@ -79,7 +82,7 @@ export function validPreferences(value) {
   // Whether the friends board shares is kept by the board alone (src/friends-board.js), never in the
   // synced profile, so a copy saved by an earlier build is dropped rather than synced back.
   delete value.shareBoard;
-  return value;
+  return normalizeLengthPreferences(value);
 }
 
 // Every setting as used: the stored ones, and the default for each one the profile doesn't store.
@@ -120,7 +123,7 @@ export function normalizeProfile(parsed) {
     ...parsed,
     preferences: storedPreferences(rawPreferences),
     ...(Object.keys(preferencesAt).length ? { preferencesAt } : {}),
-    attempts: settleDailyFirsts(traces),
+    attempts: retainTraces(settleDailyFirsts(traces)),
     ...retainHistory(settleDailyFirsts(records), validPracticeDays(parsed.practiceDays)),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],

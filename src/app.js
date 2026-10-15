@@ -43,6 +43,7 @@ import {
   wordHistory,
 } from './typing.js';
 import { wordListIds } from './words.js';
+import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength } from './lengths.js';
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
@@ -695,24 +696,164 @@ function setModeControls() {
   syncLockedSettings();
   $('duration-options').hidden = custom || composeOpen || prefs.mode === 'quote' || prefs.mode === 'standard';
   document.querySelector('.compact-switch').hidden = custom || composeOpen;
-  const values = prefs.mode === 'time' ? TEST_DURATIONS : TEST_COUNTS;
-  // The length buttons are relabelled in place rather than rebuilt, so one holding keyboard focus keeps
-  // it when conditions change from another tab or device.
-  const lengths = $('duration-options');
-  const existing = [...lengths.querySelectorAll(':scope > button')];
-  existing.slice(values.length).forEach((button) => button.remove());
-  values.forEach((value, index) => {
-    const button = existing[index] || lengths.appendChild(document.createElement('button'));
-    const selected = value === (prefs.mode === 'time' ? prefs.duration : prefs.count);
-    button.type = 'button';
-    button.textContent = value;
-    button.dataset.length = String(value);
-    button.className = selected ? 'is-active' : '';
-    button.setAttribute('aria-pressed', String(selected));
-    button.setAttribute('aria-label', `${value} ${prefs.mode === 'time' ? 'seconds' : 'words'}`);
-  });
+  if (custom || composeOpen || prefs.mode === "standard") closeCustomLength();
+  renderLengthOptions();
   showBest();
   requestAnimationFrame(() => updateGlides());
+}
+
+// The four presets and the custom pill are relabelled in place, never rebuilt, so a click that
+// lands just as the custom field commits on blur still reaches the button under the pointer.
+function renderLengthOptions() {
+  setCustomLengthError('');
+  const spec = LENGTHS[prefs.mode];
+  if (!spec) {
+    closeCustomLength();
+    return;
+  }
+  const current = prefs[spec.key];
+  $('duration-options').querySelectorAll('[data-length]').forEach((button, index) => {
+    const value = spec.presets[index];
+    const selected = value === current;
+    button.textContent = String(value);
+    button.dataset.length = String(value);
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    button.setAttribute('aria-label', `${value} ${spec.unit}`);
+  });
+  const custom = !isPresetLength(prefs.mode, current);
+  const button = $('custom-length');
+  button.textContent = custom ? String(current) : 'custom';
+  button.classList.toggle('is-active', custom);
+  button.setAttribute('aria-pressed', String(custom));
+  button.setAttribute('aria-label', custom ? `custom ${spec.noun}, ${current} ${spec.unit}` : `custom ${spec.noun}`);
+  if ($('custom-length-form').dataset.lengthMode !== prefs.mode) closeCustomLength();
+}
+
+// The custom pill turns into a short field in place. Enter, or leaving the field with a valid
+// number, sets the length; Escape puts the pill back. Guests keep the value for the tab only.
+let dropCustomLength = false;
+
+// Set even when unchanged, so a second bad entry is announced again.
+function setCustomLengthError(message) {
+  const node = $('custom-length-error');
+  if (message || node.textContent) node.textContent = message;
+}
+
+function openCustomLength(mode = prefs.mode) {
+  const spec = LENGTHS[mode];
+  if (!spec) return;
+  // A new length restarts the run anyway; a timed run must not end under the open field.
+  if (attempt?.status === 'running') resetSession('practice');
+  const form = $('custom-length-form');
+  const input = $('custom-length-input');
+  form.dataset.lengthMode = mode;
+  dropCustomLength = false;
+  input.value = prefs[spec.customKey] ? String(prefs[spec.customKey]) : '';
+  input.dataset.offered = input.value;
+  input.placeholder = `${spec.min}–${spec.max}`;
+  input.setAttribute('aria-label', `${mode === 'time' ? 'custom time in seconds' : 'custom number of words'}, ${spec.min} to ${spec.max}`);
+  input.setAttribute('aria-invalid', 'false');
+  setCustomLengthError('');
+  $('custom-length').hidden = true;
+  form.hidden = false;
+  document.querySelector('.practice-controls').dataset.editing = 'true';
+  updateGlide($('duration-options'), { instant: true });
+  input.focus({ preventScroll: true });
+  input.select();
+}
+
+function closeCustomLength({ focus = false } = {}) {
+  const form = $('custom-length-form');
+  if (form.hidden) return;
+  // Hidden before focus moves, so the field's own focusout sees it closed and does nothing.
+  form.hidden = true;
+  $('custom-length').hidden = false;
+  delete document.querySelector('.practice-controls').dataset.editing;
+  $('custom-length-input').setAttribute('aria-invalid', 'false');
+  updateGlide($('duration-options'), { instant: true });
+  // Focus mode hides the row again, pill included, so focus goes back to the passage.
+  if (focus) (prefs.focusMode ? $('typing-input') : $('custom-length')).focus({ preventScroll: true });
+}
+
+function commitCustomLength({ leaving = false } = {}) {
+  const mode = $('custom-length-form').dataset.lengthMode;
+  const spec = LENGTHS[mode];
+  const input = $('custom-length-input');
+  const raw = input.value.trim();
+  // Leaving an empty or untouched field is not a request to change anything; the remembered value
+  // offered in the field is applied only with Enter.
+  if (leaving && (!raw || raw === input.dataset.offered)) {
+    closeCustomLength();
+    return;
+  }
+  const result = parseCustomLength(mode, raw);
+  if (!result.ok) {
+    if (leaving) closeCustomLength();
+    else {
+      input.setAttribute('aria-invalid', 'true');
+      input.select();
+    }
+    setCustomLengthError(result.message);
+    return;
+  }
+  closeCustomLength();
+  if (prefs.mode === mode && prefs[spec.key] === result.value) {
+    saveChoice('mode', spec.key, ...(!isPresetLength(mode, result.value) ? [spec.customKey] : []));
+    if (!leaving) $('typing-input').focus({ preventScroll: true });
+    return;
+  }
+  prefs.mode = mode;
+  prefs[spec.key] = result.value;
+  if (!isPresetLength(mode, result.value)) prefs[spec.customKey] = result.value;
+  setModeControls();
+  saveChoice('mode', spec.key, ...(!isPresetLength(mode, result.value) ? [spec.customKey] : []));
+  // Focus stays wherever the person went when they left the field.
+  resetSession('practice', { focus: !leaving });
+}
+
+function bindCustomLength() {
+  const form = $('custom-length-form');
+  const input = $('custom-length-input');
+  $('custom-length').addEventListener('click', () => openCustomLength(prefs.mode));
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    commitCustomLength();
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    // Escape belongs to the field here, not to restart or focus mode.
+    event.preventDefault();
+    event.stopPropagation();
+    setCustomLengthError('');
+    closeCustomLength({ focus: true });
+  });
+  // Pressing another length, mode or switch in the row means that control wins; the edit is dropped.
+  const controls = document.querySelector('.practice-controls');
+  controls.addEventListener('pointerdown', (event) => {
+    if (!form.hidden && !form.contains(event.target)) dropCustomLength = true;
+  });
+  controls.addEventListener('pointercancel', () => { dropCustomLength = false; });
+  form.addEventListener('focusout', (event) => {
+    // Switching windows keeps the field open; the browser hands focus back on return.
+    if (form.hidden || form.contains(event.relatedTarget) || !document.hasFocus()) return;
+    // In focus mode the row hides again as the field closes, so focus bound for it would be lost.
+    const stranded = prefs.focusMode && (!event.relatedTarget || controls.contains(event.relatedTarget));
+    if (dropCustomLength) {
+      dropCustomLength = false;
+      closeCustomLength();
+    } else commitCustomLength({ leaving: true });
+    if (stranded) $('typing-input').focus({ preventScroll: true });
+  });
+}
+
+// A mode change resets once, in the new mode, so a quote is never drawn (and marked seen) only to be replaced.
+// Custom text hides the length row, so from its editor or session this goes through setTestShape too, which
+// closes the editor and starts a test in this mode, as the length buttons do.
+function setCustomLengthFromPalette(mode) {
+  if (prefs.mode !== mode || customOpen || sessionKind === 'custom') setTestShape(mode);
+  else navigate('practice');
+  openCustomLength(mode);
 }
 
 function renderText(display, text) {
@@ -827,6 +968,7 @@ function choosePassage(extraSeen = []) {
   return selectPassage({
     mode: prefs.mode,
     count: prefs.count,
+    duration: prefs.duration,
     punctuation: prefs.punctuation,
     numbers: Boolean(prefs.numbers),
     quoteLength: prefs.quoteLength,
@@ -944,6 +1086,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   // ones from elsewhere wait until it is over.
   followStoredPreferences({ conditions: kind !== 'retest' && kind !== 'drill' });
   primaryNotice = '';
+  setCustomLengthError('');
   // Each session set up counts, so a Race still loading can tell its session was replaced (see raceContext);
   // a redraw for a synced profile doesn't count.
   if (!keepRace) sessionCount += 1;
@@ -1103,6 +1246,8 @@ function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
     ticker = setInterval(() => updateLive(), 100);
     primaryFx.ghost.run(stamp);
     setRunning(true);
+    // A message left by an abandoned custom length belongs to the row, not to the run.
+    setCustomLengthError('');
     $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>In progress';
   } else {
     if (race.startTime !== null) return;
@@ -1897,7 +2042,7 @@ function renderResults(completed, saved) {
   ].filter(Boolean).join(' ');
 
   if (sessionKind === 'practice' || sessionKind === 'daily') {
-    activeRecommendation = trainingRecommendation(completed.conditions);
+    activeRecommendation = trainingRecommendation(completed.conditions, completed);
     selectedTarget = activeRecommendation.target;
   }
   // Custom text and ghost races are never mined for targets or kept as a baseline, so their results offer no drill or retest:
@@ -2281,8 +2426,10 @@ function practiceTarget(target, source) {
   if (!baselineAttempt) $('session-description').textContent = 'Standalone drill. Finish a new practice run afterward for a comparable retest.';
 }
 
-function trainingRecommendation(source) {
-  const recommendation = recommendTarget(profile.attempts, source);
+// The run just finished always counts toward its own recommendation, even when its trace was too large to keep.
+function trainingRecommendation(source, current = null) {
+  const traces = current && !profile.attempts.includes(current) ? [...profile.attempts, current] : profile.attempts;
+  const recommendation = recommendTarget(traces, source);
   const recurring = recurringTargets(profile.runs, profile.loops, source)[0];
   if (!recurring) return recommendation;
   const counts = recurring.errors
@@ -4745,6 +4892,22 @@ function inPractice(change) {
   change(kind);
 }
 
+// "custom time…" / "custom words…": the hint shows the custom value in use, or the one remembered.
+function customLengthCommand(mode) {
+  const spec = LENGTHS[mode];
+  // As for the presets, no length is current during a custom text session.
+  const current = comparableKind(sessionKind) && prefs.mode === mode && !isPresetLength(mode, prefs[spec.key]);
+  const value = current ? prefs[spec.key] : prefs[spec.customKey];
+  return {
+    group: 'test',
+    label: `custom ${mode}…`,
+    keywords: `${mode === 'time' ? 'timed seconds duration' : 'count number'} length any ${spec.min} to ${spec.max}`,
+    hint: value ? `${value} ${mode === 'time' ? 's' : 'words'}` : '',
+    on: current,
+    run: () => setCustomLengthFromPalette(mode),
+  };
+}
+
 // The layout is a test condition, like the word list, so changing it starts a new run. Like the word list,
 // it keeps a custom passage: custom runs are never compared, so their key never names a layout.
 function setLayout(id, kind = restartKind()) {
@@ -4786,8 +4949,10 @@ function paletteCommands(query) {
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: () => startLesson(nextLessonIndex(profile.lessons)) }]),
     { group: 'test', label: 'practice words you keep missing', keywords: 'missed words mistakes errors practise recurring list', hint: `${missedWords} words`, disabled: missedWords < 2, run: practiseRecurringWords },
-    ...TEST_DURATIONS.map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
-    ...TEST_COUNTS.map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
+    ...LENGTHS.time.presets.map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
+    customLengthCommand('time'),
+    ...LENGTHS.words.presets.map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
+    customLengthCommand('words'),
     { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: sessionKind === 'custom' ? 'current' : '', on: sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'composing practice', keywords: 'compose write writing free typing prompt own words', hint: composeOpen ? 'current' : '', on: composeOpen, run: openCompose },
@@ -4905,6 +5070,7 @@ buildKeyboard();
 applyPreferences();
 setModeControls();
 bindEvents();
+bindCustomLength();
 bindAccount();
 bindPalette();
 renderAccount();

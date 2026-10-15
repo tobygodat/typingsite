@@ -214,9 +214,9 @@ test('a key that reads back the same but holds a value this build never writes i
     { ...quote, quoteLength: 'epic' },
     { ...time60, wordList: '50k' },
     { ...time60, wordList: 'every-word-ever' },
-    { ...time60, duration: 45 },
+    { ...time60, duration: 4 },
     { ...time60, duration: 3600 },
-    { ...words10, count: 7 },
+    { ...words10, count: 501 },
     { ...time60, correctionPolicy: 'lenient' },
     // A field its mode doesn't have, or one it leaves empty.
     { ...time60, count: 25 },

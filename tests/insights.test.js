@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, practiceLevel, practiceStreak, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, standardInputClass, standardScore, trendRun, weeklyChange } from '../src/insights.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, practiceLevel, practiceStreak, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, standardInputClass, standardScore, trendRun, weeklyChange } from '../src/insights.js';
 import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, standardConditions, wordHistory } from '../src/typing.js';
+
 
 test('missed and slowest words come from first tries and per-word speed', () => {
   const text = 'the cat sat on mat';
@@ -527,6 +528,55 @@ test('a profile with only comparable runs is retained exactly as before', () => 
   assert.equal(JSON.stringify(retainRuns(short)), JSON.stringify(previous(short)));
 });
 
+// A timed run as app.js stores it: one insert per letter, and every 20th letter (5%) mistyped, deleted and retyped,
+// with offsets as Chromium reports them (0.1 ms steps less the start stamp, so most carry float noise).
+function timedTrace(id, seconds, wpm) {
+  const passage = selectPassage({ mode: 'time', duration: seconds, random: () => 0.37 });
+  const attempt = createAttempt({ id, text: passage.text, textId: passage.id,
+    conditions: { mode: 'time', duration: seconds, wordList: '200', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION } });
+  const letters = Math.min(passage.text.length, Math.round((wpm * 5 * seconds) / 60));
+  const step = (seconds * 1000) / (letters * 1.1);
+  const offset = (n) => Math.round((52345.7 + n * step) * 10) / 10 - 52345.7;
+  let n = 0;
+  for (let position = 0; position < letters; position += 1) {
+    if (position % 20 === 7) {
+      attempt.events.push({ type: 'insert', text: 'q', position, accepted: true, offsetMs: offset(n += 1) });
+      attempt.events.push({ type: 'delete', count: 1, offsetMs: offset(n += 1) });
+    }
+    attempt.events.push({ type: 'insert', text: passage.text[position], position, accepted: true, offsetMs: offset(n += 1) });
+  }
+  attempt.startedAt = 0;
+  return completeAttempt(attempt, { endedAt: seconds * 1000 });
+}
+const size = (value) => JSON.stringify(value).length;
+
+test('a single trace larger than the whole budget is not kept, even as the newest', () => {
+  const short = Array.from({ length: 5 }, (_, i) => ({ ...timedTrace('short', 30, 90), id: `s${i}` }));
+  // Ten minutes past ~215 wpm (or a key held down) records more than the budget on its own.
+  const huge = timedTrace('huge', 600, 300);
+  assert.ok(size(huge) > TRACE_BUDGET, `${size(huge)} characters`);
+  const kept = retainTraces([...short, huge]);
+  assert.ok(size(kept) <= TRACE_BUDGET, `${size(kept)} characters kept`);
+  // Its run keeps only the summary record; the earlier traces stay as baselines and evidence.
+  assert.deepEqual(kept.map((t) => t.id), short.map((t) => t.id));
+  assert.deepEqual(retainTraces([huge]), []);
+  // A profile saved before this rule, with an oversized trace among older ones, sheds it too.
+  assert.deepEqual(retainTraces([short[0], { ...huge, id: 'old-huge' }, ...short.slice(1)]).map((t) => t.id), short.map((t) => t.id));
+  // One character over the budget is enough: the next newest trace that fits is kept instead.
+  const slower = timedTrace('slower', 30, 60);
+  assert.ok(size(slower) < size(short[0]) - 1);
+  assert.deepEqual(retainTraces([slower, short[0]], { budget: size(short[0]) - 1 }).map((t) => t.id), ['slower']);
+});
+
+test('a newest trace within the budget is always kept, however large', () => {
+  // Ten minutes at 200 wpm: within the budget alone, so it is kept and the older traces give way.
+  const fast = timedTrace('fast', 600, 200);
+  const older = timedTrace('older', 600, 120);
+  assert.ok(size(fast) <= TRACE_BUDGET && size(fast) + size(older) > TRACE_BUDGET, `${size(fast)} + ${size(older)}`);
+  assert.deepEqual(retainTraces([older, fast]).map((t) => t.id), ['fast']);
+  // Exactly at the budget still counts as within it.
+  assert.deepEqual(retainTraces([older, fast], { budget: size(fast) }).map((t) => t.id), ['fast']);
+});
 test('missed-word practice is not comparable, so it never pushes practice runs out of the pattern window', () => {
   assert.equal(comparableKind('missed'), false);
   assert.equal(comparableKind('custom'), false);

@@ -26,6 +26,7 @@ const SHELL = [
   '/src/insights.js',
   '/src/keybindings.js',
   '/src/layouts.js',
+  '/src/lengths.js',
   '/src/lessons.js',
   '/src/motion.js',
   '/src/multiplayer.js',
