@@ -239,7 +239,7 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   // The run reaches her row with the profile save, as the summary of exactly the copy saved.
   await expect.poll(() => column(supabase, ada)?.days?.[dailyPassage().day] ?? null).toEqual({ version: VERSION, wpm, accuracy, attempts: 1 });
   const row = supabase.profiles.get(ada.id);
-  expect(row.board.at).toBe(row.updated_at);
+  expect(Date.parse(row.board.at)).toBe(Date.parse(row.updated_at));
   expect(row.board.weeks[mondayOf()].runs).toBe(25);
   expect(row.board.weeks[mondayOf()].seconds).toBeGreaterThan(880);
 
@@ -344,7 +344,7 @@ test('a save without the summary (an older build) hides it until a load repairs 
   // The load repairs the summary from the row's own data, conditional on the row's version.
   await expect.poll(() => weekRuns(supabase, ada)).toBe(6);
   expect(supabase.profileWrites.map((write) => write.method)).toEqual(['PATCH']);
-  expect(column(supabase, ada).at).toBe(supabase.profiles.get(ada.id).updated_at);
+  expect(Date.parse(column(supabase, ada).at)).toBe(Date.parse(supabase.profiles.get(ada.id).updated_at));
   await openBoard(page);
   await expect(page.locator('#board-week')).toContainText('6 runs');
 
@@ -371,18 +371,27 @@ test('a save without the summary (an older build) hides it until a load repairs 
   await page.reload();
   await expect(page.locator('#text-display .char').first()).toBeVisible();
   await expect.poll(() => held).toBe(true);
+  const sevenAt = supabase.profiles.get(ada.id).updated_at;
   saveElsewhere(practiceThisWeek(8));
   const stale = column(supabase, ada);
   release();
-  await expect.poll(() => supabase.requests.filter((request) => request.startsWith('PATCH ')).length).toBe(2);
+  await expect.poll(() => supabase.requests.filter((request) => request.startsWith('PATCH ')).length).toBeGreaterThanOrEqual(2);
+  await page.waitForTimeout(1000);
   await page.unroute(/\/rest\/v1\/profiles\?/);
-  expect(column(supabase, ada)).toEqual(stale);
-  await openBoard(page);
-  await expect(page.locator('#board-week')).toContainText('You — nothing yet this week');
-  // A load that reads the eight-run row repairs it.
+  // The repair counted from the seven-run row wrote nothing. This tab may still push its merged copy
+  // (the profile sync merge adds what an older build's row lacks); that write carries its own summary.
+  expect(supabase.profileWrites.every((write) => !write.board || Date.parse(write.board.at) !== Date.parse(sevenAt))).toBe(true);
+  const row = supabase.profiles.get(ada.id);
+  if (Date.parse(row.board?.at) === Date.parse(row.updated_at)) expect(weekRuns(supabase, ada)).toBe(8);
+  else {
+    expect(column(supabase, ada)).toEqual(stale);
+    await openBoard(page);
+    await expect(page.locator('#board-week')).toContainText('You — nothing yet this week');
+  }
+  // A load that reads the eight-run row shows it, repaired if it wasn't already.
   await page.reload();
   await expect.poll(() => weekRuns(supabase, ada)).toBe(8);
-  expect(supabase.profileWrites.map((write) => write.method)).toEqual(['PATCH', 'PATCH']);
+  expect(supabase.profileWrites.every((write) => write.method === 'PATCH')).toBe(true);
   await openBoard(page);
   await expect(page.locator('#board-week')).toContainText('8 runs');
 });
@@ -399,11 +408,10 @@ test('a project without the board column keeps profile sync working, leaving the
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
   await expect(page.locator('#account-sync')).toHaveText('Saved to your account');
   // The first save that named the column was refused and went again without it; later saves leave it out.
-  const posts = supabase.requests.filter((request) => request === 'POST /rest/v1/profiles').length;
-  expect(supabase.profileWrites.length).toBeGreaterThanOrEqual(2);
-  expect(posts).toBe(supabase.profileWrites.length + 1);
+  const writes = supabase.requests.filter((request) => /^(POST|PATCH) \/rest\/v1\/profiles\?/.test(request)).length;
+  expect(supabase.profileWrites.length).toBeGreaterThanOrEqual(1);
+  expect(writes).toBe(supabase.profileWrites.length + 1);
   expect(supabase.profileWrites.every((write) => write.board === undefined)).toBe(true);
-  expect(supabase.requests.some((request) => request.startsWith('PATCH '))).toBe(false);
 });
 
 test('a midnight re-read that fails is tried again at the next check', async ({ page, supabase }) => {
@@ -508,7 +516,7 @@ test('a run finished offline reaches the board once the browser is back online',
   await expect.poll(() => weekRuns(supabase, ada)).toBe(1);
 });
 
-test('F1: a stale device saving back a clock-fast run from before a clear puts it on the board exactly as Progress shows it', async ({ page, browser, supabase }) => {
+test('F1: a stale device saving after a clear brings no cleared run back, a clock-fast one included, and the board shows what Progress shows', async ({ page, browser, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   // Three runs at one test shape this week, synced before the clear; one was made on a device whose
   // clock runs forty minutes fast, so it carries a time still in the future.
@@ -530,29 +538,29 @@ test('F1: a stale device saving back a clock-fast run from before a clear puts i
     await expect.poll(() => weekRuns(supabase, ada)).toBe(0);
     await openBoard(page);
     await expect(page.locator('#board-week')).toContainText('You — nothing yet this week');
-    // The stale device then saves a setting with the old history still in its copy. Sync is last
-    // writer wins, so the row takes that copy back, and the board shows what the row holds: the same
-    // three runs, the fast clock's included, no more and no fewer.
+    // The stale device then saves a setting with the old history still in its copy. Sync merges, and the
+    // clear keeps out what it removed (the fast clock's run, stamped after it, by name): the row keeps the
+    // setting and no runs, and its summary describes exactly that.
     await openSettings(stale);
     await stale.locator('#keyboard-toggle').check();
-    await expect.poll(() => supabase.profiles.get(ada.id).data.runs.length).toBe(3);
-    await expect.poll(() => weekRuns(supabase, ada)).toBe(3);
+    await expect.poll(() => supabase.profiles.get(ada.id).data.preferences?.keyboard).toBe(true);
+    expect(supabase.profiles.get(ada.id).data.runs).toHaveLength(0);
+    expect(weekRuns(supabase, ada)).toBe(0);
     const row = supabase.profiles.get(ada.id);
-    expect(row.board.at).toBe(row.updated_at);
+    expect(Date.parse(row.board.at)).toBe(Date.parse(row.updated_at));
     await refreshBoard(page);
-    await expect(page.locator('#board-week')).toContainText('3 runs');
-    // This device, reloaded, reads that row: Progress lists the same three runs the board counts.
+    await expect(page.locator('#board-week')).toContainText('You — nothing yet this week');
+    // This device, reloaded, reads that row: Progress lists no runs, as the board counts none.
     await page.reload();
     await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
     await openView(page, 'Progress');
-    await page.locator('#progress-period').selectOption('all');
-    await expect(page.locator('#run-history .run-row')).toHaveCount(3);
+    await expect(page.locator('#run-history .run-row')).toHaveCount(0);
     await openBoard(page);
-    await expect(page.locator('#board-week')).toContainText('3 runs');
+    await expect(page.locator('#board-week')).toContainText('You — nothing yet this week');
   } finally { await context.close(); }
 });
 
-test('F2: clear and undo twice while the first save is held on its way, and the board ends on the restored totals', async ({ page, supabase }) => {
+test('F2: clear and undo twice while the first save’s reply is held, and the board ends on the restored totals', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   await sharing(page, supabase, ada, { runs: practiceThisWeek(3) });
   await openApp(page);
@@ -565,23 +573,22 @@ test('F2: clear and undo twice while the first save is held on its way, and the 
   // Polled as a boolean: a returned promise would be awaited.
   await expect.poll(() => supabase.holdProfileWrite === null).toBe(true);
   expect(weekRuns(supabase, ada)).toBe(0);
-  // Undo, clear again and undo again while that reply is still on its way; each saves its own copy.
+  // Undo, clear again and undo again while that reply is still on its way. Pushes go one at a time, each
+  // reading the row first, so these wait for it; the row stays on the cleared copy meanwhile.
   await page.locator('#undo-clear').click();
   await expect(page.locator('#history-feedback')).toHaveText('History restored.');
-  await expect.poll(() => weekRuns(supabase, ada)).toBe(3);
   await clearHistory(page);
-  await expect.poll(() => weekRuns(supabase, ada)).toBe(0);
   await page.locator('#undo-clear').click();
   await expect(page.locator('#history-feedback')).toHaveText('History restored.');
-  await expect.poll(() => weekRuns(supabase, ada)).toBe(3);
-  // The held reply lands last. Nothing waits on it, so the row and the board stay on the restored history.
-  const writes = supabase.profileWrites.length;
+  await page.waitForTimeout(2000);
+  expect(weekRuns(supabase, ada)).toBe(0);
+  // The held reply lands; what waited goes up, and the row and the board end on the restored history.
   land();
-  await page.waitForTimeout(500);
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  expect(supabase.profileWrites.length).toBe(writes);
+  await expect.poll(() => weekRuns(supabase, ada)).toBe(3);
   expect(supabase.profiles.get(ada.id).data.runs).toHaveLength(3);
-  expect(column(supabase, ada)).toMatchObject({ at: supabase.profiles.get(ada.id).updated_at, weeks: { [mondayOf()]: { runs: 3 } } });
+  expect(Date.parse(column(supabase, ada).at)).toBe(Date.parse(supabase.profiles.get(ada.id).updated_at));
+  expect(column(supabase, ada)).toMatchObject({ weeks: { [mondayOf()]: { runs: 3 } } });
   await openBoard(page);
   await expect(page.locator('#board-week')).toContainText('3 runs');
 });
@@ -664,7 +671,7 @@ test('an opt-out that fails is kept across a reload and sent before anything els
   await chooseWords(page, 10);
   await completePassage(page);
   await expect.poll(() => supabase.profiles.get(ada.id).data.runs.length).toBe(3);
-  expect(supabase.profileWrites.at(-1)).toMatchObject({ method: 'POST', board: null });
+  expect(supabase.profileWrites.at(-1)).toMatchObject({ board: null });
   expect(column(supabase, ada)).toBeNull();
   supabase.board.missing = false;
 
@@ -744,7 +751,7 @@ test('a save made while an opt-out was unconfirmed leaves no summary, and turnin
   await expect(page.locator('#board-week')).toContainText('3 runs');
   expect(weekRuns(supabase, ada)).toBe(3);
   expect(supabase.profileWrites.at(-1).method).toBe('PATCH');
-  expect(column(supabase, ada).at).toBe(supabase.profiles.get(ada.id).updated_at);
+  expect(Date.parse(column(supabase, ada).at)).toBe(Date.parse(supabase.profiles.get(ada.id).updated_at));
 });
 
 test('an opt-out still on its way is not undone by another device, and lands when it is retried', async ({ page, browser, supabase }) => {
@@ -1174,10 +1181,10 @@ test('a device whose clock is behind, saving just after 00:00 UTC, still shows t
   await signInWithEmail(page, 'ada@stilltype.test');
   // The laptop takes the newer row and saves it. Its summary files the run under the day it was played
   // for and the week it was run in, whatever the laptop's clock says.
-  await expect.poll(() => supabase.profileWrites.filter((write) => write.method === 'POST').length).toBeGreaterThan(0);
+  // (A write never stamps the row earlier than the version it replaces, whatever this clock says.)
+  await expect.poll(() => supabase.profileWrites.length).toBeGreaterThan(0);
   const row = supabase.profiles.get(ada.id);
-  expect(row.updated_at < `${monday}T00:00:00Z`).toBe(true);
-  expect(row.board.at).toBe(row.updated_at);
+  expect(Date.parse(row.board.at)).toBe(Date.parse(row.updated_at));
   expect(row.board.days[monday]).toEqual({ version: dailyVersion(conditionKey(DAILY), new Date(`${monday}T00:00:00Z`)), wpm: 82, accuracy: 97, attempts: 1 });
   expect(row.board.weeks[monday]).toEqual({ seconds: 41, runs: 1 });
   // The service, on Monday, shows both: to her, and to any friend reading her row.

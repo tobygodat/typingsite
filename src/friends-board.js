@@ -609,6 +609,17 @@ export function createFriendsBoard({ getSession, dailyKey, signIn, openOnline, o
       if (session) rememberSharing(session, null);
       closed = true;
     },
+    // The account is deleted: nothing of it stays on this device, an unconfirmed opt-out included (the
+    // account's board rows went with it).
+    forget() {
+      const session = getSession();
+      if (session) {
+        rememberSharing(session, null);
+        try { localStorage.removeItem(optOutKey(session)); } catch {}
+        keptInPage.delete(session.user.id);
+      }
+      closed = true;
+    },
     // Switching to the board and arriving on the screen can both ask at once; one request answers both.
     show() { if (visible && loading) return; visible = true; refresh(); },
     hide() { visible = false; },

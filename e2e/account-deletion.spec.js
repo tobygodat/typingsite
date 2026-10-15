@@ -137,7 +137,8 @@ test('a failed deletion says why and changes nothing on this device', async ({ p
   await finishRun(page, supabase);
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
   const saved = await localState(page);
-  expect(Object.keys(saved)).toHaveLength(2);
+  // The session and the account's cache (and the friends board's sharing state, once it has read it).
+  expect(Object.keys(saved).filter((key) => !key.startsWith('stilltype-board-sharing:'))).toHaveLength(2);
 
   await openDeleteDialog(page);
   await page.keyboard.type('delete', { delay: 60 });

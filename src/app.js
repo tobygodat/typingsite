@@ -2597,6 +2597,7 @@ async function deleteAccountNow() {
   unsynced = false;
   inbox?.forget();
   forgetRace();
+  friendsBoard?.forget();
   const deleted = session;
   session = null;
   account.forgetAccount(deleted);
@@ -2771,6 +2772,8 @@ function followSessionElsewhere(event) {
     || (event.key === account.SESSION_KEY && (current ? current !== userId : account.signedOut(userId)));
   if (!signedOut) return false;
   signedOutElsewhere = true;
+  // What this device knew of the account's board sharing goes with the sign-out, as in the tab that signed out.
+  friendsBoard?.signOut();
   clearTimeout(syncTimer);
   syncTimer = 0;
   // A sign-out that sent everything removes the cache next: this tab waits to hear it (finishFollow).
