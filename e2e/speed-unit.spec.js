@@ -488,7 +488,7 @@ test.describe('narrow phone 320px, a two-minute run', () => {
 test.describe('short phone 375×553', () => {
   test.use({ viewport: { width: 375, height: 553 }, hasTouch: true, isMobile: true });
 
-  test('settings, with the speed unit row, end below the account button and need no scrolling', async ({ page }) => {
+  test('settings stay below the account button and scroll to every touch-sized row', async ({ page }) => {
     await openApp(page);
     await openSettings(page);
     // A tap on the theme select's chevron reaches the select, not the account button above it.
@@ -498,7 +498,10 @@ test.describe('short phone 375×553', () => {
     });
     expect(hit).toBe('theme-select');
     const popover = page.locator('.preferences-popover');
-    expect(await popover.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeLessThanOrEqual(0);
+    expect(await popover.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
+    await page.locator('#focus-toggle').scrollIntoViewIfNeeded();
+    await expect(page.locator('#focus-toggle')).toBeInViewport();
+    expect(await popover.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
     // Every row on screen; the collapsed test content rows and the hidden custom pace row aren't drawn.
     const heights = await popover.locator('.preference-row:visible').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
     expect(heights.length).toBeGreaterThanOrEqual(8);
