@@ -486,6 +486,67 @@ export function replayAttempt(attempt) {
   };
 }
 
+// What one event does to the typed text: the same rules replayAttempt applies, typed text only.
+function typedAfter(typed, event, text) {
+  if (event.type === 'delete') return typed.slice(0, Math.max(0, typed.length - Math.max(1, event.count || 1)));
+  if (event.type !== 'insert' || !printable(event.text) || event.accepted === false) return typed;
+  let next = typed;
+  for (const char of event.text) {
+    const position = Number.isInteger(event.position) ? event.position : next.length;
+    if (position >= text.length) break;
+    next += char;
+  }
+  return next;
+}
+
+// The typed text at offset t (ms on the attempt clock), for the watch-replay view. Events are
+// recorded in time order, so each call steps forward only through the events that came due since
+// the last one, and starts over only when t goes back (Restart). At every prefix of the events
+// it equals replayAttempt's typed text; scoring never calls this.
+export function replayCursor(attempt) {
+  const events = attempt.events || [];
+  let applied = 0;
+  let typed = '';
+  let last = -Infinity;
+  return (t) => {
+    if (t < last) {
+      applied = 0;
+      typed = '';
+    }
+    last = t;
+    while (applied < events.length && !(events[applied].offsetMs > t)) {
+      typed = typedAfter(typed, events[applied], attempt.text);
+      applied += 1;
+    }
+    return typed;
+  };
+}
+
+// The scored bounds (startedAt/endedAt) widened to cover every event, so a timed run's idle tail
+// plays out and the replay clock ends on the elapsed time the result used.
+export function replaySpan(attempt) {
+  const offsets = (attempt.events || []).map((event) => event.offsetMs).filter(Number.isFinite);
+  if (!offsets.length) return { start: 0, end: 0 };
+  const bound = (value) => (Number.isFinite(value) ? [value] : []);
+  return { start: Math.min(...offsets, ...bound(attempt.startedAt)), end: Math.max(...offsets, ...bound(attempt.endedAt)) };
+}
+
+// Live readouts, practice's and the replay's, show no rate before this much of the run: over the first
+// second a rate is mostly noise.
+export const RATE_FLOOR_MS = 1000;
+
+// The live numbers at offset t (ms on the attempt clock): the run scored as if it had ended at t. At
+// replaySpan(attempt).end it equals the completed run's score and first-try errors.
+export function replayScoreAt(attempt, t) {
+  const events = (attempt.events || []).filter((event) => event.offsetMs <= t);
+  const replay = replayAttempt({ ...attempt, events, endedAt: Math.min(t, attempt.endedAt ?? t) });
+  return {
+    ...replay.score,
+    errors: replay.firstAttempts.filter((item) => !item.correct).length,
+    elapsedMs: replay.elapsedMs,
+  };
+}
+
 export function completeAttempt(attempt, { endedAt, status = 'complete' } = {}) {
   const replay = replayAttempt({ ...attempt, endedAt });
   return {

@@ -15,6 +15,9 @@ colors:
   accent: "#8fd18a"
   accent-ink: "#0f1a0e"
   accent-soft: "rgba(143, 209, 138, 0.13)"
+  practice-level-1: "rgba(143, 209, 138, 0.3)"
+  practice-level-2: "rgba(143, 209, 138, 0.55)"
+  practice-level-3: "rgba(143, 209, 138, 0.8)"
   danger: "#ff8a6b"
   danger-soft: "rgba(255, 138, 107, 0.16)"
   heat-1: "rgba(255, 138, 107, 0.18)"
@@ -38,6 +41,9 @@ colors:
   accent-light: "#217245"
   accent-ink-light: "#fbf9f5"
   accent-soft-light: "rgba(46, 125, 79, 0.11)"
+  practice-level-1-light: "rgba(46, 125, 79, 0.3)"
+  practice-level-2-light: "rgba(46, 125, 79, 0.55)"
+  practice-level-3-light: "rgba(46, 125, 79, 0.8)"
   danger-light: "#ad3d26"
   danger-soft-light: "rgba(180, 67, 44, 0.12)"
   heat-1-light: "rgba(180, 67, 44, 0.08)"
@@ -105,6 +111,7 @@ typography:
     lineHeight: 1.4
     letterSpacing: "0.04em"
 rounded:
+  cell: "2px"
   sm: "6px"
   md: "10px"
   control: "12px"
@@ -215,7 +222,7 @@ Density is low and deliberate. The practice screen centres the passage with the 
 A warm, low-chroma neutral ramp with one green and one coral. The palette is defined twice, once for dark (`:root`, `[data-theme="dark"]`) and once for light (`[data-theme="light"]`), with identical token names. Frontmatter keys ending in `-light` are the light-theme values of the same token. Both themes hold a contrast floor against what is behind it, translucent washes and mistyped-letter tints included (`tests/contrast.test.js`): text at least 4.5:1, and the caret, the ghost caret, the text-coloured focus ring, the accent border of a focused input and input outlines at least 3:1. Disabled controls, the blurred challenge-handoff veil and the dimmed idle and unfocused caret are deliberate exceptions.
 
 ### Primary
-- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. A focused input's border turns accent and gains a soft accent-soft ring; the accent border is the focus cue that carries the contrast. Text on a green fill uses accent-ink.
+- **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. Focus rings on inputs use its soft tint (accent-soft). Text on a green fill uses accent-ink. The practice calendar on Progress steps it at 30%, 55% and 80% (practice-level-1 to 3) and then full accent; days without practice sit on the hairline, and days that met the goal also carry a small accent-ink centre dot so they never rest on colour alone.
 
 ### Secondary
 - **Ember Coral** (danger): mistyped letters, the blocked caret, regressions, destructive actions and field errors. It is always paired with a second cue (a tint or a word) and never used alone. Three coral heat tints (heat-1 to heat-3) shade only the Progress key heatmap, where each shaded key also prints its miss rate and a legend names the steps.

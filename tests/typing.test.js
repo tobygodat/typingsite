@@ -25,6 +25,9 @@ import {
   blocksOnError,
   failureFor,
   failureAtEnd,
+  replayCursor,
+  replayScoreAt,
+  replaySpan,
   quoteCorpus,
   recommendTarget,
   replayAttempt,
@@ -458,38 +461,99 @@ test('generated passages draw from the selected common-word list', async () => {
   assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
 });
 
-test('correction policies map old preferences, fail on errors and keep separate keys', () => {
-  assert.equal(correctionPreference({}), 'relaxed');
-  assert.equal(correctionPreference({ stopOnError: true }), 'mandatory');
-  assert.equal(correctionPreference({ stopOnError: false }), 'relaxed');
-  assert.equal(correctionPreference({ correction: 'fail-any', stopOnError: true }), 'fail-any');
-  assert.equal(correctionPreference({ correction: 'bogus', stopOnError: true }), 'mandatory');
-  assert.equal(allowsBackspace('no-backspace'), false);
-  assert.equal(allowsBackspace('relaxed'), true);
-  assert.equal(blocksOnError('mandatory'), true);
-  assert.equal(blocksOnError('fail-word'), false);
-  assert.equal(failureFor('fail-any', 'the cat', 'th', 'x'), 'wrong key');
-  assert.equal(failureFor('fail-any', 'the cat', 'th', 'e'), null);
-  assert.equal(failureFor('fail-word', 'the cat', 'thx', 'x'), null);
-  assert.equal(failureFor('fail-word', 'the cat', 'thx', ' '), 'word error');
-  assert.equal(failureFor('fail-word', 'the cat', 'the', ' '), null);
-  assert.equal(failureFor('fail-word', 'the cat', 'the cxt', ' '), 'word error');
-  assert.equal(failureFor('fail-word', 'the cat', 'the cx', 't'), 'word error');
-  assert.equal(failureFor('fail-word', 'the cat', 'the ca', 'x'), 'word error');
-  assert.equal(failureFor('fail-word', 'the cat', 'the ca', 't'), null);
-  assert.equal(failureFor('fail-word', 'the cat sat', 'thexcat', ' '), 'word error');
-  // The end of a timed run is a word boundary: an unfinished wrong word fails.
-  assert.equal(failureAtEnd('fail-word', 'the cat sat', 'the cx'), 'word error');
-  assert.equal(failureAtEnd('fail-word', 'the cat sat', 'the ca'), null);
-  assert.equal(failureAtEnd('fail-any', 'the cat sat', 'the cx'), 'wrong key');
-  assert.equal(failureAtEnd('relaxed', 'the cat sat', 'the cx'), null);
-  assert.equal(failureAtEnd('no-backspace', 'the cat sat', 'the cx'), null);
-  assert.equal(failureAtEnd('fail-word', 'the cat sat', ''), null);
-  assert.equal(failureFor('relaxed', 'the cat', 'th', 'x'), null);
-  const attempt = createAttempt({ id: 'nb', text: 'ab', textId: 'one', conditions: { correctionPolicy: 'no-backspace' } });
-  assert.equal(passageComplete(attempt, 'ax'), true);
-  const keys = new Set(CORRECTION_POLICIES.map((correctionPolicy) => conditionKey({ correctionPolicy })));
-  assert.equal(keys.size, CORRECTION_POLICIES.length);
+test('replayCursor replays the typed text as it was and ends on the scored result', () => {
+  const attempt = createAttempt({ id: 'r', text: 'the cat' });
+  attempt.events.push(
+    { type: 'insert', text: 't', offsetMs: 0 },
+    { type: 'insert', text: 'x', offsetMs: 100 },
+    { type: 'delete', count: 1, offsetMs: 200 },
+    { type: 'insert', text: 'h', offsetMs: 300 },
+    { type: 'insert', text: 'e', offsetMs: 400 },
+    { type: 'insert', text: ' ', offsetMs: 500 },
+    { type: 'insert', text: 'c', offsetMs: 600 },
+    { type: 'insert', text: 'q', offsetMs: 700 },
+    { type: 'insert', text: 't', offsetMs: 800 },
+  );
+  const completed = completeAttempt(attempt, { endedAt: 800 });
+  const typedAt = replayCursor(completed);
+  assert.equal(typedAt(150), 'tx');
+  assert.equal(typedAt(250), 't');
+  assert.equal(typedAt(replaySpan(completed).end), completed.summary.typed);
+  // Going back (Restart) starts over.
+  assert.equal(typedAt(0), 't');
+  assert.equal(typedAt(450), 'the');
+  assert.deepEqual(replaySpan(completed), { start: 0, end: 800 });
+  // A timed run that idles before the timer ends replays to the scored end, not the last key.
+  const timed = completeAttempt({ ...attempt, startedAt: 0 }, { endedAt: 15000 });
+  assert.deepEqual(replaySpan(timed), { start: 0, end: timed.endedAt });
+  assert.equal(replaySpan(timed).end - replaySpan(timed).start, timed.summary.elapsedMs);
+});
+
+test('replayScoreAt scores the run as it stood at each moment and ends on the run card', () => {
+  const attempt = createAttempt({ id: 's', text: 'the cat' });
+  attempt.events.push(
+    { type: 'insert', text: 't', offsetMs: 0 },
+    { type: 'insert', text: 'x', offsetMs: 1000 },
+    { type: 'delete', count: 1, offsetMs: 1500 },
+    { type: 'insert', text: 'h', offsetMs: 2000 },
+    { type: 'insert', text: 'e', offsetMs: 2500 },
+    { type: 'insert', text: ' ', offsetMs: 3000 },
+    { type: 'insert', text: 'c', offsetMs: 3500 },
+    { type: 'insert', text: 'q', offsetMs: 4000 },
+    { type: 'insert', text: 't', offsetMs: 4500 },
+  );
+  const completed = completeAttempt(attempt, { endedAt: 4500 });
+  // "th" typed in 2.2 s, from t, x (a first-try miss), h.
+  assert.deepEqual(replayScoreAt(completed, 2200), { wpm: 11, accuracy: 67, errors: 1, elapsedMs: 2200 });
+  // The x was corrected but still counts; the q is a second first-try miss.
+  assert.deepEqual(replayScoreAt(completed, 4000), { wpm: 15, accuracy: 71, errors: 2, elapsedMs: 4000 });
+  const end = replayScoreAt(completed, replaySpan(completed).end);
+  assert.deepEqual(end, { wpm: 16, accuracy: 75, errors: 2, elapsedMs: 4500 });
+  assert.deepEqual({ wpm: end.wpm, accuracy: end.accuracy }, completed.summary.score);
+  assert.equal(end.errors, completed.summary.firstAttempts.filter((item) => !item.correct).length);
+
+  // A timed run that idles to its timer: elapsed runs on with the clock, not from the last key.
+  const timed = completeAttempt({ ...attempt, startedAt: 0 }, { endedAt: 15000 });
+  assert.deepEqual(replayScoreAt(timed, 9000), { wpm: 8, accuracy: 75, errors: 2, elapsedMs: 9000 });
+  const timedEnd = replayScoreAt(timed, replaySpan(timed).end);
+  assert.deepEqual(timedEnd, { wpm: 5, accuracy: 75, errors: 2, elapsedMs: 15000 });
+  assert.deepEqual({ wpm: timedEnd.wpm, accuracy: timedEnd.accuracy }, timed.summary.score);
+});
+
+test('replayCursor matches replayAttempt at every prefix of the events', () => {
+  let seed = 11;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const pick = (items) => items[Math.floor(random() * items.length)];
+  for (let run = 0; run < 40; run += 1) {
+    const text = makePassage('words', 12, run % 2 === 0, random);
+    const attempt = createAttempt({ id: `p${run}`, text });
+    let offsetMs = 0;
+    let length = 0;
+    for (let i = 0; i < 120; i += 1) {
+      offsetMs += pick([0, 1, 37, 120]);
+      const roll = random();
+      // Every event shape the recorder writes, plus the ones replayAttempt skips or truncates.
+      const event = roll < 0.55 ? { type: 'insert', text: random() < 0.8 ? text[length] || 'z' : 'x', position: length, accepted: true }
+        : roll < 0.62 ? { type: 'insert', text: pick(['ab', 'q', '\n', '', 'é']) }
+        : roll < 0.67 ? { type: 'insert', text: 'k', position: pick([length, text.length, text.length + 3]), accepted: random() < 0.5 }
+        : roll < 0.72 ? { type: 'blocked-insert', text: 'y', position: Math.max(0, length - 1) }
+        : roll < 0.88 ? { type: 'delete', count: pick([1, 1, 2, 5, undefined, 0, -1]) }
+        : { type: pick(['focus-lost', 'composition']) };
+      attempt.events.push({ ...event, offsetMs });
+      length = replayAttempt(attempt).typed.length;
+    }
+    const typedAt = replayCursor(attempt);
+    attempt.events.forEach((event, index) => {
+      // Events sharing an offset come due together, so compare at the last one of each offset.
+      if (attempt.events[index + 1]?.offsetMs === event.offsetMs) return;
+      const expected = replayAttempt({ ...attempt, events: attempt.events.slice(0, index + 1) }).typed;
+      assert.equal(typedAt(event.offsetMs), expected, `run ${run}, event ${index}`);
+    });
+    assert.equal(typedAt(Infinity), replayAttempt(attempt).typed);
+    // Seeking back and forward again lands on the same text.
+    const middle = attempt.events[60].offsetMs;
+    assert.equal(typedAt(middle), replayAttempt({ ...attempt, events: attempt.events.filter((event) => event.offsetMs <= middle) }).typed);
+  }
 });
 
 test('condition keys without a standard recipe stay byte-identical', () => {
@@ -618,6 +682,40 @@ test('custom text must be typeable and long enough to time', () => {
   assert.deepEqual(customTextProblem('go 🚀 now'), { kind: 'untypable', char: '🚀' });
   assert.deepEqual(customTextProblem(normalizeCustomText(Array(501).fill('ab…').join(' '), Infinity)), { kind: 'long', length: 3005 });
   assert.equal(problem(Array(500).fill('ab…').join(' ')), null);
+});
+
+test('correction policies map old preferences, fail on errors and keep separate keys', () => {
+  assert.equal(correctionPreference({}), 'relaxed');
+  assert.equal(correctionPreference({ stopOnError: true }), 'mandatory');
+  assert.equal(correctionPreference({ stopOnError: false }), 'relaxed');
+  assert.equal(correctionPreference({ correction: 'fail-any', stopOnError: true }), 'fail-any');
+  assert.equal(correctionPreference({ correction: 'bogus', stopOnError: true }), 'mandatory');
+  assert.equal(allowsBackspace('no-backspace'), false);
+  assert.equal(allowsBackspace('relaxed'), true);
+  assert.equal(blocksOnError('mandatory'), true);
+  assert.equal(blocksOnError('fail-word'), false);
+  assert.equal(failureFor('fail-any', 'the cat', 'th', 'x'), 'wrong key');
+  assert.equal(failureFor('fail-any', 'the cat', 'th', 'e'), null);
+  assert.equal(failureFor('fail-word', 'the cat', 'thx', 'x'), null);
+  assert.equal(failureFor('fail-word', 'the cat', 'thx', ' '), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the', ' '), null);
+  assert.equal(failureFor('fail-word', 'the cat', 'the cxt', ' '), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the cx', 't'), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the ca', 'x'), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the ca', 't'), null);
+  assert.equal(failureFor('fail-word', 'the cat sat', 'thexcat', ' '), 'word error');
+  // The end of a timed run is a word boundary: an unfinished wrong word fails.
+  assert.equal(failureAtEnd('fail-word', 'the cat sat', 'the cx'), 'word error');
+  assert.equal(failureAtEnd('fail-word', 'the cat sat', 'the ca'), null);
+  assert.equal(failureAtEnd('fail-any', 'the cat sat', 'the cx'), 'wrong key');
+  assert.equal(failureAtEnd('relaxed', 'the cat sat', 'the cx'), null);
+  assert.equal(failureAtEnd('no-backspace', 'the cat sat', 'the cx'), null);
+  assert.equal(failureAtEnd('fail-word', 'the cat sat', ''), null);
+  assert.equal(failureFor('relaxed', 'the cat', 'th', 'x'), null);
+  const attempt = createAttempt({ id: 'nb', text: 'ab', textId: 'one', conditions: { correctionPolicy: 'no-backspace' } });
+  assert.equal(passageComplete(attempt, 'ax'), true);
+  const keys = new Set(CORRECTION_POLICIES.map((correctionPolicy) => conditionKey({ correctionPolicy })));
+  assert.equal(keys.size, CORRECTION_POLICIES.length);
 });
 
 test('stored correction preferences migrate without filling unchosen settings', async () => {

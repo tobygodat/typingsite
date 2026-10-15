@@ -87,6 +87,16 @@
                 <option value="workman">workman</option>
               </select>
             </label>
+            <label class="preference-row" for="daily-goal">
+              <span><strong>daily goal</strong></span>
+              <select class="input select" id="daily-goal">
+                <option value="0" selected>off</option>
+                <option value="5">5 min</option>
+                <option value="10">10 min</option>
+                <option value="15">15 min</option>
+                <option value="30">30 min</option>
+              </select>
+            </label>
             <label class="preference-row" for="live-toggle">
               <span><strong>live wpm and accuracy</strong></span>
               <input class="switch" id="live-toggle" type="checkbox">
@@ -465,6 +475,7 @@
                 <button id="start-drill" class="btn btn-primary" type="button" data-action="start-drill" disabled>Start drill</button>
                 <button id="skip-to-retest" class="btn btn-ghost" type="button" data-action="skip-to-retest" disabled>Skip to retest</button>
                 <button id="run-again" class="btn btn-ghost" type="button" data-action="run-again">Run again</button>
+                <button id="watch-replay" class="btn btn-ghost" type="button" data-action="watch-replay" hidden>Watch replay</button>
               </div>
             </article>
 
@@ -565,6 +576,13 @@
           <button id="clear-history" class="btn btn-ghost btn-sm danger-text" type="button" disabled>Clear history</button>
         </header>
 
+        <section id="practice-goal" class="practice-goal" aria-label="Daily practice" hidden>
+          <p id="goal-line" class="goal-line"></p>
+          <div id="goal-calendar" class="goal-calendar" role="group"></div>
+          <div class="goal-day-picker"><label class="sr-only" for="goal-day-select">Practice day</label><select id="goal-day-select" class="input select"></select></div>
+          <p id="goal-caption" class="goal-caption" aria-hidden="true"></p>
+        </section>
+
         <section id="standard-score" class="standard-score" aria-labelledby="standard-score-heading">
           <div class="standard-score-heading">
             <h2 id="standard-score-heading">Standard score</h2>
@@ -579,8 +597,8 @@
         </section>
 
         <div id="progress-empty" class="empty-state">
-          <h2>No practice runs yet.</h2>
-          <p>Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.</p>
+          <h2 id="progress-empty-title">No practice runs yet.</h2>
+          <p id="progress-empty-copy">Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.</p>
           <button class="btn btn-primary" type="button" data-action="go-practice">Start practicing</button>
           <p class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button> a few keys at a time first.</p>
         </div>
@@ -873,6 +891,28 @@
         <span class="palette-highlight" aria-hidden="true"></span>
         <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
         <p id="palette-empty" class="palette-empty" hidden>No matches</p>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="replay-dialog" aria-labelledby="replay-title">
+    <div class="dialog-content">
+      <header class="replay-head">
+        <h2 id="replay-title">Replay</h2>
+        <div class="replay-readout">
+          <span id="replay-stats-label" class="sr-only"></span>
+          <span class="replay-stat" aria-hidden="true"><span id="replay-wpm" class="replay-stat-value">—</span><span>wpm</span></span>
+          <span class="replay-stat" aria-hidden="true"><span id="replay-accuracy" class="replay-stat-value">—</span><span>%</span></span>
+          <span class="replay-stat" aria-hidden="true"><span id="replay-errors" class="replay-stat-value">0</span><span id="replay-errors-unit">errors</span></span>
+          <span class="replay-stat"><span id="replay-clock" class="replay-stat-value">0.0</span><span>s</span></span>
+        </div>
+      </header>
+      <div id="replay-text" class="replay-text" aria-hidden="true"></div>
+      <div class="dialog-actions">
+        <button id="replay-toggle" class="btn btn-secondary" type="button">Pause</button>
+        <button id="replay-speed" class="btn btn-ghost" type="button" aria-label="Playback speed 1×">1×</button>
+        <button id="replay-restart" class="btn btn-ghost" type="button">Restart</button>
+        <button id="replay-close" class="btn btn-ghost" type="button">Close</button>
       </div>
     </div>
   </dialog>
