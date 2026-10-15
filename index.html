@@ -760,7 +760,13 @@
     <div class="dialog-content">
       <header class="replay-head">
         <h2 id="replay-title">Replay</h2>
-        <span class="replay-clock"><span id="replay-clock" class="replay-clock-value">0.0</span><span class="replay-clock-unit">s</span></span>
+        <div class="replay-readout">
+          <span id="replay-stats-label" class="sr-only"></span>
+          <span class="replay-stat" aria-hidden="true"><span id="replay-wpm" class="replay-stat-value">—</span><span>wpm</span></span>
+          <span class="replay-stat" aria-hidden="true"><span id="replay-accuracy" class="replay-stat-value">—</span><span>%</span></span>
+          <span class="replay-stat" aria-hidden="true"><span id="replay-errors" class="replay-stat-value">0</span><span id="replay-errors-unit">errors</span></span>
+          <span class="replay-stat"><span id="replay-clock" class="replay-stat-value">0.0</span><span>s</span></span>
+        </div>
       </header>
       <div id="replay-text" class="replay-text" aria-hidden="true"></div>
       <div class="dialog-actions">

@@ -17,8 +17,21 @@ async function finishWithCorrectedMiss(page) {
   return { text, at };
 }
 
+// The run card's numbers and the replay's stats, as shown.
+const runCard = async (page) => ({
+  wpm: await page.locator('#result-wpm').textContent(),
+  accuracy: await page.locator('#result-accuracy').textContent(),
+  errors: await page.locator('#result-errors').textContent(),
+});
+const replayStats = async (page) => ({
+  wpm: await page.locator('#replay-wpm').textContent(),
+  accuracy: await page.locator('#replay-accuracy').textContent(),
+  errors: await page.locator('#replay-errors').textContent(),
+});
+
 test('watch replay plays the run back and ends on the scored letters', async ({ page }) => {
   const { text, at } = await finishWithCorrectedMiss(page);
+  const card = await runCard(page);
   await page.locator('#watch-replay').click();
   const dialog = page.locator('#replay-dialog');
   await expect(dialog).toBeVisible();
@@ -36,6 +49,7 @@ test('watch replay plays the run back and ends on the scored letters', async ({ 
   await expect(page.locator('#replay-text .char.correct')).toHaveCount(text.length);
   await expect(page.locator('#replay-text .char.is-caret')).toHaveCount(1);
   await expect(page.locator('#replay-toggle')).toHaveText('Play');
+  expect(await replayStats(page)).toEqual(card);
 
   // Pause and restart work, and Esc closes.
   await page.locator('#replay-restart').click();
@@ -50,11 +64,14 @@ test('watch replay plays the run back and ends on the scored letters', async ({ 
 test('under reduced motion the replay opens still, on the finished frame', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const { text } = await finishWithCorrectedMiss(page);
+  const card = await runCard(page);
   await page.locator('#watch-replay').click();
   const dialog = page.locator('#replay-dialog');
   await expect(dialog).toHaveAttribute('data-state', 'done');
   await expect(page.locator('#replay-toggle')).toHaveText('Play');
   await expect(page.locator('#replay-text .char.correct')).toHaveCount(text.length);
+  expect(await replayStats(page)).toEqual(card);
+  await expect(page.locator('#replay-stats-label')).toHaveText(`${card.wpm} wpm, ${card.accuracy}% accuracy, 1 error`);
   // Playback is still there when asked for.
   await page.locator('#replay-toggle').click();
   await expect(dialog).toHaveAttribute('data-state', 'playing');
@@ -139,7 +156,7 @@ test('replay controls wrap inside the dialog at phone width', async ({ page }) =
   const dialog = page.locator('#replay-dialog');
   await expect(dialog).toBeVisible();
   const box = await dialog.boundingBox();
-  for (const id of ['replay-toggle', 'replay-speed', 'replay-restart', 'replay-close']) {
+  for (const id of ['replay-toggle', 'replay-speed', 'replay-restart', 'replay-close', 'replay-wpm', 'replay-errors-unit', 'replay-clock']) {
     const button = await page.locator(`#${id}`).boundingBox();
     expect(button.x).toBeGreaterThanOrEqual(box.x);
     expect(button.x + button.width).toBeLessThanOrEqual(box.x + box.width);
@@ -247,6 +264,72 @@ async function finishLongRunWithMiss(page) {
   await expect(page.locator('#result-errors')).toHaveText('1');
 }
 
+test('the replay stats tick once a second from "—" and end on the run card', async ({ page }) => {
+  test.setTimeout(60_000);
+  await finishLongRunWithMiss(page);
+  const card = await runCard(page);
+  await page.locator('#watch-replay').click();
+  const dialog = page.locator('#replay-dialog');
+  await expect(dialog).toHaveAttribute('data-state', 'playing');
+  // No rate over the first second, as in practice; the errors count from 0.
+  expect(await replayStats(page)).toEqual({ wpm: '—', accuracy: '—', errors: '0' });
+  await page.clock.fastForward(900);
+  expect(await replayStats(page)).toEqual({ wpm: '—', accuracy: '—', errors: '0' });
+  await page.clock.fastForward(200);
+  await expect(page.locator('#replay-wpm')).toHaveText(/^\d+$/);
+  await expect(page.locator('#replay-accuracy')).toHaveText('100');
+  // The numbers hold within a second: it is the replay clock, not the letters, that moves them.
+  const second = await replayStats(page);
+  await page.clock.fastForward(500);
+  expect(await replayStats(page)).toEqual(second);
+
+  // Past the miss, the error shows and accuracy drops.
+  const wrong = page.locator('#replay-text .char.wrong');
+  for (let step = 0; step < 600 && !(await wrong.count()); step += 1) await page.clock.fastForward(100);
+  await page.clock.fastForward(1000);
+  await expect(page.locator('#replay-errors')).toHaveText('1');
+  await expect(page.locator('#replay-errors-unit')).toHaveText('error');
+  await expect(page.locator('#replay-accuracy')).not.toHaveText('100');
+
+  await page.clock.fastForward(60_000);
+  await expect(dialog).toHaveAttribute('data-state', 'done');
+  expect(await replayStats(page)).toEqual(card);
+  // Restart goes back to the start's numbers.
+  await page.locator('#replay-restart').click();
+  expect(await replayStats(page)).toEqual({ wpm: '—', accuracy: '—', errors: '0' });
+});
+
+test('the replay ends on the run card even when its last frame falls mid-second', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await page.clock.pauseAt(Date.now() + 1000);
+  await page.locator('#typing-input').focus();
+  for (const key of text.slice(0, -1)) {
+    await page.keyboard.type(key);
+    await page.clock.fastForward(100);
+  }
+  // A long pause before the last letter, timed so the run ends half a second into a second: the
+  // rate at the start of that second is well above the final one.
+  const pause = 1000 + ((500 - ((text.length - 1) * 100) % 1000) + 1000) % 1000;
+  const end = (text.length - 1) * 100 + pause;
+  await page.clock.fastForward(pause - 100);
+  await page.keyboard.type(text.at(-1));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  const card = await runCard(page);
+
+  await page.locator('#watch-replay').click();
+  const dialog = page.locator('#replay-dialog');
+  await page.clock.fastForward(end - 400);
+  await expect(dialog).toHaveAttribute('data-state', 'playing');
+  const late = await replayStats(page);
+  expect(late.wpm).not.toBe(card.wpm);
+  await page.clock.fastForward(400);
+  await expect(dialog).toHaveAttribute('data-state', 'done');
+  expect(await replayStats(page)).toEqual(card);
+});
+
 for (const theme of ['dark', 'light']) {
   test(`screenshot: replay mid-playback (${theme})`, async ({ page }, testInfo) => {
     test.setTimeout(60_000);
@@ -267,5 +350,10 @@ for (const theme of ['dark', 'light']) {
     expect(view.lines).toBe(3);
     expect(view.caretShown).toBe(true);
     await page.screenshot({ path: shotPath(testInfo, `replay-${theme}.png`) });
+    // At phone width the stats wrap below the title.
+    await page.setViewportSize({ width: 320, height: 640 });
+    await expect(page.locator('#replay-wpm')).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+    await page.screenshot({ path: shotPath(testInfo, `replay-phone-${theme}.png`) });
   });
 }

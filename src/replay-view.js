@@ -5,7 +5,7 @@
 // and the caret jumps (no spring).
 // Like the live passage, only a short stretch is mounted and three lines show: a timed run's
 // 1,600-word passage costs no more to draw than a ten-word one.
-import { replayCursor, replaySpan } from './typing.js';
+import { RATE_FLOOR_MS, replayCursor, replayScoreAt, replaySpan } from './typing.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // Letters mounted from the top visible line: well over three lines at any dialog width.
@@ -14,6 +14,8 @@ const MOUNTED = 480;
 export function createReplayView(dialog) {
   const display = dialog.querySelector('#replay-text');
   const clock = dialog.querySelector('#replay-clock');
+  const [wpmText, accuracyText, errorsText, errorsUnit, statsLabel] = ['wpm', 'accuracy', 'errors', 'errors-unit', 'stats-label']
+    .map((id) => dialog.querySelector(`#replay-${id}`));
   const toggle = dialog.querySelector('#replay-toggle');
   const speedButton = dialog.querySelector('#replay-speed');
   let attempt = null;
@@ -28,6 +30,7 @@ export function createReplayView(dialog) {
   let frame = 0;
   let lastNow = 0;
   let drawn = [];
+  let scored = null; // the replay second and position the stats were last computed at
 
   const length = () => span.end - span.start;
 
@@ -66,6 +69,22 @@ export function createReplayView(dialog) {
     }
   }
 
+  // Like practice's readout, the numbers change once per replay second (no rate before RATE_FLOOR_MS),
+  // and the last frame shows the exact final score, the run card's.
+  function drawStats() {
+    const done = position >= length();
+    const second = done ? Infinity : Math.floor(position / 1000);
+    if (scored && scored.second === second && position >= scored.position) return;
+    scored = { second, position };
+    const { wpm, accuracy, errors, elapsedMs } = replayScoreAt(attempt, span.start + position);
+    const rated = done || elapsedMs >= RATE_FLOOR_MS;
+    wpmText.textContent = rated ? wpm : '—';
+    accuracyText.textContent = rated ? accuracy : '—';
+    errorsText.textContent = errors;
+    errorsUnit.textContent = errors === 1 ? 'error' : 'errors';
+    statsLabel.textContent = `${wpmText.textContent} wpm, ${accuracyText.textContent}% accuracy, ${errors} ${errorsUnit.textContent}`;
+  }
+
   function draw() {
     const typed = typedAt(span.start + position);
     const caret = typed.length;
@@ -77,6 +96,7 @@ export function createReplayView(dialog) {
       if (drawn[offset] !== name) node.className = drawn[offset] = name;
     });
     clock.textContent = (position / 1000).toFixed(1);
+    drawStats();
     toggle.textContent = playing ? 'Pause' : 'Play';
     dialog.dataset.state = playing ? 'playing' : position >= length() ? 'done' : 'paused';
   }
@@ -127,6 +147,7 @@ export function createReplayView(dialog) {
       span = replaySpan(finished);
       typedAt = replayCursor(finished);
       position = 0;
+      scored = null;
       // Open first: mounting measures where the lines break.
       dialog.showModal();
       mount(0);
