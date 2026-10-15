@@ -25,6 +25,7 @@ import {
   selectPassage,
   standardConditions,
   summarizePatterns,
+  textId,
   rawWpm,
   consistency,
   characterBreakdown,
@@ -40,7 +41,7 @@ import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
 import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './friends-board.js';
 import { forgetRace, listRaceInvites } from './multiplayer.js';
-import { MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, filterRuns, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 import { CUSTOM_ORDERS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
@@ -131,6 +132,7 @@ const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('ra
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let lastCompleted = null;
+let wordsPassage = null;
 const ghostOn = () => prefs.paceCaret !== 'off';
 let palette = null;
 let onlineRace = null;
@@ -343,6 +345,7 @@ function describeConditions(value = conditions()) {
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
+  if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words${run.conditions.punctuation ? ' · punctuation' : ''}${run.conditions.numbers ? ' · numbers' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
   if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
   return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
@@ -656,8 +659,9 @@ function choosePassage(extraSeen = []) {
 // Restarting or changing a setting keeps a custom passage; every other session restarts as practice.
 const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custom' : 'practice');
 
+// Daily and missed-word passages run to the end of their text, whatever the practice shape is.
 function sessionDurationMs() {
-  if (sessionKind === 'daily') return null;
+  if (sessionKind === 'daily' || sessionKind === 'missed') return null;
   if (sessionKind === 'drill') return 60000;
   if (sessionKind === 'custom') return null;
   if (prefs.mode === 'time') return prefs.duration * 1000;
@@ -671,6 +675,7 @@ function configureSessionCopy() {
     drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
     custom: ['custom text', 'Your text', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
+    missed: ['missed words', 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
   }[sessionKind];
   $('session-kicker').textContent = copy[0];
@@ -704,7 +709,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   // Changing to any session but custom also closes the custom editor, or Custom would stay marked over it.
   if (kindChanged && kind !== 'custom') customOpen = false;
   if (kindChanged) setModeControls();
-  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : kind === 'custom' ? customPassage() : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
+  passage = selectedPassage || (kind === 'missed' ? wordsPassage : kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : kind === 'custom' ? customPassage() : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
@@ -733,7 +738,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     }
     return false;
   }
-  if (kind !== 'drill' && passage.id && !profile.seenTextIds.includes(passage.id)) {
+  if (!['drill', 'missed'].includes(kind) && passage.id && !profile.seenTextIds.includes(passage.id)) {
     profile.seenTextIds.push(passage.id);
     saveProfile();
   }
@@ -746,7 +751,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: kind === 'daily' ? dailyConditions() : kind === 'custom' ? customConditions() : conditions(),
+    conditions: kind === 'daily' ? dailyConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, ...practiceTextConditions(passage.text), quoteLength: null, difficulty: null, wordList: null } : kind === 'custom' ? customConditions() : conditions(),
   });
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;
@@ -1373,11 +1378,51 @@ function renderCard(completed) {
   const graph = $('speed-graph').closest('figure');
   graph.hidden = !rateShown(completed);
   if (!graph.hidden) renderSpeedGraph($('speed-graph'), completed, { animate: true });
+  renderPracticeWords(completed);
+}
+
+// Offer the words this run tripped on or was slowest through as their own uncounted run. The
+// slowest are one timing each, so they show their speed beside the run's median, not a weakness.
+// Only an evidence run is mined for words, by the same rule as recurring patterns: a complete test,
+// retest or daily run on fresh text. Not a drill (synthetic, target-heavy text), a daily passage shown
+// before, custom text or word practice itself. Run again repeats a word-practice passage.
+function renderPracticeWords(completed) {
+  const mined = evidenceRun(completed);
+  const { missed, slow, timedCount, medianWpm } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
+  const words = [...missed, ...slow.map((item) => item.word)];
+  const button = $('practice-words');
+  const evidence = $('practice-words-evidence');
+  button.hidden = evidence.hidden = !words.length;
+  if (!words.length) return;
+  // Sentences about this run's words, set in Literata like the word pace line, and each number is a
+  // book-face figure (.num), never the mono of the conditions line.
+  const figure = (value) => element('span', String(value), 'num');
+  const lines = [
+    // Quote a token that carries punctuation, so "table," reads as the word typed.
+    missed.length && [`missed first try: ${missed.map((word) => /[^\p{L}\p{N}]/u.test(word) ? `“${word}”` : word).join(', ')}`],
+    slow.length && ['slowest in this run: ', ...slow.flatMap((item, index) => [`${index ? ', ' : ''}${item.word} `, figure(item.wpm), ' wpm']),
+      ' · median ', figure(medianWpm), ' wpm over ', figure(timedCount), ' clean words'],
+  ].filter(Boolean);
+  evidence.replaceChildren(...lines.flatMap((parts, index) => (index ? ['\n', ...parts] : parts)));
+  const text = practiceWordsPassage(words);
+  button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
+  button.onclick = () => {
+    // The run whose words are practised (an evidence run, or there'd be no button) is the baseline for
+    // the fresh retest offered afterward, as a finished practice or daily run is. A retest doesn't set it
+    // on finishing, so set it here. No drill comes between, so the next comparison reads and records no
+    // drill target; startDrill sets one again.
+    baselineAttempt = completed;
+    trainingContext = null;
+    selectedTarget = null;
+    wordsPassage = { id: `missed-${textId(text)}`, text, fresh: false, words };
+    resetSession('missed', { focus: true });
+  };
 }
 
 function resultHeadline(completed) {
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
+  if (completed.kind === 'missed') return 'Word practice complete · not counted toward your best';
   if (completed.kind === 'custom') return 'Custom text complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
   if (!resultBestBefore) return 'First run at these settings';
@@ -1416,7 +1461,10 @@ function renderResults(completed, saved) {
     activeRecommendation = trainingRecommendation(completed.conditions);
     selectedTarget = activeRecommendation.target;
   }
-  renderRecommendation(counted, comparableKind(completed.kind));
+  // Custom text is never mined for targets or kept as a baseline, so its results offer no drill or retest:
+  // the recommendation would come from other runs and the retest would measure a different text. Word
+  // practice isn't compared either, but like a drill it leads on to a retest of the run its words came from.
+  renderRecommendation(counted, comparableKind(completed.kind) || completed.kind === 'missed');
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again' : 'Run again';
   renderTraining();
   renderDaily();
@@ -2965,7 +3013,7 @@ function bindEvents() {
   });
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
-  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(restartKind(), { focus: true }));
+  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(sessionKind === 'missed' ? 'missed' : restartKind(), { focus: true }));
   $('result-words').addEventListener('keydown', moveWordFocus);
   $('result-words').addEventListener('focusin', (event) => {
     const word = event.target.closest('[role="option"]');

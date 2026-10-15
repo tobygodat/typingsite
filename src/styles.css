@@ -1367,6 +1367,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 .run-card .condition-copy { font-size: var(--text-fine); }
+/* The practice offer's evidence is sentences about the words, so it takes the word pace line's
+   Literata (.word-detail), one sentence per line. */
+.practice-evidence { white-space: pre-line; overflow-wrap: anywhere; }
+.run-card-practice { justify-self: start; align-self: start; margin-inline-start: calc((var(--space-4) + var(--space-1)) * -1); }
 
 .results-copy { min-width: 0; display: grid; gap: var(--space-10); padding-top: var(--space-2); }
 

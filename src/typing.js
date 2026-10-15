@@ -257,7 +257,7 @@ export function passageComplete(attempt, typed) {
     && (attempt.conditions.correctionPolicy === 'relaxed' || typed === attempt.text);
 }
 
-function printable(text) {
+export function printable(text) {
   return typeof text === 'string' && text.length > 0 && !/[\r\n]/u.test(text);
 }
 
@@ -478,6 +478,7 @@ export function summarizePatterns(attempts, limit = 20, compatibleConditions = n
   const recent = attempts.filter((attempt) => attempt.status === 'complete'
     && !attempt.interrupted
     && attempt.kind !== 'drill'
+    && attempt.kind !== 'missed'
     && attempt.kind !== 'race'
     && (attempt.kind !== 'daily' || attempt.fresh !== false)
     && (!key || conditionKey(attempt.conditions) === key)).slice(-limit);
