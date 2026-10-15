@@ -4062,7 +4062,7 @@ function bindEvents() {
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
   keybindingEditor = createKeybindingEditor({
     form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => prefs.keybindings,
-    onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveProfile(); },
+    onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
   });
   keybindingEditor.refresh();
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
