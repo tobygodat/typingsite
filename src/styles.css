@@ -2454,6 +2454,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .screen { padding-top: var(--space-8); }
   .typing-screen { min-height: auto; padding-top: var(--space-6); }
 
+  /* Six modes (with standard and compose) are wider than a phone column: the mode group wraps onto a
+     second line rather than scroll sideways; the selection pill follows its button to either line. */
+  .mode-options { flex-wrap: wrap; justify-content: center; max-width: 100%; }
   /* Two rows at most: mode and punctuation, then lengths. */
   .practice-controls { margin-bottom: var(--space-6); gap: var(--space-2); }
   #duration-options { order: 1; }

@@ -954,7 +954,7 @@ test.describe('without caret-animation', () => {
     await page.emulateMedia({ colorScheme: 'light' });
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 241, 235)');
-    await expect(page.locator('.compose-caret')).toHaveCSS('background-color', 'rgb(46, 125, 79)');
+    await expect(page.locator('.compose-caret')).toHaveCSS('background-color', 'rgb(33, 114, 69)');
     await typePaced(page, [...', so I read by the window'], 210);
     await expectCaretAt(page, text.length + 24, 'right');
     await expect(page.locator('#compose-input')).toBeFocused();
