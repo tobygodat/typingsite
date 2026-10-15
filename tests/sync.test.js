@@ -4,7 +4,7 @@ import {
   HISTORY, MAX_STORED_ATTEMPTS, capHistory, clearProfile, insertCloudProfile, joinHolds, mergeAndHold, mergeSynced, revokeClear,
   sameProfile, stampAfter, undoClearHere, updateCloudProfile,
 } from '../src/account.js';
-import { MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
+import { recordPracticeTime, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
 import { MAX_COMPOSITIONS } from '../src/compose.js';
 import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 import { conditionKey } from '../src/typing.js';
@@ -1366,4 +1366,19 @@ test('daily practice archives survive sync, retention and clear undo without dou
   assert.deepEqual(mergeSynced(cleared, b).practiceDays, {}, 'a stale copy cannot restore cleared archive days');
   const restored = undoClearHere({}, cleared, cleared.historyClearedAt, merged).merged;
   assert.equal(ms(restored), all.length * 60000);
+});
+
+
+test('lesson and composing time share the archive without entering measured runs or doubling on sync', () => {
+  const lesson = recordPracticeTime({}, minute(1), 60000);
+  const both = recordPracticeTime(lesson, minute(2), 30000);
+  const local = profile({ practiceDays: both });
+  const cloud = profile({ practiceDays: lesson });
+  const merged = mergeSynced(local, cloud);
+  assert.deepEqual(merged.runs, []);
+  assert.deepEqual(Object.values(merged.practiceDays), [90000]);
+  assert.deepEqual(mergeSynced(merged, local).practiceDays, merged.practiceDays);
+  const cleared = clearProfile(merged);
+  assert.deepEqual(mergeSynced(cleared, local).practiceDays, {});
+  assert.deepEqual(undoClearHere({}, cleared, cleared.historyClearedAt, merged).merged.practiceDays, both);
 });
