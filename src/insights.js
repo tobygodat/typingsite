@@ -162,17 +162,28 @@ export function recurringTargets(runs, loops, compatibleConditions) {
 // across all other test conditions. `runs` is how many runs were counted, so a row can say "missed
 // in 3 of the last 41 runs". Ranked by the number of runs missed in, then the most recent miss (by
 // run order, since older summaries can lack a date).
+// One word across runs: lower case, without punctuation before or after it (inner marks, as in "9:30"
+// or "don't", stay). A token that is all punctuation keeps itself.
+export const missedWordKey = (word) => word.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '') || word;
+
 export function recurringMissedWords(runs, limit = 8) {
   const recent = runs.filter(missedWordsRun).slice(-MAX_PATTERN_RUNS);
   const inputClass = inputClassOf(recent.at(-1));
   const counted = recent.filter((run) => inputClassOf(run) === inputClass);
+  // Counted as one word whatever its case or the punctuation around it ("The", "the", "the,"), and
+  // practised as most recently written: a run's first form of it, from the newest run that missed it.
   const words = new Map();
   counted.forEach((run, index) => {
-    for (const word of new Set(run.missedWords)) {
-      const item = words.get(word) || { word, runs: 0, lastIndex: -1 };
+    const seen = new Set();
+    for (const written of run.missedWords) {
+      const key = missedWordKey(written);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const item = words.get(key) || { word: written, runs: 0, lastIndex: -1 };
       item.runs += 1;
       item.lastIndex = index;
-      words.set(word, item);
+      item.word = written;
+      words.set(key, item);
     }
   });
   const recurring = [...words.values()].filter((item) => item.runs >= 2)

@@ -513,8 +513,14 @@ test('words you keep missing need two runs and rank by runs missed in, then the 
   assert.equal(result.recurring, 5);
   assert.deepEqual(recurringMissedWords(runs, 2).words.map((w) => w.word), ['there', 'about']);
   assert.equal(recurringMissedWords(runs, 2).recurring, 5);
-  // A missed capital or comma stays its own word, as practice types it.
-  assert.deepEqual(recurringMissedWords([missedRun('x', ['The', 'the']), missedRun('y', ['the', 'the,'])]).words.map((w) => w.word), ['the']);
+  // Across runs a word is counted whatever its case or surrounding punctuation, once per run.
+  assert.deepEqual(recurringMissedWords([missedRun('x', ['The', 'the']), missedRun('y', ['the', 'the,'])]).words.map((w) => [w.word, w.runs]), [['the', 2]]);
+  // It is practised as most recently written: a capital or comma missed last time is typed again.
+  assert.deepEqual(recurringMissedWords([missedRun('x', ['the']), missedRun('y', ['The'])]).words.map((w) => [w.word, w.runs]), [['The', 2]]);
+  assert.deepEqual(recurringMissedWords([missedRun('x', ['The']), missedRun('y', ['“table,'])]).words, []);
+  assert.deepEqual(recurringMissedWords([missedRun('x', ['table']), missedRun('y', ['“table,'])]).words.map((w) => [w.word, w.runs]), [['“table,', 2]]);
+  // Inner marks stay: "9:30" and "930" are different tokens.
+  assert.deepEqual(recurringMissedWords([missedRun('x', ['9:30']), missedRun('y', ['930'])]).words, []);
 });
 
 test('word practice, custom text, drills, interruptions and repeat daily text never feed the list', () => {
