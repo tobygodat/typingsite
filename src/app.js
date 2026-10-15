@@ -4037,7 +4037,7 @@ function bindEvents() {
   $('quote-length').addEventListener('change', (event) => { prefs.quoteLength = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
-  $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveProfile(); renderGoal(); });
+  $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveChoice('dailyGoal'); renderGoal(); });
   $('goal-calendar').addEventListener('keydown', moveGoalFocus);
   $('goal-calendar').addEventListener('focusin', (event) => captionGoalDay(event.target));
   $('goal-calendar').addEventListener('focusout', (event) => { if (!$('goal-calendar').contains(event.relatedTarget)) captionGoalDay(null); });
