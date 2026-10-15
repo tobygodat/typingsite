@@ -77,6 +77,16 @@
                 <input id="numbers-toggle" class="switch" type="checkbox">
               </label>
             </details>
+            <label class="preference-row" for="layout-select">
+              <span><strong>keyboard layout</strong></span>
+              <select class="input select" id="layout-select">
+                <option value="qwerty" selected>qwerty</option>
+                <option value="dvorak">dvorak</option>
+                <option value="colemak">colemak</option>
+                <option value="colemak-dh">colemak-dh</option>
+                <option value="workman">workman</option>
+              </select>
+            </label>
             <label class="preference-row" for="daily-goal">
               <span><strong>daily goal</strong></span>
               <select class="input select" id="daily-goal">
@@ -94,6 +104,10 @@
             <label class="preference-row" for="keyboard-toggle">
               <span><strong>keyboard</strong></span>
               <input class="switch" id="keyboard-toggle" type="checkbox">
+            </label>
+            <label id="finger-row" class="preference-row preference-sub" for="finger-toggle" hidden>
+              <span><strong>finger map</strong></span>
+              <input class="switch" id="finger-toggle" type="checkbox">
             </label>
             <label class="preference-row" for="stop-on-error-toggle">
               <span><strong>stop on error</strong><small class="preference-lock" hidden>fixed for standard</small></span>
@@ -117,6 +131,41 @@
               <span><strong>focus mode</strong></span>
               <input class="switch" id="focus-toggle" type="checkbox">
             </label>
+            <details class="keybindings-category">
+              <summary>keybindings</summary>
+              <p id="keybindings-help">Enter a combination or record it. Mod means Ctrl or ⌘. Leave blank to disable. Escape still closes menus; Tab and Shift+Tab navigate controls. Restart applies to solo tests and the local challenge, not online races. Enter restarts only before or after a run.</p>
+              <form id="keybindings-form">
+                <div class="keybinding-row">
+                  <label for="keybinding-restart">restart test / local challenge</label>
+                  <div class="keybinding-controls">
+                    <input class="input" id="keybinding-restart" name="restart" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-restart-error">
+                    <button class="btn btn-secondary btn-sm" type="button" data-record="restart" aria-label="Record restart test / local challenge binding" aria-pressed="false">Record</button>
+                  </div>
+                  <p class="keybinding-error" id="keybinding-restart-error"></p>
+                </div>
+                <div class="keybinding-row">
+                  <label for="keybinding-commands">commands</label>
+                  <div class="keybinding-controls">
+                    <input class="input" id="keybinding-commands" name="commands" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-commands-error">
+                    <button class="btn btn-secondary btn-sm" type="button" data-record="commands" aria-label="Record commands binding" aria-pressed="false">Record</button>
+                  </div>
+                  <p class="keybinding-error" id="keybinding-commands-error"></p>
+                </div>
+                <div class="keybinding-row">
+                  <label for="keybinding-exitFocus">exit focus mode</label>
+                  <div class="keybinding-controls">
+                    <input class="input" id="keybinding-exitFocus" name="exitFocus" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-exitFocus-error">
+                    <button class="btn btn-secondary btn-sm" type="button" data-record="exitFocus" aria-label="Record exit focus mode binding" aria-pressed="false">Record</button>
+                  </div>
+                  <p class="keybinding-error" id="keybinding-exitFocus-error"></p>
+                </div>
+                <div class="keybinding-actions">
+                  <button class="btn btn-primary btn-sm" type="submit">Save keybindings</button>
+                  <button class="btn btn-ghost btn-sm" type="button" data-reset-bindings>Reset defaults</button>
+                </div>
+                <p id="keybindings-status" role="status" aria-live="polite"></p>
+              </form>
+            </details>
           </div>
         </details>
 
@@ -341,9 +390,9 @@
 
         <div class="shortcut-row" aria-hidden="true">
           <span class="compose-shortcut"><kbd class="mod-key">ctrl</kbd><kbd>enter</kbd> done</span>
-          <span class="practice-shortcut"><kbd>esc</kbd> restart</span>
-          <span class="compose-shortcut"><kbd>esc</kbd> start over</span>
-          <span><kbd class="mod-key">ctrl</kbd><kbd>k</kbd> commands</span>
+          <span class="practice-shortcut"><kbd id="restart-key-hint" class="restart-key-hint">esc</kbd> restart</span>
+          <span class="compose-shortcut"><kbd class="restart-key-hint">esc</kbd> start over</span>
+          <span><kbd class="command-key">mod+k</kbd> commands</span>
         </div>
       </section>
 
@@ -823,7 +872,7 @@
     </footer>
   </div>
 
-  <button id="exit-focus" class="btn btn-secondary exit-focus" type="button"><kbd>esc</kbd> exit focus</button>
+  <button id="exit-focus" class="btn btn-secondary exit-focus" type="button"><kbd id="exit-focus-hint">esc</kbd> exit focus</button>
 
   <dialog id="palette" class="palette" aria-label="Command palette">
     <div class="palette-box">

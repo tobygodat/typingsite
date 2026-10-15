@@ -1,6 +1,8 @@
 // The stored profile's shape: the settings' defaults, and how a stored copy (this device's cache, another
 // tab's, the account row) is read before anything uses or merges it (normalizeProfile).
+import { normalizeKeybindings } from './keybindings.js';
 import { customTextProblem, normalizeCustomText } from './typing.js';
+import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { DAILY_GOALS, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
 import { normalizeLessonProgress } from './lessons.js';
@@ -17,11 +19,14 @@ export const defaultPreferences = {
   quoteLength: 'medium',
   difficulty: 'any',
   wordList: DEFAULT_WORD_LIST,
+  layout: DEFAULT_LAYOUT,
+  fingerMap: false,
   fontSize: '28',
   liveMetrics: false,
   keyboard: false,
   stopOnError: false,
   focusMode: false,
+  keybindings: normalizeKeybindings(),
   theme: 'system',
   dailyGoal: 0,
   customText: '',
@@ -55,6 +60,10 @@ export function emptyProfile() {
 export function validPreferences(value) {
   if (!DAILY_GOALS.includes(value.dailyGoal)) value.dailyGoal = 0;
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  value.layout = normalizeLayout(value.layout);
+  value.fingerMap = value.fingerMap === true;
+  value.keybindings = normalizeKeybindings(value.keybindings, value.restartKey);
+  delete value.restartKey;
   const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
   value.customText = customTextProblem(customText) ? '' : customText;
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
@@ -76,7 +85,9 @@ export const preferencesInUse = (stored) => validPreferences({ ...defaultPrefere
 function storedPreferences(raw) {
   const stored = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const valid = preferencesInUse(stored);
-  return Object.fromEntries(Object.keys(stored).map((key) => [key, valid[key]]));
+  const normalized = Object.fromEntries(Object.keys(stored).filter((key) => key !== 'restartKey').map((key) => [key, valid[key]]));
+  if (!Object.hasOwn(stored, 'keybindings') && Object.hasOwn(stored, 'restartKey')) normalized.keybindings = normalizeKeybindings(null, stored.restartKey);
+  return normalized;
 }
 
 export function normalizeProfile(parsed) {

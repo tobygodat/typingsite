@@ -1,4 +1,4 @@
-import { test, expect, openApp, openView, signInWithEmail, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto, openSettings } from './fixtures.js';
 
 test.setTimeout(60000);
 
@@ -28,6 +28,11 @@ async function guestPage(browser, supabase, link) {
 
 test('an account hosts a guest across separate contexts, shares progress and finishes', async ({ page, browser, supabase }) => {
   const room = await hostRace(page, supabase);
+  await openSettings(page);
+  await page.locator('.keybindings-category > summary').click();
+  await page.locator('#keybinding-restart').fill('F2');
+  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
+  await page.keyboard.press('Escape');
   const link = await page.locator('#online-guest-link').inputValue();
   expect(link).toContain(room.id);
   const { context, guest, errors } = await guestPage(browser, supabase, link);
@@ -46,6 +51,11 @@ test('an account hosts a guest across separate contexts, shares progress and fin
     await typeInto(page, passage.slice(0, 20), '#online-input', { delay: 15 });
     await expect.poll(() => room.players[0].progress).toBeGreaterThan(0);
     await expect.poll(() => room.players[0].typed).toBe(passage.slice(0, 20));
+    // Solo/local restart bindings must never reset a live online room or move its focus.
+    await page.keyboard.press('F2');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#online-input')).toHaveValue(passage.slice(0, 20));
+    await expect(page.locator('#online-input')).toBeFocused();
     // Reload must restore the acknowledged prefix and advance the server sequence.
     await page.reload();
     await expect(page.locator('#online-input')).toBeEnabled();
