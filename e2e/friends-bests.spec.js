@@ -254,7 +254,9 @@ test('a row saved before bests (by the board’s first build) gets them from its
   const own60 = fastest(runs, TIME60);
   await expect.poll(() => bestsIn(supabase, ada)?.[K60] ?? null).toEqual({ wpm: own60.score.wpm, accuracy: own60.score.accuracy, date: own60.at.slice(0, 10) });
   expect(supabase.profileWrites.map((write) => write.method)).toEqual(['PATCH']);
-  expect(column(supabase, ada)).toMatchObject({ v: BOARD_V, at: supabase.profiles.get(ada.id).updated_at });
+  expect(column(supabase, ada)).toMatchObject({ v: BOARD_V });
+  // Instants: Postgres renders updated_at with +00:00; the summary keeps the Z it was written with.
+  expect(Date.parse(column(supabase, ada).at)).toBe(Date.parse(supabase.profiles.get(ada.id).updated_at));
   await openBoard(page);
   await expect.poll(() => rowTexts(page)).toContain(`You ${own60.score.wpm} wpm ${own60.score.accuracy}% accuracy · ${own60.at.slice(0, 10)}`);
 });
@@ -295,7 +297,7 @@ test('a clear takes your bests off the board, and undo brings them back', async 
     await page.locator('#undo-clear').click();
     await expect(page.locator('#history-feedback')).toHaveText('History restored.');
     await expect.poll(() => bestsIn(supabase, ada)).toEqual(before);
-    expect(column(supabase, ada).at).toBe(supabase.profiles.get(ada.id).updated_at);
+    expect(Date.parse(column(supabase, ada).at)).toBe(Date.parse(supabase.profiles.get(ada.id).updated_at));
     await lin.locator('#refresh-friends-board').click();
     await expect(lin.locator('#board-bests')).toContainText(`Ada ${before[K60].wpm} wpm`);
     await openBoard(page);
