@@ -13,10 +13,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: Unit, build and browser checks
+  unit:
+    name: Unit and build checks
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,19 +26,37 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+
+  # The browser suite is nearly all of CI's time, and a runner has two cores, so it is split
+  # across parallel runners instead of more workers on one.
+  browser:
+    name: Browser checks (${{ matrix.shard }}/8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e -- --workers=2
+      - run: npm run test:e2e -- --workers=2 --shard=${{ matrix.shard }}/8
       - name: Save failure traces
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-failure-traces
+          name: browser-failure-traces-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
 
   deploy:
     name: Deploy to Cloudflare
-    needs: verify
+    needs: [unit, browser]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 10
