@@ -275,6 +275,44 @@ export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', c
   };
 }
 
+// Minimum accuracy and speed to continue (practice runs and their retests). They decide whether a
+// run may go on, never how it is scored, so they are not test conditions. The opening can't fail a
+// run on its own: the running check waits five seconds and twenty characters, and accuracy waits
+// until two misses alone can't take the rounded figure under the minimum (40 characters at 95%,
+// 100 at 98%). A run that reaches its end is judged on its final score.
+export const MINIMUM_GRACE_MS = 5000;
+export const MINIMUM_GRACE_CHARACTERS = 20;
+
+export function accuracyGraceCharacters(minimum) {
+  return Math.max(MINIMUM_GRACE_CHARACTERS, Math.ceil(200 / (100 - minimum)));
+}
+
+// The first minimum the score is under, against the same rounded numbers the run shows. Pass the
+// live replay while the run is going, so each minimum waits out its grace.
+export function minimumMissed(minimums, score, running = null) {
+  if (!minimums || !score) return null;
+  const judged = (characters) => !running || (running.elapsedMs >= MINIMUM_GRACE_MS && running.insertions >= characters);
+  if (minimums.accuracy && score.accuracy < minimums.accuracy && judged(accuracyGraceCharacters(minimums.accuracy))) {
+    return { metric: 'accuracy', minimum: minimums.accuracy, value: score.accuracy };
+  }
+  if (minimums.wpm && score.wpm < minimums.wpm && judged(MINIMUM_GRACE_CHARACTERS)) return { metric: 'wpm', minimum: minimums.wpm, value: score.wpm };
+  return null;
+}
+
+// A run is at its end once its duration is reached or its passage is finished.
+export function atRunEnd({ elapsedMs, durationMs = null, finished = false }) {
+  return finished || (durationMs !== null && elapsedMs >= durationMs);
+}
+
+// The one judgement behind both checks, so they can't drift apart. A run at its end is judged on its
+// final score with no grace, and a miss there is an end-of-run failure (atEnd). Before the end it is
+// the live check, with the grace.
+export function minimumStop(minimums, replay, position) {
+  const atEnd = atRunEnd(position);
+  const missed = minimumMissed(minimums, replay.score, atEnd ? null : replay);
+  return missed && atEnd ? { ...missed, atEnd: true } : missed;
+}
+
 // Correction policies. 'relaxed' (free) and 'mandatory' (stop on error) predate
 // the others; each value is its own comparison key so bests never mix.
 export const CORRECTION_POLICIES = ['relaxed', 'mandatory', 'no-backspace', 'fail-word', 'fail-any'];
@@ -777,6 +815,8 @@ export function comparable(before, after) {
 }
 
 export function compareAttempts(before, after) {
+  // A retest stopped under its baseline's minimums is stored as interrupted; say why it isn't compared.
+  if (after?.stopped) return { comparable: false, state: 'not-comparable', reason: 'The retest fell under the baseline’s minimums, so no comparison is made.' };
   if (!comparable(before, after)) return { comparable: false, state: 'not-comparable', reason: 'Different conditions or repeated text, so no comparison is made.' };
   const beforeScore = before.summary?.score || replayAttempt(before).score;
   const afterScore = after.summary?.score || replayAttempt(after).score;

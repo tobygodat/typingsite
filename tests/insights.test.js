@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, practiceLevel, practiceStreak, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, standardInputClass, standardScore, trendRun, weeklyChange } from '../src/insights.js';
-import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, standardConditions, wordHistory } from '../src/typing.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, practiceLevel, practiceStreak, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
 
 
 test('missed and slowest words come from first tries and per-word speed', () => {
@@ -268,6 +268,51 @@ test('original quote pool has fresh choices in every length and difficulty bucke
       }
     }
   }
+});
+
+test('a run stopped by a minimum is interrupted everywhere; a completed run keeps its minimums as a label', () => {
+  const attempt = createAttempt({ id: 'min', text: 'the cat', textId: 'one', kind: 'test', conditions });
+  attempt.events = [...'thx cat'].map((text, i) => ({ type: 'insert', text, offsetMs: i * 200 }));
+  attempt.startedAt = 0;
+  attempt.minimums = { accuracy: 95 };
+  const stopped = { ...completeAttempt(attempt, { endedAt: 6000 }), status: 'interrupted', stopped: { metric: 'accuracy', minimum: 95, value: 86 } };
+  const record = runRecord(stopped, '2026-10-08T12:00:00Z');
+  assert.equal(record.interrupted, true);
+  assert.equal(validRun(record), false);
+  assert.equal(trendRun(record), false);
+  assert.deepEqual(record.stopped, { metric: 'accuracy', minimum: 95, value: 86 });
+  // The stop alone keeps a run out of trends and practice time, whatever its stored status says.
+  assert.equal(validRun(runRecord({ ...stopped, status: 'complete' })), false);
+
+  const kept = runRecord(completeAttempt({ ...attempt, minimums: { wpm: 20 } }, { endedAt: 6000 }), '2026-10-08T12:00:00Z');
+  assert.equal(trendRun(kept), true);
+  assert.deepEqual(kept.minimums, { wpm: 20 });
+  assert.equal(conditionKey(kept.conditions), conditionKey(conditions));
+  assert.equal('stopped' in kept, false);
+  assert.equal('minimums' in runRecord(completeAttempt({ ...attempt, minimums: undefined }, { endedAt: 6000 })), false);
+});
+
+test('a retest stopped by its baseline\'s minimum is never compared, and its pairs feed no evidence', () => {
+  const typed = (id, text, keys) => {
+    const attempt = createAttempt({ id, text, textId: id, kind: id === 'before' ? 'test' : 'retest', conditions });
+    attempt.events = [...keys].map((key, i) => ({ type: 'insert', text: key, offsetMs: i * 150 }));
+    attempt.startedAt = 0;
+    attempt.minimums = { wpm: 20 };
+    return completeAttempt(attempt, { endedAt: keys.length * 150 });
+  };
+  const text = 'the other three think that the';
+  const before = typed('before', text, text);
+  // As the app stores it: interrupted, with the stop that ended it.
+  const after = { ...typed('after', text, 'thx other three think that the'), status: 'interrupted', stopped: { metric: 'wpm', minimum: 20, value: 12 } };
+  const comparison = compareAttempts(before, after);
+  assert.equal(comparison.comparable, false);
+  assert.equal(comparison.reason, 'The retest fell under the baseline’s minimums, so no comparison is made.');
+  assert.equal('wpmDelta' in comparison, false);
+  assert.equal(summarizePatterns([after]).attemptCount, 0);
+  assert.equal(summarizePatterns([before, after]).pairs.find((p) => p.pair === 'th').observations, summarizePatterns([before]).pairs.find((p) => p.pair === 'th').observations);
+  assert.equal(recommendTarget([after]).evidence.attemptCount, 0);
+  assert.deepEqual(runRecord(after, '2026-10-08T12:00:00Z').patterns, []);
+  assert.deepEqual(recurringTargets([runRecord(after, '2026-10-08T12:00:00Z'), runRecord({ ...after, id: 'again' }, '2026-10-08T12:01:00Z')], [], conditions), []);
 });
 
 test('daily minutes sum every run on the local day, and the streak counts days meeting the goal', () => {

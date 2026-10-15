@@ -410,6 +410,10 @@ kbd {
 .preference-row:has(:disabled):hover { background: none; }
 .preference-note { color: var(--muted); font-size: var(--text-label); line-height: 1.35; }
 .preference-row .select { width: 104px; height: 36px; font-size: 14px; }
+/* Two narrow selects share one row (minimum accuracy and speed). */
+.preference-row > .preference-pair { flex: none; display: flex; gap: var(--space-2); }
+.preference-pair .select { width: auto; padding-left: 10px; }
+.preference-row[role="group"] { cursor: default; }
 .preference-row #correction-select { width: 180px; }
 /* Wide enough for its longest option, colemak-dh, beside the native arrow. */
 .preference-row #layout-select { width: var(--layout-select-width); }
@@ -889,6 +893,17 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
 .compact-switch .switch { width: 30px; height: 18px; }
 .compact-switch .switch::before { width: 12px; height: 12px; }
 .compact-switch .switch:checked::before { transform: translateX(12px); }
+
+/* Practice minimums, when set: a quiet condition label on its own centred line under every
+   control (lengths included on phones), so the controls stay centred. Never a control. */
+.minimum-note {
+  flex-basis: 100%;
+  order: 2;
+  color: var(--muted);
+  font: var(--text-mono)/1.4 var(--font-mono);
+  letter-spacing: 0.01em;
+  text-align: center;
+}
 
 .quote-options {
   margin: calc(var(--space-10) * -1) auto var(--space-10);
