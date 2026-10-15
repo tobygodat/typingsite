@@ -1,6 +1,7 @@
 // Accounts: Supabase Auth and one row of profile data per user, spoken to over fetch so the app
 // keeps no runtime dependencies. With no session the visitor is a guest and nothing is stored.
 // The publishable key is meant for browsers; row-level security limits every row to its owner.
+import { retainCompositions } from './compose.js';
 import { dailyChallengeId, retainRuns, settleDailyFirsts, trendRun } from './insights.js';
 import { conditionKey } from './typing.js';
 
@@ -504,6 +505,8 @@ export const HISTORY = {
   attempts: { at: 'at', keep: (items) => items.slice(-MAX_STORED_ATTEMPTS) },
   runs: { at: 'at', keep: retainRuns },
   loops: { at: 'at', keep: (items) => items },
+  // Composing practice's numbers (src/compose.js): never runs, never text, the newest MAX_COMPOSITIONS.
+  compositions: { at: 'at', keep: retainCompositions },
 };
 
 const list = (value) => (Array.isArray(value) ? value.filter((item) => item !== null && item !== undefined) : []);
@@ -946,7 +949,7 @@ export function mergeProfiles(base, extra) {
   for (const [key, best] of Object.entries(base.bests)) {
     if (!bests[key] || best.wpm >= bests[key].wpm) bests[key] = best;
   }
-  const baseIsNew = base.attempts.length === 0 && base.loops.length === 0 && !base.runs?.length;
+  const baseIsNew = Object.keys(HISTORY).every((key) => !base[key]?.length);
   return {
     ...base,
     preferences: baseIsNew ? extra.preferences : base.preferences,
@@ -955,6 +958,7 @@ export function mergeProfiles(base, extra) {
     loops: byId([...extra.loops, ...base.loops]),
     seenTextIds: [...new Set([...extra.seenTextIds, ...base.seenTextIds])],
     bests,
+    compositions: byId([...(extra.compositions || []), ...(base.compositions || [])]),
   };
 }
 

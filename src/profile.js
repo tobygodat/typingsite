@@ -4,6 +4,7 @@ import { customTextProblem, normalizeCustomText } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { retainRuns, runRecord, settleDailyFirsts } from './insights.js';
 import { normalizeLessonProgress } from './lessons.js';
+import { normalizeCompositions } from './compose.js';
 
 export const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -44,6 +45,8 @@ export function emptyProfile() {
     seenTextIds: [],
     bests: {},
     lessons: {},
+    // Composing practice keeps summary numbers only, never the text (src/compose.js).
+    compositions: [],
   };
 }
 
@@ -92,5 +95,6 @@ export function normalizeProfile(parsed) {
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
     bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
     lessons: normalizeLessonProgress(parsed.lessons),
+    compositions: normalizeCompositions(parsed.compositions),
   };
 }
