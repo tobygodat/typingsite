@@ -64,7 +64,7 @@
             <details class="preference-category" id="test-content-settings">
               <summary class="preference-row"><span><strong>test content</strong></span></summary>
               <label class="preference-row" for="word-list">
-                <span><strong>word list</strong></span>
+                <span><strong>word list</strong><small class="preference-lock" hidden>fixed for standard</small></span>
                 <select class="input select" id="word-list">
                   <option value="200" selected>top 200</option>
                   <option value="1k">top 1k</option>
@@ -73,7 +73,7 @@
                 </select>
               </label>
               <label class="preference-row" for="numbers-toggle">
-                <span><strong>numbers</strong></span>
+                <span><strong>numbers</strong><small class="preference-lock" hidden>fixed for standard</small></span>
                 <input id="numbers-toggle" class="switch" type="checkbox">
               </label>
             </details>
@@ -86,7 +86,7 @@
               <input class="switch" id="keyboard-toggle" type="checkbox">
             </label>
             <label class="preference-row" for="stop-on-error-toggle">
-              <span><strong>stop on error</strong></span>
+              <span><strong>stop on error</strong><small class="preference-lock" hidden>fixed for standard</small></span>
               <input class="switch" id="stop-on-error-toggle" type="checkbox">
             </label>
             <label class="preference-row" for="pace-select">
@@ -148,6 +148,7 @@
             <p class="account-sync status" role="status"><span class="status-dot" aria-hidden="true"></span><span id="account-sync"></span></p>
             <div class="account-actions account-member-actions">
               <button id="account-signout" class="btn btn-ghost btn-sm" type="button">Sign out</button>
+              <button id="account-delete" class="btn btn-ghost btn-sm danger-text" type="button">Delete my account</button>
             </div>
           </div>
         </div>
@@ -162,6 +163,7 @@
             <button id="mode-time" type="button" data-mode="time" aria-pressed="true" class="is-active">time</button>
             <button id="mode-words" type="button" data-mode="words" aria-pressed="false">words</button>
             <button id="mode-quote" type="button" data-mode="quote" aria-pressed="false">quote</button>
+            <button id="mode-standard" type="button" data-mode="standard" aria-pressed="false">standard</button>
             <button id="mode-custom" type="button" aria-pressed="false" aria-controls="custom-options" aria-expanded="false">custom</button>
           </div>
           <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
@@ -193,6 +195,10 @@
               <option value="precise">precise</option>
             </select>
           </label>
+        </div>
+
+        <div id="standard-options" class="standard-options" hidden>
+          <p id="standard-recipe" class="condition-copy"></p>
         </div>
 
         <div id="custom-options" class="custom-options" role="group" aria-label="Custom text" hidden>
@@ -363,6 +369,19 @@
           </div>
           <button id="clear-history" class="btn btn-ghost btn-sm danger-text" type="button" disabled>Clear history</button>
         </header>
+
+        <section id="standard-score" class="standard-score" aria-labelledby="standard-score-heading">
+          <div class="standard-score-heading">
+            <h2 id="standard-score-heading">Standard score</h2>
+            <button id="take-standard" class="btn btn-secondary btn-sm" type="button">Take the standard test</button>
+          </div>
+          <dl class="standard-figures">
+            <div><dt>best</dt><dd><strong id="standard-best" class="num">—</strong><span>wpm</span></dd></div>
+            <div><dt id="standard-median-label">median</dt><dd><strong id="standard-median" class="num">—</strong><span>wpm</span></dd></div>
+          </dl>
+          <p id="standard-score-note" class="result-note"></p>
+          <p id="standard-score-conditions" class="condition-copy"></p>
+        </section>
 
         <div id="progress-empty" class="empty-state">
           <h2>No practice runs yet.</h2>
@@ -638,6 +657,26 @@
       <div class="dialog-actions">
         <button id="cancel-clear" class="btn btn-ghost" value="cancel">Cancel</button>
         <button id="confirm-clear" class="btn btn-danger" type="button" disabled>Clear history</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="delete-account-dialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-copy">
+    <form id="delete-account-form" class="dialog-content" novalidate>
+      <div>
+        <h2 id="delete-account-title">Delete your account?</h2>
+        <p id="delete-account-copy">This deletes your account for good, with everything saved to it: settings, runs and progress, daily results, your friend list and your online races. You can’t undo it.</p>
+      </div>
+      <div class="account-fields">
+        <label for="confirm-delete-input"><span>Type <strong>delete</strong> to confirm</span>
+          <input id="confirm-delete-input" class="input" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" aria-describedby="delete-account-error">
+        </label>
+        <p id="delete-account-error" class="field-error" role="alert"></p>
+        <p id="delete-account-status" class="sr-only" role="status"></p>
+      </div>
+      <div class="dialog-actions">
+        <button id="cancel-delete-account" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="confirm-delete-account" class="btn btn-danger" type="submit" disabled>Delete account</button>
       </div>
     </form>
   </dialog>
