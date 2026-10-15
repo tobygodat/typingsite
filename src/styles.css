@@ -2620,6 +2620,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 #clear-dialog,
 #account-dialog,
+#replay-dialog,
 #delete-account-dialog,
 #suggest-dialog {
   width: min(460px, calc(100% - 32px));
@@ -2634,12 +2635,14 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 #clear-dialog[open],
 #account-dialog[open],
 #delete-account-dialog[open],
+#replay-dialog[open],
 #suggest-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
 #delete-account-dialog::backdrop,
+#replay-dialog::backdrop,
 #suggest-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
-:root:is([data-theme="light"], [data-theme="paper"], [data-theme="shadcn"], [data-theme="soft"], [data-theme="swiss"], [data-theme="eink"]) :is(#clear-dialog, #account-dialog, #delete-account-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
+:root:is([data-theme="light"], [data-theme="paper"], [data-theme="shadcn"], [data-theme="soft"], [data-theme="swiss"], [data-theme="eink"]) :is(#clear-dialog, #account-dialog, #delete-account-dialog, #replay-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
 
 .account-fields { display: grid; gap: var(--space-3); }
 .account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
@@ -2668,6 +2671,43 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
 
 #suggest-dialog { width: min(520px, calc(100% - 32px)); }
+
+/* Watch replay: the passage at reading size, instant letter states, a caret that jumps. */
+#replay-dialog { width: min(760px, calc(100% - 32px)); }
+#replay-dialog .dialog-actions { flex-wrap: wrap; }
+/* On a narrow dialog the readout wraps below the title. */
+.replay-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2) var(--space-4); }
+.replay-readout { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); }
+/* Number and unit share one baseline: the number in Literata, the unit a small mono label. */
+.replay-stat { display: flex; align-items: baseline; gap: var(--space-1); color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
+.replay-stat-value { color: var(--text); font: var(--text-lead)/1 var(--font-serif); font-variant-numeric: tabular-nums; }
+/* At most three lines, like the live passage; replay-view.js keeps the caret on the first two.
+   The inline padding (offset by the margin) keeps a line-start caret clear of the clip. */
+.replay-text {
+  --replay-line: 1.75em;
+  max-height: calc(var(--replay-line) * 3);
+  margin-inline: calc(var(--space-1) * -1);
+  padding-inline: var(--space-1);
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-serif);
+  font-size: var(--text-lead);
+  line-height: var(--replay-line);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font-variant-ligatures: none;
+}
+.replay-text .char.is-caret::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -1.5px;
+  width: 3px;
+  height: 1.15em;
+  margin-top: -0.55em;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
 .textarea { height: auto; min-height: 132px; padding: var(--space-3) 14px; line-height: 1.5; resize: vertical; }
 .suggest-meta { margin-top: calc(var(--space-4) * -1); display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); }
 .suggest-meta .field-error { margin: 0; }
