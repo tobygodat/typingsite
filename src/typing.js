@@ -499,6 +499,22 @@ export function replaySpan(attempt) {
   return { start: Math.min(...offsets, ...bound(attempt.startedAt)), end: Math.max(...offsets, ...bound(attempt.endedAt)) };
 }
 
+// Live readouts, practice's and the replay's, show no rate before this much of the run: over the first
+// second a rate is mostly noise.
+export const RATE_FLOOR_MS = 1000;
+
+// The live numbers at offset t (ms on the attempt clock): the run scored as if it had ended at t. At
+// replaySpan(attempt).end it equals the completed run's score and first-try errors.
+export function replayScoreAt(attempt, t) {
+  const events = (attempt.events || []).filter((event) => event.offsetMs <= t);
+  const replay = replayAttempt({ ...attempt, events, endedAt: Math.min(t, attempt.endedAt ?? t) });
+  return {
+    ...replay.score,
+    errors: replay.firstAttempts.filter((item) => !item.correct).length,
+    elapsedMs: replay.elapsedMs,
+  };
+}
+
 export function completeAttempt(attempt, { endedAt, status = 'complete' } = {}) {
   const replay = replayAttempt({ ...attempt, endedAt });
   return {

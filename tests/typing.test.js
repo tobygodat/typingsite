@@ -21,6 +21,7 @@ import {
   passageComplete,
   quoteCorpus,
   replayCursor,
+  replayScoreAt,
   replaySpan,
   recommendTarget,
   replayAttempt,
@@ -480,6 +481,37 @@ test('replayCursor replays the typed text as it was and ends on the scored resul
   const timed = completeAttempt({ ...attempt, startedAt: 0 }, { endedAt: 15000 });
   assert.deepEqual(replaySpan(timed), { start: 0, end: timed.endedAt });
   assert.equal(replaySpan(timed).end - replaySpan(timed).start, timed.summary.elapsedMs);
+});
+
+test('replayScoreAt scores the run as it stood at each moment and ends on the run card', () => {
+  const attempt = createAttempt({ id: 's', text: 'the cat' });
+  attempt.events.push(
+    { type: 'insert', text: 't', offsetMs: 0 },
+    { type: 'insert', text: 'x', offsetMs: 1000 },
+    { type: 'delete', count: 1, offsetMs: 1500 },
+    { type: 'insert', text: 'h', offsetMs: 2000 },
+    { type: 'insert', text: 'e', offsetMs: 2500 },
+    { type: 'insert', text: ' ', offsetMs: 3000 },
+    { type: 'insert', text: 'c', offsetMs: 3500 },
+    { type: 'insert', text: 'q', offsetMs: 4000 },
+    { type: 'insert', text: 't', offsetMs: 4500 },
+  );
+  const completed = completeAttempt(attempt, { endedAt: 4500 });
+  // "th" typed in 2.2 s, from t, x (a first-try miss), h.
+  assert.deepEqual(replayScoreAt(completed, 2200), { wpm: 11, accuracy: 67, errors: 1, elapsedMs: 2200 });
+  // The x was corrected but still counts; the q is a second first-try miss.
+  assert.deepEqual(replayScoreAt(completed, 4000), { wpm: 15, accuracy: 71, errors: 2, elapsedMs: 4000 });
+  const end = replayScoreAt(completed, replaySpan(completed).end);
+  assert.deepEqual(end, { wpm: 16, accuracy: 75, errors: 2, elapsedMs: 4500 });
+  assert.deepEqual({ wpm: end.wpm, accuracy: end.accuracy }, completed.summary.score);
+  assert.equal(end.errors, completed.summary.firstAttempts.filter((item) => !item.correct).length);
+
+  // A timed run that idles to its timer: elapsed runs on with the clock, not from the last key.
+  const timed = completeAttempt({ ...attempt, startedAt: 0 }, { endedAt: 15000 });
+  assert.deepEqual(replayScoreAt(timed, 9000), { wpm: 8, accuracy: 75, errors: 2, elapsedMs: 9000 });
+  const timedEnd = replayScoreAt(timed, replaySpan(timed).end);
+  assert.deepEqual(timedEnd, { wpm: 5, accuracy: 75, errors: 2, elapsedMs: 15000 });
+  assert.deepEqual({ wpm: timedEnd.wpm, accuracy: timedEnd.accuracy }, timed.summary.score);
 });
 
 test('replayCursor matches replayAttempt at every prefix of the events', () => {

@@ -4,6 +4,7 @@ import {
   CUSTOM_MIN_CHARS,
   CUSTOM_MIN_WORDS,
   METRIC_VERSION,
+  RATE_FLOOR_MS,
   STANDARD_SECONDS,
   STANDARD_VERSION,
   accentComposition,
@@ -1373,10 +1374,9 @@ function markKeyboardTargets(target) {
   $('keyboard').querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
 
-// The live readout shows no rate until a second has passed: before that it is noise. Custom text (any
-// non-comparable kind) can be short enough to finish inside that second, so its run card follows the same
-// floor. Built-in passages take far longer than a second to type, so their card is unchanged.
-const RATE_FLOOR_MS = 1000;
+// The live readout shows no rate until RATE_FLOOR_MS has passed. Custom text (any non-comparable kind) can
+// be short enough to finish inside that second, so its run card follows the same floor. Built-in passages
+// take far longer than a second to type, so their card is unchanged.
 const rateShown = (completed) => comparableKind(completed.kind) || completed.summary.elapsedMs >= RATE_FLOOR_MS;
 
 function updateLive(reset = false, at = now()) {
