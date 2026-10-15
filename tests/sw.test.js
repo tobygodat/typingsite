@@ -9,7 +9,7 @@ test('the service worker precaches every shell file and nothing else', async () 
   const list = async (dir, pattern) => (await readdir(new URL(`../${dir}/`, import.meta.url)))
     .filter((name) => pattern.test(name)).map((name) => `/${dir}/${name}`);
   const expected = [
-    '/', '/index.html', '/manifest.webmanifest',
+    '/', '/manifest.webmanifest',
     ...await list('icons', /^[a-z0-9-]+\.(?:svg|png)$/),
     ...await list('src', /^[a-z-]+\.(?:js|css)$/),
     ...await list('src/fonts', /^[a-z0-9-]+\.(?:ttf|woff2)$/),
