@@ -66,6 +66,36 @@ export function weeklyChange(runs, key, date = new Date()) {
   };
 }
 
+export const STANDARD_RECENT_RUNS = 10;
+export const STANDARD_MIN_RUNS = 3;
+
+// The standard score headline: the best at one standard key, plus the median wpm of the most recent
+// completed runs there. Below three runs there is no median, so one run can't stand in for a score.
+// Only comparable kinds count: a custom run is never a standard run, whatever conditions it carries.
+export function standardScore(runs, key, best = null) {
+  const eligible = runs.filter((run) => comparableKind(run.kind) && trendRun(run) && conditionKey(run.conditions) === key);
+  const recent = eligible.slice(-STANDARD_RECENT_RUNS);
+  const settled = recent.length >= STANDARD_MIN_RUNS;
+  return {
+    total: eligible.length,
+    recent: recent.length,
+    best: best ?? (eligible.length ? Math.max(...eligible.map((run) => run.score.wpm)) : null),
+    median: settled ? median(recent.map((run) => run.score.wpm)) : null,
+    settled,
+  };
+}
+
+// Which input class heads the standard score, given standardScore for each. Totals count only runs
+// still in the kept summaries, while bests outlive them, so totals alone can't stand for lifetime
+// practice. Physical keyboard is the default. Touch heads only when the keyboard has nothing at all,
+// or once touch has a settled median from more kept runs, so one touch run can't replace a keyboard score.
+export function standardInputClass(keyboard, touch) {
+  const keyboardEmpty = !keyboard.total && keyboard.best === null;
+  const touchHasScore = touch.total > 0 || touch.best !== null;
+  if (keyboardEmpty && touchHasScore) return 'touch';
+  return touch.settled && touch.total > keyboard.total ? 'touch' : 'physical-keyboard';
+}
+
 export function recurringTargets(runs, loops, compatibleConditions) {
   const key = conditionKey(compatibleConditions);
   const eligible = runs.filter((r) => validRun(r) && ['test', 'retest', 'daily'].includes(r.kind)
@@ -100,12 +130,31 @@ export function recurringTargets(runs, loops, compatibleConditions) {
       || b.slowRuns - a.slowRuns || a.pair.localeCompare(b.pair));
 }
 
+// The seen-text id that marks a day's challenge as attempted (the passage itself has its own id).
+export const dailyChallengeId = (day) => `daily-${day}-v1`;
+
+// Only the earliest attempt at a day's challenge (by date, then id, the order every copy sorts by) can
+// be its first attempt. Two devices that each tried the day before either held the other's copy both
+// label their own try first; once their runs meet, the later one becomes a repeat. Flags are only
+// ever cleared, never set, so a label stays conservative. Returns the records, changed ones copied.
+export function settleDailyFirsts(records) {
+  const earliest = new Map();
+  const before = (a, b) => (a.at || '') < (b.at || '') || ((a.at || '') === (b.at || '') && String(a.id) < String(b.id));
+  for (const record of records) {
+    if (record?.kind !== 'daily' || !record.challengeDate) continue;
+    const held = earliest.get(record.challengeDate);
+    if (!held || before(record, held)) earliest.set(record.challengeDate, record);
+  }
+  return records.map((record) => (record?.kind === 'daily' && record.firstDailyAttempt
+    && earliest.get(record.challengeDate) !== record ? { ...record, firstDailyAttempt: false } : record));
+}
+
 // Stable UTC selection from a frozen text pool: preferences and seen history never change it.
 export function dailyPassage(date = new Date()) {
   const day = date.toISOString().slice(0, 10);
   const index = Math.floor(Date.parse(`${day}T00:00:00Z`) / 86400000);
   const text = DAILY_TEXTS[((index % DAILY_TEXTS.length) + DAILY_TEXTS.length) % DAILY_TEXTS.length];
-  return { id: `daily-${day}-v1`, sourceTextId: `daily-${textId(text)}`, textVersion: `daily-${textId(text)}@1`, day, text, difficulty: 'steady',
+  return { id: dailyChallengeId(day), sourceTextId: `daily-${textId(text)}`, textVersion: `daily-${textId(text)}@1`, day, text, difficulty: 'steady',
     resetAt: new Date(Date.parse(`${day}T00:00:00Z`) + 86400000).toISOString() };
 }
 

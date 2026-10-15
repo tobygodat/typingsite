@@ -9,7 +9,7 @@ import * as account from '../src/account.js';
 import * as board from '../src/friends-board.js';
 
 const { boardColumn, boardCurrent, boardSummary, nextRead, utcDay, weekStart } = board;
-const { pushCloudProfile, repairBoard } = account;
+const { insertCloudProfile, repairBoard, updateCloudProfile } = account;
 const words = { mode: 'words', duration: null, count: 25, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
   inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
 const dailyKey = conditionKey({ ...words, mode: 'quote', count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any', wordList: null });
@@ -23,11 +23,20 @@ function thisWeek(offset) {
 const run = (id, at) => ({ id, at, status: 'complete', kind: 'test', interrupted: false, conditions: words,
   score: { wpm: 70, accuracy: 97 }, elapsedMs: 30000, challengeDate: null });
 const copy = (runs) => ({ version: 2, runs });
-const save = (data, options) => pushCloudProfile(session, data, { board: (at) => boardColumn(data.runs, dailyKey, at), ...options });
+const boardOf = (data) => (at) => boardColumn(data.runs, dailyKey, at);
+// A save as the app makes one (src/app.js pushOnce): a write conditional on the row's version as read, or
+// the first row. `api` is the stand-in in use; without one (a stubbed fetch), the first row.
+let currentApi = null;
+function save(data, options = {}) {
+  const board = 'board' in options ? options.board : boardOf(data);
+  const row = currentApi?.rows.get('ada');
+  return row ? updateCloudProfile(session, data, row.updated_at, { board }) : insertCloudProfile(session, data, { board });
+}
 
-// The profiles API as src/account.js speaks to it: an upsert keeps a column the write leaves out, and
-// a PATCH filtered on updated_at changes only the row at that version. `holdFirst` holds the reply to
-// the first write (stored on arrival), as a slow connection can.
+// The profiles API as src/account.js speaks to it: an insert that ignores an existing row, and a PATCH
+// filtered on updated_at that changes only the row at that version, each answering with the rows written
+// (return=representation) or nothing (return=minimal). `holdFirst` holds the reply to the first write
+// (stored on arrival), as a slow connection can.
 function profilesApi({ holdFirst = false } = {}) {
   const rows = new Map();
   const requests = [];
@@ -38,15 +47,21 @@ function profilesApi({ holdFirst = false } = {}) {
     const { pathname, searchParams } = new URL(url);
     const body = options.body ? JSON.parse(options.body) : null;
     requests.push({ method: options.method, pathname, updatedAt: searchParams.get('updated_at'), body });
-    if (options.method === 'POST' && pathname === '/rest/v1/profiles') {
-      rows.set(body.user_id, { ...rows.get(body.user_id), ...body });
+    const answer = async (written, status) => {
       if (holding) { holding = false; await held; }
-      return new Response(null, { status: 201 });
+      if (!/return=representation/.test(options.headers?.Prefer || '')) return new Response(null, { status: status === 201 ? 201 : 204 });
+      return new Response(JSON.stringify(written.map((row) => ({ updated_at: row.updated_at }))), { status });
+    };
+    if (options.method === 'POST' && pathname === '/rest/v1/profiles') {
+      if (rows.has(body.user_id)) return answer([], 201);
+      rows.set(body.user_id, { ...body });
+      return answer([rows.get(body.user_id)], 201);
     }
     if (options.method === 'PATCH' && pathname === '/rest/v1/profiles') {
       const row = rows.get(searchParams.get('user_id').replace(/^eq\./, ''));
-      if (row && Date.parse(row.updated_at) === Date.parse(searchParams.get('updated_at').replace(/^eq\./, ''))) Object.assign(row, body);
-      return new Response(null, { status: 204 });
+      const matches = row && Date.parse(row.updated_at) === Date.parse(searchParams.get('updated_at').replace(/^eq\./, ''));
+      if (matches) Object.assign(row, body);
+      return answer(matches ? [row] : [], 200);
     }
     return new Response(JSON.stringify({ message: 'unexpected' }), { status: 404 });
   };
@@ -55,7 +70,8 @@ function profilesApi({ holdFirst = false } = {}) {
 async function withApi(api, task) {
   const original = globalThis.fetch;
   globalThis.fetch = api.fetch;
-  try { return await task(); } finally { globalThis.fetch = original; }
+  currentApi = api;
+  try { return await task(); } finally { globalThis.fetch = original; currentApi = null; }
 }
 // Today's and this week's parts of a summary, as the service picks them.
 const parts = (summary) => ({ daily: summary.days[utcDay()] ?? null, week: summary.weeks[weekStart()] ?? null });
@@ -108,10 +124,11 @@ test('finding 2: clear and undo twice with the first save’s reply held, and th
   assert.deepEqual(shown(row), progress(row));
   assert.equal(weekRuns(row), 3);
   assert.deepEqual(row.data, full);
-  // Each write carried the summary of its own copy; nothing was kept on the device to settle later.
-  const posts = api.requests.filter((request) => request.method === 'POST');
-  assert.deepEqual(posts.map((request) => request.body.board.weeks[weekStart()]?.runs ?? 0), [0, 3, 0, 3]);
-  for (const post of posts) assert.equal(post.body.board.at, post.body.updated_at);
+  // Each write carried the summary of its own copy, stamped with that write; nothing was kept on the
+  // device to settle later.
+  const writes = api.requests.filter((request) => request.body?.data);
+  assert.deepEqual(writes.map((request) => request.body.board.weeks[weekStart()]?.runs ?? 0), [0, 3, 0, 3]);
+  for (const write of writes) assert.equal(write.body.board.at, write.body.updated_at);
 });
 
 test('finding 3: a board reply ten seconds late only moves the next read later, and a run after another device’s clear counts', async () => {
@@ -144,7 +161,7 @@ test('a repair writes only the summary, and only while the row is still the vers
   const data = copy([run('a', thisWeek(-MINUTE))]);
   await withApi(api, async () => {
     // An older build saved the row without a summary.
-    await pushCloudProfile(session, data);
+    await save(data, { board: undefined });
     const row = api.rows.get('ada');
     assert.equal(row.board, undefined);
     assert.equal(shown(row), null);
@@ -172,6 +189,23 @@ test('a write refused for another reason still fails, board or not', async () =>
   } finally { globalThis.fetch = original; }
 });
 
+test('a stale copy writes nothing, and the row keeps the summary of the version it holds', async () => {
+  const api = profilesApi();
+  const older = copy([run('a', thisWeek(-2 * MINUTE))]);
+  const newer = copy([run('a', thisWeek(-2 * MINUTE)), run('b', thisWeek(-MINUTE))]);
+  await withApi(api, async () => {
+    await save(older);
+    const seen = api.rows.get('ada').updated_at;
+    await save(newer);
+    // A device that read the row before the newer save writes against that version: nothing matches.
+    assert.equal(await updateCloudProfile(session, older, seen, { board: boardOf(older) }), null);
+  });
+  const row = api.rows.get('ada');
+  assert.deepEqual(row.data, newer);
+  assert.equal(weekRuns(row), 2);
+  assert.equal(row.board.at, row.updated_at);
+});
+
 // Last: once the column is refused, this module leaves it out for the rest of the page load.
 test('a project without the board column keeps syncing: the write goes again without it, and later ones leave it out', async () => {
   const original = globalThis.fetch;
@@ -185,11 +219,12 @@ test('a project without the board column keeps syncing: the write goes again wit
     return new Response(null, { status: 201 });
   };
   try {
-    const at = await save(copy([run('a', thisWeek(-MINUTE))]));
+    await save(copy([run('a', thisWeek(-MINUTE))]));
     assert.equal(bodies.length, 2);
     assert.ok('board' in bodies[0].body);
     assert.equal('board' in bodies[1].body, false);
-    assert.equal(bodies[1].body.updated_at, at);
+    const at = bodies[1].body.updated_at;
+    assert.equal(bodies[0].body.board.at, at);
     await save(copy([]));
     assert.equal(bodies.length, 3);
     assert.equal('board' in bodies[2].body, false);
