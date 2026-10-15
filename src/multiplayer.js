@@ -6,14 +6,14 @@ const TOKEN = /^[0-9a-f]{64}$/i;
 const RECONNECT_KEY = 'stilltype-race-tab-v1';
 const sequences = new Map();
 
-async function action(session, type, credentials = {}, data = {}) {
+async function action(session, type, credentials = {}, data = {}, signal) {
   // A previous poll may have rotated the refresh token. Reuse the newest stored session for the
   // same account, while still honoring the caller's current signed-in/guest identity.
   const stored = session ? loadSession() : null;
   const active = session ? await freshSession(stored?.user?.id === session.user?.id ? stored : session) : null;
   try {
     const result = await request('/rest/v1/rpc/race_action', {
-      method: 'POST', token: active?.access_token,
+      method: 'POST', token: active?.access_token, signal,
       body: { p_action: type, p_room_id: credentials.roomId || null,
         p_guest_token: credentials.guestToken || null, p_data: data },
     });
@@ -46,10 +46,71 @@ export function rematchRace(session, credentials, { passage, conditions = {} }) 
     conditions: { ...conditions, textId: passage?.id || conditions.textId } });
 }
 // Friends are private to the signed-in owner. Rows carry an email only when the owner typed it.
-export const listFriends = (session) => session ? action(session, 'friends') : Promise.resolve([]);
-export const addFriend = (session, { email, name = '' }) => action(session, 'befriend', {}, { email: email.trim(), name: name.trim() });
-export const addFriendFromRace = (session, credentials) => action(session, 'befriend', { roomId: credentials.roomId });
-export const removeFriend = (session, friendId) => action(session, 'unfriend', {}, { friendId });
+// Each call takes the abort signal its queue gives it (below).
+export const listFriends = (session, signal) => session ? action(session, 'friends', {}, {}, signal) : Promise.resolve([]);
+export const addFriend = (session, { email, name = '' }, signal) => action(session, 'befriend', {}, { email: email.trim(), name: name.trim() }, signal);
+export const addFriendFromRace = (session, credentials, signal) => action(session, 'befriend', { roomId: credentials.roomId }, {}, signal);
+export const removeFriend = (session, friendId, signal) => action(session, 'unfriend', {}, { friendId }, signal);
+// A friend-list request that hasn't answered by then has failed: its fetch is aborted, so one stalled
+// connection can't hold up the requests queued behind it.
+const FRIEND_REQUEST_MS = 15000;
+function sendWithin(send, limit) {
+  const controller = new AbortController();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      controller.abort();
+      reject(new AuthError('The friend list is taking too long to answer. Try again.'));
+    }, limit);
+    Promise.resolve(controller.signal).then(send).then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
+// This tab's friend-list requests (list, befriend, unfriend) never overlap: each is sent only once
+// the one before it has settled (answered, failed or given up), and every reply is the whole list,
+// applied as it lands. So the list shown is always the newest the service has given. A failed read
+// applies nothing and holds nothing up. A change that fails or gives up may still have been made (an
+// aborted fetch can't take back what the service already did), so the next request sent is a read
+// of the list from `load`, ahead of anything already waiting, and the list shown catches up with the
+// service. A reload queued behind another that hasn't been sent yet is that same reload.
+export function queueFriendRequests(apply, { load, limit = FRIEND_REQUEST_MS } = {}) {
+  let last = Promise.resolve();
+  let waiting = 0;
+  let waitingReload = null;
+  let unsure = false; // a change failed or gave up, and no list has answered since
+  async function go(request, change) {
+    if (unsure && change) await go(load).catch(() => {});
+    try {
+      const list = await sendWithin(request, limit);
+      unsure = false;
+      apply(list);
+      return list;
+    } catch (failure) {
+      if (change) unsure = true;
+      throw failure;
+    }
+  }
+  function queue(request, change = false) {
+    waiting += 1;
+    const applied = last.then(() => { waiting -= 1; return go(request, change); });
+    last = applied.catch(() => { if (change && !waiting) requests.reload().catch(() => {}); });
+    return applied;
+  }
+  const requests = {
+    reload() {
+      if (waitingReload) return waitingReload;
+      const reload = queue((signal) => {
+        if (waitingReload === reload) waitingReload = null;
+        return load(signal);
+      });
+      waitingReload = reload;
+      return reload;
+    },
+    change(send) {
+      waitingReload = null;
+      return queue(send, true);
+    },
+  };
+  return requests;
+}
 export const listRaceInvites = (session) => session ? action(session, 'invites') : Promise.resolve([]);
 export function joinRace(session, { roomId, inviteToken, displayName, guestToken }) {
   return action(session, 'join', { roomId, guestToken }, { inviteToken: inviteToken || null, displayName });
