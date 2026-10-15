@@ -54,6 +54,7 @@ import {
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, normalizeLessonProgress, recordLessonRun,
 } from './lessons.js';
 import { CUSTOM_ORDERS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
+import { fromMonkeytype, parseMonkeytype } from './monkeytype.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -1319,6 +1320,8 @@ const NOTICES = {
   composePalette: 'Commands opened mid-way, so this one won’t be saved.',
   composeSuggest: 'Suggestions opened mid-way, so this one won’t be saved.',
   deleteOpened: 'Account deletion opened mid-run, so it won’t count.',
+  importOpened: 'Settings import opened mid-run, so it won’t count.',
+  composeImport: 'Settings import opened mid-way, so this one won’t be saved.',
   raceFocusLost: 'Focus lost. Esc to restart this turn.',
 };
 
@@ -3877,6 +3880,66 @@ function openSuggest() {
   $('suggest-text').focus();
 }
 
+// ── Monkeytype settings import ───────────────────────────────────────
+// Pasted from Monkeytype's settings export (src/monkeytype.js). The settings it maps are picked
+// here like any other choice: stamped, saved, and synced to the account when signed in.
+function openMonkeytypeImport() {
+  document.querySelector('.preferences')?.removeAttribute('open');
+  markInterrupted(NOTICES.importOpened);
+  compose.interrupt(NOTICES.composeImport);
+  markRaceInterrupted();
+  $('monkeytype-text').value = '';
+  $('monkeytype-error').textContent = '';
+  showMonkeytypeSummary(null);
+  $('monkeytype-dialog').showModal();
+  $('monkeytype-text').focus();
+}
+
+function showMonkeytypeSummary(result) {
+  const done = Boolean(result);
+  $('monkeytype-summary').hidden = !done;
+  $('monkeytype-field').hidden = done;
+  $('import-monkeytype').hidden = done;
+  $('cancel-monkeytype').hidden = done;
+  $('done-monkeytype').hidden = !done;
+  $('import-monkeytype').disabled = !$('monkeytype-text').value.trim();
+  if (!done) return;
+  $('monkeytype-applied').replaceChildren(...result.applied.map((line) => element('li', line)));
+  $('monkeytype-skipped').replaceChildren(...result.skipped.map((line) => element('li', line)));
+  $('monkeytype-skipped-heading').hidden = !result.skipped.length;
+  $('monkeytype-lede').textContent = session
+    ? 'These settings are saved and will sync to your account.'
+    : 'These settings apply now. Sign in to keep them and sync them to your other devices.';
+}
+
+function importMonkeytype(event) {
+  event.preventDefault();
+  const parsed = parseMonkeytype($('monkeytype-text').value);
+  const result = parsed.error ? null : fromMonkeytype(parsed.config);
+  const problem = parsed.error || (!result.applied.length ? 'Nothing in that export matches a Stilltype setting.' : '');
+  if (problem) {
+    $('monkeytype-error').textContent = problem;
+    return;
+  }
+  $('monkeytype-error').textContent = '';
+  const kind = 'mode' in result.preferences ? 'practice' : restartKind();
+  if (kind === 'practice') customOpen = false;
+  prefs = validPreferences({ ...prefs, ...result.preferences });
+  applyPreferences();
+  setModeControls();
+  saveChoice(...Object.keys(result.preferences));
+  navigate('practice');
+  resetSession(kind, { leaveCompose: true });
+  showMonkeytypeSummary(result);
+  announce(`Imported ${result.applied.length} Monkeytype ${result.applied.length === 1 ? 'setting' : 'settings'}.`);
+  $('done-monkeytype').focus();
+}
+
+function closeMonkeytypeImport() {
+  $('monkeytype-dialog').close();
+  if (document.body.dataset.view === 'practice') focusPractice();
+}
+
 function updateSuggestCount() {
   const length = $('suggest-text').value.length;
   setText($('suggest-count'), `${length} / ${account.MAX_SUGGESTION}`);
@@ -4127,6 +4190,13 @@ function bindEvents() {
   $('cancel-suggest').addEventListener('click', () => $('suggest-dialog').close());
   $('suggest-dialog').addEventListener('click', (event) => { if (event.target === $('suggest-dialog')) $('suggest-dialog').close(); });
 
+  $('open-monkeytype').addEventListener('click', openMonkeytypeImport);
+  $('monkeytype-text').addEventListener('input', () => { $('import-monkeytype').disabled = !$('monkeytype-text').value.trim(); });
+  $('monkeytype-form').addEventListener('submit', importMonkeytype);
+  $('cancel-monkeytype').addEventListener('click', () => $('monkeytype-dialog').close());
+  $('done-monkeytype').addEventListener('click', closeMonkeytypeImport);
+  $('monkeytype-dialog').addEventListener('click', (event) => { if (event.target === $('monkeytype-dialog')) $('monkeytype-dialog').close(); });
+
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
     if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open || $('delete-account-dialog').open || $('suggest-dialog').open) return;
@@ -4334,6 +4404,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
+    { group: 'settings', label: 'import Monkeytype settings…', keywords: 'monkeytype import export migrate move settings config sync', run: openMonkeytypeImport },
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: !hasAnyHistory(), run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
   // Only an exact word finds this one.

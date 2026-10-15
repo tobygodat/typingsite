@@ -107,6 +107,9 @@
               <span><strong>focus mode</strong></span>
               <input class="switch" id="focus-toggle" type="checkbox">
             </label>
+            <button id="open-monkeytype" class="preference-row preference-action" type="button">
+              <span><strong>import from Monkeytype</strong><small class="pace-note">paste your settings export</small></span>
+            </button>
           </div>
         </details>
 
@@ -914,6 +917,30 @@
       <div class="dialog-actions">
         <button id="cancel-suggest" class="btn btn-ghost" type="button">Cancel</button>
         <button id="send-suggest" class="btn btn-primary" type="submit" disabled>Send suggestion</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="monkeytype-dialog" aria-labelledby="monkeytype-dialog-title">
+    <form id="monkeytype-form" class="dialog-content" novalidate>
+      <div>
+        <h2 id="monkeytype-dialog-title">Import Monkeytype settings</h2>
+        <p id="monkeytype-lede">In Monkeytype, open Settings, then import/export settings, choose export and paste what it copies here. Only the settings Stilltype also has are taken, and they save and sync like any other change.</p>
+      </div>
+      <label id="monkeytype-field" for="monkeytype-text">Settings export
+        <textarea id="monkeytype-text" class="input textarea" rows="6" spellcheck="false" autocomplete="off" aria-describedby="monkeytype-error"></textarea>
+      </label>
+      <p id="monkeytype-error" class="field-error" role="alert"></p>
+      <div id="monkeytype-summary" class="monkeytype-summary" hidden>
+        <p class="account-kicker">imported</p>
+        <ul id="monkeytype-applied" class="monkeytype-list"></ul>
+        <p id="monkeytype-skipped-heading" class="account-kicker">not available here</p>
+        <ul id="monkeytype-skipped" class="monkeytype-list"></ul>
+      </div>
+      <div class="dialog-actions">
+        <button id="cancel-monkeytype" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="import-monkeytype" class="btn btn-primary" type="submit" disabled>Import settings</button>
+        <button id="done-monkeytype" class="btn btn-primary" type="button" hidden>Done</button>
       </div>
     </form>
   </dialog>
