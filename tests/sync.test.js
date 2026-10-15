@@ -1311,3 +1311,21 @@ test('a clear takes lesson progress from a copy that missed it, and its undo giv
   const { merged } = undoClearHere({}, mergeSynced(cleared, before), cleared.historyClearedAt, before);
   assert.deepEqual(merged.lessons, before.lessons);
 });
+
+// Missed words (src/insights.js runRecord) ride run summaries and are trimmed off older ones like pattern
+// counts. A copy that trimmed them, or an older copy of the same run, must not take them from a copy that
+// still holds them, whichever side merges, or two devices would rewrite the row with their own copy.
+test('a run’s missed words survive a merge with a copy that lacks them, from either side, and settle', () => {
+  const patterns = [['th', 1, 0, 0, null, null]];
+  const full = item('r', 5, { kind: 'test', status: 'complete', patterns, missedWords: ['the', 'table,'] });
+  const trimmed = item('r', 5, { kind: 'test', status: 'complete', patterns });
+  const withWords = profile({ runs: [full] });
+  const stale = profile({ runs: [trimmed] });
+  for (const merged of [mergeSynced(withWords, stale), mergeSynced(stale, withWords)]) {
+    assert.deepEqual(merged.runs[0].missedWords, ['the', 'table,']);
+  }
+  assert.ok(sameProfile(mergeSynced(withWords, stale), mergeSynced(stale, withWords)));
+  // A clear takes them with the run, and its undo brings the run back with them.
+  const cleared = clearProfile(normalizeProfile(withWords));
+  assert.deepEqual(mergeSynced(cleared, stale).runs, []);
+});

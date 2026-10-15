@@ -636,11 +636,15 @@ export function mergePreferences(local, cloud) {
   return { preferences, preferencesAt };
 }
 
-// A run summary trimmed by retainRuns has lost its pattern counts; the fuller copy of a record wins. A
+// A run summary trimmed by retainRuns has lost its pattern counts, and then its missed words; the fuller
+// copy of a record wins, on either, whichever side merges (the caps trim it again where they should). A
 // daily attempt either copy labels a repeat stays one: the copy that says first may be from before its
 // device held the earlier try, which a clear can since have taken from every copy.
+const fullness = (record) => [record.patterns?.length || 0, Array.isArray(record.missedWords) ? 1 : 0];
 const fuller = (held, other) => {
-  const kept = (other.patterns?.length || 0) > (held.patterns?.length || 0) ? other : held;
+  const [heldPatterns, heldWords] = fullness(held);
+  const [otherPatterns, otherWords] = fullness(other);
+  const kept = otherPatterns > heldPatterns || (otherPatterns === heldPatterns && otherWords > heldWords) ? other : held;
   return kept.firstDailyAttempt && (held.firstDailyAttempt === false || other.firstDailyAttempt === false)
     ? { ...kept, firstDailyAttempt: false } : kept;
 };

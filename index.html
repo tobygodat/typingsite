@@ -124,7 +124,7 @@
         </summary>
         <div class="corner-popover inbox-popover">
           <div class="inbox-heading"><p class="account-kicker">inbox</p><button id="inbox-clear" class="btn btn-ghost btn-sm" type="button" hidden>Clear</button></div>
-          <p id="inbox-empty" class="account-lede">Race challenges, rematches and results arrive here.</p>
+          <p id="inbox-empty" class="account-lede">Race challenges, ghost races, rematches and results arrive here.</p>
           <ul id="inbox-list" class="inbox-list"></ul>
         </div>
       </details>
@@ -321,6 +321,14 @@
               <p id="train-learn" class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button> a few keys at a time first.</p>
             </header>
 
+            <article id="ghost-result" class="comparison-panel ghost-result" aria-labelledby="ghost-result-heading" hidden>
+              <h2 id="ghost-result-heading">Ghost race</h2>
+              <div id="ghost-result-rows" class="race-results"></div>
+              <p id="ghost-result-rule" class="ghost-result-rule"></p>
+              <p id="ghost-result-status"></p>
+              <button id="ghost-result-action" class="btn btn-secondary" type="button" hidden>Race again</button>
+            </article>
+
             <article id="comparison-panel" class="comparison-panel" data-outcome="insufficient" hidden>
               <h2 id="comparison-status">There is not enough evidence to call a change yet.</h2>
               <div class="comparison-rows">
@@ -354,14 +362,43 @@
                 <p id="manual-target-error" class="field-error" role="alert"></p>
               </form>
             </details>
-            <section class="training-memory" aria-labelledby="training-memory-heading">
-              <h2 id="training-memory-heading">Patterns across runs</h2>
-              <label class="filter-field" for="training-conditions">Test conditions
-                <select id="training-conditions" class="input"></select>
-              </label>
-              <p id="training-memory-note" class="result-note"></p>
-              <div id="training-targets"></div>
-            </section>
+            <details id="ghost-offer" class="manual-panel ghost-offer" hidden>
+              <summary>Challenge a friend with this run</summary>
+              <p class="ghost-offer-copy">They race this exact text within 7 days, against a ghost caret that replays your keystrokes. Their race doesn’t count toward their best, and sending leaves your run as it is.</p>
+              <div id="ghost-offer-empty" hidden>
+                <p class="ghost-offer-copy">Your friend list is empty. Save a friend from an online race, then send them this run.</p>
+                <button id="ghost-offer-friends" class="btn btn-ghost btn-sm" type="button">Open online races</button>
+              </div>
+              <form id="ghost-offer-form" class="ghost-offer-form" novalidate>
+                <label class="filter-field" for="ghost-friend">Friend
+                  <select id="ghost-friend" class="input"></select>
+                </label>
+                <label class="filter-field" for="ghost-name">Name they see
+                  <input id="ghost-name" class="input" type="text" maxlength="24" autocomplete="nickname" placeholder="Name">
+                </label>
+                <button id="send-ghost" class="btn btn-secondary" type="submit">Send challenge</button>
+              </form>
+              <p id="ghost-offer-status" class="result-note" role="status"></p>
+              <p id="ghost-offer-error" class="field-error" role="alert"></p>
+            </details>
+
+            <!-- Block flow, so the grid gap doesn't sit between the two: one hairline and 32px. -->
+            <div>
+              <section class="training-memory" aria-labelledby="training-memory-heading">
+                <h2 id="training-memory-heading">Patterns across runs</h2>
+                <label class="filter-field" for="training-conditions">Test conditions
+                  <select id="training-conditions" class="input"></select>
+                </label>
+                <p id="training-memory-note" class="result-note"></p>
+                <div id="training-targets"></div>
+              </section>
+              <section class="training-memory missed-words" aria-labelledby="missed-words-heading">
+                <h2 id="missed-words-heading" tabindex="-1">Words you keep missing</h2>
+                <p id="missed-words-note" class="result-note"></p>
+                <ol id="missed-words-list" class="missed-words-list" hidden></ol>
+                <button id="practice-missed-list" class="btn btn-secondary" type="button" data-action="practice-missed-list" hidden>Practice these words</button>
+              </section>
+            </div>
           </div>
         </div>
       </section>

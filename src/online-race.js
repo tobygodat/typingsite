@@ -43,6 +43,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   let generation = 0;
   let pollTimer = 0;
   let busy = false;
+  // This tab's race is being fetched again after a reload.
+  let restoring = false;
   let changingFriends = false;
   let networkBusy = false;
   let dirty = false;
@@ -639,9 +641,12 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   if (joinLink) { navigate('compete'); setMode('online'); $('online-guest-name').focus(); }
   else {
     const saved = multiplayer.recallRace();
-    if (saved) multiplayer.getRace(getSession(), saved).then((result) => {
-      enterRoom({ room: result.room || result, ...saved });
-    }).catch((failure) => { multiplayer.forgetRace(); error(failure.message); });
+    if (saved) {
+      restoring = true;
+      multiplayer.getRace(getSession(), saved).then((result) => {
+        enterRoom({ room: result.room || result, ...saved });
+      }).catch((failure) => { multiplayer.forgetRace(); error(failure.message); }).finally(() => { restoring = false; });
+    }
   }
   loadFriends();
   return {
@@ -651,6 +656,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     rematchRoom: (roomId, conditions) => rematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions),
     // The race this tab is seated in and still waiting or racing, if any.
     get liveRoomId() { return room && !terminal(room) ? room.id : null; },
+    // A request made from this screen is still in flight (a room being created, joined or rematched, or a
+    // seat, friend or readiness change), or this tab's room is being restored. A room either opens moves
+    // the person to it.
+    get pending() { return busy || restoring; },
     open() { navigate('compete'); setMode('online'); },
     // A live race keeps the Online view; the board waits until it closes.
     openBoard() { navigate('compete'); if (!room || terminal(room)) setMode('friends'); },

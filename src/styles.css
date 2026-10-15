@@ -482,7 +482,8 @@ kbd {
   animation: fade-in var(--dur-quick) var(--ease-out);
 }
 
-/* Inbox: unread entries are counted on the envelope; the list keeps the newest thirty. */
+/* Inbox: unread entries are counted on the envelope. The list scrolls: it keeps every open ghost race and
+   the week's ghost race results, then the newest thirty others. */
 .corner-trigger { position: relative; }
 
 .inbox-count {
@@ -892,6 +893,8 @@ kbd {
   font-size: var(--text-display);
   line-height: 1.05;
   letter-spacing: -0.025em;
+  /* A ghost race names the sender, whose name can be one long unbroken word. */
+  overflow-wrap: anywhere;
 }
 
 #session-description {
@@ -1145,6 +1148,9 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   border-radius: var(--radius-full);
   background: var(--ghost);
 }
+
+/* In a ghost race the caret is the opponent, so it is drawn at full strength (3:1 against the page). */
+.ghost-caret[data-replay] { opacity: 1; }
 
 .ghost-caret.is-hidden { opacity: 0; }
 
@@ -1485,6 +1491,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   font-size: var(--text-title);
   line-height: 1.2;
   letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
 }
 
 .comparison-rows {
@@ -1575,6 +1582,21 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 .input-action { display: flex; gap: var(--space-2); max-width: 460px; }
 .input-action .input { flex: 1; }
+
+/* Ghost races: the offer is another quiet disclosure; the result reads like the race results. */
+.ghost-offer-copy { max-width: 60ch; margin: var(--space-3) 0 0; color: var(--muted); font-size: var(--text-small); }
+.ghost-offer-form { margin-top: var(--space-4); display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3) var(--space-4); }
+.ghost-offer-form .filter-field { flex: 1 1 180px; }
+#ghost-offer-empty .btn { margin-top: var(--space-3); }
+.ghost-offer > .result-note { margin: var(--space-3) 0 0; }
+.ghost-offer > .field-error:empty { display: none; }
+
+.ghost-result .race-results { margin-top: var(--space-6); }
+.ghost-result .race-result-row { grid-template-columns: minmax(0, 1fr) repeat(3, auto); gap: var(--space-2) var(--space-6); padding: var(--space-4) 0; }
+.ghost-result .race-result-row strong { overflow-wrap: anywhere; }
+.comparison-panel.ghost-result > p { margin-top: var(--space-4); }
+.comparison-panel.ghost-result > p:empty { display: none; }
+.ghost-result > .btn { margin-top: var(--space-4); }
 
 /* ── Progress ───────────────────────────────────────────────────────────── */
 
@@ -1677,6 +1699,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .training-target { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: center; }
 .training-target h3 { margin: 0; font-size: var(--text-lead); }
 .training-target p { margin: var(--space-2) 0 0; font-size: var(--text-small); color: var(--muted); }
+.training-memory.missed-words { margin-top: 0; }
+.missed-words > .result-note { max-width: 60ch; margin: 0; }
+.missed-words-list { margin: var(--space-4) 0 var(--space-6); padding: 0; list-style: none; }
+.missed-word { padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-1) var(--space-4); }
+.missed-word:first-child { border-top: 1px solid var(--hairline); }
+.missed-word-text { min-width: 0; font-size: var(--text-lead); overflow-wrap: anywhere; }
+.missed-word .num { color: var(--muted); font-size: var(--text-small); }
 .run-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3); }
 .run-summary strong { font-size: var(--text-lead); font-weight: 400; }
 .run-summary span { color: var(--muted); }
@@ -2350,6 +2379,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .training-target button { justify-self: start; }
   .daily-heading { flex-direction: column; }
   .friends-board-lists { grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
+}
+
+@media (max-width: 560px) {
+  .ghost-result .race-result-row { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 360px) {
