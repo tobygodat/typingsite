@@ -2640,6 +2640,8 @@ function absorb(data) {
 // nothing changes mid-run; Progress, Train and Challenge re-render whenever they are next shown.
 function showMerged() {
   followStoredPreferences();
+  // Lesson progress follows at once: the learn screen is hidden while a run is typed.
+  followLessonProgress();
   if (runInProgress()) return;
   forgetClearedTraining();
   // Newer test conditions wait while a passage is prepared; one nobody has started is prepared again
@@ -2654,7 +2656,6 @@ function showMerged() {
   const inUse = screen?.contains(document.activeElement) || screen?.querySelector('details[open]');
   if (view === 'progress' && !inUse) renderHistory();
   if (view === 'compete') renderDaily();
-  followLessonProgress({ redraw: view !== 'learn' || !inUse });
 }
 
 // Merges the device cache if another tab has written it since this tab last read it. Only the data:
@@ -2833,12 +2834,16 @@ function adoptProfile(data) {
 
 // Lesson progress changed under this tab (a copy merged from elsewhere, a clear or its undo here): a result
 // the progress no longer holds is dropped, a lesson waiting that is now locked gives way to the next open
-// one (one being typed finishes as not counted), and the learn screen and the first-run prompt follow,
-// though not while someone is using the learn screen.
-function followLessonProgress({ redraw = true } = {}) {
+// one (one being typed finishes as not counted), and the learn screen and the first-run prompt follow. The
+// learn screen is redrawn even while in use, so it never shows a pass the progress no longer holds; focus
+// on a lesson row comes back to that row (or to the lesson button, if the row has no button now).
+function followLessonProgress() {
   if (lessonResult && !lessonResultHeld(lessonResult, profile.lessons)) lessonResult = null;
   if (sessionKind === 'lesson' && attempt?.status !== 'running' && !lessonUnlocked(profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
-  if (redraw) renderLessons();
+  const list = $('lesson-list');
+  const row = list.contains(document.activeElement) ? [...list.children].indexOf(document.activeElement.closest('.lesson-row')) : -1;
+  renderLessons();
+  if (row >= 0) (list.children[row]?.querySelector('button') || $('lesson-primary')).focus({ preventScroll: true });
   renderFirstRun();
 }
 

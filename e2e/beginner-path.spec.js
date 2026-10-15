@@ -52,6 +52,13 @@ function lessonProfile(count, updatedAt = '2026-10-08T12:00:00Z') {
   return { version: 2, preferences: {}, attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, lessons, updatedAt };
 }
 
+// Another device's save, as this build makes one (mergeStamp): copies merge, so lesson progress only goes
+// with a clear (`historyClearedAt`), and comes back with that clear's undo (`undoneClears`).
+function savedElsewhere(count, updatedAt, { clear = false, undone = [] } = {}) {
+  return { ...lessonProfile(count, updatedAt), mergeStamp: updatedAt, undoneClears: undone,
+    ...(clear ? { historyClearedAt: `${updatedAt}~elsewhere` } : {}) };
+}
+
 // A signed-in learner who passed the first `count` lessons.
 function learner(supabase, email, count) {
   const user = supabase.addUser(email);
@@ -505,7 +512,7 @@ test.describe('on a touch screen', () => {
   });
 });
 
-test('a newer account profile that locks the current lesson replaces it, or the run finishes as not counted', async ({ page, supabase }) => {
+test('a clear from another device that locks the current lesson replaces it, or the run finishes as not counted', async ({ page, supabase }) => {
   const user = learner(supabase, 'two-devices@stilltype.test', 3);
   await openApp(page);
   await signInWithEmail(page, user.email);
@@ -516,7 +523,13 @@ test('a newer account profile that locks the current lesson replaces it, or the 
     if (held && route.request().method() === 'GET') await new Promise((done) => { release = done; });
     await route.fallback();
   });
-  const cloud = (count, minutes) => supabase.profiles.set(user.id, { data: lessonProfile(count, new Date(Date.now() + minutes * 60000).toISOString()) });
+  const clears = [];
+  const cloud = (count, minutes) => {
+    const at = new Date(Date.now() + minutes * 60000).toISOString();
+    // No progress means the other device cleared its history; progress back means it undid that clear.
+    if (!count) clears.push(`${at}~elsewhere`);
+    supabase.profiles.set(user.id, { data: savedElsewhere(count, at, { clear: !count, undone: count ? [...clears] : clears.slice(0, -1) }) });
+  };
   const reloadHeld = async () => {
     held = true;
     release = null;
@@ -560,8 +573,8 @@ test('a newer account profile that locks the current lesson replaces it, or the 
   expect(supabase.profileFor(user.email).lessons).toEqual({});
 });
 
-// A lesson finished before the load-time check is an edit made here first, so a newer account row discards it.
-test('a lesson result that a newer account profile discards is cleared, never shown as passed', async ({ page, supabase }) => {
+// A lesson finished before the load-time check is an edit made here first; a clear made after it on another device discards it.
+test('a lesson result a clear from another device discards is cleared, never shown as passed', async ({ page, supabase }) => {
   const user = learner(supabase, 'discarded-pass@stilltype.test', 0);
   await openApp(page);
   await signInWithEmail(page, user.email);
@@ -572,8 +585,10 @@ test('a lesson result that a newer account profile discards is cleared, never sh
     if (held && route.request().method() === 'GET') await new Promise((done) => { release = done; });
     await route.fallback();
   });
-  // Another device saved a newer row without this pass (lesson 1 stays open there, so only the record differs).
-  supabase.profiles.set(user.id, { data: lessonProfile(0, new Date(Date.now() + 5 * 60000).toISOString()) });
+  // Another device cleared its history after this pass was typed (lesson 1 stays open there, so only the
+  // record differs). A newer row that merely lacks the pass would keep it: copies merge.
+  const later = new Date(Date.now() + 5 * 60000).toISOString();
+  supabase.profiles.set(user.id, { data: savedElsewhere(0, later, { clear: true }) });
   await page.reload();
   await expect(page.locator('#text-display .char').first()).toBeVisible();
   await expect.poll(() => typeof release).toBe('function');

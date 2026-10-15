@@ -2338,6 +2338,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .trend-label { pointer-events: none; }
   /* A link inside a sentence still gets a full touch target; the negative margin keeps its line from growing. */
   .first-run-learn .quiet-link { min-height: var(--control); margin-block: calc((var(--control) - 1lh) / -2); }
+  /* The custom text panel rises into the space under the controls row (only its top padding and rule);
+     the row paints above it, so "learn to type" keeps its whole 44px. */
+  .practice-controls { position: relative; z-index: 1; }
 }
 
 @media (max-width: 760px) {
