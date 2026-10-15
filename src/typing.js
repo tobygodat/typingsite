@@ -610,7 +610,6 @@ export const TEST_COUNTS = [10, 25, 50, 100];
 export const QUOTE_LENGTHS = ['any', 'short', 'medium', 'long'];
 export const QUOTE_DIFFICULTIES = ['any', 'gentle', 'steady', 'precise'];
 export const INPUT_CLASSES = ['physical-keyboard', 'touch'];
-export const CORRECTION_POLICIES = ['mandatory', 'relaxed'];
 
 // The standard recipe version is appended only when present, so every other key stays as it was.
 export function conditionKey(conditions = {}) {
