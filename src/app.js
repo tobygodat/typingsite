@@ -46,7 +46,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
@@ -274,7 +274,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'focusMode'];
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'focusMode', 'dailyGoal'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -566,6 +566,7 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  $('daily-goal').value = String(prefs.dailyGoal);
   syncLockedSettings();
   armPace();
   showBest();
@@ -2284,11 +2285,80 @@ function moveHeatFocus(event) {
   if (letter) selectHeatKey(letter, { focus: true });
 }
 
+// Daily goal line and an 18-week practice calendar (Sunday-first columns), static by design.
+// The calendar is one tab stop: each day is a labelled cell, and the arrow keys move between them as drawn.
+// Goal-met days carry a dot as well as the green step, and the caption under the calendar repeats the
+// focused or hovered day's label for sighted users (it is aria-hidden; the cell's own label is announced).
+let goalDay = '';
+function captionGoalDay(cell) { $('goal-caption').textContent = cell?.dataset?.caption || ''; }
+const focusedGoalDay = () => ($('goal-calendar').contains(document.activeElement) ? document.activeElement : null);
+function renderGoal(date = new Date()) {
+  goalDay = dayKey(date);
+  const byDay = minutesByDay(profile.runs, profile.practiceDays);
+  const coarse = matchMedia('(any-pointer: coarse)').matches;
+  const picker = $('goal-day-select');
+  const selectedDay = picker.value || goalDay;
+  $('practice-goal').hidden = Object.keys(byDay).length === 0;
+  const goal = prefs.dailyGoal;
+  const streak = practiceStreak(byDay, goal, date);
+  $('goal-line').replaceChildren(element('span', 'Today', 'goal-label'), ` ${goalMinutes(byDay[goalDay])}${goal ? ` / ${goal}` : ''} min · ${streak}-day streak`);
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - 17 * 7 - date.getDay());
+  const cells = [];
+  for (const day = new Date(start); day <= date; day.setDate(day.getDate() + 1)) {
+    const minutes = byDay[dayKey(day)] || 0;
+    const met = goal > 0 && minutes >= goal;
+    const cell = element('span', '', 'goal-day');
+    cell.dataset.level = String(practiceLevel(minutes, goal));
+    if (met) cell.dataset.goal = 'met';
+    cell.setAttribute('role', 'img');
+    if (!coarse) cell.tabIndex = -1;
+    cell.dataset.day = dayKey(day);
+    cell.setAttribute('aria-label', `${day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}: ${goalMinutes(minutes)} min${met ? ', goal met' : ''}`);
+    cell.dataset.caption = [day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), `${goalMinutes(minutes)} min`, met && 'goal met'].filter(Boolean).join(' · ');
+    cells.push(cell);
+  }
+  if (!coarse) cells.at(-1).tabIndex = 0;
+  // On touch and hybrids the native 44px picker owns selection; the dense cells are only a picture.
+  if (coarse) $('goal-calendar').setAttribute('aria-hidden', 'true');
+  else $('goal-calendar').removeAttribute('aria-hidden');
+  picker.replaceChildren(...cells.map((cell) => new Option(cell.getAttribute('aria-label'), cell.dataset.day)));
+  picker.value = cells.some((cell) => cell.dataset.day === selectedDay) ? selectedDay : goalDay;
+  const practised = cells.filter((cell) => cell.dataset.level !== '0').length;
+  const hadFocus = Boolean(focusedGoalDay());
+  $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last 18 weeks: ${practised} days with practice. Arrow keys move between days.`);
+  captionGoalDay(null);
+  $('goal-calendar').replaceChildren(...cells);
+  if (hadFocus && !coarse) cells.at(-1).focus();
+  if (document.activeElement === picker) captionGoalDay(cells.find((cell) => cell.dataset.day === picker.value));
+}
+
+function moveGoalFocus(event) {
+  const cells = [...$('goal-calendar').children];
+  const from = cells.indexOf(event.target);
+  const step = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7, Home: -from, End: cells.length - 1 - from }[event.key];
+  if (from < 0 || step === undefined) return;
+  event.preventDefault();
+  // Columns run Sunday to Saturday from the first cell, so up and down stop at the ends of a week.
+  if ((event.key === 'ArrowUp' && from % 7 === 0) || (event.key === 'ArrowDown' && from % 7 === 6)) return;
+  const to = cells[from + step];
+  if (!to) return;
+  cells[from].tabIndex = -1;
+  to.tabIndex = 0;
+  to.focus();
+}
+
 function renderHistory() {
   renderStandardScore();
   const eligible = profile.runs.filter(trendRun);
   const hasProgress = eligible.length > 0 || profile.loops.length > 0;
+  renderGoal();
   $('progress-empty').hidden = hasProgress;
+  // Drills, daily and custom runs count toward the goal but not the trend, so the empty copy names what is missing.
+  const goalOnly = !hasProgress && !$('practice-goal').hidden;
+  $('progress-empty-title').textContent = goalOnly ? 'No speed trend yet.' : 'No practice runs yet.';
+  $('progress-empty-copy').textContent = goalOnly
+    ? 'Drills, daily and custom runs count toward your daily practice. Recorded lessons and composing active time count too. Finish a practice run to chart speed and accuracy. Daily results are in Challenge.'
+    : 'Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.';
   $('progress-content').hidden = !hasProgress;
   const hasHistory = hasAnyHistory();
   $('clear-history').hidden = !hasHistory;
@@ -2365,7 +2435,7 @@ function renderHistory() {
 
 function hasAnyHistory() {
   return profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0 || profile.compositions.length > 0
-    || lessonsStarted(profile.lessons);
+    || lessonsStarted(profile.lessons) || Object.keys(profile.practiceDays).length > 0;
 }
 
 // Composing numbers get their own list: no chart, no trend, no best, nothing shared with copy tests.
@@ -2491,6 +2561,7 @@ function finishLesson(completed, valid) {
     recorded = run.recorded;
     if (recorded) {
       profile.lessons = run.progress;
+      profile.practiceDays = recordPracticeTime(profile.practiceDays, at, elapsedMs);
       saved = saveProfile();
     }
   }
@@ -3202,7 +3273,7 @@ function undoClear() {
   renderTraining();
   renderDaily();
   followLessonProgress();
-  setTimeout(() => { $('history-toast').hidden = true; }, 1600);
+  clearTimer = setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
 // ── Accounts ──────────────────────────────────────────────────────────────
@@ -3988,6 +4059,14 @@ function bindEvents() {
   $('quote-length').addEventListener('change', (event) => { prefs.quoteLength = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
+  $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveChoice('dailyGoal'); renderGoal(); });
+  $('goal-day-select').addEventListener('change', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
+  $('goal-day-select').addEventListener('focus', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
+  $('goal-calendar').addEventListener('keydown', moveGoalFocus);
+  $('goal-calendar').addEventListener('focusin', (event) => captionGoalDay(event.target));
+  $('goal-calendar').addEventListener('focusout', (event) => { if (!$('goal-calendar').contains(event.relatedTarget)) captionGoalDay(null); });
+  $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()));
+  $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
@@ -4425,6 +4504,7 @@ compose = createCompose({
   signedIn: () => Boolean(session),
   save(record) {
     profile.compositions.push(record);
+    profile.practiceDays = recordPracticeTime(profile.practiceDays, record.at, record.activeMs);
     return saveProfile();
   },
 });
@@ -4489,10 +4569,14 @@ noticeDeletedAccount();
 completeAuthRedirect();
 syncOnLoad();
 inbox.refresh();
-// Refresh the day label and an open friends board when a tab returns, and across midnight without reloading.
-setInterval(() => { if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); } }, 30000);
+// Refresh the day label and the practice calendar when a tab returns, and across midnight without reloading.
+const refreshGoalDay = () => { if (dayKey(new Date()) !== goalDay) renderGoal(); };
+setInterval(() => {
+  if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); }
+  if (document.body.dataset.view === 'progress') refreshGoalDay();
+}, 30000);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) { renderDaily(); friendsBoard.rollover(); }
+  if (!document.hidden) { renderDaily(); friendsBoard.rollover(); refreshGoalDay(); }
 });
 
 // Offline shell (sw.js): installable and playable without a connection. Skipped on localhost so local
