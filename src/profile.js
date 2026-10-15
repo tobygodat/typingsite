@@ -22,6 +22,8 @@ export const defaultPreferences = {
   quoteLength: 'medium',
   difficulty: 'any',
   wordList: DEFAULT_WORD_LIST,
+  // Off: quotes the profile has seen wait until every matching quote has been shown.
+  repeatQuotes: false,
   layout: DEFAULT_LAYOUT,
   fingerMap: false,
   fontSize: '28',
@@ -77,6 +79,7 @@ export function validPreferences(value) {
   if (!MIN_ACCURACY_OPTIONS.includes(value.minAccuracy)) value.minAccuracy = 0;
   if (!MIN_WPM_OPTIONS.includes(value.minWpm)) value.minWpm = 0;
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  value.repeatQuotes = value.repeatQuotes === true;
   value.layout = normalizeLayout(value.layout);
   value.fingerMap = value.fingerMap === true;
   value.keybindings = normalizeKeybindings(value.keybindings, value.restartKey);
@@ -134,6 +137,8 @@ export function normalizeProfile(parsed) {
     ...retainHistory(settleDailyFirsts(records), validPracticeDays(parsed.practiceDays)),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
+    // Stored bests are kept exactly as saved, including any an exhausted quote pool set before repeat quotes:
+    // only a run from now on needs fresh text to set one (storeAttempt).
     bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
     lessons: normalizeLessonProgress(parsed.lessons),
     compositions: normalizeCompositions(parsed.compositions),

@@ -59,7 +59,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, practiceRun, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
@@ -177,7 +177,11 @@ let activeRecommendation = null;
 let selectedTarget = null;
 let trainingContext = null;
 let resultBestBefore = null;
+let resultPassageBefore = null;
+let displayedIds = null;
 let clearSnapshot = null;
+// The label of the practice passage waiting when history was cleared, which undo gives back.
+let clearedPassage = null;
 let clearedAt = null;
 let clearTimer = null;
 let keyboardBuilt = '';
@@ -474,7 +478,7 @@ function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words${run.conditions.punctuation ? ' · punctuation' : ''}${run.conditions.numbers ? ' · numbers' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
   if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
-  if (run.kind !== 'drill') return [describeConditions(run.conditions), describeMinimums(run.minimums)].filter(Boolean).join(' · ');
+  if (run.kind !== 'drill') return `${run.fresh === false ? 'repeated text · ' : ''}${[describeConditions(run.conditions), describeMinimums(run.minimums)].filter(Boolean).join(' · ')}`;
   return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}${describeRules(run.conditions)}`;
 }
 
@@ -634,6 +638,7 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  $('repeat-quotes-toggle').checked = prefs.repeatQuotes;
   keybindingEditor?.refresh();
   document.querySelectorAll('.restart-key-hint').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.restart); });
   $('restart-button').title = prefs.keybindings.restart ? `Restart test (${bindingLabel(prefs.keybindings.restart)})` : 'Restart test';
@@ -710,6 +715,7 @@ function syncLockedSettings() {
   if (standard && !recipeOption) $('word-list').append(new Option('1k–10k', 'standard'));
   if (!standard) recipeOption?.remove();
   $('word-list').value = standard ? 'standard' : prefs.wordList;
+  $('repeat-quotes-toggle').disabled = prefs.mode !== 'quote';
   $('correction-select').disabled = standard;
   $('correction-select').value = standard ? 'mandatory' : prefs.correction;
   document.querySelectorAll('.preference-lock').forEach((note) => { note.hidden = !standard; });
@@ -1004,7 +1010,8 @@ function updateCharacterStates(characters, typed, target, start = 0) {
   }
 }
 
-function choosePassage(extraSeen = []) {
+// Repeats are for open practice only: a retest always needs text the profile hasn't seen.
+function choosePassage(extraSeen = [], { allowRepeats = false } = {}) {
   return selectPassage({
     mode: prefs.mode,
     count: prefs.count,
@@ -1015,7 +1022,24 @@ function choosePassage(extraSeen = []) {
     difficulty: prefs.difficulty,
     wordList: prefs.wordList,
     seenIds: [...profile.seenTextIds, ...extraSeen],
+    allowRepeats,
   });
+}
+
+// Custom text is never fresh, but it is its own session, not a repeat: it gets no repeated-text notice.
+function repeatedTextNotice() {
+  if (sessionKind !== 'practice' || passage?.fresh !== false) return '';
+  return passage.exhausted && !prefs.repeatQuotes && prefs.mode === 'quote'
+    ? 'You’ve seen every matching quote. Repeated text doesn’t count toward your best.'
+    : 'Repeated text · doesn’t count toward your best.';
+}
+
+// The passage's own notice. Its hidden twin holds the footer at the notice's height, so a shorter hint
+// that replaces it mid-run (a blocked letter) never moves restart or the passage.
+function setPassageNotice(text) {
+  primaryNotice = text;
+  $('input-help').textContent = text;
+  $('input-help-reserve').textContent = text;
 }
 
 // Restarting or changing a setting keeps a custom passage; every other session restarts as practice.
@@ -1125,7 +1149,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   // retest or drill keeps its baseline's conditions (restoreConditions), through a restart too; newer
   // ones from elsewhere wait until it is over.
   followStoredPreferences({ conditions: kind !== 'retest' && kind !== 'drill' });
-  primaryNotice = '';
+  setPassageNotice('');
   setCustomLengthError('');
   // Each session set up counts, so a Race still loading can tell its session was replaced (see raceContext);
   // a redraw for a synced profile doesn't count.
@@ -1144,7 +1168,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   if (kind === 'lesson' && !lessonUnlocked(profile.lessons, lessonIndex)) lessonIndex = nextLessonIndex(profile.lessons);
   passage = selectedPassage || (kind === 'missed' ? wordsPassage : kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList)
     : kind === 'lesson' ? lessonPassage(lessonIndex) : kind === 'challenge' ? ghostPassage() : kind === 'custom' ? customPassage()
-      : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
+      : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : [], { allowRepeats: kind === 'practice' && prefs.repeatQuotes }));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
@@ -1174,14 +1198,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     return false;
   }
   // Drills, word practice and lessons are generated practice text, never a passage to keep fresh for a retest.
-  if (!['drill', 'missed', 'lesson'].includes(kind) && passage.id && !profile.seenTextIds.includes(passage.id)) {
-    profile.seenTextIds.push(passage.id);
-    saveProfile();
-  }
-  if (kind === 'daily' && !profile.seenTextIds.includes(passage.challengeId)) {
-    profile.seenTextIds.push(passage.challengeId);
-    saveProfile();
-  }
+  // Generated text records nothing, but still replaces a passage set up earlier in the same task.
+  recordSeenOnDisplay(['drill', 'missed', 'lesson'].includes(kind) ? [] : [passage.id, kind === 'daily' ? passage.challengeId : null]);
   // The one place a run gets its input class: from the press that started it, never a default or the last run's.
   const runConditions = kind === 'daily' ? dailyConditions() : kind === 'lesson' ? lessonConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, ...practiceTextConditions(passage.text), quoteLength: null, difficulty: null, wordList: null } : kind === 'challenge' ? ghostConditions() : kind === 'custom' ? customConditions() : conditions();
   attempt = createAttempt({
@@ -1217,13 +1235,30 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   if (kind !== 'lesson') markKeyboardTargets(kind === 'drill' ? selectedTarget : null);
   $('typing-status').className = 'badge badge-info';
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
-  $('input-help').textContent = '';
+  // Open practice hides the condition line, so a repeated passage says so in the footer, before and during the run.
+  setPassageNotice(repeatedTextNotice());
   $('condition-line').textContent = describeRun(attempt);
   configureSessionCopy();
   updateLive(true);
   if (show) switchView('practice');
   if (focus) $('typing-input').focus({ preventScroll: true });
   return true;
+}
+
+// Seen IDs are recorded when a passage is displayed: once the task that rendered it ends, before any
+// paint or keystroke. A reset replaced by another in the same task (navigate's own, then a command's)
+// never reaches the screen, so it can't use up an unseen quote; only the passage left showing counts.
+function recordSeenOnDisplay(ids) {
+  if (!displayedIds) {
+    queueMicrotask(() => {
+      const unseen = displayedIds.filter((id) => id && !profile.seenTextIds.includes(id));
+      displayedIds = null;
+      if (!unseen.length) return;
+      profile.seenTextIds.push(...unseen);
+      saveProfile();
+    });
+  }
+  displayedIds = ids;
 }
 
 function showUnavailableRetest(reason, sample = 'no matching fresh text') {
@@ -1874,8 +1909,12 @@ function storeAttempt(completed) {
   if (completed.kind === 'daily') completed.firstDailyAttempt = settleDailyFirsts([...profile.runs, completed]).at(-1).firstDailyAttempt;
   const key = conditionKey(completed.conditions);
   const score = completed.summary.score;
-  const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
+  // Repeated text is saved and listed, but only fresh text can set a best. Bests stored before repeat quotes
+  // are left as they are, whatever text set them.
+  const eligibleBest = trendRun(completed);
   resultBestBefore = profile.bests[key] || null;
+  // A custom passage is never fresh either, but it is never compared, so it has no passage best to chase.
+  resultPassageBefore = completed.fresh === false && comparableKind(completed.kind) ? passageBest(profile.runs, completed) : null;
   // Traces serve baselines and patterns. A custom passage is neither and can run to thousands of characters,
   // so only its summary record is kept; so is a ghost race's, whose trace is sent from the run in memory.
   if (comparableKind(completed.kind)) profile.attempts.push(completed);
@@ -1959,7 +1998,8 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
   }
 
   if ((sessionKind === 'practice' || sessionKind === 'daily') && valid) {
-    baselineAttempt = completed;
+    // Familiar text flatters the score, so a repeated passage can't be the baseline for a fresh retest.
+    baselineAttempt = completed.fresh === false ? null : completed;
     trainingContext = null;
   }
   renderResults(completed, saved);
@@ -2001,8 +2041,8 @@ function renderCard(completed) {
 // Offer the words this run tripped on or was slowest through as their own uncounted run. The
 // slowest are one timing each, so they show their speed beside the run's median, not a weakness.
 // Only an evidence run is mined for words, by the same rule as recurring patterns: a complete test,
-// retest or daily run on fresh text. Not a drill (synthetic, target-heavy text), a daily passage shown
-// before, custom text or word practice itself. Run again repeats a word-practice passage.
+// retest or daily run on fresh text. Not a drill (synthetic, target-heavy text), repeated text (a daily
+// passage shown before, a repeated quote), custom text or word practice itself. Run again repeats a word-practice passage.
 function renderPracticeWords(completed) {
   const mined = evidenceRun(completed);
   const { missed, slow, timedCount, medianWpm } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
@@ -2076,6 +2116,13 @@ function resultHeadline(completed) {
   if (completed.kind === 'missed') return 'Word practice complete · not counted toward your best';
   if (completed.kind === 'custom') return 'Custom text complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
+  if (completed.fresh === false) {
+    // A repeat chases its own passage, never the personal best.
+    if (!resultPassageBefore) return 'Repeated text · not counted toward your best';
+    const before = resultPassageBefore.score.wpm;
+    const change = completed.summary.score.wpm - before;
+    return change === 0 ? `Repeated text · matched your best of ${before} on this passage` : `Repeated text · ${change > 0 ? '+' : '−'}${Math.abs(change)} vs your best of ${before} on this passage`;
+  }
   if (!resultBestBefore) return 'First run at these settings';
   const delta = completed.summary.score.wpm - resultBestBefore.wpm;
   if (delta === 0) return `Matched your best of ${resultBestBefore.wpm}`;
@@ -2110,6 +2157,7 @@ function renderResults(completed, saved) {
   renderSecondaryStats(completed);
   $('result-conditions').textContent = describeRun(completed);
   $('result-delta').textContent = resultHeadline(completed);
+  const repeated = repeatedResult(completed);
   const stopped = completed.stopped ? stopReason(completed.stopped) : '';
   // A retest reports a failed save once, in the comparison caveat.
   $('result-comparison-note').textContent = [
@@ -2132,10 +2180,13 @@ function renderResults(completed, saved) {
   const failure = completed.failed ? `${completed.kind === 'drill' ? 'Drill' : 'Run'} failed, ${completed.failed}. ` : stopped ? `${stopped}. ` : '';
   $('ghost-result').hidden = completed.kind !== 'challenge';
   renderGhostOffer(completed);
-  announce(saved
-    ? `${failure}${speed}, ${replay.score.accuracy}% accuracy.`
-    : `${failure}${speed}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+  announce([`${failure}${speed}, ${replay.score.accuracy}% accuracy.`,
+    repeated ? 'Repeated text, not counted toward your best.' : '',
+    saved ? '' : 'Couldn’t save on this device.'].filter(Boolean).join(' '));
 }
+
+// A counted practice run on repeated text: saved and listed, never a best, trend or retest baseline.
+const repeatedResult = (completed) => completed?.status === 'complete' && completed.kind === 'test' && completed.fresh === false;
 
 // Train's drill and retest actions, from the current recommendation and baseline. Runs after each result
 // and as each drill starts, so a drill left before its end still offers its retest even when its baseline
@@ -2150,7 +2201,9 @@ function renderRecommendation(counted = true, compared = true, completed = null)
     : completed?.stopped ? 'Runs under your minimums aren’t counted. Change them in settings.' : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
     ? `About 1 min, then a fresh ${retestLength(baselineAttempt.conditions)} retest.`
-    : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
+    : repeatedResult(completed)
+      ? 'A standalone drill. Repeated text stays out of your best, trends and retests; finish a run on fresh text for a comparable retest.'
+      : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
   $('start-drill').disabled = !counted;
   $('start-drill').textContent = completed && failedDrill(completed) ? 'Try drill again' : 'Start drill';
   $('skip-to-retest').disabled = !counted || baselineAttempt?.status !== 'complete';
@@ -2325,11 +2378,12 @@ function switchView(view) {
 
 function navigate(view) {
   if (view === 'practice') {
-    // A custom passage that is ready or under way is practice too, so going to Practice keeps it.
+    // A custom passage that is ready or under way is practice too, so going to Practice keeps it. An unstarted
+    // repeat that repeats-off would replace is redrawn.
     const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom') && !['complete', 'interrupted'].includes(attempt.status);
     // A waiting passage is rebuilt, as the same kind, if strict space or quick end changed while another screen showed.
     const staleRules = current && inputRules(attempt.conditions).join() !== inputRules(sessionConditions(sessionKind)).join();
-    if (!current || (preferencesWaiting && untouchedPractice())) resetSession('practice');
+    if (!current || staleRepeat() || (preferencesWaiting && untouchedPractice())) resetSession('practice');
     else if (staleRules) resetSession(sessionKind);
     switchView('practice');
     return;
@@ -2801,8 +2855,9 @@ function moveGoalFocus(event) {
 
 function renderHistory() {
   renderStandardScore();
-  const eligible = profile.runs.filter(trendRun);
-  const hasProgress = eligible.length > 0 || profile.loops.length > 0;
+  const listed = profile.runs.filter(practiceRun);
+  const eligible = listed.filter(trendRun);
+  const hasProgress = listed.length > 0 || profile.loops.length > 0;
   renderGoal();
   $('progress-empty').hidden = hasProgress;
   // Drills, daily and custom runs count toward the goal but not the trend, so the empty copy names what is missing.
@@ -2815,25 +2870,30 @@ function renderHistory() {
   const hasHistory = hasAnyHistory();
   $('clear-history').hidden = !hasHistory;
   $('clear-history').disabled = !hasHistory;
-  const source = conditionOptions($('progress-conditions'), [...eligible, ...profile.loops]);
+  const source = conditionOptions($('progress-conditions'), [...listed, ...profile.loops]);
   const key = source ? conditionKey(source) : '';
   const period = $('progress-period').value;
   const matching = source ? filterRuns(eligible, key, period) : [];
+  const runRows = source ? filterRuns(listed, key, period) : [];
+  const repeats = runRows.length - matching.length;
+  const repeatCopy = repeats ? ` ${repeats} repeated-text ${repeats === 1 ? 'run is' : 'runs are'} listed below but left out of the chart and weekly medians.` : '';
   const week = weeklyChange(eligible, key);
   $('progress-week').textContent = week.wpm === null
     ? `This week: ${week.current.length} matching runs. A week-to-week change needs runs in both this week and the preceding week.`
     : `Weekly median: ${signed(week.wpm, 'wpm')} · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs this week / ${week.previous.length} last week. This describes your runs, not a proven learning effect.`;
   renderTrend($('progress-trend'), matching, openHistoryRun);
   $('progress-trend-note').textContent = matching.length
-    ? `${matching.length} completed practice runs and retests, oldest to newest. Select a point or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs appear only in All saved runs.' : ''}`
-    : 'No completed practice runs at these conditions in this period. Try a longer period or different conditions.';
+    ? `${matching.length} completed practice runs and retests on fresh text, oldest to newest. Select a point or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs appear only in All saved runs.' : ''}${repeatCopy}`
+    : runRows.length
+      ? `No fresh-text practice runs at these conditions in this period, so there is no chart.${repeatCopy}`
+      : 'No completed practice runs at these conditions in this period. Try a longer period or different conditions.';
   renderKeys(source ? filterRuns(profile.runs, key, period) : []);
-  $('run-history').replaceChildren(...[...matching].reverse().map((run) => {
+  $('run-history').replaceChildren(...[...runRows].reverse().map((run) => {
     const row = element('details', '', 'run-row');
     row.dataset.runId = run.id;
     const summary = element('summary', '', 'run-summary');
     summary.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
-      element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : run.conditions?.mode === 'standard' ? 'standard' : 'practice'} · view details`));
+      element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : run.conditions?.mode === 'standard' ? 'standard' : 'practice'}${run.fresh === false ? ' · repeated text' : ''} · view details`));
     const detail = element('div', '', 'run-detail');
     detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
       element('p', describeRun(run)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
@@ -3731,9 +3791,16 @@ function forgetClearedTraining() {
 
 function clearHistory() {
   clearSnapshot = JSON.stringify(profile);
+  // An unstarted practice passage outlives the clear (Practice keeps it), so it is the first text the cleared
+  // history shows: fresh, and recorded as seen, however it was labelled before. Clearing happens on Progress,
+  // so no run is under way.
+  const queued = sessionKind === 'practice' && attempt?.status === 'ready' ? attempt : null;
+  clearedPassage = queued && { attemptId: queued.id, fresh: passage.fresh, exhausted: passage.exhausted };
   // Copies elsewhere drop what they hold from before this moment when they merge with this one. What
   // they held is kept here as this tab merges them (account.mergeAndHold), for Undo.
   profile = account.clearProfile(profile);
+  if (queued?.textId) profile.seenTextIds = [queued.textId];
+  if (queued && passage.fresh === false) labelPassage(true, false);
   clearedAt = profile.historyClearedAt;
   heldClears = account.joinHolds(heldClears, { [clearedAt]: [normalizeProfile(JSON.parse(clearSnapshot))] });
   trainingClears = account.clearsApplied(profile);
@@ -3745,7 +3812,7 @@ function clearHistory() {
   $('undo-clear').hidden = false;
   $('undo-clear').focus();
   clearTimeout(clearTimer);
-  clearTimer = setTimeout(() => { $('history-toast').hidden = true; clearSnapshot = null; }, 5000);
+  clearTimer = setTimeout(() => { $('history-toast').hidden = true; clearSnapshot = null; clearedPassage = null; }, 5000);
   renderHistory();
   renderTraining();
   renderDaily();
@@ -3762,6 +3829,11 @@ function undoClear() {
   // own copy from just before it, and whatever the clear removed from the account row or another tab as
   // they merged here (held for it), as far as clears still in force allow.
   ({ merged: profile, holds: heldClears } = account.undoClearHere(heldClears, profile, clearedAt, snapshot));
+  // The passage that waited through the clear gets its old label back while it is still unstarted. A run on it
+  // already under way is left alone (still run): it started as fresh text, and stays that way.
+  const queued = clearedPassage;
+  if (queued && attempt?.id === queued.attemptId && attempt.status === 'ready') labelPassage(queued.fresh, queued.exhausted);
+  clearedPassage = null;
   saveProfile();
   clearSnapshot = null;
   clearTimeout(clearTimer);
@@ -4503,7 +4575,7 @@ function bindEvents() {
         compose.focus();
         return;
       }
-      if (!attempt || attempt.status === 'complete' || $('typing-input').disabled) resetSession('practice');
+      if (!attempt || attempt.status === 'complete' || $('typing-input').disabled || staleRepeat()) resetSession('practice');
       else switchView('practice');
       $('typing-input').focus({ preventScroll: false });
       return;
@@ -4560,6 +4632,7 @@ function bindEvents() {
   $('quote-length').addEventListener('change', (event) => { prefs.quoteLength = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
+  $('repeat-quotes-toggle').addEventListener('change', (event) => setRepeatQuotes(event.target.checked));
   $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveChoice('dailyGoal'); renderGoal(); });
   $('goal-day-select').addEventListener('change', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
   $('goal-day-select').addEventListener('focus', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
@@ -4974,6 +5047,33 @@ function restartHint() {
   return document.body.dataset.view === 'results' && prefs.keybindings.restart === 'Tab' ? 'enter' : bindingLabel(prefs.keybindings.restart);
 }
 
+// Repeat quotes changes only open practice's next quote, so a custom passage (or any other session) is kept.
+function setRepeatQuotes(enabled) {
+  if (prefs.repeatQuotes === enabled) return;
+  prefs.repeatQuotes = enabled;
+  applyPreferences();
+  saveChoice('repeatQuotes');
+  if (sessionKind !== 'practice' || passage?.fresh !== false || attempt?.status !== 'ready') return;
+  // A repeated passage that hasn't been started. Off swaps it for unseen text if any remains: here on Practice,
+  // otherwise when Practice next opens (staleRepeat), so the setting never changes the view. Else reword its notice.
+  if (staleRepeat() && document.body.dataset.view === 'practice') resetSession('practice');
+  else setPassageNotice(repeatedTextNotice());
+}
+
+// Relabels the unstarted passage when the history that judged it changes: a clear, or undoing one.
+function labelPassage(fresh, exhausted) {
+  passage.fresh = fresh;
+  passage.exhausted = exhausted;
+  attempt.fresh = fresh;
+  setPassageNotice(repeatedTextNotice());
+  $('condition-line').textContent = describeRun(attempt);
+}
+
+// An unstarted repeated passage that repeats-off would have replaced with unseen text.
+function staleRepeat() {
+  return !prefs.repeatQuotes && sessionKind === 'practice' && attempt?.status === 'ready' && passage?.fresh === false && !passage.exhausted;
+}
+
 // A ready practice run takes a new minimum in place; one already under way restarts with it.
 function setMinimum(key, value) {
   if (prefs[key] === value) return;
@@ -5076,6 +5176,7 @@ function paletteCommands(query) {
     ...[['off', 'off'], ['best', 'personal best'], ['average', 'average'], ['last', 'last run'], ['custom', 'custom']].map(([mode, name]) => (
       { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: prefs.paceCaret === mode ? 'on' : '', on: prefs.paceCaret === mode, run: () => setPaceCaret(mode) })),
     ...Object.entries(CORRECTION_LABELS).map(([policy, name]) => ({ group: 'test', label: `correction · ${policy === 'relaxed' ? 'free' : name}`, keywords: 'mistakes correction continue stop error backspace fail expert master confidence', hint: prefs.correction === policy ? 'current' : '', on: prefs.correction === policy, disabled: standardLocked(), run: () => setCorrection(policy) })),
+    { group: 'test', label: 'repeat quotes', keywords: 'seen again same quote passage score chase replay', hint: onOff(prefs.repeatQuotes), on: prefs.repeatQuotes, disabled: prefs.mode !== 'quote', run: () => setRepeatQuotes(!prefs.repeatQuotes) },
     { group: 'test', label: 'strict space', keywords: 'space bar early skip word mistakes input', hint: onOff(prefs.strictSpace), on: prefs.strictSpace, run: () => setInputRule('strictSpace', !prefs.strictSpace) },
     { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: prefs.minAccuracy === value ? 'current' : '', on: prefs.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),

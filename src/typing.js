@@ -216,7 +216,9 @@ export function textId(text) {
   return `generated-${(hash >>> 0).toString(36)}`;
 }
 
-export function selectPassage({ mode = 'time', count = 25, duration = 0, punctuation = false, numbers = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
+// Unseen quotes come first. With allowRepeats (the "repeat quotes" setting) every matching quote is a
+// candidate; one the profile has seen comes back as fresh: false, so it is labelled and never counted.
+export function selectPassage({ mode = 'time', count = 25, duration = 0, punctuation = false, numbers = false, quoteLength = 'any', difficulty = 'any', seenIds = [], allowRepeats = false, random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
   const seen = new Set(seenIds);
   if (mode === 'standard') {
     // A fresh seed per attempt; the word-list, punctuation and quote filters never apply.
@@ -238,10 +240,10 @@ export function selectPassage({ mode = 'time', count = 25, duration = 0, punctua
       return lengthMatch && difficultyMatch;
     });
     const fresh = candidates.filter((item) => !seen.has(item.id));
-    const pool = fresh.length ? fresh : candidates;
+    const pool = fresh.length && !allowRepeats ? fresh : candidates;
     if (!pool.length) return null;
     const item = pool[Math.floor(random() * pool.length)];
-    return { ...item, textVersion: `${item.id}@1`, corpus: CORPUS_VERSION, fresh: fresh.length > 0, exhausted: fresh.length === 0 };
+    return { ...item, textVersion: `${item.id}@1`, corpus: CORPUS_VERSION, fresh: !seen.has(item.id), exhausted: fresh.length === 0 };
   }
 
   for (let i = 0; i < 12; i += 1) {
@@ -673,7 +675,8 @@ export function summarizePatterns(attempts, limit = 20, compatibleConditions = n
     && attempt.kind !== 'lesson'
     // A ghost race is someone else's text against their recorded run: its own kind, not training evidence.
     && attempt.kind !== 'challenge'
-    && (attempt.kind !== 'daily' || attempt.fresh !== false)
+    // Repeated text (a returning daily passage or a repeated quote) is never training evidence.
+    && attempt.fresh !== false
     && (!key || conditionKey(attempt.conditions) === key)).slice(-limit);
   const pairs = new Map();
   const allTimings = [];
@@ -798,6 +801,8 @@ export function comparable(before, after) {
     && conditionKey(before.conditions) === conditionKey(after.conditions)
     && before.metricVersion === after.metricVersion
     && before.textId !== after.textId
+    // Familiar text flatters a score, so neither side of a comparison may be repeated text.
+    && before.fresh !== false
     && after.fresh !== false
     && before.kind !== 'drill'
     && after.kind !== 'drill'
