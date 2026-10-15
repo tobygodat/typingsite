@@ -154,6 +154,12 @@ test('members retain bindings across reload and cloud sync; reset and disabling 
   await page.getByRole('button', { name: 'Reset defaults', exact: true }).click();
   await expect(page.locator('#restart-key-hint')).toHaveText('esc');
   await expect(page.locator('#palette-trigger')).toHaveAttribute('aria-keyshortcuts', 'Control+K Meta+K');
+  // Master defers network work until the interrupted run ends; the device cache saves immediately.
+  expect(await page.evaluate((id) => JSON.parse(localStorage.getItem(`stilltype-profile-v2:${id}`)).preferences.keybindings.restart, user.id)).toBe('Escape');
+  await page.keyboard.press('Escape');
+  await page.locator('#typing-input').focus();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#typing-status')).toHaveText('Ready');
   await expect.poll(() => supabase.profiles.get(user.id)?.data?.preferences?.keybindings?.restart).toBe('Escape');
 });
 
