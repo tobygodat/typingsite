@@ -4009,7 +4009,7 @@ function bindEvents() {
   $('sound-select').addEventListener('change', (event) => setSound(event.target.value));
   // Dragging updates the level as it goes; the profile is saved once the slider settles.
   $('sound-volume').addEventListener('input', (event) => setSoundVolume(Number(event.target.value), { save: false }));
-  $('sound-volume').addEventListener('change', () => saveProfile());
+  $('sound-volume').addEventListener('change', () => saveChoice('soundVolume'));
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
     applyPreferences();
@@ -4290,13 +4290,13 @@ function setStopOnError(enabled) {
 function setSound(mode) {
   prefs.sound = normalizeSoundMode(mode);
   applySoundPreferences();
-  saveProfile();
+  saveChoice('sound');
 }
 
 function setSoundVolume(volume, { save = true } = {}) {
   prefs.soundVolume = normalizeSoundVolume(volume);
   applySoundPreferences();
-  if (save) saveProfile();
+  if (save) saveChoice('soundVolume');
 }
 
 function setWordList(id, kind = restartKind()) {
