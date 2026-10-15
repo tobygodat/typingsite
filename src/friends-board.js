@@ -11,6 +11,7 @@
 import { request, freshSession, loadSession, AuthError } from './account.js';
 import { CORPUS_VERSION, CORRECTION_POLICIES, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS,
   conditionKey } from './typing.js';
+import { layoutIds, isDefaultLayout } from './layouts.js';
 import { wordListIds } from './words.js';
 import { comparableKind, dailyPassage, trendRun, validRun } from './insights.js';
 
@@ -146,14 +147,16 @@ export const boardCurrent = (row) => Boolean(row?.board?.at) && Date.parse(row.b
 // null: a key from another build, or one no copy of this build writes, which the board never lists or compares.
 export function shapeOf(key) {
   const parts = typeof key === 'string' ? key.split(':') : [];
-  if (parts.length !== 11) return null;
+  const layoutPart = parts.length === 12 ? parts.pop() : null;
+  const layout = layoutPart?.startsWith('layout-') ? layoutPart.slice(7) : null;
+  if (parts.length !== 11 || (layoutPart && (!layoutIds.includes(layout) || isDefaultLayout(layout)))) return null;
   const [mode, duration, count, text, quoteLength, difficulty, wordList, inputClass, correctionPolicy, corpus, metricVersion] = parts;
   // Numbers ride on the text part (`plain+numbers`), and only on generated tests; a quote ignores them.
   const numbers = text.endsWith('+numbers');
   const punctuation = numbers ? text.slice(0, -'+numbers'.length) : text;
   const conditions = { mode, duration: Number(duration) || null, count: Number(count) || null, punctuation: punctuation === 'punctuation',
     numbers, quoteLength: quoteLength || null, difficulty: difficulty || null, wordList: wordList || null, inputClass, correctionPolicy,
-    language: 'en', corpus, metricVersion };
+    language: 'en', corpus, metricVersion, ...(layout ? { layout } : {}) };
   const quote = mode === 'quote';
   const written = SHAPE_MODES.includes(mode)
     && (mode === 'time' ? TEST_DURATIONS.includes(conditions.duration) : !duration)
@@ -165,7 +168,10 @@ export function shapeOf(key) {
   return written && conditionKey(conditions) === key ? conditions : null;
 }
 // A key's shape without its corpus and metric version, to tell "another version of this shape".
-const shapePart = (key) => String(key).split(':').slice(0, 9).join(':');
+const shapePart = (key) => {
+  const parts = String(key).split(':');
+  return [...parts.slice(0, 9), ...parts.slice(11)].join(':');
+};
 
 // The shapes the board can compare: every key this build writes that anyone on the board has a best
 // on. Timed tests first, then word counts, then quotes, shortest first, and without numbers before with.
