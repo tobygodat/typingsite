@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, standardConditions, wordHistory } from '../src/typing.js';
-import { MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, evidenceRun, filterRuns, measuredKind, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, standardInputClass, standardScore, trendRun, weeklyChange } from '../src/insights.js';
+import { KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, evidenceRun, filterRuns, keyAnalysis, measuredKind, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, standardInputClass, standardScore, trendRun, weeklyChange } from '../src/insights.js';
 
 test('missed and slowest words come from first tries and per-word speed', () => {
   const text = 'the cat sat on mat';
@@ -232,6 +232,9 @@ test('run summaries outlive trace retention, while pattern memory stays bounded'
   assert.equal(kept.length, 1000);
   assert.equal(kept[0].id, '100');
   assert.equal(kept.filter((r) => r.patterns.length).length, 120);
+  assert.equal(kept.filter((r) => r.keys?.length).length, 0);
+  const withKeys = retainRuns(Array.from({ length: 200 }, (_, i) => run(String(i), { keys: [['t', 3, 0]], keysVersion: KEY_COUNTS_VERSION })));
+  assert.equal(withKeys.filter((r) => r.keys.length).length, 120);
   assert.equal(kept[0].score.wpm, 60);
 });
 
@@ -264,6 +267,67 @@ test('original quote pool has fresh choices in every length and difficulty bucke
       }
     }
   }
+});
+
+test('key analysis sums first attempts per key and ranks pairs only with enough samples', () => {
+  const runs = [run('a', { patterns: [['th', 12, 2, 10, 140, 20], ['ah', 4, 1, 0, null, null], ['an', 5, 0, 0, null, null]] }),
+    run('b', { patterns: [['th', 8, 0, 4, 120, -5], ['an', 3, 1, 0, null, null]] }),
+    run('c', { interrupted: true, patterns: [['th', 50, 50, 0, null, null]] })];
+  const result = keyAnalysis(runs);
+  assert.equal(result.runs, 2);
+  assert.deepEqual(result.keys.h, { key: 'h', samples: 24, errors: 3, missRate: 3 / 24, enough: true });
+  assert.equal(result.keys.n.enough, false);
+  assert.equal(result.keys.n.samples, 8);
+  assert.deepEqual(result.pairs.map((p) => [p.pair, p.samples, p.errors, p.slowRuns]), [['th', 20, 2, 1]]);
+  assert.equal(result.pairDerivedRuns, 2);
+});
+
+test('slow-run share counts only runs with enough clean intervals for that pair', () => {
+  // Five runs see "th"; one has 12 clean intervals and was slow, four have too few to say either way.
+  const runs = [run('timed', { patterns: [['th', 12, 0, 12, 180, 40]] }),
+    ...['a', 'b', 'c', 'd'].map((id) => run(id, { patterns: [['th', 12, 3, 9, 150, 10]] })),
+    run('none', { patterns: [['he', 12, 4, 0, null, null]] })];
+  const th = keyAnalysis(runs).pairs.find((p) => p.pair === 'th');
+  assert.deepEqual([th.slowRuns, th.timedRuns, th.runs], [1, 1, 5]);
+  const he = keyAnalysis(runs).pairs.find((p) => p.pair === 'he');
+  assert.deepEqual([he.slowRuns, he.timedRuns, he.runs], [0, 0, 1]);
+  // A timed run that was not slow still counts in the denominator.
+  const mixed = keyAnalysis([...runs, run('quick', { patterns: [['th', 12, 0, 11, 120, -20]] })]).pairs.find((p) => p.pair === 'th');
+  assert.deepEqual([mixed.slowRuns, mixed.timedRuns, mixed.runs], [1, 2, 6]);
+});
+
+test('run summaries count every letter directly, including word-initial presses', () => {
+  const text = 'quiet quay';
+  const attempt = createAttempt({ id: 'q', text, textId: 'q', conditions });
+  attempt.startedAt = 0;
+  // Mistype the first "q" (word-initial) and the "i" after "u" (mid-word).
+  attempt.events = [...text].map((char, position) => ({ type: 'insert', position, offsetMs: (position + 1) * 100, accepted: true,
+    text: position === 0 ? 'w' : position === 2 ? 'o' : char }));
+  const record = runRecord({ ...completeAttempt(attempt, { endedAt: 1100 }), fresh: true });
+  assert.equal(record.keysVersion, KEY_COUNTS_VERSION);
+  const keys = Object.fromEntries(record.keys.map(([key, samples, errors]) => [key, { samples, errors }]));
+  assert.deepEqual(keys.q, { samples: 2, errors: 1 });
+  assert.deepEqual(keys.i, { samples: 1, errors: 1 });
+  assert.equal(keys[' '], undefined);
+  assert.equal(record.keys.reduce((n, k) => n + k[1], 0), 9);
+  // Pair memory alone would see no "q" at all: both are word-initial.
+  assert.equal(record.patterns.some(([pair]) => pair[1] === 'q'), false);
+
+  // Direct counts win over pairs; an older summary without them still contributes its pairs.
+  const direct = run('new', { keysVersion: KEY_COUNTS_VERSION, keys: [['q', 12, 3], ['h', 4, 0]] });
+  const legacy = run('old');
+  const result = keyAnalysis([legacy, direct]);
+  assert.equal(result.runs, 2);
+  assert.equal(result.pairDerivedRuns, 1);
+  assert.deepEqual(result.keys.q, { key: 'q', samples: 12, errors: 3, missRate: 0.25, enough: true });
+  assert.deepEqual(result.keys.h, { key: 'h', samples: 16, errors: 2, missRate: 2 / 16, enough: true });
+  assert.equal(keyAnalysis([run('drill', { kind: 'drill', patterns: [], keys: [], keysVersion: KEY_COUNTS_VERSION })]).runs, 0);
+  // Custom text is never mined: a stray custom record with counts adds nothing to the heatmap or pairs.
+  const custom = run('custom', { kind: 'custom', keysVersion: KEY_COUNTS_VERSION, keys: [['q', 40, 40]], patterns: [['th', 40, 40, 20, 300, 200]] });
+  const withCustom = keyAnalysis([legacy, direct, custom]);
+  assert.equal(withCustom.runs, 2);
+  assert.deepEqual(withCustom.keys.q, result.keys.q);
+  assert.equal(withCustom.pairs.some((p) => p.pair === 'th' && p.samples >= 40), false);
 });
 
 test('the standard score keeps its best and a median of recent runs, and waits for three runs', () => {
@@ -322,11 +386,15 @@ test('custom run records keep the score but no per-pair patterns', () => {
   };
   const custom = runRecord(typed('custom'));
   assert.equal('patterns' in custom, false);
+  assert.equal('keys' in custom, false);
+  assert.equal('keysVersion' in custom, false);
   assert.equal(custom.kind, 'custom');
   assert.ok(custom.score.wpm > 0);
   assert.ok(runRecord(typed('test')).patterns.length > 0);
   // Retention never adds an empty pattern list back to a record that had none.
-  assert.equal('patterns' in retainRuns([custom, ...Array.from({ length: 130 }, (_, i) => run(String(i)))])[0], false);
+  const retained = retainRuns([custom, ...Array.from({ length: 130 }, (_, i) => run(String(i)))])[0];
+  assert.equal('patterns' in retained, false);
+  assert.equal('keys' in retained, false);
 });
 
 test('custom runs keep their own budget and never displace practice history', () => {
@@ -368,10 +436,10 @@ test('ghost races keep no trace or patterns and never displace practice evidence
 });
 
 test('a profile with only comparable runs is retained exactly as before', () => {
-  // The retention rule as it stood before custom text existed.
+  // The retention rule as it stood before custom text existed (per-key counts age out with patterns).
   const previous = (runs) => {
     const kept = runs.slice(-1000);
-    return kept.map((r, i) => (i < kept.length - 120 ? { ...r, patterns: [] } : r));
+    return kept.map((r, i) => (i < kept.length - 120 ? { ...r, patterns: [], keys: [] } : r));
   };
   const kinds = ['test', 'retest', 'drill', 'daily'];
   const legacy = Array.from({ length: 1100 }, (_, i) => run(String(i), { kind: kinds[i % kinds.length] }));
@@ -438,7 +506,7 @@ test('a counted run records its first-try missed words as practice uses them, ca
   const record = typedRun('a', text, [1, 9, 11, 15]);
   assert.deepEqual(record.missedWords, ['the', 'table,', 'Still']);
   // Nothing else in the summary changes: the same keys as before, plus the list.
-  assert.deepEqual(Object.keys(record).sort(), ['at', 'challengeDate', 'conditions', 'elapsedMs', 'errors', 'firstDailyAttempt', 'fresh', 'id', 'interrupted', 'kind', 'missedWords', 'patterns', 'score', 'status', 'target', 'textId']);
+  assert.deepEqual(Object.keys(record).sort(), ['at', 'challengeDate', 'conditions', 'elapsedMs', 'errors', 'firstDailyAttempt', 'fresh', 'id', 'interrupted', 'keys', 'keysVersion', 'kind', 'missedWords', 'patterns', 'score', 'status', 'target', 'textId']);
   assert.equal(record.errors, 4);
   // A clean counted run records an empty list: evidence that nothing was missed.
   assert.deepEqual(typedRun('clean', text, []).missedWords, []);

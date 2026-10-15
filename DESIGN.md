@@ -17,6 +17,9 @@ colors:
   accent-soft: "rgba(143, 209, 138, 0.13)"
   danger: "#ff8a6b"
   danger-soft: "rgba(255, 138, 107, 0.16)"
+  heat-1: "rgba(255, 138, 107, 0.18)"
+  heat-2: "rgba(255, 138, 107, 0.36)"
+  heat-3: "rgba(255, 138, 107, 0.56)"
   warning: "#e0b565"
   selection: "#34322e"
   ghost: "#b9c3ff"
@@ -37,6 +40,9 @@ colors:
   accent-soft-light: "rgba(46, 125, 79, 0.11)"
   danger-light: "#ad3d26"
   danger-soft-light: "rgba(180, 67, 44, 0.12)"
+  heat-1-light: "rgba(180, 67, 44, 0.08)"
+  heat-2-light: "rgba(180, 67, 44, 0.24)"
+  heat-3-light: "rgba(180, 67, 44, 0.44)"
   warning-light: "#8a5a00"
   selection-light: "#e3dccf"
   ghost-light: "#434db5"
@@ -210,7 +216,7 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 - **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. A focused input's border turns accent and gains a soft accent-soft ring; the accent border is the focus cue that carries the contrast. Text on a green fill uses accent-ink.
 
 ### Secondary
-- **Ember Coral** (danger): mistyped letters, the blocked caret, regressions, destructive actions and field errors. It is always paired with a second cue (a tint or a word) and never used alone.
+- **Ember Coral** (danger): mistyped letters, the blocked caret, regressions, destructive actions and field errors. It is always paired with a second cue (a tint or a word) and never used alone. Three coral heat tints (heat-1 to heat-3) shade only the Progress key heatmap, where each shaded key also prints its miss rate and a legend names the steps.
 - **Lamp Amber** (warning): interrupted runs and mixed comparison outcomes only.
 
 ### Tertiary
