@@ -1333,6 +1333,16 @@ function renderTraining() {
 // cannot each be a 44px touch target, so on coarse pointers the heatmap is a picture and a native
 // "Key" select drives the same line.
 const HEAT_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+// Lowest first. Key cells and the legend both read this table, so thresholds and labels move
+// together. Number.MIN_VALUE makes step 1 "any miss at all".
+const HEAT_STEPS = [
+  { step: '0', min: 0, label: 'no misses' },
+  { step: '1', min: Number.MIN_VALUE, label: 'under 4%' },
+  { step: '2', min: 0.04, label: '4–8%' },
+  { step: '3', min: 0.08, label: '8% or more' },
+];
+const HEAT_NONE = { step: 'none', label: `under ${MIN_PATTERN_SAMPLES} samples` };
+const heatStep = (stat) => (stat?.enough ? HEAT_STEPS.findLast((s) => stat.missRate >= s.min) : HEAT_NONE);
 const coarsePointer = window.matchMedia('(pointer: coarse)');
 let heatKey = null;
 let heatDetails = {};
@@ -1363,12 +1373,17 @@ function renderKeys(runs) {
       const stat = analysis.keys[letter];
       const cell = element('span', letter, 'key');
       cell.dataset.letter = letter;
+      const { step } = heatStep(stat);
+      cell.dataset.heat = step;
+      if (step !== 'none' && step !== '0') {
+        const rate = element('span', stat.missRate >= 0.1 ? `${Math.round(stat.missRate * 100)}%` : pct(stat.missRate), 'key-rate');
+        rate.setAttribute('aria-hidden', 'true');
+        cell.append(rate);
+      }
       if (!picture) {
         cell.setAttribute('role', 'gridcell');
         cell.tabIndex = -1;
       }
-      const step = !stat?.enough ? 'none' : stat.missRate >= 0.08 ? '3' : stat.missRate >= 0.04 ? '2' : stat.missRate > 0 ? '1' : '0';
-      cell.dataset.heat = step;
       cell.title = stat?.enough ? `${letter}: ${pct(stat.missRate)} miss · ${stat.samples} samples`
         : `${letter}: not enough samples (${stat?.samples || 0})`;
       if (!picture) cell.setAttribute('aria-label', cell.title);
@@ -2135,6 +2150,11 @@ function bindEvents() {
     const cell = event.target.closest('.key');
     if (cell && !$('key-heatmap').hasAttribute('aria-hidden')) selectHeatKey(cell.dataset.letter, { focus: true });
   });
+  $('heat-legend').replaceChildren(...[...HEAT_STEPS, HEAT_NONE].map(({ step, label }) => {
+    const item = element('li', label);
+    item.dataset.heat = step;
+    return item;
+  }));
   $('key-select').append(new Option('Choose a key', ''), ...[...'abcdefghijklmnopqrstuvwxyz'].map((letter) => new Option(letter, letter)));
   $('key-select').addEventListener('change', (event) => selectHeatKey(event.target.value || null));
   coarsePointer.addEventListener('change', () => renderKeys(heatRuns));

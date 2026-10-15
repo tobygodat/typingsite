@@ -47,12 +47,18 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   await expect(page.locator('#key-select-field')).toBeHidden();
 
   const heatmap = page.locator('#key-heatmap');
-  const key = (letter) => heatmap.locator('.key').filter({ hasText: new RegExp(`^${letter}$`) });
+  const key = (letter) => heatmap.locator(`.key[data-letter="${letter}"]`);
   await expect(heatmap.locator('.key')).toHaveCount(26);
   // New run: all 48 "o" presses (24 missed), including word-initial "over". Older run: 36 mid-word presses (12 missed).
   await expect(key('o')).toHaveAttribute('data-heat', '3');
   await expect(key('o')).toHaveAttribute('title', 'o: 42.9% miss · 84 samples');
+  // The rate is drawn inside the key; the accessible name still carries the exact figure once.
+  await expect(key('o')).toHaveText('o43%');
+  await expect(key('o')).toHaveAccessibleName('o: 42.9% miss · 84 samples');
   await expect(key('h')).toHaveAttribute('data-heat', '0');
+  await expect(key('h')).toHaveText('h');
+  await expect(page.locator('#heat-legend li')).toHaveText(['no misses', 'under 4%', '4–8%', '8% or more', 'under 10 samples']);
+  await expect(page.locator('#heat-legend')).toHaveAttribute('aria-hidden', 'true');
   // Every "q" starts a word ("quick"): only the run with per-letter counts sees them.
   await expect(key('q')).toHaveAttribute('title', 'q: 0.0% miss · 12 samples');
   await expect(key('q')).toHaveAttribute('data-heat', '0');
@@ -114,7 +120,7 @@ test('a custom text run never reaches the key heatmap or pairs', async ({ page, 
   await page.setViewportSize({ width: 1280, height: 800 });
   await openKeys(page, supabase);
   const heatmap = page.locator('#key-heatmap');
-  const key = (letter) => heatmap.locator('.key').filter({ hasText: new RegExp(`^${letter}$`) });
+  const key = (letter) => heatmap.locator(`.key[data-letter="${letter}"]`);
   await expect(key('o')).toHaveAttribute('title', 'o: 42.9% miss · 84 samples');
   const pairsBefore = await page.locator('#pairs-table tbody').innerText();
 
@@ -154,7 +160,7 @@ test.describe('coarse pointer at 320px', () => {
     await expect(select).toBeVisible();
     await select.selectOption('o');
     await expect(page.locator('#key-detail')).toHaveText('“o”: 42.9% first-try misses (36 of 84 samples).');
-    await expect(heatmap.locator('.key[data-selected="true"]')).toHaveText('o');
+    await expect(heatmap.locator('.key[data-selected="true"]')).toHaveAttribute('data-letter', 'o');
 
     const targets = await section.locator('a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')
       .evaluateAll((nodes) => nodes.filter((node) => node.offsetParent).map((node) => {
@@ -167,6 +173,10 @@ test.describe('coarse pointer at 320px', () => {
       expect(target.height, target.id).toBeGreaterThanOrEqual(44);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    // The legend wraps inside the column.
+    const legend = page.locator('#heat-legend');
+    expect(await legend.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(0);
+    await expect(heatmap.locator('.key-rate').first()).toBeHidden();
 
     await page.emulateMedia({ colorScheme: 'dark' });
     await section.evaluate((node) => node.scrollIntoView({ block: 'start' }));
