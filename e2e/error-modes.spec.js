@@ -235,5 +235,15 @@ test('a lesson ended by fail-on-any-error names the failed key rule', async ({ p
   await page.locator('#lesson-primary').click();
   const text = await passageText(page);
   await typeInto(page, text[0] === 'x' ? 'z' : 'x');
-  await expect(page.locator('#lesson-result-heading')).toHaveText('Lesson 1 failed · wrong key · not counted');
+  await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 1 failed · wrong key · not counted');
+});
+
+test('a completed run under a new policy is not offered to the older ghost service', async ({ page, supabase }) => {
+  supabase.addUser('policy-ghost@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'policy-ghost@stilltype.test');
+  await chooseWords(page, 10);
+  await chooseCorrection(page, 'fail-any');
+  await completePassage(page);
+  await expect(page.locator('#ghost-offer')).toBeHidden();
 });

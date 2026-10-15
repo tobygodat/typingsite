@@ -24,6 +24,7 @@ const SHELL = [
   '/src/graph.js',
   '/src/inbox.js',
   '/src/insights.js',
+  '/src/layouts.js',
   '/src/lessons.js',
   '/src/motion.js',
   '/src/multiplayer.js',

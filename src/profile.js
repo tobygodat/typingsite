@@ -1,6 +1,7 @@
 // The stored profile's shape: the settings' defaults, and how a stored copy (this device's cache, another
 // tab's, the account row) is read before anything uses or merges it (normalizeProfile).
 import { correctionPreference, customTextProblem, normalizeCustomText } from './typing.js';
+import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { retainRuns, runRecord, settleDailyFirsts } from './insights.js';
 import { normalizeLessonProgress } from './lessons.js';
@@ -17,6 +18,8 @@ export const defaultPreferences = {
   quoteLength: 'medium',
   difficulty: 'any',
   wordList: DEFAULT_WORD_LIST,
+  layout: DEFAULT_LAYOUT,
+  fingerMap: false,
   fontSize: '28',
   liveMetrics: false,
   keyboard: false,
@@ -55,6 +58,8 @@ export function validPreferences(value) {
   value.correction = correctionPreference(value);
   value.stopOnError = value.correction === 'mandatory';
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  value.layout = normalizeLayout(value.layout);
+  value.fingerMap = value.fingerMap === true;
   const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
   value.customText = customTextProblem(customText) ? '' : customText;
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';

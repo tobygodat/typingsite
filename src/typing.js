@@ -1,5 +1,6 @@
 import { DEFAULT_WORD_LIST, wordList } from './words.js';
 import { additionalQuotes, drillWords } from './corpus.js';
+import { isDefaultLayout } from './layouts.js';
 
 export const METRIC_VERSION = 'stilltype-metrics-v1';
 export const EVENT_VERSION = 'stilltype-events-v1';
@@ -627,7 +628,8 @@ export function conditionKey(conditions = {}) {
     conditions.corpus || CORPUS_VERSION,
     conditions.metricVersion || METRIC_VERSION,
   ].join(':');
-  return conditions.recipe ? `${key}:${conditions.recipe}` : key;
+  const recipeKey = conditions.recipe ? `${key}:${conditions.recipe}` : key;
+  return isDefaultLayout(conditions.layout) ? recipeKey : `${recipeKey}:layout-${conditions.layout}`;
 }
 
 export function comparable(before, after) {

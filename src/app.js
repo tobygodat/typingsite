@@ -39,6 +39,7 @@ import {
   wordHistory,
 } from './typing.js';
 import { wordListIds } from './words.js';
+import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
@@ -163,6 +164,8 @@ let resultBestBefore = null;
 let clearSnapshot = null;
 let clearedAt = null;
 let clearTimer = null;
+let keyboardBuilt = '';
+let keyboardTarget = null;
 // Composing practice takes the passage's place on the practice screen; see openCompose.
 let composeOpen = false;
 let compose = null;
@@ -274,7 +277,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'focusMode'];
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'focusMode', 'fingerMap'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -349,6 +352,7 @@ function settingsConditions(inputClass = 'physical-keyboard') {
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
     wordList: prefs.mode === 'quote' ? null : prefs.wordList,
     inputClass,
+    layout: inputLayout(inputClass),
     correctionPolicy: prefs.correction,
     language: 'en',
     corpus: CORPUS_VERSION,
@@ -357,7 +361,7 @@ function settingsConditions(inputClass = 'physical-keyboard') {
 }
 
 function conditions(inputClass = 'physical-keyboard') {
-  return prefs.mode === 'standard' ? standardConditions(inputClass) : settingsConditions(inputClass);
+  return prefs.mode === 'standard' ? { ...standardConditions(inputClass), layout: inputLayout(inputClass) } : settingsConditions(inputClass);
 }
 
 const CORRECTION_LABELS = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
@@ -371,7 +375,7 @@ const recipeSummary = (value = standardConditions()) => `${recipeLabel(value.rec
 
 // What every condition line ends with: input, correction rule and versions.
 function conditionTail(value) {
-  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
+  const input = inputLabel(value);
   return `${input} · ${correctionLabel(value.correctionPolicy)} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
 }
 
@@ -382,26 +386,37 @@ function conditionParts(value = conditions()) {
     language: value.wordList ? `english ${value.wordList}` : 'english',
     length: value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`,
     text: value.mode === 'quote' ? value.difficulty || 'any difficulty' : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`,
-    input: value.inputClass === 'touch' ? 'touch input' : 'physical keyboard',
+    input: inputLabel(value),
     correction: correctionLabel(value.correctionPolicy),
     corpus: `corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')}`,
     metric: 'metric v1',
   };
 }
-const inputName = (value) => (value.inputClass === 'touch' ? 'touch input' : 'physical keyboard');
+const inputName = (value) => inputLabel(value);
 
 // Custom text has its own condition key, so it can never share a best, trend or retest with a test.
 // It builds on the person's own settings, never the standard recipe: with standard selected underneath,
 // a custom run keeps its own correction rule and gets no recipe, so its key is the same as in any mode.
 function customConditions() {
   return { ...settingsConditions(), mode: 'custom', duration: null, count: null, punctuation: false, numbers: false,
-    quoteLength: null, difficulty: null, wordList: null, customOrder: prefs.customOrder };
+    quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, customOrder: prefs.customOrder };
 }
 
 function describeConditions(value = conditions()) {
   // The recipe name stands for its punctuation, numbers and quote, keeping the run card's line short.
   if (value.mode === 'standard') return `${recipeLabel(value.recipe)} · ${value.duration} s · 1k–10k mix · ${conditionTail(value)}`;
   return Object.values(conditionParts(value)).join(' · ');
+}
+
+// The layout setting describes a physical keyboard, so touch runs always keep the default key.
+function inputLayout(inputClass) {
+  return inputClass === 'touch' ? DEFAULT_LAYOUT : prefs.layout;
+}
+
+// The layout is named only when it isn't QWERTY; runs saved before layouts existed read as QWERTY.
+function inputLabel(value) {
+  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
+  return isDefaultLayout(value.layout) ? input : `${input} · ${layoutLabel(value.layout)}`;
 }
 
 // A drill is always one minute of generated text, whatever the baseline was.
@@ -412,7 +427,7 @@ function describeRun(run) {
   if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words${run.conditions.punctuation ? ' · punctuation' : ''}${run.conditions.numbers ? ' · numbers' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
   if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
+  return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}`;
 }
 
 function describeLesson(run) {
@@ -558,15 +573,19 @@ function applyPreferences() {
   $('font-size').value = prefs.fontSize;
   $('live-toggle').checked = prefs.liveMetrics;
   $('keyboard-toggle').checked = prefs.keyboard;
+  $('finger-toggle').checked = prefs.fingerMap;
+  $('finger-row').hidden = !prefs.keyboard;
   $('correction-select').value = prefs.correction;
   $('focus-toggle').checked = prefs.focusMode;
   $('keyboard').hidden = !prefs.keyboard && sessionKind !== 'lesson';
+  renderKeyboard();
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
   $('numbers-toggle').checked = Boolean(prefs.numbers);
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  $('layout-select').value = prefs.layout;
   syncLockedSettings();
   armPace();
   showBest();
@@ -913,7 +932,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   return true;
 }
 
-function showUnavailableRetest(reason) {
+function showUnavailableRetest(reason, sample = 'no matching fresh text') {
   switchView('results');
   $('comparison-panel').hidden = false;
   $('comparison-panel').dataset.outcome = 'unavailable';
@@ -921,7 +940,7 @@ function showUnavailableRetest(reason) {
   $('comparison-accuracy').textContent = '—';
   $('comparison-timing').textContent = '—';
   $('comparison-wpm').textContent = '—';
-  $('comparison-sample').textContent = 'no matching fresh text';
+  $('comparison-sample').textContent = sample;
   $('comparison-caveat').textContent = reason;
   announce(reason);
 }
@@ -1443,6 +1462,7 @@ function setPaceCaret(mode, { speed = false } = {}) {
 }
 
 function markKeyboardTargets(target) {
+  keyboardTarget = target;
   const letters = new Set((target || '').toLowerCase());
   $('keyboard').querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
@@ -1839,19 +1859,36 @@ function startDrill() {
   // startDaily() drops the recommendation, so a stale Start drill falls back to a general drill.
   activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
   selectedTarget = activeRecommendation.target || null;
+  const mismatch = baselineAttempt ? layoutMismatch(baselineAttempt.conditions) : "";
+  if (mismatch) baselineAttempt = null;
   const source = baselineAttempt?.conditions;
   if (source) restoreConditions(source);
   trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false };
   trainingContext.drill = { target: selectedTarget, duration: 60, wordList: prefs.wordList, textVersion: makeDrill(selectedTarget, prefs.wordList).textVersion };
   renderRecommendation();
   resetSession('drill', { focus: true });
+  if (mismatch) $('session-description').textContent = `Standalone drill. ${mismatch}`;
 }
 
 function startRetest() {
   if (!baselineAttempt || baselineAttempt.status !== 'complete') return;
   const source = baselineAttempt.conditions;
+  const mismatch = layoutMismatch(source);
+  if (mismatch) {
+    showUnavailableRetest(mismatch, 'different keyboard layout');
+    return;
+  }
   restoreConditions(source);
   resetSession('retest', { focus: true });
+}
+
+// The layout is set in the operating system, not here, so restoring conditions never switches it.
+// A baseline typed on another layout (a missing layout means QWERTY) can't be retested on this one.
+// A touch baseline never used the setting, so the setting can't block it.
+function layoutMismatch(source) {
+  const layout = normalizeLayout(source?.layout);
+  if (source?.inputClass === 'touch' || layout === prefs.layout) return '';
+  return `The baseline was typed on ${layoutLabel(layout)}. Switch the keyboard layout back to ${layoutLabel(layout)} to retest it.`;
 }
 
 // A drill or retest runs at its baseline's conditions without recording them as a settings edit: the
@@ -2073,8 +2110,7 @@ function retainedBaseline(source = null) {
 }
 
 function practiceTarget(target, source) {
-  // Use a retained, compatible baseline when possible.
-  baselineAttempt = retainedBaseline(source);
+  baselineAttempt = retainedBaseline({ ...source, layout: inputLayout(source.inputClass) });
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
   activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
@@ -2149,13 +2185,14 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 // one touch run can't replace a keyboard score. The other class's best is named in the note.
 function renderStandardScore() {
   const scoreFor = (inputClass) => {
-    const key = conditionKey(standardConditions(inputClass));
+    const key = conditionKey({ ...standardConditions(inputClass), layout: inputLayout(inputClass) });
     return standardScore(profile.runs, key, profile.bests[key]?.wpm ?? null);
   };
   const keyboard = scoreFor('physical-keyboard');
   const touch = scoreFor('touch');
   const onTouch = standardInputClass(keyboard, touch) === 'touch';
-  const source = standardConditions(onTouch ? 'touch' : 'physical-keyboard');
+  const sourceInput = onTouch ? 'touch' : 'physical-keyboard';
+  const source = { ...standardConditions(sourceInput), layout: inputLayout(sourceInput) };
   const score = onTouch ? touch : keyboard;
   const other = onTouch ? keyboard : touch;
   setText($('standard-best'), score.best ?? '—');
@@ -2440,14 +2477,15 @@ function renderDaily() {
   const completed = profile.runs.filter((r) => r.kind === 'daily' && validRun(r));
   const today = completed.filter((r) => r.challengeDate === daily.day && conditionKey(r.conditions) === conditionKey(dailyConditions()));
   const best = [...today].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
+  const layout = isDefaultLayout(prefs.layout) ? '' : ` in ${layoutLabel(prefs.layout)}`;
   $('daily-status').textContent = best
-    ? `Today’s best: ${best.score.wpm} wpm · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard.${session ? '' : ' Sign in to save future results beyond this tab.'}`
-    : `No completed physical-keyboard attempt today.${session ? ' Your results save to your account.' : ' Results last in this tab; sign in to save future attempts.'}`;
+    ? `Today’s best: ${best.score.wpm} wpm · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard${layout}.${session ? '' : ' Sign in to save future results beyond this tab.'}`
+    : `No completed physical-keyboard attempt${layout} today.${session ? ' Your results save to your account.' : ' Results last in this tab; sign in to save future attempts.'}`;
   $('daily-history-panel').hidden = !completed.length;
   $('daily-history').replaceChildren(...[...completed].reverse().slice(0, 30).map((run) => {
     const row = element('div', '', 'daily-result');
     row.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
-      element('span', `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`));
+      element('span', `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${inputLabel(run.conditions)}`));
     return row;
   }));
 }
@@ -2594,8 +2632,8 @@ function renderLessons() {
     const repeat = [`Repeat lesson ${n}`, start(result.index)];
     heading = lessonHeadline(result);
     if (!result.valid) {
-      status = ['interrupted', 'badge-warning'];
-      copy = 'Focus or input changed during the run, so it doesn’t count toward unlocking.';
+      status = [result.failed ? 'failed' : 'interrupted', 'badge-warning'];
+      copy = result.failed ? 'The correction setting ended this lesson, so it doesn’t count toward unlocking.' : 'Focus or input changed during the run, so it doesn’t count toward unlocking.';
       primary = [`Try lesson ${n} again`, start(result.index)];
     } else if (!result.recorded) {
       status = ['not counted', 'badge-neutral'];
@@ -2654,7 +2692,7 @@ function renderLessons() {
   const fresh = complete ? [] : LESSONS[next].keys;
   renderFingerMap($('lesson-keyboard'), { known: lessonKeys(complete ? LESSONS.length - 1 : next - 1), fresh });
   $('finger-caption-keys').textContent = complete ? 'every key learned' : `green edge: lesson ${next + 1}’s keys`;
-  $('lesson-save-note').textContent = `${session ? 'Lesson progress saves to your account.' : 'Lesson progress lasts for this tab; sign in to save future lessons.'} Lessons stay out of your bests, progress charts and retests.`;
+  $('lesson-save-note').textContent = `${isDefaultLayout(prefs.layout) ? '' : 'Lessons teach QWERTY finger positions. Use QWERTY in your operating system for these lessons; your practice layout setting is kept. '}${session ? 'Lesson progress saves to your account.' : 'Lesson progress lasts for this tab; sign in to save future lessons.'} Lessons stay out of your bests, progress charts and retests.`;
 
   $('lesson-list').replaceChildren(...LESSONS.map((lesson, index) => {
     const entry = progress[lesson.id];
@@ -2701,7 +2739,7 @@ const GHOST_CONDITION_KEYS = ['mode', 'duration', 'count', 'punctuation', 'numbe
 const inputOf = (value = {}) => value.inputClass === 'touch' ? 'touch' : 'physical-keyboard';
 // A run that wasn't sent for these reasons can be raced again; a failed send is retried as is.
 const RACE_AGAIN = ['interrupted', 'unsendable', 'unreplayable', 'other-input'];
-const inputLabel = (value) => inputOf(value) === 'touch' ? 'touch input' : 'a physical keyboard';
+const ghostInputLabel = (value) => inputOf(value) === 'touch' ? 'touch input' : 'a physical keyboard';
 
 // The sender's test conditions, so the same finish rule applies; the input class is this device's.
 function ghostConditions() {
@@ -2821,7 +2859,7 @@ function renderGhostResult() {
     interrupted: 'Focus or input changed during the run. Race again to send a finished run.',
     unsendable: 'A run of more than 6,000 keys can’t be sent. Race again with fewer corrections.',
     unreplayable: 'This run included an emoji or a similar character, which a ghost race can’t replay. Race again to send a run.',
-    'other-input': `${ghost.name} typed on ${inputLabel(ghost.conditions)} and this run used ${inputLabel(ghost.run.conditions)}; the two are never compared. Race again on ${inputLabel(ghost.conditions)} to send a run.`,
+    'other-input': `${ghost.name} typed on ${ghostInputLabel(ghost.conditions)} and this run used ${ghostInputLabel(ghost.run.conditions)}; the two are never compared. Race again on ${ghostInputLabel(ghost.conditions)} to send a run.`,
   }[ghost.state] || '';
   const again = RACE_AGAIN.includes(ghost.state);
   const action = $('ghost-result-action');
@@ -2939,25 +2977,53 @@ async function sendGhost(event) {
   }
 }
 
+// The legend follows the chosen layout; typed characters are never remapped. The optional finger
+// map shades each key by the finger that types it (data-hand, data-finger) and splits the hands.
 function buildKeyboard() {
+  const signature = `${prefs.layout}:${prefs.fingerMap}`;
+  if (signature === keyboardBuilt) return;
+  keyboardBuilt = signature;
   const keyboard = $('keyboard');
-  keyboard.classList.remove('finger-map');
-  keyboard.removeAttribute('role');
-  keyboard.setAttribute('aria-label', 'On-screen keyboard');
+  keyboard.dataset.layout = prefs.layout;
+  keyboard.dataset.fingers = String(prefs.fingerMap);
+  keyboard.classList.remove("finger-map");
+  keyboard.removeAttribute("role");
+  keyboard.setAttribute("aria-label", "On-screen keyboard");
   const fragment = document.createDocumentFragment();
-  ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', ' '].forEach((keys) => {
+  for (const keys of keyboardRows(prefs.layout)) {
     const row = document.createElement('div');
     row.className = 'key-row';
-    for (const letter of keys) {
+    for (const { key: letter, hand, finger, column } of keys) {
       const key = document.createElement('span');
       key.className = `key${letter === ' ' ? ' space' : ''}`;
       key.dataset.key = letter;
-      key.textContent = letter === ' ' ? 'space' : letter;
+      key.dataset.hand = hand;
+      key.dataset.finger = finger;
+      key.dataset.column = String(column);
+      const label = letter === ' ' ? 'space' : letter;
+      if (prefs.fingerMap) {
+        // The initial and band are hidden from screen readers, so each key says its finger in words,
+        // as one phrase ("f, left index"); the printed cap is unchanged.
+        const cap = element('span', label);
+        cap.setAttribute('aria-hidden', 'true');
+        key.append(cap, element('span', `${label}, ${hand === 'both' ? 'thumbs' : `${hand} ${finger}`}`, 'sr-only'));
+      } else key.textContent = label;
       row.append(key);
     }
     fragment.append(row);
-  });
+  }
+  if (prefs.fingerMap) {
+    const legend = document.createElement('p');
+    legend.className = 'finger-legend';
+    legend.append(...FINGERS.map((finger) => {
+      const item = element('span', finger);
+      item.dataset.finger = finger;
+      return item;
+    }), element('span', 'space · thumbs'));
+    fragment.append(legend);
+  }
   keyboard.replaceChildren(fragment);
+  markKeyboardTargets(keyboardTarget);
 }
 
 // A split keyboard where each column belongs to one finger, labelled underneath; thumbs take the space bar.
@@ -3007,7 +3073,7 @@ function renderFingerMap(container, { known = [], fresh = [] } = {}) {
 function renderKeyboard() {
   const lesson = sessionKind === 'lesson';
   if (lesson) renderFingerMap($('keyboard'), { known: lessonKeys(lessonIndex - 1), fresh: LESSONS[lessonIndex].keys });
-  else if ($('keyboard').classList.contains('finger-map')) buildKeyboard();
+  else { if ($('keyboard').classList.contains('finger-map')) keyboardBuilt = ''; buildKeyboard(); }
   $('keyboard').hidden = !prefs.keyboard && !lesson;
 }
 
@@ -4018,6 +4084,8 @@ function bindEvents() {
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
   $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
+  $('finger-toggle').addEventListener('change', (event) => { prefs.fingerMap = event.target.checked; applyPreferences(); saveChoice('fingerMap'); });
+  $('layout-select').addEventListener('change', (event) => setLayout(event.target.value));
   $('correction-select').addEventListener('change', (event) => setCorrection(event.target.value));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
@@ -4059,6 +4127,7 @@ function bindEvents() {
     activationInput = startedBy(event);
     if (activationInput !== 'touch' || !['ready', 'running'].includes(attempt?.status) || attempt.conditions.inputClass === 'touch') return;
     attempt.conditions.inputClass = 'touch';
+    attempt.conditions.layout = inputLayout('touch');
     $('condition-line').textContent = describeRun(attempt);
     showBest();
     if (attempt.status === 'ready') armPace();
@@ -4320,6 +4389,27 @@ function inPractice(change) {
   change(kind);
 }
 
+// The layout is a test condition, like the word list, so changing it starts a new run. Like the word list,
+// it keeps a custom passage: custom runs are never compared, so their key never names a layout.
+function setLayout(id, kind = restartKind()) {
+  const next = normalizeLayout(id);
+  const changed = prefs.layout !== next;
+  prefs.layout = next;
+  applyPreferences();
+  saveChoice('layout');
+  if (changed) resetSession(kind, { focus: true });
+}
+
+// The finger map is drawn on the on-screen keyboard, so turning it on shows the keyboard too.
+function toggleFingerMap() {
+  const show = !(prefs.keyboard && prefs.fingerMap);
+  prefs.fingerMap = show;
+  if (show) prefs.keyboard = true;
+  applyPreferences();
+  saveChoice('fingerMap', ...(show ? ['keyboard'] : []));
+  if (document.body.dataset.view === 'practice') $('typing-input').focus({ preventScroll: true });
+}
+
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
   const missedWords = recurringMissedWords(profile.runs).words.length;
@@ -4354,6 +4444,7 @@ function paletteCommands(query) {
     { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: fixedText, run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
     { group: 'test', label: 'numbers', keywords: 'digits figures', hint: onOff(prefs.numbers), on: Boolean(prefs.numbers), disabled: fixedText, run: () => { prefs.numbers = !prefs.numbers; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
     ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: fixedText, run: () => inPractice((kind) => setWordList(id, kind)) })),
+    ...layoutIds.map((id) => ({ group: 'test', label: `layout · ${layoutLabel(id)}`, keywords: 'keyboard alternative remap', hint: prefs.layout === id ? 'current' : '', on: prefs.layout === id, run: () => setLayout(id) })),
     ...[['off', 'off'], ['best', 'personal best'], ['average', 'average'], ['last', 'last run'], ['custom', 'custom']].map(([mode, name]) => (
       { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: prefs.paceCaret === mode ? 'on' : '', on: prefs.paceCaret === mode, run: () => setPaceCaret(mode) })),
     ...Object.entries(CORRECTION_LABELS).map(([policy, name]) => ({ group: 'test', label: `correction · ${policy === 'relaxed' ? 'free' : name}`, keywords: 'mistakes correction continue stop error backspace fail expert master confidence', hint: prefs.correction === policy ? 'current' : '', on: prefs.correction === policy, disabled: standardLocked(), run: () => setCorrection(policy) })),
@@ -4361,6 +4452,7 @@ function paletteCommands(query) {
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
+    { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(prefs.keyboard && prefs.fingerMap), on: prefs.keyboard && prefs.fingerMap, run: toggleFingerMap },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
     ...(session
       ? [
