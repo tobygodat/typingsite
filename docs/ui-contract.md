@@ -4,9 +4,9 @@ This document is the integration contract between the static interface in `index
 
 ## Screen model
 
-- `body[data-view]` is one of `practice`, `results`, `progress`, or `compete`.
+- `body[data-view]` is one of `practice`, `results`, `progress`, `compete`, or `learn`. `learn` has no dock item; it opens from `[data-action="open-lessons"]` (the quiet "learn to type" link in the practice controls and the first-run links) and the palette.
 - Only the matching `[data-screen]` is visible. Navigation controls use `[data-nav]` with the same values and set `aria-current="page"` (and `.is-active`) on the active item. The dock labels them practice, train, progress and challenge; the brand link also navigates to practice.
-- `#typing-screen` is the shared typing surface. Its `data-session` value is one of `practice`, `drill`, or `retest`; `body[data-session]` mirrors it for styling.
+- `#typing-screen` is the shared typing surface. Its `data-session` value is one of `practice`, `drill`, `retest`, `daily`, or `lesson`; `body[data-session]` mirrors it for styling.
 - Results, progress, and challenge use `#results-screen`, `#progress-screen`, and `#compete-screen`.
 - `body[data-running]` is present from the first keystroke of a run until it finishes or restarts. While it is set, chrome other than the passage and its measure row fades out; pointer movement, finishing or restarting brings it back. It never changes the passage geometry.
 - Buttons with `[data-action]` expose intent for delegated event handlers. All navigation and state changes happen without a page reload.
@@ -110,6 +110,9 @@ Required IDs: `account`, `account-trigger`, `account-guest`, `account-create`, `
 `#account` is a `details` menu fixed top right (it scrolls with the page on mobile, where the dock is at the bottom) and fades with the chrome while a run is in progress. `#account[data-state]` is `guest` or `member`; `#account[data-sync]` is `guest`, `syncing`, `synced`, `offline` or `expired`. Guests see the three sign-in choices and `#guest-note` in the footer; nothing is written to storage for them. Email sign-up that needs confirmation shows `#account-confirm` instead of the form. Signing in or out reloads the page as the new user.
 
 Members also see `#account-delete`, which opens `#delete-account-dialog` (also reachable as "delete account…" in the palette). `#confirm-delete-account` stays disabled until the exact word `delete` is entered in `#confirm-delete-input`; while the deletion is under way (at most 30 s in all, one deadline shared by the session refresh, the function call and the account check) it reads "Deleting…", `#delete-account-form[aria-busy]` is true, `#delete-account-status` says so to screen readers and the dialog cannot be dismissed. Closing it returns focus to `#account-trigger` when it was opened from the menu. A failure is written to `#delete-account-error` (a live alert) and changes nothing. Success clears the account from the device and reloads as a guest; `#account-toast[data-tone="done"]` then says the account was deleted, once.
+## Learn to type
+
+`#learn-screen` holds the beginner path. `#lesson-current` shows the next lesson, the last lesson result in this tab (`#lesson-status`, `#lesson-current-heading`, `#lesson-facts` with each target and a met / not met word) or the hand-off once every letter is in. `#lesson-primary` is the one filled-green action (start the next lesson, try again, or take a practice run) and takes focus after a lesson finishes; `#lesson-secondary` is a ghost action. `#lesson-keyboard` is the finger map (`role="img"`, with every finger's keys in its label), and `#lesson-list` has one row per lesson with `data-state` `passed`, `next` or `locked`. A lesson runs on the shared typing surface with `data-session="lesson"`; `#keyboard` then shows the same finger map whatever the keyboard setting. Lesson runs never enter `runs`, `attempts`, `bests` or `seenTextIds`; their progress lives in `profile.lessons` (src/lessons.js).
 
 ## Ghost pacer
 

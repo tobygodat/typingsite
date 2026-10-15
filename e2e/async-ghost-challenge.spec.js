@@ -286,7 +286,7 @@ test.describe('on a touch screen', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
   // Tapping Race again focuses the input, which can reopen the software keyboard with no tap on the
-  // input itself; the retry is still a touch run. A key press still starts a physical-keyboard one.
+  // input itself; the retry is still a touch run.
   test('a tap on Race again or Run again starts a touch attempt, so a touch retry is sent', async ({ page, supabase }) => {
     const ada = supabase.addUser('ada@stilltype.test');
     const lin = supabase.addUser('lin@stilltype.test');
@@ -316,12 +316,13 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#result-conditions')).toContainText('touch input');
     expect(challenge.result.wpm).toBeGreaterThan(30);
 
-    // The plain Run again shares the reset: a tap starts touch, Esc from a keyboard starts physical.
+    // The plain Run again shares the reset: a tap starts touch. Esc in the passage keeps it touch, since soft
+    // keyboards have an Esc key too (a run's input class comes from the press that started it, src/app.js).
     await page.locator('#run-again').tap();
     await expect(page.locator('#typing-input')).toBeFocused();
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await page.keyboard.press('Escape');
-    await expect(page.locator('#condition-line')).toContainText('physical keyboard');
+    await expect(page.locator('#condition-line')).toContainText('touch input');
   });
 });
 

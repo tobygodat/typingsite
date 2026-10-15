@@ -594,7 +594,7 @@ export function clearProfile(profile) {
   }
   for (const best of Object.values(profile.bests || {})) if ((best?.at || '') > marker && best.attemptId) ahead.add(String(best.attemptId));
   const named = liveNamed([...known, ...[...ahead].map((id) => [marker, id])], undone);
-  const cleared = setClears({ ...profile, bests: {}, seenTextIds: [] }, marker, heard, heard);
+  const cleared = setClears({ ...profile, bests: {}, seenTextIds: [], ...(profile.lessons ? { lessons: {} } : {}) }, marker, heard, heard);
   for (const name of Object.keys(HISTORY)) cleared[name] = [];
   if (named.length) cleared.historyClearedIds = named;
   else delete cleared.historyClearedIds;
@@ -680,9 +680,40 @@ const legacyStart = (side) => (savedByOlderBuild(side) ? historyStart(side) : st
 
 // The fields mergeSynced has a rule of its own for. The rest (version, and any field this build
 // doesn't know) are passed through.
-const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 'preferences', 'preferencesAt',
+const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt',
   'historyClearedAt', 'appliedClears', 'heardClears', 'historyClearedIds', 'undoneClears', 'legacyClearedAt', 'updatedAt',
   'mergeStamp', 'profileId']);
+
+// Lesson progress (src/lessons.js): { [lesson id]: { tries, last, passed } }, where last and passed are
+// results dated `at`. A side judged by a clear it hadn't applied keeps only what is dated after it: a lesson
+// whose last try is older goes, and a pass from before it goes while later tries stay. Merged lesson by
+// lesson: the most tries either side counted (tries made apart on two devices aren't summed, so this can
+// undercount, never double count), the later last result and the earlier pass (the first pass is the one
+// kept). Ties break on the numbers, so every copy settles on the same result whichever side merges.
+function survivingLessons(lessons, after) {
+  const kept = {};
+  for (const [id, entry] of Object.entries(lessons && typeof lessons === 'object' ? lessons : {})) {
+    if (!entry || typeof entry !== 'object' || !after(entry.last?.at)) continue;
+    kept[id] = { ...entry, passed: entry.passed && after(entry.passed.at) ? entry.passed : null };
+  }
+  return kept;
+}
+const resultOrder = (a, b) => compare(a.at || '', b.at || '') || compare(a.wpm ?? 0, b.wpm ?? 0)
+  || compare(a.accuracy ?? 0, b.accuracy ?? 0) || compare(String(a.inputClass ?? ''), String(b.inputClass ?? ''));
+const laterResult = (a, b) => (!a ? b || null : !b ? a : resultOrder(a, b) >= 0 ? a : b);
+const earlierResult = (a, b) => (!a ? b || null : !b ? a : resultOrder(a, b) <= 0 ? a : b);
+export function mergeLessons(mine = {}, theirs = {}) {
+  const merged = {};
+  for (const id of [...new Set([...Object.keys(mine), ...Object.keys(theirs)])].sort()) {
+    const [a, b] = [mine[id], theirs[id]];
+    merged[id] = !a || !b ? a || b : {
+      tries: Math.max(a.tries || 0, b.tries || 0),
+      last: laterResult(a.last || null, b.last || null),
+      passed: earlierResult(a.passed || null, b.passed || null),
+    };
+  }
+  return merged;
+}
 
 // Merges another copy of this account's profile (`cloud`: the account row, or another tab's cache) into
 // this device's (`local`). Field by field:
@@ -691,6 +722,8 @@ const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 
 //   earliest daily attempt keeps its first-attempt label (settleDailyFirsts), and a repeat stays one.
 // - bests: per condition key the best by beatsBest (the higher wpm), so a merge never lowers a best.
 // - seenTextIds: union, so a passage once shown is never offered as fresh again.
+// - lessons: lesson by lesson (mergeLessons above), after each side drops what a clear it hadn't applied
+//   removed (survivingLessons), as for bests; clearProfile empties it and Undo gives it back.
 // - preferences and preferencesAt: setting by setting, from mergePreferences above.
 // - historyClearedIds: union of both sides' pairs from clears not undone. A record any of them names is
 //   dropped from either side: no copy can hold it legitimately while that clear stands.
@@ -759,6 +792,7 @@ export function mergeSynced(local, cloud) {
     const bests = Object.entries(side.bests || {}).filter(([, best]) => best);
     kept.bests = Object.fromEntries(bests.filter(([, best]) => after(best.at, best.attemptId)));
     kept.rebest = stale || Object.keys(kept.bests).length < bests.length;
+    kept.lessons = survivingLessons(side.lessons, (stamp) => after(stamp, null));
     const shown = shownBy(Object.keys(HISTORY).flatMap((name) => kept[name]));
     const gone = shownBy(taken);
     kept.seenTextIds = list(side.seenTextIds).filter((id) => shown.has(id) || (!stale && !behind && !gone.has(id)));
@@ -796,6 +830,7 @@ export function mergeSynced(local, cloud) {
     if (trendRun(run) && Number.isFinite(best.wpm) && beatsBest(best, merged.bests[key])) merged.bests[key] = best;
   }
   merged.seenTextIds = [...new Set([...mine.seenTextIds, ...theirs.seenTextIds])];
+  if (local.lessons !== undefined || cloud.lessons !== undefined) merged.lessons = mergeLessons(mine.lessons, theirs.lessons);
 
   const { preferences, preferencesAt } = mergePreferences(local, cloud);
   merged.preferences = preferences;
@@ -889,13 +924,14 @@ export function undoClearHere(holds, current, marker, before) {
 export function syncSignature(profile) {
   const sorted = (object) => Object.keys(object || {}).sort().map((key) => [key, object[key]]);
   const rest = Object.keys(profile).filter((key) => profile[key] !== undefined && !(key in HISTORY)
-    && !['bests', 'seenTextIds', 'preferences', 'preferencesAt'].includes(key)).sort();
+    && !['bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt'].includes(key)).sort();
   return JSON.stringify([
     Object.keys(HISTORY).map((name) => list(profile[name]).map((item) => [item.id, item.patterns?.length ?? null, item.firstDailyAttempt ?? null])),
     sorted(profile.bests).map(([key, best]) => [key, best?.wpm, best?.at, best?.attemptId]),
     [...list(profile.seenTextIds)].sort(),
     sorted(profile.preferences),
     sorted(stampsOf(profile)),
+    sorted(profile.lessons),
     rest.map((key) => [key, profile[key]]),
   ]);
 }
@@ -932,7 +968,8 @@ export function takeLegacyProfile() {
 // Feature suggestions: sent as the anonymous role even when signed in, so a suggestion is never tied
 // to an account. The table accepts inserts only; nothing can be read back through the API.
 export const MAX_SUGGESTION = 1000;
-const SUGGESTION_VIEWS = new Set(['practice', 'results', 'progress', 'compete']);
+// Every value body[data-view] takes; the table's feature_suggestions_view_check holds the same list.
+const SUGGESTION_VIEWS = new Set(['practice', 'results', 'progress', 'compete', 'learn']);
 
 // The row to store, or the sentence to show instead.
 export function suggestionRow(text, view) {

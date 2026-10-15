@@ -176,6 +176,7 @@
             <input id="punctuation-toggle" class="switch" type="checkbox">
             <span>punctuation</span>
           </label>
+          <button id="open-lessons" class="quiet-link" type="button" data-action="open-lessons">learn to type</button>
         </div>
 
         <div id="quote-options" class="quote-options" hidden>
@@ -317,6 +318,7 @@
             <header class="section-heading">
               <h1 id="results-heading"><span id="result-delta">No run yet.</span></h1>
               <p id="result-comparison-note" class="result-note"></p>
+              <p id="train-learn" class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button> a few keys at a time first.</p>
             </header>
 
             <article id="ghost-result" class="comparison-panel ghost-result" aria-labelledby="ghost-result-heading" hidden>
@@ -401,6 +403,43 @@
         </div>
       </section>
 
+      <section id="learn-screen" class="screen learn-screen" data-screen="learn" aria-labelledby="learn-heading" hidden>
+        <header class="section-heading page-heading">
+          <div>
+            <h1 id="learn-heading">Learn to type</h1>
+            <p>A few keys at a time, fingers resting on the home row, typing real words made only of keys you’ve learned. Until such words exist, the first home-row lessons use key pairs instead. One run at 95% accuracy and a gentle speed unlocks the next keys.</p>
+          </div>
+        </header>
+
+        <div class="learn-layout">
+          <section id="lesson-current" class="lesson-current" aria-labelledby="lesson-current-heading">
+            <p id="lesson-status" class="status" hidden><span class="status-dot" aria-hidden="true"></span><span id="lesson-status-word"></span></p>
+            <h2 id="lesson-current-heading">Lesson 1</h2>
+            <p id="lesson-current-copy"></p>
+            <dl id="lesson-facts" class="lesson-facts" hidden></dl>
+            <p id="lesson-current-meta" class="condition-copy"></p>
+            <div class="lesson-actions">
+              <button id="lesson-primary" class="btn btn-primary" type="button">Start lesson 1</button>
+              <button id="lesson-secondary" class="btn btn-ghost" type="button" hidden></button>
+            </div>
+          </section>
+
+          <figure class="finger-figure">
+            <div id="lesson-keyboard" class="keyboard"></div>
+            <figcaption class="finger-caption">
+              <span>finger map · each column is one finger</span>
+              <span id="finger-caption-keys"></span>
+            </figcaption>
+          </figure>
+        </div>
+
+        <section class="lesson-list-section" aria-labelledby="lesson-list-heading">
+          <h2 id="lesson-list-heading">Lessons</h2>
+          <p id="lesson-save-note" class="result-note"></p>
+          <ol id="lesson-list" class="lesson-list"></ol>
+        </section>
+      </section>
+
       <section id="progress-screen" class="screen progress-screen" data-screen="progress" aria-labelledby="progress-heading" hidden>
         <header class="section-heading page-heading">
           <div>
@@ -426,6 +465,7 @@
           <h2>No practice runs yet.</h2>
           <p>Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.</p>
           <button class="btn btn-primary" type="button" data-action="go-practice">Start practicing</button>
+          <p class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button> a few keys at a time first.</p>
         </div>
 
         <div id="progress-content" hidden>
@@ -697,7 +737,7 @@
     <form method="dialog" class="dialog-content">
       <div>
         <h2 id="clear-dialog-title">Clear your practice history?</h2>
-        <p>Runs, drills and comparisons will be removed.</p>
+        <p>Runs, drills, comparisons and lesson progress will be removed.</p>
       </div>
       <label for="confirm-clear-input">Type <strong>clear</strong> to confirm
         <input id="confirm-clear-input" class="input" type="text" autocomplete="off">

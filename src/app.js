@@ -47,6 +47,10 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
+import {
+  FINGER_ZONES, LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
+  lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, normalizeLessonProgress, recordLessonRun,
+} from './lessons.js';
 import { CUSTOM_ORDERS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 const $ = (id) => document.getElementById(id);
@@ -115,8 +119,6 @@ let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
-// What the person last acted with: a pointer type, or 'keyboard' (see bindEvents).
-let lastInput = '';
 // The open composition (an accent key's mark, or IME text): { type, attempt, refused, replaces, keyed,
 // leaving, repeated, heldMark, key (Dead if an accent key's keydown opened it), mark (the first thing it
 // showed) }, then once it ends, the { commit, at } still to be scored.
@@ -154,6 +156,9 @@ let resultBestBefore = null;
 let clearSnapshot = null;
 let clearedAt = null;
 let clearTimer = null;
+// The lesson being typed and the last lesson result in this tab (shown on the learn screen).
+let lessonIndex = 0;
+let lessonResult = null;
 // The friend's recorded run being raced (sessionKind 'challenge'), and the run offered to friends.
 let ghostRace = null;
 // The Race still waiting for its challenge, and the offer's friend list still loading (see startGhostRace).
@@ -372,6 +377,7 @@ function conditionParts(value = conditions()) {
     metric: 'metric v1',
   };
 }
+const inputName = (value) => (value.inputClass === 'touch' ? 'touch input' : 'physical keyboard');
 
 // Custom text has its own condition key, so it can never share a best, trend or retest with a test.
 // It builds on the person's own settings, never the standard recipe: with standard selected underneath,
@@ -389,6 +395,7 @@ function describeConditions(value = conditions()) {
 
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
+  if (run.kind === 'lesson') return describeLesson(run);
   if (run.kind === 'challenge') return `ghost race · ${describeConditions(run.conditions)}`;
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words${run.conditions.punctuation ? ' · punctuation' : ''}${run.conditions.numbers ? ' · numbers' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
@@ -396,6 +403,30 @@ function describeRun(run) {
   if (run.kind !== 'drill') return describeConditions(run.conditions);
   return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
 }
+
+function describeLesson(run) {
+  const index = LESSONS.findIndex((lesson) => lesson.id === run.conditions.lesson);
+  return `lesson ${index + 1} of ${LESSONS.length} · keys ${lessonKeys(index).join(' ')} · ${makeupShort(index, run.lesson)} · pass at ${LESSON_ACCURACY}% accuracy and ${LESSONS[index].wpm} wpm · ${inputName(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}`;
+}
+
+// Lesson runs carry their own conditions: never comparable with a practice key, never a best.
+function lessonConditions() {
+  return {
+    mode: 'lesson', lesson: LESSONS[lessonIndex].id, duration: null, count: null, punctuation: false, numbers: false,
+    quoteLength: null, difficulty: null, wordList: null, inputClass: 'physical-keyboard',
+    correctionPolicy: conditions().correctionPolicy, language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION,
+  };
+}
+
+// A tap that starts a session focuses the input and opens the soft keyboard, so no pointerdown reaches
+// the input: the activating press says touch instead. A pen opens the soft keyboard (or a handwriting panel)
+// just as a finger does, so every pointer but a mouse is touch. Mouse clicks, and clicks made with a key
+// (no pointer type), are a physical keyboard.
+const startedBy = (event) => (event?.pointerType && event.pointerType !== 'mouse' ? 'touch' : 'physical-keyboard');
+// The input class of the latest press (see bindEvents). resetSession gives it to every new run, so a run is
+// classed by whatever started it: a button, the palette, Esc, Run again or a hand-off, with no path left over.
+let activationInput = 'physical-keyboard';
+const TEXT_FIELDS = 'textarea, input:not([type="checkbox"])';
 
 function signed(value, unit) {
   const sign = value > 0 ? '+' : value < 0 ? '−' : '';
@@ -457,8 +488,9 @@ function showChrome(shown) {
 
 // The footer best belongs to the session on screen. A custom session (any non-comparable kind) has no best,
 // so it says it isn't counted rather than showing the best for the time or word settings underneath it.
+// The run's input class picks the best, so a touch run never shows the physical-keyboard one, or the reverse.
 function currentBestKey() {
-  return comparableKind(sessionKind) ? conditionKey(conditions()) : null;
+  return comparableKind(sessionKind) ? conditionKey(conditions(attempt?.conditions.inputClass)) : null;
 }
 
 function showBest() {
@@ -517,7 +549,7 @@ function applyPreferences() {
   $('keyboard-toggle').checked = prefs.keyboard;
   $('stop-on-error-toggle').checked = prefs.stopOnError;
   $('focus-toggle').checked = prefs.focusMode;
-  $('keyboard').hidden = !prefs.keyboard;
+  $('keyboard').hidden = !prefs.keyboard && sessionKind !== 'lesson';
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
   $('numbers-toggle').checked = Boolean(prefs.numbers);
@@ -715,7 +747,7 @@ const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custo
 // Daily and missed-word passages run to the end of their text, whatever the practice shape is.
 function sessionDurationMs() {
   if (sessionKind === 'challenge') return ghostRace?.duration ? ghostRace.duration * 1000 : null;
-  if (sessionKind === 'daily' || sessionKind === 'missed') return null;
+  if (['daily', 'lesson', 'missed'].includes(sessionKind)) return null;
   if (sessionKind === 'drill') return 60000;
   if (sessionKind === 'custom') return null;
   if (prefs.mode === 'time') return prefs.duration * 1000;
@@ -731,6 +763,7 @@ function configureSessionCopy() {
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
     missed: ['missed words', wordsPassage?.recurring ? 'Practice words you keep missing' : 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
+    lesson: ['lesson', `Lesson ${lessonIndex + 1} · ${keysLabel(LESSONS[lessonIndex].keys)}`, lessonCopy(lessonIndex, passage)],
     challenge: ['ghost race', `Race ${ghostRace?.name}’s run`, `The ghost caret replays ${ghostRace?.name}’s keystrokes from your first key. Your first finish without a break is sent. Not counted toward your best.`],
   }[sessionKind];
   $('session-kicker').textContent = copy[0];
@@ -742,9 +775,12 @@ function configureSessionCopy() {
   if (setup) setup.hidden = sessionKind !== 'practice' && sessionKind !== 'custom';
   $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote';
   $('standard-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'standard';
+  // Every new run (resetSession) brings its own settings and input class to the footer best.
+  showBest();
 }
 
-function resetSession(kind = sessionKind, { focus = false, selectedPassage = null, keepRace = false } = {}) {
+// `show: false` replaces the session without leaving the current view.
+function resetSession(kind = sessionKind, { focus = false, selectedPassage = null, show = true, keepRace = false } = {}) {
   // Setting the field ends a composition without compositionend, so forget it first, and a held accent key
   // (let go while the field couldn't hear it).
   if (composition?.type === 'primary') composition = null;
@@ -767,10 +803,15 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   const kindChanged = sessionKind !== kind;
   sessionKind = kind;
   // The mode bar marks Custom while a custom session is loaded, so it is redrawn whenever the kind changes.
-  // Changing to any session but custom (a ghost race included) also closes the custom editor, or Custom would stay marked over it.
+  // Changing to any session but custom (a lesson or a ghost race too) also closes the custom editor, or Custom would stay marked over it.
   if (kindChanged && kind !== 'custom') customOpen = false;
   if (kindChanged) setModeControls();
-  passage = selectedPassage || (kind === 'missed' ? wordsPassage : kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList) : kind === 'challenge' ? ghostPassage() : kind === 'custom' ? customPassage() : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
+  // Every lesson restart (Esc, the palette, a settings change) lands here: a lesson that is locked again,
+  // after history was cleared, gives way to the next open lesson.
+  if (kind === 'lesson' && !lessonUnlocked(profile.lessons, lessonIndex)) lessonIndex = nextLessonIndex(profile.lessons);
+  passage = selectedPassage || (kind === 'missed' ? wordsPassage : kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList)
+    : kind === 'lesson' ? lessonPassage(lessonIndex) : kind === 'challenge' ? ghostPassage() : kind === 'custom' ? customPassage()
+      : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
@@ -799,7 +840,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     }
     return false;
   }
-  if (!['drill', 'missed'].includes(kind) && passage.id && !profile.seenTextIds.includes(passage.id)) {
+  // Drills, word practice and lessons are generated practice text, never a passage to keep fresh for a retest.
+  if (!['drill', 'missed', 'lesson'].includes(kind) && passage.id && !profile.seenTextIds.includes(passage.id)) {
     profile.seenTextIds.push(passage.id);
     saveProfile();
   }
@@ -807,24 +849,22 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     profile.seenTextIds.push(passage.challengeId);
     saveProfile();
   }
-  // A tap on Restart, Run again or Race again focuses the input, which can reopen the software keyboard
-  // with no tap on the input, so it starts a touch attempt as a tap on the input does. A key or a mouse
-  // click starts a physical-keyboard one, as before; otherwise the last attempt's input carries over.
-  const touch = lastInput === 'touch' || (!['keyboard', 'mouse'].includes(lastInput) && attempt?.conditions?.inputClass === 'touch');
+  // The one place a run gets its input class: from the press that started it, never a default or the last run's.
+  const runConditions = kind === 'daily' ? dailyConditions() : kind === 'lesson' ? lessonConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, ...practiceTextConditions(passage.text), quoteLength: null, difficulty: null, wordList: null } : kind === 'challenge' ? ghostConditions() : kind === 'custom' ? customConditions() : conditions();
   attempt = createAttempt({
     id: uid(),
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: kind === 'daily' ? dailyConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, ...practiceTextConditions(passage.text), quoteLength: null, difficulty: null, wordList: null } : kind === 'challenge' ? ghostConditions() : kind === 'custom' ? customConditions() : conditions(),
+    conditions: { ...runConditions, inputClass: activationInput },
   });
-  if (touch) attempt.conditions.inputClass = 'touch';
   if (kind === 'challenge') attempt.challengeId = ghostRace.id;
   if (kind === 'daily') {
     attempt.challengeDate = passage.day;
     attempt.firstDailyAttempt = passage.firstDailyAttempt;
   }
   if (kind === 'drill') attempt.target = selectedTarget;
+  if (kind === 'lesson') attempt.lesson = { id: passage.lessonId, index: lessonIndex, pairs: passage.pairs, words: passage.words };
   attempt.fresh = passage.fresh !== false;
   startTime = null;
   $('typing-input').value = '';
@@ -836,14 +876,15 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   // In a ghost race the ghost caret replays the friend's run; armPace leaves it to that.
   if (kind === 'challenge') primaryFx.ghost.replay(ghostRace.points);
   armPace();
-  markKeyboardTargets(kind === 'drill' ? selectedTarget : null);
+  renderKeyboard();
+  if (kind !== 'lesson') markKeyboardTargets(kind === 'drill' ? selectedTarget : null);
   $('typing-status').className = 'badge badge-info';
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
   $('input-help').textContent = '';
   $('condition-line').textContent = describeRun(attempt);
   configureSessionCopy();
   updateLive(true);
-  switchView('practice');
+  if (show) switchView('practice');
   if (focus) $('typing-input').focus({ preventScroll: true });
   return true;
 }
@@ -1263,7 +1304,12 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
 // The pace caret is presentational and never scored. It runs at the personal best, the average of
 // the last 10 comparable runs, the last comparable run, or a custom pace; with no runs, a gentle 60 wpm.
 function ghostPace(mode = prefs.paceCaret) {
-  // The active attempt knows its real input class (touch is detected after reset).
+  // In a lesson the pace line runs at the lesson's speed target, whatever the pace setting.
+  if (attempt?.kind === 'lesson') {
+    const wpm = LESSONS[lessonIndex].wpm;
+    return { wpm, cps: (wpm * 5) / 60, fromBest: false, fallback: false };
+  }
+  // The active attempt knows its real input class (from the press that started it, or a later touch).
   const key = conditionKey(attempt?.conditions || conditions());
   let wpm = null;
   if (mode === 'custom') wpm = prefs.paceWpm;
@@ -1319,7 +1365,7 @@ function setPaceCaret(mode, { speed = false } = {}) {
 
 function markKeyboardTargets(target) {
   const letters = new Set((target || '').toLowerCase());
-  document.querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
+  $('keyboard').querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
 }
 
 // The live readout shows no rate until a second has passed: before that it is noise. Custom text (any
@@ -1415,6 +1461,11 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   setRunning(false);
   $('typing-status').className = `badge ${valid ? 'badge-success' : 'badge-warning'}`;
   $('typing-status').textContent = valid ? 'Complete' : 'Interrupted';
+  // Lessons keep their own progress and never enter runs, traces or bests.
+  if (sessionKind === 'lesson') {
+    finishLesson(completed, valid);
+    return;
+  }
   const saved = storeAttempt(completed);
 
   if (sessionKind === 'drill' && baselineAttempt) {
@@ -1745,6 +1796,8 @@ function switchView(view) {
   onlineRace?.onViewChange(view);
   if (view === 'results') renderTraining();
   if (view === 'compete') renderDaily();
+  if (view === 'learn') renderLessons();
+  renderFirstRun();
 }
 
 function navigate(view) {
@@ -2031,7 +2084,7 @@ function renderHistory() {
   const hasProgress = eligible.length > 0 || profile.loops.length > 0;
   $('progress-empty').hidden = hasProgress;
   $('progress-content').hidden = !hasProgress;
-  const hasHistory = profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0;
+  const hasHistory = profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0 || lessonsStarted(profile.lessons);
   $('clear-history').hidden = !hasHistory;
   $('clear-history').disabled = !hasHistory;
   const source = conditionOptions($('progress-conditions'), [...eligible, ...profile.loops]);
@@ -2140,6 +2193,244 @@ function renderDaily() {
       element('span', `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`));
     return row;
   }));
+}
+
+// ── Lessons ───────────────────────────────────────────────────────────────
+
+const HANDOFF_COPY = 'That’s the whole keyboard. From here the training loop takes over: take a practice run, and Train suggests a one-minute drill from your own mistakes once there’s enough evidence, then retests you on fresh text.';
+let lessonActions = { primary: null, secondary: null };
+
+function lessonCopy(index, current = null) {
+  return `${LESSONS[index].focus} ${makeupCopy(index, current?.lessonId === LESSONS[index].id ? current : null)}`;
+}
+
+const lessonFingers = (lesson) => lesson.keys.map((key) => `${key} ${fingerFor(key)}`).join(' · ');
+
+// "left and right index" for a mirrored pair, otherwise each finger in key order.
+function fingerNames(lesson) {
+  const fingers = lesson.keys.map((key) => fingerFor(key));
+  const [a, b] = fingers.map((name) => name.split(' '));
+  return b && a[0] !== b[0] && a[1] === b[1] ? `${a[0]} and ${b[0]} ${a[1]}` : fingers.join(' and ');
+}
+
+function lessonMeta(index) {
+  const lesson = LESSONS[index];
+  const tries = profile.lessons[lesson.id]?.tries;
+  return `${lessonFingers(lesson)} · pass at ${LESSON_ACCURACY}% accuracy and ${lesson.wpm} wpm in one run${tries ? ` · ${tries} ${tries === 1 ? 'try' : 'tries'} so far` : ''}`;
+}
+
+// Like every run, a lesson is classed by the press that started it (resetSession reads activationInput).
+function startLesson(index) {
+  if (!lessonUnlocked(profile.lessons, index)) return;
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
+  if (race.attempt?.status === 'running') markRaceInterrupted();
+  lessonIndex = index;
+  resetSession('lesson', { focus: true });
+  // From a scrolled learn screen too, a lesson starts with its title, label and finger map in view.
+  scrollTo({ top: 0, behavior: 'instant' });
+}
+
+// The in-page links sit in a screen that is about to hide, so focus moves to the learn screen's action.
+function openLessons() {
+  navigate('learn');
+  $('lesson-primary').focus({ preventScroll: true });
+}
+
+// Every letter is in: the training loop (practice → recommendation → drill → retest) takes over.
+function startTrainingLoop() {
+  lessonResult = null;
+  resetSession('practice', { focus: true });
+}
+
+function finishLesson(completed, valid) {
+  const { score, elapsedMs, firstAttempts } = completed.summary;
+  const touch = completed.conditions.inputClass === 'touch';
+  let outcome = null;
+  let firstPass = false;
+  let recorded = false;
+  let saved = true;
+  const at = new Date().toISOString();
+  if (valid) {
+    const run = recordLessonRun(profile.lessons, lessonIndex, score, at, completed.conditions.inputClass);
+    // A lesson that was locked when it finished saves nothing, but still shows its numbers.
+    outcome = run.outcome || lessonOutcome(lessonIndex, score);
+    firstPass = run.firstPass;
+    recorded = run.recorded;
+    if (recorded) {
+      profile.lessons = run.progress;
+      saved = saveProfile();
+    }
+  }
+  lessonResult = { index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, recorded, at, touch, saved, valid };
+  switchView('learn');
+  announce(`${lessonHeadline(lessonResult)} ${score.accuracy}% accuracy, ${score.wpm} wpm.`);
+  // Show the result from the top of the page, or from the result itself when the page is too short.
+  scrollTo({ top: 0, behavior: 'instant' });
+  if ($('lesson-current').getBoundingClientRect().bottom > innerHeight) $('lesson-current').scrollIntoView({ block: 'start', behavior: 'instant' });
+  $('lesson-primary').focus({ preventScroll: true });
+}
+
+// Whether progress still holds what a lesson result shows: its lesson open and, if the run was saved, that very
+// try. A newer account row adopted at load replaces tries made here before the check, whatever it unlocks.
+function lessonResultHeld(result, progress) {
+  if (!lessonUnlocked(progress, result.index)) return false;
+  const entry = progress[LESSONS[result.index].id];
+  return !result.recorded || [entry?.last?.at, entry?.passed?.at].includes(result.at);
+}
+
+function lessonHeadline(result) {
+  const n = result.index + 1;
+  if (!result.valid) return `Lesson ${n} interrupted · not counted`;
+  if (!result.recorded) return `Lesson ${n} is locked · not counted`;
+  if (result.touch) return `Lesson ${n} on touch input · doesn’t unlock`;
+  const next = nextLessonIndex(profile.lessons);
+  if (result.outcome?.passed) {
+    if (!result.firstPass) return `Lesson ${n} passed again.`;
+    if (next >= LESSONS.length) return `Lesson ${n} passed. Every letter is in.`;
+    const keys = LESSONS[next].keys;
+    return `Lesson ${n} passed. ${keysLabel(keys)} ${keys.length > 1 ? 'are' : 'is'} next.`;
+  }
+  const { accuracyMet, speedMet, accuracyTarget, wpmTarget } = result.outcome;
+  const needs = [accuracyMet ? '' : `${accuracyTarget}% accuracy`, speedMet ? '' : `${wpmTarget} wpm`].filter(Boolean).join(' and ');
+  return `Not yet. Lesson ${n} needs ${needs} in one run.`;
+}
+
+function lessonFacts(result) {
+  const { outcome, score } = result;
+  const group = (label, value, need) => {
+    const item = document.createElement('div');
+    item.append(element('dt', label), element('dd', value, 'num'));
+    if (need) item.append(element('dd', need, 'lesson-need num'));
+    return item;
+  };
+  // Each target says whether it was met in words, beside the number it qualifies.
+  const met = (item, ok) => {
+    const word = element('dd', '', `status badge ${ok ? 'badge-success' : 'badge-neutral'}`);
+    const dot = element('span', '', 'status-dot');
+    dot.setAttribute('aria-hidden', 'true');
+    word.append(dot, ok ? 'met' : 'not met');
+    item.append(word);
+    return item;
+  };
+  return [
+    met(group('accuracy', `${score.accuracy}%`, `${outcome.accuracyTarget}% needed`), outcome.accuracyMet),
+    met(group('wpm', String(score.wpm), `${outcome.wpmTarget} needed`), outcome.speedMet),
+    group('first-try errors', String(result.errors)),
+    group('time', `${(result.elapsedMs / 1000).toFixed(1)} s`),
+  ];
+}
+
+function renderLessons() {
+  const progress = profile.lessons;
+  const next = nextLessonIndex(progress);
+  const complete = next >= LESSONS.length;
+  const result = lessonResult;
+  let status = null;
+  let heading;
+  let copy;
+  let meta = '';
+  let primary;
+  let secondary = null;
+  const start = (index) => () => startLesson(index);
+  if (result) {
+    const n = result.index + 1;
+    const repeat = [`Repeat lesson ${n}`, start(result.index)];
+    heading = lessonHeadline(result);
+    if (!result.valid) {
+      status = ['interrupted', 'badge-warning'];
+      copy = 'Focus or input changed during the run, so it doesn’t count toward unlocking.';
+      primary = [`Try lesson ${n} again`, start(result.index)];
+    } else if (!result.recorded) {
+      status = ['not counted', 'badge-neutral'];
+      copy = 'Your lesson progress changed during this run (history was cleared here or on another device), so this lesson is locked and nothing was saved.';
+      primary = complete ? ['Take a practice run', startTrainingLoop] : [`Start lesson ${next + 1}`, start(next)];
+    } else if (result.touch) {
+      status = ['touch input', 'badge-neutral'];
+      copy = 'Lessons teach finger positions on a physical keyboard, so only a physical-keyboard run unlocks the next keys. This run is kept as a touch try.';
+      primary = [`Try lesson ${n} again`, start(result.index)];
+      if (complete) secondary = ['Take a practice run', startTrainingLoop];
+      else if (next !== result.index) secondary = [`Start lesson ${next + 1}`, start(next)];
+    } else if (result.outcome?.passed) {
+      status = ['passed', 'badge-success'];
+      copy = complete ? HANDOFF_COPY : lessonCopy(next);
+      if (!complete) meta = lessonMeta(next);
+      primary = complete ? ['Take a practice run', startTrainingLoop] : [`Start lesson ${next + 1}`, start(next)];
+      secondary = repeat;
+    } else {
+      status = ['not yet', 'badge-neutral'];
+      const lesson = LESSONS[result.index];
+      const after = LESSONS[result.index + 1]?.keys;
+      if (progress[lesson.id]?.passed) copy = 'You passed this lesson before; this try doesn’t change that.';
+      else if (after) copy = `${keysLabel(after)} ${after.length > 1 ? 'stay' : 'stays'} locked until one run meets both numbers.`;
+      else copy = 'Every letter is in once one run meets both numbers.';
+      primary = [`Try lesson ${n} again`, start(result.index)];
+      if (complete) secondary = ['Take a practice run', startTrainingLoop];
+      else if (next !== result.index) secondary = [`Start lesson ${next + 1}`, start(next)];
+    }
+    if (!result.saved) meta = [meta, 'Couldn’t save on this device.'].filter(Boolean).join(' · ');
+  } else if (complete) {
+    status = ['all letters in', 'badge-success'];
+    heading = 'Every letter is in.';
+    copy = HANDOFF_COPY;
+    primary = ['Take a practice run', startTrainingLoop];
+  } else {
+    heading = `Lesson ${next + 1} · ${keysLabel(LESSONS[next].keys)}`;
+    copy = lessonCopy(next);
+    meta = lessonMeta(next);
+    primary = [`Start lesson ${next + 1}`, start(next)];
+  }
+  $('lesson-status').hidden = !status;
+  if (status) {
+    $('lesson-status').className = `status badge ${status[1]}`;
+    $('lesson-status-word').textContent = status[0];
+  }
+  $('lesson-current-heading').textContent = heading;
+  $('lesson-current-copy').textContent = copy;
+  $('lesson-current-meta').textContent = meta;
+  $('lesson-facts').hidden = !result?.valid;
+  $('lesson-facts').replaceChildren(...(result?.valid ? lessonFacts(result) : []));
+  $('lesson-primary').textContent = primary[0];
+  $('lesson-secondary').hidden = !secondary;
+  $('lesson-secondary').textContent = secondary?.[0] || '';
+  lessonActions = { primary: primary[1], secondary: secondary?.[1] || null };
+
+  const fresh = complete ? [] : LESSONS[next].keys;
+  renderFingerMap($('lesson-keyboard'), { known: lessonKeys(complete ? LESSONS.length - 1 : next - 1), fresh });
+  $('finger-caption-keys').textContent = complete ? 'every key learned' : `green edge: lesson ${next + 1}’s keys`;
+  $('lesson-save-note').textContent = `${session ? 'Lesson progress saves to your account.' : 'Lesson progress lasts for this tab; sign in to save future lessons.'} Lessons stay out of your bests, progress charts and retests.`;
+
+  $('lesson-list').replaceChildren(...LESSONS.map((lesson, index) => {
+    const entry = progress[lesson.id];
+    const passed = Boolean(entry?.passed);
+    const open = !passed && index <= next;
+    const row = element('li', '', 'lesson-row');
+    row.dataset.state = passed ? 'passed' : open ? 'next' : 'locked';
+    const keys = element('span', '', 'lesson-keys');
+    keys.append(...lesson.keys.map((key) => element('kbd', key)));
+    const main = element('div', '', 'lesson-row-main');
+    main.append(keys, element('span', fingerNames(lesson), 'lesson-row-note'));
+    const state = element('span', '', `lesson-row-state status badge ${passed ? 'badge-success' : open ? 'badge-info' : 'badge-neutral'}`);
+    const dot = element('span', '', 'status-dot');
+    dot.setAttribute('aria-hidden', 'true');
+    state.append(dot, passed ? 'passed' : open ? 'next' : 'locked');
+    const numbers = passed ? `${entry.passed.wpm} wpm · ${entry.passed.accuracy}%`
+      : entry?.last ? `${entry.tries} ${entry.tries === 1 ? 'try' : 'tries'} · last ${entry.last.wpm} wpm · ${entry.last.accuracy}%${entry.last.inputClass === 'touch' ? ' · touch input' : ''}` : '';
+    const detail = element('div', '', 'lesson-row-detail');
+    detail.append(state, element('span', numbers, 'lesson-row-numbers num'));
+    row.append(element('span', String(index + 1), 'lesson-number num'), main, detail);
+    if (passed || open) {
+      const button = element('button', passed ? 'Repeat' : 'Start', 'btn btn-ghost btn-sm');
+      button.type = 'button';
+      button.setAttribute('aria-label', `${passed ? 'Repeat' : 'Start'} lesson ${index + 1}, ${keysLabel(lesson.keys)}`);
+      button.addEventListener('click', start(index));
+      row.append(button);
+    }
+    return row;
+  }));
+}
+
+function renderFirstRun() {
+  $('train-learn').hidden = Boolean(lastCompleted || profile.runs.length || profile.attempts.length);
 }
 
 // ── Ghost races ───────────────────────────────────────────────────────────
@@ -2392,6 +2683,10 @@ async function sendGhost(event) {
 }
 
 function buildKeyboard() {
+  const keyboard = $('keyboard');
+  keyboard.classList.remove('finger-map');
+  keyboard.removeAttribute('role');
+  keyboard.setAttribute('aria-label', 'On-screen keyboard');
   const fragment = document.createDocumentFragment();
   ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', ' '].forEach((keys) => {
     const row = document.createElement('div');
@@ -2405,7 +2700,58 @@ function buildKeyboard() {
     }
     fragment.append(row);
   });
-  $('keyboard').replaceChildren(fragment);
+  keyboard.replaceChildren(fragment);
+}
+
+// A split keyboard where each column belongs to one finger, labelled underneath; thumbs take the space bar.
+// Keys learned before this lesson read in the text colour, this lesson's keys get the full green edge.
+const FINGER_ROWS = { left: ['qwert', 'asdfg', 'zxcvb'], right: ['yuiop', 'hjkl;', 'nm'] };
+const FINGER_COLUMNS = { left: [['pinky', 1, 1], ['ring', 2, 1], ['middle', 3, 1], ['index', 4, 2]], right: [['index', 1, 2], ['middle', 3, 1], ['ring', 4, 1], ['pinky', 5, 1]] };
+
+function fingerMapLabel(fresh) {
+  const zones = FINGER_ZONES.map((zone) => `${zone.hand} ${zone.finger}: ${zone.keys.join(' ')}`);
+  return `Finger map. ${zones.join('. ')}. Thumbs: space.${fresh.length ? ` New keys: ${fresh.join(' ')}, ${fresh.map((key) => fingerFor(key)).join(' and ')}.` : ''}`;
+}
+
+function renderFingerMap(container, { known = [], fresh = [] } = {}) {
+  const key = (letter) => {
+    const node = element('span', letter === ' ' ? 'space' : letter, `key${letter === ' ' ? ' space' : ''}`);
+    node.dataset.key = letter;
+    node.classList.toggle('target', fresh.includes(letter));
+    node.classList.toggle('is-known', letter === ' ' || known.includes(letter));
+    return node;
+  };
+  const hands = ['left', 'right'].map((hand) => {
+    const grid = element('div', '', `finger-hand finger-hand-${hand}`);
+    FINGER_ROWS[hand].forEach((row, rowIndex) => [...row].forEach((letter, column) => {
+      const node = key(letter);
+      node.style.gridArea = `${rowIndex + 1} / ${column + 1}`;
+      grid.append(node);
+    }));
+    for (const [finger, column, span] of FINGER_COLUMNS[hand]) {
+      const label = element('span', '', 'finger-label');
+      label.style.gridArea = `4 / ${column} / 5 / ${column + span}`;
+      label.append(element('span', finger, 'finger-label-full'), element('span', finger[0], 'finger-label-short'));
+      grid.append(label);
+    }
+    return grid;
+  });
+  const thumbs = element('div', '', 'finger-thumbs');
+  thumbs.append(key(' '), element('span', 'thumbs', 'finger-label'));
+  // Narrow screens shorten the finger names to a letter; the legend says what each letter means.
+  const legend = element('span', 'p pinky · r ring · m middle · i index', 'finger-legend');
+  container.classList.add('finger-map');
+  container.setAttribute('role', 'img');
+  container.setAttribute('aria-label', fingerMapLabel(fresh));
+  container.replaceChildren(...hands, thumbs, legend);
+}
+
+// The typing keyboard shows the finger map for the whole of a lesson, whatever the keyboard setting.
+function renderKeyboard() {
+  const lesson = sessionKind === 'lesson';
+  if (lesson) renderFingerMap($('keyboard'), { known: lessonKeys(lessonIndex - 1), fresh: LESSONS[lessonIndex].keys });
+  else if ($('keyboard').classList.contains('finger-map')) buildKeyboard();
+  $('keyboard').hidden = !prefs.keyboard && !lesson;
 }
 
 function startRace() {
@@ -2598,6 +2944,7 @@ function clearHistory() {
   renderHistory();
   renderTraining();
   renderDaily();
+  followLessonProgress();
   showBest();
   armPace();
 }
@@ -2621,6 +2968,7 @@ function undoClear() {
   renderHistory();
   renderTraining();
   renderDaily();
+  followLessonProgress();
   setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
@@ -2679,6 +3027,8 @@ function absorb(data) {
 // nothing changes mid-run; Progress, Train and Challenge re-render whenever they are next shown.
 function showMerged() {
   followStoredPreferences();
+  // Lesson progress follows at once: the learn screen is hidden while a run is typed.
+  followLessonProgress();
   if (runInProgress()) return;
   forgetClearedTraining();
   // Newer test conditions wait while a passage is prepared; one nobody has started is prepared again
@@ -2866,6 +3216,22 @@ function adoptProfile(data) {
   setModeControls();
   renderHistory();
   if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice', { keepRace: true });
+  followLessonProgress();
+}
+
+// Lesson progress changed under this tab (a copy merged from elsewhere, a clear or its undo here): a result
+// the progress no longer holds is dropped, a lesson waiting that is now locked gives way to the next open
+// one (one being typed finishes as not counted), and the learn screen and the first-run prompt follow. The
+// learn screen is redrawn even while in use, so it never shows a pass the progress no longer holds; focus
+// on a lesson row comes back to that row (or to the lesson button, if the row has no button now).
+function followLessonProgress() {
+  if (lessonResult && !lessonResultHeld(lessonResult, profile.lessons)) lessonResult = null;
+  if (sessionKind === 'lesson' && attempt?.status !== 'running' && !lessonUnlocked(profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
+  const list = $('lesson-list');
+  const row = list.contains(document.activeElement) ? [...list.children].indexOf(document.activeElement.closest('.lesson-row')) : -1;
+  renderLessons();
+  if (row >= 0) (list.children[row]?.querySelector('button') || $('lesson-primary')).focus({ preventScroll: true });
+  renderFirstRun();
 }
 
 // The device's copy and the account row are merged, and whatever the row lacks goes up.
@@ -3344,7 +3710,10 @@ function bindEvents() {
       setModeControls();
       resetSession('practice', { focus: true });
     }
+    if (event.target.closest('[data-action="open-lessons"]')) openLessons();
   });
+  $('lesson-primary').addEventListener('click', () => lessonActions.primary?.());
+  $('lesson-secondary').addEventListener('click', () => lessonActions.secondary?.());
   $('mode-custom').addEventListener('click', () => openCustom(!customOpen));
   $('custom-text').addEventListener('input', updateCustomState);
   $('custom-use').addEventListener('click', useCustomText);
@@ -3411,21 +3780,27 @@ function bindEvents() {
   $('typing-input').addEventListener('blur', () => setCapsWarning(false));
   $('typing-input').addEventListener('paste', (event) => { event.preventDefault(); refusePaste('primary'); });
   $('typing-input').addEventListener('drop', (event) => event.preventDefault());
-  // Keys typed into a text field may come from a software keyboard, so only Esc or a key elsewhere
-  // (Enter on a button, a switch) marks a physical keyboard.
-  document.addEventListener('pointerdown', (event) => { lastInput = event.pointerType; }, true);
+  // Every press is recorded before anything handles it, so the run it starts (resetSession) has its class. A tap
+  // or a pen press is touch; a mouse click, or a key pressed outside a text field, is a physical keyboard. Any key
+  // in a text field (the passage, the palette's search) may come from a soft keyboard, so it leaves the class as
+  // it was: Esc too, since some soft keyboards have one (and Ctrl and Alt, so a chord is no proof either). After
+  // that, any touch while a run is prepared or running makes it touch input, wherever the tap lands: a palette
+  // command, a setting or the skip link can focus the input and open the soft keyboard without starting a run.
+  // The cost is deliberate: on a touchscreen laptop, a tap and then hardware-keyboard typing (Esc included) gives
+  // a touch run (a lesson try that doesn't unlock, never a physical-keyboard best).
+  document.addEventListener('pointerdown', (event) => {
+    activationInput = startedBy(event);
+    if (activationInput !== 'touch' || !['ready', 'running'].includes(attempt?.status) || attempt.conditions.inputClass === 'touch') return;
+    attempt.conditions.inputClass = 'touch';
+    $('condition-line').textContent = describeRun(attempt);
+    showBest();
+    if (attempt.status === 'ready') armPace();
+  }, true);
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' || !event.target.matches?.('textarea, input:not([type="checkbox"])')) lastInput = 'keyboard';
+    if (!event.target.matches?.(TEXT_FIELDS)) activationInput = 'physical-keyboard';
   }, true);
   // Anything typed, in the passage or a field, counts for a Race still loading (see raceContext).
   document.addEventListener('beforeinput', () => { typedCount += 1; }, true);
-  $('typing-input').addEventListener('pointerdown', (event) => {
-    if (event.pointerType === 'touch' && attempt?.status === 'ready') {
-      attempt.conditions.inputClass = 'touch';
-      $('condition-line').textContent = describeRun(attempt);
-      armPace();
-    }
-  });
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
   $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(sessionKind === 'missed' ? 'missed' : restartKind(), { focus: true }));
@@ -3634,7 +4009,8 @@ function setStopOnError(enabled) {
   prefs.stopOnError = enabled;
   applyPreferences();
   saveProfile();
-  if (document.body.dataset.view === 'practice') resetSession(restartKind());
+  // A lesson stays a lesson and custom text stays custom; any other session restarts as practice.
+  if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : restartKind());
 }
 
 function setWordList(id, kind = restartKind()) {
@@ -3668,8 +4044,11 @@ function paletteCommands(query) {
     })),
     { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
     { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => inPractice((kind) => resetSession(kind, { focus: true })) },
+    { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
+    // Like Esc: a lesson starts again as a lesson; anything else starts practice again, as before.
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => (sessionKind === 'lesson' ? resetSession('lesson', { focus: true }) : inPractice((kind) => resetSession(kind, { focus: true }))) },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
+    ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: () => startLesson(nextLessonIndex(profile.lessons)) }]),
     { group: 'test', label: 'practice words you keep missing', keywords: 'missed words mistakes errors practise recurring list', hint: `${missedWords} words`, disabled: missedWords < 2, run: practiseRecurringWords },
     ...TEST_DURATIONS.map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...TEST_COUNTS.map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
@@ -3698,7 +4077,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
-    { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.runs.length === 0 && profile.attempts.length === 0 && profile.loops.length === 0, run: () => { navigate('progress'); $('clear-history').click(); } },
+    { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: profile.runs.length === 0 && profile.attempts.length === 0 && profile.loops.length === 0 && !lessonsStarted(profile.lessons), run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
   // Only an exact word finds this one.
   if (query === 'ghost') commands.unshift({ group: 'secret', secret: true, label: 'ghost pacer', hint: onOff(ghostOn()), on: ghostOn(), run: toggleGhost });
@@ -3779,6 +4158,7 @@ setRunning(false);
 renderHistory();
 renderTraining();
 renderDaily();
+renderFirstRun();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
 inbox = createInbox({
   isRunning: runInProgress,

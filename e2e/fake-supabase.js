@@ -31,6 +31,7 @@ export class FakeSupabase {
     this.tokens = new Map();
     this.refreshTokens = new Map();
     this.profiles = new Map();
+    this.suggestions = [];
     // Every profile write and how many rows it changed, so tests can see conditional writes lose.
     this.writes = [];
     this.requests = [];
@@ -202,6 +203,10 @@ export class FakeSupabase {
         for (const [token, user] of this.refreshTokens) if (user.id === caller) this.refreshTokens.delete(token);
         return reply(204);
 
+      // Insert-only, like the real table.
+      case 'POST /rest/v1/feature_suggestions':
+        this.suggestions.push(body);
+        return reply(201);
       case 'GET /auth/v1/user': {
         const user = [...this.users.values()].find((candidate) => candidate.id === caller);
         if (!user) return reply(403, { code: 403, error_code: 'user_not_found', msg: 'User from sub claim in JWT does not exist' });

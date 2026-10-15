@@ -51,6 +51,7 @@ test('the pre-accounts profile folds into an account without losing either side'
 
 test('a suggestion stores only trimmed text and a known view', () => {
   assert.deepEqual(suggestionRow('  dvorak layout  ', 'practice'), { row: { body: 'dvorak layout', view: 'practice' } });
+  for (const view of ['results', 'progress', 'compete', 'learn']) assert.equal(suggestionRow('idea', view).row.view, view);
   assert.deepEqual(suggestionRow('idea', '<script>'), { row: { body: 'idea', view: null } });
   assert.ok(suggestionRow('   ', 'practice').error);
   assert.ok(suggestionRow(undefined).error);
