@@ -48,7 +48,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 - Condition-aware personal bests, guarded history deletion with immediate undo, explicit insufficient-evidence and interrupted states.
 - Self-serve account deletion behind a typed confirmation: the server deletes the account and everything keyed to it first, and only then does the device sign out and clear its copy. A failure changes nothing and says so. There is no undo.
 - Native HTML/CSS/JS modules with no runtime dependencies. `npm run dev` serves on :5173; `npm test` runs the engine checks. Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono are self-hosted in `src/fonts/`.
-- Signed-in retention: newest 24 full attempt traces, 1,000 compact run summaries and pattern counts on the newest 120 summaries; comparison summaries remain until cleared. Clear/Undo includes daily history. Guests retain everything only in memory for the tab. Older records keep unknown dates and missing score snapshots explicit.
+- Signed-in retention: newest 24 full attempt traces, 1,000 compact run summaries (custom text and word practice keep their newest 50 apart, with no trace), pattern counts on the newest 120 summaries and first-try missed words (up to 12 a run) on the newest 120 runs that count toward "words you keep missing"; comparison summaries remain until cleared. Clear/Undo includes daily history. Guests retain everything only in memory for the tab. Older records keep unknown dates and missing score snapshots explicit.
 - `src/typing.js` owns corpus selection, scoring, replay and pattern evidence; `src/app.js` owns UI orchestration and local persistence.
 
 **Metric contract** (versioned before any data collection):

@@ -2,6 +2,7 @@ import { conditionKey, printable, replayAttempt, summarizePatterns, textId } fro
 
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
+export const MAX_MISSED_WORDS = 12;
 
 // Run kinds that are never compared, used as a baseline or mined for patterns (custom text, missed-word
 // practice, and a ghost race against a friend's recorded run). They keep no trace or pattern evidence and
@@ -32,26 +33,43 @@ export function runRecord(attempt, at = attempt.at || null) {
   if (!comparableKind(attempt.kind)) return record;
   // Keep counts and each run's measured median, rather than another keystroke log.
   record.patterns = summarizePatterns([attempt]).pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
+  // The words missed on the first try, for "words you keep missing": only from runs pattern memory
+  // reads, so a run without the field (older, trimmed or not eligible) is no evidence either way.
+  if (evidenceRun(record)) record.missedWords = missedAndSlowWords(attempt, 0).missed.slice(0, MAX_MISSED_WORDS);
   return record;
 }
 
 // Comparable runs keep the newest 1,000 summaries, the newest 120 with pattern evidence; other kinds keep their
 // newest 50. Order stays chronological, and a profile with only comparable runs is retained exactly as before.
+// Missed words stay only on the newest 120 runs the list counts, so the profile stays small. Counting those
+// from the end means drills between them never push counted runs out of the list's window (word practice and
+// custom text are on their own budget anyway).
 export function retainRuns(runs) {
   const comparable = runs.filter((run) => comparableKind(run.kind));
   const other = runs.filter((run) => !comparableKind(run.kind));
   const kept = new Set([...comparable.slice(-MAX_RUN_SUMMARIES), ...other.slice(-MAX_NON_COMPARABLE_RUNS)]);
   const withPatterns = new Set(comparable.slice(-MAX_PATTERN_RUNS));
-  return runs.filter((run) => kept.has(run))
-    .map((run) => (comparableKind(run.kind) && !withPatterns.has(run) ? { ...run, patterns: [] } : run));
+  const withWords = new Set(comparable.filter((run) => kept.has(run) && missedWordsRun(run)).slice(-MAX_PATTERN_RUNS));
+  return runs.filter((run) => kept.has(run)).map((run) => {
+    const trimPatterns = comparableKind(run.kind) && !withPatterns.has(run);
+    const trimWords = 'missedWords' in run && !withWords.has(run);
+    if (!trimPatterns && !trimWords) return run;
+    // Drop missed words rather than empty them: an empty list would read as a run with no misses.
+    const { missedWords, ...rest } = run;
+    return { ...(trimWords ? rest : run), ...(trimPatterns ? { patterns: [] } : {}) };
+  });
 }
 
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
 export const trendRun = (run) => validRun(run) && ['test', 'retest'].includes(run.kind);
 // A run that counts as evidence about the person's typing: complete, uninterrupted and of a measured kind, and
-// never a daily passage shown before (a repeat attempt types known text). Recurring patterns and missed words to
-// practise both read only these. Works on a stored run summary or a just-finished attempt.
+// never a daily passage shown before (a repeat attempt types known text). Recurring patterns, missed words to
+// practise and the words you keep missing all read only these; drills, races, word practice and custom text never
+// count. Works on a stored run summary or a just-finished attempt.
 export const evidenceRun = (run) => validRun(run) && measuredKind(run.kind) && (run.kind !== 'daily' || run.fresh !== false);
+// The runs "words you keep missing" counts: those pattern memory reads that recorded missed words.
+const missedWordsRun = (run) => evidenceRun(run) && Array.isArray(run.missedWords);
+const inputClassOf = (run) => run?.conditions?.inputClass || 'physical-keyboard';
 
 export function filterRuns(runs, key, days = 'all', date = new Date()) {
   const cutoff = days === 'all' ? null : date.getTime() - Number(days) * 86400000;
@@ -138,6 +156,40 @@ export function recurringTargets(runs, loops, compatibleConditions) {
     })
     .sort((a, b) => Number(b.review) - Number(a.review) || b.errors / b.observations - a.errors / a.observations
       || b.slowRuns - a.slowRuns || a.pair.localeCompare(b.pair));
+}
+
+// Words missed on the first try in at least two of the newest 120 runs that recorded missed words,
+// on one input class (the newest such run's: touch is never pooled with a physical keyboard) and
+// across all other test conditions. `runs` is how many runs were counted, so a row can say "missed
+// in 3 of the last 41 runs". Ranked by the number of runs missed in, then the most recent miss (by
+// run order, since older summaries can lack a date).
+// One word across runs: lower case, without punctuation before or after it (inner marks, as in "9:30"
+// or "don't", stay). A token that is all punctuation keeps itself.
+export const missedWordKey = (word) => word.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '') || word;
+
+export function recurringMissedWords(runs, limit = 8) {
+  const recent = runs.filter(missedWordsRun).slice(-MAX_PATTERN_RUNS);
+  const inputClass = inputClassOf(recent.at(-1));
+  const counted = recent.filter((run) => inputClassOf(run) === inputClass);
+  // Counted as one word whatever its case or the punctuation around it ("The", "the", "the,"), and
+  // practised as most recently written: a run's first form of it, from the newest run that missed it.
+  const words = new Map();
+  counted.forEach((run, index) => {
+    const seen = new Set();
+    for (const written of run.missedWords) {
+      const key = missedWordKey(written);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const item = words.get(key) || { word: written, runs: 0, lastIndex: -1 };
+      item.runs += 1;
+      item.lastIndex = index;
+      item.word = written;
+      words.set(key, item);
+    }
+  });
+  const recurring = [...words.values()].filter((item) => item.runs >= 2)
+    .sort((a, b) => b.runs - a.runs || b.lastIndex - a.lastIndex || a.word.localeCompare(b.word));
+  return { runs: counted.length, inputClass, recurring: recurring.length, words: recurring.slice(0, limit) };
 }
 
 // The seen-text id that marks a day's challenge as attempted (the passage itself has its own id).

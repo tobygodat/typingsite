@@ -45,7 +45,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 import { CUSTOM_ORDERS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
@@ -139,6 +139,8 @@ const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let lastCompleted = null;
 let wordsPassage = null;
+// The words the Train list last drew, so its button can tell when the runs changed underneath.
+let missedListWords = [];
 const ghostOn = () => prefs.paceCaret !== 'off';
 let palette = null;
 let onlineRace = null;
@@ -727,7 +729,7 @@ function configureSessionCopy() {
     drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
     custom: ['custom text', 'Your text', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
-    missed: ['missed words', 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
+    missed: ['missed words', wordsPassage?.recurring ? 'Practice words you keep missing' : 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
     challenge: ['ghost race', `Race ${ghostRace?.name}’s run`, `The ghost caret replays ${ghostRace?.name}’s keystrokes from your first key. Your first finish without a break is sent. Not counted toward your best.`],
   }[sessionKind];
@@ -760,6 +762,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   // a redraw for a synced profile doesn't count.
   if (!keepRace) sessionCount += 1;
   if (kind === 'challenge' && !ghostRace) kind = 'practice';
+  // Word practice whose words were cleared with history falls back to a normal test.
+  if (kind === 'missed' && !wordsPassage) kind = 'practice';
   const kindChanged = sessionKind !== kind;
   sessionKind = kind;
   // The mode bar marks Custom while a custom session is loaded, so it is redrawn whenever the kind changes.
@@ -1477,25 +1481,57 @@ function renderPracticeWords(completed) {
   // book-face figure (.num), never the mono of the conditions line.
   const figure = (value) => element('span', String(value), 'num');
   const lines = [
-    // Quote a token that carries punctuation, so "table," reads as the word typed.
-    missed.length && [`missed first try: ${missed.map((word) => /[^\p{L}\p{N}]/u.test(word) ? `“${word}”` : word).join(', ')}`],
+    missed.length && [`missed first try: ${missed.map(wordCopy).join(', ')}`],
     slow.length && ['slowest in this run: ', ...slow.flatMap((item, index) => [`${index ? ', ' : ''}${item.word} `, figure(item.wpm), ' wpm']),
       ' · median ', figure(medianWpm), ' wpm over ', figure(timedCount), ' clean words'],
   ].filter(Boolean);
   evidence.replaceChildren(...lines.flatMap((parts, index) => (index ? ['\n', ...parts] : parts)));
-  const text = practiceWordsPassage(words);
   button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
+  // The run whose words are practised (an evidence run, or there'd be no button) is the baseline for
+  // the fresh retest offered afterward, as a finished practice or daily run is. A retest doesn't set it
+  // on finishing, so set it here.
   button.onclick = () => {
-    // The run whose words are practised (an evidence run, or there'd be no button) is the baseline for
-    // the fresh retest offered afterward, as a finished practice or daily run is. A retest doesn't set it
-    // on finishing, so set it here. No drill comes between, so the next comparison reads and records no
-    // drill target; startDrill sets one again.
     baselineAttempt = completed;
-    trainingContext = null;
-    selectedTarget = null;
-    wordsPassage = { id: `missed-${textId(text)}`, text, fresh: false, words };
-    resetSession('missed', { focus: true });
+    startWordPractice(words);
   };
+}
+
+// Quote a token that carries punctuation, so "table," reads as the word typed.
+function wordCopy(word) {
+  return /[^\p{L}\p{N}]/u.test(word) ? `“${word}”` : word;
+}
+
+// An uncounted `missed` run of these words. It is not a drill, so a drill's context and target from
+// earlier don't carry over into the next retest's record; startDrill sets a target again.
+function startWordPractice(words, { recurring = false } = {}) {
+  const text = practiceWordsPassage(words);
+  wordsPassage = { id: `missed-${textId(text)}`, text, fresh: false, words, recurring };
+  trainingContext = null;
+  selectedTarget = null;
+  resetSession('missed', { focus: true });
+}
+
+// The words you keep missing across runs. Without a baseline in this tab, the newest retained
+// counted run becomes one (as for a recurring pattern), so a fresh-text retest can follow.
+function practiseRecurringWords() {
+  const { words } = recurringMissedWords(profile.runs);
+  if (words.length < 2) return;
+  baselineAttempt ||= retainedBaseline();
+  startWordPractice(words.map((item) => item.word), { recurring: true });
+}
+
+// The Train list's button. A sync or a clear elsewhere can change the runs under a list drawn
+// earlier, so a list that no longer matches is redrawn; with fewer than two words left nothing
+// starts, the change is announced and focus stays on the section instead of the hidden button.
+function practiseMissedList() {
+  const live = recurringMissedWords(profile.runs).words.map((item) => item.word);
+  if (live.length !== missedListWords.length || live.some((word, index) => word !== missedListWords[index])) renderMissedWords();
+  if (live.length >= 2) {
+    practiseRecurringWords();
+    return;
+  }
+  announce('Fewer than two words to practice now. The list has been updated.');
+  $('missed-words-heading').focus();
 }
 
 function resultHeadline(completed) {
@@ -1872,12 +1908,20 @@ function targetButton(target, source) {
   return button;
 }
 
+// The newest retained run that can anchor a fresh-text retest, at `source` conditions when given.
+// Older corpus or standard recipe versions need a new baseline.
+function retainedBaseline(source = null) {
+  return [...profile.attempts].reverse().find((a) => {
+    const wanted = source || a.conditions;
+    return a.status === 'complete' && !a.interrupted && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
+      && (!source || conditionKey(a.conditions) === conditionKey(source)) && wanted.corpus === CORPUS_VERSION
+      && (wanted.mode !== 'standard' || wanted.recipe === STANDARD_VERSION);
+  }) || null;
+}
+
 function practiceTarget(target, source) {
-  // Use a retained, compatible baseline when possible. Older corpus or standard recipe versions need a new baseline.
-  baselineAttempt = [...profile.attempts].reverse().find((a) => a.status === 'complete' && !a.interrupted
-    && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
-    && conditionKey(a.conditions) === conditionKey(source) && source.corpus === CORPUS_VERSION
-    && (source.mode !== 'standard' || source.recipe === STANDARD_VERSION)) || null;
+  // Use a retained, compatible baseline when possible.
+  baselineAttempt = retainedBaseline(source);
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
   activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
@@ -1916,6 +1960,34 @@ function renderTraining() {
     row.append(copy, targetButton(target.pair, source));
     return row;
   }));
+  renderMissedWords();
+}
+
+// Words missed on the first try in two or more recent counted runs, with what was counted.
+function renderMissedWords() {
+  const { runs, inputClass, recurring, words } = recurringMissedWords(profile.runs);
+  const enough = words.length >= 2;
+  // A redraw that hides the button while it has focus (a clear from another device, say) leaves focus on
+  // the section, not lost to the page.
+  const hadFocus = document.activeElement === $('practice-missed-list');
+  const input = inputClass === 'touch' ? 'touch input' : 'a physical keyboard';
+  $('missed-words-note').textContent = enough
+    ? `First-try misses in your last ${runs} complete tests, retests and new daily passages on ${input}, all other test conditions together, up to ${MAX_MISSED_WORDS} words a run. Word practice, custom text and drills aren’t counted.`
+    : runs < 2
+      ? `Not enough evidence yet: ${runs ? `one run on ${input}` : 'no runs'} counted so far. A word shows here once you miss it on the first try in two complete tests, retests or new daily passages.`
+      : `Not enough evidence yet: ${recurring ? `only ${wordCopy(words[0].word)} was missed on the first try in more than one of your last ${runs} runs on ${input} (in ${words[0].runs})` : `no word was missed on the first try in more than one of your last ${runs} runs on ${input}`}. The list starts at two such words.`;
+  $('missed-words-list').replaceChildren(...(enough ? words : []).map((item) => {
+    const row = element('li', '', 'missed-word');
+    row.append(element('span', wordCopy(item.word), 'missed-word-text'), element('span', `missed in ${item.runs} of the last ${runs} runs`, 'num'));
+    return row;
+  }));
+  $('missed-words-list').hidden = !enough;
+  missedListWords = enough ? words.map((item) => item.word) : [];
+  $('practice-missed-list').hidden = !enough;
+  if (hadFocus && !enough) $('missed-words-heading').focus();
+  $('practice-missed-list').textContent = `Practice these ${words.length} words`;
+  // The run card can offer "Practice these N words" too, so the name says which words these are.
+  $('practice-missed-list').setAttribute('aria-label', `Practice these ${words.length} words you keep missing`);
 }
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
@@ -2449,6 +2521,8 @@ function forgetTraining() {
   trainingContext = null;
   selectedTarget = null;
   activeRecommendation = null;
+  // The practised words came from the cleared runs, so Run again starts a normal test.
+  wordsPassage = null;
   for (const id of ['result-wpm', 'result-accuracy', 'result-errors', 'result-time', 'result-raw', 'result-consistency', 'result-chars']) $(id).textContent = '—';
   $('result-words').replaceChildren();
   wordItems = [];
@@ -3369,6 +3443,7 @@ function bindEvents() {
   $('take-standard').addEventListener('click', () => setTestShape('standard'));
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
+  $('practice-missed-list').addEventListener('click', practiseMissedList);
   $('start-daily').addEventListener('click', startDaily);
   $('start-drill').addEventListener('click', startDrill);
   $('skip-to-retest').addEventListener('click', startRetest);
@@ -3580,6 +3655,7 @@ function inPractice(change) {
 
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
+  const missedWords = recurringMissedWords(profile.runs).words.length;
   // The friends board's switch: on, off, or null (no hint) before this device has read the board.
   const shared = friendsBoard?.sharing ?? null;
   // During a custom session or a ghost race no test shape is current (a custom session marks "custom text").
@@ -3594,6 +3670,7 @@ function paletteCommands(query) {
     { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => inPractice((kind) => resetSession(kind, { focus: true })) },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
+    { group: 'test', label: 'practice words you keep missing', keywords: 'missed words mistakes errors practise recurring list', hint: `${missedWords} words`, disabled: missedWords < 2, run: practiseRecurringWords },
     ...TEST_DURATIONS.map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     ...TEST_COUNTS.map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: sessionKind === 'custom' ? 'current' : '', on: sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },

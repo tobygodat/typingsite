@@ -380,14 +380,23 @@
               <p id="ghost-offer-error" class="field-error" role="alert"></p>
             </details>
 
-            <section class="training-memory" aria-labelledby="training-memory-heading">
-              <h2 id="training-memory-heading">Patterns across runs</h2>
-              <label class="filter-field" for="training-conditions">Test conditions
-                <select id="training-conditions" class="input"></select>
-              </label>
-              <p id="training-memory-note" class="result-note"></p>
-              <div id="training-targets"></div>
-            </section>
+            <!-- Block flow, so the grid gap doesn't sit between the two: one hairline and 32px. -->
+            <div>
+              <section class="training-memory" aria-labelledby="training-memory-heading">
+                <h2 id="training-memory-heading">Patterns across runs</h2>
+                <label class="filter-field" for="training-conditions">Test conditions
+                  <select id="training-conditions" class="input"></select>
+                </label>
+                <p id="training-memory-note" class="result-note"></p>
+                <div id="training-targets"></div>
+              </section>
+              <section class="training-memory missed-words" aria-labelledby="missed-words-heading">
+                <h2 id="missed-words-heading" tabindex="-1">Words you keep missing</h2>
+                <p id="missed-words-note" class="result-note"></p>
+                <ol id="missed-words-list" class="missed-words-list" hidden></ol>
+                <button id="practice-missed-list" class="btn btn-secondary" type="button" data-action="practice-missed-list" hidden>Practice these words</button>
+              </section>
+            </div>
           </div>
         </div>
       </section>
