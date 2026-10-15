@@ -3,7 +3,7 @@
 import { LESSONS } from '../src/lessons.js';
 import { conditionKey } from '../src/typing.js';
 import { DEFAULT_WORD_LIST } from '../src/words.js';
-import { test, expect, openApp, openView, chooseWords, completePassage, passageText, typeInto, signInWithEmail, storageKeys } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail, storageKeys } from './fixtures.js';
 
 const body = (page) => page.locator('body');
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -681,6 +681,37 @@ test('a signed-in learner’s lesson progress syncs to the account, outside runs
   await openLessons(page);
   await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 2 · d and k');
   await expect(page.locator('#lesson-list .lesson-row').first()).toHaveAttribute('data-state', 'passed');
+});
+
+// Two devices of one account: one that loaded before a lesson was passed on the other, then saves something
+// else, merges with the account rather than replacing it, so the pass stays (src/account.js mergeLessons).
+test('a device that saves after another device passed a lesson keeps that pass', async ({ page, browser, supabase }) => {
+  const user = supabase.addUser('two-laptops@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const stale = await context.newPage();
+  try {
+    await supabase.attach(stale);
+    await openApp(stale);
+    await signInWithEmail(stale, user.email);
+    await expect(stale.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    // This device passes lesson 1 and saves it.
+    await openLessons(page);
+    await startLesson(page, 1);
+    await typeLesson(page);
+    await expect.poll(() => supabase.profileFor(user.email)?.lessons?.fj?.passed?.accuracy).toBe(100);
+    // The other device, which never saw that pass, saves a setting.
+    await openSettings(stale);
+    await stale.locator('#keyboard-toggle').check();
+    await expect.poll(() => supabase.profileFor(user.email)?.preferences?.keyboard).toBe(true);
+    expect(supabase.profileFor(user.email).lessons.fj.passed.accuracy).toBe(100);
+    // And it shows the pass once it reads the account again.
+    await stale.reload();
+    await expect(stale.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    await openLessons(stale);
+    await expect(stale.locator('#lesson-current-heading')).toHaveText('Lesson 2 · d and k');
+  } finally { await context.close(); }
 });
 
 test('passing every lesson hands off to the training loop', async ({ page }) => {
