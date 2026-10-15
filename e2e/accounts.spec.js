@@ -179,7 +179,8 @@ test('an offline account keeps edits on the device and syncs when back online', 
   await openSettings(page);
   await page.locator('#font-size').selectOption('22');
   await expect(account(page)).toHaveAttribute('data-sync', 'offline');
-  expect(supabase.profileFor('ada@stilltype.test').preferences.fontSize).toBe('28');
+  // The account stores only settings chosen, and this one hasn't reached it.
+  expect(supabase.profileFor('ada@stilltype.test').preferences.fontSize).toBeUndefined();
 
   supabase.offline = false;
   await context.setOffline(false);
