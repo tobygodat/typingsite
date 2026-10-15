@@ -32,6 +32,9 @@ export const defaultPreferences = {
   strictSpace: false,
   quickEnd: true,
   focusMode: false,
+  // Minimum accuracy (%) and speed (wpm) to continue a practice run; 0 is off.
+  minAccuracy: 0,
+  minWpm: 0,
   keybindings: normalizeKeybindings(),
   theme: 'system',
   dailyGoal: 0,
@@ -42,6 +45,8 @@ export const defaultPreferences = {
 };
 
 export const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
+export const MIN_ACCURACY_OPTIONS = [0, 80, 90, 95, 98];
+export const MIN_WPM_OPTIONS = [0, 20, 30, 40, 60, 80, 100];
 export const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
 export const clampPace = (value) => Math.min(300, Math.max(10, Math.round(Number(value) || 80)));
 
@@ -69,6 +74,8 @@ export function validPreferences(value) {
   value.correction = correctionPreference(value);
   value.stopOnError = value.correction === 'mandatory';
   if (!DAILY_GOALS.includes(value.dailyGoal)) value.dailyGoal = 0;
+  if (!MIN_ACCURACY_OPTIONS.includes(value.minAccuracy)) value.minAccuracy = 0;
+  if (!MIN_WPM_OPTIONS.includes(value.minWpm)) value.minWpm = 0;
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
   value.layout = normalizeLayout(value.layout);
   value.fingerMap = value.fingerMap === true;

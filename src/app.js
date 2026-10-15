@@ -4,6 +4,7 @@ import {
   CUSTOM_MIN_CHARS,
   CUSTOM_MIN_WORDS,
   METRIC_VERSION,
+  atRunEnd,
   awaitingSubmit,
   RATE_FLOOR_MS,
   STANDARD_SECONDS,
@@ -21,6 +22,7 @@ import {
   inputRules,
   deadMark,
   makeDrill,
+  minimumStop,
   normalizeCustomText,
   normalizeManualTarget,
   orderCustomText,
@@ -66,7 +68,7 @@ import {
   FINGER_ZONES, LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, normalizeLessonProgress, recordLessonRun,
 } from './lessons.js';
-import { CUSTOM_ORDERS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
+import { CUSTOM_ORDERS, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -134,6 +136,9 @@ let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
+// The time of the last key since a minimum stopped the run; see the Run again key guard.
+let stopHold = null;
+const STOP_HOLD_MS = 600;
 // The open composition (an accent key's mark, or IME text): { type, attempt, refused, replaces, keyed,
 // leaving, repeated, heldMark, key (Dead if an accent key's keydown opened it), mark (the first thing it
 // showed) }, then once it ends, the { commit, at } still to be scored.
@@ -422,6 +427,28 @@ function describeConditions(value = conditions()) {
   return Object.values(conditionParts(value)).join(' · ');
 }
 
+// Minimums ride along on the conditions line without joining the conditions key. The standard test
+// has none: it is one fixed measurement, and a personal filter on which of its runs count would lift
+// its score.
+function practiceMinimums() {
+  if (prefs.mode === 'standard') return null;
+  const minimums = {};
+  if (prefs.minAccuracy) minimums.accuracy = prefs.minAccuracy;
+  if (prefs.minWpm) minimums.wpm = prefs.minWpm;
+  return Object.keys(minimums).length ? minimums : null;
+}
+
+function describeMinimums(minimums) {
+  return [minimums?.accuracy ? `min ${minimums.accuracy}% accuracy` : '', minimums?.wpm ? `min ${minimums.wpm} wpm` : ''].filter(Boolean).join(' · ');
+}
+
+// "Stopped: accuracy fell below 95%" for a run ended on the tick; "Finished under your 98% minimum
+// accuracy" for one that reached its end below it.
+function stopReason(stop) {
+  if (stop.atEnd) return `Finished under your ${stop.metric === 'accuracy' ? `${stop.minimum}% minimum accuracy` : `${stop.minimum} wpm minimum speed`}`;
+  return `Stopped: ${stop.metric === 'accuracy' ? `accuracy fell below ${stop.minimum}%` : `speed fell below ${stop.minimum} wpm`}`;
+}
+
 // Strict space and quick end appear only when they differ from the defaults, as in conditionKey.
 const RULE_LABELS = { 'strict-space': 'strict space', 'quick-end-off': 'quick end off' };
 function describeRules(value) {
@@ -447,7 +474,7 @@ function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words${run.conditions.punctuation ? ' · punctuation' : ''}${run.conditions.numbers ? ' · numbers' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
   if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
-  if (run.kind !== 'drill') return describeConditions(run.conditions);
+  if (run.kind !== 'drill') return [describeConditions(run.conditions), describeMinimums(run.minimums)].filter(Boolean).join(' · ');
   return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}${describeRules(run.conditions)}`;
 }
 
@@ -620,8 +647,20 @@ function applyPreferences() {
   $('layout-select').value = prefs.layout;
   $('daily-goal').value = String(prefs.dailyGoal);
   syncLockedSettings();
+  $('min-accuracy').value = String(prefs.minAccuracy);
+  $('min-wpm').value = String(prefs.minWpm);
+  showMinimumNote();
   armPace();
   showBest();
+}
+
+// Minimums decide which practice runs count, and custom text never counts, so a custom run has none and
+// runs to the end like a drill: the note stands aside while Custom or composing is on, as the test
+// controls do, and while the standard test is selected (practiceMinimums).
+function showMinimumNote() {
+  const minimums = describeMinimums(practiceMinimums());
+  $('minimum-note').textContent = minimums;
+  $('minimum-note').hidden = !minimums || customOpen || composeOpen || sessionKind === 'custom';
 }
 
 // Why a rule switch can't change the session on hand, shown under it and read as its description.
@@ -696,6 +735,7 @@ function setModeControls() {
   syncLockedSettings();
   $('duration-options').hidden = custom || composeOpen || prefs.mode === 'quote' || prefs.mode === 'standard';
   document.querySelector('.compact-switch').hidden = custom || composeOpen;
+  showMinimumNote();
   if (custom || composeOpen || prefs.mode === "standard") closeCustomLength();
   renderLengthOptions();
   showBest();
@@ -1158,6 +1198,10 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   }
   if (kind === 'drill') attempt.target = selectedTarget;
   if (kind === 'lesson') attempt.lesson = { id: passage.lessonId, index: lessonIndex, pairs: passage.pairs, words: passage.words };
+  // Open practice stops at the current minimums. A retest carries its baseline's, so both sides of a
+  // comparison pass the same filter; drills and the daily challenge always run to the end.
+  if (kind === 'practice') attempt.minimums = practiceMinimums();
+  if (kind === 'retest') attempt.minimums = baselineAttempt?.minimums || null;
   attempt.fresh = passage.fresh !== false;
   startTime = null;
   $('typing-input').value = '';
@@ -1767,6 +1811,14 @@ function markKeyboardTargets(target) {
 // take far longer than a second to type, so their card is unchanged.
 const rateShown = (completed) => comparableKind(completed.kind) || completed.summary.elapsedMs >= RATE_FLOOR_MS;
 
+// Where the primary run stands: worked out from the run itself on every call (its duration, and
+// whether its passage is finished or, with quick end off, its last word submitted by space), so no
+// caller states the end conditions by hand.
+function runPosition(replay, elapsedMs) {
+  const submitted = attempt.events.some((event) => event.type === 'submit');
+  return { elapsedMs, durationMs: sessionDurationMs(), finished: submitted || passageComplete(attempt, replay.typed) };
+}
+
 function updateLive(reset = false, at = now()) {
   if (!attempt) return;
   const replay = replayAttempt(attempt);
@@ -1778,9 +1830,21 @@ function updateLive(reset = false, at = now()) {
   const second = startTime === null ? -1 : Math.floor(boundedElapsed / 1000);
   if (reset || second !== liveSecond) {
     liveSecond = second;
-    const score = second >= 0 && boundedElapsed >= RATE_FLOOR_MS ? replayAttempt({ ...attempt, endedAt: boundedElapsed }).score : null;
+    const live = second >= 0 && boundedElapsed >= RATE_FLOOR_MS ? replayAttempt({ ...attempt, endedAt: boundedElapsed }) : null;
+    const score = live?.score;
     setText($('live-wpm'), score ? score.wpm : '—');
     setText($('live-accuracy'), score ? score.accuracy : '—');
+    // Minimums are judged on this once-a-second tick, after the grace period, never per keystroke.
+    // At the run's end (its duration, or its last character) this live check stands aside: the
+    // end-of-run check in finishPrimary judges it.
+    if (!reset && live && attempt.minimums && attempt.status === 'running' && !attempt.interrupted && !attempt.unsupportedInput) {
+      const position = runPosition(live, boundedElapsed);
+      const stop = atRunEnd(position) ? null : minimumStop(attempt.minimums, live, position);
+      if (stop) {
+        finishPrimary(boundedElapsed, { stop });
+        return;
+      }
+    }
   }
   let progress;
   if (duration) {
@@ -1845,7 +1909,8 @@ function markEndFailure(target) {
 const failedDrill = (completed) => completed.kind === 'drill' && Boolean(completed.failed);
 
 // `replacing`: another session or view takes over at once, so a drill draws no retest passage to throw away.
-function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
+// `stop`: the live tick found the run under a minimum (minimumStop).
+function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } = {}) {
   if (!attempt || attempt.status !== 'running') return;
   // A pending accent mark isn't a keystroke; disabling the field commits it, and that is ignored. Nor can
   // the disabled field hear a held accent key let go.
@@ -1856,8 +1921,15 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   ticker = null;
   const endedAt = forcedElapsed ?? offsetFor();
   markEndFailure(attempt);
-  const valid = !attempt.interrupted && !attempt.unsupportedInput;
-  const completed = completeAttempt(attempt, { endedAt, status: valid ? 'complete' : 'interrupted' });
+  const clean = !attempt.interrupted && !attempt.unsupportedInput;
+  const final = completeAttempt(attempt, { endedAt });
+  // A run that reaches its end (its duration or its passage) under a minimum isn't counted either,
+  // so every counted run met them. The tick passes a live stop from the same judgement. A run the
+  // correction policy failed is already interrupted, and says so rather than naming a minimum.
+  const stopped = clean ? stop || minimumStop(attempt.minimums, final.summary, runPosition(final.summary, endedAt)) : null;
+  const valid = clean && !stopped;
+  const completed = { ...final, status: valid ? 'complete' : 'interrupted' };
+  if (stopped) completed.stopped = stopped;
   completed.interrupted = attempt.interrupted;
   completed.unsupportedInput = attempt.unsupportedInput;
   completed.fresh = attempt.fresh;
@@ -1906,6 +1978,9 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   switchView('results');
   renderCard(completed);
   $(failedDrill(completed) ? 'start-drill' : 'run-again').focus({ preventScroll: true });
+  // Every run a minimum ends gets the hold, wherever it was caught: the tick, the last character or
+  // the timer.
+  stopHold = completed.stopped ? now() : null;
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -1995,7 +2070,7 @@ function practiseMissedList() {
 
 function resultHeadline(completed) {
   if (completed.failed) return `failed · ${completed.failed}`;
-  if (completed.status !== 'complete') return 'Interrupted · not counted';
+  if (completed.status !== 'complete') return completed.stopped?.atEnd ? 'Under your minimum · not counted' : 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
   if (completed.kind === 'challenge') return 'Ghost race complete · not counted toward your best';
   if (completed.kind === 'missed') return 'Word practice complete · not counted toward your best';
@@ -2035,9 +2110,10 @@ function renderResults(completed, saved) {
   renderSecondaryStats(completed);
   $('result-conditions').textContent = describeRun(completed);
   $('result-delta').textContent = resultHeadline(completed);
+  const stopped = completed.stopped ? stopReason(completed.stopped) : '';
   // A retest reports a failed save once, in the comparison caveat.
   $('result-comparison-note').textContent = [
-    counted ? '' : completed.failed ? 'The correction setting ended this run, so it isn’t counted.' : 'Focus or input changed during the run, so it isn’t counted.',
+    counted ? '' : completed.failed ? 'The correction setting ended this run, so it isn’t counted.' : stopped ? `${stopped}, so it isn’t counted.` : 'Focus or input changed during the run, so it isn’t counted.',
     saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
   ].filter(Boolean).join(' ');
 
@@ -2053,7 +2129,7 @@ function renderResults(completed, saved) {
   renderTraining();
   renderDaily();
   $('comparison-panel').hidden = true;
-  const failure = completed.failed ? `${completed.kind === 'drill' ? 'Drill' : 'Run'} failed, ${completed.failed}. ` : '';
+  const failure = completed.failed ? `${completed.kind === 'drill' ? 'Drill' : 'Run'} failed, ${completed.failed}. ` : stopped ? `${stopped}. ` : '';
   $('ghost-result').hidden = completed.kind !== 'challenge';
   renderGhostOffer(completed);
   announce(saved
@@ -2070,7 +2146,8 @@ function renderRecommendation(counted = true, compared = true, completed = null)
   // After startDaily() there is no recommendation: show the general drill Start drill falls back to.
   activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
   $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
-  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : completed?.failed ? 'This run failed under the correction setting.' : 'This run lost focus or used unsupported input.';
+  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : completed?.failed ? 'This run failed under the correction setting.'
+    : completed?.stopped ? 'Runs under your minimums aren’t counted. Change them in settings.' : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
     ? `About 1 min, then a fresh ${retestLength(baselineAttempt.conditions)} retest.`
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
@@ -2117,10 +2194,21 @@ function renderComparison(before, after, saved) {
   $('comparison-wpm').textContent = comparison.comparable ? signed(comparison.wpmDelta, 'wpm') : '—';
 
   const trainedTarget = trainingContext?.target || selectedTarget;
-  const beforePattern = before ? summarizePatterns([before]).pairs.find((item) => item.pair === trainedTarget) : null;
+  // No comparison means no timing comparison either: a retest that isn't compared (stopped under a
+  // minimum, interrupted, other conditions or repeated text) puts none of its numbers on this panel.
+  // No baseline: a clear from another tab or device removed it while this retest was under way.
+  if (!comparison.comparable) {
+    const reason = before ? comparison.reason : 'Your history was cleared, so there is no baseline to compare with.';
+    $('comparison-timing').textContent = '—';
+    $('comparison-sample').textContent = !before ? 'no baseline' : trainedTarget ? `${trainedTarget} · timing not compared` : 'timing not compared';
+    $('comparison-caveat').textContent = `${reason}${saved ? '' : ' Couldn’t save on this device.'}`;
+    renderHistory();
+    return;
+  }
+  const beforePattern = summarizePatterns([before]).pairs.find((item) => item.pair === trainedTarget);
   const afterPattern = summarizePatterns([after]).pairs.find((item) => item.pair === trainedTarget);
   const enoughTiming = beforePattern?.timings.length >= 10 && afterPattern?.timings.length >= 10;
-  let timingSummary = { target: trainedTarget, beforeCount: beforePattern?.timings.length || 0, afterCount: afterPattern?.timings.length || 0, deltaMs: null };
+  const timingSummary = { target: trainedTarget, beforeCount: beforePattern?.timings.length || 0, afterCount: afterPattern?.timings.length || 0, deltaMs: null };
   if (enoughTiming) {
     const delta = afterPattern.medianMs - beforePattern.medianMs;
     timingSummary.deltaMs = delta;
@@ -2128,13 +2216,12 @@ function renderComparison(before, after, saved) {
     $('comparison-sample').textContent = `${trainedTarget} · ${beforePattern.timings.length} before · ${afterPattern.timings.length} after`;
   } else {
     $('comparison-timing').textContent = '—';
-    $('comparison-sample').textContent = !before ? 'no baseline'
-      : trainedTarget
-        ? `${trainedTarget} · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
-        : `keystrokes · ${before.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
+    $('comparison-sample').textContent = trainedTarget
+      ? `${trainedTarget} · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
+      : `keystrokes · ${before.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
   }
   let comparisonSaved = saved;
-  if (comparison.comparable && saved) {
+  if (saved) {
     profile.loops.push({
       id: uid(),
       at: new Date().toISOString(),
@@ -2150,9 +2237,7 @@ function renderComparison(before, after, saved) {
     });
     comparisonSaved = saveProfile();
   }
-  // No baseline: a clear from another tab or device removed it while this retest was under way.
-  const reason = before ? comparison.reason : 'Your history was cleared, so there is no baseline to compare with.';
-  $('comparison-caveat').textContent = `${reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
+  $('comparison-caveat').textContent = `${comparison.reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
   renderHistory();
 }
 
@@ -2751,7 +2836,7 @@ function renderHistory() {
       element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : run.conditions?.mode === 'standard' ? 'standard' : 'practice'} · view details`));
     const detail = element('div', '', 'run-detail');
     detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
-      element('p', describeConditions(run.conditions)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
+      element('p', describeRun(run)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
     const trace = profile.attempts.find((a) => a.id === run.id);
     if (trace) {
       const passageDetails = document.createElement('details');
@@ -4496,6 +4581,8 @@ function bindEvents() {
   $('correction-select').addEventListener('change', (event) => setCorrection(event.target.value));
   $('strict-space-toggle').addEventListener('change', (event) => setInputRule('strictSpace', event.target.checked));
   $('quick-end-toggle').addEventListener('change', (event) => setInputRule('quickEnd', event.target.checked));
+  $('min-accuracy').addEventListener('change', (event) => setMinimum('minAccuracy', Number(event.target.value)));
+  $('min-wpm').addEventListener('change', (event) => setMinimum('minWpm', Number(event.target.value)));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
@@ -4551,6 +4638,17 @@ function bindEvents() {
   const replayView = createReplayView($('replay-dialog'));
   $('watch-replay').addEventListener('click', () => replayView.open(shownResult));
   $('run-again').addEventListener('click', runAgain);
+  // When a minimum ends a run (on the tick, its last character or its timer), the typist is mid-stride
+  // and focus lands here. Until they pause, Space and Enter do nothing, so the keys already on their
+  // way can't discard the result and start a new run.
+  $('run-again').addEventListener('keydown', (event) => {
+    if (stopHold === null) return;
+    const stamp = now();
+    if (stamp - stopHold >= STOP_HOLD_MS) { stopHold = null; return; }
+    stopHold = stamp;
+    if (event.key === ' ' || event.key === 'Enter') event.preventDefault();
+  });
+  $('run-again').addEventListener('keyup', (event) => { if (stopHold !== null && event.key === ' ') event.preventDefault(); });
   $('result-words').addEventListener('keydown', moveWordFocus);
   $('result-words').addEventListener('focusin', (event) => {
     const word = event.target.closest('[role="option"]');
@@ -4876,6 +4974,19 @@ function restartHint() {
   return document.body.dataset.view === 'results' && prefs.keybindings.restart === 'Tab' ? 'enter' : bindingLabel(prefs.keybindings.restart);
 }
 
+// A ready practice run takes a new minimum in place; one already under way restarts with it.
+function setMinimum(key, value) {
+  if (prefs[key] === value) return;
+  prefs[key] = value;
+  applyPreferences();
+  saveChoice(key);
+  if (sessionKind !== 'practice' || !attempt) return;
+  if (attempt.status === 'ready') {
+    attempt.minimums = practiceMinimums();
+    $('condition-line').textContent = describeRun(attempt);
+  } else if (attempt.status === 'running') resetSession('practice');
+}
+
 function setWordList(id, kind = restartKind()) {
   if (!wordListIds.includes(id)) return;
   prefs.wordList = id;
@@ -4967,6 +5078,8 @@ function paletteCommands(query) {
     ...Object.entries(CORRECTION_LABELS).map(([policy, name]) => ({ group: 'test', label: `correction · ${policy === 'relaxed' ? 'free' : name}`, keywords: 'mistakes correction continue stop error backspace fail expert master confidence', hint: prefs.correction === policy ? 'current' : '', on: prefs.correction === policy, disabled: standardLocked(), run: () => setCorrection(policy) })),
     { group: 'test', label: 'strict space', keywords: 'space bar early skip word mistakes input', hint: onOff(prefs.strictSpace), on: prefs.strictSpace, run: () => setInputRule('strictSpace', !prefs.strictSpace) },
     { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
+    ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: prefs.minAccuracy === value ? 'current' : '', on: prefs.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
+    ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? `${value} wpm` : 'off'}`, keywords: 'min wpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
