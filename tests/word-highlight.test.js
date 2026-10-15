@@ -2,12 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DEFAULT_WORD_HIGHLIGHT, WORD_HIGHLIGHT_MODES, normalizeWordHighlight, wordIndexes, wordsAt } from '../src/word-highlight.js';
+import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 
 test('word highlight is off by default and unknown or missing values fall back to off', () => {
   assert.equal(DEFAULT_WORD_HIGHLIGHT, 'off');
   assert.deepEqual(WORD_HIGHLIGHT_MODES, ['off', 'current', 'next']);
   for (const mode of WORD_HIGHLIGHT_MODES) assert.equal(normalizeWordHighlight(mode), mode);
   for (const value of [undefined, null, '', 'word', true, 1, 'Current']) assert.equal(normalizeWordHighlight(value), 'off');
+});
+
+test('the profile declares word highlight like other settings: off unless chosen, unknown values read as off', () => {
+  assert.equal(preferencesInUse({}).wordHighlight, 'off');
+  assert.equal(preferencesInUse({ wordHighlight: 'next' }).wordHighlight, 'next');
+  assert.equal(preferencesInUse({ wordHighlight: 'underline' }).wordHighlight, 'off');
+  // A stored copy keeps only what was chosen: an unchosen highlight stays absent, a bad one becomes off.
+  assert.equal(Object.hasOwn(normalizeProfile({ version: 2, preferences: { fontSize: '36' } }).preferences, 'wordHighlight'), false);
+  assert.equal(normalizeProfile({ version: 2, preferences: { wordHighlight: 7 } }).preferences.wordHighlight, 'off');
 });
 
 test('a space belongs to the word before it, matching the rendered word groups', () => {

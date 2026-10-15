@@ -162,6 +162,34 @@ test('the one-keyboard challenge passage follows the same setting', async ({ pag
   expect(await tinted(page, '#race-text-display')).toEqual([1]);
 });
 
+// Every session typed against a text renders through the same passage, so each follows the setting.
+test('the daily, the standard test and a lesson follow the same setting', async ({ page }) => {
+  await openApp(page);
+  await pickHighlight(page, 'next');
+
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-daily').click();
+  await page.locator('#start-daily').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
+  expect(await tinted(page)).toEqual([1]);
+  await typeInto(page, `${firstWord(await passageText(page))} `, '#typing-input', { delay: 60 });
+  expect(await tinted(page)).toEqual([2]);
+
+  await openView(page, 'Practice');
+  await page.locator('#mode-standard').click();
+  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
+  expect(await tinted(page)).toEqual([1]);
+
+  await page.locator('#mode-time').click();
+  await page.locator('#open-lessons').click();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'learn');
+  await page.locator('#lesson-primary').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+  expect(await tinted(page)).toEqual([1]);
+  await typeInto(page, `${firstWord(await passageText(page))} `, '#typing-input', { delay: 60 });
+  expect(await tinted(page)).toEqual([2]);
+});
+
 test('a guest’s pick lasts only for the tab', async ({ page }) => {
   await openApp(page);
   await pickHighlight(page, 'next');
