@@ -422,10 +422,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
       // Both minimums share one row, so the popover grows by one row, not two.
       const [accuracyBox, wpmBox] = [await page.locator('#min-accuracy').boundingBox(), await page.locator('#min-wpm').boundingBox()];
       expect(Math.abs(accuracyBox.y - wpmBox.y)).toBeLessThanOrEqual(1);
-      // At 390 × 844 focus mode stays in view without scrolling the popover. At 320 × 568 the popover
-      // scrolls now that the pace caret has a row too, so there focus mode only has to be reachable in it.
+      // The popover scrolls on phones now that it holds the layout, correction and input-rule rows too,
+      // so focus mode only has to be reachable in it.
       const focus = page.locator('label[for="focus-toggle"]');
-      if (viewport.width === 320) await focus.scrollIntoViewIfNeeded();
+      await focus.scrollIntoViewIfNeeded();
       const focusRow = await focus.boundingBox();
       const shown = await page.locator('.preferences-popover').boundingBox();
       expect(focusRow.y).toBeGreaterThanOrEqual(shown.y);
@@ -456,7 +456,8 @@ test('desktop settings and the practice label, dark and light', async ({ page },
     await expect(page.locator('#minimum-note')).toBeVisible();
     // The label takes its own line, so the controls stay centred under the dock.
     const first = await page.locator('.practice-controls .segmented').first().boundingBox();
-    const last = await page.locator('.practice-controls .compact-switch').boundingBox();
+    // The "learn to type" link is the row's last control.
+    const last = await page.locator('.practice-controls #open-lessons').boundingBox();
     const dock = await page.locator('.dock').boundingBox();
     expect(Math.abs((first.x + last.x + last.width) / 2 - (dock.x + dock.width / 2))).toBeLessThanOrEqual(2);
     expect((await page.locator('#minimum-note').boundingBox()).y).toBeGreaterThanOrEqual(last.y + last.height);
