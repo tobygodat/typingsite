@@ -69,8 +69,9 @@ export function normalizeKeybindings(value, legacyRestart) {
   return Object.keys(validateKeybindings(values).errors).length ? { ...DEFAULT_KEYBINDINGS } : values;
 }
 
-export function matchesBinding(event, binding) {
-  if (!binding || event.isComposing || event.keyCode === 229 || event.getModifierState?.('AltGraph')) return false;
+export function matchesBinding(event, binding, { allowAccentEscape = false } = {}) {
+  const composing = event.isComposing || event.keyCode === 229;
+  if (!binding || (composing && !(allowAccentEscape && event.key === 'Escape')) || event.getModifierState?.('AltGraph')) return false;
   return variants(binding).some((value) => {
     const parts = value.split('+');
     const key = parts.pop();

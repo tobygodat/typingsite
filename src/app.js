@@ -4219,9 +4219,16 @@ function bindEvents() {
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.getModifierState?.('AltGraph')) return;
+    if (event.defaultPrevented) return;
+    const typing = document.activeElement === $('typing-input') || document.activeElement === $('race-input');
+    if (typing && event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key))) {
+      event.preventDefault();
+      showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
+      return;
+    }
+    if (((event.isComposing || event.keyCode === 229) && !accentShortcut(event)) || event.getModifierState?.('AltGraph')) return;
     if (document.querySelector('dialog[open]')) {
-      if (palette?.isOpen() && matchesBinding(event, prefs.keybindings.commands)) {
+      if (palette?.isOpen() && matchesAppBinding(event, prefs.keybindings.commands)) {
         event.preventDefault();
         if (!event.repeat) palette.close();
       }
@@ -4240,13 +4247,13 @@ function bindEvents() {
     const active = document.activeElement;
     const onTypingSurface = ['typing-input', 'race-input', 'online-input', 'compose-input'].includes(active?.id);
     const editable = active?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
-    if (!keybindingEditor.isRecording() && (!editable || onTypingSurface) && matchesBinding(event, prefs.keybindings.commands)) {
+    if (!keybindingEditor.isRecording() && (!editable || onTypingSurface) && matchesAppBinding(event, prefs.keybindings.commands)) {
       event.preventDefault();
       if (!event.repeat) palette.open();
       return;
     }
     if (menuOpen) return;
-    if (prefs.focusMode && (!editable || onTypingSurface) && matchesBinding(event, prefs.keybindings.exitFocus)) {
+    if (prefs.focusMode && (!editable || onTypingSurface) && matchesAppBinding(event, prefs.keybindings.exitFocus)) {
       event.preventDefault();
       if (!event.repeat) {
         prefs.focusMode = false;
@@ -4256,18 +4263,13 @@ function bindEvents() {
       }
       return;
     }
-    if (composeOpen && active === $('compose-input') && matchesBinding(event, prefs.keybindings.restart)
+    if (composeOpen && active === $('compose-input') && matchesAppBinding(event, prefs.keybindings.restart)
       && !(event.key === 'Enter' && compose.isRunning())) {
       event.preventDefault();
       if (!event.repeat) compose.restart();
       return;
     }
     if (quickRestart(event)) return;
-    if (event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key)) && (active === $('typing-input') || active === $('race-input'))) {
-      event.preventDefault();
-      showInputNotice(active === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
-      return;
-    }
     document.querySelectorAll('.key').forEach((key) => key.classList.toggle('active', key.dataset.key === event.key.toLowerCase()));
   }, true);
   document.addEventListener('keyup', () => document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active')));
@@ -4376,10 +4378,19 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : restartKind());
 }
 
+function accentShortcut(event) {
+  return event.key === 'Escape' && Boolean(composition && !composition.refused
+    && accentComposition({ key: composition.key, preview: composition.mark }));
+}
+
+function matchesAppBinding(event, binding) {
+  return matchesBinding(event, binding, { allowAccentEscape: accentShortcut(event) });
+}
+
 // Restart only owns the typing surfaces, bare practice/results page, and run-again.
 // Controls retain their native activation and Tab navigation; online rooms cannot restart.
 function quickRestart(event) {
-  if (!matchesBinding(event, prefs.keybindings.restart)) return false;
+  if (!matchesAppBinding(event, prefs.keybindings.restart)) return false;
   const view = document.body.dataset.view;
   const active = document.activeElement;
   const onInput = active === $('typing-input');
