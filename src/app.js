@@ -38,6 +38,7 @@ import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
+import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './friends-board.js';
 import { forgetRace, listRaceInvites } from './multiplayer.js';
 import { MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, filterRuns, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
@@ -134,6 +135,7 @@ const ghostOn = () => prefs.paceCaret !== 'off';
 let palette = null;
 let onlineRace = null;
 let inbox = null;
+let friendsBoard = null;
 let baselineAttempt = null;
 let activeRecommendation = null;
 let selectedTarget = null;
@@ -2195,6 +2197,12 @@ function renderAccount() {
 
 const authRedirectTarget = () => `${location.origin}/`;
 
+const dailyKey = () => conditionKey(dailyConditions());
+// The friends board's summary of exactly the copy being written, stamped with that write
+// (src/friends-board.js). While an opt-out on this device is unconfirmed its writes clear the column
+// (null), so this device shows nothing new on the board; turning sharing on repairs it (repairBoardNow).
+const boardFor = (data) => (at) => (optOutPending(session) ? null : boardColumn(data.runs, dailyKey(), at));
+
 // Whether this tab still belongs to the user a sync started for. Another tab can sign out, or in as
 // someone else, while a request is out; the sync then stops and writes nothing here. A tab that heard of
 // a sign-out elsewhere stays out even if the same account has signed in again since: it reloads first.
@@ -2286,6 +2294,7 @@ async function pushOnce({ cloud: known } = {}) {
   if (!session) return false;
   if (!unsynced) {
     setSyncState('synced');
+    friendsBoard?.pushed();
     return true;
   }
   const userId = session.user.id;
@@ -2306,8 +2315,8 @@ async function pushOnce({ cloud: known } = {}) {
       const { merged, holds: pushHolds } = theirs ? account.mergeAndHold(heldClears, profile, theirs) : { merged: profile, holds: heldClears };
       let written;
       if (theirs && account.sameProfile(merged, theirs)) written = cloud.updated_at;
-      else if (cloud) written = await account.updateCloudProfile(session, merged, cloud.updated_at);
-      else written = await account.insertCloudProfile(session, merged);
+      else if (cloud) written = await account.updateCloudProfile(session, merged, cloud.updated_at, { board: boardFor(merged) });
+      else written = await account.insertCloudProfile(session, merged, { board: boardFor(merged) });
       if (!signedInAs(userId)) return false;
       if (written) {
         // What this merge held joins what is held now. Holds are only added to, and a list goes back only
@@ -2315,6 +2324,7 @@ async function pushOnce({ cloud: known } = {}) {
         // was out still holds and releases everything.
         heldClears = account.joinHolds(heldClears, pushHolds);
         noteCloudAt(written);
+        friendsBoard?.pushed();
         absorb(merged);
         const kept = storeLocally();
         // Done unless this tab saved again, or took in another tab's save, while the write was out:
@@ -2349,7 +2359,7 @@ async function pushOnHide() {
   try {
     session = await account.freshSession(session);
     if (!signedInAs(userId)) return;
-    const written = await account.updateCloudProfile(session, profile, lastCloudAt, { keepalive: true });
+    const written = await account.updateCloudProfile(session, profile, lastCloudAt, { keepalive: true, board: boardFor(profile) });
     if (!written || !signedInAs(userId)) return;
     noteCloudAt(written);
     if (edits === localEdits) {
@@ -2435,12 +2445,38 @@ async function syncOnLoad() {
       if (unsynced || !account.sameProfile(profile, normalizeProfile(cloud.data))) {
         unsynced = true;
         await pushProfile({ cloud });
-      } else setSyncState('synced');
+      } else {
+        setSyncState('synced');
+        repairBoard(cloud);
+      }
     }
+    // An opt-out kept on this device goes out now, and a device new to the account learns whether it shares.
+    friendsBoard?.resume();
   } catch {
     // Offline or unreachable: edits stay on the device, unstamped, until a check succeeds.
     setSyncState(account.loadSession() ? 'offline' : 'expired');
   }
+}
+
+// A row whose board summary doesn't describe it (written before the board column existed, by an older
+// cached build, or without a part this build adds) is given one counted from that row's own data, when
+// this load writes nothing itself. The write is conditional on the row's version, so a row another save
+// has moved since is left alone. Not while an opt-out here is unconfirmed: this device shows nothing new.
+function repairBoard(cloud) {
+  if (syncTimer || boardCurrent(cloud) || optOutPending(session)) return;
+  account.repairBoard(session, boardColumn(normalizeProfile(cloud.data).runs, dailyKey(), cloud.updated_at), cloud.updated_at)
+    .then((sent) => { if (sent) friendsBoard?.pushed(); }, () => {});
+}
+
+// Sharing turned on: saves made while an opt-out was still unconfirmed wrote no summary, so the row as
+// it stands now is read and, if its summary doesn't describe it, repaired as on load.
+async function repairBoardNow() {
+  if (!session) return;
+  try {
+    session = await account.freshSession(session);
+    const cloud = await account.fetchCloudProfile(session);
+    if (cloud) repairBoard(cloud);
+  } catch {}
 }
 
 // Puts the account's profile in the device cache, then starts over as that user. A device copy kept
@@ -2484,6 +2520,7 @@ async function signOutAccount() {
   await onlineRace?.leave();
   if (overtaken()) return;
   inbox?.forget();
+  friendsBoard?.signOut();
   // Every tab signed in here shares the device cache, and another tab's latest save may not have reached
   // the account yet (its push still waiting, or failing). So the cache is merged and pushed before it
   // goes; the push reads the row and writes only what the row lacks. A second round covers a save that
@@ -2560,6 +2597,7 @@ async function deleteAccountNow() {
   unsynced = false;
   inbox?.forget();
   forgetRace();
+  friendsBoard?.forget();
   const deleted = session;
   session = null;
   account.forgetAccount(deleted);
@@ -2694,6 +2732,7 @@ function bindAccount() {
     if (!session) return;
     if (!cloudChecked) syncOnLoad();
     else pullProfile({ force: true });
+    if (cloudChecked) friendsBoard?.resume();
   });
   // Another tab signed in to this account saved: merge its copy. Only what the copy lacks is written back
   // (absorbCache), so tabs settle rather than echo each other. Mid-run the merge waits; the save at the
@@ -2733,6 +2772,8 @@ function followSessionElsewhere(event) {
     || (event.key === account.SESSION_KEY && (current ? current !== userId : account.signedOut(userId)));
   if (!signedOut) return false;
   signedOutElsewhere = true;
+  // What this device knew of the account's board sharing goes with the sign-out, as in the tab that signed out.
+  friendsBoard?.signOut();
   clearTimeout(syncTimer);
   syncTimer = 0;
   // A sign-out that sent everything removes the cache next: this tab waits to hear it (finishFollow).
@@ -3142,6 +3183,8 @@ function inPractice(change) {
 
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
+  // The friends board's switch: on, off, or null (no hint) before this device has read the board.
+  const shared = friendsBoard?.sharing ?? null;
   // During a custom session no test shape is current, only "custom text".
   const shape = (mode, length) => comparableKind(sessionKind) && prefs.mode === mode && (mode === 'quote' || mode === 'standard' || (mode === 'time' ? prefs.duration : prefs.count) === length);
   // The standard recipe fixes these; like quote mode, the palette leaves out what can't change.
@@ -3150,6 +3193,8 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
+    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
+    { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => inPractice((kind) => resetSession(kind, { focus: true })) },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
@@ -3272,9 +3317,20 @@ inbox = createInbox({
     result: { label: 'Race again', run: (entry) => onlineRace.rematchRoom(entry.roomId, entry.conditions) },
   },
 });
+// The board only reads: each account's numbers ride its own profile saves (pushProfile, repairBoard).
+// Whether the account shares is the board's own to know, from the service, not a synced preference.
+friendsBoard = createFriendsBoard({
+  getSession: () => session,
+  dailyKey,
+  signIn: () => openAccountDialog('signin'),
+  // The button that asks for this disappears with the board, so focus lands on the Online selector.
+  openOnline: () => { onlineRace.open(); $('challenge-online').focus(); },
+  onShared: repairBoardNow,
+});
 onlineRace = createOnlineRace({
   getSession: () => session,
   inbox,
+  board: friendsBoard,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
   onPassageSeen(id) {
@@ -3293,10 +3349,10 @@ noticeDeletedAccount();
 completeAuthRedirect();
 syncOnLoad();
 inbox.refresh();
-// Refresh the day label when a tab returns, and across midnight without reloading.
-setInterval(() => { if (document.body.dataset.view === 'compete') renderDaily(); }, 30000);
+// Refresh the day label and an open friends board when a tab returns, and across midnight without reloading.
+setInterval(() => { if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); } }, 30000);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) renderDaily();
+  if (!document.hidden) { renderDaily(); friendsBoard.rollover(); }
 });
 
 // Offline shell (sw.js): installable and playable without a connection. Skipped on localhost so local

@@ -5,6 +5,7 @@
 // POST conflict resolutions. updated_at comes back in Postgres's +00:00 form, as timestamptz does.
 import { createHash, randomUUID } from 'node:crypto';
 import { FakeRaces } from './fake-races.js';
+import { FakeBoard } from './fake-board.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -38,9 +39,19 @@ export class FakeSupabase {
     this.googleCodes = new Map();
     // Routed requests bypass context.setOffline, so offline tests flip this too.
     this.offline = false;
+    this.holdProfiles = null;
+    // Set to a promise to hold the reply to the next profile write: it is stored on arrival, in order,
+    // and answered only once that settles, while later requests go through.
+    this.holdProfileWrite = null;
+    // Set to stand in for a project without the friends board's `board` column on profiles yet.
+    this.boardColumnMissing = false;
+    // Every profile write the fake took: { caller, method, updated_at, board } (board undefined when the
+    // write left it out).
+    this.profileWrites = [];
     // How long issued access tokens last. Under a minute, every request refreshes first.
     this.sessionSeconds = 3600;
     this.races = new FakeRaces(this);
+    this.board = new FakeBoard(this);
     // How POST /functions/v1/delete-account answers: 'ok' deletes like the real function; 'missing'
     // is the platform's reply for a function that isn't deployed and 'blocked' the same reply without
     // CORS headers; 'fail' is deleteUser failing; 'lost' deletes and then loses the reply;
@@ -113,6 +124,11 @@ export class FakeSupabase {
     });
   }
 
+  // PostgREST's reply to a write naming a column its schema cache doesn't have.
+  missingBoard() {
+    return { code: 'PGRST204', details: null, hint: null, message: 'Could not find the \'board\' column of \'profiles\' in the schema cache' };
+  }
+
   async handle(route) {
     const request = route.request();
     const url = new URL(request.url());
@@ -132,6 +148,8 @@ export class FakeSupabase {
     switch (`${method} ${url.pathname}`) {
       case 'POST /rest/v1/rpc/race_action':
         return this.races.handle(caller, body, reply);
+      case 'POST /rest/v1/rpc/friends_board':
+        return this.board.handle(caller, body, reply);
       case 'GET /auth/v1/settings':
         return reply(200, { external: { google: this.googleEnabled, email: true } });
 
@@ -207,34 +225,49 @@ export class FakeSupabase {
 
       case 'GET /rest/v1/profiles': {
         if (!caller) return reply(401, { message: 'JWT expired' });
+        // A test can hold profile reads, keeping the page's account check in flight.
+        if (this.holdProfiles) await this.holdProfiles;
         const owner = (url.searchParams.get('user_id') || '').replace(/^eq\./, '');
         const row = owner === caller ? this.rowFor(caller) : null;
-        return reply(200, row ? [{ data: row.data, updated_at: row.updated_at }] : []);
+        if (!row) return reply(200, []);
+        // select=*: every column the project has (the friends board's `board` once its migration is in).
+        const full = { user_id: caller, data: row.data, updated_at: row.updated_at, ...(this.boardColumnMissing ? {} : { board: row.board ?? null }) };
+        const select = url.searchParams.get('select');
+        return reply(200, [select && select !== '*' ? pick(full, select) : full]);
       }
 
       // An insert; on a conflict with the existing row, merge-duplicates replaces it (an upsert) and
-      // ignore-duplicates leaves it, returning no rows.
+      // ignore-duplicates leaves it, returning no rows. A column the write leaves out keeps its value.
       case 'POST /rest/v1/profiles': {
         if (!caller || body.user_id !== caller) return reply(403, { message: 'new row violates row-level security policy' });
+        if ('board' in body && this.boardColumnMissing) return reply(400, this.missingBoard());
         const prefer = request.headers().prefer || '';
-        const exists = Boolean(this.rowFor(caller));
-        if (exists && !/resolution=(merge|ignore)-duplicates/.test(prefer)) {
+        const old = this.rowFor(caller);
+        if (old && !/resolution=(merge|ignore)-duplicates/.test(prefer)) {
           return reply(409, { code: '23505', message: 'duplicate key value violates unique constraint "profiles_pkey"' });
         }
         const rows = [];
-        if (!exists || /resolution=merge-duplicates/.test(prefer)) {
-          const row = { user_id: caller, data: body.data, updated_at: pgTime(body.updated_at || Date.now()) };
+        if (!old || /resolution=merge-duplicates/.test(prefer)) {
+          const row = { user_id: caller, data: body.data, updated_at: pgTime(body.updated_at || Date.now()), board: 'board' in body ? body.board : old?.board ?? null };
           this.profiles.set(caller, row);
           rows.push(row);
+          this.profileWrites.push({ caller, method: 'POST', updated_at: row.updated_at, board: body.board });
         }
         this.writes.push({ method: 'POST', matched: rows.length });
+        if (this.holdProfileWrite) {
+          const held = this.holdProfileWrite;
+          this.holdProfileWrite = null;
+          await held;
+        }
         return /return=representation/.test(prefer) ? reply(201, rows.map((row) => pick(row, url.searchParams.get('select')))) : reply(201);
       }
 
-      // An update of the rows matching every eq filter. Row-level security hides other users' rows,
-      // so a filter on someone else's user_id matches nothing rather than failing.
+      // An update of the rows matching every eq filter (the profile writes, and src/account.js repairing a
+      // row's board summary only while the row is still at that version). Row-level security hides other
+      // users' rows, so a filter on someone else's user_id matches nothing rather than failing.
       case 'PATCH /rest/v1/profiles': {
         if (!caller) return reply(401, { message: 'JWT expired' });
+        if ('board' in body && this.boardColumnMissing) return reply(400, this.missingBoard());
         const prefer = request.headers().prefer || '';
         const row = this.rowFor(caller);
         const owner = eqFilter(url, 'user_id');
@@ -243,8 +276,15 @@ export class FakeSupabase {
         if (matches) {
           if ('data' in body) row.data = body.data;
           if ('updated_at' in body) row.updated_at = pgTime(body.updated_at);
+          if ('board' in body) row.board = body.board;
+          this.profileWrites.push({ caller, method: 'PATCH', updated_at: row.updated_at, board: body.board });
         }
         this.writes.push({ method: 'PATCH', matched: Number(matches) });
+        if (this.holdProfileWrite) {
+          const held = this.holdProfileWrite;
+          this.holdProfileWrite = null;
+          await held;
+        }
         if (!/return=representation/.test(prefer)) return reply(204);
         return reply(200, matches ? [pick(row, url.searchParams.get('select'))] : []);
       }

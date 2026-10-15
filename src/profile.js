@@ -52,6 +52,9 @@ export function validPreferences(value) {
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
   if (!PACE_MODES.includes(value.paceCaret)) value.paceCaret = 'off';
   value.paceWpm = clampPace(value.paceWpm);
+  // Whether the friends board shares is kept by the board alone (src/friends-board.js), never in the
+  // synced profile, so a copy saved by an earlier build is dropped rather than synced back.
+  delete value.shareBoard;
   return value;
 }
 

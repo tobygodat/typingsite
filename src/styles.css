@@ -1603,7 +1603,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 /* ── Challenge ──────────────────────────────────────────────────────────── */
 
-.challenge-modes { display: flex; gap: var(--space-2); margin-bottom: var(--space-8); }
+.challenge-modes { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-8); }
 .challenge-modes [aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .online-copy { color: var(--muted); font-size: var(--text-small); }
 .online-optional { font-size: var(--text-fine); }
@@ -1639,6 +1639,27 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .online-typing-wrap { margin-top: var(--space-6); }
 #online-connection:not(:empty) { color: var(--warning); }
 #online-help { min-height: var(--space-6); }
+
+/* Friends board: two ruled lists, today's daily and this week's practice. Nothing on the board is
+   coloured: your row is marked by the word "You". */
+.friends-board { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
+.friends-board-copy { max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
+.friends-board-guest { display: grid; justify-items: start; gap: var(--space-4); margin: var(--space-6) 0; }
+.friends-board-guest p { margin: 0; max-width: 60ch; }
+.friends-board-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); margin: var(--space-6) 0; }
+.board-column h3 { margin: 0; font-size: var(--text-lead); font-weight: 400; }
+.board-column .condition-copy { margin: var(--space-1) 0 var(--space-3); }
+.board-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--hairline); }
+.board-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline); }
+.board-name { overflow-wrap: anywhere; }
+.board-value { grid-column: 2; grid-row: 1 / span 2; align-self: center; white-space: nowrap; }
+.board-value strong { font-size: var(--text-title); font-weight: 300; line-height: 1; letter-spacing: -0.015em; }
+.board-unit { color: var(--muted); font: var(--text-mono)/1.5 var(--font-mono); }
+.board-detail { color: var(--muted); font-size: var(--text-small); }
+.friends-board-share { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: var(--space-4) 0; }
+.friends-board-off { margin: 0; max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
+.friends-board-empty { margin-bottom: var(--space-6); }
+.friends-board-empty p { margin: 0 0 var(--space-3); max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
 
 @media (max-width: 760px) {
   .online-setup, .online-players { grid-template-columns: 1fr; }
@@ -2137,6 +2158,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .training-target { grid-template-columns: 1fr; }
   .training-target button { justify-self: start; }
   .daily-heading { flex-direction: column; }
+  .friends-board-lists { grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
 }
 
 @media (max-width: 360px) {

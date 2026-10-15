@@ -16,6 +16,7 @@ const SHELL = [
   '/src/app.js',
   '/src/corpus.js',
   '/src/egg.js',
+  '/src/friends-board.js',
   '/src/graph.js',
   '/src/inbox.js',
   '/src/insights.js',

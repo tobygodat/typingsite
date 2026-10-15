@@ -440,6 +440,7 @@
         <div class="challenge-modes" role="group" aria-label="Challenge type">
           <button id="challenge-online" class="btn btn-secondary btn-sm" type="button" aria-pressed="true">Online</button>
           <button id="challenge-daily" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">Daily</button>
+          <button id="challenge-friends" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">Friends</button>
           <button id="challenge-local" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">One keyboard</button>
         </div>
 
@@ -531,6 +532,43 @@
           <p>A shared passage, new each day at midnight UTC. Finish at your own pace; repeat attempts are labelled.</p>
           <p id="daily-status" class="result-note" aria-live="polite"></p>
           <details id="daily-history-panel" hidden><summary>Your daily results</summary><div id="daily-history"></div></details>
+        </section>
+
+        <section id="friends-board" class="friends-board" hidden aria-labelledby="friends-board-heading">
+          <div class="online-section-heading">
+            <h2 id="friends-board-heading">Friends board</h2>
+            <button id="refresh-friends-board" class="btn btn-ghost btn-sm" type="button" hidden>Refresh</button>
+          </div>
+          <p class="friends-board-copy">You and the friends who have added you back, when both of you share. They see your row; nobody else does.</p>
+          <div id="friends-board-guest" class="friends-board-guest">
+            <p>Sign in to compare today’s daily passage and this week’s practice with the friends you choose.</p>
+            <button id="friends-board-signin" class="btn btn-primary" type="button">Sign in</button>
+          </div>
+          <div id="friends-board-share" class="friends-board-share" hidden>
+            <label class="compact-switch" for="share-board">
+              <input id="share-board" class="switch" type="checkbox">
+              <span>share on friends board</span>
+            </label>
+            <p id="friends-board-off" class="friends-board-off">You aren’t sharing, so friends’ rows are hidden too. Share to see theirs and show them yours.</p>
+          </div>
+          <p id="friends-board-status" class="online-copy" role="status"></p>
+          <div id="friends-board-lists" class="friends-board-lists" hidden>
+            <section class="board-column" aria-labelledby="board-daily-heading">
+              <h3 id="board-daily-heading">Today’s daily</h3>
+              <p id="board-daily-meta" class="condition-copy"></p>
+              <ol id="board-daily" class="board-list" role="list"></ol>
+            </section>
+            <section class="board-column" aria-labelledby="board-week-heading">
+              <h3 id="board-week-heading">This week’s practice</h3>
+              <p id="board-week-meta" class="condition-copy"></p>
+              <ol id="board-week" class="board-list" role="list"></ol>
+            </section>
+          </div>
+          <div id="friends-board-empty" class="friends-board-empty" hidden>
+            <p>Nobody else here yet. A friend appears once you’re on each other’s friend lists: save them when you invite them to a race, or add them after one.</p>
+            <button id="friends-board-online" class="btn btn-secondary btn-sm" type="button">Go to online races</button>
+          </div>
+          <p class="friends-board-copy">Each person’s browser reports their own numbers, so they aren’t verified. Interrupted runs don’t count. Only today’s daily and this week’s practice are kept, and each new day or week replaces the last. Turning sharing off, or deleting your account, removes your row.</p>
         </section>
 
         <div id="local-challenge" hidden>
