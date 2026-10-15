@@ -6,6 +6,7 @@ import { normalizeKeybindings } from './keybindings.js';
 import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { CODE_LANGUAGES, DEFAULT_CODE_LANGUAGE } from './code-snippets.js';
+import { DEFAULT_WORD_HIGHLIGHT, normalizeWordHighlight } from './word-highlight.js';
 import { DAILY_GOALS, retainTraces, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
 import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
@@ -29,6 +30,8 @@ export const defaultPreferences = {
   layout: DEFAULT_LAYOUT,
   fingerMap: false,
   fontSize: '28',
+  // Display only, like the text size: never a test condition.
+  wordHighlight: DEFAULT_WORD_HIGHLIGHT,
   liveMetrics: false,
   keyboard: false,
   stopOnError: false,
@@ -82,6 +85,7 @@ export function validPreferences(value) {
   if (!MIN_WPM_OPTIONS.includes(value.minWpm)) value.minWpm = 0;
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
   if (!CODE_LANGUAGES.includes(value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
+  value.wordHighlight = normalizeWordHighlight(value.wordHighlight);
   value.repeatQuotes = value.repeatQuotes === true;
   value.layout = normalizeLayout(value.layout);
   value.fingerMap = value.fingerMap === true;

@@ -48,6 +48,7 @@ import { wordListIds } from './words.js';
 import { DEFAULT_CODE_LANGUAGE, codePassage } from './code-snippets.js';
 import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength } from './lengths.js';
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
+import { normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
@@ -64,6 +65,7 @@ import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practice
 import { renderTrend } from './progress-view.js';
 import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
+import { readMonkeytypeSettings } from './monkeytype.js';
 import { createCompose } from './compose-view.js';
 import {
   FINGER_ZONES, LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
@@ -92,6 +94,7 @@ let syncTimer = 0;
 // otherwise a boot-time save (marking the first passage seen) would make a stale cache look newer.
 let cloudChecked = false;
 let unsynced = false;
+
 // Counts saves, so a push can tell whether anything changed while it was waiting on the network.
 let localEdits = 0;
 // The account row's updated_at as last merged here: the version a conditional write expects to replace.
@@ -299,7 +302,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'keybindings', 'dailyGoal'];
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'keybindings', 'dailyGoal'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -628,11 +631,13 @@ function updateGlides(options) {
 
 function applyPreferences() {
   document.body.dataset.fontSize = prefs.fontSize;
+  document.body.dataset.wordHighlight = prefs.wordHighlight;
   primaryFx.relayout();
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
   document.body.dataset.keyboard = String(prefs.keyboard);
   document.body.dataset.focusMode = String(prefs.focusMode);
   $('font-size').value = prefs.fontSize;
+  $('word-highlight').value = prefs.wordHighlight;
   $('live-toggle').checked = prefs.liveMetrics;
   $('keyboard-toggle').checked = prefs.keyboard;
   syncRules();
@@ -921,6 +926,27 @@ function setCustomLengthFromPalette(mode) {
   openCustomLength(mode);
 }
 
+// Word groups per rendered passage, so the word highlight can follow the caret. Every view marks
+// its current and next word; body[data-word-highlight] picks which one (if any) is tinted, so the
+// setting applies at once to every passage on screen. Presentational: scoring never reads it.
+const passageWords = new WeakMap();
+
+function markWords(characters, position) {
+  const words = passageWords.get(characters);
+  if (!words) return;
+  const { current, next } = wordsAt(words.indexes, words.elements.length, position);
+  if (current !== words.current) {
+    words.elements[words.current]?.classList.remove('word-current');
+    words.elements[current]?.classList.add('word-current');
+    words.current = current;
+  }
+  if (next !== words.next) {
+    words.elements[words.next]?.classList.remove('word-next');
+    words.elements[next]?.classList.add('word-next');
+    words.next = next;
+  }
+}
+
 function renderText(display, text) {
   const words = text.split(' ');
   const characters = [];
@@ -970,6 +996,8 @@ function renderText(display, text) {
   display.replaceChildren();
   appendWords(100);
   characters[0]?.classList.add('current');
+  passageWords.set(characters, { indexes: wordIndexes(text), elements: groups.map(([group]) => group), current: -1, next: -1 });
+  markWords(characters, 0);
   return {
     characters,
     ensureAhead(position) {
@@ -1027,6 +1055,7 @@ function updateCharacterStates(characters, typed, target, start = 0) {
     // Only touch changed characters so settled letters keep their finished animation.
     if (characters[index].className !== state) characters[index].className = state;
   }
+  markWords(characters, typed.length);
 }
 
 // Repeats are for open practice only: a retest always needs text the profile hasn't seen. Code snippets
@@ -1721,10 +1750,12 @@ const NOTICES = {
   leftSurface: 'You left mid-run, so it won’t count.',
   paletteOpened: 'Commands opened mid-run, so it won’t count.',
   suggestOpened: 'Suggestions opened mid-run, so it won’t count.',
+  importOpened: 'Settings import opened mid-run, so it won’t count.',
   composeFocusLost: 'Focus lost, so this one won’t be saved. Esc to start over.',
   composeLeft: 'You left mid-way, so this one wasn’t saved.',
   composePalette: 'Commands opened mid-way, so this one won’t be saved.',
   composeSuggest: 'Suggestions opened mid-way, so this one won’t be saved.',
+  composeImport: 'Settings import opened mid-way, so this one won’t be saved.',
   deleteOpened: 'Account deletion opened mid-run, so it won’t count.',
   raceFocusLost: 'Focus lost. Esc to restart this turn.',
 };
@@ -4558,6 +4589,97 @@ async function completeAuthRedirect() {
   }
 }
 
+// Import from Monkeytype: its exported settings JSON, pasted or from a file, mapped by src/monkeytype.js.
+// Each setting brought over is applied as a pick of it here (saveChoice), so it syncs to the account and
+// outranks an older value from another device, as choosing it in settings would.
+function openImport() {
+  document.querySelector('.preferences')?.removeAttribute('open');
+  markInterrupted(NOTICES.importOpened);
+  compose.interrupt(NOTICES.composeImport);
+  markRaceInterrupted();
+  $('import-form').hidden = false;
+  $('import-report').hidden = true;
+  $('import-error').textContent = '';
+  $('import-file').value = '';
+  updateImportButton();
+  $('import-dialog').showModal();
+  $('import-text').focus();
+}
+
+function updateImportButton() {
+  $('confirm-import').disabled = !$('import-text').value.trim();
+}
+
+async function readImportFile() {
+  const file = $('import-file').files?.[0];
+  if (!file) return;
+  try {
+    $('import-text').value = await file.text();
+    $('import-error').textContent = '';
+  } catch {
+    $('import-error').textContent = 'That file couldn’t be read. Try pasting its text instead.';
+  }
+  updateImportButton();
+  $('import-text').focus();
+}
+
+function importRow({ setting, value, from, reason }) {
+  const row = document.createElement('li');
+  const name = document.createElement('span');
+  name.className = 'import-setting';
+  name.textContent = setting;
+  row.append(name);
+  if (value !== undefined) {
+    const shown = document.createElement('span');
+    shown.className = 'import-value';
+    shown.textContent = value;
+    row.append(shown);
+  }
+  if (reason) {
+    const why = document.createElement('span');
+    why.className = 'import-reason';
+    why.textContent = reason;
+    row.append(why);
+  }
+  const source = document.createElement('small');
+  source.className = 'import-from';
+  source.textContent = `monkeytype ${from}`;
+  row.append(source);
+  return row;
+}
+
+function importSettings(event) {
+  event.preventDefault();
+  const result = readMonkeytypeSettings($('import-text').value);
+  if (result.error) {
+    $('import-error').textContent = result.error;
+    $('import-text').focus();
+    return;
+  }
+  const keys = Object.keys(result.preferences);
+  const conditions = keys.some((key) => !DISPLAY_PREFERENCES.includes(key) && !['paceCaret', 'paceWpm'].includes(key));
+  prefs = validPreferences({ ...prefs, ...result.preferences });
+  if (keys.includes('mode')) customOpen = false;
+  applyPreferences();
+  setModeControls();
+  // The correction rule and the older stop-on-error flag are one choice, saved together as setCorrection does.
+  saveChoice(...keys, ...(keys.includes('correction') ? ['stopOnError'] : []));
+  if (conditions && !runInProgress()) resetSession(keys.includes('mode') ? 'practice' : restartKind(), { leaveCompose: keys.includes('mode') });
+
+  const count = result.mapped.length;
+  setText($('import-summary'), `${count} ${count === 1 ? 'setting' : 'settings'} brought over. ${session
+    ? 'They’re saved to your account and sync to your other devices.'
+    : 'Guest mode keeps them for this visit only; sign in to keep them.'}`);
+  $('import-mapped').replaceChildren(...result.mapped.map(importRow));
+  $('import-skipped').replaceChildren(...result.skipped.map(importRow));
+  $('import-skipped-group').hidden = !result.skipped.length;
+  $('import-text').value = '';
+  $('import-form').hidden = true;
+  $('import-report').hidden = false;
+  $('import-report-title').focus();
+  announce(`${count} Monkeytype ${count === 1 ? 'setting' : 'settings'} imported.`);
+}
+
 // Feature suggestions go straight to Supabase (account.sendSuggestion), never linked to an account.
 let suggestToastTimer;
 
@@ -4690,6 +4812,7 @@ function bindEvents() {
   $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()));
   $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
+  $('word-highlight').addEventListener('change', (event) => setWordHighlight(event.target.value));
   keybindingEditor = createKeybindingEditor({
     form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => prefs.keybindings,
     onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
@@ -4863,6 +4986,15 @@ function bindEvents() {
   $('suggest-form').addEventListener('submit', sendSuggestion);
   $('cancel-suggest').addEventListener('click', () => $('suggest-dialog').close());
   $('suggest-dialog').addEventListener('click', (event) => { if (event.target === $('suggest-dialog')) $('suggest-dialog').close(); });
+
+  $('import-trigger').addEventListener('click', openImport);
+  $('import-text').addEventListener('input', () => { $('import-error').textContent = ''; updateImportButton(); });
+  $('import-choose').addEventListener('click', () => $('import-file').click());
+  $('import-file').addEventListener('change', readImportFile);
+  $('import-form').addEventListener('submit', importSettings);
+  $('cancel-import').addEventListener('click', () => $('import-dialog').close());
+  $('import-done').addEventListener('click', () => $('import-dialog').close());
+  $('import-dialog').addEventListener('click', (event) => { if (event.target === $('import-dialog')) $('import-dialog').close(); });
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
@@ -5135,6 +5267,13 @@ function setMinimum(key, value) {
   } else if (attempt.status === 'running') resetSession('practice');
 }
 
+// A display preference like text size: it never restarts the run or enters the test conditions.
+function setWordHighlight(mode) {
+  prefs.wordHighlight = normalizeWordHighlight(mode);
+  applyPreferences();
+  saveChoice('wordHighlight');
+}
+
 function setWordList(id, kind = restartKind()) {
   if (!wordListIds.includes(id)) return;
   prefs.wordList = id;
@@ -5231,6 +5370,8 @@ function paletteCommands(query) {
     ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? `${value} wpm` : 'off'}`, keywords: 'min wpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
+    // Named "this word" / "next word" so no mode reads like the palette's "current" hint.
+    ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(prefs.keyboard && prefs.fingerMap), on: prefs.keyboard && prefs.fingerMap, run: toggleFingerMap },
@@ -5245,6 +5386,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'sign in…', keywords: 'log in login account', run: () => openAccountDialog('signin') },
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
+    { group: 'display', label: 'import Monkeytype settings…', keywords: 'monkeytype import settings config json migrate', run: openImport },
     { group: 'help', label: 'keybindings…', keywords: 'settings shortcuts restart keyboard', run: () => { const settings = document.querySelector('.preferences'); settings.open = true; document.querySelector('.keybindings-category').open = true; $('keybinding-restart').focus(); } },
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: !hasAnyHistory(), run: () => { navigate('progress'); $('clear-history').click(); } },

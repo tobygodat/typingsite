@@ -25,6 +25,7 @@ colors:
   heat-3: "rgba(255, 138, 107, 0.56)"
   warning: "#e0b565"
   selection: "#34322e"
+  word-highlight: "rgba(236, 232, 225, 0.05)"
   ghost: "#b9c3ff"
   card-top: "#1f1e1c"
   card-bottom: "#121211"
@@ -51,6 +52,7 @@ colors:
   heat-3-light: "rgba(180, 67, 44, 0.44)"
   warning-light: "#8a5a00"
   selection-light: "#e3dccf"
+  word-highlight-light: "rgba(27, 26, 25, 0.05)"
   ghost-light: "#434db5"
   card-top-light: "#fffdf9"
   card-bottom-light: "#efeae1"
@@ -239,6 +241,7 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 - **Bone** (text): primary text and correctly typed letters.
 - **Pumice** (muted): untyped passage letters, secondary copy, labels and inactive navigation.
 - **Placeholder**: input placeholder text, a translucent muted (80% in dark, 92% in light) so it stays quieter than typed text.
+- **Word Wash** (word-highlight): the optional current/next-word tint, the text colour at 5% (`color-mix(in oklab, var(--text) 5%, transparent)`).
 - **Hairline / Strong Hairline**: rules between sections and rows (hairline), and the borders of raised surfaces, keys and secondary buttons (hairline-strong).
 - **Field Outline** (outline): input borders.
 - **Card Stock** (card-top to card-bottom): the run card's 165-degree gradient, a subtle paper-stock sheen that sits only on that card.
@@ -349,7 +352,7 @@ The optional on-screen keyboard shows the thirty main keys with a real row stagg
 Below 360px, the run-card WPM uses `--text-numeral-narrow` (80px); the existing mobile size is now `--text-numeral-mobile` (112px).
 
 ### Typing zone (signature)
-Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint (no underline). The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost pacer is a 2px periwinkle bar at 70% opacity; in a ghost race the same bar, at full opacity because it is the opponent, replays a friend's recorded keystrokes, stepping from key to key with no transition.
+Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint (no underline). The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost pacer is a 2px periwinkle bar at 70% opacity; in a ghost race the same bar, at full opacity because it is the opponent, replays a friend's recorded keystrokes, stepping from key to key with no transition. The word highlight setting (off by default) tints the current or the next word with `--word-highlight`, the text colour at 5%: neutral, so it never reads as green or coral, and faint enough that muted letters keep 4.5:1. It moves with the caret from word to word at once, with no transition of its own, and is not the retired underline that swept through the glyphs; the tint sits on the word's letters and skips a miss, so a miss keeps exactly its own coral tint. It shows on every passage typed against a text (practice, drills, retests, daily, standard, lessons, custom text, ghost, one-keyboard and online races); watch replay and composing practice have no current word and never show it.
 
 ### Composing practice
 "compose" joins the mode segments. The passage block becomes a prompt at title size with a mono conditions line, the green countdown on the right and a ghost "Another prompt" that steps back while writing. The writing field is open, like the passage: no fill and no border, Literata at the passage size, three lines tall and scrolling inside with no scrollbar, with the field’s own accent caret held solid (`caret-animation: manual`) and a muted italic placeholder. Where `caret-animation` isn’t supported, the native caret turns transparent (it still edits, selects and composes) and `src/compose-caret.js` draws a solid 2px accent bar, as tall as the letters, at the collapsed selection, measured from a hidden mirror of the field and kept whole inside it; where a line wraps it stands on the line the last key or click left it on, as the browser’s own caret does. It jumps with each key, click, scroll or re-wrap, never glides, fades or blinks, and shows only while the field is focused, nothing is selected and the session isn’t finished. The time line sits under it, then a one-line privacy note, the green Done and the start-over icon after it, so Tab from the field reaches Done first. The result follows on the same page: a lead-size heading, four facts in the live-stat style (48px light Literata, mono units and labels), an italic metric definition, the saved note and one green "Write another". The finished writing and the clock turn muted, and the field leaves the tab order. Nothing in it animates. It has no spring caret: a free-typing field has no letter positions for one to glide between.
