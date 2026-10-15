@@ -75,11 +75,11 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   // The recipe always has numbers; the numbers switch shows that and stays locked.
   await expect(page.locator('#numbers-toggle')).toBeDisabled();
   await expect(page.locator('#numbers-toggle')).toBeChecked();
-  await expect(page.locator('#stop-on-error-toggle')).toBeDisabled();
-  await expect(page.locator('#stop-on-error-toggle')).toBeChecked();
+  await expect(page.locator('#correction-select')).toBeDisabled();
+  await expect(page.locator('#correction-select')).toHaveValue('mandatory');
   await expect(page.getByRole('combobox', { name: 'word list fixed for standard' })).toBeDisabled();
   await expect(page.getByRole('checkbox', { name: 'numbers fixed for standard' })).toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'stop on error fixed for standard' })).toBeChecked();
+  await expect(page.getByRole('combobox', { name: 'correction fixed for standard' })).toHaveValue('mandatory');
   await page.keyboard.press('Escape');
 
   // Correction is required: a miss blocks the next letter.
@@ -102,8 +102,8 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   await expect(page.locator('#word-list')).toHaveValue('200');
   await expect(page.locator('#numbers-toggle')).toBeEnabled();
   await expect(page.locator('#numbers-toggle')).not.toBeChecked();
-  await expect(page.locator('#stop-on-error-toggle')).toBeEnabled();
-  await expect(page.locator('#stop-on-error-toggle')).not.toBeChecked();
+  await expect(page.locator('#correction-select')).toBeEnabled();
+  await expect(page.locator('#correction-select')).toHaveValue('relaxed');
   await expect(page.locator('.preference-lock').first()).toBeHidden();
   // The recipe's word-list value leaves with it, so type-ahead can't pick it in another mode.
   await expect(page.locator('#word-list option[value="standard"]')).toHaveCount(0);
@@ -136,7 +136,7 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await page.locator('#duration-options [data-length="60"]').click();
   await page.locator('#punctuation-toggle').check();
   await openSettings(page);
-  await page.locator('#stop-on-error-toggle').check();
+  await page.locator('#correction-select').selectOption('mandatory');
   await expect(page.locator('#best')).toHaveText('No best yet');
 
   await openView(page, 'Progress');
@@ -430,8 +430,8 @@ test('a custom passage over standard keeps its own condition and never reaches t
   await expect(page.locator('#standard-options')).toBeHidden();
   await expect(page.locator('#best')).toHaveText('Not counted');
   await openSettings(page);
-  await expect(page.locator('#stop-on-error-toggle')).toBeEnabled();
-  await expect(page.locator('#stop-on-error-toggle')).not.toBeChecked();
+  await expect(page.locator('#correction-select')).toBeEnabled();
+  await expect(page.locator('#correction-select')).toHaveValue('relaxed');
   await expect(page.locator('.preference-lock').first()).toBeHidden();
   await page.keyboard.press('Escape');
 
@@ -453,8 +453,8 @@ test('a custom passage over standard keeps its own condition and never reaches t
   await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
   await expect(page.locator('#best')).toHaveText('No best yet');
   await openSettings(page);
-  await expect(page.locator('#stop-on-error-toggle')).toBeDisabled();
-  await expect(page.locator('#stop-on-error-toggle')).toBeChecked();
+  await expect(page.locator('#correction-select')).toBeDisabled();
+  await expect(page.locator('#correction-select')).toHaveValue('mandatory');
 });
 
 test('the daily challenge keeps its own conditions while standard is selected', async ({ page }) => {

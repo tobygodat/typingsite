@@ -1,5 +1,6 @@
 import { DEFAULT_WORD_LIST, wordList } from './words.js';
 import { additionalQuotes, drillWords } from './corpus.js';
+import { isDefaultLayout } from './layouts.js';
 
 export const METRIC_VERSION = 'stilltype-metrics-v1';
 export const EVENT_VERSION = 'stilltype-events-v1';
@@ -53,8 +54,8 @@ function punctuate(words) {
 
 // Roughly 1 word in 8 becomes a 1–4 digit number, drawn from the same random source so a
 // seeded passage stays reproducible. A passage that drew none still gets one, so short
-// tests with numbers on always contain a number.
-function numberize(words, random) {
+// tests with numbers on always contain a number (words added to a passage skip that rule).
+function numberize(words, random, atLeastOne = true) {
   const number = () => {
     const digits = 1 + Math.floor(random() * 4);
     const low = digits === 1 ? 0 : 10 ** (digits - 1);
@@ -66,17 +67,37 @@ function numberize(words, random) {
     drawn = true;
     return number();
   });
-  if (!drawn && result.length) result[Math.floor(random() * result.length)] = number();
+  if (atLeastOne && !drawn && result.length) result[Math.floor(random() * result.length)] = number();
   return result;
 }
 
-export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST, numbers = false) {
+// A timed passage holds enough text for a 300 WPM typist until the clock runs out: 300 five-character
+// words a minute, or 25 characters a second.
+export function timedCharacterSupply(seconds = 0) {
+  return Math.ceil(((Number(seconds) || 0) * 300 * 5) / 60);
+}
+
+export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST, numbers = false, seconds = 0) {
   if (mode === 'quote') return quoteCorpus[Math.floor(random() * quoteCorpus.length)].text;
   const bank = wordList(list);
-  // 1,600 words keeps even a 300 WPM typist supplied for the longest 120 s mode.
-  let words = Array.from({ length: mode === 'time' ? 1600 : count }, () => bank[Math.floor(random() * bank.length)]);
+  const draw = () => bank[Math.floor(random() * bank.length)];
+  const finish = (all) => (punctuation ? punctuate(all) : all).join(' ');
+  // Every timed test starts from 1,600 words: at least 3,199 characters, more than 120 s at 300 WPM needs,
+  // so a preset passage is never topped up and stays exactly what it was.
+  let words = Array.from({ length: mode === 'time' ? 1600 : count }, draw);
   if (numbers) words = numberize(words, random);
-  return (punctuation ? punctuate(words) : words).join(' ');
+  let text = finish(words);
+  // Numbers are often shorter than the words they replace, so the supply is measured on the finished text
+  // and a longer time is topped up until it holds enough. Each round adds about the words the shortfall
+  // needs at the passage's own average length, and draws them after all the others, so a seed still gives
+  // one passage.
+  const supply = mode === 'time' ? timedCharacterSupply(seconds) : 0;
+  while (text.length < supply) {
+    const extra = Array.from({ length: Math.ceil(((supply - text.length) * words.length) / text.length) }, draw);
+    words = words.concat(numbers ? numberize(extra, random, false) : extra);
+    text = finish(words);
+  }
+  return text;
 }
 
 // The standard test: one fixed, versioned recipe, so its scores stay comparable over time. Every
@@ -195,7 +216,7 @@ export function textId(text) {
   return `generated-${(hash >>> 0).toString(36)}`;
 }
 
-export function selectPassage({ mode = 'time', count = 25, punctuation = false, numbers = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
+export function selectPassage({ mode = 'time', count = 25, duration = 0, punctuation = false, numbers = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
   const seen = new Set(seenIds);
   if (mode === 'standard') {
     // A fresh seed per attempt; the word-list, punctuation and quote filters never apply.
@@ -224,11 +245,11 @@ export function selectPassage({ mode = 'time', count = 25, punctuation = false, 
   }
 
   for (let i = 0; i < 12; i += 1) {
-    const text = makePassage(mode, count, punctuation, random, list, numbers);
+    const text = makePassage(mode, count, punctuation, random, list, numbers, duration);
     const id = textId(text);
     if (!seen.has(id)) return { id, textVersion: `${id}@1`, text, corpus: CORPUS_VERSION, difficulty: 'generated', fresh: true, exhausted: false };
   }
-  const text = makePassage(mode, count, punctuation, random, list, numbers);
+  const text = makePassage(mode, count, punctuation, random, list, numbers, duration);
   const id = textId(text);
   return { id, textVersion: `${id}@1`, text, corpus: CORPUS_VERSION, difficulty: 'generated', fresh: !seen.has(id), exhausted: seen.has(id) };
 }
@@ -252,9 +273,79 @@ export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', c
   };
 }
 
+// Correction policies. 'relaxed' (free) and 'mandatory' (stop on error) predate
+// the others; each value is its own comparison key so bests never mix.
+export const CORRECTION_POLICIES = ['relaxed', 'mandatory', 'no-backspace', 'fail-word', 'fail-any'];
+
+// Older profiles stored a boolean stopOnError; map it to free/stop.
+export function correctionPreference(preferences = {}) {
+  if (CORRECTION_POLICIES.includes(preferences.correction)) return preferences.correction;
+  return preferences.stopOnError ? 'mandatory' : 'relaxed';
+}
+
+export const blocksOnError = (policy) => (policy || 'mandatory') === 'mandatory';
+export const allowsBackspace = (policy) => policy !== 'no-backspace';
+
+// Why inserting `char` at the end of `typed` fails the run, or null. A space or the
+// passage's last letter closes a word; the whole prefix is checked so a letter typed
+// in place of a space can't slip through.
+export function failureFor(policy, text, typed, char) {
+  if (policy === 'fail-any' && char !== text[typed.length]) return 'wrong key';
+  if (policy === 'fail-word' && (char === ' ' || typed.length === text.length - 1)) return failureAtEnd(policy, text, typed + char);
+  return null;
+}
+
+// Why a run that stops at `typed` fails, or null. The end of a run (the timer, the
+// passage end) is a word boundary, so an unfinished word with a wrong letter fails.
+export function failureAtEnd(policy, text, typed) {
+  if (typed === text.slice(0, typed.length)) return null;
+  if (policy === 'fail-any') return 'wrong key';
+  if (policy === 'fail-word') return 'word error';
+  return null;
+}
+
+// Quick end decides how a word or quote run ends when its last word has a mistake. It only
+// matters where a mistake can stand: stop on error already needs every letter right, and a timed
+// run ends on the clock.
+export function quickEndApplies(conditions = {}) {
+  return conditions.mode !== 'time' && conditions.correctionPolicy === 'relaxed';
+}
+
+function lastWordCorrect(text, typed) {
+  const start = text.lastIndexOf(' ') + 1;
+  return typed.slice(start, text.length) === text.slice(start);
+}
+
+// Quick end (the default, and the only rule before the setting existed) finishes on the last
+// letter, right or wrong. With it off, a mistake in the last word holds the run for a fix or a
+// space (see awaitingSubmit).
+
+// Quick end off, the whole passage typed and a mistake in the last word: space submits it as it stands.
+export function awaitingSubmit(attempt, typed) {
+  return typed.length >= attempt.text.length && quickEndApplies(attempt.conditions) && !passageComplete(attempt, typed);
+}
+
+// Strict space: a space is taken only where the passage has one. Anywhere else it is recorded
+// as a wrong key at that position (an insert with accepted: false, which replay has always
+// scored without moving the caret), so the rest of the word stays in place.
+export function refusesSpace(conditions = {}, text, position, char) {
+  return conditions.strictSpace === true && char === ' ' && position < text.length && text[position] !== ' ';
+}
+
+// Input rules away from the defaults, in the order conditionKey appends them. Defaults add
+// nothing, so runs saved before these settings existed keep their keys.
+export function inputRules(conditions = {}) {
+  const rules = [];
+  if (conditions.strictSpace === true) rules.push('strict-space');
+  if (conditions.quickEnd === false && quickEndApplies(conditions)) rules.push('quick-end-off');
+  return rules;
+}
+
 export function passageComplete(attempt, typed) {
-  return typed.length >= attempt.text.length
-    && (attempt.conditions.correctionPolicy === 'relaxed' || typed === attempt.text);
+  if (typed.length < attempt.text.length) return false;
+  if (typed === attempt.text) return true;
+  if (blocksOnError(attempt.conditions.correctionPolicy)) return false;
+  return attempt.conditions.quickEnd !== false || !quickEndApplies(attempt.conditions) || lastWordCorrect(attempt.text, typed);
 }
 
 export function printable(text) {
@@ -640,7 +731,6 @@ export const TEST_COUNTS = [10, 25, 50, 100];
 export const QUOTE_LENGTHS = ['any', 'short', 'medium', 'long'];
 export const QUOTE_DIFFICULTIES = ['any', 'gentle', 'steady', 'precise'];
 export const INPUT_CLASSES = ['physical-keyboard', 'touch'];
-export const CORRECTION_POLICIES = ['mandatory', 'relaxed'];
 
 // The standard recipe version is appended only when present, so every other key stays as it was.
 export function conditionKey(conditions = {}) {
@@ -657,8 +747,10 @@ export function conditionKey(conditions = {}) {
     conditions.correctionPolicy || 'mandatory',
     conditions.corpus || CORPUS_VERSION,
     conditions.metricVersion || METRIC_VERSION,
+    ...inputRules(conditions),
   ].join(':');
-  return conditions.recipe ? `${key}:${conditions.recipe}` : key;
+  const recipeKey = conditions.recipe ? `${key}:${conditions.recipe}` : key;
+  return isDefaultLayout(conditions.layout) ? recipeKey : `${recipeKey}:layout-${conditions.layout}`;
 }
 
 export function comparable(before, after) {
