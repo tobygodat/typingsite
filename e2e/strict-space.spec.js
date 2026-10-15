@@ -477,7 +477,7 @@ test('strict space applies to a local challenge turn', async ({ page }) => {
   await expect(page.locator('#race-input')).toHaveValue(text.slice(0, at));
   await expect(page.locator('#race-help')).toHaveText(STRICT_NOTICE);
   await page.keyboard.type(text[at]);
-  await expect(page.locator('#race-help')).toHaveText('Esc restarts.');
+  await expect(page.locator('#race-help')).toHaveText('esc restarts.');
 });
 
 test('a refused space in an interrupted challenge turn keeps its won’t count notice', async ({ page }) => {
