@@ -6,6 +6,7 @@ const EXPORT = {
   theme: 'serika', autoSwitchTheme: false, customTheme: false, punctuation: true, numbers: false, words: 50, time: 45,
   mode: 'words', quoteLength: [1], language: 'english_1k', fontSize: 3, stopOnError: 'off', paceCaret: 'pb',
   paceCaretCustomSpeed: 100, liveSpeedStyle: 'text', liveAccStyle: 'off', keymapMode: 'off', caretStyle: 'line',
+  difficulty: 'expert', confidenceMode: 'off', minAcc: 'custom', minAccCustom: 96, layout: 'dvorak',
 };
 
 async function openImport(page) {
@@ -29,9 +30,11 @@ test('a pasted Monkeytype export sets the matching settings and reports what it 
   await expect(page.locator('#import-summary')).toContainText('Guest mode keeps them for this visit only');
   await expect(page.locator('#import-mapped li', { hasText: 'word list' })).toContainText('top 1k');
   await expect(page.locator('#import-mapped li', { hasText: 'word list' })).toContainText('language: english_1k');
+  await expect(page.locator('#import-mapped li', { hasText: 'time length' })).toContainText('45 s (custom)');
+  await expect(page.locator('#import-mapped li', { hasText: 'minimum accuracy' })).toContainText('95% (rounded down from 96%)');
   await expect(page.locator('#import-skipped li')).toHaveCount(1);
-  await expect(page.locator('#import-skipped li')).toContainText('time length');
-  await expect(page.locator('#import-skipped li')).toContainText('15, 30, 60, 120');
+  await expect(page.locator('#import-skipped li')).toContainText('keyboard layout');
+  await expect(page.locator('#import-skipped li')).toContainText('doesn’t remap keys');
   await expect(page.locator('#import-dialog')).not.toContainText('caretStyle');
   await page.locator('#import-done').click();
   await expect(page.locator('#import-dialog')).toBeHidden();
@@ -45,6 +48,9 @@ test('a pasted Monkeytype export sets the matching settings and reports what it 
   await openSettings(page);
   await expect(page.locator('#pace-select')).toHaveValue('best');
   await expect(page.locator('#punctuation-toggle')).toBeChecked();
+  await expect(page.locator('#correction-select')).toHaveValue('fail-word');
+  await expect(page.locator('#min-accuracy')).toHaveValue('95');
+  await expect(page.locator('#layout-select')).toHaveValue('qwerty');
 });
 
 test('signed in, imported settings from a chosen file sync to the account', async ({ page, supabase }) => {
@@ -58,7 +64,7 @@ test('signed in, imported settings from a chosen file sync to the account', asyn
   await expect(page.locator('#import-dialog')).toBeVisible();
   const chooser = page.waitForEvent('filechooser');
   await page.locator('#import-choose').click();
-  await (await chooser).setFiles({ name: 'monkeytype.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ ...EXPORT, time: 60, mode: 'time' })) });
+  await (await chooser).setFiles({ name: 'monkeytype.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ ...EXPORT, time: 60, mode: 'time', layout: 'default' })) });
   await expect(page.locator('#import-text')).toHaveValue(/"language":"english_1k"/);
   await page.locator('#confirm-import').click();
   await expect(page.locator('#import-summary')).toContainText('saved to your account');
@@ -67,6 +73,9 @@ test('signed in, imported settings from a chosen file sync to the account', asyn
 
   await expect.poll(() => supabase.profileFor(email)?.preferences.wordList).toBe('1k');
   const { preferences, preferencesAt } = supabase.profileFor(email);
-  expect(preferences).toMatchObject({ mode: 'time', duration: 60, count: 50, punctuation: true, theme: 'light', fontSize: '36', paceCaret: 'best', liveMetrics: true });
-  expect(Object.keys(preferencesAt)).toEqual(expect.arrayContaining(['mode', 'duration', 'wordList', 'theme', 'paceCaret']));
+  expect(preferences).toMatchObject({
+    mode: 'time', duration: 60, count: 50, punctuation: true, theme: 'light', fontSize: '36', paceCaret: 'best', liveMetrics: true,
+    correction: 'fail-word', minAccuracy: 95,
+  });
+  expect(Object.keys(preferencesAt)).toEqual(expect.arrayContaining(['mode', 'duration', 'wordList', 'theme', 'paceCaret', 'correction', 'minAccuracy']));
 });

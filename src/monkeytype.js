@@ -2,8 +2,8 @@
 // and maps what has a Stilltype counterpart onto Stilltype's settings. Keys Monkeytype has and Stilltype
 // doesn't are left alone, unnamed; a counterpart whose value can't be carried over is reported as skipped.
 // Pure: app.js applies the result as a pick of each setting it holds (saveChoice), so it syncs like one.
-import { TEST_COUNTS, TEST_DURATIONS } from './typing.js';
-import { clampPace } from './profile.js';
+import { LENGTHS, isPresetLength, isValidLength } from './lengths.js';
+import { MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, clampPace } from './profile.js';
 
 export const MAX_IMPORT_LENGTH = 1_000_000;
 
@@ -16,6 +16,19 @@ const PACE = { off: 'off', pb: 'best', tagPb: 'best', average: 'average', last: 
 const PACE_LABELS = { off: 'off', best: 'personal best', average: 'average', last: 'last run', custom: 'custom' };
 const QUOTE_LENGTHS = { 0: 'short', 1: 'medium', 2: 'long', 3: 'long' };
 const FONT_SIZES = [['22', 'small'], ['28', 'medium'], ['36', 'large']];
+const CORRECTION_LABELS = { relaxed: 'free', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
+// Monkeytype's three correction settings, strongest first: Stilltype takes one correction rule, so the first
+// that asks for one wins. Failing the run decides its outcome, holding the caret decides how it is typed,
+// and a missing backspace matters least once either of those applies. 'off' and 'normal' ask for none.
+const CORRECTION_SOURCES = [
+  ['difficulty', { normal: null, expert: 'fail-word', master: 'fail-any' }],
+  // Monkeytype's word setting lets wrong letters stand until space; Stilltype's stop on error refuses each one.
+  ['stopOnError', { off: null, word: 'mandatory', letter: 'mandatory' }],
+  // Confidence mode on still allows backspace within a word; Stilltype's no backspace has no such exception.
+  ['confidenceMode', { off: null, on: undefined, max: 'no-backspace' }],
+];
+// Monkeytype's names for the layouts Stilltype draws.
+const KEYMAP_LAYOUTS = { qwerty: 'qwerty', dvorak: 'dvorak', colemak: 'colemak', colemak_dh: 'colemak-dh', workman: 'workman' };
 
 // Keys every Monkeytype config export carries, used to tell an export from any other JSON.
 const MONKEYTYPE_KEYS = ['mode', 'time', 'words', 'punctuation', 'numbers', 'language', 'theme', 'quoteLength', 'paceCaret', 'stopOnError', 'keymapMode', 'fontSize', 'caretStyle', 'difficulty', 'funbox', 'layout'];
@@ -78,18 +91,15 @@ export function mapMonkeytypeConfig(config) {
     else skip('test mode', from, 'No matching mode.');
   }
 
-  if (has('time')) {
-    const seconds = Number(config.time);
-    const from = `time: ${shown(config.time)}`;
-    if (TEST_DURATIONS.includes(seconds)) map('time length', { duration: seconds }, `${seconds} s`, from);
-    else skip('time length', from, `Stilltype times are ${TEST_DURATIONS.join(', ')} seconds.`);
-  }
-
-  if (has('words')) {
-    const count = Number(config.words);
-    const from = `words: ${shown(config.words)}`;
-    if (TEST_COUNTS.includes(count)) map('word count', { count }, `${count} words`, from);
-    else skip('word count', from, `Stilltype word counts are ${TEST_COUNTS.join(', ')}.`);
+  // A length off the presets imports as a custom one, within the custom length's bounds (src/lengths.js).
+  for (const [mode, setting, unit] of [['time', 'time length', 's'], ['words', 'word count', 'words']]) {
+    if (!has(mode)) continue;
+    const { key, min, max } = LENGTHS[mode];
+    const value = Number(config[mode]);
+    const from = `${mode}: ${shown(config[mode])}`;
+    if (isValidLength(mode, value)) map(setting, { [key]: value }, `${value} ${unit}${isPresetLength(mode, value) ? '' : ' (custom)'}`, from);
+    else if (value === 0) skip(setting, from, `Stilltype tests always end: ${mode === 'time' ? `${min} to ${max} seconds` : `${min} to ${max} words`}.`);
+    else skip(setting, from, mode === 'time' ? `Stilltype times are whole seconds, ${min} to ${max}.` : `Stilltype word counts are whole numbers, ${min} to ${max}.`);
   }
 
   for (const key of ['punctuation', 'numbers']) {
@@ -113,11 +123,63 @@ export function mapMonkeytypeConfig(config) {
     else skip('quote length', from, 'Stilltype picks one quote length, or any.');
   }
 
-  if (has('stopOnError')) {
-    const from = `stopOnError: ${shown(config.stopOnError)}`;
-    if (config.stopOnError === 'off') map('stop on error', { correction: 'relaxed' }, 'off', from);
-    else if (['word', 'letter'].includes(config.stopOnError)) map('stop on error', { correction: 'mandatory' }, 'on', from);
-    else skip('stop on error', from, 'No matching value.');
+  // Correction: the strongest rule asked for (CORRECTION_SOURCES); free when every one present is off.
+  const sources = CORRECTION_SOURCES.filter(([key]) => has(key))
+    .map(([key, policies]) => ({ key, policy: Object.hasOwn(policies, config[key]) ? policies[config[key]] : undefined, from: `${key}: ${shown(config[key])}` }));
+  const chosen = sources.find((source) => source.policy);
+  for (const source of sources) {
+    if (source === chosen || source.policy === null) continue;
+    if (source.key === 'confidenceMode' && config.confidenceMode === 'on') skip('correction', source.from, 'Stilltype’s no backspace blocks backspace everywhere; confidence mode on still allows it within a word.');
+    else if (source.policy === undefined) skip('correction', source.from, 'No matching value.');
+    else skip('correction', source.from, `Stilltype takes one correction rule; ${chosen.from} came first.`);
+  }
+  if (chosen) {
+    const approximate = chosen.key === 'stopOnError' && config.stopOnError === 'word' ? ' (Stilltype stops at the letter, not the word)' : '';
+    map('correction', { correction: chosen.policy }, CORRECTION_LABELS[chosen.policy] + approximate, chosen.from);
+  } else {
+    const off = sources.filter((source) => source.policy === null);
+    if (off.length) map('correction', { correction: 'relaxed' }, CORRECTION_LABELS.relaxed, off.map((source) => source.from).join(', '));
+  }
+
+  for (const [key, setting] of [['strictSpace', 'strict space'], ['quickEnd', 'quick end']]) {
+    if (typeof config[key] === 'boolean') map(setting, { [key]: config[key] }, config[key] ? 'on' : 'off', `${key}: ${config[key]}`);
+  }
+
+  // Stilltype's minimums are a few set values: a custom one rounds down to the nearest, so a run Monkeytype
+  // would have let continue is never stopped here.
+  for (const [mode, custom, preference, setting, options, unit] of [
+    ['minAcc', 'minAccCustom', 'minAccuracy', 'minimum accuracy', MIN_ACCURACY_OPTIONS, '%'],
+    ['minWpm', 'minWpmCustomSpeed', 'minWpm', 'minimum speed', MIN_WPM_OPTIONS, ' wpm'],
+  ]) {
+    if (!has(mode)) continue;
+    if (config[mode] === 'off') {
+      map(setting, { [preference]: 0 }, 'off', `${mode}: off`);
+      continue;
+    }
+    const from = config[mode] === 'custom' ? `${mode}: custom, ${custom}: ${shown(config[custom])}` : `${mode}: ${shown(config[mode])}`;
+    const wanted = config[mode] === 'custom' && has(custom) ? Number(config[custom]) : NaN;
+    const option = options.filter((value) => value && value <= wanted).at(-1);
+    if (!Number.isFinite(wanted) || wanted <= 0) skip(setting, from, 'No matching value.');
+    else if (!option) skip(setting, from, `Stilltype’s lowest minimum is ${options[1]}${unit}.`);
+    else map(setting, { [preference]: option }, option === wanted ? `${option}${unit}` : `${option}${unit} (rounded down from ${wanted}${unit})`, from);
+  }
+
+  if (has('repeatQuotes')) {
+    const from = `repeatQuotes: ${shown(config.repeatQuotes)}`;
+    if (config.repeatQuotes === 'off' || config.repeatQuotes === 'typing') map('repeat quotes', { repeatQuotes: config.repeatQuotes === 'typing' }, config.repeatQuotes === 'typing' ? 'on' : 'off', from);
+    else skip('repeat quotes', from, 'No matching value.');
+  }
+
+  // The layout Monkeytype draws its keymap in becomes the keyboard legend. Monkeytype's own layout setting
+  // remaps the keys typed, which Stilltype never does: it scores what the operating system sends.
+  if (has('keymapLayout') && config.keymapLayout !== 'overrideSync') {
+    const layout = KEYMAP_LAYOUTS[config.keymapLayout];
+    const from = `keymapLayout: ${shown(config.keymapLayout)}`;
+    if (layout) map('keyboard layout', { layout }, layout, from);
+    else skip('keyboard layout', from, 'Stilltype draws qwerty, dvorak, colemak, colemak-dh and workman.');
+  }
+  if (has('layout') && !['default', 'qwerty'].includes(config.layout)) {
+    skip('keyboard layout', `layout: ${shown(config.layout)}`, 'Stilltype doesn’t remap keys. Switch layouts in your operating system instead.');
   }
 
   if (has('paceCaret')) {
