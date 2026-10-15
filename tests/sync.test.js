@@ -5,6 +5,7 @@ import {
   sameProfile, stampAfter, undoClearHere, updateCloudProfile,
 } from '../src/account.js';
 import { MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
+import { MAX_COMPOSITIONS } from '../src/compose.js';
 import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 import { conditionKey } from '../src/typing.js';
 
@@ -1217,17 +1218,20 @@ test('settings neither copy has stamped, saved the same moment, settle on one va
 });
 
 test('one list of history collections drives the caps on save and merge', () => {
-  assert.deepEqual(Object.keys(HISTORY), ['attempts', 'runs', 'loops']);
+  assert.deepEqual(Object.keys(HISTORY), ['attempts', 'runs', 'loops', 'compositions']);
   const big = profile({
     attempts: Array.from({ length: 30 }, (_, n) => item(`a${n}`, n)),
     runs: Array.from({ length: MAX_RUN_SUMMARIES + 5 }, (_, n) => item(`r${n}`, n, { patterns: [] })),
     loops: Array.from({ length: 30 }, (_, n) => item(`l${n}`, n)),
+    compositions: Array.from({ length: MAX_COMPOSITIONS + 3 }, (_, n) => item(`c${n}`, n)),
   });
   capHistory(big);
   assert.equal(big.attempts.length, MAX_STORED_ATTEMPTS);
   assert.equal(big.attempts[0].id, 'a6');
   assert.equal(big.runs.length, MAX_RUN_SUMMARIES);
   assert.equal(big.loops.length, 30);
+  assert.equal(big.compositions.length, MAX_COMPOSITIONS);
+  assert.equal(big.compositions[0].id, 'c3');
 });
 
 test('stamps move forward even when this clock is behind', () => {
@@ -1328,4 +1332,22 @@ test('a run’s missed words survive a merge with a copy that lacks them, from e
   // A clear takes them with the run, and its undo brings the run back with them.
   const cleared = clearProfile(normalizeProfile(withWords));
   assert.deepEqual(mergeSynced(cleared, stale).runs, []);
+});
+
+// Composing practice's numbers (src/compose.js) are id'd, dated records in HISTORY: union by id, never
+// taken whole from the copy saved later.
+test('compositions from a stale copy never drop ones saved elsewhere, a clear takes them, and its undo gives them back', () => {
+  const composed = (id, n) => item(id, n, { version: 'stilltype-compose-v1', promptId: null, inputClass: 'physical-keyboard', endedBy: 'done',
+    characters: 120, words: 24, keystrokes: 140, backspaces: 6, activeMs: 18000, elapsedMs: 20000, wpm: 40, backspaceRate: 4 });
+  const here = profile({ updatedAt: minute(10), mergeStamp: minute(10), compositions: [composed('c1', 1), composed('c2', 5)] });
+  const stale = profile({ updatedAt: minute(20), mergeStamp: minute(20), compositions: [composed('c1', 1)] });
+  for (const merged of [mergeSynced(here, stale), mergeSynced(stale, here)]) assert.deepEqual(ids(merged.compositions), ['c1', 'c2']);
+  assert.ok(sameProfile(mergeSynced(here, stale), mergeSynced(stale, here)));
+  const before = normalizeProfile(here);
+  const cleared = clearProfile(before);
+  assert.deepEqual(cleared.compositions, []);
+  assert.deepEqual(mergeSynced(cleared, stale).compositions, []);
+  assert.deepEqual(mergeSynced(stale, cleared).compositions, []);
+  const { merged } = undoClearHere({}, mergeSynced(cleared, stale), cleared.historyClearedAt, before);
+  assert.deepEqual(ids(merged.compositions), ['c1', 'c2']);
 });

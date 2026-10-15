@@ -158,12 +158,13 @@
     <main id="main-content">
       <section id="typing-screen" class="screen typing-screen" data-screen="practice" data-session="practice" aria-labelledby="session-title">
         <div class="practice-controls" aria-label="Practice setup">
-          <div class="segmented glide" role="group" aria-label="Test mode" data-glide="pressed">
+          <div class="segmented glide mode-options" role="group" aria-label="Practice mode" data-glide="pressed">
             <span class="glide-pill" aria-hidden="true"></span>
             <button id="mode-time" type="button" data-mode="time" aria-pressed="true" class="is-active">time</button>
             <button id="mode-words" type="button" data-mode="words" aria-pressed="false">words</button>
             <button id="mode-quote" type="button" data-mode="quote" aria-pressed="false">quote</button>
             <button id="mode-standard" type="button" data-mode="standard" aria-pressed="false">standard</button>
+            <button id="mode-compose" type="button" data-compose aria-pressed="false">compose</button>
             <button id="mode-custom" type="button" aria-pressed="false" aria-controls="custom-options" aria-expanded="false">custom</button>
           </div>
           <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
@@ -172,7 +173,7 @@
             <button type="button" aria-pressed="false" aria-label="60 seconds">60</button>
             <button type="button" aria-pressed="false" aria-label="120 seconds">120</button>
           </div>
-          <label class="compact-switch" for="punctuation-toggle">
+          <label id="punctuation-switch" class="compact-switch" for="punctuation-toggle">
             <input id="punctuation-toggle" class="switch" type="checkbox">
             <span>punctuation</span>
           </label>
@@ -269,8 +270,69 @@
           </div>
         </form>
 
+        <form id="compose-form" class="compose-form" autocomplete="off" novalidate hidden>
+          <div class="measure-row compose-measure">
+            <div class="compose-intro">
+              <p class="sr-only">Composing practice. Write in response to the prompt; there is no text to copy.</p>
+              <h1 id="compose-prompt" class="compose-prompt"></h1>
+              <p id="compose-conditions" class="condition-copy"></p>
+            </div>
+            <div class="compose-side">
+              <button id="compose-another" class="btn btn-ghost btn-sm compose-another" type="button">Another prompt</button>
+              <div class="live-stat timer-stat">
+                <strong id="compose-timer" class="num">60</strong><span>s</span>
+                <small class="sr-only">remaining</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="compose-wrap">
+            <label class="sr-only" for="compose-input">Your answer to the prompt</label>
+            <textarea id="compose-input" aria-describedby="compose-prompt compose-hint compose-privacy" maxlength="2000" spellcheck="false" autocapitalize="sentences" autocomplete="off" autocorrect="off" placeholder="Start typing. The minute starts with your first key."></textarea>
+            <span id="compose-hint" class="sr-only">Up to 60 seconds from your first key. Press Control+Enter or Done to finish. Escape starts over.</span>
+          </div>
+
+          <div id="compose-progress" class="progress-line" role="progressbar" aria-label="Composing time used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Not started">
+            <span id="compose-progress-bar" class="progress-fill"></span>
+          </div>
+
+          <div id="compose-footer" class="typing-footer compose-footer">
+            <div class="compose-notes">
+              <p id="compose-help" class="compose-help"></p>
+              <p id="compose-privacy" class="compose-privacy"></p>
+            </div>
+            <!-- Done comes first, so Tab then Space from the field finishes rather than wiping the writing. -->
+            <div class="typing-actions">
+              <button id="compose-done" class="btn btn-primary" type="button" aria-keyshortcuts="Control+Enter Meta+Enter" disabled>Done</button>
+              <button id="compose-restart" class="icon-control" type="button" title="Start over (Escape)" aria-label="Start over">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <section id="compose-result" class="compose-result" aria-labelledby="compose-result-heading" hidden>
+            <h2 id="compose-result-heading"></h2>
+            <dl class="compose-facts">
+              <div><dt>free-typing speed</dt><dd><strong id="compose-wpm" class="num">—</strong><span>wpm</span></dd></div>
+              <div><dt>backspace rate</dt><dd><strong id="compose-backspace" class="num">—</strong><span>%</span></dd></div>
+              <div><dt>active typing</dt><dd><strong id="compose-active" class="num">—</strong><span>s</span></dd></div>
+              <div><dt>characters</dt><dd><strong id="compose-characters" class="num">—</strong></dd></div>
+            </dl>
+            <p id="compose-definition" class="metric-note"></p>
+            <div class="compose-result-foot">
+              <p id="compose-saved" class="compose-saved"></p>
+              <div class="compose-result-actions">
+                <button id="compose-retry" class="btn btn-ghost" type="button">Retry this prompt</button>
+                <button id="compose-next" class="btn btn-primary" type="button">Write another</button>
+              </div>
+            </div>
+          </section>
+        </form>
+
         <div class="shortcut-row" aria-hidden="true">
-          <span><kbd>esc</kbd> restart</span>
+          <span class="compose-shortcut"><kbd class="mod-key">ctrl</kbd><kbd>enter</kbd> done</span>
+          <span class="practice-shortcut"><kbd>esc</kbd> restart</span>
+          <span class="compose-shortcut"><kbd>esc</kbd> start over</span>
           <span><kbd class="mod-key">ctrl</kbd><kbd>k</kbd> commands</span>
         </div>
       </section>
@@ -515,6 +577,11 @@
             <div id="history-list" class="history-list" aria-live="polite" hidden></div>
           </section>
         </div>
+        <section id="compose-history" class="progress-section compose-history" aria-labelledby="compose-history-heading" hidden>
+          <h2 id="compose-history-heading">Composing</h2>
+          <p id="compose-history-note" class="result-note"></p>
+          <div id="compose-history-list"></div>
+        </section>
         <template id="history-row-template">
           <details class="history-row">
             <summary class="history-summary">
@@ -782,7 +849,7 @@
     <form method="dialog" class="dialog-content">
       <div>
         <h2 id="clear-dialog-title">Clear your practice history?</h2>
-        <p>Runs, drills, comparisons and lesson progress will be removed.</p>
+        <p>Runs, drills, comparisons, composing numbers and lesson progress will be removed.</p>
       </div>
       <label for="confirm-clear-input">Type <strong>clear</strong> to confirm
         <input id="confirm-clear-input" class="input" type="text" autocomplete="off">

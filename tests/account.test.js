@@ -49,6 +49,25 @@ test('the pre-accounts profile folds into an account without losing either side'
   assert.deepEqual(used.bests, { time30: { wpm: 80 }, words25: { wpm: 65 } });
 });
 
+test('an account whose only history is composing keeps its own settings on import', () => {
+  const profile = (over) => ({ preferences: { theme: 'system' }, attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, compositions: [], ...over });
+  const legacy = profile({ preferences: { theme: 'light' }, compositions: [{ id: 'c1' }] });
+  const composed = mergeProfiles(profile({ compositions: [{ id: 'c2' }] }), legacy);
+  assert.equal(composed.preferences.theme, 'system', 'composing sessions are history of its own');
+  assert.deepEqual(composed.compositions.map((item) => item.id), ['c1', 'c2']);
+
+  // Any one history collection marks the account as in use; a passage only shown is not history.
+  for (const key of ['attempts', 'runs', 'loops', 'compositions']) {
+    assert.equal(mergeProfiles(profile({ [key]: [{ id: 'x' }] }), legacy).preferences.theme, 'system', key);
+  }
+  assert.equal(mergeProfiles(profile({ seenTextIds: ['q1'] }), legacy).preferences.theme, 'light');
+  // A profile saved before composing existed has no compositions list and is still new.
+  const older = profile();
+  delete older.compositions;
+  delete older.runs;
+  assert.equal(mergeProfiles(older, legacy).preferences.theme, 'light');
+});
+
 test('a suggestion stores only trimmed text and a known view', () => {
   assert.deepEqual(suggestionRow('  dvorak layout  ', 'practice'), { row: { body: 'dvorak layout', view: 'practice' } });
   for (const view of ['results', 'progress', 'compete', 'learn']) assert.equal(suggestionRow('idea', view).row.view, view);

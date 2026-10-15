@@ -982,10 +982,11 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 .standard-options,
 .custom-options,
 .shortcut-row,
-.site-footer { transition: opacity var(--dur-base) var(--ease-out); }
+.site-footer,
+.compose-another { transition: opacity var(--dur-base) var(--ease-out); }
 
-body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer):not(:focus-within) { opacity: 0; }
-body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer):not(:focus-within) { pointer-events: none; }
+body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
+body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { pointer-events: none; }
 
 /* Caps Lock warning: sits in the gap under the measure rule, so showing it moves nothing.
    It is a warning, not chrome, so the running fade leaves it alone; it is a readable
@@ -1029,9 +1030,9 @@ body[data-running="true"] .caps-warning { transition: none; }
   mask-image: linear-gradient(to bottom, transparent 0, #000 var(--space-3), #000 calc(100% - var(--space-4)), transparent 100%);
 }
 
-body[data-font-size="22"] .typing-wrap { --passage-size: 29px; }
-body[data-font-size="28"] .typing-wrap { --passage-size: 36px; }
-body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
+body[data-font-size="22"] :is(.typing-wrap, .compose-wrap) { --passage-size: 29px; }
+body[data-font-size="28"] :is(.typing-wrap, .compose-wrap) { --passage-size: 36px; }
+body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44px; }
 
 /* A lesson passage is about 60 characters, at most two lines from 901px wide at every text size.
    It reserves two lines there and sits closer to the finger map, so the map's finger names and
@@ -1196,7 +1197,8 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   overflow: hidden;
 }
 
-#progress-bar {
+#progress-bar,
+#compose-progress-bar {
   display: block;
   height: 100%;
   background: var(--accent);
@@ -1204,6 +1206,10 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
   transform-origin: left center;
   transition: transform calc(140ms * var(--motion-scale)) linear;
 }
+
+/* The composing clock ticks every 100 ms, so its line steps with the clock instead of gliding under
+   the writing. Never transitioned: a pointer nudge clears data-running while the minute runs on. */
+#compose-progress-bar { transition: none; }
 
 /* ── Practice footer, keyboard, focus ───────────────────────────────────── */
 
@@ -1247,6 +1253,156 @@ body[data-font-size="36"] .typing-wrap { --passage-size: 44px; }
 
 .shortcut-row span { display: inline-flex; align-items: center; gap: 6px; }
 .shortcut-row kbd { margin-right: 2px; }
+.shortcut-row .compose-shortcut,
+body[data-compose="true"] .shortcut-row .practice-shortcut { display: none; }
+body[data-compose="true"] .shortcut-row .compose-shortcut { display: inline-flex; }
+
+/* ── Composing ──────────────────────────────────────────────────────────── */
+
+/* A prompt and an open writing field in the passage's place: no target text, no box. */
+.compose-form { width: 100%; }
+
+/* The prompt sits left and the clock right, unlike open practice, which shows only numbers. */
+body[data-session="practice"] .compose-measure { justify-content: space-between; }
+.compose-intro { min-width: 0; display: grid; gap: var(--space-2); }
+
+.compose-prompt {
+  max-width: 34ch;
+  margin: 0;
+  font-size: var(--text-title);
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+.compose-side {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-6);
+}
+
+.compose-wrap {
+  --compose-line: calc(var(--passage-size) * 1.6);
+  margin: var(--space-2) 0 var(--space-6);
+}
+
+/* Three lines like the passage, scrolling inside, so the page never moves while you write. No
+   scrollbar appears beside the writing, and the caret holds still instead of blinking. */
+#compose-input {
+  display: block;
+  width: 100%;
+  height: calc(var(--compose-line) * 3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  resize: none;
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: transparent;
+  color: var(--text);
+  caret-color: var(--accent);
+  caret-animation: manual;
+  font-family: var(--font-serif);
+  font-size: var(--passage-size);
+  font-weight: 400;
+  line-height: var(--compose-line);
+  letter-spacing: -0.004em;
+}
+
+#compose-input::-webkit-scrollbar { display: none; }
+#compose-input::placeholder { color: var(--muted); opacity: 1; font-style: italic; }
+
+/* Where `caret-animation` isn't supported, src/compose-caret.js makes the native caret transparent
+   (it still edits, selects and composes) and draws this one in its place: the accent, solid, moved
+   instantly and never animated. Chromium keeps the native caret above and none of this applies. */
+.compose-wrap[data-caret="drawn"] { position: relative; }
+.compose-wrap[data-caret="drawn"] #compose-input { caret-color: transparent; }
+.compose-caret-layer { position: absolute; overflow: hidden; pointer-events: none; }
+
+.compose-caret-mirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  margin: 0;
+  border-style: solid;
+  border-color: transparent;
+  visibility: hidden;
+}
+
+.compose-caret {
+  position: absolute;
+  top: 0;
+  left: -1px;
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  animation: none;
+  transition: none;
+}
+
+@media (forced-colors: active) {
+  .compose-caret { forced-color-adjust: none; background: CanvasText; }
+}
+
+/* Finished: the writing and the clock stop being "current". */
+.compose-form[data-state="done"] #compose-input { color: var(--muted); }
+.compose-form[data-state="done"] .timer-stat strong { color: var(--muted); }
+
+.compose-notes { min-width: 0; display: grid; gap: var(--space-1); }
+.compose-help,
+.compose-privacy { margin: 0; color: var(--muted); font-size: var(--text-small); }
+.compose-help { font-style: italic; }
+.compose-help:empty { display: none; }
+
+.compose-result { padding-top: var(--space-6); display: grid; gap: var(--space-4); }
+.compose-result h2 { margin: 0; font-size: var(--text-lead); line-height: 1.3; }
+
+.compose-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.compose-facts div { display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-1); }
+.compose-facts dt { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.02em; }
+
+.compose-facts dd {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  color: var(--muted);
+  font: var(--text-mono)/1.2 var(--font-mono);
+}
+
+.compose-facts strong {
+  color: var(--text);
+  font-family: var(--font-serif);
+  font-size: var(--text-display);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.compose-result .metric-note { max-width: 72ch; }
+
+.compose-result-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+}
+
+.compose-saved { margin: 0; color: var(--muted); font-size: var(--text-small); }
+.compose-result-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* Composing has no best, so the footer doesn't show the copy-test one beside it. */
+body[data-compose="true"] .personal-best { visibility: hidden; }
 
 .keyboard {
   margin: var(--space-6) auto var(--space-4);
@@ -1333,7 +1489,8 @@ body[data-focus-mode="true"] .quote-options,
 body[data-focus-mode="true"] .standard-options,
 body[data-focus-mode="true"] .shortcut-row,
 body[data-focus-mode="true"] .site-footer,
-body[data-focus-mode="true"] .session-intro { visibility: hidden; }
+body[data-focus-mode="true"] .session-intro,
+body[data-focus-mode="true"] .compose-another { visibility: hidden; }
 
 .exit-focus {
   position: fixed;
@@ -1762,6 +1919,12 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .daily-challenge > p { color: var(--muted); max-width: 60ch; }
 .daily-result { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-4); }
 .daily-result span { color: var(--muted); }
+.compose-row { padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); display: grid; gap: var(--space-1); }
+.compose-row-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); }
+.compose-row-main strong { font-size: var(--text-lead); font-weight: 400; }
+.compose-row-main span { color: var(--muted); }
+.compose-row p { margin: 0; color: var(--muted); }
+.compose-history .result-note { margin: 0 0 var(--space-2); max-width: 72ch; color: var(--muted); }
 .local-challenge-heading { margin-top: var(--space-8); }
 
 /* ── Learn to type ──────────────────────────────────────────────────────── */
@@ -2167,15 +2330,15 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 #clear-dialog[open],
 #account-dialog[open],
-#replay-dialog[open],
 #delete-account-dialog[open],
+#replay-dialog[open],
 #suggest-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
-#replay-dialog::backdrop,
 #delete-account-dialog::backdrop,
+#replay-dialog::backdrop,
 #suggest-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
-:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #replay-dialog, #delete-account-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
+:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #delete-account-dialog, #replay-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
 
 .account-fields { display: grid; gap: var(--space-3); }
 .account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
@@ -2378,6 +2541,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .screen { padding-top: var(--space-8); }
   .typing-screen { min-height: auto; padding-top: var(--space-6); }
 
+  /* Six modes (with standard and compose) are wider than a phone column: the mode group wraps onto a
+     second line rather than scroll sideways; the selection pill follows its button to either line. */
+  .mode-options { flex-wrap: wrap; justify-content: center; max-width: 100%; }
   /* Two rows at most: mode and punctuation, then lengths. */
   .practice-controls { margin-bottom: var(--space-6); gap: var(--space-2); }
   #duration-options { order: 1; }
@@ -2391,9 +2557,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .live-stats { justify-content: space-between; gap: var(--space-4); }
   body[data-session="practice"] .live-stats { gap: var(--space-8); }
   .live-stat strong { font-size: 40px; }
-  body[data-font-size="22"] .typing-wrap { --passage-size: 22px; }
-  body[data-font-size="28"] .typing-wrap { --passage-size: 26px; }
-  body[data-font-size="36"] .typing-wrap { --passage-size: 32px; }
+  body[data-font-size="22"] :is(.typing-wrap, .compose-wrap) { --passage-size: 22px; }
+  body[data-font-size="28"] :is(.typing-wrap, .compose-wrap) { --passage-size: 26px; }
+  body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 32px; }
+  .compose-side { justify-content: space-between; }
+  .compose-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .compose-result-foot { flex-direction: column; align-items: stretch; }
+  .compose-result-actions { flex-direction: column-reverse; }
   .shortcut-row { display: none; }
   .keyboard:not(.key-heatmap) { display: none; }
   /* The finger map stays in lessons, sized to the column; its labels shorten to a letter. */
