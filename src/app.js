@@ -309,9 +309,11 @@ function followStoredPreferences({ conditions = !attemptPrepared() } = {}) {
   }
   const json = JSON.stringify(next);
   if (json === livePreferences) return;
+  const changedSpeedUnit = next.speedUnit !== prefs.speedUnit;
   prefs = validPreferences(next);
   livePreferences = JSON.stringify(prefs);
   applyPreferences();
+  if (changedSpeedUnit) renderSpeeds();
   if (changedConditions) setModeControls();
 }
 
@@ -4322,7 +4324,7 @@ function setStopOnError(enabled) {
 function setSpeedUnit(unit) {
   prefs.speedUnit = normalizeSpeedUnit(unit);
   applyPreferences();
-  saveProfile();
+  saveChoice('speedUnit');
   renderSpeeds();
 }
 
