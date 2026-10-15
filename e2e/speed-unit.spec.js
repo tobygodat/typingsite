@@ -1,5 +1,5 @@
 // Speed unit: wpm (default) or cpm. Display only: scoring, bests, comparisons and condition keys stay in wpm.
-import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
+import { CORPUS_VERSION, METRIC_VERSION, standardConditions, conditionKey } from '../src/typing.js';
 import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail } from './fixtures.js';
 
 test.setTimeout(120000);
@@ -537,4 +537,44 @@ test('a custom run too quick to time shows no rate in cpm, before or after a uni
     const words = await page.locator('#result-words [role="option"]').evaluateAll((nodes) => nodes.map((word) => word.getAttribute('aria-label')).join(' '));
     expect(words).not.toMatch(/wpm|cpm/);
   }
+});
+
+test('new learning and composing surfaces follow cpm without changing their stored metrics', async ({ page }) => {
+  await openApp(page);
+  await openSettings(page);
+  await page.locator('#speed-unit').selectOption('cpm');
+  await page.keyboard.press('Escape');
+  await command(page, 'learn to type');
+  await expect(page.locator('#lesson-current-meta')).toContainText('cpm');
+  await expect(page.locator('#lesson-list')).not.toContainText(/\d+ wpm/);
+  await openView(page, 'practice');
+  await page.locator('#mode-compose').click();
+  await page.locator('#compose-input').pressSequentially('a quiet sentence has enough letters to measure the active typing speed', { delay: 100 });
+  await page.locator('#compose-done').click();
+  const cpm = Number(await page.locator('#compose-wpm').textContent());
+  expect(cpm).toBeGreaterThan(0);
+  await expect(page.locator('#compose-wpm + span')).toHaveText('cpm');
+  await expect(page.locator('#compose-definition')).toContainText('Free-typing cpm:');
+  await openSettings(page);
+  await page.locator('#speed-unit').selectOption('wpm');
+  await expect(page.locator('#compose-wpm')).toHaveText(String(cpm / 5));
+  await expect(page.locator('#compose-definition')).toContainText('Free-typing wpm:');
+});
+
+
+test('standard scores display cpm while profile bests remain stored in wpm', async ({ page, supabase }) => {
+  const user = supabase.addUser('standard-units@stilltype.test');
+  const conditions = standardConditions();
+  const runs = [58, 63, 61, 66, 64].map((wpm, i) => ({ id: `unit-standard-${i}`, at: new Date(Date.now() - (5 - i) * 86400000).toISOString(),
+    kind: 'test', status: 'complete', conditions, textId: `standard-v1-unit${i}`, fresh: true, interrupted: false,
+    score: { wpm, accuracy: 98 }, elapsedMs: 60000, errors: 1, patterns: [] }));
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { speedUnit: 'cpm' }, attempts: [], runs, loops: [], seenTextIds: [],
+    bests: { [conditionKey(conditions)]: { wpm: 66, attemptId: runs[3].id, at: runs[3].at } }, updatedAt: new Date().toISOString() } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openView(page, 'Progress');
+  await expect(page.locator('#standard-best')).toHaveText('330');
+  await expect(page.locator('#standard-median')).toHaveText('315');
+  await expect(page.locator('#standard-best + span')).toHaveText('cpm');
+  expect(supabase.profileFor(user.email).bests[conditionKey(conditions)].wpm).toBe(66);
 });

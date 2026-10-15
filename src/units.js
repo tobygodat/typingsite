@@ -39,3 +39,10 @@ export function rawSpeedDefinition(unit) {
     ? 'Every character typed, mistakes included: characters per minute'
     : `Every character typed, mistakes included: characters ÷ ${CHARS_PER_WORD} per minute`;
 }
+
+// Ghost result inbox copy has a fixed score suffix. Keep names and stored WPM text intact.
+export function ghostResultSpeed(text, unit) {
+  if (normalizeSpeedUnit(unit) === 'wpm') return text;
+  const match = /^(.* · you )(\d+) wpm, (.* )(\d+) wpm\.$/s.exec(text);
+  return match ? `${match[1]}${formatSpeed(Number(match[2]), unit)}, ${match[3]}${formatSpeed(Number(match[4]), unit)}.` : text;
+}

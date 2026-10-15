@@ -81,6 +81,113 @@ export function makePassage(mode, count, punctuation, random = Math.random, list
   return (punctuation ? punctuate(words) : words).join(' ');
 }
 
+// The standard test: one fixed, versioned recipe, so its scores stay comparable over time. Every
+// attempt gets fresh text from its own seed; the recipe is what stays fixed. Any change to the
+// recipe below (vocabulary weights, numbers, punctuation, the quote, length) is a new version:
+// bump STANDARD_VERSION. Word-list edits already bump CORPUS_VERSION, which is in the key.
+export const STANDARD_VERSION = 'standard-v1';
+export const STANDARD_SECONDS = 60;
+const STANDARD_WORDS = 400;
+
+// mulberry32: a small, fast, well-mixed 32-bit generator. Same seed, same text.
+function seededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+let standardTiers = null;
+// Three disjoint bands: the top 1k, the rest of the top 5k, and the rest of the top 10k.
+function standardVocabulary() {
+  if (!standardTiers) {
+    const common = wordList('1k');
+    const seen = new Set(common);
+    const middle = wordList('5k').filter((word) => !seen.has(word));
+    middle.forEach((word) => seen.add(word));
+    const rare = wordList('10k').filter((word) => !seen.has(word));
+    standardTiers = [[0.6, common], [0.25, middle], [0.15, rare]];
+  }
+  return standardTiers;
+}
+
+function standardWord(random) {
+  const draw = random();
+  let total = 0;
+  for (const [weight, band] of standardVocabulary()) {
+    total += weight;
+    if (draw < total) return band[Math.floor(random() * band.length)];
+  }
+  const band = standardVocabulary().at(-1)[1];
+  return band[Math.floor(random() * band.length)];
+}
+
+function standardNumber(random) {
+  const form = random();
+  if (form < 0.5) return String(2 + Math.floor(random() * 98));
+  if (form < 0.8) return String(1950 + Math.floor(random() * 80));
+  return String(100 + Math.floor(random() * 900));
+}
+
+function standardSentence(random) {
+  const length = 5 + Math.floor(random() * 10);
+  const words = [];
+  for (let i = 0; i < length; i += 1) {
+    // About one word in twenty is a number, never the first word, so every sentence opens with a capital.
+    let word = i > 0 && random() < 0.05 ? standardNumber(random) : standardWord(random);
+    if (word === 'i') word = 'I';
+    if (i === 0) word = word[0].toUpperCase() + word.slice(1);
+    if (i > 1 && i < length - 2 && random() < 0.1) word += ',';
+    words.push(word);
+  }
+  words[length - 1] += random() < 0.1 ? '?' : '.';
+  return words;
+}
+
+// Standard v1: 60 seconds of sentences mixing the 1k (60%), 5k (25%) and 10k (15%) bands, with
+// capitals, commas, full stops, some question marks and numbers. The second sentence is the quote
+// segment, in double quotation marks, so every typist reaches it. It is generated like the rest
+// (not drawn from the quote corpus), so no part of an attempt repeats text the person has seen.
+export function makeStandardText(seed) {
+  const random = seededRandom(seed);
+  const words = standardSentence(random);
+  const quoted = standardSentence(random);
+  quoted[0] = `"${quoted[0]}`;
+  quoted[quoted.length - 1] += '"';
+  words.push(...quoted);
+  while (words.length < STANDARD_WORDS) words.push(...standardSentence(random));
+  return words.join(' ');
+}
+
+export function standardPassage(seed) {
+  const value = seed >>> 0;
+  const id = `${STANDARD_VERSION}-${value.toString(36)}`;
+  return { id, textVersion: `${id}@1`, text: makeStandardText(value), seed: value, recipe: STANDARD_VERSION, corpus: CORPUS_VERSION, difficulty: 'standard', fresh: true, exhausted: false };
+}
+
+// The recipe's conditions are fixed: only the input class is observed per run.
+export function standardConditions(inputClass = 'physical-keyboard') {
+  return {
+    mode: 'standard',
+    duration: STANDARD_SECONDS,
+    count: null,
+    punctuation: true,
+    quoteLength: null,
+    difficulty: null,
+    wordList: null,
+    inputClass,
+    correctionPolicy: 'mandatory',
+    language: 'en',
+    corpus: CORPUS_VERSION,
+    metricVersion: METRIC_VERSION,
+    recipe: STANDARD_VERSION,
+  };
+}
+
 export function textId(text) {
   let hash = 2166136261;
   for (const char of text) {
@@ -92,6 +199,12 @@ export function textId(text) {
 
 export function selectPassage({ mode = 'time', count = 25, punctuation = false, numbers = false, quoteLength = 'any', difficulty = 'any', seenIds = [], random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
   const seen = new Set(seenIds);
+  if (mode === 'standard') {
+    // A fresh seed per attempt; the word-list, punctuation and quote filters never apply.
+    let passage = null;
+    for (let i = 0; i < 12 && (!passage || seen.has(passage.id)); i += 1) passage = standardPassage(Math.floor(random() * 4294967296));
+    return seen.has(passage.id) ? { ...passage, fresh: false, exhausted: true } : passage;
+  }
   if (mode === 'quote') {
     const candidates = quoteCorpus.filter((item) => {
       const wordCount = item.text.split(/\s+/).length;
@@ -146,8 +259,50 @@ export function passageComplete(attempt, typed) {
     && (attempt.conditions.correctionPolicy === 'relaxed' || typed === attempt.text);
 }
 
-function printable(text) {
+export function printable(text) {
   return typeof text === 'string' && text.length > 0 && !/[\r\n]/u.test(text);
+}
+
+// Accent (dead) keys reach the page as a short composition: the mark shows, then the next key commits
+// one character (ä, or " after space) or, where the pair has no composed form, the mark and that key ("h).
+// Which compositions are an accent key's is decided by where they came from (accentComposition); what one
+// commits must then be what a Latin keyboard's keys type, or it is IME text, which isn't keyboard input.
+const DEAD_MARKS = new Set([...'\'"`~^´¨ˆ˜ˇ˘˚°¸˛˝˙¯']);
+// A combining accent is a mark too, except the invisible grapheme joiner (U+034F) among them.
+export const deadMark = (char) => DEAD_MARKS.has(char) || (/^[̀-ͯ]$/u.test(char) && !/\p{Default_Ignorable_Code_Point}/u.test(char));
+// What a key on a Latin keyboard types: printable ASCII or Latin-1 (AZERTY's ² £ § µ), a Latin letter
+// (é ø ł ẽ), or a digit, punctuation mark, symbol or space no other script owns (’ — … ≠ ⁴ €, a narrow
+// no-break space), which a layout's own keys type and an accent key can commit after its mark. Not another
+// script's letter, digit or punctuation (अ ж १ ।), an East Asian form (the ideographic space, CJK
+// punctuation, vertical, small and full-width forms), anything invisible (soft hyphen) or a pictograph
+// (© ❤), which emoji pickers commit through compositions too. An astral character is two UTF-16 units, so
+// it would move the caret two letters.
+const LATIN_KEY = /^(?:[\x20-\x7E\u00A0-\u00FF]|\p{Script=Latin}|(?=[\p{N}\p{P}\p{S}\p{Zs}])[\p{scx=Common}\p{scx=Inherited}\p{scx=Latin}])$/u;
+const NOT_A_KEY = /[\p{Default_Ignorable_Code_Point}\p{Extended_Pictographic}\u3000-\u303F\uFE10-\uFE6F\uFF00-\uFFEF]/u;
+const keyChar = (char) => char.length === 1 && (deadMark(char) || LATIN_KEY.test(char)) && !NOT_A_KEY.test(char);
+
+// Where a composition came from. An accent key's opens with that key's keydown (key Dead) in Chrome and
+// Firefox. Safari sends the keydown after the mark shows, and Chromium on Linux sends key Process for every
+// key its input method takes, so there the mark itself, shown first and on its own, says so. Any other
+// composition is an input method's (Pinyin, Telex, Hindi, Korean), whatever it commits: even one letter
+// from it is not a key press.
+export const accentComposition = ({ key = null, preview = null } = {}) => key === 'Dead'
+  || (typeof preview === 'string' && preview.length === 1 && deadMark(preview));
+
+// What an accent key's composition types: the one or two keys it committed, or null for anything else.
+export function composedKeys(text) {
+  const chars = [...(text ?? '').normalize('NFC')];
+  if (chars.length > 2 || !chars.every(keyChar)) return null;
+  if (chars.length === 2 && !deadMark(chars[0])) return null;
+  return chars;
+}
+
+// A later key of an accent commit (the h of "h) that the passage has no place left for: it was pressed while
+// the last letter was still to come, so it is a mistake against that letter and is not kept. A key that is
+// that letter ("" on a closing ") records nothing, as a plain key after the passage ends isn't recorded.
+export function carriedKey(attempt, char, offsetMs) {
+  const position = attempt.text.length - 1;
+  return char === attempt.text[position] ? null : { type: 'insert', text: char, position, accepted: false, offsetMs };
 }
 
 // Custom text is held to the passage alphabet: printable ASCII, which every corpus passage uses and an
@@ -325,7 +480,11 @@ export function summarizePatterns(attempts, limit = 20, compatibleConditions = n
   const recent = attempts.filter((attempt) => attempt.status === 'complete'
     && !attempt.interrupted
     && attempt.kind !== 'drill'
+    && attempt.kind !== 'missed'
     && attempt.kind !== 'race'
+    && attempt.kind !== 'lesson'
+    // A ghost race is someone else's text against their recorded run: its own kind, not training evidence.
+    && attempt.kind !== 'challenge'
     && (attempt.kind !== 'daily' || attempt.fresh !== false)
     && (!key || conditionKey(attempt.conditions) === key)).slice(-limit);
   const pairs = new Map();
@@ -414,8 +573,19 @@ export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
   return { id: `drill-${label}-${textId(text)}`, textVersion: `drill-${label}@2`, text, target: safeTarget, corpus: CORPUS_VERSION };
 }
 
+// The test conditions this build offers, and so the only ones it writes: the timed lengths (seconds) and
+// word counts src/app.js offers, the quote filters index.html offers, and the inputs and correction
+// policies it records. Word lists are src/words.js's wordListIds.
+export const TEST_DURATIONS = [15, 30, 60, 120];
+export const TEST_COUNTS = [10, 25, 50, 100];
+export const QUOTE_LENGTHS = ['any', 'short', 'medium', 'long'];
+export const QUOTE_DIFFICULTIES = ['any', 'gentle', 'steady', 'precise'];
+export const INPUT_CLASSES = ['physical-keyboard', 'touch'];
+export const CORRECTION_POLICIES = ['mandatory', 'relaxed'];
+
+// The standard recipe version is appended only when present, so every other key stays as it was.
 export function conditionKey(conditions = {}) {
-  return [
+  const key = [
     conditions.mode,
     conditions.duration || '',
     conditions.count || '',
@@ -429,6 +599,7 @@ export function conditionKey(conditions = {}) {
     conditions.corpus || CORPUS_VERSION,
     conditions.metricVersion || METRIC_VERSION,
   ].join(':');
+  return conditions.recipe ? `${key}:${conditions.recipe}` : key;
 }
 
 export function comparable(before, after) {
@@ -441,6 +612,10 @@ export function comparable(before, after) {
     && after.fresh !== false
     && before.kind !== 'drill'
     && after.kind !== 'drill'
+    && before.kind !== 'lesson'
+    && after.kind !== 'lesson'
+    && before.kind !== 'challenge'
+    && after.kind !== 'challenge'
     && !before.interrupted
     && !after.interrupted;
 }
@@ -509,7 +684,9 @@ export function consistency(attempt, replay = replayAttempt(attempt)) {
 }
 
 // The finished text, letter by letter: correct and incorrect (still wrong at the finish) in the
-// kept text; extra = keystrokes past the passage end; missed = letters left untyped inside the
+// kept text; extra = keystrokes past the passage end, including a key an accent commit carried past
+// it (recorded against the last letter once the passage is full, not kept; a key refused inside the
+// passage is not extra); missed = letters left untyped inside the
 // last word the run reached. Slips fixed along the way are first-try errors, not incorrect.
 export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
   const target = attempt.text;
@@ -523,7 +700,7 @@ export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
     if (event.type !== 'insert' || !printable(event.text)) continue;
     for (let n = [...event.text].length; n > 0; n -= 1) {
       const position = Number.isInteger(event.position) ? event.position : length;
-      if (position >= target.length) extra += 1;
+      if (position >= target.length || (event.accepted === false && length >= target.length)) extra += 1;
       else if (event.accepted !== false) length += 1;
     }
   }

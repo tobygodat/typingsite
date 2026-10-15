@@ -73,3 +73,11 @@ test('an online race result is worded in the unit chosen when it is shown', () =
   assert.equal(raceResultText(race, 'wpm'), 'You beat Lin: 70 wpm to 60.');
   assert.equal(raceResultText(race, 'cpm'), 'You beat Lin: 350 cpm to 300.');
 });
+
+ test('ghost result speed conversion keeps names and stored text intact', async () => {
+  const { ghostResultSpeed } = await import('../src/units.js');
+  const text = '60 wpm raced your run: finished first · you 72 wpm, 60 wpm 65 wpm.';
+  assert.equal(ghostResultSpeed(text, 'cpm'), '60 wpm raced your run: finished first · you 360 cpm, 60 wpm 325 cpm.');
+  assert.equal(ghostResultSpeed(text, 'wpm'), text);
+  assert.equal(ghostResultSpeed('Older result text', 'cpm'), 'Older result text');
+});
