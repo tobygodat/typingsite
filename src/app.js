@@ -4,11 +4,19 @@ import {
   CUSTOM_MIN_CHARS,
   CUSTOM_MIN_WORDS,
   METRIC_VERSION,
+  STANDARD_SECONDS,
+  STANDARD_VERSION,
+  accentComposition,
+  carriedKey,
+  TEST_COUNTS,
+  TEST_DURATIONS,
   compareAttempts,
   completeAttempt,
+  composedKeys,
   conditionKey,
   createAttempt,
   customTextProblem,
+  deadMark,
   makeDrill,
   normalizeCustomText,
   normalizeManualTarget,
@@ -17,13 +25,15 @@ import {
   recommendTarget,
   replayAttempt,
   selectPassage,
+  standardConditions,
   summarizePatterns,
+  textId,
   rawWpm,
   consistency,
   characterBreakdown,
   wordHistory,
 } from './typing.js';
-import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
+import { wordListIds } from './words.js';
 import { createTypingFx } from './motion.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
@@ -31,41 +41,19 @@ import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
 import { createInbox } from './inbox.js';
-import { listRaceInvites } from './multiplayer.js';
-import { comparableKind, dailyPassage, filterRuns, recurringTargets, retainRuns, runRecord, trendRun, validRun, weeklyChange } from './insights.js';
+import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './friends-board.js';
+import { forgetRace, listRaceInvites } from './multiplayer.js';
+import { MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 import {
   FINGER_ZONES, LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, normalizeLessonProgress, recordLessonRun,
 } from './lessons.js';
+import { CUSTOM_ORDERS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
-const MAX_STORED_ATTEMPTS = 24;
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
-const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const defaultPreferences = {
-  mode: 'time',
-  duration: 30,
-  count: 25,
-  punctuation: false,
-  numbers: false,
-  quoteLength: 'medium',
-  difficulty: 'any',
-  wordList: DEFAULT_WORD_LIST,
-  fontSize: '28',
-  liveMetrics: false,
-  keyboard: false,
-  stopOnError: false,
-  focusMode: false,
-  theme: 'system',
-  customText: '',
-  customOrder: 'as-written',
-  paceCaret: 'off',
-  paceWpm: 80,
-};
-
-const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
 let customOpen = false;
 
 function customPassage() {
@@ -76,23 +64,6 @@ function customPassage() {
 
 const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
 
-const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
-const clampPace = (value) => Math.min(300, Math.max(10, Math.round(Number(value) || 80)));
-
-function emptyProfile() {
-  return {
-    version: 2,
-    profileId: uid(),
-    preferences: { ...defaultPreferences },
-    attempts: [],
-    runs: [],
-    loops: [],
-    seenTextIds: [],
-    bests: {},
-    lessons: {},
-  };
-}
-
 let storageAvailable = true;
 // No session means guest mode: default settings, and nothing leaves this tab.
 let session = account.loadSession();
@@ -101,46 +72,42 @@ let syncTimer = 0;
 // otherwise a boot-time save (marking the first passage seen) would make a stale cache look newer.
 let cloudChecked = false;
 let unsynced = false;
-
-function validPreferences(value) {
-  if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
-  const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
-  value.customText = customTextProblem(customText) ? '' : customText;
-  if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
-  if (!PACE_MODES.includes(value.paceCaret)) value.paceCaret = 'off';
-  value.paceWpm = clampPace(value.paceWpm);
-  return value;
-}
-
-function normalizeProfile(parsed) {
-  if (parsed?.version !== 2) return emptyProfile();
-  const traces = Array.isArray(parsed.attempts) ? parsed.attempts : [];
-  const records = Array.isArray(parsed.runs) ? parsed.runs : traces.map((trace) => {
-    // Older traces did not have wall-clock dates. Preserve unknown dates rather than invent them.
-    const loop = parsed.loops?.find((l) => l.afterAttemptId === trace.id);
-    const best = Object.values(parsed.bests || {}).find((b) => b.attemptId === trace.id);
-    return runRecord(trace, trace.at || loop?.at || best?.at || null);
-  });
-  return {
-    ...emptyProfile(),
-    ...parsed,
-    preferences: validPreferences({ ...defaultPreferences, ...parsed.preferences }),
-    attempts: Array.isArray(parsed.attempts) ? parsed.attempts : [],
-    runs: retainRuns(records),
-    loops: Array.isArray(parsed.loops) ? parsed.loops : [],
-    seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
-    bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
-    lessons: normalizeLessonProgress(parsed.lessons),
-  };
-}
+// Counts saves, so a push can tell whether anything changed while it was waiting on the network.
+let localEdits = 0;
+// The account row's updated_at as last merged here: the version a conditional write expects to replace.
+let lastCloudAt = null;
+// The device cache as this tab last wrote it, or took it in holding everything this tab had written;
+// different text means another tab wrote since.
+let cacheText = null;
+let lastPull = 0;
+let cacheWaiting = false;
+// Another tab signed this account out, or the device is now signed in as someone else
+// (followSessionElsewhere): this tab saves and sends nothing more for it, and starts again as the device
+// now is once no run is in progress.
+let signedOutElsewhere = false;
+// A sign-out in another tab that sent everything names the copy of the device cache it sent before
+// removing it (account.signOut). Its stamp is kept here until that removal is heard, so a copy removed
+// that wasn't the one sent goes back for the next sign-in (finishFollow).
+let pendingSignOut = null;
+// The device cache as the last push that left nothing unsent stored it: what a sign-out here has sent.
+// absorbCache moves cacheText, never this, so another tab's save taken in since never looks sent.
+let sentText = null;
+const PULL_INTERVAL_MS = 15000;
 
 function loadProfile() {
   if (!session) return emptyProfile();
-  return normalizeProfile(account.loadCachedProfile(session.user.id));
+  cacheText = account.loadCachedProfileText(session.user.id);
+  try { return normalizeProfile(JSON.parse(cacheText)); } catch { return emptyProfile(); }
 }
 
 let profile = loadProfile();
-let prefs = profile.preferences;
+// The preferences in use. profile.preferences is what is stored and synced (only the settings chosen,
+// never a default filled in: see normalizeProfile); merges change only that, and these follow it where
+// that can't disturb a run (followStoredPreferences).
+let prefs = preferencesInUse(profile.preferences);
+// prefs as last committed or followed. A difference is an edit made in this tab.
+let livePreferences = JSON.stringify(prefs);
+let preferencesWaiting = false;
 let sessionKind = 'practice';
 let passage = null;
 let attempt = null;
@@ -150,25 +117,52 @@ let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
 let liveSecond = -1;
+// The open composition (an accent key's mark, or IME text): { type, attempt, refused, replaces, keyed,
+// leaving, repeated, heldMark, key (Dead if an accent key's keydown opened it), mark (the first thing it
+// showed) }, then once it ends, the { commit, at } still to be scored.
+let composition = null;
+// An input method's composition (no accent key opened it) that was let go while still open: its
+// compositionend never came, or focus left first. The browser may yet send its commit as plain text.
+let lostComposition = null;
+// The last key press was a held accent key repeating, and it is still down: { mark } it shows (null if
+// unknown). A composition that repeat opens is key repeat too (repeated), and so is plain text it sends
+// (Windows). Forgotten when the field can no longer hear the key let go (blur, finish, restart).
+let heldDeadKey = null;
+// Windows has no composition: the key pressed after an accent key types the mark and, where they don't
+// combine, itself, which can come as two inputs ("h). The mark waits for the key's own input, so the two
+// are scored together: { type, attempt, key (that key), mark (its first input, once it came), at,
+// repeated (the accent key was held: what the key types to commit its pending mark is repeat too) }.
+let accentPair = null;
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let lastCompleted = null;
+let wordsPassage = null;
 const ghostOn = () => prefs.paceCaret !== 'off';
 let palette = null;
 let onlineRace = null;
 let inbox = null;
+let friendsBoard = null;
 let baselineAttempt = null;
 let activeRecommendation = null;
 let selectedTarget = null;
 let trainingContext = null;
 let resultBestBefore = null;
 let clearSnapshot = null;
+let clearedAt = null;
 let clearTimer = null;
 // The lesson being typed and the last lesson result in this tab (shown on the learn screen).
 let lessonIndex = 0;
 let lessonResult = null;
+// For each clear still in force here, the copies merged here that it removed history from, as they were
+// before it, so its Undo from any tab brings all of it back (account.mergeAndHold): { [marker]: [copy, …] }.
+// A list goes back only with its own clear's undo. In memory only.
+let heldClears = {};
+// The history clears this tab had applied when its training state (baseline, results on show) was last
+// checked against them, and where an older build's clear left history starting (legacyClearedAt).
+let trainingClears = account.clearsApplied(profile);
+let trainingLegacyAt = profile.legacyClearedAt || '';
 
 let race = {
   passage: null,
@@ -185,18 +179,103 @@ let race = {
 // Signed in, the profile is cached on this device and synced to the account shortly after.
 // A guest's profile lives only in memory, so there is nothing to fail.
 function saveProfile() {
-  profile.preferences = { ...prefs };
-  profile.attempts = profile.attempts.slice(-MAX_STORED_ATTEMPTS);
-  profile.runs = retainRuns(profile.runs);
-  if (!session) return true;
+  commitPreferences();
+  account.capHistory(profile);
+  if (!session || signedOutElsewhere) return true;
   unsynced = true;
+  localEdits += 1;
   if (cloudChecked) {
-    profile.updatedAt = new Date().toISOString();
+    account.stampProfile(profile);
     clearTimeout(syncTimer);
-    syncTimer = setTimeout(pushProfile, 1500);
+    syncTimer = setTimeout(pushWhenIdle, 1500);
   }
-  storageAvailable = account.cacheProfile(session.user.id, profile);
+  storageAvailable = storeLocally();
   return storageAvailable;
+}
+
+// The device cache is shared by every tab signed in to this account. Whatever another tab wrote since
+// this one last read it is merged in first, so no tab overwrites another's runs or settings.
+function storeLocally() {
+  const userId = session.user.id;
+  const stored = account.loadCachedProfileText(userId);
+  // Signed out here (the sign-out removed the copy this tab had read, or kept it and left its marker), or
+  // someone else signed in: this tab's copy must not come back. A session that only ended (its refresh
+  // was refused) keeps caching, as before, so the next sign-in on this device merges these runs into the
+  // account.
+  const current = account.loadSession()?.user.id;
+  if ((current && current !== userId) || (stored === null && cacheText !== null)) return false;
+  if (signedOutElsewhere || account.signedOut(userId)) return false;
+  if (stored && stored !== cacheText) {
+    try {
+      absorb(JSON.parse(stored));
+      // Shown once the current step (often preparing a passage) has finished.
+      setTimeout(showMerged);
+    } catch {}
+  }
+  const text = JSON.stringify(profile);
+  const saved = account.cacheProfileText(userId, text);
+  if (saved) cacheText = text;
+  return saved;
+}
+
+// Records preference edits made in this tab (only the settings that changed, on top of the stored ones,
+// which may already hold a newer change from elsewhere) and stamps each for syncing. `chosen` names
+// settings the person just picked: stamped even when the pick matches what is shown, so it outranks a
+// different value from another tab or device that was waiting to apply.
+function commitPreferences(chosen = []) {
+  const json = JSON.stringify(prefs);
+  if (json === livePreferences && !chosen.length) return;
+  const before = JSON.parse(livePreferences);
+  const edited = Object.keys(prefs).filter((key) => prefs[key] !== before[key] || chosen.includes(key));
+  const stamps = profile.preferencesAt || {};
+  profile.preferences = { ...profile.preferences, ...Object.fromEntries(edited.map((key) => [key, prefs[key]])) };
+  profile.preferencesAt = { ...stamps, ...Object.fromEntries(edited.map((key) => [key, account.stampAfter(stamps[key])])) };
+  livePreferences = json;
+}
+
+// Saves after the person picks settings, stamping the ones picked (see commitPreferences).
+function saveChoice(...keys) {
+  commitPreferences(keys);
+  return saveProfile();
+}
+
+// Settings that only change how things look. Everything else is a test condition.
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'liveMetrics', 'keyboard', 'focusMode'];
+
+const runInProgress = () => runActive || localRaceRunning();
+const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
+// A practice passage nobody has started typing. Newer test conditions from elsewhere replace it, as a
+// change of conditions here would; retests, drills and the daily keep the conditions they started with.
+const untouchedPractice = () => sessionKind === 'practice' && attempt?.status === 'ready' && !attempt.events.length;
+
+// Brings the preferences in use up to the stored ones once that can't disturb a run: nothing changes
+// mid-run, and test conditions wait while a passage is prepared, so the passage on screen always
+// matches the controls around it. resetSession passes conditions: true as it prepares the next one.
+function followStoredPreferences({ conditions = !attemptPrepared() } = {}) {
+  commitPreferences();
+  if (runInProgress()) {
+    preferencesWaiting = true;
+    return;
+  }
+  const stored = { ...defaultPreferences, ...profile.preferences };
+  const next = { ...prefs };
+  let changedConditions = false;
+  preferencesWaiting = false;
+  for (const key of new Set([...Object.keys(stored), ...Object.keys(prefs)])) {
+    if (next[key] === stored[key]) continue;
+    if (!conditions && !DISPLAY_PREFERENCES.includes(key)) {
+      preferencesWaiting = true;
+      continue;
+    }
+    next[key] = stored[key];
+    if (!DISPLAY_PREFERENCES.includes(key)) changedConditions = true;
+  }
+  const json = JSON.stringify(next);
+  if (json === livePreferences) return;
+  prefs = validPreferences(next);
+  livePreferences = JSON.stringify(prefs);
+  applyPreferences();
+  if (changedConditions) setModeControls();
 }
 
 // Caps Lock warning: read from the modifier state on each key event in the typing field.
@@ -217,7 +296,9 @@ function announce(message) {
   requestAnimationFrame(() => { $('announcement').textContent = message; });
 }
 
-function conditions(inputClass = 'physical-keyboard') {
+// The person's own test settings. The standard test ignores them, but a race or the daily
+// challenge started while standard is selected still uses them (minus the recipe).
+function settingsConditions(inputClass = 'physical-keyboard') {
   return {
     mode: prefs.mode,
     duration: prefs.mode === 'time' ? prefs.duration : null,
@@ -235,32 +316,61 @@ function conditions(inputClass = 'physical-keyboard') {
   };
 }
 
-// The one place a correction policy becomes words.
-const correctionLabel = (policy) => (policy === 'relaxed' ? 'continue on error' : 'stop on error');
+function conditions(inputClass = 'physical-keyboard') {
+  return prefs.mode === 'standard' ? standardConditions(inputClass) : settingsConditions(inputClass);
+}
+
+function correctionLabel(policy) {
+  return policy === 'relaxed' ? 'continue on error' : 'stop on error';
+}
+
+// "standard v1": the recipe name as people read it, then what the recipe fixes.
+const recipeLabel = (recipe = STANDARD_VERSION) => recipe.replace('-', ' ');
+const recipeSummary = (value = standardConditions()) => `${recipeLabel(value.recipe)} · ${value.duration} s · english 1k–10k mix · punctuation, numbers, one quote`;
+
+// What every condition line ends with: input, correction rule and versions.
+function conditionTail(value) {
+  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
+  return `${input} · ${correctionLabel(value.correctionPolicy)} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
+}
+
+// The parts of a conditions description, named and in the order it reads. The friends board's shape
+// picker names a shape by the parts that tell it apart from the others.
+function conditionParts(value = conditions()) {
+  return {
+    language: value.wordList ? `english ${value.wordList}` : 'english',
+    length: value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`,
+    text: value.mode === 'quote' ? value.difficulty || 'any difficulty' : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`,
+    input: value.inputClass === 'touch' ? 'touch input' : 'physical keyboard',
+    correction: value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error',
+    corpus: `corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')}`,
+    metric: 'metric v1',
+  };
+}
 const inputLabel = (value) => (value.inputClass === 'touch' ? 'touch input' : 'physical keyboard');
 
 // Custom text has its own condition key, so it can never share a best, trend or retest with a test.
+// It builds on the person's own settings, never the standard recipe: with standard selected underneath,
+// a custom run keeps its own correction rule and gets no recipe, so its key is the same as in any mode.
 function customConditions() {
-  return { ...conditions(), mode: 'custom', duration: null, count: null, punctuation: false, numbers: false,
+  return { ...settingsConditions(), mode: 'custom', duration: null, count: null, punctuation: false, numbers: false,
     quoteLength: null, difficulty: null, wordList: null, customOrder: prefs.customOrder };
 }
 
 function describeConditions(value = conditions()) {
-  const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
-  const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`;
-  const input = inputLabel(value);
-  const correction = correctionLabel(value.correctionPolicy);
-  const language = value.wordList ? `english ${value.wordList}` : 'english';
-  return `${language} · ${length} · ${punctuation} · ${input} · ${correction} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
+  // The recipe name stands for its punctuation, numbers and quote, keeping the run card's line short.
+  if (value.mode === 'standard') return `${recipeLabel(value.recipe)} · ${value.duration} s · 1k–10k mix · ${conditionTail(value)}`;
+  return Object.values(conditionParts(value)).join(' · ');
 }
 
 // A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
   if (run.kind === 'lesson') return describeLesson(run);
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
-  if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
+  if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words${run.conditions.punctuation ? ' · punctuation' : ''}${run.conditions.numbers ? ' · numbers' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
+  if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}`;
+  return `drill · 60 s · english · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
 }
 
 function describeLesson(run) {
@@ -306,8 +416,32 @@ function setRunning(running) {
     runActive = running;
     inbox?.runChanged();
   }
+  if (!running) flushDeferredSync();
   showChrome(!running);
 }
+
+// Changes from other tabs and devices held back while a run was in progress, taken in as soon as none
+// is: when a run, race turn or race ends, is interrupted or restarts, or the view changes. The data merges
+// at once, so the run that just ended is labelled and stored against it and the next passage is drawn
+// from it; the screen catches up just after.
+function flushDeferredSync() {
+  if (runInProgress()) return;
+  if (signedOutElsewhere) {
+    // A sign-out that sent everything reloads once its removal of the cache is heard (finishFollow).
+    if (pendingSignOut === null) location.reload();
+    return;
+  }
+  if (cacheWaiting && absorbCache()) setTimeout(showMerged);
+  if (preferencesWaiting) followStoredPreferences();
+  forgetClearedTraining();
+}
+
+// A one-keyboard race never sets runActive; its turns start, end and restart here.
+function raceRunChanged() {
+  inbox?.runChanged();
+  flushDeferredSync();
+}
+
 // Skip no-op writes on every keystroke.
 function showChrome(shown) {
   const value = String(!shown);
@@ -384,8 +518,31 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  syncLockedSettings();
   armPace();
   showBest();
+}
+
+// The standard test fixes word list, punctuation, numbers and correction. Their controls show the
+// recipe's values and stay locked while it is selected; the person's own settings are kept for other modes.
+// A custom passage loaded over it uses the person's own settings (customConditions), so they unlock for it.
+const standardLocked = () => prefs.mode === 'standard' && sessionKind !== 'custom';
+
+function syncLockedSettings() {
+  const standard = standardLocked();
+  $('punctuation-toggle').disabled = prefs.mode === 'quote' || standard;
+  $('punctuation-toggle').checked = standard || prefs.punctuation;
+  $('numbers-toggle').disabled = prefs.mode === 'quote' || standard;
+  $('numbers-toggle').checked = standard || Boolean(prefs.numbers);
+  $('word-list').disabled = prefs.mode === 'quote' || standard;
+  // The recipe's value exists only while standard is selected, so type-ahead can never pick it.
+  const recipeOption = $('word-list').querySelector('option[value="standard"]');
+  if (standard && !recipeOption) $('word-list').append(new Option('1k–10k', 'standard'));
+  if (!standard) recipeOption?.remove();
+  $('word-list').value = standard ? 'standard' : prefs.wordList;
+  $('stop-on-error-toggle').disabled = standard;
+  $('stop-on-error-toggle').checked = standard || prefs.stopOnError;
+  document.querySelectorAll('.preference-lock').forEach((note) => { note.hidden = !standard; });
 }
 
 function setModeControls() {
@@ -400,15 +557,19 @@ function setModeControls() {
     button.setAttribute('aria-pressed', String(selected));
   });
   $('quote-options').hidden = custom || prefs.mode !== 'quote';
-  $('punctuation-toggle').disabled = prefs.mode === 'quote';
-  $('numbers-toggle').disabled = prefs.mode === 'quote';
-  $('word-list').disabled = prefs.mode === 'quote';
-  $('duration-options').hidden = custom || prefs.mode === 'quote';
+  $('standard-options').hidden = custom || prefs.mode !== 'standard';
+  $('standard-recipe').textContent = `${recipeSummary()} · ${correctionLabel(standardConditions().correctionPolicy)}`;
+  syncLockedSettings();
+  $('duration-options').hidden = custom || prefs.mode === 'quote' || prefs.mode === 'standard';
   document.querySelector('.compact-switch').hidden = custom;
-  const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
-  const lengthPill = $('duration-options').querySelector(':scope > .glide-pill');
-  $('duration-options').replaceChildren(...(lengthPill ? [lengthPill] : []), ...values.map((value) => {
-    const button = document.createElement('button');
+  const values = prefs.mode === 'time' ? TEST_DURATIONS : TEST_COUNTS;
+  // The length buttons are relabelled in place rather than rebuilt, so one holding keyboard focus keeps
+  // it when conditions change from another tab or device.
+  const lengths = $('duration-options');
+  const existing = [...lengths.querySelectorAll(':scope > button')];
+  existing.slice(values.length).forEach((button) => button.remove());
+  values.forEach((value, index) => {
+    const button = existing[index] || lengths.appendChild(document.createElement('button'));
     const selected = value === (prefs.mode === 'time' ? prefs.duration : prefs.count);
     button.type = 'button';
     button.textContent = value;
@@ -416,8 +577,7 @@ function setModeControls() {
     button.className = selected ? 'is-active' : '';
     button.setAttribute('aria-pressed', String(selected));
     button.setAttribute('aria-label', `${value} ${prefs.mode === 'time' ? 'seconds' : 'words'}`);
-    return button;
-  }));
+  });
   showBest();
   requestAnimationFrame(() => updateGlides());
 }
@@ -546,11 +706,13 @@ function choosePassage(extraSeen = []) {
 // Restarting or changing a setting keeps a custom passage; every other session restarts as practice.
 const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custom' : 'practice');
 
+// Daily and missed-word passages run to the end of their text, whatever the practice shape is.
 function sessionDurationMs() {
-  if (sessionKind === 'daily' || sessionKind === 'lesson') return null;
+  if (['daily', 'lesson', 'missed'].includes(sessionKind)) return null;
   if (sessionKind === 'drill') return 60000;
   if (sessionKind === 'custom') return null;
   if (prefs.mode === 'time') return prefs.duration * 1000;
+  if (prefs.mode === 'standard') return STANDARD_SECONDS * 1000;
   return null;
 }
 
@@ -560,6 +722,7 @@ function configureSessionCopy() {
     drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
     custom: ['custom text', 'Your text', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
+    missed: ['missed words', 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
     lesson: ['lesson', `Lesson ${lessonIndex + 1} · ${keysLabel(LESSONS[lessonIndex].keys)}`, lessonCopy(lessonIndex, passage)],
   }[sessionKind];
@@ -571,15 +734,25 @@ function configureSessionCopy() {
   const setup = document.querySelector('.practice-controls');
   if (setup) setup.hidden = sessionKind !== 'practice' && sessionKind !== 'custom';
   $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote';
+  $('standard-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'standard';
   // Every new run (resetSession) brings its own settings and input class to the footer best.
   showBest();
 }
 
 // `show: false` replaces the session without leaving the current view.
 function resetSession(kind = sessionKind, { focus = false, selectedPassage = null, show = true } = {}) {
+  // Setting the field ends a composition without compositionend, so forget it first, and a held accent key
+  // (let go while the field couldn't hear it).
+  if (composition?.type === 'primary') composition = null;
+  if (accentPair?.type === 'primary') accentPair = null;
+  heldDeadKey = null;
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
+  // The next passage is prepared with the newest stored preferences, including any from elsewhere. A
+  // retest or drill keeps its baseline's conditions (restoreConditions), through a restart too; newer
+  // ones from elsewhere wait until it is over.
+  followStoredPreferences({ conditions: kind !== 'retest' && kind !== 'drill' });
   primaryNotice = '';
   const kindChanged = sessionKind !== kind;
   sessionKind = kind;
@@ -590,7 +763,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   // Every lesson restart (Esc, the palette, a settings change) lands here: a lesson that is locked again,
   // after history was cleared, gives way to the next open lesson.
   if (kind === 'lesson' && !lessonUnlocked(profile.lessons, lessonIndex)) lessonIndex = nextLessonIndex(profile.lessons);
-  passage = selectedPassage || (kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList)
+  passage = selectedPassage || (kind === 'missed' ? wordsPassage : kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList)
     : kind === 'lesson' ? lessonPassage(lessonIndex) : kind === 'custom' ? customPassage()
       : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : []));
   if (kind === 'retest' && passage?.fresh === false) {
@@ -621,8 +794,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     }
     return false;
   }
-  // Drills and lessons are generated practice text, never a passage to keep fresh for a retest.
-  if (kind !== 'drill' && kind !== 'lesson' && passage.id && !profile.seenTextIds.includes(passage.id)) {
+  // Drills, word practice and lessons are generated practice text, never a passage to keep fresh for a retest.
+  if (!['drill', 'missed', 'lesson'].includes(kind) && passage.id && !profile.seenTextIds.includes(passage.id)) {
     profile.seenTextIds.push(passage.id);
     saveProfile();
   }
@@ -631,7 +804,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     saveProfile();
   }
   // The one place a run gets its input class: from the press that started it, never a default or the last run's.
-  const runConditions = kind === 'daily' ? dailyConditions() : kind === 'lesson' ? lessonConditions() : kind === 'custom' ? customConditions() : conditions();
+  const runConditions = kind === 'daily' ? dailyConditions() : kind === 'lesson' ? lessonConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, ...practiceTextConditions(passage.text), quoteLength: null, difficulty: null, wordList: null } : kind === 'custom' ? customConditions() : conditions();
   attempt = createAttempt({
     id: uid(),
     text: passage.text,
@@ -680,14 +853,13 @@ function showUnavailableRetest(reason) {
   announce(reason);
 }
 
-function startAttempt(targetAttempt, type = 'primary') {
-  const stamp = now();
+function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
   if (type === 'primary') {
     if (startTime !== null) return;
     startTime = stamp;
     attempt.status = 'running';
     attempt.startedAt = 0;
-    ticker = setInterval(updateLive, 100);
+    ticker = setInterval(() => updateLive(), 100);
     primaryFx.ghost.run(stamp);
     setRunning(true);
     $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>In progress';
@@ -696,29 +868,34 @@ function startAttempt(targetAttempt, type = 'primary') {
     race.startTime = stamp;
     race.attempt.status = 'running';
     race.attempt.startedAt = 0;
-    inbox?.runChanged();
+    raceRunChanged();
   }
 }
 
-function offsetFor(type = 'primary') {
+function offsetFor(type = 'primary', at = now()) {
   const origin = type === 'primary' ? startTime : race.startTime;
-  return origin === null ? 0 : Math.max(0, now() - origin);
+  return origin === null ? 0 : Math.max(0, at - origin);
 }
 
 function currentReplay(type = 'primary') {
   return replayAttempt(type === 'primary' ? attempt : race.attempt);
 }
 
-function pushInsert(char, type = 'primary') {
+// carried: a later key of an accent commit (the h of "h). One the passage has no place left for was pressed
+// while its last letter was still to come, so it is a mistake against that letter, or nothing if it is that
+// letter (carriedKey).
+function pushInsert(char, type = 'primary', at = now(), carried = false) {
   const targetAttempt = type === 'primary' ? attempt : race.attempt;
-  startAttempt(targetAttempt, type);
+  startAttempt(targetAttempt, type, at);
   const replay = replayAttempt(targetAttempt);
   const unresolved = targetAttempt.conditions.correctionPolicy !== 'relaxed'
     && replay.typed.length > 0
     && replay.typed.at(-1) !== targetAttempt.text[replay.typed.length - 1];
-  targetAttempt.events.push(unresolved
-    ? { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs: offsetFor(type) }
-    : { type: 'insert', text: char, position: replay.typed.length, accepted: true, offsetMs: offsetFor(type) });
+  const offsetMs = offsetFor(type, at);
+  let event = { type: 'insert', text: char, position: replay.typed.length, accepted: true, offsetMs };
+  if (unresolved) event = { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs };
+  else if (carried && replay.typed.length >= targetAttempt.text.length) event = carriedKey(targetAttempt, char, offsetMs);
+  if (event) targetAttempt.events.push(event);
   return { previousLength: replay.typed.length, blocked: unresolved };
 }
 
@@ -730,15 +907,129 @@ function pushDelete(type = 'primary') {
   return replay.typed.length;
 }
 
+const inputAttempt = (type) => (type === 'primary' ? attempt : race.attempt);
+
+// A timed run's clock has run out by this time (by default, now).
+const timeUp = (at = now()) => startTime !== null && Boolean(sessionDurationMs()) && at - startTime >= sessionDurationMs();
+// An accent commit made before the limit and still waiting for the key that ended it, or (Windows) a mark
+// typed before the limit and waiting for its key's input.
+const commitInTime = () => (composition?.type === 'primary' && composition.commit !== null
+  && composition.attempt === attempt && !timeUp(composition.at))
+  || (accentPair?.type === 'primary' && accentPair.mark !== null && accentPair.attempt === attempt && !timeUp(accentPair.at));
+
+// A timed run ends at its limit, once nothing typed before the limit is still to be scored.
+function finishIfTimeUp(at = now()) {
+  if (attempt?.status === 'running' && timeUp(at) && !commitInTime()) finishPrimary(sessionDurationMs());
+}
+
+// The checks every typed key passes first; false means the input is ignored (it may finish a timed run).
+// at is when the key was typed: a commit made before the limit counts, though it is scored after it.
+function acceptingInput(type, at = now()) {
+  const target = inputAttempt(type);
+  if (!target || ['complete', 'interrupted'].includes(target.status)) return false;
+  if (type === 'primary' && timeUp(at)) {
+    finishPrimary(sessionDurationMs());
+    return false;
+  }
+  return true;
+}
+
+// IME text isn't keyboard input: the run stops counting, as before.
+function refuseComposition(type) {
+  const target = inputAttempt(type);
+  if (type === 'primary' && target.status === 'ready') startAttempt(target);
+  target.unsupportedInput = true;
+  target.interrupted = true;
+  target.events.push({ type: 'composition', offsetMs: offsetFor(type) });
+  showInputNotice(type, NOTICES.composition, { sticky: true });
+}
+
+// Each key takes the same path as a key press, so replay can't tell them apart. A mark and letter
+// committed together arrive with the second key press, and share its time. Every key of a commit is
+// recorded before the passage can finish: on the last letter, "h counts the h too (see pushInsert).
+function typeKeys(keys, type, at = now()) {
+  if (!keys.length || !acceptingInput(type, at)) return;
+  const room = inputAttempt(type).text.length - currentReplay(type).typed.length;
+  const changes = keys.map((key, index) => pushInsert(key, type, at, room > 0 && index >= room));
+  refreshAfterInput(type, changes[0].previousLength, changes.at(-1).blocked, at);
+}
+
+// What a composition committed, scored once the key that ended it is known. A mark pending when focus
+// leaves is dropped, and browsers commit it on the way out: Chrome and Firefox send that key (Tab)
+// before compositionend, Safari after it, and Chrome on macOS commits as a click begins, a task before
+// focus moves. So a commit no key came before waits for one, or for the blur. The next key, input or
+// composition on the field scores it first, so keys keep their order.
+const COMMIT_KEY_WAIT_MS = 100;
+// Keys pressed while composing that don't end it: the accent key itself (Safari sends its keydown after
+// the mark shows) and modifiers held for the next letter.
+const COMPOSING_KEYS = new Set(['Dead', 'Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock', 'Fn']);
+// Keys whose auto-repeat is a held accent key: Dead, and Process, which Chromium on Linux sends for every
+// key its input method takes (the accent key among them), with the repeat flag kept.
+const ACCENT_REPEAT_KEYS = new Set(['Dead', 'Process']);
+
+function scoreCommit(type) {
+  const session = composition?.type === type && composition.commit !== null ? composition : null;
+  if (!session) return;
+  composition = null;
+  if (session.attempt !== inputAttempt(type) || !acceptingInput(type, session.at)) return;
+  const keys = composedKeys(session.commit);
+  // A held accent key commits its mark again and again (^^): ignore it, like any held key, and the
+  // letter that commits the last repeated mark (â) with it. Committing the same letters back (typing on
+  // past the accent menu) changes nothing; any other change to letters already scored is an input
+  // method's edit, not keys. A composition no accent key opened is an input method's, even when it
+  // commits one Latin letter; a cancelled one (nothing committed) types nothing.
+  if (session.repeated) showInputNotice(type, NOTICES.repeat, { speak: false });
+  else if (session.replaces !== null) { if (session.commit !== session.replaces) refuseComposition(type); }
+  else if (keys === null || (keys.length && !accentComposition({ key: session.key, preview: session.mark }))) refuseComposition(type);
+  else typeKeys(keys, type, session.at);
+  // The clock may have run out while the commit waited: the run ends now, at its limit.
+  if (type === 'primary') finishIfTimeUp();
+}
+
+// A composition's end: what it committed is scored once the key that ended it is known, unless it was
+// refused already or left with Tab. The field goes back to the passage.
+function endComposition(session, commit, type, input) {
+  if (session.refused || session.leaving || session.attempt !== inputAttempt(type)) composition = null;
+  else {
+    composition = Object.assign(session, { commit: commit ?? '', at: now() });
+    setTimeout(() => { if (composition === session) scoreCommit(type); }, session.keyed ? 0 : COMMIT_KEY_WAIT_MS);
+  }
+  const current = inputAttempt(type);
+  if (current) input.value = replayAttempt(current).typed;
+}
+
+// Stops following a composition before its compositionend. An accent key's pending mark is just dropped;
+// an input method's that is still open is kept (lostComposition), so the plain text it may commit later
+// is still that input method's.
+function forgetComposition(type) {
+  if (composition?.type !== type) return;
+  if (composition.commit === null && !accentComposition({ key: composition.key, preview: composition.mark })) lostComposition = composition;
+  composition = null;
+}
+
+// A Windows accent mark scored without the key it waited for (keys, given when that key's input came), as
+// a commit is: together, at the mark's time, so on the last letter the passage can't end between them.
+function scoreAccentPair(type, keys = null) {
+  const pair = accentPair?.type === type && accentPair.mark !== null ? accentPair : null;
+  if (!pair) return;
+  accentPair = null;
+  if (pair.attempt === inputAttempt(type)) typeKeys(keys ?? [pair.mark], type, pair.at);
+  if (type === 'primary') finishIfTimeUp();
+}
+
 function beforeTypingInput(event, type = 'primary') {
-  const targetAttempt = type === 'primary' ? attempt : race.attempt;
-  if (!targetAttempt || ['complete', 'interrupted'].includes(targetAttempt.status)) {
+  const compositionInput = event.inputType?.includes('Composition');
+  // Safari can insert a commit's text after compositionend; that is the commit itself, not a next key.
+  if (!compositionInput) scoreCommit(type);
+  // Windows: the input of the key a typed mark waits for is scored with it; anything else scores the mark first.
+  if (accentPair?.type === type && accentPair.mark !== null && event.inputType === 'insertText' && event.data === accentPair.key) {
     event.preventDefault();
+    scoreAccentPair(type, [accentPair.mark, accentPair.key]);
     return;
   }
-  if (type === 'primary' && startTime !== null && sessionDurationMs() && now() - startTime >= sessionDurationMs()) {
+  scoreAccentPair(type);
+  if (!acceptingInput(type)) {
     event.preventDefault();
-    finishPrimary(sessionDurationMs());
     return;
   }
   if (event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop') {
@@ -746,14 +1037,13 @@ function beforeTypingInput(event, type = 'primary') {
     refusePaste(type);
     return;
   }
-  if (event.inputType?.includes('Composition') || event.isComposing) {
-    event.preventDefault();
-    targetAttempt.unsupportedInput = true;
-    targetAttempt.interrupted = true;
-    targetAttempt.events.push({ type: 'composition', offsetMs: offsetFor(type) });
-    showInputNotice(type, NOTICES.composition, { sticky: true });
-    return;
-  }
+  // A plain key with isComposing false means the composition ended without compositionend
+  // (the field changed under it, or the browser dropped the event): let this key through, unless the
+  // composition was an input method's (its commit, below).
+  if (composition?.type === type && !event.isComposing && !compositionInput
+    && (event.inputType === 'insertText' || event.inputType?.startsWith('delete'))) forgetComposition(type);
+  // Composition text is scored once, after compositionend; until then the field is the browser's.
+  if (compositionInput || event.isComposing || composition?.type === type) return;
   if (event.inputType?.startsWith('delete')) {
     event.preventDefault();
     const previousLength = pushDelete(type);
@@ -766,18 +1056,145 @@ function beforeTypingInput(event, type = 'primary') {
   }
   if (event.inputType !== 'insertText' || !event.data || /[\r\n]/u.test(event.data)) return;
   event.preventDefault();
-  if ([...event.data].length !== 1) {
+  // The first text after an input method's composition that ended unseen is what it committed (Pinyin's
+  // 你 after n), scored as that commit: refused, as after compositionend, and never typed as a key.
+  const lost = lostComposition?.type === type ? lostComposition : null;
+  if (lost) {
+    lostComposition = null;
+    if (lost.attempt === inputAttempt(type)) {
+      endComposition(lost, event.data, type, event.target);
+      return;
+    }
+  }
+  // One key, or an accent mark and the letter it couldn't combine with (Windows sends both).
+  const keys = [...event.data].length === 1 ? [event.data] : composedKeys(event.data);
+  if (!keys) {
+    const targetAttempt = inputAttempt(type);
     targetAttempt.unsupportedInput = true;
     targetAttempt.interrupted = true;
     showInputNotice(type, NOTICES.multiCharacter, { sticky: true });
     return;
   }
-  const change = pushInsert(event.data, type);
-  refreshAfterInput(type, change.previousLength, change.blocked);
+  // Windows: the key pressed after an accent key may type the mark first, with its own input to follow.
+  const pair = accentPair?.type === type ? accentPair : null;
+  // Windows: a held accent key's repeats arrive as plain text (^^), and so does the next key's commit of a
+  // mark they left pending (â, ^h, or ^ then h): all that key types, unless it types just itself.
+  if (heldDeadKey || (pair?.repeated && (pair.key === null || event.data !== pair.key))) {
+    if (pair?.repeated) pair.key = null;
+    showInputNotice(type, NOTICES.repeat, { speak: false });
+    return;
+  }
+  accentPair = null;
+  if (pair && keys.length === 1 && keys[0] !== pair.key && deadMark(keys[0]) && pair.attempt === inputAttempt(type)) {
+    accentPair = Object.assign(pair, { mark: keys[0], at: now() });
+    setTimeout(() => { if (accentPair === pair) scoreAccentPair(type); }, COMMIT_KEY_WAIT_MS);
+    return;
+  }
+  typeKeys(keys, type);
+}
+
+// An accent key's composition is typed characters, scored after compositionend. Any other composition
+// (no accent key opened it), or a preview or commit no accent key could produce, is IME text and stops
+// the run counting.
+function wireComposition(input, type) {
+  // The last key pressed in the field: Chrome and Firefox send an accent key (Dead) before its composition.
+  let lastKey = null;
+  // An accent key was the last key but modifiers, and opened no composition: Windows, where the next key
+  // types its mark as plain text. 'held' if it was repeating: no composition marks a mark it leaves pending.
+  let afterAccent = false;
+  // Tab commits a pending mark on its way to the next control: dropped, like any mark as focus leaves.
+  const drop = () => {
+    composition = null;
+    const current = inputAttempt(type);
+    if (current) input.value = replayAttempt(current).typed;
+  };
+  input.addEventListener('keydown', (event) => {
+    const session = composition?.type === type ? composition : null;
+    const repeat = event.repeat && ACCENT_REPEAT_KEYS.has(event.key);
+    if (session?.commit === null) {
+      // Chrome (keyCode 229 on macOS) and Firefox send the key that will end the composition first.
+      if (!COMPOSING_KEYS.has(event.key)) Object.assign(session, { keyed: true, leaving: event.key === 'Tab' });
+      // Safari sends the accent key's own keydown after its mark shows.
+      if (event.key === 'Dead') session.key = 'Dead';
+      // A held accent key's repeat adds its mark to this composition, or (Safari) is the key that opened it.
+      if (repeat) Object.assign(session, { repeated: true, heldMark: null });
+    } else if (session) {
+      // Safari sends the key that ended a composition after compositionend.
+      if (repeat && !session.keyed) session.repeated = true;
+      if (event.key === 'Tab') drop();
+    }
+    scoreCommit(type);
+    scoreAccentPair(type);
+    heldDeadKey = repeat ? { mark: session?.mark ?? heldDeadKey?.mark ?? null } : null;
+    lastKey = event.key;
+    // Windows: the key after an accent key types the mark, then itself if they don't combine ("h; a space
+    // types the mark alone). After a held one, that key (a space, or the accent key again, too) commits any
+    // mark the repeats left pending, so what it types is repeat (repeated) until the next key.
+    const held = afterAccent === 'held' && !repeat;
+    if (!COMPOSING_KEYS.has(event.key) || event.key === 'Dead') {
+      accentPair = afterAccent && composition?.type !== type
+        && (held ? [...event.key].length === 1 || event.key === 'Dead' : [...event.key].length === 1 && event.key !== ' ')
+        ? { type, attempt: inputAttempt(type), key: event.key, mark: null, at: 0, repeated: held } : null;
+    }
+    afterAccent = event.key === 'Dead' ? (repeat ? 'held' : true) : COMPOSING_KEYS.has(event.key) && afterAccent;
+  });
+  // Letting go of a held accent key ends its repeats; what it left pending stays repeated.
+  input.addEventListener('keyup', (event) => { if (event.key === 'Dead') heldDeadKey = null; });
+  input.addEventListener('compositionstart', (event) => {
+    // A key opens one composition at most, and an accent key that opens one types nothing as plain text.
+    const key = lastKey;
+    lastKey = null;
+    afterAccent = false;
+    scoreCommit(type);
+    scoreAccentPair(type);
+    // A new composition: the one that ended unseen sent no commit as plain text.
+    if (lostComposition?.type === type) lostComposition = null;
+    if (!acceptingInput(type)) { composition = null; return; }
+    // An accent key's mark starts as a caret after the typed text. A composition over letters already
+    // typed (the macOS press-and-hold accent menu, a keyboard re-composing a word) is not new keys.
+    const over = event.data || input.value.slice(input.selectionStart, input.selectionEnd);
+    // Chrome and Firefox send the key that opens a composition first: a held accent key's repeat opens a
+    // repeated one, and the letter that later commits its mark (â) is ignored with it.
+    composition = { type, attempt: inputAttempt(type), refused: false, replaces: over || null, keyed: false, leaving: false, repeated: Boolean(heldDeadKey), heldMark: heldDeadKey?.mark ?? null, key, mark: null, commit: null, at: 0 };
+  });
+  input.addEventListener('compositionupdate', (event) => {
+    if (composition?.type !== type || composition.refused || composition.attempt !== inputAttempt(type)) return;
+    // Safari sends a key's composition before its keydown, so one opened while an accent key is held may be
+    // another accent key's: it is the held key's repeat only if it first shows that key's mark.
+    if (composition.mark === null) {
+      if (composition.heldMark !== null && event.data !== composition.heldMark) composition.repeated = false;
+      composition.mark = event.data;
+    }
+    if (!acceptingInput(type)) return;
+    if (composedKeys(event.data) === null) {
+      composition.refused = true;
+      refuseComposition(type);
+    }
+  });
+  input.addEventListener('compositionend', (event) => {
+    // Safari sends the accent key's keydown inside its composition.
+    afterAccent = false;
+    // One let go first ends here after all: what it commits now is dropped, as when focus leaves.
+    if (lostComposition?.type === type) lostComposition = null;
+    // Hand the field back to the passage once the composition is over (finishing commits a pending mark).
+    if (composition?.type === type) endComposition(composition, event.data, type, input);
+    else if (inputAttempt(type)) input.value = replayAttempt(inputAttempt(type)).typed;
+  });
+  // Focus moving anywhere drops a mark still pending, or committed on the way out, whichever comes first.
+  // A held accent key is let go out of the field's hearing; if it is still down when focus returns, its
+  // repeats say so again.
+  input.addEventListener('blur', () => {
+    heldDeadKey = null;
+    lastKey = null;
+    afterAccent = false;
+    forgetComposition(type);
+    if (accentPair?.type === type) accentPair = null;
+  });
 }
 
 // Everything the typing surface says, kept short. The focus-lost and composition
-// notices stay until restart because the run no longer counts.
+// notices stay until restart because the run no longer counts. Accent (dead) keys are
+// typed characters; only IME text (any composition no accent key opened) is refused.
 const NOTICES = {
   blocked: 'Fix the underlined letter.',
   paste: 'Paste is off. Type the passage.',
@@ -788,6 +1205,7 @@ const NOTICES = {
   leftSurface: 'You left mid-run, so it won’t count.',
   paletteOpened: 'Commands opened mid-run, so it won’t count.',
   suggestOpened: 'Suggestions opened mid-run, so it won’t count.',
+  deleteOpened: 'Account deletion opened mid-run, so it won’t count.',
   raceFocusLost: 'Focus lost. Esc to restart this turn.',
 };
 
@@ -803,7 +1221,9 @@ function refusePaste(type) {
   showInputNotice(type, NOTICES.paste);
 }
 
-function refreshAfterInput(type, previousLength, blocked = false) {
+// at is when the key was typed, so a commit scored after a timed run's limit can't end the run between
+// its mark and its letter (scoreCommit ends it once both are in).
+function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   const isPrimary = type === 'primary';
   const targetAttempt = isPrimary ? attempt : race.attempt;
   const replay = replayAttempt(targetAttempt);
@@ -824,7 +1244,7 @@ function refreshAfterInput(type, previousLength, blocked = false) {
   if (isPrimary) {
     setRunning(true);
     $('input-help').textContent = blocked ? NOTICES.blocked : primaryNotice;
-    updateLive();
+    updateLive(false, at);
     if (sessionDurationMs() === null && passageComplete(targetAttempt, replay.typed)) finishPrimary();
   } else {
     updateRaceProgress(replay);
@@ -863,7 +1283,9 @@ function showPace() {
   $('pace-label').hidden = !on;
   $('pace-label').textContent = on ? `pace ${pace.wpm} wpm` : '';
   $('pace-select').value = prefs.paceCaret;
-  $('pace-wpm').value = prefs.paceWpm;
+  // A speed being typed in stays as typed when this redraws (another tab's save taken in, say): setting
+  // the field would drop the edit without a change event. Leaving the field saves it and redraws.
+  if (document.activeElement !== $('pace-wpm')) $('pace-wpm').value = prefs.paceWpm;
   $('pace-custom').hidden = prefs.paceCaret !== 'custom';
   $('pace-note').textContent = on && prefs.paceCaret !== 'custom' ? (pace.fallback ? 'no runs yet — 60 wpm' : `${pace.wpm} wpm`) : '';
   document.body.dataset.ghost = on ? 'on' : 'off';
@@ -878,9 +1300,14 @@ function armPace() {
   showPace();
 }
 
-function setPaceCaret(mode) {
+// A pick, even of the pace shown, is stamped (saveChoice), so a different one waiting from elsewhere
+// doesn't replace it when a drill or retest ends. The custom speed is stamped only when it was on show:
+// typed in (`speed`), or kept by picking custom again. Picking custom from another pace shows a speed
+// nobody chose here, so a speed chosen elsewhere outranks it.
+function setPaceCaret(mode, { speed = false } = {}) {
+  const speedShown = speed || (mode === 'custom' && prefs.paceCaret === 'custom');
   prefs.paceCaret = mode;
-  saveProfile();
+  saveChoice('paceCaret', ...(speedShown ? ['paceWpm'] : []));
   armPace();
 }
 
@@ -895,7 +1322,7 @@ function markKeyboardTargets(target) {
 const RATE_FLOOR_MS = 1000;
 const rateShown = (completed) => comparableKind(completed.kind) || completed.summary.elapsedMs >= RATE_FLOOR_MS;
 
-function updateLive(reset = false) {
+function updateLive(reset = false, at = now()) {
   if (!attempt) return;
   const replay = replayAttempt(attempt);
   const elapsed = startTime === null ? 0 : now() - startTime;
@@ -929,11 +1356,13 @@ function updateLive(reset = false) {
   $('progress-bar').style.setProperty('--progress', String(percent / 100));
   $('progress-track').setAttribute('aria-valuenow', String(Math.round(percent)));
   $('progress-track').setAttribute('aria-valuetext', reset ? 'Not started' : `${Math.round(percent)} percent complete`);
-  if (duration && startTime !== null && elapsed >= duration && attempt.status === 'running') finishPrimary(duration);
+  finishIfTimeUp(at);
 }
 
 function storeAttempt(completed) {
   completed.at = new Date().toISOString();
+  // Shown as the day's first attempt, it is a repeat if another device's earlier attempt arrived since.
+  if (completed.kind === 'daily') completed.firstDailyAttempt = settleDailyFirsts([...profile.runs, completed]).at(-1).firstDailyAttempt;
   const key = conditionKey(completed.conditions);
   const score = completed.summary.score;
   const eligibleBest = completed.status === 'complete' && !completed.interrupted && ['test', 'retest'].includes(completed.kind);
@@ -945,7 +1374,14 @@ function storeAttempt(completed) {
   if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
     profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
   }
-  if (eligibleBest && completed.textId && !profile.seenTextIds.includes(completed.textId)) profile.seenTextIds.push(completed.textId);
+  // The passage was marked seen when shown (resetSession). A merge with a copy that had cleared history
+  // can drop marks it can't date, as it does for a passage only shown; one that was then typed, even
+  // in an interrupted run or a daily attempt, is marked again.
+  if (completed.kind !== 'drill') {
+    for (const id of [completed.textId, completed.kind === 'daily' ? dailyChallengeId(completed.challengeDate) : null]) {
+      if (id && !profile.seenTextIds.includes(id)) profile.seenTextIds.push(id);
+    }
+  }
   const saved = saveProfile();
   showBest();
   return saved;
@@ -954,6 +1390,11 @@ function storeAttempt(completed) {
 // `replacing`: another session or view takes over at once, so a drill draws no retest passage to throw away.
 function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   if (!attempt || attempt.status !== 'running') return;
+  // A pending accent mark isn't a keystroke; disabling the field commits it, and that is ignored. Nor can
+  // the disabled field hear a held accent key let go.
+  if (composition?.type === 'primary') composition = null;
+  if (accentPair?.type === 'primary') accentPair = null;
+  heldDeadKey = null;
   clearInterval(ticker);
   ticker = null;
   const endedAt = forcedElapsed ?? offsetFor();
@@ -977,6 +1418,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
 
   if (sessionKind === 'drill' && baselineAttempt) {
     if (trainingContext) trainingContext.drillCompleted = valid;
+    // Train already offers this retest: startDrill() rendered its actions.
     if (replacing) return;
     announce(valid ? 'Drill complete. Retest ready.' : 'Drill interrupted. Retest ready.');
     startRetest();
@@ -999,7 +1441,7 @@ const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', '
 // Draw after the results view is shown so the graph has its size.
 function renderCard(completed) {
   lastCompleted = completed;
-  const kind = completed.kind === 'test' ? 'practice' : completed.kind;
+  const kind = completed.kind !== 'test' ? completed.kind : completed.conditions.mode === 'standard' ? 'standard' : 'practice';
   const at = new Date();
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
@@ -1007,11 +1449,51 @@ function renderCard(completed) {
   const graph = $('speed-graph').closest('figure');
   graph.hidden = !rateShown(completed);
   if (!graph.hidden) renderSpeedGraph($('speed-graph'), completed, { animate: true });
+  renderPracticeWords(completed);
+}
+
+// Offer the words this run tripped on or was slowest through as their own uncounted run. The
+// slowest are one timing each, so they show their speed beside the run's median, not a weakness.
+// Only an evidence run is mined for words, by the same rule as recurring patterns: a complete test,
+// retest or daily run on fresh text. Not a drill (synthetic, target-heavy text), a daily passage shown
+// before, custom text or word practice itself. Run again repeats a word-practice passage.
+function renderPracticeWords(completed) {
+  const mined = evidenceRun(completed);
+  const { missed, slow, timedCount, medianWpm } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
+  const words = [...missed, ...slow.map((item) => item.word)];
+  const button = $('practice-words');
+  const evidence = $('practice-words-evidence');
+  button.hidden = evidence.hidden = !words.length;
+  if (!words.length) return;
+  // Sentences about this run's words, set in Literata like the word pace line, and each number is a
+  // book-face figure (.num), never the mono of the conditions line.
+  const figure = (value) => element('span', String(value), 'num');
+  const lines = [
+    // Quote a token that carries punctuation, so "table," reads as the word typed.
+    missed.length && [`missed first try: ${missed.map((word) => /[^\p{L}\p{N}]/u.test(word) ? `“${word}”` : word).join(', ')}`],
+    slow.length && ['slowest in this run: ', ...slow.flatMap((item, index) => [`${index ? ', ' : ''}${item.word} `, figure(item.wpm), ' wpm']),
+      ' · median ', figure(medianWpm), ' wpm over ', figure(timedCount), ' clean words'],
+  ].filter(Boolean);
+  evidence.replaceChildren(...lines.flatMap((parts, index) => (index ? ['\n', ...parts] : parts)));
+  const text = practiceWordsPassage(words);
+  button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
+  button.onclick = () => {
+    // The run whose words are practised (an evidence run, or there'd be no button) is the baseline for
+    // the fresh retest offered afterward, as a finished practice or daily run is. A retest doesn't set it
+    // on finishing, so set it here. No drill comes between, so the next comparison reads and records no
+    // drill target; startDrill sets one again.
+    baselineAttempt = completed;
+    trainingContext = null;
+    selectedTarget = null;
+    wordsPassage = { id: `missed-${textId(text)}`, text, fresh: false, words };
+    resetSession('missed', { focus: true });
+  };
 }
 
 function resultHeadline(completed) {
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
+  if (completed.kind === 'missed') return 'Word practice complete · not counted toward your best';
   if (completed.kind === 'custom') return 'Custom text complete · not counted toward your best';
   if (completed.kind === 'daily') return completed.firstDailyAttempt ? 'Daily challenge complete' : 'Daily challenge complete · repeat attempt';
   if (!resultBestBefore) return 'First run at these settings';
@@ -1021,6 +1503,7 @@ function resultHeadline(completed) {
 }
 
 function retestLength(value) {
+  if (value.mode === 'standard') return 'standard';
   if (value.mode === 'time') return `${value.duration} s`;
   if (value.mode === 'words') return `${value.count}-word`;
   return value.quoteLength && value.quoteLength !== 'any' ? `${value.quoteLength} quote` : 'quote';
@@ -1049,18 +1532,10 @@ function renderResults(completed, saved) {
     activeRecommendation = trainingRecommendation(completed.conditions);
     selectedTarget = activeRecommendation.target;
   }
-  $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
-  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
-  $('recommendation-meta').textContent = baselineAttempt
-    ? `About 1 min, then a fresh ${retestLength(completed.conditions)} retest.`
-    : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
-  $('start-drill').disabled = !counted;
-  $('skip-to-retest').disabled = !counted || !baselineAttempt;
   // Custom text is never mined for targets or kept as a baseline, so its results offer no drill or retest:
-  // the recommendation would come from other runs and the retest would measure a different text.
-  const compared = comparableKind(completed.kind);
-  for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = !compared;
-  renderEvidenceList(activeRecommendation.evidence);
+  // the recommendation would come from other runs and the retest would measure a different text. Word
+  // practice isn't compared either, but like a drill it leads on to a retest of the run its words came from.
+  renderRecommendation(counted, comparableKind(completed.kind) || completed.kind === 'missed');
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again' : 'Run again';
   renderTraining();
   renderDaily();
@@ -1068,6 +1543,25 @@ function renderResults(completed, saved) {
   announce(saved
     ? `${speed}, ${replay.score.accuracy}% accuracy.`
     : `${speed}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+}
+
+// Train's drill and retest actions, from the current recommendation and baseline. Runs after each result
+// and as each drill starts, so a drill left before its end still offers its retest even when its baseline
+// came from saved history (practiceTarget) and no result has been shown in this tab.
+// `compared` is false after a custom text result (any non-comparable kind): that text is never mined for
+// targets or kept as a baseline, so Train offers no drill or retest for it. A drill started later shows them again.
+function renderRecommendation(counted = true, compared = true) {
+  // After startDaily() there is no recommendation: show the general drill Start drill falls back to.
+  activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
+  $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
+  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
+  $('recommendation-meta').textContent = baselineAttempt
+    ? `About 1 min, then a fresh ${retestLength(baselineAttempt.conditions)} retest.`
+    : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
+  $('start-drill').disabled = !counted;
+  $('skip-to-retest').disabled = !counted || baselineAttempt?.status !== 'complete';
+  for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = !compared;
+  renderEvidenceList(activeRecommendation.evidence);
 }
 
 function renderEvidenceList(evidence) {
@@ -1117,9 +1611,10 @@ function renderComparison(before, after, saved) {
     $('comparison-sample').textContent = `${trainedTarget} · ${beforePattern.timings.length} before · ${afterPattern.timings.length} after`;
   } else {
     $('comparison-timing').textContent = '—';
-    $('comparison-sample').textContent = trainedTarget
-      ? `${trainedTarget} · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
-      : `keystrokes · ${before?.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
+    $('comparison-sample').textContent = !before ? 'no baseline'
+      : trainedTarget
+        ? `${trainedTarget} · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
+        : `keystrokes · ${before.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
   }
   let comparisonSaved = saved;
   if (comparison.comparable && saved) {
@@ -1138,16 +1633,21 @@ function renderComparison(before, after, saved) {
     });
     comparisonSaved = saveProfile();
   }
-  $('comparison-caveat').textContent = `${comparison.reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
+  // No baseline: a clear from another tab or device removed it while this retest was under way.
+  const reason = before ? comparison.reason : 'Your history was cleared, so there is no baseline to compare with.';
+  $('comparison-caveat').textContent = `${reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
   renderHistory();
 }
 
 function startDrill() {
-  selectedTarget = activeRecommendation?.target || null;
+  // startDaily() drops the recommendation, so a stale Start drill falls back to a general drill.
+  activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
+  selectedTarget = activeRecommendation.target || null;
   const source = baselineAttempt?.conditions;
   if (source) restoreConditions(source);
   trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false };
   trainingContext.drill = { target: selectedTarget, duration: 60, wordList: prefs.wordList, textVersion: makeDrill(selectedTarget, prefs.wordList).textVersion };
+  renderRecommendation();
   resetSession('drill', { focus: true });
 }
 
@@ -1158,8 +1658,14 @@ function startRetest() {
   resetSession('retest', { focus: true });
 }
 
+// A drill or retest runs at its baseline's conditions without recording them as a settings edit: the
+// saved settings, including a pick from another tab or device made meanwhile, apply again once it ends
+// (resetSession leaves them waiting), and a restore never outranks a choice someone made.
 function restoreConditions(source) {
-  prefs = {
+  commitPreferences();
+  // The standard recipe carries its own settings; restoring it must not overwrite the person's.
+  if (source.mode === 'standard') prefs = { ...prefs, mode: 'standard' };
+  else prefs = {
     ...prefs,
     mode: source.mode,
     duration: source.duration || prefs.duration,
@@ -1171,7 +1677,7 @@ function restoreConditions(source) {
     wordList: source.wordList || prefs.wordList,
     stopOnError: source.correctionPolicy !== 'relaxed',
   };
-  profile.preferences = prefs;
+  livePreferences = JSON.stringify(prefs);
   applyPreferences();
   setModeControls();
 }
@@ -1200,7 +1706,7 @@ function navigate(view) {
   if (view === 'practice') {
     // A custom passage that is ready or under way is practice too, so going to Practice keeps it.
     const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom') && !['complete', 'interrupted'].includes(attempt.status);
-    if (!current) resetSession('practice');
+    if (!current || (preferencesWaiting && untouchedPractice())) resetSession('practice');
     switchView('practice');
     return;
   }
@@ -1213,7 +1719,13 @@ function navigate(view) {
   switchView(view);
 }
 
+// A mark still pending when focus leaves is dropped, as at the finish: the browser can commit it after
+// this check (macOS Chrome blurs the window first; opening commands moves focus), which would start a
+// ready run in the background.
 function markInterrupted(message) {
+  forgetComposition('primary');
+  // A timed run past its limit (its finish can wait for a commit made in time) is over, not interrupted.
+  finishIfTimeUp();
   if (attempt?.status !== 'running' || attempt.interrupted) return;
   attempt.interrupted = true;
   attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor() });
@@ -1223,11 +1735,12 @@ function markInterrupted(message) {
 }
 
 function markRaceInterrupted() {
+  forgetComposition('race');
   if (race.attempt?.status !== 'running' || race.attempt.interrupted) return;
   race.attempt.interrupted = true;
   race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
   showInputNotice('race', NOTICES.raceFocusLost, { speak: false });
-  inbox?.runChanged();
+  raceRunChanged();
 }
 
 // A one-keyboard race keeps the chrome, but its passage is still being typed.
@@ -1351,10 +1864,11 @@ function targetButton(target, source) {
 }
 
 function practiceTarget(target, source) {
-  // Use a retained, compatible baseline when possible. Older corpus versions need a new baseline.
+  // Use a retained, compatible baseline when possible. Older corpus or standard recipe versions need a new baseline.
   baselineAttempt = [...profile.attempts].reverse().find((a) => a.status === 'complete' && !a.interrupted
     && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
-    && conditionKey(a.conditions) === conditionKey(source) && source.corpus === CORPUS_VERSION) || null;
+    && conditionKey(a.conditions) === conditionKey(source) && source.corpus === CORPUS_VERSION
+    && (source.mode !== 'standard' || source.recipe === STANDARD_VERSION)) || null;
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
   activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
@@ -1395,7 +1909,43 @@ function renderTraining() {
   }));
 }
 
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+// Progress headline: the current standard recipe at one input class (standardInputClass decides), so
+// one touch run can't replace a keyboard score. The other class's best is named in the note.
+function renderStandardScore() {
+  const scoreFor = (inputClass) => {
+    const key = conditionKey(standardConditions(inputClass));
+    return standardScore(profile.runs, key, profile.bests[key]?.wpm ?? null);
+  };
+  const keyboard = scoreFor('physical-keyboard');
+  const touch = scoreFor('touch');
+  const onTouch = standardInputClass(keyboard, touch) === 'touch';
+  const source = standardConditions(onTouch ? 'touch' : 'physical-keyboard');
+  const score = onTouch ? touch : keyboard;
+  const other = onTouch ? keyboard : touch;
+  setText($('standard-best'), score.best ?? '—');
+  setText($('standard-median'), score.median === null ? '—' : Number(score.median.toFixed(1)));
+  // A dash stands alone: "— wpm" would read as a measurement.
+  $('standard-best').nextElementSibling.hidden = score.best === null;
+  $('standard-median').nextElementSibling.hidden = score.median === null;
+  setText($('standard-median-label'), score.settled ? `median of last ${plural(score.recent, 'run')}` : 'median');
+  setText($('standard-score-conditions'), `${recipeSummary(source)} · ${conditionTail(source)}`);
+  // Bests outlive run summaries, so counts are of kept runs, never lifetime counts, and a best above every
+  // kept run came from one that has aged out of the kept history. With none left, nothing is counted.
+  const kept = MAX_RUN_SUMMARIES.toLocaleString('en-US');
+  const keptBest = standardScore(profile.runs, conditionKey(source)).best;
+  const olderBest = score.total && score.best > keptBest ? ` Your best comes from a run older than the newest ${kept} runs that Progress keeps.` : '';
+  let note = `${plural(score.total, 'completed standard run')} kept.${olderBest} Interrupted runs don’t count.`;
+  if (!score.total && score.best !== null) note = `Your best is kept, but your standard runs are older than the newest ${kept} runs that Progress keeps, so the median waits for ${STANDARD_MIN_RUNS} new ones.`;
+  else if (!score.total) note = 'No standard runs yet. Every one is fresh text from the same fixed recipe, so the scores stay comparable.';
+  else if (!score.settled) note = `${plural(score.total, 'standard run')} kept.${olderBest} The median appears after ${STANDARD_MIN_RUNS}, so a single fast or slow run can’t set your score.`;
+  if (other.best !== null) note += ` Your ${onTouch ? 'physical keyboard' : 'touch'} best is ${other.best} wpm.`;
+  setText($('standard-score-note'), note);
+}
+
 function renderHistory() {
+  renderStandardScore();
   const eligible = profile.runs.filter(trendRun);
   const hasProgress = eligible.length > 0 || profile.loops.length > 0;
   $('progress-empty').hidden = hasProgress;
@@ -1420,7 +1970,7 @@ function renderHistory() {
     row.dataset.runId = run.id;
     const summary = element('summary', '', 'run-summary');
     summary.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
-      element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : 'practice'} · view details`));
+      element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : run.conditions?.mode === 'standard' ? 'standard' : 'practice'} · view details`));
     const detail = element('div', '', 'run-detail');
     detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
       element('p', describeConditions(run.conditions)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
@@ -1472,7 +2022,7 @@ function renderHistory() {
 }
 
 function dailyConditions() {
-  return { ...conditions(), mode: 'quote', duration: null, count: null, punctuation: true, numbers: false,
+  return { ...settingsConditions(), mode: 'quote', duration: null, count: null, punctuation: true, numbers: false,
     quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
 }
 
@@ -1483,11 +2033,13 @@ function todayPassage() {
 }
 
 function startDaily() {
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
   if (race.attempt?.status === 'running') markRaceInterrupted();
   baselineAttempt = null;
   trainingContext = null;
   activeRecommendation = null;
+  // The baseline is gone, so Train no longer offers the drill's retest.
+  renderRecommendation();
   resetSession('daily', { focus: true });
 }
 
@@ -1822,7 +2374,7 @@ function renderKeyboard() {
 function startRace() {
   race = {
     passage: selectPassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', seenIds: [] }),
-    conditions: { ...conditions(), mode: 'quote', wordList: null, localRace: true },
+    conditions: { ...settingsConditions(), mode: 'quote', wordList: null, localRace: true },
     names: [$('player-one-name').value.trim() || 'Player one', $('player-two-name').value.trim() || 'Player two'],
     player: 0,
     attempt: null,
@@ -1842,9 +2394,12 @@ function startRace() {
 }
 
 function setupRacePlayer() {
+  if (composition?.type === 'race') composition = null;
+  if (accentPair?.type === 'race') accentPair = null;
+  heldDeadKey = null;
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
-  inbox?.runChanged();
+  raceRunChanged();
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
   $('race-status').textContent = `Player ${race.player + 1} of 2`;
@@ -1866,11 +2421,14 @@ function updateRaceProgress(replay) {
 }
 
 function finishRacePlayer() {
+  if (composition?.type === 'race') composition = null;
+  if (accentPair?.type === 'race') accentPair = null;
+  heldDeadKey = null;
   const valid = !race.attempt.interrupted && !race.attempt.unsupportedInput;
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
   race.attempt = completed;
-  inbox?.runChanged();
+  raceRunChanged();
   race.results.push({ name: race.names[race.player], attempt: completed });
   $('race-input').disabled = true;
   $('race-stage').hidden = true;
@@ -1919,15 +2477,9 @@ function renderRaceResults() {
   announce('Challenge complete.');
 }
 
-function clearHistory() {
-  clearSnapshot = JSON.stringify(profile);
-  profile.attempts = [];
-  profile.runs = [];
-  profile.loops = [];
-  profile.seenTextIds = [];
-  profile.bests = {};
-  profile.lessons = {};
-  lessonResult = null;
+// What this tab holds in memory about the runs a clear removes: the baseline, the drill and retest it
+// offers, and the results on show.
+function forgetTraining() {
   baselineAttempt = null;
   trainingContext = null;
   selectedTarget = null;
@@ -1948,8 +2500,52 @@ function clearHistory() {
   $('comparison-panel').hidden = true;
   $('start-drill').disabled = true;
   $('skip-to-retest').disabled = true;
-  // A lesson waiting on the practice screen that clearing just locked is replaced by the first lesson.
-  if (sessionKind === 'lesson' && !lessonUnlocked(profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
+}
+
+// Empties history in memory and on the results screen once the account is deleted, when there is
+// nothing left to save to (clear history keeps its marker and Undo; see clearHistory).
+function wipeHistory() {
+  profile = emptyProfile();
+  forgetTraining();
+}
+
+// A clear made in another tab or on another device arrives as stored data only. When it covers the
+// baseline or the run on show, as a merge into a copy that hadn't heard of it decides, this tab forgets
+// them as the clearing tab did. Dates are checked against a marker this tab hadn't applied only, so a run
+// made here after this tab knew of a clear is never taken for a cleared one, an older clear back in force
+// after a newer one's undo included. Named records are checked on every merge: no copy keeps one, and an
+// older clear's names can arrive while the newest marker stays the same. An older build's clear that
+// arrives (a new legacyClearedAt) took a run dated at or before it only if the merged history lacks it.
+// Never mid-run: flushDeferredSync checks again when the run ends, so a drill then stands alone and a
+// retest makes no comparison with the cleared run.
+function forgetClearedTraining() {
+  if (runInProgress()) return;
+  const marker = profile.historyClearedAt || null;
+  const arrived = marker && !trainingClears.has(marker) ? marker : null;
+  trainingClears = account.clearsApplied(profile);
+  const legacyStart = profile.legacyClearedAt || '';
+  const legacyAt = legacyStart !== trainingLegacyAt ? legacyStart : '';
+  trainingLegacyAt = legacyStart;
+  if (!baselineAttempt && !lastCompleted) return;
+  const named = account.clearedIds(profile);
+  const takenByLegacy = (record) => Boolean(legacyAt) && (record.at || '') <= legacyAt
+    && !profile.runs.some((run) => run.id === record.id);
+  const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id)
+    || takenByLegacy(record));
+  if (!cleared(baselineAttempt) && !cleared(lastCompleted)) return;
+  forgetTraining();
+  renderTraining();
+}
+
+function clearHistory() {
+  clearSnapshot = JSON.stringify(profile);
+  // Copies elsewhere drop what they hold from before this moment when they merge with this one. What
+  // they held is kept here as this tab merges them (account.mergeAndHold), for Undo.
+  profile = account.clearProfile(profile);
+  clearedAt = profile.historyClearedAt;
+  heldClears = account.joinHolds(heldClears, { [clearedAt]: [normalizeProfile(JSON.parse(clearSnapshot))] });
+  trainingClears = account.clearsApplied(profile);
+  forgetTraining();
   const saved = saveProfile();
   $('clear-dialog').close();
   $('history-toast').hidden = false;
@@ -1961,28 +2557,31 @@ function clearHistory() {
   renderHistory();
   renderTraining();
   renderDaily();
-  renderLessons();
-  renderFirstRun();
+  followLessonProgress();
   showBest();
   armPace();
 }
 
 function undoClear() {
   if (!clearSnapshot) return;
-  try { profile = JSON.parse(clearSnapshot); } catch { return; }
-  prefs = profile.preferences;
+  let snapshot;
+  try { snapshot = normalizeProfile(JSON.parse(clearSnapshot)); } catch { return; }
+  // Restores the history even if the clear has already synced, keeping anything added since: this tab's
+  // own copy from just before it, and whatever the clear removed from the account row or another tab as
+  // they merged here (held for it), as far as clears still in force allow.
+  ({ merged: profile, holds: heldClears } = account.undoClearHere(heldClears, profile, clearedAt, snapshot));
   saveProfile();
   clearSnapshot = null;
   clearTimeout(clearTimer);
   $('history-feedback').textContent = 'History restored.';
   $('undo-clear').hidden = true;
-  applyPreferences();
-  setModeControls();
+  followStoredPreferences();
+  showBest();
+  armPace();
   renderHistory();
   renderTraining();
   renderDaily();
-  renderLessons();
-  renderFirstRun();
+  followLessonProgress();
   setTimeout(() => { $('history-toast').hidden = true; }, 1600);
 }
 
@@ -2014,104 +2613,436 @@ function renderAccount() {
 
 const authRedirectTarget = () => `${location.origin}/`;
 
-// Resolves true once the account row matches the device.
-async function pushProfile({ keepalive = false } = {}) {
+const dailyKey = () => conditionKey(dailyConditions());
+// The friends board's summary of exactly the copy being written, stamped with that write
+// (src/friends-board.js). While an opt-out on this device is unconfirmed its writes clear the column
+// (null), so this device shows nothing new on the board; turning sharing on repairs it (repairBoardNow).
+const boardFor = (data) => (at) => (optOutPending(session) ? null : boardColumn(data.runs, dailyKey(), at));
+
+// Whether this tab still belongs to the user a sync started for. Another tab can sign out, or in as
+// someone else, while a request is out; the sync then stops and writes nothing here. A tab that heard of
+// a sign-out elsewhere stays out even if the same account has signed in again since: it reloads first.
+function signedInAs(userId) {
+  return !signedOutElsewhere && session?.user.id === userId && account.loadSession()?.user.id === userId;
+}
+
+// Folds another copy of this account's profile (the account row, or another tab's cache) into memory.
+// Only stored data changes here; showMerged() brings the screen up to date. Returns whether it changed.
+function absorb(data) {
+  if (data?.version !== 2) return false;
+  const before = account.syncSignature(profile);
+  ({ merged: profile, holds: heldClears } = account.mergeAndHold(heldClears, profile, normalizeProfile(data)));
+  return account.syncSignature(profile) !== before;
+}
+
+// After a merge: preferences follow where they can't disturb a run, and only the visible history view
+// re-renders, and not while someone is using it. Nothing takes focus or announces anything, and
+// nothing changes mid-run; Progress, Train and Challenge re-render whenever they are next shown.
+function showMerged() {
+  followStoredPreferences();
+  if (runInProgress()) return;
+  forgetClearedTraining();
+  // Newer test conditions wait while a passage is prepared; one nobody has started is prepared again
+  // with them, as a page load did before merging (the practice screen only; navigate does it on the
+  // way back). Focus stays where it is.
+  if (preferencesWaiting && untouchedPractice() && document.body.dataset.view === 'practice') resetSession('practice');
+  showBest();
+  // A best, average or last-run pace follows the merged history, as it follows a clear here.
+  armPace();
+  const view = document.body.dataset.view;
+  const screen = document.querySelector(`[data-screen="${view}"]`);
+  const inUse = screen?.contains(document.activeElement) || screen?.querySelector('details[open]');
+  if (view === 'progress' && !inUse) renderHistory();
+  if (view === 'compete') renderDaily();
+  followLessonProgress({ redraw: view !== 'learn' || !inUse });
+}
+
+// Merges the device cache if another tab has written it since this tab last read it. Only the data:
+// returns whether it changed, and the caller shows it (showMerged). Writes only to put back what the
+// cache lacks: tabs read and write it separately, so two saves at the same moment can each write a copy
+// read before the other's, leaving out a run that may exist nowhere else yet. A tab holding nothing
+// more than the cache writes nothing, so tabs settle instead of echoing each other. If that write is
+// refused (a sign-out elsewhere is under way), cacheText stays this tab's own last write: the copy taken
+// in lacks it, and a repair of the sign-out's removal must still put it back (finishFollow).
+function absorbCache() {
+  cacheWaiting = false;
+  if (!session || !signedInAs(session.user.id)) return false;
+  const text = account.loadCachedProfileText(session.user.id);
+  if (!text || text === cacheText) return false;
+  try {
+    const data = JSON.parse(text);
+    const changed = absorb(data);
+    const own = cacheText;
+    cacheText = text;
+    if (data?.version === 2 && !account.sameProfile(profile, normalizeProfile(data)) && !storeLocally()) cacheText = own;
+    return changed;
+  } catch {
+    return false;
+  }
+}
+
+function noteCloudAt(updatedAt) {
+  if (updatedAt && !(Date.parse(lastCloudAt) >= Date.parse(updatedAt))) lastCloudAt = updatedAt;
+}
+
+// Pushes wait for the run in progress to end, so network and merge work never lands mid-run.
+function pushWhenIdle() {
+  if (runInProgress()) {
+    syncTimer = setTimeout(pushWhenIdle, 1500);
+    return;
+  }
+  pushProfile();
+}
+
+// One push at a time, each reading the account row afresh. Resolves true once the row holds this tab's edits.
+let pushQueue = Promise.resolve();
+function pushProfile(options = {}) {
   clearTimeout(syncTimer);
   syncTimer = 0;
+  const run = pushQueue.then(() => pushOnce(options));
+  pushQueue = run.catch(() => {});
+  return run;
+}
+
+// Read the row, merge, then write only if the row is still the version read. If another writer got in
+// between, the write matches nothing: read again and merge again, three times at most. The merged copy
+// is kept here and in the device cache.
+async function pushOnce({ cloud: known } = {}) {
   if (!session) return false;
+  if (!unsynced) {
+    setSyncState('synced');
+    friendsBoard?.pushed();
+    return true;
+  }
+  const userId = session.user.id;
+  // Checked before refreshing too: a tab still holding an account another tab has signed out of must
+  // not refresh it, nor end whichever session the device holds now.
+  if (!signedInAs(userId)) return false;
   try {
     session = await account.freshSession(session);
-    await account.pushCloudProfile(session, profile, { keepalive });
-    unsynced = false;
-    setSyncState('synced');
-    return true;
+    if (!signedInAs(userId)) return false;
+    let cloud = known;
+    for (let tries = 0; tries < 3; tries += 1) {
+      if (cloud === undefined) {
+        cloud = await account.fetchCloudProfile(session);
+        if (!signedInAs(userId)) return false;
+      }
+      const edits = localEdits;
+      const theirs = cloud?.data?.version === 2 ? normalizeProfile(cloud.data) : null;
+      const { merged, holds: pushHolds } = theirs ? account.mergeAndHold(heldClears, profile, theirs) : { merged: profile, holds: heldClears };
+      let written;
+      if (theirs && account.sameProfile(merged, theirs)) written = cloud.updated_at;
+      else if (cloud) written = await account.updateCloudProfile(session, merged, cloud.updated_at, { board: boardFor(merged) });
+      else written = await account.insertCloudProfile(session, merged, { board: boardFor(merged) });
+      if (!signedInAs(userId)) return false;
+      if (written) {
+        // What this merge held joins what is held now. Holds are only added to, and a list goes back only
+        // with its clear's undo (twice changes nothing), so an Undo or a clear made here while the write
+        // was out still holds and releases everything.
+        heldClears = account.joinHolds(heldClears, pushHolds);
+        noteCloudAt(written);
+        friendsBoard?.pushed();
+        absorb(merged);
+        const kept = storeLocally();
+        // Done unless this tab saved again, or took in another tab's save, while the write was out:
+        // that goes up with the next push.
+        if (edits === localEdits && account.sameProfile(profile, merged)) {
+          unsynced = false;
+          sentText = kept ? cacheText : null;
+        } else if (!syncTimer) syncTimer = setTimeout(pushWhenIdle, 1500);
+        showMerged();
+        setSyncState(unsynced ? 'syncing' : 'synced');
+        return !unsynced;
+      }
+      cloud = undefined;
+    }
+    // Lost every race: the edits stay here, and the next save, return to this tab or load merges them.
+    setSyncState('offline');
+    return false;
   } catch {
     setSyncState(account.loadSession() ? 'offline' : 'expired');
     return false;
   }
 }
 
+// A hidden page may never run again, so it gets one conditional write of what this tab holds, made only
+// if the account row is still the version last merged here (which this tab's copy contains). If that
+// loses, the edits wait in the device cache for the pending push, the next return or the next load.
+async function pushOnHide() {
+  if (!session || !syncTimer || !lastCloudAt) return;
+  const userId = session.user.id;
+  const edits = localEdits;
+  if (!signedInAs(userId)) return;
+  try {
+    session = await account.freshSession(session);
+    if (!signedInAs(userId)) return;
+    const written = await account.updateCloudProfile(session, profile, lastCloudAt, { keepalive: true, board: boardFor(profile) });
+    if (!written || !signedInAs(userId)) return;
+    noteCloudAt(written);
+    if (edits === localEdits) {
+      unsynced = false;
+      setSyncState('synced');
+    }
+  } catch {}
+}
+
+// Brings in what other devices saved: when the tab comes back into view (at most every 15 s) and when
+// the connection returns. With edits pending here it pushes instead, which reads and merges first.
+async function pullProfile({ force = false } = {}) {
+  if (!session || !cloudChecked || runInProgress()) return;
+  if (!force && Date.now() - lastPull < PULL_INTERVAL_MS) return;
+  lastPull = Date.now();
+  if (unsynced) {
+    await pushProfile();
+    return;
+  }
+  const userId = session.user.id;
+  if (!signedInAs(userId)) return;
+  try {
+    session = await account.freshSession(session);
+    if (!signedInAs(userId)) return;
+    const cloud = await account.fetchCloudProfile(session);
+    if (!cloud || !signedInAs(userId)) return;
+    if (absorb(cloud.data)) {
+      storeLocally();
+      showMerged();
+    }
+    noteCloudAt(cloud.updated_at);
+    // A tab can hold what the row lacks without saving anything itself: another tab's save taken in from
+    // the device cache, whose own push failed or never ran. It goes up from here, as on load.
+    if (unsynced || !account.sameProfile(profile, normalizeProfile(cloud.data))) {
+      unsynced = true;
+      await pushProfile({ cloud });
+    } else setSyncState('synced');
+  } catch {
+    setSyncState(account.loadSession() ? 'offline' : 'expired');
+  }
+}
+
 function adoptProfile(data) {
   profile = normalizeProfile(data);
-  prefs = profile.preferences;
-  account.cacheProfile(session.user.id, profile);
-  // Less lesson progress (history cleared on another device) can lock the lesson started from the cache.
-  // One waiting is replaced, as when history is cleared here; one being typed finishes as not counted.
-  // A result the adopted progress no longer holds (its lesson locked, or its try discarded) is dropped.
-  if (lessonResult && !lessonResultHeld(lessonResult, profile.lessons)) lessonResult = null;
+  prefs = preferencesInUse(profile.preferences);
+  livePreferences = JSON.stringify(prefs);
+  storeLocally();
   applyPreferences();
   setModeControls();
   renderHistory();
-  renderLessons();
-  renderFirstRun();
   if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice');
-  if (sessionKind === 'lesson' && attempt?.status !== 'running' && !lessonUnlocked(profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
+  followLessonProgress();
 }
 
-// The newer of the device cache and the account row wins; the other side is brought up to date.
+// Lesson progress changed under this tab (a copy merged from elsewhere, a clear or its undo here): a result
+// the progress no longer holds is dropped, a lesson waiting that is now locked gives way to the next open
+// one (one being typed finishes as not counted), and the learn screen and the first-run prompt follow,
+// though not while someone is using the learn screen.
+function followLessonProgress({ redraw = true } = {}) {
+  if (lessonResult && !lessonResultHeld(lessonResult, profile.lessons)) lessonResult = null;
+  if (sessionKind === 'lesson' && attempt?.status !== 'running' && !lessonUnlocked(profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
+  if (redraw) renderLessons();
+  renderFirstRun();
+}
+
+// The device's copy and the account row are merged, and whatever the row lacks goes up.
 async function syncOnLoad() {
   if (!session) return;
+  const userId = session.user.id;
   try {
     session = await account.freshSession(session);
     const cloud = await account.fetchCloudProfile(session);
-    if (cloudChecked) return;
+    if (cloudChecked || !signedInAs(userId)) return;
     cloudChecked = true;
-    const localAt = profile.updatedAt || '';
-    const cloudAt = cloud?.data?.updatedAt || '';
+    lastPull = Date.now();
     if (!cloud) {
       // History from before accounts existed goes to the first account that has none of its own.
       // Taken only once the account is known to be empty, so a failed fetch leaves it in place.
       const legacy = account.takeLegacyProfile();
       if (legacy?.version === 2) {
         profile = account.mergeProfiles(profile, normalizeProfile(legacy));
-        prefs = profile.preferences;
+        prefs = preferencesInUse(profile.preferences);
       }
       // Stored and sent before anything re-renders, so the import can't be left half done.
       saveProfile();
       await pushProfile();
       if (legacy?.version === 2) adoptProfile(profile);
-    } else if (cloudAt > localAt) {
-      // Edits made here before the check (usually just the passage marked seen) give way to the newer row.
-      adoptProfile(cloud.data);
-      if (!syncTimer) {
-        unsynced = false;
-        setSyncState('synced');
-      }
-    } else if (localAt > cloudAt || unsynced) {
-      saveProfile();
-      await pushProfile();
     } else {
-      setSyncState('synced');
+      absorb(cloud.data);
+      noteCloudAt(cloud.updated_at);
+      storeLocally();
+      showMerged();
+      // Edits made here before the check (usually the passage marked seen), or kept on this device
+      // since an earlier visit, go up; otherwise the row already holds everything.
+      if (unsynced || !account.sameProfile(profile, normalizeProfile(cloud.data))) {
+        unsynced = true;
+        await pushProfile({ cloud });
+      } else {
+        setSyncState('synced');
+        repairBoard(cloud);
+      }
     }
+    // An opt-out kept on this device goes out now, and a device new to the account learns whether it shares.
+    friendsBoard?.resume();
   } catch {
     // Offline or unreachable: edits stay on the device, unstamped, until a check succeeds.
     setSyncState(account.loadSession() ? 'offline' : 'expired');
   }
 }
 
-// Puts the account's profile in the device cache, then starts over as that user.
-// A device copy newer than the account row (unsynced when last signed out) is kept for syncOnLoad.
+// A row whose board summary doesn't describe it (written before the board column existed, by an older
+// cached build, or without a part this build adds) is given one counted from that row's own data, when
+// this load writes nothing itself. The write is conditional on the row's version, so a row another save
+// has moved since is left alone. Not while an opt-out here is unconfirmed: this device shows nothing new.
+function repairBoard(cloud) {
+  if (syncTimer || boardCurrent(cloud) || optOutPending(session)) return;
+  account.repairBoard(session, boardColumn(normalizeProfile(cloud.data).runs, dailyKey(), cloud.updated_at), cloud.updated_at)
+    .then((sent) => { if (sent) friendsBoard?.pushed(); }, () => {});
+}
+
+// Sharing turned on: saves made while an opt-out was still unconfirmed wrote no summary, so the row as
+// it stands now is read and, if its summary doesn't describe it, repaired as on load.
+async function repairBoardNow() {
+  if (!session) return;
+  try {
+    session = await account.freshSession(session);
+    const cloud = await account.fetchCloudProfile(session);
+    if (cloud) repairBoard(cloud);
+  } catch {}
+}
+
+// Puts the account's profile in the device cache, then starts over as that user. A device copy kept
+// at sign-out (edits that hadn't synced) is merged with the row rather than replaced.
 async function enterAccount(newSession) {
+  account.clearSignedOut(newSession.user.id);
   try {
     const cloud = await account.fetchCloudProfile(newSession);
     const cached = account.loadCachedProfile(newSession.user.id);
-    if (cloud && (cloud.data?.updatedAt || '') >= (cached?.updatedAt || '')) account.cacheProfile(newSession.user.id, cloud.data);
+    if (cloud?.data?.version === 2) {
+      account.cacheProfile(newSession.user.id, cached?.version === 2
+        ? account.mergeSynced(normalizeProfile(cached), normalizeProfile(cloud.data))
+        : cloud.data);
+    }
   } catch {}
   location.reload();
 }
 
 async function signOutAccount() {
   closeAccountMenu();
+  const userId = session.user.id;
+  // What this ends is the account's sign-in on the device as it stands now. That may be newer than this
+  // tab's: a guest tab may have signed in to the account since, with no sign-out between. Every tab of the
+  // account then signs out, as tabs that share one sign-in do.
+  const stored = account.loadSession();
+  if (!signedOutElsewhere && stored?.user.id === userId) session = stored;
+  const ending = session;
+  // Another tab signed out, or in as someone else, before this sign-out (this tab has followed:
+  // followSessionElsewhere), or signed out or in as anyone (the same account included) while it waits on
+  // the network: this sign-out stops here, and the tab starts again as the device now is. Whatever the
+  // device holds (another session included) stays.
+  // Checked again after every wait; account.signOut checks the stored session once more.
+  const overtaken = () => {
+    const now = account.loadSession();
+    if (!signedOutElsewhere && (!now || account.sameSignIn(now, ending))) return false;
+    // Followed: after hearing the cache removed, for a sign-out elsewhere that sent everything (finishFollow).
+    if (pendingSignOut === null) location.reload();
+    return true;
+  };
+  if (overtaken()) return;
   await onlineRace?.leave();
+  if (overtaken()) return;
   inbox?.forget();
-  const synced = !unsynced || await pushProfile();
-  // Unsynced edits stay on this device and go up the next time this account signs in here.
-  await account.signOut(session, { keepCache: !synced });
+  friendsBoard?.signOut();
+  // Every tab signed in here shares the device cache, and another tab's latest save may not have reached
+  // the account yet (its push still waiting, or failing). So the cache is merged and pushed before it
+  // goes; the push reads the row and writes only what the row lacks. A second round covers a save that
+  // lands during the first. If the account can't be reached, or the cache changes again, the cache stays
+  // and goes up the next time this account signs in here.
+  let synced = false;
+  for (let round = 0; round < 2 && !synced; round += 1) {
+    absorbCache();
+    unsynced = true;
+    synced = await pushProfile();
+    if (overtaken()) return;
+    // Unreachable (requests time out, see account.request) or refused: another round would only wait again.
+    if (!synced && $('account').dataset.sync !== 'syncing') break;
+  }
+  // The cache goes only if it still holds what the last push sent, checked as it is removed.
+  await account.signOut(session, { sentText: synced ? sentText : null });
   location.reload();
 }
 
 function closeAccountMenu() {
   $('account').open = false;
+}
+
+// Account deletion. The server deletes first (account.deleteAccount); only a confirmed deletion
+// signs this device out and clears it. Any failure leaves the session, cache and history untouched.
+const DELETE_WORD = 'delete';
+const DELETED_NOTICE = 'stilltype-account-deleted';
+let deletingAccount = false;
+
+function openDeleteAccount() {
+  if (!session) return;
+  // The dialog gives focus back to whatever had it, and the menu's own button is about to be hidden.
+  if ($('account').contains(document.activeElement)) $('account-trigger').focus();
+  closeAccountMenu();
+  // Typing the confirmation word must never land in, or time, a run.
+  markInterrupted(NOTICES.deleteOpened);
+  markRaceInterrupted();
+  $('confirm-delete-input').value = '';
+  $('confirm-delete-account').disabled = true;
+  $('delete-account-error').textContent = '';
+  $('delete-account-dialog').showModal();
+  $('confirm-delete-input').focus();
+}
+
+function setDeleting(pending) {
+  deletingAccount = pending;
+  // Focus waits on the read-only input, so disabling the button doesn't drop it to the page.
+  if (pending) $('confirm-delete-input').focus();
+  $('delete-account-form').setAttribute('aria-busy', String(pending));
+  $('delete-account-status').textContent = pending ? 'Deleting your account…' : '';
+  $('confirm-delete-account').textContent = pending ? 'Deleting…' : 'Delete account';
+  $('confirm-delete-account').disabled = pending || $('confirm-delete-input').value !== DELETE_WORD;
+  $('confirm-delete-input').readOnly = pending;
+  $('cancel-delete-account').disabled = pending;
+}
+
+async function deleteAccountNow() {
+  if (!session || deletingAccount || $('confirm-delete-input').value !== DELETE_WORD) return;
+  $('delete-account-error').textContent = '';
+  setDeleting(true);
+  try {
+    await account.deleteAccount(session);
+  } catch (error) {
+    setDeleting(false);
+    $('delete-account-error').textContent = error.message;
+    if (!account.loadSession()) setSyncState('expired');
+    $('confirm-delete-input').focus();
+    return;
+  }
+  // The account is gone, so nothing may be saved or sent for it again. The inbox finds its device
+  // entries through the session, so it forgets before the session goes.
+  clearTimeout(syncTimer);
+  syncTimer = 0;
+  unsynced = false;
+  inbox?.forget();
+  forgetRace();
+  friendsBoard?.forget();
+  const deleted = session;
+  session = null;
+  account.forgetAccount(deleted);
+  wipeHistory();
+  try { sessionStorage.setItem(DELETED_NOTICE, '1'); } catch {}
+  location.reload();
+}
+
+// Shown once, after the reload that follows a deletion. Nothing else about the account remains.
+function noticeDeletedAccount() {
+  let deleted = false;
+  try {
+    deleted = sessionStorage.getItem(DELETED_NOTICE) === '1';
+    sessionStorage.removeItem(DELETED_NOTICE);
+  } catch {}
+  if (deleted && !session) showAccountToast('Account deleted. You’re in guest mode.', 'done');
 }
 
 let accountMode = 'create';
@@ -2165,7 +3096,9 @@ async function submitAccount(event) {
   }
 }
 
-function showAccountToast(message) {
+// tone 'done' marks a completed action; the default marks a problem.
+function showAccountToast(message, tone = 'problem') {
+  $('account-toast').dataset.tone = tone;
   $('account-feedback').textContent = message;
   $('account-toast').hidden = false;
   clearTimeout(showAccountToast.timer);
@@ -2192,6 +3125,14 @@ function bindAccount() {
   $('account-google').addEventListener('click', continueWithGoogle);
   $('account-dialog-google').addEventListener('click', continueWithGoogle);
   $('account-signout').addEventListener('click', signOutAccount);
+  $('account-delete').addEventListener('click', openDeleteAccount);
+  $('confirm-delete-input').addEventListener('input', (event) => {
+    if (!deletingAccount) $('confirm-delete-account').disabled = event.target.value !== DELETE_WORD;
+  });
+  $('delete-account-form').addEventListener('submit', (event) => { event.preventDefault(); deleteAccountNow(); });
+  $('cancel-delete-account').addEventListener('click', () => $('delete-account-dialog').close());
+  // While the request is out, the dialog stays: its answer decides what happens next.
+  $('delete-account-dialog').addEventListener('cancel', (event) => { if (deletingAccount) event.preventDefault(); });
   $('account-form').addEventListener('submit', submitAccount);
   $('account-switch').addEventListener('click', () => openAccountDialog(accountMode === 'create' ? 'signin' : 'create'));
   $('account-cancel').addEventListener('click', () => $('account-dialog').close());
@@ -2210,15 +3151,92 @@ function bindAccount() {
     // Only one corner panel at a time; a keyboard open sends no pointerdown to close the other.
     if (menu.open) { document.querySelector('.preferences')?.removeAttribute('open'); $('inbox').open = false; }
   });
-  // Unsynced changes go out when the tab is hidden; anything too large for that syncs on the next load.
+  // Unsynced changes go out when the tab is hidden (anything too large for that waits for the next
+  // push or load); other devices' changes come in when it is shown again.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && syncTimer) pushProfile({ keepalive: true });
+    if (document.visibilityState === 'hidden') pushOnHide();
+    else pullProfile();
   });
   addEventListener('online', () => {
     if (!session) return;
     if (!cloudChecked) syncOnLoad();
-    else if (unsynced) pushProfile();
+    else pullProfile({ force: true });
+    if (cloudChecked) friendsBoard?.resume();
   });
+  // Another tab signed in to this account saved: merge its copy. Only what the copy lacks is written back
+  // (absorbCache), so tabs settle rather than echo each other. Mid-run the merge waits; the save at the
+  // end of the run merges it then. While this tab follows a sign-out that sent everything, only that
+  // sign-out's removal of the cache matters (finishFollow).
+  addEventListener('storage', (event) => {
+    if (!session) return;
+    if (pendingSignOut !== null) {
+      finishFollow(event);
+      return;
+    }
+    if (signedOutElsewhere || followSessionElsewhere(event)) return;
+    if (event.key !== account.profileKey(session.user.id)) return;
+    if (runInProgress()) cacheWaiting = true;
+    else if (absorbCache()) showMerged();
+  });
+}
+
+// Another tab signed this account out (or deleted it: account.forgetAccount leaves the marker first),
+// either way: keeping unsent edits leaves its marker
+// (account.signedOutKey), and sending everything first removes the device cache, after a marker naming
+// the copy it sent, which this tab hears first (finishFollow then hears the removal). Any other removal
+// of the cache, such as cleared site data, counts the same. Or the device now holds another account's
+// session. This tab then starts again as the device now is, once any run in progress ends
+// (flushDeferredSync): as a guest, or as whoever has signed in since, the same account included. The run
+// is kept in memory only. A session that only expired (a refused refresh removes the session and nothing
+// else) is not followed: this tab keeps caching for the next sign-in. Nor is a new sign-in to this account
+// with no sign-out between (a guest tab signing in): the account and its cache are the same, and this tab
+// takes up the newer sign-in before its next request (account.freshSession) and as it signs out
+// (signOutAccount). Returns whether it followed.
+function followSessionElsewhere(event) {
+  const userId = session.user.id;
+  const current = account.loadSession()?.user.id;
+  const signedOut = event.key === null
+    || (event.key === account.signedOutKey(userId) && event.newValue !== null)
+    || (event.key === account.profileKey(userId) && event.newValue === null)
+    || (event.key === account.SESSION_KEY && (current ? current !== userId : account.signedOut(userId)));
+  if (!signedOut) return false;
+  signedOutElsewhere = true;
+  // What this device knew of the account's board sharing goes with the sign-out, as in the tab that signed out.
+  friendsBoard?.signOut();
+  clearTimeout(syncTimer);
+  syncTimer = 0;
+  // A sign-out that sent everything removes the cache next: this tab waits to hear it (finishFollow).
+  const sent = event.key === account.signedOutKey(userId) ? sentStamp(event.newValue) : null;
+  if (sent !== null) pendingSignOut = sent;
+  else if (!runInProgress()) location.reload();
+  return true;
+}
+
+function sentStamp(markerText) {
+  try {
+    const sent = JSON.parse(markerText)?.sent;
+    return typeof sent === 'string' ? sent : null;
+  } catch {
+    return null;
+  }
+}
+
+// The rest of following a sign-out that sent everything (pendingSignOut). The signing-out tab can't yet
+// see a save made here, or in another tab, just before it removed the cache: the removal names the copy
+// it removed (oldValue), and one that isn't the copy sent goes back for the next sign-in
+// (account.restoreUnsent), together with what this tab last saved, or took in holding all it saved
+// (cacheText; see absorbCache). Never this tab's memory: a run finished after hearing of the sign-out,
+// or still in progress, stays out. Only storage changes, so this happens mid-run too; the tab then starts
+// again as the device now is once no run is in progress. A cleared storage, or the marker removed
+// without the cache, finishes with nothing to put back.
+function finishFollow(event) {
+  const userId = session.user.id;
+  const cacheRemoved = event.key === account.profileKey(userId) && event.newValue === null;
+  const finished = cacheRemoved || event.key === null || (event.key === account.signedOutKey(userId) && event.newValue === null);
+  if (!finished) return;
+  if (cacheRemoved) account.restoreUnsent(userId, event.oldValue, pendingSignOut, cacheText);
+  pendingSignOut = null;
+  if (!runInProgress()) location.reload();
 }
 
 // Finishes a Google or email-confirmation return; the page reloads as the signed-in user.
@@ -2311,7 +3329,7 @@ function bindEvents() {
     customOpen = false;
     prefs.mode = button.dataset.mode;
     setModeControls();
-    saveProfile();
+    saveChoice('mode');
     resetSession('practice', { focus: true });
   }));
   $('duration-options').addEventListener('click', (event) => {
@@ -2320,7 +3338,7 @@ function bindEvents() {
     if (prefs.mode === 'time') prefs.duration = Number(button.dataset.length);
     else prefs.count = Number(button.dataset.length);
     setModeControls();
-    saveProfile();
+    saveChoice('mode', prefs.mode === 'time' ? 'duration' : 'count');
     resetSession('practice', { focus: true });
   });
   $('punctuation-toggle').addEventListener('change', (event) => {
@@ -2345,7 +3363,9 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
-  $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(event.target.value); setPaceCaret('custom'); });
+  $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(event.target.value); setPaceCaret('custom', { speed: true }); });
+  // Left unedited, it shows any speed that arrived while it had focus (see showPace).
+  $('pace-wpm').addEventListener('blur', showPace);
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
@@ -2355,7 +3375,12 @@ function bindEvents() {
   });
 
   $('typing-input').addEventListener('beforeinput', (event) => beforeTypingInput(event));
-  $('typing-input').addEventListener('input', () => { $('typing-input').value = replayAttempt(attempt).typed; });
+  // Setting the field mid-composition would end it silently, so wait for compositionend.
+  $('typing-input').addEventListener('input', (event) => {
+    if (event.isComposing || composition?.type === 'primary') return;
+    $('typing-input').value = replayAttempt(attempt).typed;
+  });
+  wireComposition($('typing-input'), 'primary');
   $('typing-input').addEventListener('keydown', (event) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
   });
@@ -2383,17 +3408,8 @@ function bindEvents() {
     if (!event.target.matches?.(TEXT_FIELDS)) activationInput = 'physical-keyboard';
   }, true);
   $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
-  $('typing-input').addEventListener('compositionstart', () => {
-    if (attempt && ['ready', 'running'].includes(attempt.status)) {
-      if (attempt.status === 'ready') startAttempt(attempt);
-      attempt.unsupportedInput = true;
-      attempt.interrupted = true;
-      attempt.events.push({ type: 'composition', offsetMs: offsetFor() });
-      showInputNotice('primary', NOTICES.composition, { sticky: true });
-    }
-  });
   $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
-  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(restartKind(), { focus: true }));
+  $('run-again').addEventListener('click', () => sessionKind === 'daily' ? startDaily() : resetSession(sessionKind === 'missed' ? 'missed' : restartKind(), { focus: true }));
   $('result-words').addEventListener('keydown', moveWordFocus);
   $('result-words').addEventListener('focusin', (event) => {
     const word = event.target.closest('[role="option"]');
@@ -2405,6 +3421,7 @@ function bindEvents() {
     if (word) selectWord(Number(word.dataset.index), { focus: true });
   });
   $('progress-conditions').addEventListener('change', renderHistory);
+  $('take-standard').addEventListener('click', () => setTestShape('standard'));
   $('progress-period').addEventListener('change', renderHistory);
   $('training-conditions').addEventListener('change', renderTraining);
   $('start-daily').addEventListener('click', startDaily);
@@ -2430,7 +3447,11 @@ function bindEvents() {
 
   $('compete-setup').addEventListener('submit', (event) => { event.preventDefault(); startRace(); });
   $('race-input').addEventListener('beforeinput', (event) => beforeTypingInput(event, 'race'));
-  $('race-input').addEventListener('input', () => { if (race.attempt) $('race-input').value = replayAttempt(race.attempt).typed; });
+  $('race-input').addEventListener('input', (event) => {
+    if (!race.attempt || event.isComposing || composition?.type === 'race') return;
+    $('race-input').value = replayAttempt(race.attempt).typed;
+  });
+  wireComposition($('race-input'), 'race');
   $('race-input').addEventListener('keydown', (event) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
   });
@@ -2459,14 +3480,14 @@ function bindEvents() {
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
-    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open || $('suggest-dialog').open) return;
+    if (palette?.isOpen() || $('clear-dialog').open || $('account-dialog').open || $('delete-account-dialog').open || $('suggest-dialog').open) return;
     if (event.key === 'Escape' && preferences.open) {
       event.preventDefault();
       preferences.open = false;
       preferences.querySelector('summary').focus();
       return;
     }
-    if (event.repeat && event.key.length === 1 && (document.activeElement === $('typing-input') || document.activeElement === $('race-input'))) {
+    if (event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key)) && (document.activeElement === $('typing-input') || document.activeElement === $('race-input'))) {
       event.preventDefault();
       showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
       return;
@@ -2545,6 +3566,8 @@ function openCustom(open = true) {
 }
 
 // Signed in, the text is kept with the other preferences; a guest's preferences live only in memory.
+// Using it is a pick of the text and order shown, stamped even when they match what is stored, so a text
+// waiting from another tab doesn't replace it as the passage is prepared.
 function useCustomText() {
   const text = normalizeCustomText($('custom-text').value, Infinity);
   const error = customErrorMessage(customTextProblem(text));
@@ -2555,7 +3578,7 @@ function useCustomText() {
   }
   prefs.customText = text;
   prefs.customOrder = CUSTOM_ORDERS.includes($('custom-order').value) ? $('custom-order').value : 'as-written';
-  saveProfile();
+  saveChoice('customText', 'customOrder');
   customOpen = false;
   resetSession('custom', { focus: true });
   setModeControls();
@@ -2567,7 +3590,7 @@ function setTestShape(mode, length) {
   if (mode === 'time' && length) prefs.duration = length;
   if (mode === 'words' && length) prefs.count = length;
   setModeControls();
-  saveProfile();
+  saveChoice('mode', ...(length && mode !== 'quote' ? [mode === 'time' ? 'duration' : 'count'] : []));
   resetSession('practice', { focus: true });
 }
 
@@ -2588,9 +3611,10 @@ function setStopOnError(enabled) {
 }
 
 function setWordList(id, kind = restartKind()) {
+  if (!wordListIds.includes(id)) return;
   prefs.wordList = id;
   applyPreferences();
-  saveProfile();
+  saveChoice('wordList');
   resetSession(kind, { focus: true });
 }
 
@@ -2604,35 +3628,44 @@ function inPractice(change) {
 
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
+  // The friends board's switch: on, off, or null (no hint) before this device has read the board.
+  const shared = friendsBoard?.sharing ?? null;
   // During a custom session no test shape is current, only "custom text".
-  const shape = (mode, length) => comparableKind(sessionKind) && prefs.mode === mode && (mode === 'quote' || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  const shape = (mode, length) => comparableKind(sessionKind) && prefs.mode === mode && (mode === 'quote' || mode === 'standard' || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  // The standard recipe fixes these; like quote mode, the palette leaves out what can't change.
+  const fixedText = prefs.mode === 'quote' || standardLocked();
   const commands = [
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
+    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
+    { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
-    // Like Esc: the current kind of session starts again (a lesson stays a lesson, custom text stays custom
-    // while it has a text), with one new passage.
-    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => resetSession(sessionKind === 'custom' ? restartKind() : sessionKind, { focus: true }) },
+    // Like Esc: a lesson starts again as a lesson; anything else starts practice again, as before.
+    { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => (sessionKind === 'lesson' ? resetSession('lesson', { focus: true }) : inPractice((kind) => resetSession(kind, { focus: true }))) },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
     ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: () => startLesson(nextLessonIndex(profile.lessons)) }]),
-    ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
-    ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
+    ...TEST_DURATIONS.map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
+    ...TEST_COUNTS.map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: sessionKind === 'custom' ? 'current' : '', on: sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
-    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: prefs.mode === 'quote', run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
-    { group: 'test', label: 'numbers', keywords: 'digits figures', hint: onOff(prefs.numbers), on: Boolean(prefs.numbers), disabled: prefs.mode === 'quote', run: () => { prefs.numbers = !prefs.numbers; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
-    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: prefs.mode === 'quote', run: () => inPractice((kind) => setWordList(id, kind)) })),
+    { group: 'test', label: 'standard test · 60 seconds', keywords: `standard score real world fixed recipe benchmark ${recipeLabel()}`, hint: shape('standard') ? 'current' : recipeLabel(), on: shape('standard'), run: () => setTestShape('standard') },
+    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: fixedText, run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
+    { group: 'test', label: 'numbers', keywords: 'digits figures', hint: onOff(prefs.numbers), on: Boolean(prefs.numbers), disabled: fixedText, run: () => { prefs.numbers = !prefs.numbers; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
+    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: fixedText, run: () => inPractice((kind) => setWordList(id, kind)) })),
     ...[['off', 'off'], ['best', 'personal best'], ['average', 'average'], ['last', 'last run'], ['custom', 'custom']].map(([mode, name]) => (
       { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: prefs.paceCaret === mode ? 'on' : '', on: prefs.paceCaret === mode, run: () => setPaceCaret(mode) })),
-    { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, run: () => setStopOnError(!prefs.stopOnError) },
-    ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveProfile(); } })),
-    ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveProfile(); } })),
+    { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, disabled: standardLocked(), run: () => setStopOnError(!prefs.stopOnError) },
+    ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
+    ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
     ...(session
-      ? [{ group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount }]
+      ? [
+        { group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount },
+        { group: 'account', label: 'delete account…', keywords: 'remove erase close account data privacy', run: openDeleteAccount },
+      ]
       : [
         { group: 'account', label: 'create account…', keywords: 'sign up register save login', run: () => openAccountDialog('create') },
         { group: 'account', label: 'sign in…', keywords: 'log in login account', run: () => openAccountDialog('signin') },
@@ -2733,9 +3766,23 @@ inbox = createInbox({
     result: { label: 'Race again', run: (entry) => onlineRace.rematchRoom(entry.roomId, entry.conditions) },
   },
 });
+// The board only reads: each account's numbers ride its own profile saves (pushProfile, repairBoard).
+// Whether the account shares is the board's own to know, from the service, not a synced preference.
+friendsBoard = createFriendsBoard({
+  getSession: () => session,
+  dailyKey,
+  // Which shape the bests picker opens on: the one you have run most (src/friends-board.js defaultShape).
+  runs: () => profile.runs,
+  conditionParts,
+  signIn: () => openAccountDialog('signin'),
+  // The button that asks for this disappears with the board, so focus lands on the Online selector.
+  openOnline: () => { onlineRace.open(); $('challenge-online').focus(); },
+  onShared: repairBoardNow,
+});
 onlineRace = createOnlineRace({
   getSession: () => session,
   inbox,
+  board: friendsBoard,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
   onPassageSeen(id) {
@@ -2750,13 +3797,14 @@ document.fonts?.ready.then(() => { primaryFx.relayout(); updateGlides({ instant:
 console.info('stilltype · ↑ ↑ ↓ ↓ ← → ← → b a');
 
 if (!storageAvailable) announce('Storage is unavailable. Results last only in this tab.');
+noticeDeletedAccount();
 completeAuthRedirect();
 syncOnLoad();
 inbox.refresh();
-// Refresh the day label when a tab returns, and across midnight without reloading.
-setInterval(() => { if (document.body.dataset.view === 'compete') renderDaily(); }, 30000);
+// Refresh the day label and an open friends board when a tab returns, and across midnight without reloading.
+setInterval(() => { if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); } }, 30000);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) renderDaily();
+  if (!document.hidden) { renderDaily(); friendsBoard.rollover(); }
 });
 
 // Offline shell (sw.js): installable and playable without a connection. Skipped on localhost so local
