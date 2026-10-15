@@ -14,9 +14,13 @@ const PACE = { delay: 140 };
 
 async function setSwitch(page, id, on) {
   await openSettings(page);
-  const toggle = page.locator(`#${id}`);
-  if (on) await toggle.check();
-  else await toggle.uncheck();
+  if (id === 'stop-on-error-toggle') {
+    await page.locator('#correction-select').selectOption(on ? 'mandatory' : 'relaxed');
+  } else {
+    const toggle = page.locator(`#${id}`);
+    if (on) await toggle.check();
+    else await toggle.uncheck();
+  }
   await page.locator('details.preferences > summary').click();
   await expect(page.locator('.preferences-popover')).toBeHidden();
 }
@@ -204,11 +208,11 @@ test('quick end is disabled where it changes nothing, and the palette follows', 
   await expect(page.locator('#quick-end-note')).toBeHidden();
   await expect(page.locator('#quick-end-toggle')).toHaveAccessibleDescription('');
   // Stop on error already waits for every letter.
-  await page.locator('#stop-on-error-toggle').check();
+  await page.locator('#correction-select').selectOption('mandatory');
   await expect(page.locator('#quick-end-toggle')).toBeDisabled();
   await expect(page.locator('#quick-end-toggle')).toBeChecked();
-  await expect(page.locator('#quick-end-note')).toHaveText('stop on error waits for every letter');
-  await page.locator('#stop-on-error-toggle').uncheck();
+  await expect(page.locator('#quick-end-note')).toHaveText('this correction policy fixes how the run ends');
+  await page.locator('#correction-select').selectOption('relaxed');
   await expect(page.locator('#quick-end-toggle')).toBeEnabled();
   await expect(page.locator('#quick-end-toggle')).toBeChecked();
   await page.locator('details.preferences > summary').click();
@@ -549,7 +553,7 @@ for (const scheme of ['dark', 'light']) {
     await settle(page);
     await page.screenshot({ path: shot(testInfo, `settings-${scheme}.png`) });
     // Under stop on error, quick end keeps its value and says where it applies.
-    await page.locator('#stop-on-error-toggle').check();
+    await page.locator('#correction-select').selectOption('mandatory');
     await expect(page.locator('#quick-end-note')).toBeVisible();
     await settle(page);
     await page.screenshot({ path: shot(testInfo, `settings-note-${scheme}.png`) });

@@ -277,7 +277,7 @@ test('accents fold to plain letters and the length cap is checked after punctuat
   expect((await passageText(page)).length).toBe(2999);
 });
 
-test('changing stop on error keeps the custom passage', async ({ page }) => {
+test('changing the correction setting keeps the custom passage', async ({ page }) => {
   await openApp(page);
   await page.locator('#mode-custom').click();
   await page.locator('#custom-text').fill(TEXT);
@@ -285,7 +285,7 @@ test('changing stop on error keeps the custom passage', async ({ page }) => {
   await expect(page.locator('#condition-line')).toContainText('continue on error');
 
   await openSettings(page);
-  await page.locator('#stop-on-error-toggle').check();
+  await page.locator('#correction-select').selectOption('mandatory');
   await expect(page.locator('#condition-line')).toContainText('custom text');
   await expect(page.locator('#condition-line')).toContainText('stop on error');
   expect(await passageText(page)).toBe(TEXT);
