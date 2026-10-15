@@ -83,6 +83,14 @@ function storedPreferences(raw) {
 
 export function normalizeProfile(parsed) {
   if (parsed?.version !== 2) return emptyProfile();
+  const rawPreferences = { ...(parsed.preferences || {}) };
+  const preferencesAt = { ...(parsed.preferencesAt || {}) };
+  const oldChoice = preferencesAt.stopOnError || '';
+  const newChoice = preferencesAt.correction || '';
+  if (Object.hasOwn(rawPreferences, 'stopOnError') && (!Object.hasOwn(rawPreferences, 'correction') || oldChoice > newChoice)) {
+    rawPreferences.correction = correctionPreference({ stopOnError: rawPreferences.stopOnError });
+    if (oldChoice) preferencesAt.correction = oldChoice;
+  }
   const traces = Array.isArray(parsed.attempts) ? parsed.attempts : [];
   const records = Array.isArray(parsed.runs) ? parsed.runs : traces.map((trace) => {
     // Older traces did not have wall-clock dates. Preserve unknown dates rather than invent them.
@@ -93,7 +101,8 @@ export function normalizeProfile(parsed) {
   return {
     ...emptyProfile(),
     ...parsed,
-    preferences: storedPreferences(parsed.preferences),
+    preferences: storedPreferences(rawPreferences),
+    ...(Object.keys(preferencesAt).length ? { preferencesAt } : {}),
     attempts: settleDailyFirsts(traces),
     runs: retainRuns(settleDailyFirsts(records)),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],

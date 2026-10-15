@@ -2518,7 +2518,7 @@ function finishLesson(completed, valid) {
       saved = saveProfile();
     }
   }
-  lessonResult = { index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, recorded, at, touch, saved, valid };
+  lessonResult = { failed: completed.failed, index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, recorded, at, touch, saved, valid };
   switchView('learn');
   announce(`${lessonHeadline(lessonResult)} ${score.accuracy}% accuracy, ${score.wpm} wpm.`);
   // Show the result from the top of the page, or from the result itself when the page is too short.
@@ -2537,7 +2537,7 @@ function lessonResultHeld(result, progress) {
 
 function lessonHeadline(result) {
   const n = result.index + 1;
-  if (!result.valid) return `Lesson ${n} interrupted · not counted`;
+  if (!result.valid) return result.failed ? `Lesson ${n} failed · ${result.failed} · not counted` : `Lesson ${n} interrupted · not counted`;
   if (!result.recorded) return `Lesson ${n} is locked · not counted`;
   if (result.touch) return `Lesson ${n} on touch input · doesn’t unlock`;
   const next = nextLessonIndex(profile.lessons);

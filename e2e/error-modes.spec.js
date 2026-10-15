@@ -227,3 +227,13 @@ test('correction choices survive account save, reload and a fixed standard run',
   await page.locator('#mode-time').click();
   await expect(page.locator('#condition-line')).toContainText('no backspace');
 });
+
+test('a lesson ended by fail-on-any-error names the failed key rule', async ({ page }) => {
+  await openApp(page);
+  await chooseCorrection(page, 'fail-any');
+  await page.locator('#open-lessons').click();
+  await page.locator('#lesson-primary').click();
+  const text = await passageText(page);
+  await typeInto(page, text[0] === 'x' ? 'z' : 'x');
+  await expect(page.locator('#lesson-result-heading')).toHaveText('Lesson 1 failed · wrong key · not counted');
+});
