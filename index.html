@@ -424,6 +424,7 @@
                 <button id="start-drill" class="btn btn-primary" type="button" data-action="start-drill" disabled>Start drill</button>
                 <button id="skip-to-retest" class="btn btn-ghost" type="button" data-action="skip-to-retest" disabled>Skip to retest</button>
                 <button id="run-again" class="btn btn-ghost" type="button" data-action="run-again">Run again</button>
+                <button id="watch-replay" class="btn btn-ghost" type="button" data-action="watch-replay" hidden>Watch replay</button>
               </div>
             </article>
 
@@ -832,6 +833,28 @@
         <span class="palette-highlight" aria-hidden="true"></span>
         <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
         <p id="palette-empty" class="palette-empty" hidden>No matches</p>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="replay-dialog" aria-labelledby="replay-title">
+    <div class="dialog-content">
+      <header class="replay-head">
+        <h2 id="replay-title">Replay</h2>
+        <div class="replay-readout">
+          <span id="replay-stats-label" class="sr-only"></span>
+          <span class="replay-stat" aria-hidden="true"><span id="replay-wpm" class="replay-stat-value">—</span><span>wpm</span></span>
+          <span class="replay-stat" aria-hidden="true"><span id="replay-accuracy" class="replay-stat-value">—</span><span>%</span></span>
+          <span class="replay-stat" aria-hidden="true"><span id="replay-errors" class="replay-stat-value">0</span><span id="replay-errors-unit">errors</span></span>
+          <span class="replay-stat"><span id="replay-clock" class="replay-stat-value">0.0</span><span>s</span></span>
+        </div>
+      </header>
+      <div id="replay-text" class="replay-text" aria-hidden="true"></div>
+      <div class="dialog-actions">
+        <button id="replay-toggle" class="btn btn-secondary" type="button">Pause</button>
+        <button id="replay-speed" class="btn btn-ghost" type="button" aria-label="Playback speed 1×">1×</button>
+        <button id="replay-restart" class="btn btn-ghost" type="button">Restart</button>
+        <button id="replay-close" class="btn btn-ghost" type="button">Close</button>
       </div>
     </div>
   </dialog>

@@ -32,6 +32,7 @@ const SHELL = [
   '/src/palette.js',
   '/src/profile.js',
   '/src/progress-view.js',
+  '/src/replay-view.js',
   '/src/typing.js',
   '/src/words.js',
   '/src/fonts/literata-roman.woff2',
