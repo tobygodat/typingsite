@@ -213,6 +213,9 @@
                 <p id="keybindings-status" role="status" aria-live="polite"></p>
               </form>
             </details>
+            <button id="import-trigger" class="preference-row preference-action" type="button" aria-haspopup="dialog" aria-controls="import-dialog">
+              <span><strong>import from Monkeytype</strong><small class="pace-note">paste its exported settings</small></span>
+            </button>
           </div>
         </details>
 
@@ -1061,6 +1064,44 @@
         <button id="send-suggest" class="btn btn-primary" type="submit" disabled>Send suggestion</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="import-dialog" aria-labelledby="import-dialog-title">
+    <form id="import-form" class="dialog-content" novalidate>
+      <div>
+        <h2 id="import-dialog-title">Import Monkeytype settings</h2>
+        <p>In Monkeytype, open settings, go to danger zone and choose import/export settings, then export. Paste what it gives you here, or choose a file you saved it in.</p>
+      </div>
+      <label for="import-text">Monkeytype settings
+        <textarea id="import-text" class="input textarea import-text" rows="6" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder='{ "mode": "time", "time": 30, … }' aria-describedby="import-error"></textarea>
+      </label>
+      <div class="import-meta">
+        <p id="import-error" class="field-error" role="alert"></p>
+        <button id="import-choose" class="btn btn-ghost btn-sm" type="button">Choose a file</button>
+        <input id="import-file" type="file" accept=".json,.txt,application/json,text/plain" hidden>
+      </div>
+      <div class="dialog-actions">
+        <button id="cancel-import" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="confirm-import" class="btn btn-primary" type="submit" disabled>Import settings</button>
+      </div>
+    </form>
+    <div id="import-report" class="dialog-content" hidden>
+      <div>
+        <h2 id="import-report-title" tabindex="-1">Settings imported</h2>
+        <p id="import-summary"></p>
+      </div>
+      <section class="import-group" aria-labelledby="import-mapped-title">
+        <h3 id="import-mapped-title" class="account-kicker">brought over</h3>
+        <ul id="import-mapped" class="import-rows"></ul>
+      </section>
+      <section id="import-skipped-group" class="import-group" aria-labelledby="import-skipped-title">
+        <h3 id="import-skipped-title" class="account-kicker">left as they were</h3>
+        <ul id="import-skipped" class="import-rows"></ul>
+      </section>
+      <div class="dialog-actions">
+        <button id="import-done" class="btn btn-primary" type="button">Done</button>
+      </div>
+    </div>
   </dialog>
 
   <div id="history-toast" class="toast" role="status" hidden>

@@ -64,6 +64,7 @@ import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practice
 import { renderTrend } from './progress-view.js';
 import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
+import { readMonkeytypeSettings } from './monkeytype.js';
 import { createCompose } from './compose-view.js';
 import {
   FINGER_ZONES, LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
@@ -1728,10 +1729,12 @@ const NOTICES = {
   leftSurface: 'You left mid-run, so it won’t count.',
   paletteOpened: 'Commands opened mid-run, so it won’t count.',
   suggestOpened: 'Suggestions opened mid-run, so it won’t count.',
+  importOpened: 'Settings import opened mid-run, so it won’t count.',
   composeFocusLost: 'Focus lost, so this one won’t be saved. Esc to start over.',
   composeLeft: 'You left mid-way, so this one wasn’t saved.',
   composePalette: 'Commands opened mid-way, so this one won’t be saved.',
   composeSuggest: 'Suggestions opened mid-way, so this one won’t be saved.',
+  composeImport: 'Settings import opened mid-way, so this one won’t be saved.',
   deleteOpened: 'Account deletion opened mid-run, so it won’t count.',
   raceFocusLost: 'Focus lost. Esc to restart this turn.',
 };
@@ -4546,6 +4549,97 @@ async function completeAuthRedirect() {
   }
 }
 
+// Import from Monkeytype: its exported settings JSON, pasted or from a file, mapped by src/monkeytype.js.
+// Each setting brought over is applied as a pick of it here (saveChoice), so it syncs to the account and
+// outranks an older value from another device, as choosing it in settings would.
+function openImport() {
+  document.querySelector('.preferences')?.removeAttribute('open');
+  markInterrupted(NOTICES.importOpened);
+  compose.interrupt(NOTICES.composeImport);
+  markRaceInterrupted();
+  $('import-form').hidden = false;
+  $('import-report').hidden = true;
+  $('import-error').textContent = '';
+  $('import-file').value = '';
+  updateImportButton();
+  $('import-dialog').showModal();
+  $('import-text').focus();
+}
+
+function updateImportButton() {
+  $('confirm-import').disabled = !$('import-text').value.trim();
+}
+
+async function readImportFile() {
+  const file = $('import-file').files?.[0];
+  if (!file) return;
+  try {
+    $('import-text').value = await file.text();
+    $('import-error').textContent = '';
+  } catch {
+    $('import-error').textContent = 'That file couldn’t be read. Try pasting its text instead.';
+  }
+  updateImportButton();
+  $('import-text').focus();
+}
+
+function importRow({ setting, value, from, reason }) {
+  const row = document.createElement('li');
+  const name = document.createElement('span');
+  name.className = 'import-setting';
+  name.textContent = setting;
+  row.append(name);
+  if (value !== undefined) {
+    const shown = document.createElement('span');
+    shown.className = 'import-value';
+    shown.textContent = value;
+    row.append(shown);
+  }
+  if (reason) {
+    const why = document.createElement('span');
+    why.className = 'import-reason';
+    why.textContent = reason;
+    row.append(why);
+  }
+  const source = document.createElement('small');
+  source.className = 'import-from';
+  source.textContent = `monkeytype ${from}`;
+  row.append(source);
+  return row;
+}
+
+function importSettings(event) {
+  event.preventDefault();
+  const result = readMonkeytypeSettings($('import-text').value);
+  if (result.error) {
+    $('import-error').textContent = result.error;
+    $('import-text').focus();
+    return;
+  }
+  const keys = Object.keys(result.preferences);
+  const conditions = keys.some((key) => !DISPLAY_PREFERENCES.includes(key) && !['paceCaret', 'paceWpm'].includes(key));
+  prefs = validPreferences({ ...prefs, ...result.preferences });
+  if (keys.includes('mode')) customOpen = false;
+  applyPreferences();
+  setModeControls();
+  // The correction rule and the older stop-on-error flag are one choice, saved together as setCorrection does.
+  saveChoice(...keys, ...(keys.includes('correction') ? ['stopOnError'] : []));
+  if (conditions && !runInProgress()) resetSession(keys.includes('mode') ? 'practice' : restartKind(), { leaveCompose: keys.includes('mode') });
+
+  const count = result.mapped.length;
+  setText($('import-summary'), `${count} ${count === 1 ? 'setting' : 'settings'} brought over. ${session
+    ? 'They’re saved to your account and sync to your other devices.'
+    : 'Guest mode keeps them for this visit only; sign in to keep them.'}`);
+  $('import-mapped').replaceChildren(...result.mapped.map(importRow));
+  $('import-skipped').replaceChildren(...result.skipped.map(importRow));
+  $('import-skipped-group').hidden = !result.skipped.length;
+  $('import-text').value = '';
+  $('import-form').hidden = true;
+  $('import-report').hidden = false;
+  $('import-report-title').focus();
+  announce(`${count} Monkeytype ${count === 1 ? 'setting' : 'settings'} imported.`);
+}
+
 // Feature suggestions go straight to Supabase (account.sendSuggestion), never linked to an account.
 let suggestToastTimer;
 
@@ -4844,6 +4938,15 @@ function bindEvents() {
   $('suggest-form').addEventListener('submit', sendSuggestion);
   $('cancel-suggest').addEventListener('click', () => $('suggest-dialog').close());
   $('suggest-dialog').addEventListener('click', (event) => { if (event.target === $('suggest-dialog')) $('suggest-dialog').close(); });
+
+  $('import-trigger').addEventListener('click', openImport);
+  $('import-text').addEventListener('input', () => { $('import-error').textContent = ''; updateImportButton(); });
+  $('import-choose').addEventListener('click', () => $('import-file').click());
+  $('import-file').addEventListener('change', readImportFile);
+  $('import-form').addEventListener('submit', importSettings);
+  $('cancel-import').addEventListener('click', () => $('import-dialog').close());
+  $('import-done').addEventListener('click', () => $('import-dialog').close());
+  $('import-dialog').addEventListener('click', (event) => { if (event.target === $('import-dialog')) $('import-dialog').close(); });
 
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
@@ -5235,6 +5338,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'sign in…', keywords: 'log in login account', run: () => openAccountDialog('signin') },
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
+    { group: 'display', label: 'import Monkeytype settings…', keywords: 'monkeytype import settings config json migrate', run: openImport },
     { group: 'help', label: 'keybindings…', keywords: 'settings shortcuts restart keyboard', run: () => { const settings = document.querySelector('.preferences'); settings.open = true; document.querySelector('.keybindings-category').open = true; $('keybinding-restart').focus(); } },
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: !hasAnyHistory(), run: () => { navigate('progress'); $('clear-history').click(); } },

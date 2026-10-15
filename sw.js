@@ -28,6 +28,7 @@ const SHELL = [
   '/src/layouts.js',
   '/src/lengths.js',
   '/src/lessons.js',
+  '/src/monkeytype.js',
   '/src/motion.js',
   '/src/multiplayer.js',
   '/src/online-race.js',
