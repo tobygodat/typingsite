@@ -23,6 +23,11 @@ import {
   normalizeManualTarget,
   orderCustomText,
   passageComplete,
+  correctionPreference,
+  blocksOnError,
+  allowsBackspace,
+  failureFor,
+  failureAtEnd,
   recommendTarget,
   replayAttempt,
   selectPassage,
@@ -355,7 +360,7 @@ function settingsConditions(inputClass = 'physical-keyboard') {
     wordList: prefs.mode === 'quote' ? null : prefs.wordList,
     inputClass,
     layout: inputLayout(inputClass),
-    correctionPolicy: prefs.stopOnError ? 'mandatory' : 'relaxed',
+    correctionPolicy: prefs.correction,
     language: 'en',
     corpus: CORPUS_VERSION,
     metricVersion: METRIC_VERSION,
@@ -366,8 +371,9 @@ function conditions(inputClass = 'physical-keyboard') {
   return prefs.mode === 'standard' ? { ...standardConditions(inputClass), layout: inputLayout(inputClass) } : settingsConditions(inputClass);
 }
 
+const CORRECTION_LABELS = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
 function correctionLabel(policy) {
-  return policy === 'relaxed' ? 'continue on error' : 'stop on error';
+  return CORRECTION_LABELS[policy || 'mandatory'] || 'stop on error';
 }
 
 // "standard v1": the recipe name as people read it, then what the recipe fixes.
@@ -388,7 +394,7 @@ function conditionParts(value = conditions()) {
     length: value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`,
     text: value.mode === 'quote' ? value.difficulty || 'any difficulty' : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`,
     input: inputLabel(value),
-    correction: value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error',
+    correction: correctionLabel(value.correctionPolicy),
     corpus: `corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')}`,
     metric: 'metric v1',
   };
@@ -576,7 +582,7 @@ function applyPreferences() {
   $('keyboard-toggle').checked = prefs.keyboard;
   $('finger-toggle').checked = prefs.fingerMap;
   $('finger-row').hidden = !prefs.keyboard;
-  $('stop-on-error-toggle').checked = prefs.stopOnError;
+  $('correction-select').value = prefs.correction;
   $('focus-toggle').checked = prefs.focusMode;
   $('keyboard').hidden = !prefs.keyboard && sessionKind !== 'lesson';
   renderKeyboard();
@@ -620,8 +626,8 @@ function syncLockedSettings() {
   if (standard && !recipeOption) $('word-list').append(new Option('1k–10k', 'standard'));
   if (!standard) recipeOption?.remove();
   $('word-list').value = standard ? 'standard' : prefs.wordList;
-  $('stop-on-error-toggle').disabled = standard;
-  $('stop-on-error-toggle').checked = standard || prefs.stopOnError;
+  $('correction-select').disabled = standard;
+  $('correction-select').value = standard ? 'mandatory' : prefs.correction;
   document.querySelectorAll('.preference-lock').forEach((note) => { note.hidden = !standard; });
 }
 
@@ -1034,7 +1040,7 @@ function pushInsert(char, type = 'primary', at = now(), carried = false) {
   const targetAttempt = type === 'primary' ? attempt : race.attempt;
   startAttempt(targetAttempt, type, at);
   const replay = replayAttempt(targetAttempt);
-  const unresolved = targetAttempt.conditions.correctionPolicy !== 'relaxed'
+  const unresolved = blocksOnError(targetAttempt.conditions.correctionPolicy)
     && replay.typed.length > 0
     && replay.typed.at(-1) !== targetAttempt.text[replay.typed.length - 1];
   const offsetMs = offsetFor(type, at);
@@ -1042,7 +1048,8 @@ function pushInsert(char, type = 'primary', at = now(), carried = false) {
   if (unresolved) event = { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs };
   else if (carried && replay.typed.length >= targetAttempt.text.length) event = carriedKey(targetAttempt, char, offsetMs);
   if (event) targetAttempt.events.push(event);
-  return { previousLength: replay.typed.length, blocked: unresolved };
+  const failed = unresolved ? null : failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char);
+  return { previousLength: replay.typed.length, blocked: unresolved, failed };
 }
 
 function pushDelete(type = 'primary') {
@@ -1096,8 +1103,15 @@ function refuseComposition(type) {
 function typeKeys(keys, type, at = now()) {
   if (!keys.length || !acceptingInput(type, at)) return;
   const room = inputAttempt(type).text.length - currentReplay(type).typed.length;
+  const target = inputAttempt(type);
   const changes = keys.map((key, index) => pushInsert(key, type, at, room > 0 && index >= room));
+  const failure = changes.find((change) => change.failed)?.failed;
+  if (failure) { target.interrupted = true; target.failed = failure; }
   refreshAfterInput(type, changes[0].previousLength, changes.at(-1).blocked, at);
+  if (failure && target.status === 'running') {
+    if (type === 'primary') finishPrimary();
+    else finishRacePlayer();
+  }
 }
 
 // What a composition committed, scored once the key that ended it is known. A mark pending when focus
@@ -1192,6 +1206,7 @@ function beforeTypingInput(event, type = 'primary') {
   if (compositionInput || event.isComposing || composition?.type === type) return;
   if (event.inputType?.startsWith('delete')) {
     event.preventDefault();
+    if (!allowsBackspace(inputAttempt(type).conditions.correctionPolicy)) return;
     const previousLength = pushDelete(type);
     refreshAfterInput(type, previousLength);
     return;
@@ -1544,6 +1559,18 @@ function storeAttempt(completed) {
   return saved;
 }
 
+// The end of a run (the timer, the passage end) is a word boundary for the failure
+// policies, so a wrong letter typed just before the timer runs out still fails the run.
+function markEndFailure(target) {
+  if (target.interrupted) return;
+  const failed = failureAtEnd(target.conditions.correctionPolicy, target.text, replayAttempt(target).typed);
+  if (!failed) return;
+  target.interrupted = true;
+  target.failed = failed;
+}
+
+const failedDrill = (completed) => completed.kind === 'drill' && Boolean(completed.failed);
+
 // `replacing`: another session or view takes over at once, so a drill draws no retest passage to throw away.
 function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   if (!attempt || attempt.status !== 'running') return;
@@ -1555,17 +1582,19 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   clearInterval(ticker);
   ticker = null;
   const endedAt = forcedElapsed ?? offsetFor();
+  markEndFailure(attempt);
   const valid = !attempt.interrupted && !attempt.unsupportedInput;
   const completed = completeAttempt(attempt, { endedAt, status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = attempt.interrupted;
   completed.unsupportedInput = attempt.unsupportedInput;
   completed.fresh = attempt.fresh;
+  if (attempt.failed) completed.failed = attempt.failed;
   attempt = completed;
   $('typing-input').disabled = true;
   primaryFx.finish();
   setRunning(false);
   $('typing-status').className = `badge ${valid ? 'badge-success' : 'badge-warning'}`;
-  $('typing-status').textContent = valid ? 'Complete' : 'Interrupted';
+  $('typing-status').textContent = valid ? 'Complete' : completed.failed ? 'Failed' : 'Interrupted';
   // Lessons keep their own progress and never enter runs, traces or bests.
   if (sessionKind === 'lesson') {
     finishLesson(completed, valid);
@@ -1573,7 +1602,9 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   }
   const saved = storeAttempt(completed);
 
-  if (sessionKind === 'drill' && baselineAttempt) {
+  // A drill the correction setting failed shows its result like any failed run, so it can be tried
+  // again or skipped to the retest; a finished or interrupted drill goes straight on to the retest.
+  if (sessionKind === 'drill' && baselineAttempt && !completed.failed) {
     if (trainingContext) trainingContext.drillCompleted = valid;
     // Train already offers this retest: startDrill() rendered its actions.
     if (replacing) return;
@@ -1601,7 +1632,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false } = {}) {
   }
   switchView('results');
   renderCard(completed);
-  $('run-again').focus({ preventScroll: true });
+  $(failedDrill(completed) ? 'start-drill' : 'run-again').focus({ preventScroll: true });
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -1611,7 +1642,7 @@ function renderCard(completed) {
   const kind = completed.kind === 'challenge' ? 'ghost race' : completed.kind !== 'test' ? completed.kind : completed.conditions.mode === 'standard' ? 'standard' : 'practice';
   const at = new Date();
   const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
-  $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}`;
+  $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}${completed.failed ? ` · failed · ${completed.failed}` : ''}`;
   $('run-card').hidden = false;
   const graph = $('speed-graph').closest('figure');
   graph.hidden = !rateShown(completed);
@@ -1690,6 +1721,7 @@ function practiseMissedList() {
 }
 
 function resultHeadline(completed) {
+  if (completed.failed) return `failed · ${completed.failed}`;
   if (completed.status !== 'complete') return 'Interrupted · not counted';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
   if (completed.kind === 'challenge') return 'Ghost race complete · not counted toward your best';
@@ -1732,7 +1764,7 @@ function renderResults(completed, saved) {
   $('result-delta').textContent = resultHeadline(completed);
   // A retest reports a failed save once, in the comparison caveat.
   $('result-comparison-note').textContent = [
-    counted ? '' : 'Focus or input changed during the run, so it isn’t counted.',
+    counted ? '' : completed.failed ? 'The correction setting ended this run, so it isn’t counted.' : 'Focus or input changed during the run, so it isn’t counted.',
     saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
   ].filter(Boolean).join(' ');
 
@@ -1743,16 +1775,17 @@ function renderResults(completed, saved) {
   // Custom text and ghost races are never mined for targets or kept as a baseline, so their results offer no drill or retest:
   // the recommendation would come from other runs and the retest would measure a different text. Word
   // practice isn't compared either, but like a drill it leads on to a retest of the run its words came from.
-  renderRecommendation(counted, comparableKind(completed.kind) || completed.kind === 'missed');
+  renderRecommendation(counted || failedDrill(completed), comparableKind(completed.kind) || completed.kind === 'missed', completed);
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again' : 'Run again';
   renderTraining();
   renderDaily();
   $('comparison-panel').hidden = true;
+  const failure = completed.failed ? `${completed.kind === 'drill' ? 'Drill' : 'Run'} failed, ${completed.failed}. ` : '';
   $('ghost-result').hidden = completed.kind !== 'challenge';
   renderGhostOffer(completed);
   announce(saved
-    ? `${speed}, ${replay.score.accuracy}% accuracy.`
-    : `${speed}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
+    ? `${failure}${speed}, ${replay.score.accuracy}% accuracy.`
+    : `${failure}${speed}, ${replay.score.accuracy}% accuracy. Couldn’t save on this device.`);
 }
 
 // Train's drill and retest actions, from the current recommendation and baseline. Runs after each result
@@ -1760,15 +1793,16 @@ function renderResults(completed, saved) {
 // came from saved history (practiceTarget) and no result has been shown in this tab.
 // `compared` is false after a custom text result (any non-comparable kind): that text is never mined for
 // targets or kept as a baseline, so Train offers no drill or retest for it. A drill started later shows them again.
-function renderRecommendation(counted = true, compared = true) {
+function renderRecommendation(counted = true, compared = true, completed = null) {
   // After startDaily() there is no recommendation: show the general drill Start drill falls back to.
   activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
   $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
-  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : 'This run lost focus or used unsupported input.';
+  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : completed?.failed ? 'This run failed under the correction setting.' : 'This run lost focus or used unsupported input.';
   $('recommendation-meta').textContent = baselineAttempt
     ? `About 1 min, then a fresh ${retestLength(baselineAttempt.conditions)} retest.`
     : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
   $('start-drill').disabled = !counted;
+  $('start-drill').textContent = completed && failedDrill(completed) ? 'Try drill again' : 'Start drill';
   $('skip-to-retest').disabled = !counted || baselineAttempt?.status !== 'complete';
   for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = !compared;
   renderEvidenceList(activeRecommendation.evidence);
@@ -1902,7 +1936,8 @@ function restoreConditions(source) {
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
-    stopOnError: source.correctionPolicy !== 'relaxed',
+    correction: correctionPreference({ correction: source.correctionPolicy, stopOnError: source.correctionPolicy !== 'relaxed' }),
+    stopOnError: source.correctionPolicy === 'mandatory',
   };
   livePreferences = JSON.stringify(prefs);
   applyPreferences();
@@ -2619,7 +2654,7 @@ function finishLesson(completed, valid) {
       saved = saveProfile();
     }
   }
-  lessonResult = { index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, recorded, at, touch, saved, valid };
+  lessonResult = { failed: completed.failed, index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, recorded, at, touch, saved, valid };
   switchView('learn');
   announce(`${lessonHeadline(lessonResult)} ${score.accuracy}% accuracy, ${score.wpm} wpm.`);
   // Show the result from the top of the page, or from the result itself when the page is too short.
@@ -2638,7 +2673,7 @@ function lessonResultHeld(result, progress) {
 
 function lessonHeadline(result) {
   const n = result.index + 1;
-  if (!result.valid) return `Lesson ${n} interrupted · not counted`;
+  if (!result.valid) return result.failed ? `Lesson ${n} failed · ${result.failed} · not counted` : `Lesson ${n} interrupted · not counted`;
   if (!result.recorded) return `Lesson ${n} is locked · not counted`;
   if (result.touch) return `Lesson ${n} on touch input · doesn’t unlock`;
   const next = nextLessonIndex(profile.lessons);
@@ -2695,8 +2730,8 @@ function renderLessons() {
     const repeat = [`Repeat lesson ${n}`, start(result.index)];
     heading = lessonHeadline(result);
     if (!result.valid) {
-      status = ['interrupted', 'badge-warning'];
-      copy = 'Focus or input changed during the run, so it doesn’t count toward unlocking.';
+      status = [result.failed ? 'failed' : 'interrupted', 'badge-warning'];
+      copy = result.failed ? 'The correction setting ended this lesson, so it doesn’t count toward unlocking.' : 'Focus or input changed during the run, so it doesn’t count toward unlocking.';
       primary = [`Try lesson ${n} again`, start(result.index)];
     } else if (!result.recorded) {
       status = ['not counted', 'badge-neutral'];
@@ -3190,12 +3225,14 @@ function updateRaceProgress(replay) {
 }
 
 function finishRacePlayer() {
+  markEndFailure(race.attempt);
   if (composition?.type === 'race') composition = null;
   if (accentPair?.type === 'race') accentPair = null;
   heldDeadKey = null;
   const valid = !race.attempt.interrupted && !race.attempt.unsupportedInput;
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
+  if (race.attempt.failed) completed.failed = race.attempt.failed;
   race.attempt = completed;
   raceRunChanged();
   race.results.push({ name: race.names[race.player], attempt: completed });
@@ -3233,7 +3270,7 @@ function renderRaceResults() {
     name.textContent = result.name;
     const speed = document.createElement('span');
     speed.className = 'num';
-    speed.textContent = result.attempt.status === 'complete' ? `${score.wpm} wpm` : 'interrupted';
+    speed.textContent = result.attempt.status === 'complete' ? `${score.wpm} wpm` : result.attempt.failed ? `failed · ${result.attempt.failed}` : 'interrupted';
     const accuracy = document.createElement('span');
     accuracy.className = 'num';
     accuracy.textContent = `${score.accuracy}% accuracy`;
@@ -3272,6 +3309,7 @@ function forgetTraining() {
   $('ghost-result').hidden = true;
   renderGhostOffer(null);
   $('start-drill').disabled = true;
+  $('start-drill').textContent = 'Start drill';
   $('skip-to-retest').disabled = true;
 }
 
@@ -4159,7 +4197,7 @@ function bindEvents() {
   $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
   $('finger-toggle').addEventListener('change', (event) => { prefs.fingerMap = event.target.checked; applyPreferences(); saveChoice('fingerMap'); });
   $('layout-select').addEventListener('change', (event) => setLayout(event.target.value));
-  $('stop-on-error-toggle').addEventListener('change', (event) => setStopOnError(event.target.checked));
+  $('correction-select').addEventListener('change', (event) => setCorrection(event.target.value));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
@@ -4461,11 +4499,12 @@ function togglePreference(key) {
   if (document.body.dataset.view === 'practice') focusPractice();
 }
 
-function setStopOnError(enabled) {
-  if (prefs.stopOnError === enabled) return;
-  prefs.stopOnError = enabled;
+function setCorrection(policy) {
+  if (standardLocked()) return;
+  prefs.correction = correctionPreference({ correction: policy });
+  prefs.stopOnError = prefs.correction === 'mandatory';
   applyPreferences();
-  saveProfile();
+  saveChoice('correction', 'stopOnError');
   // A lesson stays a lesson and custom text stays custom; any other session restarts as practice.
   if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : restartKind());
 }
@@ -4588,7 +4627,7 @@ function paletteCommands(query) {
     ...layoutIds.map((id) => ({ group: 'test', label: `layout · ${layoutLabel(id)}`, keywords: 'keyboard alternative remap', hint: prefs.layout === id ? 'current' : '', on: prefs.layout === id, run: () => setLayout(id) })),
     ...[['off', 'off'], ['best', 'personal best'], ['average', 'average'], ['last', 'last run'], ['custom', 'custom']].map(([mode, name]) => (
       { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: prefs.paceCaret === mode ? 'on' : '', on: prefs.paceCaret === mode, run: () => setPaceCaret(mode) })),
-    { group: 'test', label: 'stop on error', keywords: 'mistakes correction continue', hint: onOff(prefs.stopOnError), on: prefs.stopOnError, disabled: standardLocked(), run: () => setStopOnError(!prefs.stopOnError) },
+    ...Object.entries(CORRECTION_LABELS).map(([policy, name]) => ({ group: 'test', label: `correction · ${policy === 'relaxed' ? 'free' : name}`, keywords: 'mistakes correction continue stop error backspace fail expert master confidence', hint: prefs.correction === policy ? 'current' : '', on: prefs.correction === policy, disabled: standardLocked(), run: () => setCorrection(policy) })),
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },

@@ -253,9 +253,40 @@ export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', c
   };
 }
 
+// Correction policies. 'relaxed' (free) and 'mandatory' (stop on error) predate
+// the others; each value is its own comparison key so bests never mix.
+export const CORRECTION_POLICIES = ['relaxed', 'mandatory', 'no-backspace', 'fail-word', 'fail-any'];
+
+// Older profiles stored a boolean stopOnError; map it to free/stop.
+export function correctionPreference(preferences = {}) {
+  if (CORRECTION_POLICIES.includes(preferences.correction)) return preferences.correction;
+  return preferences.stopOnError ? 'mandatory' : 'relaxed';
+}
+
+export const blocksOnError = (policy) => (policy || 'mandatory') === 'mandatory';
+export const allowsBackspace = (policy) => policy !== 'no-backspace';
+
+// Why inserting `char` at the end of `typed` fails the run, or null. A space or the
+// passage's last letter closes a word; the whole prefix is checked so a letter typed
+// in place of a space can't slip through.
+export function failureFor(policy, text, typed, char) {
+  if (policy === 'fail-any' && char !== text[typed.length]) return 'wrong key';
+  if (policy === 'fail-word' && (char === ' ' || typed.length === text.length - 1)) return failureAtEnd(policy, text, typed + char);
+  return null;
+}
+
+// Why a run that stops at `typed` fails, or null. The end of a run (the timer, the
+// passage end) is a word boundary, so an unfinished word with a wrong letter fails.
+export function failureAtEnd(policy, text, typed) {
+  if (typed === text.slice(0, typed.length)) return null;
+  if (policy === 'fail-any') return 'wrong key';
+  if (policy === 'fail-word') return 'word error';
+  return null;
+}
+
 export function passageComplete(attempt, typed) {
   return typed.length >= attempt.text.length
-    && (attempt.conditions.correctionPolicy === 'relaxed' || typed === attempt.text);
+    && (!blocksOnError(attempt.conditions.correctionPolicy) || typed === attempt.text);
 }
 
 export function printable(text) {
@@ -641,7 +672,6 @@ export const TEST_COUNTS = [10, 25, 50, 100];
 export const QUOTE_LENGTHS = ['any', 'short', 'medium', 'long'];
 export const QUOTE_DIFFICULTIES = ['any', 'gentle', 'steady', 'precise'];
 export const INPUT_CLASSES = ['physical-keyboard', 'touch'];
-export const CORRECTION_POLICIES = ['mandatory', 'relaxed'];
 
 // The standard recipe version is appended only when present, so every other key stays as it was.
 export function conditionKey(conditions = {}) {

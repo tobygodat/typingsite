@@ -19,6 +19,12 @@ import {
   normalizeCustomText,
   orderCustomText,
   passageComplete,
+  correctionPreference,
+  CORRECTION_POLICIES,
+  allowsBackspace,
+  blocksOnError,
+  failureFor,
+  failureAtEnd,
   replayCursor,
   replayScoreAt,
   replaySpan,
@@ -676,4 +682,64 @@ test('custom text must be typeable and long enough to time', () => {
   assert.deepEqual(customTextProblem('go 🚀 now'), { kind: 'untypable', char: '🚀' });
   assert.deepEqual(customTextProblem(normalizeCustomText(Array(501).fill('ab…').join(' '), Infinity)), { kind: 'long', length: 3005 });
   assert.equal(problem(Array(500).fill('ab…').join(' ')), null);
+});
+
+test('correction policies map old preferences, fail on errors and keep separate keys', () => {
+  assert.equal(correctionPreference({}), 'relaxed');
+  assert.equal(correctionPreference({ stopOnError: true }), 'mandatory');
+  assert.equal(correctionPreference({ stopOnError: false }), 'relaxed');
+  assert.equal(correctionPreference({ correction: 'fail-any', stopOnError: true }), 'fail-any');
+  assert.equal(correctionPreference({ correction: 'bogus', stopOnError: true }), 'mandatory');
+  assert.equal(allowsBackspace('no-backspace'), false);
+  assert.equal(allowsBackspace('relaxed'), true);
+  assert.equal(blocksOnError('mandatory'), true);
+  assert.equal(blocksOnError('fail-word'), false);
+  assert.equal(failureFor('fail-any', 'the cat', 'th', 'x'), 'wrong key');
+  assert.equal(failureFor('fail-any', 'the cat', 'th', 'e'), null);
+  assert.equal(failureFor('fail-word', 'the cat', 'thx', 'x'), null);
+  assert.equal(failureFor('fail-word', 'the cat', 'thx', ' '), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the', ' '), null);
+  assert.equal(failureFor('fail-word', 'the cat', 'the cxt', ' '), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the cx', 't'), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the ca', 'x'), 'word error');
+  assert.equal(failureFor('fail-word', 'the cat', 'the ca', 't'), null);
+  assert.equal(failureFor('fail-word', 'the cat sat', 'thexcat', ' '), 'word error');
+  // The end of a timed run is a word boundary: an unfinished wrong word fails.
+  assert.equal(failureAtEnd('fail-word', 'the cat sat', 'the cx'), 'word error');
+  assert.equal(failureAtEnd('fail-word', 'the cat sat', 'the ca'), null);
+  assert.equal(failureAtEnd('fail-any', 'the cat sat', 'the cx'), 'wrong key');
+  assert.equal(failureAtEnd('relaxed', 'the cat sat', 'the cx'), null);
+  assert.equal(failureAtEnd('no-backspace', 'the cat sat', 'the cx'), null);
+  assert.equal(failureAtEnd('fail-word', 'the cat sat', ''), null);
+  assert.equal(failureFor('relaxed', 'the cat', 'th', 'x'), null);
+  const attempt = createAttempt({ id: 'nb', text: 'ab', textId: 'one', conditions: { correctionPolicy: 'no-backspace' } });
+  assert.equal(passageComplete(attempt, 'ax'), true);
+  const keys = new Set(CORRECTION_POLICIES.map((correctionPolicy) => conditionKey({ correctionPolicy })));
+  assert.equal(keys.size, CORRECTION_POLICIES.length);
+});
+
+test('stored correction preferences migrate without filling unchosen settings', async () => {
+  const { normalizeProfile, preferencesInUse } = await import('../src/profile.js');
+  assert.equal(preferencesInUse({}).correction, 'relaxed');
+  assert.equal(preferencesInUse({ stopOnError: true }).correction, 'mandatory');
+  assert.equal(preferencesInUse({ correction: 'fail-word' }).stopOnError, false);
+  assert.deepEqual(normalizeProfile({ version: 2, preferences: {} }).preferences, {});
+  assert.deepEqual(normalizeProfile({ version: 2, preferences: { stopOnError: true } }).preferences,
+    { stopOnError: true, correction: 'mandatory' });
+});
+
+test('a newer stop-on-error edit from an older client beats a stale correction preference', async () => {
+  const { normalizeProfile } = await import('../src/profile.js');
+  const { mergeSynced } = await import('../src/account.js');
+  const first = '2026-10-14T01:00:00.000Z';
+  const second = '2026-10-14T02:00:00.000Z';
+  const newerBuild = normalizeProfile({ version: 2, preferences: { correction: 'fail-any', stopOnError: false },
+    preferencesAt: { correction: first, stopOnError: first } });
+  const olderBuild = normalizeProfile({ version: 2, preferences: { correction: 'fail-any', stopOnError: true },
+    preferencesAt: { correction: first, stopOnError: second } });
+  for (const merged of [mergeSynced(newerBuild, olderBuild), mergeSynced(olderBuild, newerBuild)]) {
+    assert.equal(merged.preferences.correction, 'mandatory');
+    assert.equal(merged.preferencesAt.correction, second);
+  }
+  assert.equal(newerBuild.preferences.correction, 'fail-any');
 });

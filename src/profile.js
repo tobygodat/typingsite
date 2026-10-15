@@ -1,7 +1,7 @@
 // The stored profile's shape: the settings' defaults, and how a stored copy (this device's cache, another
 // tab's, the account row) is read before anything uses or merges it (normalizeProfile).
+import { correctionPreference, customTextProblem, normalizeCustomText } from './typing.js';
 import { normalizeKeybindings } from './keybindings.js';
-import { customTextProblem, normalizeCustomText } from './typing.js';
 import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { DAILY_GOALS, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
@@ -25,6 +25,7 @@ export const defaultPreferences = {
   liveMetrics: false,
   keyboard: false,
   stopOnError: false,
+  correction: 'relaxed',
   focusMode: false,
   keybindings: normalizeKeybindings(),
   theme: 'system',
@@ -58,6 +59,8 @@ export function emptyProfile() {
 }
 
 export function validPreferences(value) {
+  value.correction = correctionPreference(value);
+  value.stopOnError = value.correction === 'mandatory';
   if (!DAILY_GOALS.includes(value.dailyGoal)) value.dailyGoal = 0;
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
   value.layout = normalizeLayout(value.layout);
@@ -76,7 +79,7 @@ export function validPreferences(value) {
 }
 
 // Every setting as used: the stored ones, and the default for each one the profile doesn't store.
-export const preferencesInUse = (stored) => validPreferences({ ...defaultPreferences, ...stored });
+export const preferencesInUse = (stored) => validPreferences({ ...defaultPreferences, ...stored, correction: correctionPreference(stored) });
 
 // The settings a stored copy holds, each made one this build can use, and no others. A setting the copy
 // lacks (its build didn't have it, or it was never chosen) stays absent rather than filled in with its
@@ -87,11 +90,20 @@ function storedPreferences(raw) {
   const valid = preferencesInUse(stored);
   const normalized = Object.fromEntries(Object.keys(stored).filter((key) => key !== 'restartKey').map((key) => [key, valid[key]]));
   if (!Object.hasOwn(stored, 'keybindings') && Object.hasOwn(stored, 'restartKey')) normalized.keybindings = normalizeKeybindings(null, stored.restartKey);
+  if (Object.hasOwn(stored, 'stopOnError') && !Object.hasOwn(stored, 'correction')) normalized.correction = valid.correction;
   return normalized;
 }
 
 export function normalizeProfile(parsed) {
   if (parsed?.version !== 2) return emptyProfile();
+  const rawPreferences = { ...(parsed.preferences || {}) };
+  const preferencesAt = { ...(parsed.preferencesAt || {}) };
+  const oldChoice = preferencesAt.stopOnError || '';
+  const newChoice = preferencesAt.correction || '';
+  if (Object.hasOwn(rawPreferences, 'stopOnError') && (!Object.hasOwn(rawPreferences, 'correction') || oldChoice > newChoice)) {
+    rawPreferences.correction = correctionPreference({ stopOnError: rawPreferences.stopOnError });
+    if (oldChoice) preferencesAt.correction = oldChoice;
+  }
   const traces = Array.isArray(parsed.attempts) ? parsed.attempts : [];
   const records = Array.isArray(parsed.runs) ? parsed.runs : traces.map((trace) => {
     // Older traces did not have wall-clock dates. Preserve unknown dates rather than invent them.
@@ -102,7 +114,8 @@ export function normalizeProfile(parsed) {
   return {
     ...emptyProfile(),
     ...parsed,
-    preferences: storedPreferences(parsed.preferences),
+    preferences: storedPreferences(rawPreferences),
+    ...(Object.keys(preferencesAt).length ? { preferencesAt } : {}),
     attempts: settleDailyFirsts(traces),
     ...retainHistory(settleDailyFirsts(records), validPracticeDays(parsed.practiceDays)),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
