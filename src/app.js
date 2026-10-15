@@ -8,6 +8,8 @@ import {
   STANDARD_VERSION,
   accentComposition,
   carriedKey,
+  TEST_COUNTS,
+  TEST_DURATIONS,
   compareAttempts,
   completeAttempt,
   composedKeys,
@@ -325,6 +327,20 @@ function conditionTail(value) {
   return `${input} · ${correctionLabel(value.correctionPolicy)} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
 }
 
+// The parts of a conditions description, named and in the order it reads. The friends board's shape
+// picker names a shape by the parts that tell it apart from the others.
+function conditionParts(value = conditions()) {
+  return {
+    language: value.wordList ? `english ${value.wordList}` : 'english',
+    length: value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`,
+    text: value.mode === 'quote' ? value.difficulty || 'any difficulty' : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`,
+    input: value.inputClass === 'touch' ? 'touch input' : 'physical keyboard',
+    correction: value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error',
+    corpus: `corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')}`,
+    metric: 'metric v1',
+  };
+}
+
 // Custom text has its own condition key, so it can never share a best, trend or retest with a test.
 // It builds on the person's own settings, never the standard recipe: with standard selected underneath,
 // a custom run keeps its own correction rule and gets no recipe, so its key is the same as in any mode.
@@ -336,10 +352,7 @@ function customConditions() {
 function describeConditions(value = conditions()) {
   // The recipe name stands for its punctuation, numbers and quote, keeping the run card's line short.
   if (value.mode === 'standard') return `${recipeLabel(value.recipe)} · ${value.duration} s · 1k–10k mix · ${conditionTail(value)}`;
-  const length = value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`;
-  const punctuation = value.mode === 'quote' ? value.difficulty || 'any difficulty' : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`;
-  const language = value.wordList ? `english ${value.wordList}` : 'english';
-  return `${language} · ${length} · ${punctuation} · ${conditionTail(value)}`;
+  return Object.values(conditionParts(value)).join(' · ');
 }
 
 // A drill is always one minute of generated text, whatever the baseline was.
@@ -515,7 +528,7 @@ function setModeControls() {
   syncLockedSettings();
   $('duration-options').hidden = custom || prefs.mode === 'quote' || prefs.mode === 'standard';
   document.querySelector('.compact-switch').hidden = custom;
-  const values = prefs.mode === 'time' ? [15, 30, 60, 120] : [10, 25, 50, 100];
+  const values = prefs.mode === 'time' ? TEST_DURATIONS : TEST_COUNTS;
   // The length buttons are relabelled in place rather than rebuilt, so one holding keyboard focus keeps
   // it when conditions change from another tab or device.
   const lengths = $('duration-options');
@@ -3241,12 +3254,12 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
     })),
-    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
+    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
     { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: 'esc', run: () => inPractice((kind) => resetSession(kind, { focus: true })) },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
-    ...[15, 30, 60, 120].map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
-    ...[10, 25, 50, 100].map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
+    ...TEST_DURATIONS.map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
+    ...TEST_COUNTS.map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: sessionKind === 'custom' ? 'current' : '', on: sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'standard test · 60 seconds', keywords: `standard score real world fixed recipe benchmark ${recipeLabel()}`, hint: shape('standard') ? 'current' : recipeLabel(), on: shape('standard'), run: () => setTestShape('standard') },
@@ -3370,6 +3383,9 @@ inbox = createInbox({
 friendsBoard = createFriendsBoard({
   getSession: () => session,
   dailyKey,
+  // Which shape the bests picker opens on: the one you have run most (src/friends-board.js defaultShape).
+  runs: () => profile.runs,
+  conditionParts,
   signIn: () => openAccountDialog('signin'),
   // The button that asks for this disappears with the board, so focus lands on the Online selector.
   openOnline: () => { onlineRace.open(); $('challenge-online').focus(); },

@@ -543,7 +543,7 @@
           </div>
           <p class="friends-board-copy">You and the friends who have added you back, when both of you share. They see your row; nobody else does.</p>
           <div id="friends-board-guest" class="friends-board-guest">
-            <p>Sign in to compare today’s daily passage and this week’s practice with the friends you choose.</p>
+            <p>Sign in to compare today’s daily passage, this week’s practice and your bests with the friends you choose.</p>
             <button id="friends-board-signin" class="btn btn-primary" type="button">Sign in</button>
           </div>
           <div id="friends-board-share" class="friends-board-share" hidden>
@@ -551,7 +551,7 @@
               <input id="share-board" class="switch" type="checkbox">
               <span>share on friends board</span>
             </label>
-            <p id="friends-board-off" class="friends-board-off">You aren’t sharing, so friends’ rows are hidden too. Share to see theirs and show them yours.</p>
+            <p id="friends-board-off" class="friends-board-off">You aren’t sharing, so friends’ rows are hidden too. Share to show them today’s daily, this week’s practice and your bests, and to see theirs.</p>
           </div>
           <p id="friends-board-status" class="online-copy" role="status"></p>
           <div id="friends-board-lists" class="friends-board-lists" hidden>
@@ -565,12 +565,21 @@
               <p id="board-week-meta" class="condition-copy"></p>
               <ol id="board-week" class="board-list" role="list"></ol>
             </section>
+            <section class="board-column board-bests" aria-labelledby="board-bests-heading">
+              <h3 id="board-bests-heading">Bests</h3>
+              <label id="board-shape-field" class="filter-field board-shape" for="board-shape">Test conditions
+                <select id="board-shape" class="input select"></select>
+              </label>
+              <p id="board-bests-meta" class="condition-copy"></p>
+              <ol id="board-bests" class="board-list" role="list"></ol>
+              <p id="board-bests-none" class="friends-board-note" hidden>No bests here yet. A completed practice test or retest sets one.</p>
+            </section>
           </div>
           <div id="friends-board-empty" class="friends-board-empty" hidden>
             <p>Nobody else here yet. A friend appears once you’re on each other’s friend lists: save them when you invite them to a race, or add them after one.</p>
             <button id="friends-board-online" class="btn btn-secondary btn-sm" type="button">Go to online races</button>
           </div>
-          <p class="friends-board-copy">Each person’s browser reports their own numbers, so they aren’t verified. Interrupted runs don’t count. Only today’s daily and this week’s practice are kept, and each new day or week replaces the last. Turning sharing off, or deleting your account, removes your row.</p>
+          <p class="friends-board-copy">Each person’s browser reports their own numbers, so they aren’t verified. Interrupted runs don’t count. Only today’s daily, this week’s practice and your best on each of up to 16 test shapes (speed, accuracy and date, from completed tests and retests) are kept. Each new day or week replaces the last; bests come from your newest 1,000 runs, and clearing your history takes them off. Turning sharing off, or deleting your account, removes your row.</p>
         </section>
 
         <div id="local-challenge" hidden>

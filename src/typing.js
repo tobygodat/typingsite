@@ -568,6 +568,16 @@ export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
   return { id: `drill-${label}-${textId(text)}`, textVersion: `drill-${label}@2`, text, target: safeTarget, corpus: CORPUS_VERSION };
 }
 
+// The test conditions this build offers, and so the only ones it writes: the timed lengths (seconds) and
+// word counts src/app.js offers, the quote filters index.html offers, and the inputs and correction
+// policies it records. Word lists are src/words.js's wordListIds.
+export const TEST_DURATIONS = [15, 30, 60, 120];
+export const TEST_COUNTS = [10, 25, 50, 100];
+export const QUOTE_LENGTHS = ['any', 'short', 'medium', 'long'];
+export const QUOTE_DIFFICULTIES = ['any', 'gentle', 'steady', 'precise'];
+export const INPUT_CLASSES = ['physical-keyboard', 'touch'];
+export const CORRECTION_POLICIES = ['mandatory', 'relaxed'];
+
 // The standard recipe version is appended only when present, so every other key stays as it was.
 export function conditionKey(conditions = {}) {
   const key = [

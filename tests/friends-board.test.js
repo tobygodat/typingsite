@@ -62,7 +62,7 @@ test('practice time counts completed, uninterrupted runs in the week (from Monda
     run('undated', { at: null, elapsedMs: 9000 }),
   ];
   assert.deepEqual(boardSummary(runs, dailyKey).weeks, { '2026-10-05': { seconds: 135, runs: 3 }, '2026-09-28': { seconds: 120, runs: 1 } });
-  assert.deepEqual(boardSummary([], dailyKey), { days: {}, weeks: {} });
+  assert.deepEqual(boardSummary([], dailyKey), { days: {}, weeks: {}, bests: {} });
 });
 
 test('practice time is the week’s whole completed seconds: the runs’ time summed, then floored, never rounded up', () => {
@@ -106,7 +106,8 @@ test('each run counts in its own day and week, whatever the writing device’s c
     mock.timers.enable({ apis: ['Date'], now: Date.parse(clock) });
     try {
       assert.equal(new Date().toISOString(), new Date(clock).toISOString());
-      assert.deepEqual(boardSummary(runs, dailyKey), expected, clock);
+      const { days, weeks } = boardSummary(runs, dailyKey);
+      assert.deepEqual({ days, weeks }, expected, clock);
     } finally { mock.timers.reset(); }
   }
 });
@@ -193,8 +194,8 @@ test('the profile row’s board column is the summary of its runs, stamped with 
   const column = boardColumn(runs, dailyKey, at);
   assert.equal(column.v, BOARD_V);
   assert.equal(column.at, at);
-  assert.deepEqual({ days: column.days, weeks: column.weeks }, boardSummary(runs, dailyKey));
-  assert.deepEqual(Object.keys(column).sort(), ['at', 'days', 'v', 'weeks']);
+  assert.deepEqual({ days: column.days, weeks: column.weeks, bests: column.bests }, boardSummary(runs, dailyKey));
+  assert.deepEqual(Object.keys(column).sort(), ['at', 'bests', 'days', 'v', 'weeks']);
   // Small enough for the column's 16 KB check by a wide margin.
   assert.ok(JSON.stringify(column).length < 1024);
 });

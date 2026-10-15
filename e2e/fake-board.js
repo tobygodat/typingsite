@@ -13,6 +13,17 @@ export function mondayOf(date = new Date()) {
 }
 
 const whole = (value, max) => Number.isInteger(value) && value >= 0 && value <= max;
+const isObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+// As race_private.board_bests: at most 16 shapes (none otherwise), each checked on its own: a condition
+// key holding a whole wpm of 0-400, a whole accuracy of 0-100 and a YYYY-MM-DD date.
+export function boardBests(bests) {
+  if (!isObject(bests) || Object.keys(bests).length > 16) return {};
+  return Object.fromEntries(Object.entries(bests)
+    .filter(([key, best]) => /^[A-Za-z0-9:._+-]{1,200}$/.test(key) && isObject(best) && whole(best.wpm, 400) && whole(best.accuracy, 100)
+      && typeof best.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(best.date))
+    .map(([key, best]) => [key, { wpm: best.wpm, accuracy: best.accuracy, date: best.date }]));
+}
 
 // An entry of a summary's map of periods, by its key, when the map is an object.
 const entry = (periods, key) => (periods && typeof periods === 'object' && !Array.isArray(periods) && Object.hasOwn(periods, key) ? periods[key] : null);
@@ -30,7 +41,7 @@ export function boardNumbers(board, updatedAt, today, week) {
     ? { version: d.version, wpm: d.wpm, accuracy: d.accuracy, attempts: d.attempts } : null;
   const practice = w && typeof w === 'object' && whole(w.seconds, 604800) && whole(w.runs, 10000)
     ? { seconds: w.seconds, runs: w.runs } : null;
-  return { daily, week: practice };
+  return { daily, week: practice, bests: boardBests(board.bests) };
 }
 
 export class FakeBoard {
@@ -94,7 +105,7 @@ export class FakeBoard {
     const row = (account, fields) => {
       const profile = this.auth.profiles.get(account);
       const numbers = profile ? boardNumbers(profile.board, profile.updated_at, date, weekStart) : null;
-      return { ...fields, daily: numbers?.daily ?? null, week: numbers?.week ?? null };
+      return { ...fields, daily: numbers?.daily ?? null, week: numbers?.week ?? null, ...(numbers ? { bests: numbers.bests } : {}) };
     };
     // Someone who doesn't share sees nobody, and nobody sees them.
     const sharingVersion = this.version(viewer);
