@@ -338,3 +338,16 @@ test('the bests migration changes board_numbers only by adding the bests', () =>
   assert.ok(earlier.includes(returned));
   assert.equal(later, earlier.replace(returned, "  return jsonb_build_object('daily', v_daily, 'week', v_week, 'bests', race_private.board_bests(p_board->'bests'));"));
 });
+
+test('board shapes keep rule suffixes and layouts together in the canonical order', () => {
+  for (const layout of ['qwerty', 'dvorak']) {
+    for (const strictSpace of [false, true]) {
+      for (const quickEnd of [false, true]) {
+        const conditions = { ...words25, layout, strictSpace, quickEnd };
+        const parsed = shapeOf(conditionKey(conditions));
+        assert.ok(parsed);
+        assert.equal(conditionKey(parsed), conditionKey(conditions));
+      }
+    }
+  }
+});

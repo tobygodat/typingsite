@@ -147,8 +147,10 @@ export const boardCurrent = (row) => Boolean(row?.board?.at) && Date.parse(row.b
 // null: a key from another build, or one no copy of this build writes, which the board never lists or compares.
 export function shapeOf(key) {
   const parts = typeof key === 'string' ? key.split(':') : [];
-  const layoutPart = parts.length === 12 ? parts.pop() : null;
+  const suffix = parts.splice(11);
+  const layoutPart = suffix.at(-1)?.startsWith('layout-') ? suffix.pop() : null;
   const layout = layoutPart?.startsWith('layout-') ? layoutPart.slice(7) : null;
+  if (suffix.some((part) => !['strict-space', 'quick-end-off'].includes(part))) return null;
   if (parts.length !== 11 || (layoutPart && (!layoutIds.includes(layout) || isDefaultLayout(layout)))) return null;
   const [mode, duration, count, text, quoteLength, difficulty, wordList, inputClass, correctionPolicy, corpus, metricVersion] = parts;
   // Numbers ride on the text part (`plain+numbers`), and only on generated tests; a quote ignores them.
@@ -156,7 +158,9 @@ export function shapeOf(key) {
   const punctuation = numbers ? text.slice(0, -'+numbers'.length) : text;
   const conditions = { mode, duration: Number(duration) || null, count: Number(count) || null, punctuation: punctuation === 'punctuation',
     numbers, quoteLength: quoteLength || null, difficulty: difficulty || null, wordList: wordList || null, inputClass, correctionPolicy,
-    language: 'en', corpus, metricVersion, ...(layout ? { layout } : {}) };
+    language: 'en', corpus, metricVersion, ...(layout ? { layout } : {}),
+    ...(suffix.includes('strict-space') ? { strictSpace: true } : {}),
+    ...(suffix.includes('quick-end-off') ? { quickEnd: false } : {}) };
   const quote = mode === 'quote';
   const written = SHAPE_MODES.includes(mode)
     && (mode === 'time' ? TEST_DURATIONS.includes(conditions.duration) : !duration)

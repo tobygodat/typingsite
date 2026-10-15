@@ -26,6 +26,8 @@ export const defaultPreferences = {
   keyboard: false,
   stopOnError: false,
   correction: 'relaxed',
+  strictSpace: false,
+  quickEnd: true,
   focusMode: false,
   keybindings: normalizeKeybindings(),
   theme: 'system',
@@ -59,6 +61,8 @@ export function emptyProfile() {
 }
 
 export function validPreferences(value) {
+  value.strictSpace = value.strictSpace === true;
+  value.quickEnd = value.quickEnd !== false;
   value.correction = correctionPreference(value);
   value.stopOnError = value.correction === 'mandatory';
   if (!DAILY_GOALS.includes(value.dailyGoal)) value.dailyGoal = 0;

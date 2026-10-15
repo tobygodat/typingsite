@@ -4,6 +4,7 @@ import {
   CUSTOM_MIN_CHARS,
   CUSTOM_MIN_WORDS,
   METRIC_VERSION,
+  awaitingSubmit,
   RATE_FLOOR_MS,
   STANDARD_SECONDS,
   STANDARD_VERSION,
@@ -17,6 +18,7 @@ import {
   conditionKey,
   createAttempt,
   customTextProblem,
+  inputRules,
   deadMark,
   makeDrill,
   normalizeCustomText,
@@ -29,6 +31,7 @@ import {
   failureFor,
   failureAtEnd,
   recommendTarget,
+  refusesSpace,
   replayAttempt,
   selectPassage,
   standardConditions,
@@ -218,6 +221,7 @@ let race = {
   results: [],
   characters: [],
   textView: null,
+  notice: '',
 };
 
 // Signed in, the profile is cached on this device and synced to the account shortly after.
@@ -361,6 +365,8 @@ function settingsConditions(inputClass = 'physical-keyboard') {
     inputClass,
     layout: inputLayout(inputClass),
     correctionPolicy: prefs.correction,
+    strictSpace: prefs.strictSpace,
+    quickEnd: prefs.quickEnd,
     language: 'en',
     corpus: CORPUS_VERSION,
     metricVersion: METRIC_VERSION,
@@ -394,7 +400,7 @@ function conditionParts(value = conditions()) {
     length: value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`,
     text: value.mode === 'quote' ? value.difficulty || 'any difficulty' : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`,
     input: inputLabel(value),
-    correction: correctionLabel(value.correctionPolicy),
+    correction: `${correctionLabel(value.correctionPolicy)}${describeRules(value)}`,
     corpus: `corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')}`,
     metric: 'metric v1',
   };
@@ -406,7 +412,7 @@ const inputName = (value) => inputLabel(value);
 // a custom run keeps its own correction rule and gets no recipe, so its key is the same as in any mode.
 function customConditions() {
   return { ...settingsConditions(), mode: 'custom', duration: null, count: null, punctuation: false, numbers: false,
-    quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, customOrder: prefs.customOrder };
+    quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, strictSpace: false, quickEnd: true, customOrder: prefs.customOrder };
 }
 
 function describeConditions(value = conditions()) {
@@ -415,6 +421,14 @@ function describeConditions(value = conditions()) {
   return Object.values(conditionParts(value)).join(' · ');
 }
 
+// Strict space and quick end appear only when they differ from the defaults, as in conditionKey.
+const RULE_LABELS = { 'strict-space': 'strict space', 'quick-end-off': 'quick end off' };
+function describeRules(value) {
+  return inputRules(value).map((rule) => ` · ${RULE_LABELS[rule]}`).join('');
+}
+
+// A drill is always one minute of generated text, whatever the baseline was. Its conditions record
+// quick end at the default (sessionConditions), so only rules that applied are listed.
 // The layout setting describes a physical keyboard, so touch runs always keep the default key.
 function inputLayout(inputClass) {
   return inputClass === 'touch' ? DEFAULT_LAYOUT : prefs.layout;
@@ -426,7 +440,6 @@ function inputLabel(value) {
   return isDefaultLayout(value.layout) ? input : `${input} · ${layoutLabel(value.layout)}`;
 }
 
-// A drill is always one minute of generated text, whatever the baseline was.
 function describeRun(run) {
   if (run.kind === 'lesson') return describeLesson(run);
   if (run.kind === 'challenge') return `ghost race · ${describeConditions(run.conditions)}`;
@@ -434,7 +447,7 @@ function describeRun(run) {
   if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words${run.conditions.punctuation ? ' · punctuation' : ''}${run.conditions.numbers ? ' · numbers' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
   if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
   if (run.kind !== 'drill') return describeConditions(run.conditions);
-  return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}`;
+  return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}${describeRules(run.conditions)}`;
 }
 
 function describeLesson(run) {
@@ -523,7 +536,7 @@ function showChrome(shown) {
 // so it says it isn't counted rather than showing the best for the time or word settings underneath it.
 // The run's input class picks the best, so a touch run never shows the physical-keyboard one, or the reverse.
 function currentBestKey() {
-  return comparableKind(sessionKind) ? conditionKey(conditions(attempt?.conditions.inputClass)) : null;
+  return comparableKind(sessionKind) ? conditionKey(attempt?.conditions || conditions()) : null;
 }
 
 function showBest() {
@@ -580,6 +593,7 @@ function applyPreferences() {
   $('font-size').value = prefs.fontSize;
   $('live-toggle').checked = prefs.liveMetrics;
   $('keyboard-toggle').checked = prefs.keyboard;
+  syncRules();
   $('finger-toggle').checked = prefs.fingerMap;
   $('finger-row').hidden = !prefs.keyboard;
   $('correction-select').value = prefs.correction;
@@ -607,6 +621,36 @@ function applyPreferences() {
   syncLockedSettings();
   armPace();
   showBest();
+}
+
+// Why a rule switch can't change the session on hand, shown under it and read as its description.
+const RULE_NOTES = {
+  drill: 'drills end on the clock',
+  timed: 'timed runs end on the clock',
+  stopOnError: 'quick end applies only to free correction',
+  daily: 'the daily keeps its own rules',
+  retest: 'a retest keeps its baseline’s rules',
+  custom: 'custom text keeps the default rules',
+  race: 'a race keeps the same rules for both players',
+  lesson: 'a lesson keeps its own rules',
+  missed: 'word practice keeps the default rules',
+  challenge: 'a ghost race keeps its sender’s rules',
+  standard: 'the standard test keeps its own rules',
+};
+
+// Quick end only changes word and quote runs that let a mistake stand. Where the session can't take
+// it the switch is disabled but keeps its value, like punctuation in a quote test; #rules-note says
+// when the session keeps the rules it started with. Synced on every preference, view and Challenge
+// tab change, and when a one-keyboard race starts or ends.
+function syncRules() {
+  const limits = ruleLimits(ruleSession());
+  $('strict-space-toggle').checked = prefs.strictSpace;
+  $('quick-end-toggle').checked = prefs.quickEnd;
+  $('quick-end-toggle').disabled = Boolean(limits.quickEnd);
+  for (const [id, reason] of [['quick-end-note', limits.quickEnd], ['rules-note', limits.fixed]]) {
+    $(id).textContent = RULE_NOTES[reason] || '';
+    $(id).hidden = !reason;
+  }
 }
 
 // The standard test fixes word list, punctuation, numbers and correction. Their controls show the
@@ -796,14 +840,59 @@ function choosePassage(extraSeen = []) {
 const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custom' : 'practice');
 
 // Daily and missed-word passages run to the end of their text, whatever the practice shape is.
-function sessionDurationMs() {
-  if (sessionKind === 'challenge') return ghostRace?.duration ? ghostRace.duration * 1000 : null;
-  if (['daily', 'lesson', 'missed'].includes(sessionKind)) return null;
-  if (sessionKind === 'drill') return 60000;
-  if (sessionKind === 'custom') return null;
+function sessionDurationMs(kind = sessionKind) {
+  if (kind === 'challenge') return ghostRace?.duration ? ghostRace.duration * 1000 : null;
+  if (['daily', 'lesson', 'missed', 'race'].includes(kind)) return null;
+  if (kind === 'drill') return 60000;
+  if (kind === 'custom') return null;
   if (prefs.mode === 'time') return prefs.duration * 1000;
   if (prefs.mode === 'standard') return STANDARD_SECONDS * 1000;
   return null;
+}
+
+// Why strict space and quick end can't change a session's run, read from the session itself (its
+// kind, its timing and the conditions its run was built with), never from the test-shape
+// preferences: a drill started from a words baseline is still a timed minute. quickEnd names why
+// quick end does nothing there ('' when it applies); fixed names a session that keeps the rules it
+// started with (the daily's are set, a retest has to match its baseline, custom text keeps the
+// defaults, and a race under way keeps its own for both players).
+const FIXED_RULE_KINDS = ['daily', 'retest', 'custom', 'lesson', 'missed', 'challenge'];
+function ruleLimits({ kind, run, fixed = FIXED_RULE_KINDS.includes(kind) }) {
+  return {
+    fixed: run.mode === 'standard' ? 'standard' : fixed ? kind : '',
+    quickEnd: sessionDurationMs(kind) !== null ? (kind === 'drill' ? 'drill' : 'timed')
+      : run.correctionPolicy === 'relaxed' ? '' : 'stopOnError',
+  };
+}
+
+// The session the rule switches act on. On the Challenge screen's one-keyboard tab it is the race:
+// the one under way, whose rules startRace fixed for both players, or else the next one. Elsewhere
+// it is the run waiting or in progress or, once it's over, the next one, which Run again makes the
+// daily again, the same custom text or a practice run.
+function ruleSession() {
+  if (document.body.dataset.view === 'compete' && onlineRace?.mode === 'local') {
+    return raceUnderWay() ? { kind: 'race', run: race.conditions, fixed: true } : { kind: 'race', run: raceConditions() };
+  }
+  if (attempt && ['ready', 'running'].includes(attempt.status)) return { kind: sessionKind, run: attempt.conditions };
+  const kind = sessionKind === 'daily' ? 'daily' : restartKind();
+  return { kind, run: sessionConditions(kind) };
+}
+
+// The conditions a new run of this kind is built with. The daily's rules are fixed and a retest
+// takes its baseline's, whatever the switches say now. A rule that can't change the run is recorded
+// at its default, so a drill's conditions and key never carry quick end.
+function sessionConditions(kind, run = conditions()) {
+  if (kind === 'daily') return dailyConditions();
+  if (kind === 'custom') return customConditions();
+  if (kind === 'lesson') return lessonConditions();
+  if (kind === 'challenge') return ghostConditions();
+  if (kind === 'missed') return { ...run, strictSpace: false, quickEnd: true };
+  if (kind === 'retest' && baselineAttempt) {
+    run.strictSpace = baselineAttempt.conditions.strictSpace === true;
+    run.quickEnd = baselineAttempt.conditions.quickEnd !== false;
+  }
+  if (ruleLimits({ kind, run }).quickEnd) run.quickEnd = true;
+  return run;
 }
 
 function configureSessionCopy() {
@@ -917,7 +1006,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     text: passage.text,
     textId: passage.id,
     kind: kind === 'practice' ? 'test' : kind,
-    conditions: { ...runConditions, inputClass: activationInput },
+    conditions: { ...sessionConditions(kind, runConditions), inputClass: activationInput },
   });
   if (kind === 'challenge') attempt.challengeId = ghostRace.id;
   if (kind === 'daily') {
@@ -1040,16 +1129,30 @@ function pushInsert(char, type = 'primary', at = now(), carried = false) {
   const targetAttempt = type === 'primary' ? attempt : race.attempt;
   startAttempt(targetAttempt, type, at);
   const replay = replayAttempt(targetAttempt);
+  const offsetMs = offsetFor(type, at);
+  const position = replay.typed.length;
   const unresolved = blocksOnError(targetAttempt.conditions.correctionPolicy)
     && replay.typed.length > 0
     && replay.typed.at(-1) !== targetAttempt.text[replay.typed.length - 1];
-  const offsetMs = offsetFor(type, at);
-  let event = { type: 'insert', text: char, position: replay.typed.length, accepted: true, offsetMs };
-  if (unresolved) event = { type: 'blocked-insert', text: char, position: replay.typed.length - 1, offsetMs };
-  else if (carried && replay.typed.length >= targetAttempt.text.length) event = carriedKey(targetAttempt, char, offsetMs);
+  if (unresolved) {
+    targetAttempt.events.push({ type: 'blocked-insert', text: char, position: position - 1, offsetMs: offsetMs });
+    return { previousLength: position, blocked: 'unresolved' };
+  }
+  // The passage is typed but its last word has a mistake: space finishes the run as it stands.
+  // Other keys have no position left to land on, so they are not recorded.
+  if (awaitingSubmit(targetAttempt, replay.typed)) {
+    if (char !== ' ') return { previousLength: position, blocked: 'submit' };
+    targetAttempt.events.push({ type: 'submit', offsetMs: offsetMs });
+    return { previousLength: position, blocked: false, submit: true };
+  }
+  if (refusesSpace(targetAttempt.conditions, targetAttempt.text, position, char)) {
+    targetAttempt.events.push({ type: 'insert', text: char, position, accepted: false, offsetMs: offsetMs });
+    return { previousLength: position, blocked: 'space', failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
+  }
+  let event = { type: 'insert', text: char, position, accepted: true, offsetMs };
+  if (carried && position >= targetAttempt.text.length) event = carriedKey(targetAttempt, char, offsetMs);
   if (event) targetAttempt.events.push(event);
-  const failed = unresolved ? null : failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char);
-  return { previousLength: replay.typed.length, blocked: unresolved, failed };
+  return { previousLength: position, blocked: false, failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
 }
 
 function pushDelete(type = 'primary') {
@@ -1106,6 +1209,11 @@ function typeKeys(keys, type, at = now()) {
   const target = inputAttempt(type);
   const changes = keys.map((key, index) => pushInsert(key, type, at, room > 0 && index >= room));
   const failure = changes.find((change) => change.failed)?.failed;
+  if (changes.some((change) => change.submit)) {
+    if (type === 'primary') finishPrimary();
+    else finishRacePlayer();
+    return;
+  }
   if (failure) { target.interrupted = true; target.failed = failure; }
   refreshAfterInput(type, changes[0].previousLength, changes.at(-1).blocked, at);
   if (failure && target.status === 'running') {
@@ -1358,6 +1466,8 @@ function wireComposition(input, type) {
 // typed characters; only IME text (any composition no accent key opened) is refused.
 const NOTICES = {
   blocked: 'Fix the underlined letter.',
+  strictSpace: 'Strict space is on. Type the next letter.',
+  submit: 'The last word has a mistake. Fix it, or press space to finish.',
   paste: 'Paste is off. Type the passage.',
   composition: 'IME input isn’t scored. Esc to restart.',
   multiCharacter: 'One key at a time. Esc to restart.',
@@ -1382,8 +1492,16 @@ function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
   if (type === 'primary') {
     $('input-help').textContent = message;
     if (sticky) primaryNotice = message;
-  } else $('race-help').textContent = message;
+  } else {
+    $('race-help').textContent = message;
+    if (sticky) race.notice = message;
+  }
   if (speak) announce(message);
+}
+
+// A strict space or quick end notice never hides why a run won't count; it follows that notice.
+function withRule(sticky, rule) {
+  return sticky ? `${sticky} ${rule}` : rule;
 }
 
 function refusePaste(type) {
@@ -1408,14 +1526,24 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   let outcome = 'delete';
   if (blocked) outcome = 'blocked';
   else if (length > previousLength) outcome = lastCorrect ? 'correct' : 'wrong';
-  (isPrimary ? primaryFx : raceFx).update(length, outcome, length > 0 && !lastCorrect);
+  // A refused space is a miss at the letter it skipped: that letter is tinted until the next key,
+  // so the coral caret always sits beside a tinted letter.
+  if (blocked === 'space') characters[length].className = 'char wrong';
+  (isPrimary ? primaryFx : raceFx).update(length, outcome, (length > 0 && !lastCorrect) || blocked === 'space');
   textView.trimBehind(length);
+  const waiting = awaitingSubmit(targetAttempt, replay.typed);
+  const rule = blocked === 'space' ? NOTICES.strictSpace : waiting ? NOTICES.submit : '';
+  // Said once when the space is refused or the run starts waiting, and again if a key is ignored.
+  if (blocked === 'space' || (waiting && (length > previousLength || blocked === 'submit'))) announce(rule);
   if (isPrimary) {
     setRunning(true);
-    $('input-help').textContent = blocked ? NOTICES.blocked : primaryNotice;
+    $('input-help').textContent = rule ? withRule(primaryNotice, rule) : blocked ? NOTICES.blocked : primaryNotice;
     updateLive(false, at);
     if (sessionDurationMs() === null && passageComplete(targetAttempt, replay.typed)) finishPrimary();
   } else {
+    const help = $('race-help');
+    if (rule) help.textContent = withRule(race.notice, rule);
+    else if ([NOTICES.strictSpace, NOTICES.submit].some((notice) => help.textContent.endsWith(notice))) help.textContent = race.notice || (prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.');
     updateRaceProgress(replay);
     if (passageComplete(targetAttempt, replay.typed)) finishRacePlayer();
   }
@@ -1954,6 +2082,7 @@ function switchView(view) {
     else control.removeAttribute('aria-current');
   });
   setRunning(false);
+  syncRules();
   // Pills in a hidden screen measured zero width; remeasure every group now it is visible.
   updateGlides();
   if (view === 'progress') renderHistory();
@@ -1968,7 +2097,10 @@ function navigate(view) {
   if (view === 'practice') {
     // A custom passage that is ready or under way is practice too, so going to Practice keeps it.
     const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom') && !['complete', 'interrupted'].includes(attempt.status);
+    // A waiting passage is rebuilt, as the same kind, if strict space or quick end changed while another screen showed.
+    const staleRules = current && inputRules(attempt.conditions).join() !== inputRules(sessionConditions(sessionKind)).join();
     if (!current || (preferencesWaiting && untouchedPractice())) resetSession('practice');
+    else if (staleRules) resetSession(sessionKind);
     switchView('practice');
     return;
   }
@@ -2002,7 +2134,7 @@ function markRaceInterrupted() {
   if (race.attempt?.status !== 'running' || race.attempt.interrupted) return;
   race.attempt.interrupted = true;
   race.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor('race') });
-  showInputNotice('race', NOTICES.raceFocusLost, { speak: false });
+  showInputNotice('race', NOTICES.raceFocusLost, { sticky: true, speak: false });
   raceRunChanged();
 }
 
@@ -2546,9 +2678,10 @@ function renderComposeHistory() {
   }));
 }
 
+// Everyone types the daily passage under the same rules, whatever their practice settings.
 function dailyConditions() {
   return { ...settingsConditions(), mode: 'quote', duration: null, count: null, punctuation: true, numbers: false,
-    quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
+    quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', strictSpace: false, quickEnd: true, corpus: CORPUS_VERSION };
 }
 
 function todayPassage() {
@@ -3175,10 +3308,20 @@ function renderKeyboard() {
   $('keyboard').hidden = !prefs.keyboard && !lesson;
 }
 
+// A one-keyboard race is a quote under the current settings, whatever the practice test shape.
+function raceConditions() {
+  return { ...conditions(), mode: 'quote', wordList: null, localRace: true };
+}
+
+// From its start until the second player finishes. Both turns are built from race.conditions.
+function raceUnderWay() {
+  return Boolean(race.conditions) && race.results.length < 2;
+}
+
 function startRace() {
   race = {
     passage: selectPassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', seenIds: [] }),
-    conditions: { ...settingsConditions(), mode: 'quote', wordList: null, localRace: true },
+    conditions: raceConditions(),
     names: [$('player-one-name').value.trim() || 'Player one', $('player-two-name').value.trim() || 'Player two'],
     player: 0,
     attempt: null,
@@ -3186,6 +3329,7 @@ function startRace() {
     results: [],
     characters: [],
     textView: null,
+    notice: '',
   };
   if (race.passage?.id && !profile.seenTextIds.includes(race.passage.id)) {
     profile.seenTextIds.push(race.passage.id);
@@ -3194,6 +3338,7 @@ function startRace() {
   $('compete-setup').hidden = true;
   $('race-leaderboard').hidden = true;
   $('race-handoff').hidden = true;
+  syncRules();
   setupRacePlayer();
 }
 
@@ -3203,6 +3348,7 @@ function setupRacePlayer() {
   heldDeadKey = null;
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
+  race.notice = '';
   raceRunChanged();
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
@@ -3245,7 +3391,10 @@ function finishRacePlayer() {
     $('race-handoff').classList.remove('is-revealing');
     $('race-handoff').hidden = false;
     announce(`${race.names[0]} finished. Pass the keyboard to ${race.names[1]}.`);
-  } else renderRaceResults();
+  } else {
+    syncRules();
+    renderRaceResults();
+  }
 }
 
 function renderRaceResults() {
@@ -4198,6 +4347,8 @@ function bindEvents() {
   $('finger-toggle').addEventListener('change', (event) => { prefs.fingerMap = event.target.checked; applyPreferences(); saveChoice('fingerMap'); });
   $('layout-select').addEventListener('change', (event) => setLayout(event.target.value));
   $('correction-select').addEventListener('change', (event) => setCorrection(event.target.value));
+  $('strict-space-toggle').addEventListener('change', (event) => setInputRule('strictSpace', event.target.checked));
+  $('quick-end-toggle').addEventListener('change', (event) => setInputRule('quickEnd', event.target.checked));
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
@@ -4350,6 +4501,11 @@ function bindEvents() {
   const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented) return;
+    // A held space that submitted a run (quick end off) must not also press Run again.
+    if (event.repeat && event.key === ' ' && document.activeElement === $('run-again')) {
+      event.preventDefault();
+      return;
+    }
     const typing = document.activeElement === $('typing-input') || document.activeElement === $('race-input');
     if (typing && event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key))) {
       event.preventDefault();
@@ -4509,6 +4665,22 @@ function setCorrection(policy) {
   if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : restartKind());
 }
 
+// Strict space and quick end change how a run is scored, so a change on the practice screen starts
+// the session again as the same kind: a drill stays a drill. A session that can't take it (quick
+// end in a timed run, the daily, a retest, custom text) carries on and the preference waits for a run it applies
+// to; the switch's note says why. Other screens stay put, and a practice passage left waiting there
+// is rebuilt when practice is shown again (navigate).
+function setInputRule(key, enabled) {
+  const changed = prefs[key] !== enabled;
+  prefs[key] = enabled;
+  applyPreferences();
+  saveChoice(key);
+  if (!changed) return;
+  const limits = ruleLimits(ruleSession());
+  if (limits.fixed || (key === 'quickEnd' && limits.quickEnd)) return;
+  if (document.body.dataset.view === 'practice') resetSession(sessionKind);
+}
+
 function activeAccentComposition() {
   return Boolean(composition && !composition.refused
     && accentComposition({ key: composition.key, preview: composition.mark }));
@@ -4628,6 +4800,8 @@ function paletteCommands(query) {
     ...[['off', 'off'], ['best', 'personal best'], ['average', 'average'], ['last', 'last run'], ['custom', 'custom']].map(([mode, name]) => (
       { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: prefs.paceCaret === mode ? 'on' : '', on: prefs.paceCaret === mode, run: () => setPaceCaret(mode) })),
     ...Object.entries(CORRECTION_LABELS).map(([policy, name]) => ({ group: 'test', label: `correction · ${policy === 'relaxed' ? 'free' : name}`, keywords: 'mistakes correction continue stop error backspace fail expert master confidence', hint: prefs.correction === policy ? 'current' : '', on: prefs.correction === policy, disabled: standardLocked(), run: () => setCorrection(policy) })),
+    { group: 'test', label: 'strict space', keywords: 'space bar early skip word mistakes input', hint: onOff(prefs.strictSpace), on: prefs.strictSpace, run: () => setInputRule('strictSpace', !prefs.strictSpace) },
+    { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
@@ -4772,6 +4946,8 @@ onlineRace = createOnlineRace({
   board: friendsBoard,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
+  // The one-keyboard tab makes the race the session the rule switches act on.
+  onModeChange: syncRules,
   onPassageSeen(id) {
     if (!id || profile.seenTextIds.includes(id)) return;
     profile.seenTextIds.push(id);

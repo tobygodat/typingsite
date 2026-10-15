@@ -190,10 +190,11 @@ export function challengePayload(attempt) {
   if (passage.length < 10 || passage.length > MAX_CHALLENGE_TEXT || !/^[ -~]+$/.test(passage)) return null;
   const duration = challengeDuration(attempt.conditions);
   // Only conditions the service accepts and a friend's app can set up again.
-  const shared = { ...attempt.conditions, textId: attempt.textId, sourceKind: attempt.kind };
-  // The service predates layout conditions. QWERTY is its original contract; other layouts cannot be sent.
-  if (shared.layout === 'qwerty') delete shared.layout;
-  const conditions = challengeConditions(shared, duration);
+  const source = { ...attempt.conditions, textId: attempt.textId, sourceKind: attempt.kind };
+  if (source.strictSpace === false) delete source.strictSpace;
+  if (source.quickEnd === true) delete source.quickEnd;
+  if (source.layout === 'qwerty') delete source.layout;
+  const conditions = challengeConditions(source, duration);
   if (!conditions) return null;
   const relaxed = attempt.conditions?.correctionPolicy === 'relaxed';
   const score = scoreTrace(trace, passage, { relaxed });
