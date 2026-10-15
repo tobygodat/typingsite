@@ -16,14 +16,15 @@ test('a current export maps each setting that has a Stilltype counterpart', () =
   assert.equal(error, undefined);
   assert.deepEqual(preferences, {
     mode: 'words', duration: 60, count: 50, punctuation: true, numbers: false, wordList: '1k', quoteLength: 'long',
-    stopOnError: true, paceCaret: 'best', paceWpm: 100, liveMetrics: true, keyboard: true, fontSize: '36', theme: 'dark',
+    correction: 'mandatory', paceCaret: 'best', paceWpm: 100, liveMetrics: true, keyboard: true, fontSize: '36', theme: 'dark',
   });
   assert.deepEqual(skipped, []);
   assert.ok(mapped.find((row) => row.setting === 'word list' && row.value === 'top 1k' && row.from === 'language: english_1k'));
   // Monkeytype-only keys (caret style, funbox, blind mode) are ignored, not reported.
   assert.ok(!mapped.concat(skipped).some((row) => /caretStyle|funbox|blindMode/.test(row.from)));
   // Every mapped value is one Stilltype keeps as it is.
-  assert.deepEqual(preferencesInUse(preferences), { ...preferencesInUse({}), ...preferences });
+  const inUse = preferencesInUse(preferences);
+  for (const [key, value] of Object.entries(preferences)) assert.equal(inUse[key], value, key);
 });
 
 test('an older export (string font size and speed, number quote length, showLiveWpm) still maps', () => {

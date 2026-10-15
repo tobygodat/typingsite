@@ -1,6 +1,6 @@
 ---
 name: Stilltype
-description: Focused typing practice in Literata on warm near-black or warm paper, one green, and a static print of every run.
+description: Focused typing practice in Literata on warm near-black or warm paper, one green, a caret that glides, and a print of every run.
 colors:
   ground: "#0f0f0e"
   ground-2: "#151514"
@@ -54,6 +54,8 @@ colors:
   ghost-light: "#434db5"
   card-top-light: "#fffdf9"
   card-bottom-light: "#efeae1"
+  finger-band: "rgba(255, 255, 255, 0.1)"
+  finger-band-light: "rgba(27, 26, 25, 0.05)"
 typography:
   numeral:
     fontFamily: "Literata, Iowan Old Style, Palatino Linotype, Palatino, Book Antiqua, Georgia, serif"
@@ -203,7 +205,7 @@ components:
 
 The typing passage is the screen. Everything readable is set in one book face, Literata, on a warm near-black ground (or warm paper in light), so a passage reads like a page and a result reads like a print rather than a dashboard. One green carries every meaning of "act here" or "you are here": the caret, the primary button, the current selection and the timer. Content sits on hairline rules and open space. Boxes are kept for the few things that really are objects: the floating dock, the settings popover, the command palette, dialogs, toasts, and the run card.
 
-Motion is governed by "still run". While a run is in progress, nothing decorative moves near the passage. The caret is a solid spring-driven bar, letter states change instantly, lines scroll in about 150 ms, and the chrome fades out after the first keystroke. Motion belongs to chrome and to the time after a run: short fades, one gliding selection pill, and the run card's speed graph drawing once in about 450 ms. Every duration comes from one scale that drops to zero under reduced motion.
+Motion is fluid. It is welcome on the typing surface during a run as well as in chrome and after it, wherever it makes speed, position or progress easier to follow: the caret is a spring-driven bar, the pace caret glides through the letters at its speed, a ghost race glides from one of a friend's keys to the next, and lines scroll in about 150 ms. Nothing is required to stay rigid or static. Letter states still change at once so the passage stays readable, and the chrome fades out after the first keystroke. After a run there are short fades, one gliding selection pill, and the run card's speed graph drawing in about 450 ms. Every duration comes from one scale that drops to zero under reduced motion.
 
 Density is low and deliberate. The practice screen centres the passage with the numbers above it and a small set of controls. Results, progress and challenge are single editorial columns separated by rules. The name "Stilltype" is a working title, so the wordmark stays a cheap italic word plus a green full stop.
 
@@ -212,8 +214,8 @@ Density is low and deliberate. The practice screen centres the passage with the 
 - Dark (default) and light theme sets; the theme follows the system until the user picks one.
 - One green accent; coral for mistyped letters and regressions; amber for interrupted and mixed results.
 - Rules and space instead of boxes; opaque raised surfaces with a single soft float shadow; no glass, no glow.
-- Still run: the passage area stays motionless apart from the caret and line scroll.
-- Results are a static print: a run card with a plain speed-over-time graph drawn from the real keystrokes.
+- Fluid motion: carets glide, lines scroll, and motion may live on the typing surface when it helps someone follow the run.
+- Results are a print: a run card with a plain speed-over-time graph drawn from the real keystrokes.
 
 ## Colors
 
@@ -341,6 +343,8 @@ Progress keeps the editorial column: condition/period fields, two charts, run ro
 The training memory section sits below the existing drill actions. Pair headings and counts use Literata; each row offers a neutral bordered button to practice the target again. Sample counts, matching conditions, last practice and later fresh observations stay adjacent to the target.
 
 Challenge opens with the daily passage and its one filled-green action, followed by the shared-keyboard section with a neutral Start button. The daily date/reset uses the existing condition label; result history uses hairline-separated rows. First and repeat attempts, previously displayed passages and input classes are written explicitly.
+
+The optional on-screen keyboard shows the thirty main keys with a real row stagger (home a quarter key in, bottom three quarters) and a space bar, labelled for the chosen layout. Its finger map puts a small mono initial (i, m, r, p) in the corner of each key for the finger that types it, so it reads without telling shades apart and survives forced colours; a faint neutral band (`--finger-band`, never a hue) sits behind alternate fingers (index, ring) so neighbouring fingers stay apart. Letters keep their muted/text colours, so drill targets still stand out, and muted text on the band stays at 4.5:1 or more in both themes. The two hands sit a little apart, and a mono legend repeats the initials. Screen readers hear each key as one phrase ("f, left index") from visually hidden text, only while the map is on. Colemak-DH follows its ANSI angle mod. Below 760px the keyboard and both of its settings rows are hidden.
 
 Below 360px, the run-card WPM uses `--text-numeral-narrow` (80px); the existing mobile size is now `--text-numeral-mobile` (112px).
 

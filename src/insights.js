@@ -2,6 +2,10 @@ import { conditionKey, printable, replayAttempt, summarizePatterns, textId } fro
 
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
+export const MAX_TRACES = 24;
+// Characters of JSON for the full traces together. One 600 s trace at 130 wpm is about 1.5 million,
+// and a browser allows about 5 million per site, so long custom-time runs keep fewer traces than 24.
+export const TRACE_BUDGET = 2_500_000;
 // Per-letter first-attempt counts saved with each run. Summaries without this version predate
 // them and fall back to pair-derived counts, which miss letters at the start of a word.
 export const KEY_COUNTS_VERSION = 1;
@@ -43,7 +47,10 @@ export function runRecord(attempt, at = attempt.at || null) {
     // The calendar day where the run happened, so a later reader in another zone keeps the same day.
     day: at ? dayKey(at) : null,
     conditions: attempt.conditions, textId: attempt.textId, fresh: attempt.fresh,
-    interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput),
+    interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput || attempt.stopped),
+    // Practice minimums are labelled on the run, not keyed into its conditions.
+    ...(attempt.minimums ? { minimums: attempt.minimums } : {}),
+    ...(attempt.stopped ? { stopped: attempt.stopped } : {}),
     score: replay.score, elapsedMs: replay.elapsedMs,
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
@@ -84,13 +91,52 @@ export function retainRuns(runs) {
   });
 }
 
+const traceSizes = new WeakMap();
+function traceSize(trace) {
+  if (!trace || typeof trace !== 'object') return JSON.stringify(trace ?? null).length;
+  if (!traceSizes.has(trace)) traceSizes.set(trace, JSON.stringify(trace).length);
+  return traceSizes.get(trace);
+}
+
+// The newest full traces, at most MAX_TRACES and within TRACE_BUDGET. A run loses only its trace: bests,
+// trends and recurring evidence read the compact summaries. A trace over the whole budget on its own (ten
+// minutes past ~215 wpm, or a key held down) is never kept, even the newest, so the cache stays bounded.
+export function retainTraces(traces, { max = MAX_TRACES, budget = TRACE_BUDGET } = {}) {
+  const kept = [];
+  let total = 0;
+  for (let i = traces.length - 1; i >= 0 && kept.length < max; i -= 1) {
+    const size = traceSize(traces[i]);
+    if (size > budget) continue;
+    if (total + size > budget) break;
+    total += size;
+    kept.push(traces[i]);
+  }
+  return kept.reverse();
+}
+
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
-export const trendRun = (run) => validRun(run) && ['test', 'retest'].includes(run.kind);
+// Completed practice runs and retests, listed in Progress whatever their text. A non-comparable kind (custom
+// text) is never one, whatever kind list it might later share.
+export const practiceRun = (run) => validRun(run) && comparableKind(run.kind) && ['test', 'retest'].includes(run.kind);
+// Two exclusions meet here: by kind (comparableKind, above) and by text, since only fresh text counts toward
+// bests, trends and weekly medians: repeated text (fresh: false) flatters a score. Bests are judged only as
+// they are set: one stored before repeat quotes (perhaps by an exhausted pool's fallback) stays as it is.
+export const trendRun = (run) => practiceRun(run) && run.fresh !== false;
+
+// The best earlier completed run on this exact passage and conditions: the score a repeat chases.
+// It is derived from saved summaries and never becomes a personal best.
+export function passageBest(runs, run) {
+  const key = conditionKey(run.conditions);
+  return runs.filter((r) => r.id !== run.id && r.textId === run.textId && practiceRun(r) && conditionKey(r.conditions) === key)
+    .reduce((best, r) => (!best || r.score.wpm > best.score.wpm ? r : best), null);
+}
+
 // A run that counts as evidence about the person's typing: complete, uninterrupted and of a measured kind, and
-// never a daily passage shown before (a repeat attempt types known text). Recurring patterns, missed words to
-// practise and the words you keep missing all read only these; drills, races, word practice and custom text never
-// count. Works on a stored run summary or a just-finished attempt.
-export const evidenceRun = (run) => validRun(run) && measuredKind(run.kind) && (run.kind !== 'daily' || run.fresh !== false);
+// never on repeated text (a daily passage shown before, a repeated quote or an exhausted pool's fallback: known
+// text counts its pairs and words again). Recurring patterns, missed words to practise and the words you keep
+// missing all read only these; drills, races, word practice and custom text never count. Works on a stored run
+// summary or a just-finished attempt.
+export const evidenceRun = (run) => validRun(run) && measuredKind(run.kind) && run.fresh !== false;
 // The runs "words you keep missing" counts: those pattern memory reads that recorded missed words.
 const missedWordsRun = (run) => evidenceRun(run) && Array.isArray(run.missedWords);
 const inputClassOf = (run) => run?.conditions?.inputClass || 'physical-keyboard';
@@ -372,10 +418,12 @@ const directKeys = (run) => run.keysVersion === KEY_COUNTS_VERSION && Array.isAr
 // Compact run memory → per-key and per-pair totals. A key's miss rate is first-attempt errors on
 // that letter over its tries. Older summaries without per-letter counts fall back to their pairs
 // (a pair's first attempt is a try at its second letter), so they only count letters typed after
-// another letter; pairDerivedRuns says how many runs that applies to. Non-comparable kinds (custom text) are
-// never mined, even if a record carries counts.
+// another letter; pairDerivedRuns says how many runs that applies to. Non-comparable kinds (custom text) and
+// repeated text are never mined, even if a record carries counts (a run on an exhausted pool saved them before
+// repeat quotes).
 export function keyAnalysis(runs, limit = 8) {
-  const recent = runs.filter((r) => comparableKind(r.kind) && validRun(r) && ((r.patterns || []).length || directKeys(r)?.length))
+  const recent = runs.filter((r) => comparableKind(r.kind) && validRun(r) && r.fresh !== false
+    && ((r.patterns || []).length || directKeys(r)?.length))
     .slice(-MAX_PATTERN_RUNS);
   const keys = new Map();
   const pairs = new Map();

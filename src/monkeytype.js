@@ -115,8 +115,8 @@ export function mapMonkeytypeConfig(config) {
 
   if (has('stopOnError')) {
     const from = `stopOnError: ${shown(config.stopOnError)}`;
-    if (config.stopOnError === 'off') map('stop on error', { stopOnError: false }, 'off', from);
-    else if (['word', 'letter'].includes(config.stopOnError)) map('stop on error', { stopOnError: true }, 'on', from);
+    if (config.stopOnError === 'off') map('stop on error', { correction: 'relaxed' }, 'off', from);
+    else if (['word', 'letter'].includes(config.stopOnError)) map('stop on error', { correction: 'mandatory' }, 'on', from);
     else skip('stop on error', from, 'No matching value.');
   }
 
