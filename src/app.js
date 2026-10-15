@@ -4094,11 +4094,11 @@ function bindEvents() {
   // Left unedited, it shows any speed that arrived while it had focus (see showPace).
   $('pace-wpm').addEventListener('blur', showPace);
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
-  $('fatigue-toggle').addEventListener('change', (event) => { prefs.fatigueNotice = event.target.checked; applyPreferences(); saveProfile(); });
+  $('fatigue-toggle').addEventListener('change', (event) => { prefs.fatigueNotice = event.target.checked; applyPreferences(); saveChoice('fatigueNotice'); });
   $('fatigue-dismiss').addEventListener('click', () => {
     prefs.fatigueNotice = false;
     applyPreferences();
-    saveProfile();
+    saveChoice('fatigueNotice');
     $('run-again').focus({ preventScroll: true });
   });
   $('exit-focus').addEventListener('click', () => {
