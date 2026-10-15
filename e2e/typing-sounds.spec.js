@@ -402,3 +402,17 @@ test('composing uses clicks for accepted keys and deletion without an error tick
   await expect.poll(() => plays(page)).toEqual(['click', 'click']);
   expect((await sound(page)).builtDuring).toEqual([]);
 });
+
+
+test('explicit sound reselect is recorded as a fresh preference choice', async ({ page, supabase }) => {
+  const user = supabase.addUser('choice-41@stilltype.test');
+  const stamp = '2000-01-01T00:00:00.000Z';
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { sound: "off" }, preferencesAt: { sound: stamp },
+    attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, updatedAt: stamp } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openSettings(page);
+  await page.locator('#sound-select').selectOption('off');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferencesAt?.sound).not.toBe(stamp);
+  expect(supabase.profileFor(user.email).preferences.sound).toEqual("off");
+});
