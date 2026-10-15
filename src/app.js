@@ -4226,7 +4226,7 @@ function bindEvents() {
       showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
       return;
     }
-    if (((event.isComposing || event.keyCode === 229) && !accentShortcut(event)) || event.getModifierState?.('AltGraph')) return;
+    if (((event.isComposing || event.keyCode === 229) && !activeAccentComposition()) || event.getModifierState?.('AltGraph')) return;
     if (document.querySelector('dialog[open]')) {
       if (palette?.isOpen() && matchesAppBinding(event, prefs.keybindings.commands)) {
         event.preventDefault();
@@ -4378,13 +4378,13 @@ function setStopOnError(enabled) {
   if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : restartKind());
 }
 
-function accentShortcut(event) {
-  return event.key === 'Escape' && Boolean(composition && !composition.refused
+function activeAccentComposition() {
+  return Boolean(composition && !composition.refused
     && accentComposition({ key: composition.key, preview: composition.mark }));
 }
 
 function matchesAppBinding(event, binding) {
-  return matchesBinding(event, binding, { allowAccentEscape: accentShortcut(event) });
+  return matchesBinding(event, binding, { allowAccentComposition: activeAccentComposition() });
 }
 
 // Restart only owns the typing surfaces, bare practice/results page, and run-again.
