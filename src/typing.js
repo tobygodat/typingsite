@@ -480,6 +480,8 @@ export function summarizePatterns(attempts, limit = 20, compatibleConditions = n
     && attempt.kind !== 'drill'
     && attempt.kind !== 'missed'
     && attempt.kind !== 'race'
+    // A ghost race is someone else's text against their recorded run: its own kind, not training evidence.
+    && attempt.kind !== 'challenge'
     && (attempt.kind !== 'daily' || attempt.fresh !== false)
     && (!key || conditionKey(attempt.conditions) === key)).slice(-limit);
   const pairs = new Map();
@@ -607,6 +609,8 @@ export function comparable(before, after) {
     && after.fresh !== false
     && before.kind !== 'drill'
     && after.kind !== 'drill'
+    && before.kind !== 'challenge'
+    && after.kind !== 'challenge'
     && !before.interrupted
     && !after.interrupted;
 }

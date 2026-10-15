@@ -1,10 +1,19 @@
-// The envelope inbox (top right) and the challenge toast. Pending invitations come from the race
-// service; other entries (an opponent joined, a race result) are added by the online race. Entries
-// are kept per signed-in user on this device only; guests keep nothing and see no inbox.
+// The envelope inbox (top right) and the challenge toast. Pending invitations and ghost challenges
+// come from the race service; other entries (an opponent joined, a race result) are added by the
+// online race. Entries are kept per signed-in user on this device only; guests keep nothing and see
+// no inbox.
+import { offerText, resultText } from './ghost-race.js';
+
 const $ = (id) => document.getElementById(id);
 const STORE = 'stilltype-inbox-v1:';
+// Ghost race results already delivered, so a cleared result does not return on the next poll. Only
+// ids the service still lists are kept.
+const DELIVERED = 'stilltype-inbox-delivered-v1:';
+// Entries kept beyond open ghost races and the week's ghost race results, which are never cut.
 const MAX_ENTRIES = 30;
 const POLL_MS = 10000;
+const DAY_MS = 86400000;
+const WEEK_MS = 7 * DAY_MS;
 export const TOAST_MS = 18000;
 
 // Draws a list's rows again without losing keyboard focus: a focused control comes back on the new
@@ -29,9 +38,10 @@ function ago(at, now = Date.now()) {
   return new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-export function createInbox({ getSession, listInvites, actions, announce, isRunning }) {
+export function createInbox({ getSession, listInvites, listChallenges = null, actions, announce, isRunning }) {
   let entries = [];
   let invites = [];
+  let delivered = new Set();
   let polling = false;
   // Set on sign-out: nothing in flight may write this account's entries back.
   let forgotten = false;
@@ -56,15 +66,41 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
 
   function load() {
     entries = [];
+    delivered = new Set();
     if (!userId()) return;
     try {
       const saved = JSON.parse(localStorage.getItem(STORE + userId()));
-      if (Array.isArray(saved)) entries = saved.filter((entry) => entry?.id && entry.text).slice(0, MAX_ENTRIES);
+      if (Array.isArray(saved)) entries = saved.filter((entry) => entry?.id && entry.text);
+    } catch {}
+    trim();
+    try {
+      const ids = JSON.parse(localStorage.getItem(DELIVERED + userId()));
+      if (Array.isArray(ids)) delivered = new Set(ids.filter((id) => typeof id === 'string'));
     } catch {}
   }
   function save() {
     if (!userId()) return;
-    try { localStorage.setItem(STORE + userId(), JSON.stringify(entries.slice(0, MAX_ENTRIES))); } catch {}
+    try { localStorage.setItem(STORE + userId(), JSON.stringify(entries)); } catch {}
+  }
+  // The service lists every open ghost race and every result from the last week, so those stay
+  // reachable however many there are; everything else keeps the newest MAX_ENTRIES.
+  const freshResult = (at) => Date.now() - Date.parse(at) < WEEK_MS;
+  function kept(entry) {
+    if (entry.kind === 'challenge') return !isClosed(entry);
+    return entry.kind === 'challenge-result' && freshResult(entry.completedAt || entry.at);
+  }
+  function trim() {
+    let others = 0;
+    entries = entries.filter((entry) => kept(entry) || ++others <= MAX_ENTRIES);
+  }
+  function storeDelivered() {
+    if (!userId()) return;
+    try { localStorage.setItem(DELIVERED + userId(), JSON.stringify([...delivered])); } catch {}
+  }
+  function deliver(id) {
+    if (!userId() || delivered.has(id)) return;
+    delivered.add(id);
+    storeDelivered();
   }
 
   // An entry's action lapses when the service would no longer honour it (`until`), or when the
@@ -75,7 +111,27 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     return actions[entry.kind]?.available?.(entry) === false;
   }
 
+  // A toast speaks for its entry as the inbox holds it now. Once the entry has closed, been replaced by
+  // another kind (a ghost race answered on another device becomes its result) or gone, the toast goes too,
+  // so its button never acts on what was. Guests keep no entries, so their toast stands for itself.
+  function current(shown) {
+    if (!userId()) return !isClosed(shown);
+    const entry = entries.find((value) => value.id === shown.id);
+    return Boolean(entry) && entry.kind === shown.kind && !isClosed(entry);
+  }
+  // A toast that goes while it has keyboard focus hands focus to the inbox, where its entry now is, and says why.
+  function retire() {
+    if (pendingToast && !current(pendingToast)) pendingToast = null;
+    if (!toastEntry || current(toastEntry)) return;
+    const focused = $('challenge-toast').contains(document.activeElement);
+    hideToast();
+    if (!focused) return;
+    if (!$('inbox').hidden) $('inbox-trigger').focus();
+    announce('That race is no longer open.');
+  }
+
   function render() {
+    retire();
     const signedIn = Boolean(userId());
     $('inbox').hidden = !signedIn;
     if (!signedIn) return;
@@ -124,10 +180,14 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     if (forgotten) return;
     const known = entries.find((value) => value.id === entry.id);
     if (known) {
+      // A poll that repeats what is shown leaves the list alone, so focus on a row's button stays put.
+      const changed = Object.keys(entry).some((key) => key !== 'at' && key !== 'read' && JSON.stringify(known[key]) !== JSON.stringify(entry[key]));
+      if (!changed) { toasted.add(entry.id); return; }
       Object.assign(known, { ...entry, read: known.read, at: known.at });
     } else if (userId()) {
-      entries.unshift({ ...entry, at: new Date().toISOString(), read: false });
-      entries = entries.slice(0, MAX_ENTRIES);
+      // An entry may carry when it happened (a ghost race sent or answered while this device was away).
+      entries.unshift({ at: new Date().toISOString(), ...entry, read: false });
+      trim();
     }
     save();
     render();
@@ -136,6 +196,7 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
   }
 
   function showToast(entry) {
+    if (!current(entry)) return;
     if (running()) { pendingToast = entry; return; }
     pendingToast = null;
     toastEntry = entry;
@@ -173,14 +234,58 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     $('challenge-toast').hidden = true;
   }
 
+  // A ghost challenge for this account (Race), then its result; a lapsed one closes. A result arrives
+  // once: the sender hears a fresh one with a toast, and clearing it keeps it gone. The service lists
+  // every open challenge, then every result from the last week, then the newest fifty others, so
+  // working from the end leaves the open ones at the top of the inbox.
+  function applyChallenges(challenges) {
+    const fresh = (at) => Date.now() - Date.parse(at) < DAY_MS;
+    // One entry per challenge, from its first (most pressing) place in the list.
+    const listed = new Map();
+    for (const challenge of challenges) if (challenge?.id && !listed.has(challenge.id)) listed.set(challenge.id, challenge);
+    // A delivered result the service no longer lists never comes back, so it need not be remembered.
+    const ids = new Set([...listed.keys()].map((id) => `challenge:${id}`));
+    if ([...delivered].some((id) => !ids.has(id))) {
+      delivered = new Set([...delivered].filter((id) => ids.has(id)));
+      storeDelivered();
+    }
+    let changed = false;
+    for (const challenge of [...listed.values()].reverse()) {
+      const id = `challenge:${challenge.id}`;
+      const known = entries.find((entry) => entry.id === id);
+      if (challenge.status === 'done' && challenge.result) {
+        // A result older than a week only updates an entry already here: it is history, not news.
+        if (!known && (delivered.has(id) || !freshResult(challenge.completedAt))) continue;
+        notify({ id, kind: 'challenge-result', challengeId: challenge.id, closed: false, until: null, at: challenge.completedAt,
+          completedAt: challenge.completedAt, text: resultText(challenge) }, { toast: challenge.role === 'sent' && fresh(challenge.completedAt) });
+        // Only a result left on the list counts as delivered.
+        if (entries.some((entry) => entry.id === id)) deliver(id);
+      } else if (challenge.role === 'received' && challenge.status === 'open') {
+        // A result this device already has is final: a list read before the finish was stored can't
+        // offer the race again.
+        if (delivered.has(id)) continue;
+        notify({ id, kind: 'challenge', challengeId: challenge.id, closed: false, until: challenge.expiresAt, at: challenge.createdAt,
+          text: offerText(challenge) }, { toast: true });
+      } else if (known?.kind === 'challenge' && !known.closed) {
+        known.closed = true;
+        changed = true;
+      }
+    }
+    if (changed) { save(); render(); }
+  }
+
   async function refresh() {
     const session = getSession();
     if (!session || polling || forgotten) return invites;
     polling = true;
     try {
-      const listed = await listInvites(session);
+      // Invitations and ghost challenges are separate sources: either still arrives when the other can't be read.
+      const [listed, challenges] = await Promise.allSettled([listInvites(session),
+        listChallenges ? listChallenges(session) : null]);
       if (forgotten) return invites;
-      invites = listed;
+      if (Array.isArray(challenges.value)) applyChallenges(challenges.value);
+      if (listed.status === 'rejected') throw listed.reason;
+      invites = listed.value;
       const open = new Set(invites.map((invite) => `invite:${invite.id}`));
       for (const invite of [...invites].reverse()) {
         // Once the service lists an invitation it decides when the entry closes.
@@ -192,10 +297,13 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
       for (const entry of entries) {
         if (entry.kind === 'invite' && !entry.closed && !entry.local && !open.has(entry.id)) { entry.closed = true; changed = true; }
       }
-      if (toastEntry?.kind === 'invite' && !toastEntry.local && !open.has(toastEntry.id)) hideToast();
       if (changed) { save(); render(); }
+      // An entry's action can also lapse with time, so a toast is checked on every poll.
+      retire();
       for (const listener of listeners) listener(invites, null);
     } catch (failure) {
+      // Entries still lapse while invitations can't be read.
+      retire();
       for (const listener of listeners) listener(invites, failure);
     } finally { polling = false; }
     return invites;
@@ -234,7 +342,7 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
     if (entry) {
       const known = entries.find((value) => value.id === entry.id);
       if (known && !known.read) { known.read = true; save(); render(); }
-      if (!isClosed(known || entry)) actions[entry.kind]?.run(entry);
+      if (current(entry)) actions[entry.kind]?.run(entry);
     }
   });
   $('challenge-toast-close').addEventListener('click', hideToast);
@@ -278,6 +386,14 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
       }
       toasted.add(id);
     },
+    // Records a result this device produced, so the next poll does not deliver it again.
+    deliver,
+    // A Race whose reply landed after the person moved on: the toast offers it again, with `text`, while
+    // its entry is still an open ghost race. Like any toast it waits for a run to end.
+    offer(id, text) {
+      const entry = entries.find((value) => value.id === id);
+      if (entry?.kind === 'challenge') showToast({ ...entry, text });
+    },
     // A request this device discovered has lapsed: its toast goes and its entry closes.
     withdraw(id) {
       if (toastEntry?.id === id || pendingToast?.id === id) { pendingToast = null; hideToast(); }
@@ -288,9 +404,10 @@ export function createInbox({ getSession, listInvites, actions, announce, isRunn
       forgotten = true;
       pendingToast = null;
       hideToast();
-      if (userId()) { try { localStorage.removeItem(STORE + userId()); } catch {} }
+      if (userId()) { try { localStorage.removeItem(STORE + userId()); localStorage.removeItem(DELIVERED + userId()); } catch {} }
       entries = [];
       invites = [];
+      delivered = new Set();
     },
   };
 }

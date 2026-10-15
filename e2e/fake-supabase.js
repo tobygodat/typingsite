@@ -5,6 +5,7 @@
 // POST conflict resolutions. updated_at comes back in Postgres's +00:00 form, as timestamptz does.
 import { createHash, randomUUID } from 'node:crypto';
 import { FakeRaces } from './fake-races.js';
+import { FakeChallenges } from './fake-challenges.js';
 import { FakeBoard } from './fake-board.js';
 
 const CORS = {
@@ -51,6 +52,7 @@ export class FakeSupabase {
     // How long issued access tokens last. Under a minute, every request refreshes first.
     this.sessionSeconds = 3600;
     this.races = new FakeRaces(this);
+    this.challenges = new FakeChallenges(this);
     this.board = new FakeBoard(this);
     // How POST /functions/v1/delete-account answers: 'ok' deletes like the real function; 'missing'
     // is the platform's reply for a function that isn't deployed and 'blocked' the same reply without
@@ -148,6 +150,8 @@ export class FakeSupabase {
     switch (`${method} ${url.pathname}`) {
       case 'POST /rest/v1/rpc/race_action':
         return this.races.handle(caller, body, reply);
+      case 'POST /rest/v1/rpc/challenge_action':
+        return this.challenges.handle(caller, body, reply, () => route.abort('connectionreset'));
       case 'POST /rest/v1/rpc/friends_board':
         return this.board.handle(caller, body, reply);
       case 'GET /auth/v1/settings':

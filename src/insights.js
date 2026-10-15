@@ -4,9 +4,10 @@ export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
 
 // Run kinds that are never compared, used as a baseline or mined for patterns (custom text, missed-word
-// practice). They keep no trace or pattern evidence and are retained on their own small budget, so they can
-// never push comparable history out of the summary and pattern windows. Extend this set for any other kind like that.
-export const NON_COMPARABLE_KINDS = new Set(['custom', 'missed']);
+// practice, and a ghost race against a friend's recorded run). They keep no trace or pattern evidence and
+// are retained on their own small budget, so they can never push comparable history out of the summary and
+// pattern windows. Extend this set for any other kind like that.
+export const NON_COMPARABLE_KINDS = new Set(['custom', 'missed', 'challenge']);
 export const MAX_NON_COMPARABLE_RUNS = 50;
 export const comparableKind = (kind) => !NON_COMPARABLE_KINDS.has(kind);
 

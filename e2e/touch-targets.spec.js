@@ -203,8 +203,14 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await page.keyboard.type(text.slice(6));
       await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
       small.push(...await sweep(page, 'results'));
-      await page.locator('.manual-panel > summary').click();
+      await page.locator('#manual-heading').click();
       small.push(...await sweep(page, 'results, manual drill open'));
+      // The ghost race offer, where a run offers one (signed in only).
+      const offer = page.locator('.manual-panel > summary', { hasText: 'Challenge a friend' });
+      if (await offer.isVisible()) {
+        await offer.click();
+        small.push(...await sweep(page, 'results, challenge offer open'));
+      }
 
       await openView(page, 'Practice');
       await openSettings(page);

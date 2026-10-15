@@ -348,6 +348,25 @@ test('custom runs keep their own budget and never displace practice history', ()
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
 });
 
+test('ghost races keep no trace or patterns and never displace practice evidence', () => {
+  const typed = (id, kind) => {
+    const attempt = createAttempt({ id, text: 'the then', kind, conditions });
+    [...'the then'].forEach((char, i) => attempt.events.push({ type: 'insert', text: char, position: i, accepted: true, offsetMs: i * 120 }));
+    return completeAttempt(attempt, { endedAt: 1000 });
+  };
+  const practice = typed('practice', 'test');
+  const races = Array.from({ length: 30 }, (_, i) => typed(`g${i}`, 'challenge'));
+  // storeAttempt keeps a trace only for a comparable kind, then saveProfile keeps the newest 24.
+  const traces = [practice, ...races.filter((race) => comparableKind(race.kind))].slice(-24);
+  assert.deepEqual(traces.map((attempt) => attempt.id), ['practice']);
+  // 120 practice runs fill the pattern window; 30 ghost races after them leave every one its patterns.
+  const records = [...Array.from({ length: MAX_PATTERN_RUNS }, (_, i) => run(`p${i}`)), ...races.map((race) => runRecord(race))];
+  const kept = retainRuns(records);
+  assert.deepEqual(kept.filter((r) => r.kind === 'test').map((r) => r.patterns.length), Array(MAX_PATTERN_RUNS).fill(1));
+  assert.equal(kept.filter((r) => r.kind === 'challenge').length, 30);
+  assert.equal(kept.some((r) => r.kind === 'challenge' && 'patterns' in r), false);
+});
+
 test('a profile with only comparable runs is retained exactly as before', () => {
   // The retention rule as it stood before custom text existed.
   const previous = (runs) => {
