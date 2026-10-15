@@ -122,10 +122,10 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   const section = page.locator('section[aria-labelledby="keys-heading"]');
   await section.scrollIntoViewIfNeeded();
   await page.emulateMedia({ colorScheme: 'dark' });
-  await section.screenshot({ path: shot(testInfo, 'keys-dark.png') });
+  await section.screenshot({ path: shot(testInfo, 'keys-dark.png'), animations: 'disabled' });
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await section.screenshot({ path: shot(testInfo, 'keys-light.png') });
+  await section.screenshot({ path: shot(testInfo, 'keys-light.png'), animations: 'disabled' });
 });
 
 // Custom text is never mined (metric contract): a custom run full of missed "o"s leaves the heatmap,
@@ -196,7 +196,7 @@ test.describe('coarse pointer at 320px', () => {
 
     await page.emulateMedia({ colorScheme: 'dark' });
     await section.evaluate((node) => node.scrollIntoView({ block: 'start' }));
-    await section.screenshot({ path: shot(testInfo, 'keys-mobile-dark.png') });
+    await section.screenshot({ path: shot(testInfo, 'keys-mobile-dark.png'), animations: 'disabled' });
     await expect(select).toBeVisible();
   });
 });
