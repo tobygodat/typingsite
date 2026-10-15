@@ -406,3 +406,18 @@ test('screenshots', async ({ page }, testInfo) => {
   await expect(message(page)).toHaveText('Too short: use at least 5 seconds.');
   await page.screenshot({ path: shot(testInfo, 'custom-time-invalid-mobile-dark.png') });
 });
+
+
+test('explicit duration reselect is recorded as a fresh preference choice', async ({ page, supabase }) => {
+  const user = supabase.addUser('choice-39@stilltype.test');
+  const stamp = '2000-01-01T00:00:00.000Z';
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { duration: 30 }, preferencesAt: { duration: stamp },
+    attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, updatedAt: stamp } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await pill(page).click();
+  await field(page).fill('30');
+  await field(page).press('Enter');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferencesAt?.duration).not.toBe(stamp);
+  expect(supabase.profileFor(user.email).preferences.duration).toEqual(30);
+});
