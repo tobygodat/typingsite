@@ -64,7 +64,7 @@
             <details class="preference-category" id="test-content-settings">
               <summary class="preference-row"><span><strong>test content</strong></span></summary>
               <label class="preference-row" for="word-list">
-                <span><strong>word list</strong></span>
+                <span><strong>word list</strong><small class="preference-lock" hidden>fixed for standard</small></span>
                 <select class="input select" id="word-list">
                   <option value="200" selected>top 200</option>
                   <option value="1k">top 1k</option>
@@ -73,7 +73,7 @@
                 </select>
               </label>
               <label class="preference-row" for="numbers-toggle">
-                <span><strong>numbers</strong></span>
+                <span><strong>numbers</strong><small class="preference-lock" hidden>fixed for standard</small></span>
                 <input id="numbers-toggle" class="switch" type="checkbox">
               </label>
             </details>
@@ -86,7 +86,7 @@
               <input class="switch" id="keyboard-toggle" type="checkbox">
             </label>
             <label class="preference-row" for="stop-on-error-toggle">
-              <span><strong>stop on error</strong></span>
+              <span><strong>stop on error</strong><small class="preference-lock" hidden>fixed for standard</small></span>
               <input class="switch" id="stop-on-error-toggle" type="checkbox">
             </label>
             <label class="preference-row" for="pace-select">
@@ -148,6 +148,7 @@
             <p class="account-sync status" role="status"><span class="status-dot" aria-hidden="true"></span><span id="account-sync"></span></p>
             <div class="account-actions account-member-actions">
               <button id="account-signout" class="btn btn-ghost btn-sm" type="button">Sign out</button>
+              <button id="account-delete" class="btn btn-ghost btn-sm danger-text" type="button">Delete my account</button>
             </div>
           </div>
         </div>
@@ -162,6 +163,7 @@
             <button id="mode-time" type="button" data-mode="time" aria-pressed="true" class="is-active">time</button>
             <button id="mode-words" type="button" data-mode="words" aria-pressed="false">words</button>
             <button id="mode-quote" type="button" data-mode="quote" aria-pressed="false">quote</button>
+            <button id="mode-standard" type="button" data-mode="standard" aria-pressed="false">standard</button>
             <button id="mode-custom" type="button" aria-pressed="false" aria-controls="custom-options" aria-expanded="false">custom</button>
           </div>
           <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
@@ -193,6 +195,10 @@
               <option value="precise">precise</option>
             </select>
           </label>
+        </div>
+
+        <div id="standard-options" class="standard-options" hidden>
+          <p id="standard-recipe" class="condition-copy"></p>
         </div>
 
         <div id="custom-options" class="custom-options" role="group" aria-label="Custom text" hidden>
@@ -303,6 +309,8 @@
             <p class="metric-note">wpm counts correct characters kept · accuracy counts every character typed, corrected ones included</p>
             <p class="metric-note">raw counts every character typed, mistakes included · consistency is 100 minus the variation of per-second speed · final c/i/e/m: correct, still wrong, extra past the end, missed; fixed slips are first-try errors</p>
             <p class="condition-copy" id="result-conditions">english · common words · corpus v3 · metric v1</p>
+            <p class="word-detail practice-evidence" id="practice-words-evidence" hidden></p>
+            <button id="practice-words" class="btn btn-ghost run-card-practice" type="button" data-action="practice-words" hidden>Practice missed words</button>
           </article>
 
           <div class="results-copy">
@@ -392,6 +400,19 @@
           <button id="clear-history" class="btn btn-ghost btn-sm danger-text" type="button" disabled>Clear history</button>
         </header>
 
+        <section id="standard-score" class="standard-score" aria-labelledby="standard-score-heading">
+          <div class="standard-score-heading">
+            <h2 id="standard-score-heading">Standard score</h2>
+            <button id="take-standard" class="btn btn-secondary btn-sm" type="button">Take the standard test</button>
+          </div>
+          <dl class="standard-figures">
+            <div><dt>best</dt><dd><strong id="standard-best" class="num">—</strong><span>wpm</span></dd></div>
+            <div><dt id="standard-median-label">median</dt><dd><strong id="standard-median" class="num">—</strong><span>wpm</span></dd></div>
+          </dl>
+          <p id="standard-score-note" class="result-note"></p>
+          <p id="standard-score-conditions" class="condition-copy"></p>
+        </section>
+
         <div id="progress-empty" class="empty-state">
           <h2>No practice runs yet.</h2>
           <p>Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.</p>
@@ -449,6 +470,7 @@
         <div class="challenge-modes" role="group" aria-label="Challenge type">
           <button id="challenge-online" class="btn btn-secondary btn-sm" type="button" aria-pressed="true">Online</button>
           <button id="challenge-daily" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">Daily</button>
+          <button id="challenge-friends" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">Friends</button>
           <button id="challenge-local" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">One keyboard</button>
         </div>
 
@@ -542,6 +564,52 @@
           <details id="daily-history-panel" hidden><summary>Your daily results</summary><div id="daily-history"></div></details>
         </section>
 
+        <section id="friends-board" class="friends-board" hidden aria-labelledby="friends-board-heading">
+          <div class="online-section-heading">
+            <h2 id="friends-board-heading">Friends board</h2>
+            <button id="refresh-friends-board" class="btn btn-ghost btn-sm" type="button" hidden>Refresh</button>
+          </div>
+          <p class="friends-board-copy">You and the friends who have added you back, when both of you share. They see your row; nobody else does.</p>
+          <div id="friends-board-guest" class="friends-board-guest">
+            <p>Sign in to compare today’s daily passage, this week’s practice and your bests with the friends you choose.</p>
+            <button id="friends-board-signin" class="btn btn-primary" type="button">Sign in</button>
+          </div>
+          <div id="friends-board-share" class="friends-board-share" hidden>
+            <label class="compact-switch" for="share-board">
+              <input id="share-board" class="switch" type="checkbox">
+              <span>share on friends board</span>
+            </label>
+            <p id="friends-board-off" class="friends-board-off">You aren’t sharing, so friends’ rows are hidden too. Share to show them today’s daily, this week’s practice and your bests, and to see theirs.</p>
+          </div>
+          <p id="friends-board-status" class="online-copy" role="status"></p>
+          <div id="friends-board-lists" class="friends-board-lists" hidden>
+            <section class="board-column" aria-labelledby="board-daily-heading">
+              <h3 id="board-daily-heading">Today’s daily</h3>
+              <p id="board-daily-meta" class="condition-copy"></p>
+              <ol id="board-daily" class="board-list" role="list"></ol>
+            </section>
+            <section class="board-column" aria-labelledby="board-week-heading">
+              <h3 id="board-week-heading">This week’s practice</h3>
+              <p id="board-week-meta" class="condition-copy"></p>
+              <ol id="board-week" class="board-list" role="list"></ol>
+            </section>
+            <section class="board-column board-bests" aria-labelledby="board-bests-heading">
+              <h3 id="board-bests-heading">Bests</h3>
+              <label id="board-shape-field" class="filter-field board-shape" for="board-shape">Test conditions
+                <select id="board-shape" class="input select"></select>
+              </label>
+              <p id="board-bests-meta" class="condition-copy"></p>
+              <ol id="board-bests" class="board-list" role="list"></ol>
+              <p id="board-bests-none" class="friends-board-note" hidden>No bests here yet. A completed practice test or retest sets one.</p>
+            </section>
+          </div>
+          <div id="friends-board-empty" class="friends-board-empty" hidden>
+            <p>Nobody else here yet. A friend appears once you’re on each other’s friend lists: save them when you invite them to a race, or add them after one.</p>
+            <button id="friends-board-online" class="btn btn-secondary btn-sm" type="button">Go to online races</button>
+          </div>
+          <p class="friends-board-copy">Each person’s browser reports their own numbers, so they aren’t verified. Interrupted runs don’t count. Only today’s daily, this week’s practice and your best on each of up to 16 test shapes (speed, accuracy and date, from completed tests and retests) are kept. Each new day or week replaces the last; bests come from your newest 1,000 runs, and clearing your history takes them off. Turning sharing off, or deleting your account, removes your row.</p>
+        </section>
+
         <div id="local-challenge" hidden>
         <form id="compete-setup" class="challenge-setup">
           <div class="player-field">
@@ -628,6 +696,26 @@
       <div class="dialog-actions">
         <button id="cancel-clear" class="btn btn-ghost" value="cancel">Cancel</button>
         <button id="confirm-clear" class="btn btn-danger" type="button" disabled>Clear history</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="delete-account-dialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-copy">
+    <form id="delete-account-form" class="dialog-content" novalidate>
+      <div>
+        <h2 id="delete-account-title">Delete your account?</h2>
+        <p id="delete-account-copy">This deletes your account for good, with everything saved to it: settings, runs and progress, daily results, your friend list and your online races. You can’t undo it.</p>
+      </div>
+      <div class="account-fields">
+        <label for="confirm-delete-input"><span>Type <strong>delete</strong> to confirm</span>
+          <input id="confirm-delete-input" class="input" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" aria-describedby="delete-account-error">
+        </label>
+        <p id="delete-account-error" class="field-error" role="alert"></p>
+        <p id="delete-account-status" class="sr-only" role="status"></p>
+      </div>
+      <div class="dialog-actions">
+        <button id="cancel-delete-account" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="confirm-delete-account" class="btn btn-danger" type="submit" disabled>Delete account</button>
       </div>
     </form>
   </dialog>

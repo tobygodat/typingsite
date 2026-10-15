@@ -7,10 +7,19 @@ export class FakeRaces {
     this.auth = auth;
     this.rooms = new Map();
     this.friends = new Map();
+    this.holds = new Map();
     // As in FakeChallenges: with `held` set to an array, a successful reply to an action named in `holding`
     // waits until a test calls the release pushed onto it. The action itself is already done.
     this.held = null;
     this.holding = new Set();
+  }
+
+  // Holds the reply to the next request with this action: the service applies it on arrival, and the
+  // answer comes back only once the test calls the returned release, while later requests go through.
+  hold(action) {
+    let release;
+    this.holds.set(action, new Promise((resolve) => { release = resolve; }));
+    return () => release();
   }
 
   friendList(owner) {
@@ -50,8 +59,12 @@ export class FakeRaces {
   }
 
   handle(caller, { p_action: action, p_room_id: id, p_data: data = {}, p_guest_token: guestToken }, send) {
-    const reply = (status, json) => (status === 200 && this.held && this.holding.has(action)
+    // Two ways to hold a reply: hold(action) for the next request with it, or held/holding (see constructor).
+    const once = this.holds.get(action);
+    this.holds.delete(action);
+    const answer = (status, json) => (status === 200 && this.held && this.holding.has(action)
       ? new Promise((release) => this.held.push(release)).then(() => send(status, json)) : send(status, json));
+    const reply = once ? async (status, json) => { await once; return answer(status, json); } : answer;
     const failure = (message) => reply(400, { message });
     if (action === 'invites') return reply(200, [...this.rooms.values()]
       .filter((room) => room.invitedUser === caller && caller && room.status === 'waiting' && Date.parse(room.expiresAt) > Date.now()

@@ -1,11 +1,12 @@
 // Offline shell for Stilltype. Precaches exactly the files server.mjs serves (tests/sw.test.js checks
 // the list), answers them cache-first, fetches page navigations network-first with the cached shell as
-// the fallback, and never touches Supabase or any other cross-origin request. scripts/build-static.mjs
-// stamps VERSION with a hash of the built files, so each deploy installs a fresh cache and drops the old.
+// the fallback, and never touches Supabase or any other cross-origin request. The shell is cached as '/'
+// only: Cloudflare answers /index.html with a redirect to /, and a cached redirect can't answer a
+// navigation. scripts/build-static.mjs stamps VERSION with a hash of the built files, so each deploy
+// installs a fresh cache and drops the old.
 const VERSION = 'stilltype-shell-v1';
 const SHELL = [
   '/',
-  '/index.html',
   '/manifest.webmanifest',
   '/icons/icon.svg',
   '/icons/icon-192.png',
@@ -16,6 +17,7 @@ const SHELL = [
   '/src/corpus.js',
   '/src/egg.js',
   '/src/ghost-race.js',
+  '/src/friends-board.js',
   '/src/graph.js',
   '/src/inbox.js',
   '/src/insights.js',
@@ -23,6 +25,7 @@ const SHELL = [
   '/src/multiplayer.js',
   '/src/online-race.js',
   '/src/palette.js',
+  '/src/profile.js',
   '/src/progress-view.js',
   '/src/typing.js',
   '/src/words.js',
@@ -52,11 +55,11 @@ self.addEventListener('fetch', (event) => {
       .then((response) => {
         if (response.ok) {
           const copy = response.clone();
-          event.waitUntil(caches.open(VERSION).then((cache) => cache.put('/index.html', copy)));
+          event.waitUntil(caches.open(VERSION).then((cache) => cache.put('/', copy)));
         }
         return response;
       })
-      .catch(() => caches.match('/index.html')));
+      .catch(() => caches.match('/')));
     return;
   }
   if (!SHELL.includes(url.pathname)) return;
