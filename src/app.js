@@ -2150,13 +2150,14 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 // one touch run can't replace a keyboard score. The other class's best is named in the note.
 function renderStandardScore() {
   const scoreFor = (inputClass) => {
-    const key = conditionKey(standardConditions(inputClass));
+    const key = conditionKey({ ...standardConditions(inputClass), layout: inputLayout(inputClass) });
     return standardScore(profile.runs, key, profile.bests[key]?.wpm ?? null);
   };
   const keyboard = scoreFor('physical-keyboard');
   const touch = scoreFor('touch');
   const onTouch = standardInputClass(keyboard, touch) === 'touch';
-  const source = standardConditions(onTouch ? 'touch' : 'physical-keyboard');
+  const sourceInput = onTouch ? 'touch' : 'physical-keyboard';
+  const source = { ...standardConditions(sourceInput), layout: inputLayout(sourceInput) };
   const score = onTouch ? touch : keyboard;
   const other = onTouch ? keyboard : touch;
   setText($('standard-best'), score.best ?? '—');
