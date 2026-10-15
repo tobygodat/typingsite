@@ -2,6 +2,24 @@ import { conditionKey, printable, replayAttempt, summarizePatterns, textId } fro
 
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
+// Per-letter first-attempt counts saved with each run. Summaries without this version predate
+// them and fall back to pair-derived counts, which miss letters at the start of a word.
+export const KEY_COUNTS_VERSION = 1;
+
+// [letter, tries, first-try errors] for every a–z first attempt, whatever came before it.
+function keyCounts(replay) {
+  const keys = new Map();
+  for (const first of replay.firstAttempts) {
+    const letter = (first.expected || '').toLowerCase();
+    if (!/^[a-z]$/.test(letter)) continue;
+    const k = keys.get(letter) || [letter, 0, 0];
+    k[1] += 1;
+    if (!first.correct) k[2] += 1;
+    keys.set(letter, k);
+  }
+  return [...keys.values()];
+}
+
 export const MAX_MISSED_WORDS = 12;
 
 // Run kinds that are never compared, used as a baseline or mined for patterns (custom text, missed-word
@@ -31,8 +49,12 @@ export function runRecord(attempt, at = attempt.at || null) {
   };
   // Pattern counts only feed recurring targets, which never read custom text or missed-word practice.
   if (!comparableKind(attempt.kind)) return record;
+  const evidence = summarizePatterns([attempt]);
   // Keep counts and each run's measured median, rather than another keystroke log.
-  record.patterns = summarizePatterns([attempt]).pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
+  record.patterns = evidence.pairs.map((p) => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
+  // Same eligibility as patterns (no drills, races, repeated dailies or non-comparable kinds).
+  record.keys = evidence.attemptCount ? keyCounts(replay) : [];
+  record.keysVersion = KEY_COUNTS_VERSION;
   // The words missed on the first try, for "words you keep missing": only from runs pattern memory
   // reads, so a run without the field (older, trimmed or not eligible) is no evidence either way.
   if (evidenceRun(record)) record.missedWords = missedAndSlowWords(attempt, 0).missed.slice(0, MAX_MISSED_WORDS);
@@ -56,7 +78,7 @@ export function retainRuns(runs) {
     if (!trimPatterns && !trimWords) return run;
     // Drop missed words rather than empty them: an empty list would read as a run with no misses.
     const { missedWords, ...rest } = run;
-    return { ...(trimWords ? rest : run), ...(trimPatterns ? { patterns: [] } : {}) };
+    return { ...(trimWords ? rest : run), ...(trimPatterns ? { patterns: [], keys: [] } : {}) };
   });
 }
 
@@ -236,6 +258,56 @@ const DAILY_TEXTS = [
   'The letter arrived without an explanation for its long journey. Its corners were soft, and the stamp had almost faded. Inside was a short account of a summer by the sea, written by someone who had thought an ordinary day was worth sharing.',
   'When the power returned, we left the candles burning for a little longer. The room looked familiar again, but conversation had found a different pace. Nobody reached for a screen until the last story was finished and the kettle began to sing.',
 ];
+
+// Stilltype rule: no confident per-key or per-pair claim below this many first attempts.
+export const MIN_PATTERN_SAMPLES = 10;
+
+const directKeys = (run) => run.keysVersion === KEY_COUNTS_VERSION && Array.isArray(run.keys) ? run.keys : null;
+
+// Compact run memory → per-key and per-pair totals. A key's miss rate is first-attempt errors on
+// that letter over its tries. Older summaries without per-letter counts fall back to their pairs
+// (a pair's first attempt is a try at its second letter), so they only count letters typed after
+// another letter; pairDerivedRuns says how many runs that applies to. Non-comparable kinds (custom text) are
+// never mined, even if a record carries counts.
+export function keyAnalysis(runs, limit = 8) {
+  const recent = runs.filter((r) => comparableKind(r.kind) && validRun(r) && ((r.patterns || []).length || directKeys(r)?.length))
+    .slice(-MAX_PATTERN_RUNS);
+  const keys = new Map();
+  const pairs = new Map();
+  let pairDerivedRuns = 0;
+  const addKey = (key, samples, errors) => {
+    const k = keys.get(key) || { key, samples: 0, errors: 0 };
+    k.samples += samples;
+    k.errors += errors;
+    keys.set(key, k);
+  };
+  for (const run of recent) {
+    const direct = directKeys(run);
+    if (direct) for (const [key, samples, errors] of direct) addKey(key, samples, errors);
+    else pairDerivedRuns += 1;
+    for (const [pair, observations, errors, timingCount, medianMs, slowdownMs] of run.patterns || []) {
+      if (!direct) addKey(pair[1], observations, errors);
+      const p = pairs.get(pair) || { pair, samples: 0, errors: 0, slowRuns: 0, timedRuns: 0, runs: 0 };
+      p.samples += observations;
+      p.errors += errors;
+      p.runs += 1;
+      // Only runs with enough clean intervals can say slow or not; the rest stay unknown.
+      const timed = timingCount >= MIN_PATTERN_SAMPLES && medianMs !== null && slowdownMs !== null;
+      if (timed) p.timedRuns += 1;
+      if (timed && slowdownMs > 0) p.slowRuns += 1;
+      pairs.set(pair, p);
+    }
+  }
+  const rate = (v) => ({ ...v, missRate: v.samples ? v.errors / v.samples : 0, enough: v.samples >= MIN_PATTERN_SAMPLES });
+  return {
+    runs: recent.length,
+    pairDerivedRuns,
+    keys: Object.fromEntries([...keys.values()].map((k) => [k.key, rate(k)])),
+    pairs: [...pairs.values()].map(rate).filter((p) => p.enough && (p.errors > 0 || p.slowRuns > 0))
+      .sort((a, b) => b.missRate - a.missRate || b.slowRuns - a.slowRuns || b.samples - a.samples || a.pair.localeCompare(b.pair))
+      .slice(0, limit),
+  };
+}
 
 // The bare word: a word without the punctuation around it, lowercased ("Table," → "table").
 // Punctuation inside stays ("9:30", "don't"), so no merged, made-up tokens. `same[k]` is true where

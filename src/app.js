@@ -45,7 +45,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 import { promptText } from './compose.js';
 import { createCompose } from './compose-view.js';
@@ -2143,6 +2143,136 @@ function renderStandardScore() {
   setText($('standard-score-note'), note);
 }
 
+// Static heatmap: coral steps by first-attempt miss rate; thin evidence stays neutral.
+// One tab stop: arrow keys move between keys as drawn, and focus or a click shows that key's numbers
+// in the line below, so the values never depend on a hover tooltip. Ten keys in a phone-width row
+// cannot each be a 44px touch target, so on coarse pointers the heatmap is a picture and a native
+// "Key" select drives the same line.
+const HEAT_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+// Lowest first. Key cells and the legend both read this table, so thresholds and labels move
+// together. Number.MIN_VALUE makes step 1 "any miss at all".
+const HEAT_STEPS = [
+  { step: '0', min: 0, label: 'no misses' },
+  { step: '1', min: Number.MIN_VALUE, label: 'under 4%' },
+  { step: '2', min: 0.04, label: '4–8%' },
+  { step: '3', min: 0.08, label: '8% or more' },
+];
+const HEAT_NONE = { step: 'none', label: `under ${MIN_PATTERN_SAMPLES} samples` };
+const heatStep = (stat) => (stat?.enough ? HEAT_STEPS.findLast((s) => stat.missRate >= s.min) : HEAT_NONE);
+const coarsePointer = window.matchMedia('(pointer: coarse)');
+let heatKey = null;
+let heatDetails = {};
+let heatRuns = [];
+function renderKeys(runs) {
+  heatRuns = runs;
+  const picture = coarsePointer.matches;
+  const analysis = keyAnalysis(runs);
+  const pct = (v) => `${(v * 100).toFixed(1)}%`;
+  const older = analysis.pairDerivedRuns;
+  $('key-note').textContent = `First-try misses per key from ${analysis.runs} saved ${analysis.runs === 1 ? 'run' : 'runs'} at these conditions. Keys with fewer than ${MIN_PATTERN_SAMPLES} samples stay neutral.${older
+    ? ` ${older} older ${older === 1 ? 'run counts' : 'runs count'} only letters typed after another letter, not the first letter of a word.` : ''}`;
+  heatDetails = {};
+  const grid = $('key-heatmap');
+  const hadFocus = grid.contains(document.activeElement);
+  if (picture) {
+    grid.removeAttribute('role');
+    grid.setAttribute('aria-hidden', 'true');
+  } else {
+    grid.setAttribute('role', 'grid');
+    grid.removeAttribute('aria-hidden');
+  }
+  $('key-select-field').hidden = !picture;
+  grid.replaceChildren(...HEAT_ROWS.map((letters) => {
+    const row = element('div', '', 'key-row');
+    if (!picture) row.setAttribute('role', 'row');
+    for (const letter of letters) {
+      const stat = analysis.keys[letter];
+      const cell = element('span', letter, 'key');
+      cell.dataset.letter = letter;
+      const { step } = heatStep(stat);
+      cell.dataset.heat = step;
+      if (step !== 'none' && step !== '0') {
+        const rate = element('span', stat.missRate >= 0.1 ? `${Math.round(stat.missRate * 100)}%` : pct(stat.missRate), 'key-rate');
+        rate.setAttribute('aria-hidden', 'true');
+        cell.append(rate);
+      }
+      if (!picture) {
+        cell.setAttribute('role', 'gridcell');
+        cell.tabIndex = -1;
+      }
+      cell.title = stat?.enough ? `${letter}: ${pct(stat.missRate)} miss · ${stat.samples} samples`
+        : `${letter}: not enough samples (${stat?.samples || 0})`;
+      if (!picture) cell.setAttribute('aria-label', cell.title);
+      heatDetails[letter] = stat?.enough
+        ? `“${letter}”: ${pct(stat.missRate)} first-try misses (${stat.errors} of ${stat.samples} samples).`
+        : `“${letter}”: ${stat?.samples || 0} ${stat?.samples === 1 ? 'sample' : 'samples'}, fewer than ${MIN_PATTERN_SAMPLES}, so no miss rate yet.`;
+      row.append(cell);
+    }
+    return row;
+  }));
+  selectHeatKey(heatKey, { focus: hadFocus && !picture });
+  const topRate = Math.max(...analysis.pairs.map((p) => p.missRate));
+  const rows = analysis.pairs.map((p) => {
+    const tr = document.createElement('tr');
+    // Denominator: runs with at least MIN_PATTERN_SAMPLES clean intervals for this pair.
+    const slow = element('td', p.timedRuns ? `${p.slowRuns} of ${p.timedRuns}` : '—', 'num');
+    slow.title = p.timedRuns
+      ? `Slower than your median in ${p.slowRuns} of ${p.timedRuns} ${p.timedRuns === 1 ? 'run' : 'runs'} with at least ${MIN_PATTERN_SAMPLES} clean intervals`
+      : `No run has ${MIN_PATTERN_SAMPLES} clean intervals for this pair yet`;
+    if (!p.timedRuns) slow.append(element('span', ` ${slow.title}`, 'sr-only'));
+    const rate = element('td', `${pct(p.missRate)} (${p.errors})`, 'num');
+    const bar = element('span', '', 'pair-bar');
+    bar.setAttribute('aria-hidden', 'true');
+    bar.style.width = `${topRate ? (p.missRate / topRate) * 100 : 0}%`;
+    rate.append(bar);
+    tr.append(element('td', `“${p.pair}”`), rate, slow, element('td', String(p.samples), 'num'));
+    return tr;
+  });
+  $('pairs-table').querySelector('tbody').replaceChildren(...rows);
+  $('pairs-table').hidden = !rows.length;
+  $('pairs-empty').hidden = Boolean(rows.length);
+}
+
+// Marks one key as chosen (and, in the grid, the tab stop) and shows its numbers; with no key
+// chosen yet, "q" is the stop.
+function selectHeatKey(letter, { focus = false } = {}) {
+  const grid = $('key-heatmap');
+  const picture = grid.hasAttribute('aria-hidden');
+  const cells = [...grid.querySelectorAll('.key')];
+  const target = cells.find((cell) => cell.dataset.letter === letter) || cells[0];
+  if (!target) return;
+  for (const cell of cells) {
+    if (!picture) cell.tabIndex = cell === target ? 0 : -1;
+    if (cell === target && letter) cell.dataset.selected = 'true';
+    else delete cell.dataset.selected;
+  }
+  heatKey = letter ? target.dataset.letter : null;
+  $('key-select').value = heatKey || '';
+  $('key-detail').textContent = heatKey ? heatDetails[heatKey] : 'Select a key to see its miss rate and sample count.';
+  if (focus && !picture) target.focus();
+}
+
+function moveHeatFocus(event) {
+  const cell = event.target.closest?.('.key');
+  if (!cell) return;
+  const row = HEAT_ROWS.findIndex((letters) => letters.includes(cell.dataset.letter));
+  const col = HEAT_ROWS[row].indexOf(cell.dataset.letter);
+  const at = (r, c) => HEAT_ROWS[r][Math.max(0, Math.min(c, HEAT_ROWS[r].length - 1))];
+  const next = {
+    ArrowLeft: () => col > 0 && at(row, col - 1),
+    ArrowRight: () => col < HEAT_ROWS[row].length - 1 && at(row, col + 1),
+    // Up and down keep the column, clamped to the shorter row.
+    ArrowUp: () => row > 0 && at(row - 1, col),
+    ArrowDown: () => row < HEAT_ROWS.length - 1 && at(row + 1, col),
+    Home: () => at(event.ctrlKey ? 0 : row, 0),
+    End: () => event.ctrlKey ? HEAT_ROWS.at(-1).at(-1) : at(row, HEAT_ROWS[row].length - 1),
+  }[event.key];
+  if (!next) return;
+  event.preventDefault();
+  const letter = next();
+  if (letter) selectHeatKey(letter, { focus: true });
+}
+
 function renderHistory() {
   renderStandardScore();
   const eligible = profile.runs.filter(trendRun);
@@ -2164,6 +2294,7 @@ function renderHistory() {
   $('progress-trend-note').textContent = matching.length
     ? `${matching.length} completed practice runs and retests, oldest to newest. Select a point or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs appear only in All saved runs.' : ''}`
     : 'No completed practice runs at these conditions in this period. Try a longer period or different conditions.';
+  renderKeys(source ? filterRuns(profile.runs, key, period) : []);
   $('run-history').replaceChildren(...[...matching].reverse().map((run) => {
     const row = element('details', '', 'run-row');
     row.dataset.runId = run.id;
@@ -3915,6 +4046,23 @@ function bindEvents() {
   $('progress-conditions').addEventListener('change', renderHistory);
   $('take-standard').addEventListener('click', () => setTestShape('standard'));
   $('progress-period').addEventListener('change', renderHistory);
+  $('key-heatmap').addEventListener('keydown', moveHeatFocus);
+  $('key-heatmap').addEventListener('focusin', (event) => {
+    const cell = event.target.closest('.key');
+    if (cell && cell.dataset.letter !== heatKey) selectHeatKey(cell.dataset.letter);
+  });
+  $('key-heatmap').addEventListener('click', (event) => {
+    const cell = event.target.closest('.key');
+    if (cell && !$('key-heatmap').hasAttribute('aria-hidden')) selectHeatKey(cell.dataset.letter, { focus: true });
+  });
+  $('heat-legend').replaceChildren(...[...HEAT_STEPS, HEAT_NONE].map(({ step, label }) => {
+    const item = element('li', label);
+    item.dataset.heat = step;
+    return item;
+  }));
+  $('key-select').append(new Option('Choose a key', ''), ...[...'abcdefghijklmnopqrstuvwxyz'].map((letter) => new Option(letter, letter)));
+  $('key-select').addEventListener('change', (event) => selectHeatKey(event.target.value || null));
+  coarsePointer.addEventListener('change', () => renderKeys(heatRuns));
   $('training-conditions').addEventListener('change', renderTraining);
   $('practice-missed-list').addEventListener('click', practiseMissedList);
   $('start-daily').addEventListener('click', startDaily);

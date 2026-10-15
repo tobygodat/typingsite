@@ -544,6 +544,28 @@
           <p id="progress-week" class="result-note"></p>
           <div id="progress-trend" class="progress-trend"></div>
           <p id="progress-trend-note" class="result-note"></p>
+          <section class="progress-section" aria-labelledby="keys-heading">
+            <h2 id="keys-heading">Keys</h2>
+            <p id="key-note" class="result-note"></p>
+            <div class="keys-layout">
+              <div class="keys-map">
+                <div id="key-heatmap" class="keyboard key-heatmap" role="grid" aria-label="Miss rate by key. Arrow keys move between keys."></div>
+                <ul id="heat-legend" class="heat-legend" aria-hidden="true"></ul>
+                <label id="key-select-field" class="filter-field key-select-field" for="key-select" hidden>Key
+                  <select id="key-select" class="input"></select>
+                </label>
+                <p id="key-detail" class="result-note key-detail"></p>
+              </div>
+              <div class="keys-pairs">
+                <h3 class="pairs-heading">Pairs to watch</h3>
+                <p id="pairs-empty" class="result-note" hidden>No pair has enough samples with misses or slow intervals yet.</p>
+                <table id="pairs-table" class="pairs-table" hidden>
+                  <thead><tr><th scope="col">pair</th><th scope="col">error rate</th><th scope="col">slow runs</th><th scope="col">samples</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
           <section class="progress-section" aria-labelledby="run-history-heading">
             <h2 id="run-history-heading">Runs</h2>
             <div id="run-history"></div>
