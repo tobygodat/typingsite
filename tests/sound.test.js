@@ -364,6 +364,19 @@ test('choosing an audible sound builds the context after the change, so the firs
   assert.equal(log.created, 1, 'one context');
 });
 
+test('a context readied before any run rests suspended until the first key', async () => {
+  const { log, FakeContext } = fakeAudio();
+  const later = deferQueue();
+  const sounds = createSounds({ settings: () => ({ mode: 'clicks', volume: 50 }), AudioContextClass: FakeContext, defer: later.defer });
+  sounds.prepare();
+  later.flush();
+  await settle();
+  assert.equal(log.contexts[0].state, 'suspended', 'nothing is typing, so the context does not run');
+  assert.equal(sounds.play('correct'), 'click');
+  await settle();
+  assert.equal(log.contexts[0].state, 'running');
+});
+
 test('missing or failing audio never throws into input handling', () => {
   let mode = 'clicks-errors';
   const settings = () => ({ mode, volume: 50 });

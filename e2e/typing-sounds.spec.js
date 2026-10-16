@@ -133,6 +133,21 @@ test('choosing a sound readies it for the first key; the tick marks only mistype
   expect((await sound(page)).created, 'one context for the whole session').toBe(1);
 });
 
+test('a sound chosen before any run leaves its context suspended until the first key', async ({ page }) => {
+  await openApp(page);
+  await openView(page, 'Train');
+  await chooseSound(page, 'clicks');
+  await soundReady(page);
+  await page.waitForTimeout(400);
+  expect((await sound(page)).state, 'nothing is being typed, so the context rests').toBe('suspended');
+
+  await openView(page, 'Practice');
+  const text = await passageText(page);
+  await typeInto(page, text[0]);
+  expect(await plays(page), 'the first key still clicks').toEqual(['click']);
+  await expect.poll(async () => (await sound(page)).state).toBe('running');
+});
+
 test('stop on error: a refused key clicks, only the mistyped letter ticks', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
