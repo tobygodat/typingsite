@@ -198,6 +198,23 @@ test('a run under 95% accuracy keeps the next keys locked and shows the numbers'
   await expect(page.locator('#session-title')).toHaveText('Lesson 1 · f and j');
 });
 
+// A lesson result taller than a short screen scrolls to the result, which must stop below the top dock.
+for (const viewport of [{ width: 1280, height: 600 }, { width: 820, height: 600 }]) {
+  test(`a lesson result on a short ${viewport.width}px screen stops below the dock`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await openApp(page);
+    await openLessons(page);
+    await startLesson(page, 1);
+    await typeLesson(page);
+    await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 1 passed. d and k are next.');
+
+    expect(await page.evaluate(() => scrollY), 'the result scrolled into view').toBeGreaterThan(0);
+    const result = await page.locator('#lesson-current').boundingBox();
+    const dock = await page.locator('nav.dock').boundingBox();
+    expect(result.y).toBeGreaterThanOrEqual(dock.y + dock.height);
+  });
+}
+
 test('Escape restarts a lesson, and an interrupted lesson is not counted', async ({ page }) => {
   await openApp(page);
   await openLessons(page);

@@ -161,8 +161,8 @@ test('failed drill result screenshots', async ({ page }, testInfo) => {
 test('failed drill result fits at 320px', async ({ page }, testInfo) => {
   await showFailedDrill(page, { width: 320, height: 568 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
-  // The run card comes first on a phone; the shot shows the failed headline and its actions below it.
-  await page.locator('#results-heading').evaluate((node) => node.scrollIntoView({ block: 'start' }));
+  // On a phone the drill follows the score card; the shot shows the drill and its actions.
+  await page.locator('.recommendation-panel').evaluate((node) => node.scrollIntoView({ block: 'start' }));
   await expect(page.locator('#start-drill')).toBeInViewport();
   await page.screenshot({ path: shot(testInfo, 'failed-drill-320.png') });
 });

@@ -80,7 +80,7 @@ test('words missed across runs build a list in Training that starts an uncounted
   expect(counts).toEqual([...counts].sort((a, b) => b - a));
   const action = page.locator('#practice-missed-list');
   await expect(action).toHaveText(`Practice these ${rows.length} words`);
-  // The run card's own word practice is on screen too, so the names tell the two apart.
+  // The trace's own word practice is on screen too, so the names tell the two apart.
   await expect(action).toHaveAccessibleName(`Practice these ${rows.length} words you keep missing`);
   await expect(page.locator('#practice-words')).toBeVisible();
   await expect(page.locator('#practice-words')).not.toHaveAccessibleName(/keep missing/);
@@ -89,7 +89,7 @@ test('words missed across runs build a list in Training that starts an uncounted
   const listTop = await page.locator('section.missed-words').evaluate((node) => node.getBoundingClientRect().top);
   expect(listTop - patternsEnd).toBe(0);
 
-  // The whole list down to its button, 32px above the fold, with the run card beside it.
+  // The whole list down to its button, 32px above the fold, with the drill beside it.
   await action.evaluate((button) => window.scrollTo(0, button.getBoundingClientRect().bottom + window.scrollY + 32 - window.innerHeight));
   await page.mouse.move(1270, 790);
   await page.screenshot({ path: shot(testInfo, 'training-list-dark') });
