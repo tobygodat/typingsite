@@ -1,4 +1,4 @@
-import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage, chooseMore } from './fixtures.js';
 
 // Types the passage with one wrong-then-fixed letter in each chosen word.
 // `delay` (ms per key) lets the screenshots show a human typing speed.
@@ -88,7 +88,7 @@ test('custom text offers no word practice, and word practice closes the custom e
 
   // The custom editor is open when word practice starts from the Train view.
   await page.locator('.nav-item[data-nav="practice"]').click();
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   await page.locator('.nav-item[data-nav="results"]').click();
   await page.locator('#practice-words').click();
@@ -98,7 +98,7 @@ test('custom text offers no word practice, and word practice closes the custom e
 
   // A custom run with the same kind of slip is never mined for words to practise.
   await page.locator('.nav-item[data-nav="practice"]').click();
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   const text = 'the quick brown fox jumps over the lazy dog';
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();

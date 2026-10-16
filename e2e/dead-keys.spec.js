@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore } from './fixtures.js';
 
 // Accent (dead) keys, as US-International and similar layouts send them. On macOS (and Linux with an
 // input method) the mark arrives as a composition that the next key commits; Chrome sends that through
@@ -1188,7 +1188,7 @@ test('a commit on a passage’s last letter counts every key in it before the ru
   await signInWithEmail(page, user.email);
   const keys = await accentKeys(page);
   const custom = 'She said "go"';
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');
@@ -1235,7 +1235,7 @@ test('a doubled mark on a passage’s last letter costs nothing, after a slip to
   await openApp(page);
   const keys = await accentKeys(page);
   const custom = 'She said "go"';
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');
@@ -1265,7 +1265,7 @@ test('a custom passage takes accent keys like any other passage', async ({ page 
   await openApp(page);
   const keys = await accentKeys(page);
   const custom = 'She said "be brief" and it\'s "done" now.';
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');

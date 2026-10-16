@@ -1,7 +1,7 @@
 // Progress › Keys: per-key miss-rate heatmap and the "Pairs to watch" table from saved pattern memory.
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, signInWithEmail, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
 
 const conditions = { mode: 'words', count: 25, duration: null, punctuation: false, quoteLength: null,
   difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
@@ -140,7 +140,7 @@ test('a custom text run never reaches the key heatmap or pairs', async ({ page, 
 
   const text = 'the quick brown fox jumps over the lazy dog';
   await openView(page, 'Practice');
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');

@@ -1,10 +1,10 @@
-import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto } from './fixtures.js';
+import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore } from './fixtures.js';
 
 const TEXT = 'the quick brown fox jumps over the lazy dog';
 
 test('custom text runs under its own condition and never becomes a best', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#custom-text').fill(`  ${TEXT}\n  `);
@@ -33,7 +33,7 @@ test('custom text runs under its own condition and never becomes a best', async 
 });
 
 async function finishCustom(page, text = TEXT) {
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();
   await typeInto(page, text);
@@ -93,27 +93,27 @@ async function expectNormalPractice(page) {
 test('going back to practice closes the custom editor', async ({ page }) => {
   await openApp(page);
   // A custom session with its editor reopened; Progress is still empty, since custom runs are not counted.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(TEXT);
   await page.locator('#custom-use').click();
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   await openView(page, 'Progress');
   await page.locator('#progress-empty [data-action="go-practice"]').click();
   await expectNormalPractice(page);
 
   // The editor opened over a normal test closes the same way.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   await openView(page, 'Progress');
   await page.locator('#progress-empty [data-action="go-practice"]').click();
   await expectNormalPractice(page);
 
   // A custom run finished with the editor open, then Practice in the dock.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(TEXT);
   await page.locator('#custom-use').click();
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await typeInto(page, TEXT);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await openView(page, 'Practice');
@@ -129,7 +129,7 @@ async function paletteRun(page, label) {
 
 test('a word list change keeps a custom passage, from settings or the palette', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(TEXT);
   await page.locator('#custom-use').click();
 
@@ -173,7 +173,7 @@ test('the footer best follows the session: none for custom, back for the word te
   await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
   const best = await page.locator('#best').textContent();
 
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(TEXT);
   await page.locator('#custom-use').click();
   await expect(page.locator('#best')).toHaveText('Not counted');
@@ -190,7 +190,7 @@ test('the footer best follows the session: none for custom, back for the word te
 
 test('text too short to time is refused, and a short phrase is accepted', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill('a');
   await expect(page.locator('#custom-error')).toHaveText('Use at least 2 words and 10 characters, so the run is long enough to time.');
   await expect(page.locator('#custom-text')).toHaveAttribute('aria-invalid', 'true');
@@ -219,7 +219,7 @@ test('text too short to time is refused, and a short phrase is accepted', async 
 test('a run too quick to time shows no word pace either, but still marks the missed word', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill('hello world');
   await page.locator('#custom-use').click();
   // 40 ms a key on a paused clock: the whole run takes 400 ms, so every word has a sub-second pace to leak.
@@ -251,7 +251,7 @@ test('a run too quick to time shows no word pace either, but still marks the mis
 
 test('smart punctuation is normalised to typeable characters', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill('“It’s fine” — she said…\n\tok');
   await page.locator('#custom-use').click();
   expect(await passageText(page)).toBe('"It\'s fine" - she said... ok');
@@ -259,13 +259,13 @@ test('smart punctuation is normalised to typeable characters', async ({ page }) 
 
 test('accents fold to plain letters and the length cap is checked after punctuation expands', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill('café\u034F au lait');
   await page.locator('#custom-use').click();
   expect(await passageText(page)).toBe('cafe au lait');
 
   // 501 "ab…" words are 2,004 characters as pasted but 3,005 once each ellipsis expands: refused with the count.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(Array(501).fill('ab…').join(' '));
   await page.locator('#custom-use').click();
   await expect(page.locator('#custom-error')).toContainText('Keep it to 3,000 characters');
@@ -279,7 +279,7 @@ test('accents fold to plain letters and the length cap is checked after punctuat
 
 test('changing the correction setting keeps the custom passage', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(TEXT);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('continue on error');
@@ -293,7 +293,7 @@ test('changing the correction setting keeps the custom passage', async ({ page }
 
 test('invisible format characters are stripped', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill('\uFEFFsoft\u00ADware left\u200Eto \u2066right\u2069 zero\u200Bwidth jo\u200Din no\u200Cn');
   await page.locator('#custom-use').click();
   expect(await passageText(page)).toBe('software leftto right zerowidth join non');
@@ -309,7 +309,7 @@ test('the panel appears without motion and never opens beside a live run', async
   // Pointer movement brings the controls back; opening custom then restarts the run first.
   await page.mouse.move(80, 80);
   await expect(page.locator('body')).toHaveAttribute('data-running', 'false');
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   await expect(page.locator('#custom-options')).toHaveCSS('animation-name', 'none');
   await expect(page.locator('#typing-status')).toHaveText('Ready');
@@ -324,7 +324,7 @@ test('the panel appears without motion and never opens beside a live run', async
 
 test('characters an English keyboard can’t type are refused by name', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill('go 🚀 now');
   await page.locator('#custom-use').click();
   await expect(page.locator('#custom-error')).toContainText('“🚀” (U+1F680) can’t be typed here');
@@ -350,7 +350,7 @@ test('screenshots', async ({ page }, testInfo) => {
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
-    await page.locator('#mode-custom').click();
+    await chooseMore(page, 'mode-custom');
     await page.waitForTimeout(400);
     await page.locator('#custom-text').fill('Paste anything you like to practise on: a paragraph from a book, an email you keep retyping, or a list of tricky words.');
     await page.screenshot({ path: shot(testInfo, `panel-${theme}`) });

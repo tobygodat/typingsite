@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage, signInWithEmail, chooseMore } from './fixtures.js';
 
 const codeConditions = { mode: 'code', codeLanguage: 'js', duration: null, count: null, punctuation: true, numbers: false,
   quoteLength: null, difficulty: null, wordList: null, inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
@@ -18,7 +18,7 @@ function codeErrorTrace(id, at) {
 
 test('code mode serves a python snippet and keeps the run out of bests', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-code').click();
+  await chooseMore(page, 'mode-code');
   await page.locator('#code-options [data-language="python"]').click();
   await expect(page.locator('#code-options [data-language="python"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#condition-line')).toContainText('code · python');
@@ -38,7 +38,7 @@ test('code snippets stay inside the typing area at 320px with large text', async
   await page.setViewportSize({ width: 320, height: 700 });
   await openApp(page);
   await page.locator('#font-size').evaluate((select) => { select.value = '36'; select.dispatchEvent(new Event('change')); });
-  await page.locator('#mode-code').click();
+  await chooseMore(page, 'mode-code');
   for (const language of ['js', 'python', 'go', 'rust']) {
     await page.locator(`#code-options [data-language="${language}"]`).click();
     for (let i = 0; i < 6; i += 1) {
@@ -63,7 +63,7 @@ test('a code run clears the earlier practice baseline', async ({ page }) => {
   await completePassage(page);
   await expect(page.locator('#skip-to-retest')).toBeEnabled();
   await page.locator('#run-again').click();
-  await page.locator('#mode-code').click();
+  await chooseMore(page, 'mode-code');
   await expect(page.locator('#condition-line')).toContainText('code ·');
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText('Code run complete · not counted toward your best');
@@ -114,7 +114,7 @@ test('the palette hides punctuation, numbers and word lists in code mode', async
   await search('punctuation', true);
   await search('numbers', true);
   await search('word list', true);
-  await page.locator('#mode-code').click();
+  await chooseMore(page, 'mode-code');
   await expect(page.locator('#condition-line')).toContainText('code ·');
   await search('punctuation', false);
   await search('numbers', false);
@@ -125,11 +125,11 @@ test('custom text over code mode keeps its own conditions, and code closes the c
   const user = supabase.addUser('code-custom@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, user.email);
-  await page.locator('#mode-code').click();
+  await chooseMore(page, 'mode-code');
   await expect(page.locator('#condition-line')).toContainText('code ·');
 
   const text = 'the quick brown fox jumps over the lazy dog';
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
@@ -149,9 +149,9 @@ test('custom text over code mode keeps its own conditions, and code closes the c
 
   // Choosing code again closes the custom editor and drops the custom mark.
   await page.locator('.nav-item[data-nav="practice"]').click();
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
-  await page.locator('#mode-code').click();
+  await chooseMore(page, 'mode-code');
   await expect(page.locator('#custom-options')).toBeHidden();
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('#mode-code')).toHaveAttribute('aria-pressed', 'true');
@@ -166,7 +166,7 @@ test('code mode screenshots', async ({ page }, testInfo) => {
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
-    await page.locator('#mode-code').click();
+    await chooseMore(page, 'mode-code');
     await page.locator('#code-options [data-language="js"]').click();
     await expect(page.locator('#condition-line')).toContainText('code · js');
     await page.mouse.move(10, 10);

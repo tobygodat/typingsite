@@ -1,4 +1,4 @@
-import { test, expect, openApp, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, openView } from './fixtures.js';
+import { test, expect, openApp, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, openView, chooseMore } from './fixtures.js';
 
 async function editBindings(page, values) {
   await openSettings(page);
@@ -302,7 +302,7 @@ test('composing keeps its finish command and configured restart hint', async ({ 
   await openApp(page);
   await editBindings(page, { restart: 'F2' });
   await saveBindings(page);
-  await page.locator('#mode-compose').click();
+  await chooseMore(page, 'mode-compose');
   await expect(page.locator('.compose-shortcut .restart-key-hint')).toHaveText('f2');
   await typeInto(page, 'my words', '#compose-input');
   await page.keyboard.press('Escape');

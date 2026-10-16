@@ -1,5 +1,5 @@
 // Repeat quotes: off by default, a setting and a palette command, and honest labels when a seen quote returns.
-import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto } from './fixtures.js';
+import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -96,7 +96,7 @@ test('custom text is never labelled repeated text, keeps its passage when repeat
   const text = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
   await page.locator('#mode-quote').click();
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();
   // A custom passage is never fresh, but it is its own session, not a repeat.

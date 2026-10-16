@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt, quoteCorpus } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, freshTextCheck, openView, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, freshTextCheck, openView, signInWithEmail, chooseMore } from './fixtures.js';
 
 const translateY = (page) => page.locator('#text-display').evaluate((node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).m42);
 
@@ -199,7 +199,7 @@ test('a drill left after a custom text result keeps the earlier baseline’s ret
   await chooseWords(page, 10);
   await completePassage(page);
   await openView(page, 'Practice');
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await typeInto(page, custom);

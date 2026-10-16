@@ -788,9 +788,12 @@ kbd {
   padding-top: var(--space-10);
 }
 
+/* The row paints above what follows it: the "more" menu over the passage, and its controls over the
+   custom text panel, which rises into the space under the row. */
 .practice-controls {
   position: relative;
-  margin: 0 auto var(--space-14);
+  z-index: 1;
+  margin: 0 auto var(--space-8);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -824,10 +827,95 @@ kbd {
 .segmented button:hover,
 .segmented button[aria-pressed="true"] { color: var(--text); }
 
-/* Seven modes share one row with the lengths, punctuation and "learn to type" at 1280px, so the mode
-   buttons sit a little closer than other segmented controls. */
-.mode-options { gap: 0; }
+/* The mode buttons sit a little closer than other segmented controls, so the row stays short. */
+/* Raised over the groups after it, so the "more" menu opens above them when they wrap below. */
+.mode-options { z-index: 2; gap: 0; }
 .mode-options button { padding: 0 var(--space-3); }
+
+/* From 901px the mode, length and punctuation groups share one hairline rail instead of three
+   frames, divided by short rules. Narrower, the rail dissolves and each group keeps its own frame. */
+@media (min-width: 901px) {
+  .practice-rail {
+    padding: 3px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-control);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .practice-rail > .segmented { padding: 0; border: 0; }
+  .practice-rail > .compact-switch { height: 36px; padding: 0 var(--space-3) 0 var(--space-2); border: 0; }
+  .practice-rail > :not(:first-child) { position: relative; }
+  .practice-rail > :not(:first-child)::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    left: calc(var(--space-3) / -2);
+    width: 1px;
+    height: var(--space-4);
+    background: var(--hairline-strong);
+    transform: translate(-50%, -50%);
+  }
+}
+@media (max-width: 900px) {
+  .practice-rail { display: contents; }
+}
+
+/* "more": the rarer modes and the way into lessons. It reads as one more mode; once one of its
+   modes is chosen it takes that mode's name and the gliding pill rests under it. */
+.mode-more { position: relative; }
+.mode-more > summary {
+  height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  list-style: none;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+.mode-more > summary::-webkit-details-marker { display: none; }
+/* The disclosure chevron of "drill something else", at the same rotated 1.5px corner. */
+.mode-more > summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--dur-quick) var(--ease-out);
+}
+.mode-more[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+.mode-more > summary:hover,
+.mode-more[open] > summary,
+.mode-more[data-active] > summary { color: var(--text); }
+
+.mode-more-menu {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  width: max-content;
+  padding: var(--space-1);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-lg);
+  background: var(--raised);
+  box-shadow: var(--shadow-float);
+  display: grid;
+  gap: 2px;
+  transform: translateX(-50%);
+  animation: fade-in var(--dur-quick) var(--ease-out);
+}
+.segmented .mode-more-menu button { width: 100%; padding: 0 var(--space-6) 0 var(--space-3); text-align: left; white-space: nowrap; }
+.segmented .mode-more-menu button:hover,
+.segmented .mode-more-menu button[aria-pressed="true"] { background: var(--raised-2); }
+/* "learn to type" is a way in, not a mode: it sits under a rule, after the modes. */
+.segmented .mode-more-menu .mode-more-lessons { margin-top: 2px; border-top: 1px solid var(--hairline); border-radius: 0 0 var(--radius) var(--radius); }
 
 .segmented.compact button,
 .segmented.compact .custom-length-input {
@@ -885,7 +973,7 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
 
 .compact-switch:hover { color: var(--text); }
 
-/* A quiet text action: the "learn to type" entry in the mode area and the first-run links. */
+/* A quiet text action: the first-run "learn to type" links. */
 .quiet-link {
   min-height: var(--control);
   padding: 0 var(--space-2);
@@ -2763,7 +2851,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .mode-options { flex-wrap: wrap; justify-content: center; max-width: 100%; }
   /* Two rows at most: mode and punctuation, then lengths. */
   .practice-controls { margin-bottom: var(--space-6); gap: var(--space-2); }
-  #duration-options, #code-options { order: 1; }
+  /* "more" ends the mode row near the right edge, so its menu hangs from the right. */
+  .mode-more-menu { left: auto; right: 0; transform: none; }
   .segmented button, .segmented .custom-length-input { height: 40px; padding: 0 var(--space-2); }
   .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
@@ -2825,7 +2914,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
    content after it. */
 @media (any-pointer: coarse) {
   .goal-day-picker { display: block; }
-  .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control { min-height: 44px; }
+  .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control, .mode-more > summary { min-height: 44px; }
   /* A short mode ("time") among five on a 320px phone is narrower than 44px: the row still fits. */
   .segmented button { min-width: var(--control); }
   .footer-link, .run-detail summary, .daily-challenge summary { position: relative; }
@@ -2843,9 +2932,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .trend-label { pointer-events: none; }
   /* A link inside a sentence still gets a full touch target; the negative margin keeps its line from growing. */
   .first-run-learn .quiet-link { min-height: var(--control); margin-block: calc((var(--control) - 1lh) / -2); }
-  /* The custom text panel rises into the space under the controls row (only its top padding and rule);
-     the row paints above it, so "learn to type" keeps its whole 44px. */
-  .practice-controls { position: relative; z-index: 1; }
   /* Under 16px, iOS zooms the page in to type, and leaves it zoomed. The width stays shared with the pill. */
   .segmented.compact .custom-length-input { padding: 0 var(--space-1); font-size: var(--text-field); }
 }

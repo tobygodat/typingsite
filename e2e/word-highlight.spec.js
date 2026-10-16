@@ -1,6 +1,6 @@
 // Word highlight: settings → word highlight (off, current, next) and its palette commands.
 // A display preference: it tints one passage word, changes instantly and never enters the conditions.
-import { test, expect, openApp, openView, openSettings, passageText, typeInto, signInWithEmail, storageKeys } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, passageText, typeInto, signInWithEmail, storageKeys, chooseMore } from './fixtures.js';
 
 // Committed docs screenshots are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/word-highlight/${name}.png` : testInfo.outputPath(`${name}.png`));
@@ -135,7 +135,7 @@ test('changing it never restarts the passage or changes the conditions', async (
 test('a custom passage is tinted too, and changing the highlight keeps it', async ({ page }) => {
   const custom = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');
@@ -176,12 +176,12 @@ test('the daily, the standard test and a lesson follow the same setting', async 
   expect(await tinted(page)).toEqual([2]);
 
   await openView(page, 'Practice');
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
   expect(await tinted(page)).toEqual([1]);
 
   await page.locator('#mode-time').click();
-  await page.locator('#open-lessons').click();
+  await chooseMore(page, 'open-lessons');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'learn');
   await page.locator('#lesson-primary').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');

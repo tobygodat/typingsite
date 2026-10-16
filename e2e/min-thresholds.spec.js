@@ -1,6 +1,6 @@
 // Minimum accuracy and speed to continue: practice-only settings, judged on the timing tick after a
 // grace period, ending a run as interrupted with its reason and keeping it out of bests.
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore } from './fixtures.js';
 
 const shot = (page, testInfo, name) => page.screenshot({
   path: process.env.SCREENSHOTS ? `docs/screenshots/min-thresholds/${name}.png` : testInfo.outputPath(`${name}.png`),
@@ -181,7 +181,7 @@ test('custom text has no minimums: the note stands aside and a run under them st
   await page.keyboard.press('Escape');
   await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy · min 100 wpm');
   // Custom text is never counted, so it runs to the end like a drill: no note while Custom is on.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#minimum-note')).toBeHidden();
   const text = 'the quick brown fox jumps over the lazy dog and runs back home';
   await page.locator('#custom-text').fill(text);
@@ -454,13 +454,11 @@ test('desktop settings and the practice label, dark and light', async ({ page },
     await page.locator('details.preferences > summary').click();
     await expect(page.locator('.preferences-popover')).toBeHidden();
     await expect(page.locator('#minimum-note')).toBeVisible();
-    // The label takes its own line, so the controls stay centred under the dock.
-    const first = await page.locator('.practice-controls .segmented').first().boundingBox();
-    // The "learn to type" link is the row's last control.
-    const last = await page.locator('.practice-controls #open-lessons').boundingBox();
+    // The label takes its own line, so the controls' rail stays centred under the dock.
+    const rail = await page.locator('.practice-rail').boundingBox();
     const dock = await page.locator('.dock').boundingBox();
-    expect(Math.abs((first.x + last.x + last.width) / 2 - (dock.x + dock.width / 2))).toBeLessThanOrEqual(2);
-    expect((await page.locator('#minimum-note').boundingBox()).y).toBeGreaterThanOrEqual(last.y + last.height);
+    expect(Math.abs((rail.x + rail.width / 2) - (dock.x + dock.width / 2))).toBeLessThanOrEqual(2);
+    expect((await page.locator('#minimum-note').boundingBox()).y).toBeGreaterThanOrEqual(rail.y + rail.height);
     await page.mouse.move(1270, 790);
     await shot(page, testInfo, `practice-${scheme}`);
   }
