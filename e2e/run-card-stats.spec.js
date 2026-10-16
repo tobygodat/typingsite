@@ -64,7 +64,7 @@ test('the run card shows raw wpm, consistency, c/i/e/m and the words typed', asy
 test('the words list is one tab stop whose words show their pace by keyboard', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openApp(page);
-  await // Enough words to run past the list's four lines in the wide trace.
+  // Enough words to run past the list's four lines in the wide trace.
   await chooseWords(page, 100);
   await typeInto(page, await passageText(page));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
