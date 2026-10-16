@@ -51,6 +51,7 @@ import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength 
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
 import { createTypingFx } from './motion.js';
+import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, KEY_OUTCOME, SOUND_LABELS, SOUND_MODES, createSounds, keyOutcome, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
 import { normalizeKeybindings, matchesBinding, bindingLabel, ariaShortcuts, createKeybindingEditor } from './keybindings.js';
@@ -166,6 +167,8 @@ let accentPair = null;
 const onTape = () => document.body.dataset.tape === 'true';
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index), tape: onTape });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
+// Key sounds read the current preferences on each key; the AudioContext waits for an audible choice or key.
+const sounds = createSounds({ settings: () => ({ mode: prefs.sound, volume: prefs.soundVolume }), running: () => runInProgress() });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // The completed run the results view shows: its numbers, run card graph and Watch replay. Only
@@ -307,7 +310,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'keybindings', 'dailyGoal'];
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -557,9 +560,10 @@ function setRunning(running) {
   if (!running) flushDeferredSync();
   showChrome(!running);
 }
-// A run began or ended: what waited for its end appears now.
+// A run began or ended: what waited for its end appears now, and the sound rests.
 function runChanged() {
   inbox?.runChanged();
+  if (!runInProgress()) sounds.rest();
   if (!heldRaceError || runInProgress()) return;
   showAccountToast(heldRaceError);
   heldRaceError = '';
@@ -687,6 +691,7 @@ function applyPreferences() {
   $('tape-toggle').checked = prefs.tape;
   $('keyboard').hidden = !prefs.keyboard && sessionKind !== 'lesson';
   renderKeyboard();
+  applySoundPreferences();
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
   $('numbers-toggle').checked = Boolean(prefs.numbers);
@@ -713,6 +718,20 @@ function applyPreferences() {
   showMinimumNote();
   armPace();
   showBest();
+}
+
+// The volume row is always there (so the popover never grows under a finger) and is disabled while
+// sound is off. Every preference change (a setting, an import, another tab, a sign-in) passes here, so
+// this is where sound turned off or to volume 0 closes the context.
+function applySoundPreferences() {
+  sounds.sync();
+  const volume = $('sound-volume');
+  $('sound-select').value = prefs.sound;
+  volume.value = String(prefs.soundVolume);
+  volume.disabled = prefs.sound === 'off';
+  volume.setAttribute('aria-valuetext', `${prefs.soundVolume}%`);
+  volume.style.setProperty('--fill', `${prefs.soundVolume}%`);
+  $('sound-volume-value').textContent = `${prefs.soundVolume}%`;
 }
 
 // Display only: every speed and unit word on screen re-texts in place (src/units.js), so nothing restarts
@@ -1529,12 +1548,13 @@ function pushInsert(char, type = 'primary', at = now(), carried = false) {
   }
   if (refusesSpace(targetAttempt.conditions, targetAttempt.text, position, char)) {
     targetAttempt.events.push({ type: 'insert', text: char, position, accepted: false, offsetMs: offsetMs });
-    return { previousLength: position, blocked: 'space', failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
+    return { previousLength: position, blocked: 'space', correct: false, failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
   }
   let event = { type: 'insert', text: char, position, accepted: true, offsetMs };
   if (carried && position >= targetAttempt.text.length) event = carriedKey(targetAttempt, char, offsetMs);
   if (event) targetAttempt.events.push(event);
-  return { previousLength: position, blocked: false, failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
+  const correct = !event || (event.accepted && char === targetAttempt.text[position]);
+  return { previousLength: position, blocked: false, correct, failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
 }
 
 function pushDelete(type = 'primary') {
@@ -1590,6 +1610,8 @@ function typeKeys(keys, type, at = now()) {
   const room = inputAttempt(type).text.length - currentReplay(type).typed.length;
   const target = inputAttempt(type);
   const changes = keys.map((key, index) => pushInsert(key, type, at, room > 0 && index >= room));
+  // One sound for the whole key, before a submit or a failure can end the run.
+  sounds.play(keyOutcome(changes));
   const failure = changes.find((change) => change.failed)?.failed;
   if (changes.some((change) => change.submit)) {
     if (type === 'primary') finishPrimary();
@@ -1698,6 +1720,7 @@ function beforeTypingInput(event, type = 'primary') {
     event.preventDefault();
     if (!allowsBackspace(inputAttempt(type).conditions.correctionPolicy)) return;
     const previousLength = pushDelete(type);
+    sounds.play(KEY_OUTCOME.delete);
     refreshAfterInput(type, previousLength);
     return;
   }
@@ -1920,7 +1943,9 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   // Said once when the space is refused or the run starts waiting, and again if a key is ignored.
   if (blocked === 'space' || (waiting && (length > previousLength || blocked === 'submit'))) announce(rule);
   if (isPrimary) {
-    setRunning(true);
+    // A backspace before the first letter starts nothing. Once the run has started, every key marks it as
+    // under way, which restores the mark after leaving the screen mid-run.
+    if (startTime !== null) setRunning(true);
     $('input-help').textContent = rule ? withRule(primaryNotice, rule) : blocked ? NOTICES.blocked : primaryNotice;
     updateLive(false, at);
     if (sessionDurationMs() === null && passageComplete(targetAttempt, replay.typed)) finishPrimary();
@@ -4976,6 +5001,10 @@ function bindEvents() {
   $('pace-wpm').addEventListener('blur', showPace);
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('tape-toggle').addEventListener('change', (event) => { prefs.tape = event.target.checked; applyPreferences(); saveChoice('tape'); });
+  $('sound-select').addEventListener('change', (event) => setSound(event.target.value));
+  // Dragging updates the level as it goes; the profile is saved once the slider settles.
+  $('sound-volume').addEventListener('input', (event) => setSoundVolume(Number(event.target.value), { save: false }));
+  $('sound-volume').addEventListener('change', () => saveChoice('soundVolume'));
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
     applyPreferences();
@@ -5311,6 +5340,20 @@ function setCorrection(policy) {
   if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : restartKind());
 }
 
+function setSound(mode) {
+  prefs.sound = normalizeSoundMode(mode);
+  applySoundPreferences();
+  sounds.prepare();
+  saveChoice('sound');
+}
+
+function setSoundVolume(volume, { save = true } = {}) {
+  prefs.soundVolume = normalizeSoundVolume(volume);
+  applySoundPreferences();
+  sounds.prepare();
+  if (save) saveChoice('soundVolume');
+}
+
 // Display only: bests, comparisons and condition keys stay in wpm, so nothing is reset or re-keyed.
 function setSpeedUnit(unit) {
   prefs.speedUnit = unit;
@@ -5533,6 +5576,8 @@ function paletteCommands(query) {
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(prefs.keyboard && prefs.fingerMap), on: prefs.keyboard && prefs.fingerMap, run: toggleFingerMap },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
+    ...SOUND_MODES.map((mode) => ({ group: 'sound', label: `sound · ${SOUND_LABELS[mode]}`, keywords: 'audio typing key clicks error tick mute volume', hint: prefs.sound === mode ? 'current' : '', on: prefs.sound === mode, run: () => setSound(mode) })),
+    ...[25, 50, 75, 100].map((volume) => ({ group: 'sound', label: `sound volume · ${volume}%`, keywords: 'audio loud quiet louder quieter', hint: prefs.soundVolume === volume ? 'current' : '', on: prefs.soundVolume === volume, disabled: prefs.sound === 'off', run: () => setSoundVolume(volume) })),
     ...(session
       ? [
         { group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount },
@@ -5624,6 +5669,7 @@ new ResizeObserver(() => {
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
 compose = createCompose({
+  playKeySound: (outcome) => sounds.play(outcome),
   setRunning, announce, uid,
   signedIn: () => Boolean(session),
   save(record) {
@@ -5679,6 +5725,7 @@ onlineRace = createOnlineRace({
   board: friendsBoard,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
+  playKeySound: (outcome) => sounds.play(outcome),
   // The one-keyboard tab makes the race the session the rule switches act on.
   onModeChange: syncRules,
   onPassageSeen(id) {

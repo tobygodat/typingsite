@@ -157,6 +157,36 @@ test('strict space, quick end, minimums, repeat quotes and the keymap layout car
   for (const [key, value] of Object.entries(preferences)) assert.equal(inUse[key], value, key);
 });
 
+test('typing sounds and their volume carry over; an error sound alone is skipped', () => {
+  const both = mapMonkeytypeConfig({ playSoundOnClick: '7', playSoundOnError: '2', soundVolume: 0.33 });
+  assert.deepEqual(both.preferences, { sound: 'clicks-errors', soundVolume: 35 });
+  assert.deepEqual(both.skipped, []);
+  assert.equal(both.mapped.find((row) => row.setting === 'sound').from, 'playSoundOnClick: 7, playSoundOnError: 2');
+  assert.deepEqual(mapMonkeytypeConfig({ playSoundOnClick: '1', playSoundOnError: 'off' }).preferences, { sound: 'clicks' });
+  assert.deepEqual(mapMonkeytypeConfig({ playSoundOnClick: 'off', playSoundOnError: 'off' }).preferences, { sound: 'off' });
+  // Stilltype's tick only plays with clicks, so an error sound on its own changes nothing.
+  const errorOnly = mapMonkeytypeConfig({ playSoundOnClick: 'off', playSoundOnError: '1' });
+  assert.deepEqual(errorOnly.preferences, {});
+  assert.match(errorOnly.skipped[0].reason, /only with key clicks/);
+  // Older exports stored each sound as a boolean.
+  assert.deepEqual(mapMonkeytypeConfig({ playSoundOnClick: true, playSoundOnError: false }).preferences, { sound: 'clicks' });
+  assert.deepEqual(mapMonkeytypeConfig({ playSoundOnClick: true, playSoundOnError: true }).preferences, { sound: 'clicks-errors' });
+  assert.deepEqual(mapMonkeytypeConfig({ playSoundOnClick: false, playSoundOnError: false }).preferences, { sound: 'off' });
+  // Anything else is skipped, and the other sound setting still carries over.
+  const junk = mapMonkeytypeConfig({ playSoundOnClick: 'loud', playSoundOnError: '1' });
+  assert.deepEqual(junk.preferences, {});
+  assert.deepEqual(junk.skipped.map((row) => [row.from, row.reason]), [['playSoundOnClick: loud', 'Not a sound.'], ['playSoundOnError: 1', 'Stilltype’s error tick plays only with key clicks.']]);
+  const junkError = mapMonkeytypeConfig({ playSoundOnClick: '3', playSoundOnError: 0 });
+  assert.deepEqual(junkError.preferences, { sound: 'clicks' });
+  assert.deepEqual(junkError.skipped.map((row) => row.from), ['playSoundOnError: 0']);
+  // Older exports wrote the volume as a string.
+  assert.equal(mapMonkeytypeConfig({ soundVolume: '1.0' }).preferences.soundVolume, 100);
+  assert.equal(mapMonkeytypeConfig({ soundVolume: 'loud' }).skipped[0].setting, 'sound volume');
+
+  const inUse = preferencesInUse(both.preferences);
+  for (const [key, value] of Object.entries(both.preferences)) assert.equal(inUse[key], value, key);
+});
+
 test('the speed unit carries over as wpm or cpm, and speeds stay the wpm Monkeytype saved', () => {
   const { preferences, mapped } = mapMonkeytypeConfig({ typingSpeedUnit: 'cpm', minWpm: 'custom', minWpmCustomSpeed: 60, paceCaretCustomSpeed: 90 });
   assert.deepEqual(preferences, { speedUnit: 'cpm', minWpm: 60, paceWpm: 90 });

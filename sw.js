@@ -38,6 +38,7 @@ const SHELL = [
   '/src/progress-view.js',
   '/src/race-result.js',
   '/src/replay-view.js',
+  '/src/sound.js',
   '/src/tape.js',
   '/src/typing.js',
   '/src/units.js',

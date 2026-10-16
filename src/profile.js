@@ -1,5 +1,6 @@
 // The stored profile's shape: the settings' defaults, and how a stored copy (this device's cache, another
 // tab's, the account row) is read before anything uses or merges it (normalizeProfile).
+import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { DEFAULT_SPEED_UNIT, normalizeSpeedUnit } from './units.js';
 import { normalizeLengthPreferences } from './lengths.js';
 import { correctionPreference, customTextProblem, normalizeCustomText } from './typing.js';
@@ -42,6 +43,8 @@ export const defaultPreferences = {
   strictSpace: false,
   quickEnd: true,
   focusMode: false,
+  sound: DEFAULT_SOUND_MODE,
+  soundVolume: DEFAULT_SOUND_VOLUME,
   // Minimum accuracy (%) and speed (wpm) to continue a practice run; 0 is off.
   minAccuracy: 0,
   minWpm: 0,
@@ -89,6 +92,8 @@ export function validPreferences(value) {
   if (!MIN_ACCURACY_OPTIONS.includes(value.minAccuracy)) value.minAccuracy = 0;
   if (!MIN_WPM_OPTIONS.includes(value.minWpm)) value.minWpm = 0;
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
+  value.sound = normalizeSoundMode(value.sound);
+  value.soundVolume = normalizeSoundVolume(value.soundVolume);
   value.speedUnit = normalizeSpeedUnit(value.speedUnit);
   if (!CODE_LANGUAGES.includes(value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
   value.wordHighlight = normalizeWordHighlight(value.wordHighlight);

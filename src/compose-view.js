@@ -13,6 +13,7 @@ import {
   refusedEdit,
 } from './compose.js';
 import { drawCaret, holdsCaretStill } from './compose-caret.js';
+import { KEY_OUTCOME } from './sound.js';
 import { formatSpeed, showSpeed, unitLabel } from './units.js';
 
 const $ = (id) => document.getElementById(id);
@@ -29,7 +30,7 @@ export const COMPOSE_NOTICES = {
   composition: 'IME input isn’t measured. Esc to start over.',
 };
 
-export function createCompose({ setRunning, announce, save, signedIn, uid }) {
+export function createCompose({ setRunning, announce, save, signedIn, uid, playKeySound = () => {} }) {
   const input = $('compose-input');
   const done = $('compose-done');
   // Only where the native caret would blink; Chromium holds its own still with `caret-animation`.
@@ -132,6 +133,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid }) {
     }
     keys.push({ type: kind, at: now() - startedAt });
     typed = input.value;
+    playKeySound(kind === 'delete' ? KEY_OUTCOME.delete : KEY_OUTCOME.correct);
   }
 
   function resultHeading(summary, endedBy, counted) {

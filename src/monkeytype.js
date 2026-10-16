@@ -4,6 +4,7 @@
 // Pure: app.js applies the result as a pick of each setting it holds (saveChoice), so it syncs like one.
 import { LENGTHS, isPresetLength, isValidLength } from './lengths.js';
 import { MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, clampPace } from './profile.js';
+import { SOUND_LABELS } from './sound.js';
 import { SPEED_UNITS } from './units.js';
 
 export const MAX_IMPORT_LENGTH = 1_000_000;
@@ -235,6 +236,34 @@ export function mapMonkeytypeConfig(config) {
     else if (config.tapeMode === 'word') map('one-line tape', { tape: true }, 'on', from);
     else if (config.tapeMode === 'letter') map('one-line tape', { tape: true }, 'on (steps by whole words)', from);
     else skip('one-line tape', from, 'No matching tape mode.');
+  }
+
+  // Monkeytype picks one of many click and error sounds ('1', '12'), or 'off'; older exports stored
+  // true or false. Stilltype has one of each. Monkeytype's error sound plays without clicks, and
+  // Stilltype's tick only comes with them.
+  const soundOn = (key) => {
+    if (!has(key)) return null;
+    const value = config[key];
+    if (value === 'off' || value === false) return false;
+    if (value === true || (typeof value === 'string' && /^\d+$/.test(value))) return true;
+    skip('sound', `${key}: ${shown(value)}`, 'Not a sound.');
+    return null;
+  };
+  const click = soundOn('playSoundOnClick');
+  const error = soundOn('playSoundOnError');
+  const soundFrom = [['playSoundOnClick', click], ['playSoundOnError', error]].filter(([, on]) => on !== null).map(([key]) => `${key}: ${shown(config[key])}`).join(', ');
+  if (click) map('sound', { sound: error ? 'clicks-errors' : 'clicks' }, SOUND_LABELS[error ? 'clicks-errors' : 'clicks'], soundFrom);
+  else if (error) skip('sound', soundFrom, 'Stilltype’s error tick plays only with key clicks.');
+  else if (click === false) map('sound', { sound: 'off' }, SOUND_LABELS.off, soundFrom);
+
+  if (has('soundVolume')) {
+    const level = Number(config.soundVolume);
+    const from = `soundVolume: ${shown(config.soundVolume)}`;
+    // A 0–1 fraction, shown on Stilltype's slider in steps of 5%.
+    if (Number.isFinite(level) && level >= 0 && level <= 1) {
+      const volume = Math.round(level * 20) * 5;
+      map('sound volume', { soundVolume: volume }, `${volume}%`, from);
+    } else skip('sound volume', from, 'Not a volume.');
   }
 
   if (config.autoSwitchTheme === true) {

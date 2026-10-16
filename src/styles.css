@@ -49,6 +49,10 @@
   --radius-full: 999px;
 
   --control: 44px;
+  --disabled-opacity: 0.38;
+  --sound-select-width: 176px;
+  --sound-range-width: 104px;
+  --sound-range-height: 36px;
   --layout-select-width: 128px;
   --heat-key: 52px;
   --heat-gap: 6px;
@@ -426,6 +430,47 @@ kbd {
 /* A sub-setting of the row above it (finger map under keyboard): indented and a little shorter. */
 .preference-sub { min-height: var(--control); padding-inline-start: var(--space-6); }
 .preference-sub strong { font-weight: 500; color: var(--muted); }
+.preference-row .select-wide { width: var(--sound-select-width); }
+.preference-row > .preference-range { display: flex; align-items: center; gap: var(--space-3); }
+.preference-value { min-width: 4ch; color: var(--muted); font: 500 var(--text-mono)/1 var(--font-mono); text-align: right; }
+
+/* The track is an outline rule (3:1 on raised in both themes); the filled part and thumb are the
+   accent. app.js keeps --fill at the value for WebKit, which has no progress part. */
+.range {
+  --fill: 50%;
+  appearance: none;
+  width: var(--sound-range-width);
+  height: var(--sound-range-height);
+  margin: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.range::-webkit-slider-runnable-track {
+  height: var(--space-1);
+  border-radius: var(--radius-full);
+  background: linear-gradient(to right, var(--accent) var(--fill), var(--outline) var(--fill));
+}
+
+.range::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--space-4);
+  height: var(--space-4);
+  margin-top: calc((var(--space-1) - var(--space-4)) / 2);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+
+.range::-moz-range-track { height: var(--space-1); border-radius: var(--radius-full); background: var(--outline); }
+.range::-moz-range-progress { height: var(--space-1); border-radius: var(--radius-full); background: var(--accent); }
+.range::-moz-range-thumb { width: var(--space-4); height: var(--space-4); border: 0; border-radius: var(--radius-full); background: var(--accent); }
+
+/* While sound is off the volume stays in place, dimmed, so the popover never changes height. */
+.preference-range:has(> .range:disabled) { opacity: var(--disabled-opacity); }
+.range:disabled { cursor: not-allowed; }
+.preference-row:has(.range:disabled) { cursor: default; background: transparent; }
 .preference-lock { color: var(--muted); font: italic var(--text-label)/1.4 var(--font-serif); }
 .preference-row:has(:disabled) { cursor: default; }
 .preference-row:has(:disabled):hover { background: transparent; }
@@ -650,7 +695,7 @@ kbd {
 }
 
 .btn:active:not(:disabled, [aria-disabled="true"]) { transform: scale(0.98); }
-.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.38; cursor: not-allowed; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: var(--disabled-opacity); cursor: not-allowed; }
 /* A waiting control (aria-disabled) can hold keyboard focus. Its focus ring stays at full strength,
    so its own colours dim to the same 38% instead of the whole box. */
 .btn[aria-disabled="true"]:focus-visible { opacity: 1; color: color-mix(in srgb, var(--text) 38%, transparent); }
@@ -2874,6 +2919,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .dock-settings { width: var(--control); padding: 0; justify-content: center; }
   .dock-settings .dock-label { display: none; }
 
+  /* It grows up from the dock, so its height also leaves room for the account corner at the top. */
   .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, 100%); max-height: calc(100svh - 62px - var(--space-10) - var(--control) - var(--space-3) - env(safe-area-inset-bottom)); }
 
   /* The dock moves to the bottom; the corner stays top right and scrolls with the page. */
@@ -2964,7 +3010,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
    content after it. */
 @media (any-pointer: coarse) {
   .goal-day-picker { display: block; }
-  .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control, .mode-more > summary { min-height: 44px; }
+  .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control, .mode-more > summary, .range { min-height: var(--control); }
   /* A short mode ("time") among five on a 320px phone is narrower than 44px: the row still fits. */
   .segmented button { min-width: var(--control); }
   .footer-link, .run-detail summary, .daily-challenge summary { position: relative; }
