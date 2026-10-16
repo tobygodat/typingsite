@@ -12,7 +12,7 @@ export const KEY_OUTCOME = Object.freeze({ correct: 'correct', wrong: 'wrong', d
 const KEY_OUTCOMES = Object.values(KEY_OUTCOME);
 // Peak gain at full volume. Both voices are short and sit well below full scale.
 const CLICK_PEAK = 0.9;
-const TICK_PEAK = 0.3;
+const TICK_PEAK = 0.45;
 // A key outside a run, and the end of a run, suspend the context once the last key's voice (0.1 s at
 // most) has played out.
 const REST_AFTER_MS = 250;

@@ -18,8 +18,8 @@ import {
 // context reports 'suspended' and starts running by itself on the next task, as Firefox and WebKit do.
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 function fakeAudio({ state = 'running', failOn = null, autostart = false } = {}) {
-  const log = { created: 0, closed: 0, resumed: 0, suspended: 0, started: [], gains: [], options: [], contexts: [] };
-  const param = () => ({ value: 0, setValueAtTime(v) { log.gains.push(v); }, exponentialRampToValueAtTime() {} });
+  const log = { created: 0, closed: 0, resumed: 0, suspended: 0, started: [], gains: [], ramps: [], options: [], contexts: [] };
+  const param = () => ({ value: 0, setValueAtTime(v) { log.gains.push(v); }, exponentialRampToValueAtTime(v) { log.ramps.push(v); } });
   const node = (extra = {}) => ({ connect(target) { return target; }, ...extra });
   class FakeContext {
     constructor(options) {
@@ -162,6 +162,19 @@ test('turning sound off before the build cancels it', () => {
   settings.volume = 0;
   later.flush();
   assert.equal(log.created, 0);
+});
+
+test('at half volume a click starts at 0.225 and the error tick peaks at 0.1125', () => {
+  const { log, FakeContext } = fakeAudio();
+  const later = deferQueue();
+  const sounds = createSounds({ settings: () => ({ mode: 'clicks-errors', volume: 50 }), AudioContextClass: FakeContext, defer: later.defer });
+  sounds.play('correct');
+  later.flush();
+  assert.equal(sounds.play('correct'), 'click');
+  assert.equal(log.gains.at(-1), 0.225);
+  log.ramps.length = 0;
+  assert.equal(sounds.play('wrong'), 'tick');
+  assert.equal(Math.max(...log.ramps.filter((value) => value < 1)), 0.1125);
 });
 
 test('louder settings start louder; volume 0 after a sound adds nothing', () => {
