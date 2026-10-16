@@ -360,9 +360,12 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#condition-line')).toContainText('touch input');
   });
 
-  test('a tap on restart turns a keyboard-started lesson into touch input', async ({ page }) => {
+  // Any later tap counts, wherever it lands, even one on a palette command that refocuses the input with no
+  // tap on the passage. A finished lesson is complete when the tap lands, so the tap must class the run it starts.
+  test('a later tap on restart or a palette command, even after a failed keyboard lesson, makes a touch try that doesn’t unlock', async ({ page }) => {
     await openApp(page);
     await openLessons(page);
+    const rows = page.locator('#lesson-list .lesson-row');
     await page.keyboard.press('Enter');
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
     await expect(page.locator('#condition-line')).toContainText('physical keyboard');
@@ -370,16 +373,10 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await typeLesson(page);
     await expect(page.locator('#lesson-status')).toHaveText('touch input');
-    const rows = page.locator('#lesson-list .lesson-row');
     await expect(rows.first().locator('.lesson-row-numbers')).toContainText('touch input');
     await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
-  });
 
-  // Any later tap counts, wherever it lands: this palette command refocuses the input with no tap on the passage.
-  test('a tap on a palette command during a keyboard-started lesson makes it touch input', async ({ page }) => {
-    await openApp(page);
-    await openLessons(page);
-    await page.keyboard.press('Enter');
+    await page.locator('#lesson-primary').click();
     await expect(page.locator('#condition-line')).toContainText('physical keyboard');
     await page.keyboard.press('Control+k');
     await page.locator('#palette-input').fill('keyboard');
@@ -389,14 +386,9 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await typeLesson(page);
     await expect(page.locator('#lesson-status')).toHaveText('touch input');
-    await expect(page.locator('#lesson-list .lesson-row').nth(1)).toHaveAttribute('data-state', 'locked');
-  });
+    await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
 
-  // The finished lesson is complete when the tap lands, so the tap must class the run it starts.
-  test('a palette restart tapped after a failed keyboard lesson starts a touch try that doesn’t unlock', async ({ page }) => {
-    await openApp(page);
-    await openLessons(page);
-    await page.keyboard.press('Enter');
+    await page.locator('#lesson-primary').click();
     await expect(page.locator('#condition-line')).toContainText('physical keyboard');
     const text = await passageText(page);
     await typeInto(page, [...text].map((char, i) => (i % 4 === 1 && char !== ' ' ? (char === 'f' ? 'j' : 'f') : char)).join(''));
@@ -409,7 +401,7 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await typeLesson(page);
     await expect(page.locator('#lesson-status')).toHaveText('touch input');
-    await expect(page.locator('#lesson-list .lesson-row').nth(1)).toHaveAttribute('data-state', 'locked');
+    await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
   });
 
   test('a tapped “Take a practice run” after every lesson is a touch run, never a physical-keyboard best', async ({ page, supabase }) => {
@@ -780,6 +772,7 @@ test('a key-pair lesson is labelled, and its finger map stays in view on a lapto
 
 for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow phone', { width: 320, height: 640 }]]) {
   test(`lessons fit a ${name} at ${viewport.width}px with the finger map`, async ({ page }, testInfo) => {
+    test.skip(viewport.width === 390 && !process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     await page.setViewportSize(viewport);
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);

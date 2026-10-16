@@ -62,15 +62,8 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   await expect(page.locator('.history-row')).toHaveCount(1);
   await expect(page.locator('.history-target')).toHaveText('“br” drill and retest');
   await expect(page.locator('.history-conditions')).toContainText('10 words');
-});
-
-test('a skipped drill is saved as a fresh-text check', async ({ page }) => {
-  await openApp(page);
-  const { baseline, retest } = await freshTextCheck(page);
-  expect(retest).not.toBe(baseline);
-  await expect(page.locator('#comparison-caveat')).not.toContainText('Couldn’t save');
-  await openView(page, 'Progress');
-  await expect(page.locator('.history-target')).toHaveText('Fresh-text check');
+  await page.locator('.history-summary').click();
+  await expect(page.locator('.history-detail')).toContainText('60 s · br');
 });
 
 test('leaving a drill for another view ends it without drawing a retest passage', async ({ page, supabase }) => {
@@ -166,6 +159,8 @@ test('a drill started from saved history keeps its retest on Train when left', a
   await signInWithEmail(page, user.email);
   await openView(page, 'Train');
   await expect(page.locator('#skip-to-retest')).toBeDisabled();
+  await expect(page.locator('#training-targets')).toContainText('50 tries');
+  await expect(page.locator('#training-targets')).toContainText('observed in 2 runs');
 
   // A recurring target, left mid-drill for Progress.
   await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
@@ -195,6 +190,7 @@ test('a drill started from saved history keeps its retest on Train when left', a
   await page.locator('.history-summary').click();
   await page.locator('.history-detail').getByRole('button', { name: 'Practice “th” again' }).click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#session-title')).toHaveText('Practice “th”');
   await openView(page, 'Train');
   await expect(page.locator('#skip-to-retest')).toBeEnabled();
   await page.locator('#skip-to-retest').click();
@@ -298,9 +294,12 @@ test('an empty quote filter says so and recovers', async ({ page }) => {
 
 test('clearing history needs the typed word and can be undone', async ({ page }) => {
   await openApp(page);
-  await freshTextCheck(page);
+  const { baseline, retest } = await freshTextCheck(page);
+  expect(retest).not.toBe(baseline);
+  await expect(page.locator('#comparison-caveat')).not.toContainText('Couldn’t save');
   await openView(page, 'Progress');
   await expect(page.locator('.history-row')).toHaveCount(1);
+  await expect(page.locator('.history-target')).toHaveText('Fresh-text check');
 
   await page.locator('#clear-history').click();
   await expect(page.locator('#clear-dialog')).toBeVisible();

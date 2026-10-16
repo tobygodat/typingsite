@@ -1,5 +1,5 @@
 // Responsive layout, self-hosted fonts and exactly what the server hands out.
-import { test, expect, openApp, openView, chooseWords, chooseMore, passageText, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, chooseWords, chooseMore, passageText, typeInto, freshTextCheck } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -34,6 +34,17 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
         await openView(page, view);
         expect(await overflow(page), view).toBeLessThanOrEqual(0);
         if (learnLinks[view]) expect((await page.locator(learnLinks[view]).boundingBox()).height, view).toBeGreaterThanOrEqual(44);
+      }
+
+      // At the narrowest width, the same views with a run, a comparison and the daily in them.
+      if (viewport.width === 320) {
+        await openView(page, 'Practice');
+        await freshTextCheck(page);
+        for (const view of ['Progress', 'Train', 'Challenge']) {
+          await openView(page, view);
+          if (view === 'Challenge') await page.locator('#challenge-daily').click();
+          expect(await overflow(page), `${view} with a run`).toBeLessThanOrEqual(0);
+        }
       }
     });
   });
