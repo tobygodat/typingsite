@@ -46,27 +46,6 @@ async function command(page, label) {
   await expect(page.locator('#palette')).toBeHidden();
 }
 
-// Every figure or unit word re-texted inside a live region from here on, and whether the region was
-// aria-busy as it changed (a busy region isn't read out).
-const watchLiveFigures = (page) => page.evaluate(() => {
-  const live = '[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"]';
-  const busy = new Set();
-  window.liveFigures = [];
-  new MutationObserver((records) => {
-    for (const record of records) {
-      if (record.type === 'attributes') {
-        if (record.target.getAttribute('aria-busy') === 'true' || record.oldValue === null) busy.add(record.target);
-        else busy.delete(record.target);
-        continue;
-      }
-      const node = record.target.nodeType === Node.ELEMENT_NODE ? record.target : record.target.parentElement;
-      const region = node.closest(live);
-      if (!region || !node.closest('[data-wpm], [data-speed-unit]')) continue;
-      window.liveFigures.push({ region: region.id, busy: [...busy].some((element) => element.contains(node)) });
-    }
-  }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-busy'], attributeOldValue: true });
-});
-
 // "+15 wpm" → [sign, 15]
 const parseSigned = (text) => {
   const match = text.match(/^([+−]?)(\d+(?:\.\d+)?) (wpm|cpm)$/);
@@ -180,15 +159,9 @@ test('live speed and the ghost pacer read in the chosen unit', async ({ page }) 
   await command(page, 'ghost');
   await expect(page.locator('#egg-feedback')).toHaveText('Ghost pacer · 300 cpm');
   await expect(page.locator('#pace-label')).toHaveText('pace 300 cpm');
-  // A toast already showing is reworded with the unit, and so is the pace caret's label. The toast is a
-  // live region, held busy while it changes, so the new figure isn't read out on its own.
-  await watchLiveFigures(page);
+  // A toast already showing is reworded with the unit, and so is the pace caret's label.
   await command(page, 'speed unit · wpm');
   await expect(page.locator('#egg-feedback')).toHaveText('Ghost pacer · 60 wpm');
-  const changes = await page.evaluate(() => window.liveFigures);
-  expect(changes.map(({ region }) => region)).toContain('egg-toast');
-  expect(changes.filter(({ busy }) => !busy)).toEqual([]);
-  await expect(page.locator('#egg-toast')).not.toHaveAttribute('aria-busy', /./);
   await expect(page.locator('#pace-label')).toHaveText('pace 60 wpm');
   await command(page, 'speed unit · cpm');
   await command(page, 'ghost');
@@ -753,6 +726,69 @@ test('a custom pace hidden by another tab mid-edit is saved in the unit it was t
   await field.press('Tab');
   await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceWpm, { timeout: 15000 }).toBe(120);
   await expect(page.locator('#pace-label')).toHaveText('pace 600 cpm');
+});
+
+// A unit picked in another tab mid-race waits for the race to end, then applies as the result is written to
+// the leaderboard, a live region. A second race reuses the hidden leaderboard, still holding the
+// first race's figures: the result must land in a region a screen reader will read, in the new unit.
+test('a unit synced mid-race applies at its end without holding back the race result', async ({ page, context, supabase }) => {
+  const user = supabase.addUser('race-unit@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  const other = await context.newPage();
+  await supabase.attach(other);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-local').click();
+  // Both players type the passage; the second stops one letter short when asked, leaving the race running.
+  const race = async ({ lastHeld = false } = {}) => {
+    await page.locator('#player-one-name').fill('Ada');
+    await page.locator('#player-two-name').fill('Lin');
+    await page.locator('#start-local-race').click();
+    await expect(page.locator('#race-input')).toBeFocused();
+    const text = await page.locator('#race-accessible-passage').textContent();
+    await typeInto(page, text, '#race-input');
+    await page.locator('#start-next-player').click();
+    await expect(page.locator('#race-player')).toHaveText('Lin');
+    await expect(page.locator('#race-input')).toBeFocused();
+    await typeInto(page, lastHeld ? text.slice(0, -1) : text, '#race-input');
+    return text;
+  };
+  const leaderboard = page.locator('#race-leaderboard');
+  await race();
+  await expect(page.locator('.race-result-row')).toHaveCount(2);
+  await page.locator('#race-again').click();
+  const text = await race({ lastHeld: true });
+  await expect(leaderboard).toBeHidden();
+  await expect(leaderboard.locator('[data-wpm]').first()).toBeAttached();
+
+  // Picked without focusing the other tab: leaving the race input would interrupt the race.
+  await other.locator('#speed-unit').evaluate((select) => {
+    select.value = 'cpm';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.speedUnit, { timeout: 15000 }).toBe('cpm');
+  await expect(page.locator('#race-stage')).toBeVisible();
+  await expect(page.locator('#speed-unit')).toHaveValue('wpm');
+
+  // A busy live region holds back what is written to it, so the leaderboard is never marked busy.
+  await leaderboard.evaluate((region) => {
+    window.busySet = [];
+    new MutationObserver(() => { if (region.hasAttribute('aria-busy')) window.busySet.push(region.getAttribute('aria-busy')); })
+      .observe(region, { attributes: true, attributeFilter: ['aria-busy'] });
+  });
+  await page.locator('#race-input').pressSequentially(text.at(-1));
+  await expect(page.locator('#speed-unit')).toHaveValue('cpm');
+  await expect(leaderboard).toBeVisible();
+  await expect(leaderboard).toHaveAttribute('aria-live', 'polite');
+  await expect(page.locator('#race-winner')).toHaveText(/^(Ada leads\.|Lin leads\.|It’s a tie\.)$/);
+  await expect(page.locator('.race-result-row')).toHaveCount(2);
+  await expect(page.locator('.race-result-row').nth(0)).toContainText(/\d+ cpm/);
+  await expect(leaderboard).not.toContainText('wpm');
+  expect(await page.evaluate(() => window.busySet)).toEqual([]);
+  await expect(leaderboard).not.toHaveAttribute('aria-busy', /./);
 });
 
 // Speeds placed in attributes and SVG can't re-text in place; whatever draws them must redraw them.

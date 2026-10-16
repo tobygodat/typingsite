@@ -57,7 +57,9 @@ export const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
 export const MIN_ACCURACY_OPTIONS = [0, 80, 90, 95, 98];
 export const MIN_WPM_OPTIONS = [0, 20, 30, 40, 60, 80, 100];
 export const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
-export const clampPace = (value) => Math.min(300, Math.max(10, Math.round(Number(value) || 80)));
+export const PACE_MIN_WPM = 10;
+export const PACE_MAX_WPM = 300;
+export const clampPace = (value) => Math.min(PACE_MAX_WPM, Math.max(PACE_MIN_WPM, Math.round(Number(value) || 80)));
 
 // A new profile has chosen no settings, so it stores none (see storedPreferences).
 export function emptyProfile() {

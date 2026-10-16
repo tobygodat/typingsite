@@ -72,32 +72,14 @@ export function unitLabel(template = '') {
   return node;
 }
 
-// A live region whose figures re-text is held busy (aria-busy) while they change, so a screen reader doesn't
-// read each new figure out on its own. Chrome sends accessibility changes in batches, so the hold outlasts one.
-const LIVE_REGION = '[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"]';
-const LIVE_HOLD_MS = 1000;
-const held = new Set();
-let release = 0;
-
-// Re-texts every speed and unit word on screen in this unit. Returns whether the unit changed.
+// Re-texts every speed and unit word on screen in this unit. Returns whether the unit changed. A figure
+// inside a live region that is showing may be read out again in the new unit: accepted, since a unit change
+// is almost always the person's own, and one synced from another device mid-session is rare.
 export function showSpeedUnit(unit) {
   const next = normalizeSpeedUnit(unit);
   if (next === shown) return false;
   shown = next;
-  const figures = [...document.querySelectorAll('[data-wpm]')];
-  const words = [...document.querySelectorAll('[data-speed-unit]')];
-  for (const node of [...figures, ...words]) {
-    const region = node.closest(LIVE_REGION);
-    if (!region || held.has(region)) continue;
-    region.setAttribute('aria-busy', 'true');
-    held.add(region);
-  }
-  figures.forEach((node) => showSpeed(node, Number(node.dataset.wpm)));
-  words.forEach((node) => { node.textContent = unitText(node.dataset.speedUnit || '{unit}'); });
-  clearTimeout(release);
-  release = setTimeout(() => {
-    held.forEach((region) => region.removeAttribute('aria-busy'));
-    held.clear();
-  }, LIVE_HOLD_MS);
+  document.querySelectorAll('[data-wpm]').forEach((node) => showSpeed(node, Number(node.dataset.wpm)));
+  document.querySelectorAll('[data-speed-unit]').forEach((node) => { node.textContent = unitText(node.dataset.speedUnit || '{unit}'); });
   return true;
 }

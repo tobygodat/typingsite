@@ -73,7 +73,7 @@ import {
   FINGER_ZONES, LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, normalizeLessonProgress, recordLessonRun,
 } from './lessons.js';
-import { CUSTOM_ORDERS, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
+import { CUSTOM_ORDERS, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -88,8 +88,6 @@ function customPassage() {
 
 const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
 
-const PACE_MIN_WPM = 10;
-const PACE_MAX_WPM = 300;
 let storageAvailable = true;
 // No session means guest mode: default settings, and nothing leaves this tab.
 let session = account.loadSession();
@@ -696,12 +694,11 @@ function applyPreferences() {
 
 // Display only: every speed and unit word on screen re-texts in place (src/units.js), so nothing restarts
 // and open rows and focus stay as they are. Only text re-texts: a speed placed in an attribute or drawn in
-// SVG has to be redrawn here, as the run card's definitions, the words' spoken paces and the two charts are
+// SVG has to be redrawn here, as the raw speed's tooltip, the words' spoken paces and the two charts are
 // (the pace field follows in showPace).
 function applySpeedUnit() {
   $('speed-unit').value = prefs.speedUnit;
   const changed = showSpeedUnit(prefs.speedUnit);
-  $('speed-definition').textContent = unitText(SPEED_DEFINITION);
   $('result-raw-row').title = unitText(RAW_SPEED_DEFINITION);
   if (!changed) return;
   labelWords();
@@ -1899,15 +1896,15 @@ function showPace() {
   setParts($('pace-label'), shown ? ['pace ', speedFigure(pace.wpm)] : '');
   $('pace-select').value = prefs.paceCaret;
   // The custom pace field holds its speed in its own unit (data-unit), with its range beside it in that unit.
-  // A speed being typed in (focused, and not what was last written here) stays as typed, in the unit it was
-  // typed in, when this redraws (another tab's save taken in, say): setting the field would drop the edit
-  // without a change event. Saving or leaving the field redraws it.
+  // A speed being typed in (focused, and not what was last written here, data-shown) stays as typed, in the
+  // unit it was typed in, when this redraws (another tab's save taken in, say): setting the field would drop
+  // the edit without a change event. Leaving the field redraws it.
   const field = $('pace-wpm');
-  if (document.activeElement !== field || field.value === field.defaultValue) {
+  if (document.activeElement !== field || field.value === field.dataset.shown) {
     const unit = prefs.speedUnit;
     field.dataset.unit = unit;
-    field.defaultValue = speedValue(prefs.paceWpm, unit);
-    field.value = field.defaultValue;
+    field.dataset.shown = speedValue(prefs.paceWpm, unit);
+    field.value = field.dataset.shown;
     field.min = speedValue(PACE_MIN_WPM, unit);
     field.max = speedValue(PACE_MAX_WPM, unit);
     field.step = speedValue(1, unit);
@@ -4901,8 +4898,6 @@ function bindEvents() {
   $('pace-wpm').addEventListener('change', (event) => {
     const field = event.target;
     prefs.paceWpm = clampPace(wpmFromSpeed(field.value, field.dataset.unit));
-    // Saved, so no longer an edit: showPace writes it back as kept, in the unit on screen.
-    field.defaultValue = field.value;
     setPaceCaret('custom', { speed: true });
   });
   // Left unsaved, it shows any speed or unit that arrived while it was being typed in (see showPace).
@@ -5561,6 +5556,7 @@ compose = createCompose({
     return saveProfile();
   },
 });
+$('speed-definition').replaceChildren(unitLabel(SPEED_DEFINITION));
 buildKeyboard();
 applyPreferences();
 setModeControls();
