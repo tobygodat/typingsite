@@ -1,5 +1,6 @@
 import { blocksOnError, createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 import { createTypingFx } from './motion.js';
+import { KEY_OUTCOME, keyOutcome } from './sound.js';
 import * as multiplayer from './multiplayer.js';
 import { redrawList } from './inbox.js';
 
@@ -516,14 +517,17 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     if ($('online-input').disabled) return;
     const replay = replayAttempt(attempt);
     const offsetMs = Math.max(0, performance.now() - startPerf);
+    const position = replay.typed.length;
     if (event.inputType?.startsWith('delete')) {
-      if (!replay.typed.length) { playKeySound('delete'); return; }
+      playKeySound(KEY_OUTCOME.delete);
+      if (!position) return;
       attempt.events.push({ type: 'delete', count: 1, offsetMs });
     } else if (event.inputType === 'insertText' && event.data && [...event.data].length === 1 && !/[\r\n]/u.test(event.data)) {
-      if (replay.typed.length >= attempt.text.length) return;
-      const mustCorrect = blocksOnError(attempt.conditions.correctionPolicy) && replay.typed.length > 0 && replay.typed.at(-1) !== attempt.text[replay.typed.length - 1];
-      if (mustCorrect) { playKeySound('blocked'); $('online-help').textContent = 'Correct the mistyped letter before continuing.'; return; }
-      attempt.events.push({ type: 'insert', text: event.data, position: replay.typed.length, accepted: true, offsetMs });
+      if (position >= attempt.text.length) return;
+      const mustCorrect = blocksOnError(attempt.conditions.correctionPolicy) && position > 0 && replay.typed.at(-1) !== attempt.text[position - 1];
+      playKeySound(keyOutcome([mustCorrect ? { blocked: true } : { correct: event.data === attempt.text[position] }]));
+      if (mustCorrect) { $('online-help').textContent = 'Correct the mistyped letter before continuing.'; return; }
+      attempt.events.push({ type: 'insert', text: event.data, position, accepted: true, offsetMs });
     } else return;
     attempt.status = 'running';
     const next = replayAttempt(attempt);
@@ -531,9 +535,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     textView.ensureAhead(next.typed.length);
     updateCharacterStates(textView.characters, next.typed, attempt.text, previousLength);
     const correct = next.typed.at(-1) === attempt.text[next.typed.length - 1];
-    const outcome = next.typed.length <= previousLength ? 'delete' : correct ? 'correct' : 'wrong';
-    fx.update(next.typed.length, outcome, next.typed.length > 0 && !correct);
-    playKeySound(outcome);
+    fx.update(next.typed.length, next.typed.length <= previousLength ? 'delete' : correct ? 'correct' : 'wrong', next.typed.length > 0 && !correct);
     textView.trimBehind(next.typed.length);
     $('online-input').value = next.typed;
     $('online-input').setSelectionRange(next.typed.length, next.typed.length);

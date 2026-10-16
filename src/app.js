@@ -50,7 +50,7 @@ import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength 
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
 import { createTypingFx } from './motion.js';
-import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, SOUND_LABELS, SOUND_MODES, createSounds, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
+import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, KEY_OUTCOME, SOUND_LABELS, SOUND_MODES, createSounds, keyOutcome, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
 import { normalizeKeybindings, matchesBinding, bindingLabel, ariaShortcuts, createKeybindingEditor } from './keybindings.js';
@@ -538,6 +538,7 @@ function setRunning(running) {
   if (runActive !== running) {
     runActive = running;
     runChanged();
+    if (!running) sounds.rest();
   }
   if (!running) flushDeferredSync();
   showChrome(!running);
@@ -681,7 +682,7 @@ function applyPreferences() {
 }
 
 // The volume row is always there (so the popover never grows under a finger) and is disabled while
-// sound is off. Turning sound off closes the AudioContext; the next audible key asks for a new one.
+// sound is off.
 function applySoundPreferences() {
   const volume = $('sound-volume');
   $('sound-select').value = prefs.sound;
@@ -690,7 +691,6 @@ function applySoundPreferences() {
   volume.setAttribute('aria-valuetext', `${prefs.soundVolume}%`);
   volume.style.setProperty('--fill', `${prefs.soundVolume}%`);
   $('sound-volume-value').textContent = `${prefs.soundVolume}%`;
-  if (prefs.sound === 'off') sounds.release();
 }
 
 // Minimums decide which practice runs count, and custom text never counts, so a custom run has none and
@@ -1444,12 +1444,13 @@ function pushInsert(char, type = 'primary', at = now(), carried = false) {
   }
   if (refusesSpace(targetAttempt.conditions, targetAttempt.text, position, char)) {
     targetAttempt.events.push({ type: 'insert', text: char, position, accepted: false, offsetMs: offsetMs });
-    return { previousLength: position, blocked: 'space', failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
+    return { previousLength: position, blocked: 'space', correct: false, failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
   }
   let event = { type: 'insert', text: char, position, accepted: true, offsetMs };
   if (carried && position >= targetAttempt.text.length) event = carriedKey(targetAttempt, char, offsetMs);
   if (event) targetAttempt.events.push(event);
-  return { previousLength: position, blocked: false, failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
+  const correct = !event || (event.accepted && char === targetAttempt.text[position]);
+  return { previousLength: position, blocked: false, correct, failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
 }
 
 function pushDelete(type = 'primary') {
@@ -1505,6 +1506,8 @@ function typeKeys(keys, type, at = now()) {
   const room = inputAttempt(type).text.length - currentReplay(type).typed.length;
   const target = inputAttempt(type);
   const changes = keys.map((key, index) => pushInsert(key, type, at, room > 0 && index >= room));
+  // One sound for the whole key, before a submit or a failure can end the run.
+  sounds.play(keyOutcome(changes));
   const failure = changes.find((change) => change.failed)?.failed;
   if (changes.some((change) => change.submit)) {
     if (type === 'primary') finishPrimary();
@@ -1613,6 +1616,7 @@ function beforeTypingInput(event, type = 'primary') {
     event.preventDefault();
     if (!allowsBackspace(inputAttempt(type).conditions.correctionPolicy)) return;
     const previousLength = pushDelete(type);
+    sounds.play(KEY_OUTCOME.delete);
     refreshAfterInput(type, previousLength);
     return;
   }
@@ -1829,7 +1833,6 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   // so the coral caret always sits beside a tinted letter.
   if (blocked === 'space') characters[length].className = 'char wrong';
   (isPrimary ? primaryFx : raceFx).update(length, outcome, (length > 0 && !lastCorrect) || blocked === 'space');
-  sounds.play(blocked === 'space' ? 'wrong' : outcome);
   textView.trimBehind(length);
   const waiting = awaitingSubmit(targetAttempt, replay.typed);
   const rule = blocked === 'space' ? NOTICES.strictSpace : waiting ? NOTICES.submit : '';
@@ -5206,12 +5209,14 @@ function setCorrection(policy) {
 function setSound(mode) {
   prefs.sound = normalizeSoundMode(mode);
   applySoundPreferences();
+  sounds.sync();
   saveChoice('sound');
 }
 
 function setSoundVolume(volume, { save = true } = {}) {
   prefs.soundVolume = normalizeSoundVolume(volume);
   applySoundPreferences();
+  sounds.sync();
   if (save) saveChoice('soundVolume');
 }
 

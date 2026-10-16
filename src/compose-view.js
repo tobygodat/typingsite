@@ -13,6 +13,7 @@ import {
   refusedEdit,
 } from './compose.js';
 import { drawCaret, holdsCaretStill } from './compose-caret.js';
+import { KEY_OUTCOME } from './sound.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -131,7 +132,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
     }
     keys.push({ type: kind, at: now() - startedAt });
     typed = input.value;
-    playKeySound(kind === "delete" ? "delete" : "correct");
+    playKeySound(kind === 'delete' ? KEY_OUTCOME.delete : KEY_OUTCOME.correct);
   }
 
   function resultHeading(summary, endedBy, counted) {

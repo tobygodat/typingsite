@@ -6,12 +6,15 @@ export const SOUND_MODES = ['off', 'clicks', 'clicks-errors'];
 export const SOUND_LABELS = { off: 'off', clicks: 'clicks', 'clicks-errors': 'clicks + error tick' };
 export const DEFAULT_SOUND_MODE = 'off';
 export const DEFAULT_SOUND_VOLUME = 50;
-// The engine's reading of one key: an accepted letter, a mistyped letter, a backspace, or a letter
-// refused because stop on error is waiting for a correction.
-const KEY_OUTCOMES = ['correct', 'wrong', 'delete', 'blocked'];
+// What scoring made of one key: an accepted letter, a mistyped letter, a backspace, or a key refused
+// because stop on error is waiting for a correction.
+export const KEY_OUTCOME = Object.freeze({ correct: 'correct', wrong: 'wrong', delete: 'delete', blocked: 'blocked' });
+const KEY_OUTCOMES = Object.values(KEY_OUTCOME);
 // Peak gain at full volume. Both voices are short and sit well below full scale.
 const CLICK_PEAK = 0.9;
 const TICK_PEAK = 0.3;
+// A finished run's context is suspended once the last key's voice (0.1 s at most) has played out.
+const REST_AFTER_MS = 250;
 
 export function normalizeSoundMode(value) {
   return SOUND_MODES.includes(value) ? value : DEFAULT_SOUND_MODE;
@@ -30,7 +33,16 @@ export function soundFor(mode, volume, outcome) {
   if (!SOUND_MODES.includes(mode) || mode === 'off') return null;
   if (typeof volume !== 'number' || !(volume > 0)) return null;
   if (!KEY_OUTCOMES.includes(outcome)) return null;
-  return outcome === 'wrong' && mode === 'clicks-errors' ? 'tick' : 'click';
+  return outcome === KEY_OUTCOME.wrong && mode === 'clicks-errors' ? 'tick' : 'click';
+}
+
+// One key's outcome from scoring's verdict on each character it typed: an accent commit types two
+// ("h). Each change is { correct, blocked }: correct is false for a key scored as a mistake (a wrong
+// letter, a refused strict space), and blocked is set for a key that typed nothing. A mistake anywhere
+// in the key outranks the rest; a key whose every character was refused is blocked.
+export function keyOutcome(changes) {
+  if (changes.some((change) => change.correct === false)) return KEY_OUTCOME.wrong;
+  return changes.every((change) => change.blocked) ? KEY_OUTCOME.blocked : KEY_OUTCOME.correct;
 }
 
 // Loudness follows the square of the slider so the low end stays usable.
@@ -93,13 +105,16 @@ function afterPaint(callback) {
 
 // settings() returns { mode, volume } at the moment of each key. The first key that should make a
 // sound asks for an AudioContext and stays silent itself; the context is built after that key has
-// painted, and later keys play through it. release() closes it.
-export function createSounds({ settings, AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext, defer = afterPaint } = {}) {
+// painted, and later keys play through it. It is suspended while the page is hidden and after a run
+// (rest), resumed by the next key, and closed once a key or a settings change (sync) finds sound off
+// or at volume 0.
+export function createSounds({ settings, AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext, defer = afterPaint, page = globalThis.document } = {}) {
   let context = null;
   let noise = null;
   let pending = false;
   let failed = false;
   let generation = 0;
+  let resting = null;
 
   const audible = () => {
     const { mode, volume } = settings();
@@ -125,6 +140,7 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
   // The running context, or null while one is still to be built.
   function ready() {
     if (context?.state === 'closed') { context = null; noise = null; }
+    clearTimeout(resting);
     if (context) {
       // A suspended or interrupted context is resumed without waiting.
       if (context.state !== 'running') Promise.resolve(context.resume?.()).catch(() => {});
@@ -147,7 +163,10 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
     try {
       const { mode, volume } = settings();
       const kind = soundFor(mode, volume, outcome);
-      if (!kind) return null;
+      if (!kind) {
+        sync();
+        return null;
+      }
       const audio = ready();
       if (!audio) return null;
       if (kind === 'tick') playTick(audio, gainFor(volume));
@@ -160,6 +179,7 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
 
   function release() {
     const closing = context;
+    clearTimeout(resting);
     generation += 1;
     pending = false;
     failed = false;
@@ -169,5 +189,25 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
     try { Promise.resolve(closing.close?.()).catch(() => {}); } catch {}
   }
 
-  return { play, release, hasContext: () => Boolean(context) };
+  // Off or volume 0 closes the context, and drops any build still waiting.
+  function sync() {
+    try {
+      if (!audible() && (context || pending || failed)) release();
+    } catch {}
+  }
+
+  function suspend() {
+    clearTimeout(resting);
+    if (context?.state !== 'running') return;
+    try { Promise.resolve(context.suspend?.()).catch(() => {}); } catch {}
+  }
+
+  function rest() {
+    clearTimeout(resting);
+    if (context) resting = setTimeout(suspend, REST_AFTER_MS);
+  }
+
+  page?.addEventListener?.('visibilitychange', () => { if (page.hidden) suspend(); });
+
+  return { play, sync, rest, hasContext: () => Boolean(context) };
 }

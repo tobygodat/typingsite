@@ -6,7 +6,7 @@ import { test, expect, openApp, openView, passageText, typeInto, chooseWords, ch
 
 async function stubAudio(page) {
   await page.addInitScript(() => {
-    const log = { created: 0, closed: 0, plays: [], clickGains: [], builtDuring: [] };
+    const log = { created: 0, closed: 0, state: null, plays: [], clickGains: [], builtDuring: [] };
     window.__sound = log;
     const node = (extra) => ({ connect(target) { return target; }, disconnect() {}, ...extra });
     const param = (record) => ({ value: 0, setValueAtTime(value) { record?.(value); return this; }, exponentialRampToValueAtTime() { return this; } });
@@ -16,12 +16,14 @@ async function stubAudio(page) {
         // window.event is set only while an event is being dispatched, as an input handler is.
         if (window.event) log.builtDuring.push(window.event.type);
         this.state = 'running';
+        log.state = 'running';
         this.currentTime = 0;
         this.sampleRate = 48000;
         this.destination = node({});
       }
-      resume() { return Promise.resolve(); }
-      close() { log.closed += 1; this.state = 'closed'; return Promise.resolve(); }
+      resume() { this.state = 'running'; log.state = 'running'; return Promise.resolve(); }
+      suspend() { this.state = 'suspended'; log.state = 'suspended'; return Promise.resolve(); }
+      close() { log.closed += 1; this.state = 'closed'; log.state = 'closed'; return Promise.resolve(); }
       createBuffer(channels, length) { const data = new Float32Array(length); return { getChannelData: () => data }; }
       createBufferSource() { return node({ buffer: null, start() { log.plays.push('click'); }, stop() {} }); }
       createOscillator() { return node({ type: 'sine', frequency: param(), start() { log.plays.push('tick'); }, stop() {} }); }
@@ -152,6 +154,23 @@ test('strict space: a refused space ticks, as the wrong key it scores', async ({
   expect(await plays(page)).toEqual([...Array(at - 1).fill('click'), 'tick', 'click']);
 });
 
+test('quick end off: the space that submits a wrong last word clicks', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await openSettings(page);
+  await page.locator('#quick-end-toggle').uncheck();
+  await page.locator('#sound-select').selectOption('clicks-errors');
+  await page.keyboard.press('Escape');
+  await firstKey(page, (await passageText(page))[0]);
+  await restart(page);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, -1) + wrongFor(text.at(-1)));
+  await expect(page.locator('#input-help')).toHaveText('The last word has a mistake. Fix it, or press space to finish.');
+  await page.keyboard.press('Space');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  expect(await plays(page)).toEqual([...Array(text.length - 1).fill('click'), 'tick', 'click']);
+});
+
 test('no backspace: a refused backspace is silent; fail on any error ticks the key that ends the run', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
@@ -189,22 +208,56 @@ test('code mode clicks and ticks through the same path as practice', async ({ pa
 });
 
 // An accent key opens a composition that the next key commits (src/app.js scores it after
-// compositionend). The accent key itself is silent; the commit sounds once, as one key.
+// compositionend), as US-International sends a quotation mark.
+async function accentKey(page) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
+  await cdp.send('Input.imeSetComposition', { text: '"', selectionStart: 1, selectionEnd: 1 });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
+  return { commit: (text) => cdp.send('Input.insertText', { text }) };
+}
+
+// The accent key itself is silent; the commit sounds once, as one key.
 test('a dead-key commit sounds once, never for the accent key too', async ({ page }) => {
   await openApp(page);
   await chooseSound(page, 'clicks-errors');
   const text = await passageText(page);
   await firstKey(page, text[0]);
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
-  await cdp.send('Input.imeSetComposition', { text: '"', selectionStart: 1, selectionEnd: 1 });
-  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
+  const accent = await accentKey(page);
   expect(await plays(page), 'the open accent mark plays nothing').toEqual([]);
-  await cdp.send('Input.insertText', { text: '"' });
+  await accent.commit('"');
   await expect.poll(() => plays(page)).toEqual(['tick']);
   await page.keyboard.press('Backspace');
   await page.keyboard.type(text[1]);
   expect(await plays(page)).toEqual(['tick', 'click', 'click']);
+});
+
+// "h onto "ah more words": the mark is a mistake at the a, so the commit ticks once. Continue on error
+// scores the h as right after it; stop on error refuses the h.
+test('a dead-key commit with a mistyped mark ticks once, whatever its next letter scores', async ({ page }) => {
+  await openApp(page);
+  await chooseMore(page, 'mode-custom');
+  await page.locator('#custom-text').fill('ah more words');
+  await page.locator('#custom-use').click();
+  await chooseSound(page, 'clicks-errors');
+  await firstKey(page, 'a');
+  await page.keyboard.press('Backspace');
+  let accent = await accentKey(page);
+  await accent.commit('"h');
+  await expect(page.locator('#typing-input')).toHaveValue('"h');
+  await expect.poll(() => plays(page)).toEqual(['click', 'tick']);
+
+  await restart(page);
+  await openSettings(page);
+  await page.locator('#correction-select').selectOption('mandatory');
+  await page.keyboard.press('Escape');
+  expect(await passageText(page)).toBe('ah more words');
+  await page.locator('#typing-input').focus();
+  accent = await accentKey(page);
+  await accent.commit('"h');
+  await expect(page.locator('#typing-input')).toHaveValue('"');
+  await expect(page.locator('#input-help')).toHaveText('Fix the underlined letter.');
+  await expect.poll(() => plays(page)).toEqual(['click', 'tick', 'tick']);
 });
 
 test('watch replay plays no sound', async ({ page }) => {
@@ -291,6 +344,12 @@ test('a whole run clicks once per key and still finishes normally', async ({ pag
   const played = await plays(page);
   expect(played).toHaveLength(text.length);
   expect(new Set(played)).toEqual(new Set(['click']));
+  // The finished run suspends the context once its last click has played; the next key resumes it.
+  await expect.poll(async () => (await sound(page)).state).toBe('suspended');
+  await page.locator('#run-again').click();
+  await typeInto(page, (await passageText(page))[0]);
+  expect(await sound(page)).toMatchObject({ created: 1, state: 'running' });
+  expect(await plays(page)).toHaveLength(text.length + 1);
 });
 
 test('palette commands set the sound and its volume', async ({ page }, testInfo) => {

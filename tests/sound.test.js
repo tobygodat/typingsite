@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_SOUND_MODE,
   DEFAULT_SOUND_VOLUME,
+  KEY_OUTCOME,
   SOUND_MODES,
   createSounds,
   gainFor,
+  keyOutcome,
   normalizeSoundMode,
   normalizeSoundVolume,
   soundFor,
@@ -13,7 +15,7 @@ import {
 
 // A Web Audio stand-in that records what was built and started.
 function fakeAudio({ state = 'running', failOn = null } = {}) {
-  const log = { created: 0, closed: 0, resumed: 0, started: [], gains: [], options: [], contexts: [] };
+  const log = { created: 0, closed: 0, resumed: 0, suspended: 0, started: [], gains: [], options: [], contexts: [] };
   const param = () => ({ value: 0, setValueAtTime(v) { log.gains.push(v); }, exponentialRampToValueAtTime() {} });
   const node = (extra = {}) => ({ connect(target) { return target; }, ...extra });
   class FakeContext {
@@ -28,6 +30,7 @@ function fakeAudio({ state = 'running', failOn = null } = {}) {
       this.destination = node();
     }
     resume() { log.resumed += 1; this.state = 'running'; return Promise.resolve(); }
+    suspend() { log.suspended += 1; this.state = 'suspended'; return Promise.resolve(); }
     close() { log.closed += 1; this.state = 'closed'; return Promise.resolve(); }
     createBuffer(channels, length) { const data = new Float32Array(length); return { getChannelData: () => data }; }
     createBufferSource() {
@@ -76,6 +79,21 @@ test('off and volume 0 are silent; the tick is only for a mistyped letter with t
   assert.equal(soundFor('clicks', Number.NaN, 'correct'), null);
   assert.equal(soundFor('clicks', '50', 'correct'), null);
   assert.equal(soundFor('clicks', 50, 'focus-lost'), null);
+});
+
+test('a key ticks if scoring found any mistake in it, and is blocked only if it typed nothing', () => {
+  assert.equal(keyOutcome([{ blocked: false, correct: true }]), KEY_OUTCOME.correct);
+  assert.equal(keyOutcome([{ blocked: false, correct: false }]), KEY_OUTCOME.wrong);
+  // A refused strict space is scored as a wrong key.
+  assert.equal(keyOutcome([{ blocked: 'space', correct: false }]), KEY_OUTCOME.wrong);
+  assert.equal(keyOutcome([{ blocked: 'unresolved' }]), KEY_OUTCOME.blocked);
+  // The space that submits a passage with a wrong last word finishes it: an accepted key.
+  assert.equal(keyOutcome([{ blocked: false, submit: true }]), KEY_OUTCOME.correct);
+  // "h onto "ah": continue on error scores the mark wrong and the h right; stop on error refuses the h.
+  assert.equal(keyOutcome([{ blocked: false, correct: false }, { blocked: false, correct: true }]), KEY_OUTCOME.wrong);
+  assert.equal(keyOutcome([{ blocked: false, correct: false }, { blocked: 'unresolved' }]), KEY_OUTCOME.wrong);
+  assert.equal(keyOutcome([{ blocked: false, correct: true }, { blocked: false, correct: false }]), KEY_OUTCOME.wrong);
+  assert.equal(keyOutcome([{ blocked: false, correct: true }, { blocked: false, correct: true }]), KEY_OUTCOME.correct);
 });
 
 test('gain rises with volume, is zero at 0 and full at 100', () => {
@@ -130,7 +148,7 @@ test('turning sound off before the build cancels it', () => {
   const sounds = createSounds({ settings: () => settings, AudioContextClass: FakeContext, defer: later.defer });
   sounds.play('correct');
   settings.mode = 'off';
-  sounds.release();
+  sounds.sync();
   later.flush();
   assert.equal(log.created, 0);
   // Volume dropping to 0 before the build also leaves nothing behind.
@@ -160,23 +178,73 @@ test('louder settings start louder; volume 0 after a sound adds nothing', () => 
   assert.equal(log.started.length, before);
 });
 
-test('release closes the context, and the next audible key asks for a new one', () => {
+test('sound off or at volume 0 closes the context, and the next audible key asks for a new one', () => {
   const { log, FakeContext } = fakeAudio();
   const later = deferQueue();
   const settings = { mode: 'clicks', volume: 50 };
   const sounds = createSounds({ settings: () => settings, AudioContextClass: FakeContext, defer: later.defer });
-  sounds.release();
+  settings.mode = 'off';
+  sounds.sync();
   assert.equal(log.closed, 0, 'nothing to close before the first key');
+  settings.mode = 'clicks';
   sounds.play('correct');
   later.flush();
-  assert.equal(sounds.hasContext(), true);
-  sounds.release();
+  sounds.sync();
+  assert.equal(sounds.hasContext(), true, 'an audible setting keeps the context');
+  settings.mode = 'off';
+  sounds.sync();
   assert.equal(log.closed, 1);
   assert.equal(sounds.hasContext(), false);
+  settings.mode = 'clicks';
   assert.equal(sounds.play('correct'), null);
   later.flush();
   assert.equal(log.created, 2);
   assert.equal(sounds.play('correct'), 'click');
+
+  // A key that finds sound off (another tab or device changed it) closes the context too.
+  settings.volume = 0;
+  assert.equal(sounds.play('correct'), null);
+  assert.equal(log.closed, 2);
+  assert.equal(sounds.hasContext(), false);
+});
+
+test('the context suspends when the page is hidden and after a run, and the next key resumes it', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { log, FakeContext } = fakeAudio();
+  const later = deferQueue();
+  const page = Object.assign(new EventTarget(), { hidden: false });
+  const sounds = createSounds({ settings: () => ({ mode: 'clicks', volume: 50 }), AudioContextClass: FakeContext, defer: later.defer, page });
+  sounds.rest();
+  page.dispatchEvent(new Event('visibilitychange'));
+  t.mock.timers.tick(1000);
+  assert.equal(log.suspended, 0, 'no context, nothing to suspend');
+  sounds.play('correct');
+  later.flush();
+
+  page.hidden = true;
+  page.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(log.suspended, 1);
+  page.hidden = false;
+  page.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(log.suspended, 1, 'showing the page again waits for a key');
+  assert.equal(sounds.play('correct'), 'click');
+  assert.equal(log.resumed, 1);
+
+  // A finished run waits for its last key's voice to play out before suspending.
+  sounds.rest();
+  t.mock.timers.tick(100);
+  assert.equal(log.suspended, 1);
+  t.mock.timers.tick(200);
+  assert.equal(log.suspended, 2);
+  assert.equal(sounds.play('correct'), 'click');
+  assert.equal(log.resumed, 2);
+
+  // A key soon after the run ends keeps the context running.
+  sounds.rest();
+  sounds.play('correct');
+  t.mock.timers.tick(1000);
+  assert.equal(log.suspended, 2);
+  assert.equal(log.contexts[0].state, 'running');
 });
 
 test('a suspended context is resumed without waiting, and a closed one is replaced', () => {
@@ -202,7 +270,8 @@ test('a suspended context is resumed without waiting, and a closed one is replac
 });
 
 test('missing or failing audio never throws into input handling', () => {
-  const settings = () => ({ mode: 'clicks-errors', volume: 50 });
+  let mode = 'clicks-errors';
+  const settings = () => ({ mode, volume: 50 });
   const later = deferQueue();
   assert.equal(createSounds({ settings, AudioContextClass: undefined, defer: later.defer }).play('correct'), null);
   assert.equal(later.size, 0, 'no Web Audio: nothing is queued');
@@ -213,7 +282,9 @@ test('missing or failing audio never throws into input handling', () => {
   assert.doesNotThrow(() => later.flush());
   assert.equal(silent.play('correct'), null);
   assert.equal(later.size, 0, 'a refused context is not retried on every key');
-  silent.release();
+  mode = 'off';
+  silent.sync();
+  mode = 'clicks-errors';
   silent.play('correct');
   assert.equal(later.size, 1, 'turning sound off and on tries again');
   later.flush();
