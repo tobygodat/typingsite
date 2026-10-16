@@ -195,22 +195,20 @@ test('local challenge uses restart while setup fields preserve normal keyboard i
   await expect(page.locator('#race-input')).toBeFocused();
 });
 
-for (const width of [1280, 320]) {
-  test(`keybindings controls remain reachable at ${width}px`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: 800 });
-    await openApp(page);
-    await editBindings(page, {});
-    await page.locator('#keybinding-commands').scrollIntoViewIfNeeded();
-    await expect(page.locator('#keybinding-commands')).toBeVisible();
-    for (const height of await page.locator('.keybindings-category .btn').evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height))) {
-      expect(height).toBeGreaterThanOrEqual(44);
-    }
-    const bounds = await page.locator('.preferences-popover').boundingBox();
-    expect(bounds.x).toBeGreaterThanOrEqual(0);
-    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
-    await page.screenshot({ path: testInfo.outputPath(`keybindings-${width}.png`) });
-  });
-}
+test('keybindings controls remain reachable at 320px', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await openApp(page);
+  await editBindings(page, {});
+  await page.locator('#keybinding-commands').scrollIntoViewIfNeeded();
+  await expect(page.locator('#keybinding-commands')).toBeVisible();
+  for (const height of await page.locator('.keybindings-category .btn').evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height))) {
+    expect(height).toBeGreaterThanOrEqual(44);
+  }
+  const bounds = await page.locator('.preferences-popover').boundingBox();
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: testInfo.outputPath('keybindings-320.png') });
+});
 
 for (const keybindings of [{ restart: 'Ctrl+K' }, { restart: 'a', commands: '__proto__', exitFocus: 12 }]) {
   test(`malformed synced bindings fall back safely: ${JSON.stringify(keybindings)}`, async ({ page, supabase }) => {

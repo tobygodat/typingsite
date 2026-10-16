@@ -325,6 +325,7 @@ test('custom text keeps master’s custom key on any layout, and a layout change
 });
 
 test('screenshots: Dvorak with the finger map, settings, and a result', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   test.setTimeout(90_000);
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });

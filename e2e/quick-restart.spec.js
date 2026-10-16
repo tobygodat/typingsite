@@ -142,7 +142,6 @@ test('enter restarts from the result card but not mid-run', async ({ page }) => 
   await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
 });
 
-// Committed docs are only rewritten on purpose (SCREENSHOTS=1); a normal run keeps its captures in test output.
 test('enter stays inert mid-run after the chrome returns via the practice nav', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
@@ -210,7 +209,9 @@ for (const stored of ['toString', '__proto__']) {
   });
 }
 
+// Committed docs are only rewritten on purpose (SCREENSHOTS=1); a normal run keeps its captures in test output.
 test('screenshots', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme });

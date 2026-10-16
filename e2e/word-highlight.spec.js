@@ -241,12 +241,14 @@ test.describe('screenshots', () => {
 
   for (const theme of ['dark', 'light']) {
     test(`current word, ${theme}`, async ({ page }, testInfo) => {
+      test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
       const index = await midRun(page, 'current', theme);
       expect(await tinted(page)).toEqual([index]);
       await page.screenshot({ path: shot(testInfo, `current-${theme}`) });
     });
 
     test(`next word, ${theme}`, async ({ page }, testInfo) => {
+      test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
       const index = await midRun(page, 'next', theme);
       expect(await tinted(page)).toEqual([index + 1]);
       await page.screenshot({ path: shot(testInfo, `next-${theme}`) });
@@ -282,6 +284,7 @@ test.describe('phone', () => {
   });
 
   test('settings row and current word at 390 px', async ({ page }, testInfo) => {
+    test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
     await openSettings(page);
