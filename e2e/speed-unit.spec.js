@@ -633,3 +633,43 @@ test('explicit speedUnit reselect is recorded as a fresh preference choice', asy
   await expect.poll(() => supabase.profileFor(user.email)?.preferencesAt?.speedUnit).not.toBe(stamp);
   expect(supabase.profileFor(user.email).preferences.speedUnit).toEqual("wpm");
 });
+
+test('a lesson’s pass target on the practice screen follows the unit with its pace', async ({ page }) => {
+  await openApp(page);
+  await openSettings(page);
+  await page.locator('#pace-select').selectOption('best');
+  await page.keyboard.press('Escape');
+  await chooseMore(page, 'open-lessons');
+  await page.locator('#lesson-primary').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+  await expect(page.locator('#condition-line')).toContainText('pass at 95% accuracy and 10 wpm');
+  await expect(page.locator('#pace-label')).toHaveText('pace 10 wpm');
+  await command(page, 'speed unit · cpm');
+  await expect(page.locator('#condition-line')).toContainText('pass at 95% accuracy and 50 cpm');
+  await expect(page.locator('#pace-label')).toHaveText('pace 50 cpm');
+});
+
+// Another tab's unit arriving while a custom pace is being typed doesn't change what the typed number means.
+test('a custom pace typed in wpm is saved in wpm when cpm arrives from another tab before it is left', async ({ page, context, supabase }) => {
+  const user = supabase.addUser('pace-unit@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  const other = await context.newPage();
+  await supabase.attach(other);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openSettings(page);
+  await page.locator('#pace-select').selectOption('custom');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceCaret, { timeout: 15000 }).toBe('custom');
+  await page.locator('#pace-wpm').fill('100');
+
+  await openSettings(other);
+  await other.locator('#speed-unit').selectOption('cpm');
+  await expect(page.locator('#speed-unit')).toHaveValue('cpm');
+  await expect(page.locator('#pace-wpm')).toHaveValue('100');
+
+  await page.locator('#pace-wpm').press('Tab');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceWpm, { timeout: 15000 }).toBe(100);
+  await expect(page.locator('#pace-wpm')).toHaveValue('500');
+  await expect(page.locator('#pace-label')).toHaveText('pace 500 cpm');
+});

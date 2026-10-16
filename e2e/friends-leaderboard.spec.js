@@ -297,6 +297,27 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   } finally { await context.close(); }
 });
 
+// A unit change re-texts the board's speeds and nothing else: its status, a live region, stays as it was.
+test('the speed unit rewords the board’s speeds and keeps what its status said', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  befriend(supabase, ada, lin, 'Lin');
+  befriend(supabase, lin, ada, 'Ada');
+  publish(supabase, lin, { wpm: 78, accuracy: 96, attempts: 2 }, 2460, 37);
+  await sharing(page, supabase, ada);
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await refreshBoard(page);
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+  expect(await rowTexts(page, 'board-daily')).toContain('Lin 78 wpm 96% accuracy · best of 2');
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('speed unit · cpm');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => rowTexts(page, 'board-daily')).toContain('Lin 390 cpm 96% accuracy · best of 2');
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+});
+
 test('practice time reaches the board with the profile save, and a board not yet set up says so', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   supabase.board.missing = true;
