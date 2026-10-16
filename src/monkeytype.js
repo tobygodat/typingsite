@@ -221,10 +221,19 @@ export function mapMonkeytypeConfig(config) {
     } else skip('text size', from, 'Not a size.');
   }
 
-  // Monkeytype picks one of many click and error sounds; Stilltype has one of each. Its error sound
-  // plays without clicks, and Stilltype's tick only comes with them.
-  const click = has('playSoundOnClick') ? config.playSoundOnClick !== 'off' : null;
-  const error = has('playSoundOnError') ? config.playSoundOnError !== 'off' : null;
+  // Monkeytype picks one of many click and error sounds ('1', '12'), or 'off'; older exports stored
+  // true or false. Stilltype has one of each. Monkeytype's error sound plays without clicks, and
+  // Stilltype's tick only comes with them.
+  const soundOn = (key) => {
+    if (!has(key)) return null;
+    const value = config[key];
+    if (value === 'off' || value === false) return false;
+    if (value === true || (typeof value === 'string' && /^\d+$/.test(value))) return true;
+    skip('sound', `${key}: ${shown(value)}`, 'Not a sound.');
+    return null;
+  };
+  const click = soundOn('playSoundOnClick');
+  const error = soundOn('playSoundOnError');
   const soundFrom = [['playSoundOnClick', click], ['playSoundOnError', error]].filter(([, on]) => on !== null).map(([key]) => `${key}: ${shown(config[key])}`).join(', ');
   if (click) map('sound', { sound: error ? 'clicks-errors' : 'clicks' }, SOUND_LABELS[error ? 'clicks-errors' : 'clicks'], soundFrom);
   else if (error) skip('sound', soundFrom, 'Stilltype’s error tick plays only with key clicks.');

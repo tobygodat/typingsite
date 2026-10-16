@@ -159,6 +159,17 @@ test('typing sounds and their volume carry over; an error sound alone is skipped
   const errorOnly = mapMonkeytypeConfig({ playSoundOnClick: 'off', playSoundOnError: '1' });
   assert.deepEqual(errorOnly.preferences, {});
   assert.match(errorOnly.skipped[0].reason, /only with key clicks/);
+  // Older exports stored each sound as a boolean.
+  assert.deepEqual(mapMonkeytypeConfig({ playSoundOnClick: true, playSoundOnError: false }).preferences, { sound: 'clicks' });
+  assert.deepEqual(mapMonkeytypeConfig({ playSoundOnClick: true, playSoundOnError: true }).preferences, { sound: 'clicks-errors' });
+  assert.deepEqual(mapMonkeytypeConfig({ playSoundOnClick: false, playSoundOnError: false }).preferences, { sound: 'off' });
+  // Anything else is skipped, and the other sound setting still carries over.
+  const junk = mapMonkeytypeConfig({ playSoundOnClick: 'loud', playSoundOnError: '1' });
+  assert.deepEqual(junk.preferences, {});
+  assert.deepEqual(junk.skipped.map((row) => [row.from, row.reason]), [['playSoundOnClick: loud', 'Not a sound.'], ['playSoundOnError: 1', 'Stilltype’s error tick plays only with key clicks.']]);
+  const junkError = mapMonkeytypeConfig({ playSoundOnClick: '3', playSoundOnError: 0 });
+  assert.deepEqual(junkError.preferences, { sound: 'clicks' });
+  assert.deepEqual(junkError.skipped.map((row) => row.from), ['playSoundOnError: 0']);
   // Older exports wrote the volume as a string.
   assert.equal(mapMonkeytypeConfig({ soundVolume: '1.0' }).preferences.soundVolume, 100);
   assert.equal(mapMonkeytypeConfig({ soundVolume: 'loud' }).skipped[0].setting, 'sound volume');
