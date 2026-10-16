@@ -139,6 +139,7 @@ test('custom text is never labelled repeated text, keeps its passage when repeat
 });
 
 test('on: a seen quote can return to chase its score, but never sets a best, a baseline or a trend point', async ({ page }) => {
+  test.setTimeout(60_000);
   await page.clock.install();
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);

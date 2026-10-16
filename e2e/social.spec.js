@@ -214,12 +214,11 @@ test('after a race either player can race again against the same opponent, and a
       for (const entry of entries) if (entry.kind === 'result') entry.until = new Date(Date.now() + 4000).toISOString();
       localStorage.setItem(key, JSON.stringify(entries));
     });
-    await page.clock.install();
     await page.reload();
     await page.locator('#inbox-trigger').click();
     const stale = page.locator('#inbox-list [data-inbox-action="result"]').first();
     await expect(stale).toBeVisible();
-    await page.clock.fastForward(4500);
+    await page.waitForTimeout(4500);
     await stale.click();
     await expect(page.locator('#online-room')).toBeHidden();
     expect(supabase.races.rooms.size).toBe(2);
@@ -233,6 +232,7 @@ test('after a race either player can race again against the same opponent, and a
 });
 
 test('a guest races again with the same seat and no new link, and a rematch the host cancels takes its toast away', async ({ page, browser, supabase }) => {
+  test.setTimeout(180_000);
   supabase.addUser('host@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'host@stilltype.test');

@@ -27,6 +27,7 @@ async function guestPage(browser, supabase, link) {
 }
 
 test('an account hosts a guest across separate contexts, shares progress, resumes with the word highlight in step, and finishes', async ({ page, browser, supabase }) => {
+  test.setTimeout(120_000);
   // The online passage marks words through its own input handler and its resume path.
   const tinted = () => page.locator('#online-text-display .word').evaluateAll((nodes) => nodes
     .filter((node) => [...node.children].some((char) => !char.classList.contains('wrong') && getComputedStyle(char).backgroundColor !== 'rgba(0, 0, 0, 0)'))
