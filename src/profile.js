@@ -34,6 +34,7 @@ export const defaultPreferences = {
   fontSize: '28',
   // Display only, like the text size: never a test condition.
   wordHighlight: DEFAULT_WORD_HIGHLIGHT,
+  tape: false,
   liveMetrics: false,
   keyboard: false,
   stopOnError: false,
@@ -91,6 +92,7 @@ export function validPreferences(value) {
   value.speedUnit = normalizeSpeedUnit(value.speedUnit);
   if (!CODE_LANGUAGES.includes(value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
   value.wordHighlight = normalizeWordHighlight(value.wordHighlight);
+  value.tape = value.tape === true;
   value.repeatQuotes = value.repeatQuotes === true;
   value.layout = normalizeLayout(value.layout);
   value.fingerMap = value.fingerMap === true;

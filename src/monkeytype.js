@@ -228,6 +228,15 @@ export function mapMonkeytypeConfig(config) {
     } else skip('text size', from, 'Not a size.');
   }
 
+  // Monkeytype's letter tape scrolls with every key; Stilltype's tape only steps by whole words.
+  if (has('tapeMode')) {
+    const from = `tapeMode: ${shown(config.tapeMode)}`;
+    if (config.tapeMode === 'off') map('one-line tape', { tape: false }, 'off', from);
+    else if (config.tapeMode === 'word') map('one-line tape', { tape: true }, 'on', from);
+    else if (config.tapeMode === 'letter') map('one-line tape', { tape: true }, 'on (steps by whole words)', from);
+    else skip('one-line tape', from, 'No matching tape mode.');
+  }
+
   if (config.autoSwitchTheme === true) {
     map('theme', { theme: 'system' }, 'system', 'autoSwitchTheme: true');
   } else if (config.customTheme === true && Array.isArray(config.customThemeColors) && luminance(config.customThemeColors[0]) !== null) {

@@ -10,7 +10,7 @@ const current = {
   quoteLength: [2], language: 'english_1k', fontSize: 3, stopOnError: 'letter', paceCaret: 'pb', paceCaretCustomSpeed: 100,
   liveSpeedStyle: 'mini', liveAccStyle: 'off', keymapMode: 'react', caretStyle: 'line', funbox: [], blindMode: false,
   difficulty: 'normal', confidenceMode: 'off', strictSpace: false, quickEnd: false, minAcc: 'off', minAccCustom: 90,
-  minWpm: 'off', minWpmCustomSpeed: 100, repeatQuotes: 'off', layout: 'default', keymapLayout: 'overrideSync',
+  minWpm: 'off', minWpmCustomSpeed: 100, repeatQuotes: 'off', layout: 'default', keymapLayout: 'overrideSync', tapeMode: 'off',
 };
 
 test('a current export maps each setting that has a Stilltype counterpart', () => {
@@ -19,7 +19,7 @@ test('a current export maps each setting that has a Stilltype counterpart', () =
   assert.deepEqual(preferences, {
     mode: 'words', duration: 60, count: 50, punctuation: true, numbers: false, wordList: '1k', quoteLength: 'long',
     correction: 'mandatory', strictSpace: false, quickEnd: false, minAccuracy: 0, minWpm: 0, repeatQuotes: false,
-    paceCaret: 'best', paceWpm: 100, liveMetrics: true, keyboard: true, fontSize: '36', theme: 'dark',
+    paceCaret: 'best', paceWpm: 100, liveMetrics: true, keyboard: true, fontSize: '36', tape: false, theme: 'dark',
   });
   assert.deepEqual(skipped, []);
   assert.ok(mapped.find((row) => row.setting === 'word list' && row.value === 'top 1k' && row.from === 'language: english_1k'));
@@ -52,6 +52,15 @@ test('values with no Stilltype counterpart are skipped with a reason and change 
     'test mode', 'time length', 'word count', 'word list', 'quote length', 'repeat quotes', 'keyboard layout', 'keyboard layout', 'pace caret',
   ]);
   assert.ok(skipped.every((row) => row.reason && row.from));
+});
+
+test('either tape mode turns the one-line tape on; Stilltype steps by words either way', () => {
+  assert.equal(mapMonkeytypeConfig({ tapeMode: 'word' }).preferences.tape, true);
+  const letter = mapMonkeytypeConfig({ tapeMode: 'letter' });
+  assert.equal(letter.preferences.tape, true);
+  assert.match(letter.mapped[0].value, /whole words/);
+  assert.equal(mapMonkeytypeConfig({ tapeMode: 'off' }).preferences.tape, false);
+  assert.deepEqual(mapMonkeytypeConfig({ tapeMode: 'sideways' }).skipped.map((row) => row.setting), ['one-line tape']);
 });
 
 test('theme follows the system, a custom theme by its background, a light preset as light', () => {

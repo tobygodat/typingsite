@@ -161,7 +161,10 @@ let heldDeadKey = null;
 // are scored together: { type, attempt, key (that key), mark (its first input, once it came), at,
 // repeated (the accent key was held: what the key types to commit its pending mark is repeat too) }.
 let accentPair = null;
-const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
+// Whether the practice passage is on one line. Read from the body, as the stylesheet does, so trimming and
+// measuring always follow the layout on screen (see tapeLayout).
+const onTape = () => document.body.dataset.tape === 'true';
+const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index), tape: onTape });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -304,7 +307,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'keybindings', 'dailyGoal'];
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'keybindings', 'dailyGoal'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -646,10 +649,29 @@ function updateGlides(options) {
   document.querySelectorAll('.glide').forEach((container) => updateGlide(container, options));
 }
 
-function applyPreferences() {
+// The tape is for solo practice. A ghost race keeps three lines, as the other races do, so the
+// friend's caret stays in view however far ahead or behind it is.
+const tapeLayout = () => String(prefs.tape && sessionKind !== 'challenge');
+
+// The one writer of the passage layout: the text size, and three lines or the tape.
+function syncLayout() {
+  if (document.body.dataset.tape !== tapeLayout() || document.body.dataset.fontSize !== String(prefs.fontSize)) {
+    // Trimmed words leave a spacer shaped for one layout and text size; put them back first.
+    primaryTextView?.restore();
+  }
   document.body.dataset.fontSize = prefs.fontSize;
-  document.body.dataset.wordHighlight = prefs.wordHighlight;
+  document.body.dataset.tape = tapeLayout();
   primaryFx.relayout();
+}
+
+function setSessionKind(kind) {
+  sessionKind = kind;
+  syncLayout();
+}
+
+function applyPreferences() {
+  syncLayout();
+  document.body.dataset.wordHighlight = prefs.wordHighlight;
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
   document.body.dataset.keyboard = String(prefs.keyboard);
   document.body.dataset.focusMode = String(prefs.focusMode);
@@ -662,6 +684,7 @@ function applyPreferences() {
   $('finger-row').hidden = !prefs.keyboard;
   $('correction-select').value = prefs.correction;
   $('focus-toggle').checked = prefs.focusMode;
+  $('tape-toggle').checked = prefs.tape;
   $('keyboard').hidden = !prefs.keyboard && sessionKind !== 'lesson';
   renderKeyboard();
   applyTheme();
@@ -983,7 +1006,8 @@ function markWords(characters, position) {
   }
 }
 
-function renderText(display, text) {
+// tape: whether the passage is on one line (tape mode), which changes how passed text is trimmed.
+function renderText(display, text, { tape = () => false } = {}) {
   const words = text.split(' ');
   const characters = [];
   const characterWords = [];
@@ -991,6 +1015,7 @@ function renderText(display, text) {
   let renderedWords = 0;
   let firstRenderedWord = 0;
   let lastTrimPosition = 0;
+  let lastPosition = 0;
 
   words.forEach((word, wordIndex) => {
     const group = document.createElement('span');
@@ -1029,6 +1054,44 @@ function renderText(display, text) {
     if (targetWord >= renderedWords) appendWords(Math.max(80, targetWord - renderedWords + 1));
   }
 
+  // Puts trimmed words back in place of their spacer.
+  function remountTrimmed() {
+    if (!firstRenderedWord) return;
+    const fragment = document.createDocumentFragment();
+    for (let index = 0; index < firstRenderedWord; index += 1) fragment.append(...groups[index]);
+    display.querySelector('.passage-spacer')?.remove();
+    display.insertBefore(fragment, display.querySelector('.word'));
+    firstRenderedWord = 0;
+  }
+
+  // Tape mode: words more than two line-widths behind the caret give way to a spacer of the
+  // same width, so nothing in view moves.
+  function trimTape(current) {
+    const keepLeft = (current.closest('.word') || current).offsetLeft - display.clientWidth * 2;
+    if (keepLeft <= 0) return;
+    const firstKept = [...display.querySelectorAll('.word')].find((word) => word.offsetLeft >= keepLeft);
+    if (!firstKept || firstKept === display.querySelector('.word')) return;
+    const spacer = document.createElement('span');
+    spacer.className = 'passage-spacer';
+    // The word's exact x, not the rounded offsetLeft; the shared transform cancels out.
+    spacer.style.width = `${firstKept.getBoundingClientRect().left - display.getBoundingClientRect().left}px`;
+    for (const child of [...display.childNodes]) {
+      if (child === firstKept) break;
+      if (child.classList?.contains('caret') || child.classList?.contains('ghost-caret')) continue;
+      child.remove();
+    }
+    display.insertBefore(spacer, firstKept);
+    firstRenderedWord = Number(firstKept.dataset.wordIndex);
+  }
+
+  // Tape mode, backspacing: a step back can show up to a line-width behind the caret, so the
+  // trimmed words come back before the spacer could show as a blank stretch.
+  function nearTapeSpacer(position) {
+    const spacer = display.querySelector('.passage-spacer');
+    const at = characters[Math.min(position, characters.length - 1)];
+    return Boolean(spacer && at?.isConnected) && at.offsetLeft - spacer.offsetWidth < display.clientWidth;
+  }
+
   display.replaceChildren();
   appendWords(100);
   characters[0]?.classList.add('current');
@@ -1038,24 +1101,32 @@ function renderText(display, text) {
     characters,
     ensureAhead(position) {
       const currentWord = characterWords[Math.min(position, characters.length - 1)] || 0;
+      const back = position < lastPosition;
+      lastPosition = position;
       // A separator before the first mounted word maps to that word, but is
       // itself detached. Remount it when backspacing reaches the boundary.
-      if (currentWord < firstRenderedWord || (currentWord === firstRenderedWord && !characters[position]?.isConnected)) {
-        const fragment = document.createDocumentFragment();
-        for (let index = 0; index < firstRenderedWord; index += 1) fragment.append(...groups[index]);
-        display.querySelector('.passage-spacer')?.remove();
-        display.insertBefore(fragment, display.querySelector('.word'));
-        firstRenderedWord = 0;
+      if (currentWord < firstRenderedWord || (currentWord === firstRenderedWord && !characters[position]?.isConnected)
+        || (back && firstRenderedWord && tape() && nearTapeSpacer(position))) {
+        remountTrimmed();
         lastTrimPosition = position;
       }
       ensureForward(position);
     },
     ensureForward,
+    // Before switching between three lines and the tape: the spacer only fits the old layout.
+    restore() {
+      remountTrimmed();
+      lastTrimPosition = 0;
+    },
     trimBehind(position) {
       if (position - lastTrimPosition < 160) return;
       lastTrimPosition = position;
       const current = characters[position];
       if (!current?.isConnected) return;
+      if (tape()) {
+        trimTape(current);
+        return;
+      }
       const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 48;
       const currentTop = (current.closest('.word') || current).offsetTop;
       const keepTop = currentTop - lineHeight * 3;
@@ -1244,7 +1315,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   // Word practice whose words were cleared with history falls back to a normal test.
   if (kind === 'missed' && !wordsPassage) kind = 'practice';
   const kindChanged = sessionKind !== kind;
-  sessionKind = kind;
+  setSessionKind(kind);
   // The mode bar marks Custom while a custom session is loaded, so it is redrawn whenever the kind changes.
   // Changing to any session but custom (a lesson or a ghost race too) also closes the custom editor, or Custom would stay marked over it.
   if (kindChanged && kind !== 'custom') customOpen = false;
@@ -1266,7 +1337,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
       startTime = null;
       $('typing-input').value = '';
       $('typing-input').disabled = true;
-      $('text-display').style.transform = '';
+      primaryFx.reset([]);
       primaryCharacters = [];
       primaryTextView = null;
       $('text-display').textContent = 'No passage matches these filters.';
@@ -1312,7 +1383,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('typing-input').value = '';
   $('typing-input').disabled = false;
   $('accessible-passage').textContent = passage.text;
-  primaryTextView = renderText($('text-display'), passage.text);
+  primaryTextView = renderText($('text-display'), passage.text, { tape: onTape });
   primaryCharacters = primaryTextView.characters;
   primaryFx.reset(primaryCharacters);
   // In a ghost race the ghost caret replays the friend's run; armPace leaves it to that.
@@ -1371,7 +1442,7 @@ function openCompose() {
       primaryFx.finish();
       attempt = null;
     }
-    sessionKind = 'practice';
+    setSessionKind('practice');
     composeOpen = true;
     // Composing replaces any custom passage or open custom editor, as a mode button does.
     customOpen = false;
@@ -4904,6 +4975,7 @@ function bindEvents() {
   // Left unsaved, it shows any speed or unit that arrived while it was being typed in (see showPace).
   $('pace-wpm').addEventListener('blur', showPace);
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
+  $('tape-toggle').addEventListener('change', (event) => { prefs.tape = event.target.checked; applyPreferences(); saveChoice('tape'); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
     applyPreferences();
@@ -5455,6 +5527,7 @@ function paletteCommands(query) {
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     // Named "this word" / "next word" so no mode reads like the palette's "current" hint.
     ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),
+    { group: 'display', label: 'one-line tape', keywords: 'tape mode single line passage layout scroll', hint: onOff(prefs.tape), on: prefs.tape, run: () => togglePreference('tape') },
     ...[['wpm', 'words'], ['cpm', 'characters']].map(([unit, per]) => ({ group: 'display', label: `speed unit · ${unit}`, keywords: `${per} per minute speed measure`, hint: prefs.speedUnit === unit ? 'current' : '', on: prefs.speedUnit === unit, run: () => setSpeedUnit(unit) })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
@@ -5521,6 +5594,8 @@ listenForSequence(() => {
 
 let resizeFrame = 0;
 addEventListener('resize', () => {
+  // On one line, crossing the 760px breakpoint changes the text size, which the trim spacer cannot follow.
+  if (onTape()) primaryTextView?.restore();
   primaryFx.relayout();
   raceFx.relayout();
   cancelAnimationFrame(resizeFrame);
