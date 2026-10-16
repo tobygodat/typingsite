@@ -75,7 +75,10 @@ test('every lesson passage is about a minute long, uses only learned keys and pr
     const passage = lessonPassage(index, seeded(index + 3));
     const allowed = new Set([...lessonKeys(index), ' ']);
     assert.ok(passage.text.length >= LESSON_LENGTH && passage.text.length < LESSON_LENGTH + 12, `${index}: ${passage.text}`);
-    assert.ok([...passage.text].every((char) => allowed.has(char)), `${index}: ${passage.text}`);
+    for (let seed = 1; seed <= 50; seed += 1) {
+      const { text } = lessonPassage(index, seeded(seed));
+      assert.ok([...text].every((char) => allowed.has(char)), `lesson ${index + 1}, seed ${seed}: ${text}`);
+    }
     for (const key of LESSONS[index].keys) assert.ok(passage.text.includes(key), `${index} practises ${key}`);
     assert.equal(passage.words + passage.pairs, words(passage).length);
     words(passage).slice(passage.pairs).forEach((word) => assert.ok(listWords.has(word), `${index}: ${word}`));

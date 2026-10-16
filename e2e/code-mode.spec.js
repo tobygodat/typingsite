@@ -162,6 +162,7 @@ test('custom text over code mode keeps its own conditions, and code closes the c
 });
 
 test('code mode screenshots', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });

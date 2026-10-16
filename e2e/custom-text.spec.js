@@ -4,6 +4,12 @@ const TEXT = 'the quick brown fox jumps over the lazy dog';
 
 test('custom text runs under its own condition and never becomes a best', async ({ page }) => {
   await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
+  const best = await page.locator('#best').textContent();
+
   await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
@@ -14,6 +20,14 @@ test('custom text runs under its own condition and never becomes a best', async 
   await expect(page.locator('#custom-options')).toBeHidden();
   await expect(page.locator('#condition-line')).toContainText('custom text');
   expect(await passageText(page)).toBe(TEXT);
+  await expect(page.locator('#best')).toHaveText('Not counted');
+  // Nor does the palette call the word test current.
+  await page.locator('#palette-trigger').click();
+  const option = (label) => page.locator('#palette-list [role="option"]').filter({ hasText: label }).first();
+  await expect(option('custom text')).toContainText('current');
+  await expect(option('words · 10 words')).not.toContainText('current');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#palette')).toBeHidden();
 
   await typeInto(page, TEXT);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
@@ -30,6 +44,8 @@ test('custom text runs under its own condition and never becomes a best', async 
   await page.locator('.nav-item[data-nav="practice"]').click();
   await page.locator('#mode-time').click();
   await expect(page.locator('#best')).toHaveText('No best yet');
+  await page.locator('#mode-words').click();
+  await expect(page.locator('#best')).toHaveText(best);
 });
 
 async function finishCustom(page, text = TEXT) {
@@ -165,29 +181,6 @@ test('a word list change keeps a custom passage, from settings or the palette', 
   expect(await passageText(page)).toBe(TEXT);
 });
 
-test('the footer best follows the session: none for custom, back for the word test', async ({ page }) => {
-  await openApp(page);
-  await chooseWords(page, 10);
-  await completePassage(page);
-  await page.locator('.nav-item[data-nav="practice"]').click();
-  await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
-  const best = await page.locator('#best').textContent();
-
-  await chooseMore(page, 'mode-custom');
-  await page.locator('#custom-text').fill(TEXT);
-  await page.locator('#custom-use').click();
-  await expect(page.locator('#best')).toHaveText('Not counted');
-  // Nor does the palette call the word test current.
-  await page.locator('#palette-trigger').click();
-  const option = (label) => page.locator('#palette-list [role="option"]').filter({ hasText: label }).first();
-  await expect(option('custom text')).toContainText('current');
-  await expect(option('words · 10 words')).not.toContainText('current');
-  await page.keyboard.press('Escape');
-
-  await page.locator('#mode-words').click();
-  await expect(page.locator('#best')).toHaveText(best);
-});
-
 test('text too short to time is refused, and a short phrase is accepted', async ({ page }) => {
   await openApp(page);
   await chooseMore(page, 'mode-custom');
@@ -249,20 +242,12 @@ test('a run too quick to time shows no word pace either, but still marks the mis
   expect(shown).not.toContain('wpm');
 });
 
-test('smart punctuation is normalised to typeable characters', async ({ page }) => {
+test('pasted text is normalised to typeable characters, and the length cap counts it after punctuation expands', async ({ page }) => {
   await openApp(page);
   await chooseMore(page, 'mode-custom');
-  await page.locator('#custom-text').fill('“It’s fine” — she said…\n\tok');
+  await page.locator('#custom-text').fill('\uFEFF“It’s café\u034F au lait” — she said…\n\tsoft\u00ADware left\u200Eto \u2066right\u2069 zero\u200Bwidth jo\u200Din no\u200Cn');
   await page.locator('#custom-use').click();
-  expect(await passageText(page)).toBe('"It\'s fine" - she said... ok');
-});
-
-test('accents fold to plain letters and the length cap is checked after punctuation expands', async ({ page }) => {
-  await openApp(page);
-  await chooseMore(page, 'mode-custom');
-  await page.locator('#custom-text').fill('café\u034F au lait');
-  await page.locator('#custom-use').click();
-  expect(await passageText(page)).toBe('cafe au lait');
+  expect(await passageText(page)).toBe('"It\'s cafe au lait" - she said... software leftto right zerowidth join non');
 
   // 501 "ab…" words are 2,004 characters as pasted but 3,005 once each ellipsis expands: refused with the count.
   await chooseMore(page, 'mode-custom');
@@ -289,14 +274,6 @@ test('changing the correction setting keeps the custom passage', async ({ page }
   await expect(page.locator('#condition-line')).toContainText('custom text');
   await expect(page.locator('#condition-line')).toContainText('stop on error');
   expect(await passageText(page)).toBe(TEXT);
-});
-
-test('invisible format characters are stripped', async ({ page }) => {
-  await openApp(page);
-  await chooseMore(page, 'mode-custom');
-  await page.locator('#custom-text').fill('\uFEFFsoft\u00ADware left\u200Eto \u2066right\u2069 zero\u200Bwidth jo\u200Din no\u200Cn');
-  await page.locator('#custom-use').click();
-  expect(await passageText(page)).toBe('software leftto right zerowidth join non');
 });
 
 test('the panel appears without motion and never opens beside a live run', async ({ page }) => {
@@ -346,6 +323,7 @@ test('characters an English keyboard can’t type are refused by name', async ({
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/custom-text/${name}.png` : testInfo.outputPath(`${name}.png`));
 
 test('screenshots', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
