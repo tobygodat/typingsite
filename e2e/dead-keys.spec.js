@@ -158,7 +158,29 @@ const dispatchEvents = (page, events, field = '#typing-input') => page.evaluate(
 const lastStoredAttempt = (page, userId) => page.evaluate((key) => JSON.parse(localStorage.getItem(key)).attempts.at(-1), `stilltype-profile-v2:${userId}`);
 const storedRuns = (page, userId) => page.evaluate((key) => JSON.parse(localStorage.getItem(key))?.runs ?? [], `stilltype-profile-v2:${userId}`);
 
-test('a quote with \' and " typed on accent keys completes as a counted run, a mark followed by space as one typed character', async ({ page, supabase }) => {
+test('a dead-key quote mark followed by space is one typed character', async ({ page }) => {
+  await openApp(page);
+  const keys = await accentKeys(page);
+  const text = await quoteWithMarks(page);
+  const at = text.indexOf('"');
+  await recordHelp(page);
+  await typeInto(page, text.slice(0, at));
+
+  await keys.deadKey('"');
+  // The mark waits in the field (no mid-composition reset) and is not yet scored.
+  await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, at + 1));
+  expect((await scored(page)).correct).toBe(at);
+  await keys.commit('"');
+  expect(await scored(page)).toEqual({ correct: at + 1, wrong: 0, value: text.slice(0, at + 1) });
+
+  await page.keyboard.type(text.slice(at + 1));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-accuracy')).toHaveText('100');
+  await expect(page.locator('#result-delta')).not.toHaveText('Interrupted · not counted');
+  expect((await page.evaluate(() => window.helpSeen)).filter((text) => text.includes('IME'))).toEqual([]);
+});
+
+test('a quote with \' and " typed on accent keys completes as a counted run', async ({ page, supabase }) => {
   // Master's quotes have no apostrophe, so the precise ones gain one: the run needs both marks.
   await page.route('**/src/corpus.js', async (route) => {
     const response = await route.fetch();
@@ -172,30 +194,18 @@ test('a quote with \' and " typed on accent keys completes as a counted run, a m
   const text = await quoteWithMarks(page);
   expect(text.startsWith('It\'s here. ')).toBe(true);
   const at = text.indexOf('"');
-  const close = text.lastIndexOf('"');
-  await recordHelp(page);
 
   // Dead ' then s has no composed form, so both characters commit together and both count.
   await typeInto(page, 'It');
   await keys.deadKey("'");
   await keys.commit("'s");
   expect(await scored(page)).toEqual({ correct: 4, wrong: 0, value: "It's" });
-  await typeWithAccentKeys(page, keys, text, 4, close);
-
-  // The closing " comes before a space or ends the quote, so the typist presses space after the mark.
-  await keys.deadKey('"');
-  // The mark waits in the field (no mid-composition reset) and is not yet scored.
-  await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, close + 1));
-  expect((await scored(page)).correct).toBe(close);
-  await keys.commit('"');
-  expect(await scored(page)).toEqual({ correct: close + 1, wrong: 0, value: text.slice(0, close + 1) });
-  await typeWithAccentKeys(page, keys, text, close + 1);
+  await typeWithAccentKeys(page, keys, text, 4);
 
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-accuracy')).toHaveText('100');
   await expect(page.locator('#result-errors')).toHaveText('0');
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
-  expect((await page.evaluate(() => window.helpSeen)).filter((help) => help.includes('IME'))).toEqual([]);
 
   await expect.poll(() => lastStoredAttempt(page, user.id).then((stored) => stored?.textId)).toMatch(/^short-precise-/);
   const stored = await lastStoredAttempt(page, user.id);

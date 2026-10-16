@@ -187,7 +187,7 @@ test('drills and a custom text run count toward daily practice but not the trend
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
   await expect(page.locator('#goal-line')).toHaveText(/ · 1-day streak$/);
-  await expect(page.locator('#goal-calendar .goal-day').nth(-2)).not.toHaveAttribute('data-level', '0');
+  await expect(page.locator(`#goal-calendar .goal-day[data-day="${dayKey(runs.at(-1).at)}"]`)).not.toHaveAttribute('data-level', '0');
   await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '0');
   await expect(page.locator('#progress-empty')).toBeVisible();
   await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');

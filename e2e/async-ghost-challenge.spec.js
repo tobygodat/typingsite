@@ -908,15 +908,21 @@ test('a Race reply that lands after a drill ran out and its retest began keeps t
   expect(ada.result).toBeNull();
 });
 
-test('a Race reply that lands while Lin writes in the custom editor, types a name or sets up a local race leaves each in place, the keyboard with Lin, and offers the race', async ({ page, supabase }) => {
+test('a Race reply that lands after Lin opened the custom editor, or while Lin writes there, types a name or sets up a local race, leaves each in place, the keyboard with Lin, and offers the race', async ({ page, supabase }) => {
   const lin = supabase.addUser('lin@stilltype.test');
   const ada = challengeLin(supabase, lin, 'Ada');
   await openApp(page);
   await signInWithEmail(page, 'lin@stilltype.test');
   let reply = await holdRace(page, supabase);
-  // In the custom editor, Lin writes a passage while the reply loads.
   await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
+  await letGo(page, reply, 'get', ada.id);
+  await expect(page.locator('#custom-options')).toBeVisible();
+  await expect(page.locator('#custom-text')).toBeFocused();
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
+  await expectOffer(page, 'Ada');
+  // Still in the editor, Lin races Ada from the inbox, then writes a passage while the reply loads.
+  reply = await holdInboxRace(page, supabase);
   await page.locator('#custom-text').click();
   await page.keyboard.type('a passage of my own', { delay: 60 });
   await letGo(page, reply, 'get', ada.id);
@@ -955,18 +961,19 @@ test('a Race clicked mid-run waits for the run’s end once Lin goes back to typ
   await linArrives(page);
   await chooseWords(page, 10);
   let text = await passageText(page);
-  await typeInto(page, text.slice(0, 10), '#typing-input', { delay: 90 });
+  const [early, late] = [Math.floor(text.length / 4), Math.floor(text.length / 2)];
+  await typeInto(page, text.slice(0, early), '#typing-input', { delay: 90 });
   await page.mouse.move(5, 5);
   await page.mouse.move(40, 40);
   let reply = await holdInboxRace(page, supabase);
   // Lin goes back to the run before the reply lands.
-  await typeInto(page, text.slice(10, 40), '#typing-input', { delay: 90 });
+  await typeInto(page, text.slice(early, late), '#typing-input', { delay: 90 });
   await letGo(page, reply, 'get', ada.id);
   await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
   await expect(page.locator('#typing-status')).toHaveText('In progress');
   await expect(page.locator('#typing-input')).toBeFocused();
   await expect(page.locator('#challenge-toast')).toBeHidden();
-  await page.keyboard.type(text.slice(40), { delay: 90 });
+  await page.keyboard.type(text.slice(late), { delay: 90 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#run-card-stamp')).toContainText('practice');
   await expect(page.locator('#result-delta')).not.toHaveText(/Interrupted/);

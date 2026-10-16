@@ -1139,20 +1139,22 @@ test('signing out while the account service never answers still finishes and kee
     await finishRun(page);
     const userId = (await storageKeys(page)).find((key) => key.startsWith('stilltype-profile-v2:'));
     await page.locator('#account-trigger').click();
-    let finished = false;
-    const signedOut = page.waitForEvent('load').then(() => { finished = true; });
+    // The page's own clock when it gives up on the account and ends the sign-in.
+    let abandoned;
+    await page.route(/\/auth\/v1\/logout/, async (route) => {
+      abandoned = await page.evaluate(() => Date.now());
+      await route.fallback();
+    });
+    const started = await page.evaluate(() => Date.now());
+    const signedOut = page.waitForEvent('load');
     await page.locator('#account-signout').click();
-    // Its requests time out on the page's clock, moved on five seconds at a time until it finishes.
-    let waited = 0;
+    // Its requests time out on the page's clock, moved on a second at a time until it gives up on them.
     await expect.poll(async () => {
-      if (!finished) {
-        await page.clock.fastForward(5000);
-        waited += 5000;
-      }
-      return finished;
-    }, { intervals: [200], timeout: 20000 }).toBe(true);
+      if (abandoned === undefined) await page.clock.runFor(1000);
+      return abandoned !== undefined;
+    }, { intervals: [100], timeout: 20000 }).toBe(true);
     await signedOut;
-    expect(waited).toBeLessThan(40000);
+    expect(abandoned - started).toBeLessThan(40000);
     await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
     // Nothing reached the account, so the run stays on the device for the next sign-in.
     expect(await storageKeys(page)).toContain(userId);

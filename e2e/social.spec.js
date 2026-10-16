@@ -142,7 +142,7 @@ test('a challenge that arrives mid-run waits for the run to end, even with the c
   const racePassage = await page.locator('#race-accessible-passage').textContent();
   await typeInto(page, racePassage.slice(0, 3), '#race-input');
   await new Promise((resolve) => supabase.races.handle(host.id, { p_action: 'create', p_data: {
-    passage: 'The quick brown fox jumps over the lazy dog, twice over.', conditions: {}, displayName: 'Ada', inviteEmail: 'lin@stilltype.test',
+    passage: 'The quick brown fox jumps over the lazy dog, twice over.', conditions: {}, displayName: 'Kai', inviteEmail: 'lin@stilltype.test',
   } }, resolve));
   await page.clock.fastForward(11000);
   await page.waitForTimeout(1500);
@@ -150,7 +150,7 @@ test('a challenge that arrives mid-run waits for the run to end, even with the c
   await page.keyboard.type(racePassage.slice(3));
   await expect(page.locator('#race-handoff')).toBeVisible();
   await page.clock.fastForward(11000);
-  await expect(page.locator('#challenge-toast')).toContainText('Ada challenged you to a race.');
+  await expect(page.locator('#challenge-toast')).toContainText('Kai challenged you to a race.');
 });
 
 test('after a race either player can race again against the same opponent, and add them as a friend', async ({ page, browser, supabase }) => {

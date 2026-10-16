@@ -164,6 +164,11 @@ test('on: a seen quote can return to chase its score, but never sets a best, a b
   await typeQuote(page, 125);
   const again = Number(await page.locator('#result-wpm').textContent());
   expect(again).toBeGreaterThan(first);
+  // The clock moves a word at a time, so the run lasts between the passage less its last word and the whole
+  // passage at 125 ms a key, and its pace sits between those two.
+  const pace = (keys) => quote.length / 5 / (keys * 125 / 60000);
+  expect(again).toBeGreaterThanOrEqual(Math.floor(pace(quote.length)));
+  expect(again).toBeLessThanOrEqual(Math.ceil(pace(quote.length - quote.match(/\S+$/)[0].length)));
   await expect(page.locator('#result-delta')).toHaveText(`Repeated text · +${again - first} vs your best of ${first} on this passage`);
   await expect(page.locator('#result-comparison-note')).toHaveText('');
   await expect(page.locator('#result-conditions')).toContainText('repeated text · english · short quote · gentle');
@@ -330,7 +335,7 @@ test('a daily repeat attempt is repeated text too, so it is never a retest basel
 });
 
 test('stop on error: a blocked letter swaps the notice for its hint without moving restart', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 320, height: 640 });
   await openApp(page);
   await shortGentleQuotes(page);
   await openTestContent(page);
@@ -339,10 +344,6 @@ test('stop on error: a blocked letter swaps the notice for its hint without movi
   await page.keyboard.press('Escape');
   await page.locator('#restart-button').click();
   await expect(page.locator('#input-help')).toHaveText('Repeated text · doesn’t count toward your best.');
-  // The notice fits beside restart on a phone.
-  expect(await overflow(page)).toBeLessThanOrEqual(0);
-  await page.setViewportSize({ width: 320, height: 640 });
-  expect(await overflow(page)).toBeLessThanOrEqual(0);
   const text = await passageText(page);
   const top = async () => (await page.locator('#restart-button').boundingBox()).y;
   await page.locator('#typing-input').focus();
@@ -373,7 +374,6 @@ test.describe('phone 390px', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
   test('the repeated-text notice fits beside restart', async ({ page }) => {
-    test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
     await shortGentleQuotes(page);

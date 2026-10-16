@@ -705,6 +705,7 @@ test('a device that saves after another device passed a lesson keeps that pass',
 });
 
 test('passing every lesson hands off to the training loop', async ({ page, supabase }, testInfo) => {
+  if (process.env.SCREENSHOTS) test.setTimeout(90_000);
   await page.emulateMedia({ colorScheme: 'dark' });
   const user = learner(supabase, 'last@stilltype.test', LESSONS.length - 1);
   await openApp(page);

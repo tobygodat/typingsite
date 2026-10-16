@@ -67,6 +67,10 @@ test('a custom time is validated in place, becomes the test length, and lasts fo
   await pill(page).click();
   await expect(field(page)).toHaveValue('45');
 
+  // Back on 45, a guest's custom length lasts for the tab only.
+  await field(page).press('Enter');
+  await expect(pill(page)).toHaveText('45');
+  await expect(page.locator('#condition-line')).toContainText('· 45 s ·');
   await page.reload();
   await expect(pill(page)).toHaveText('custom');
   await expect(page.locator('#condition-line')).toContainText('· 30 s ·');

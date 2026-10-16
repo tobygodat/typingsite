@@ -647,7 +647,7 @@ test('sharing turned on during the account check takes effect at once, and the b
   expect(supabase.profiles.get(ada.id)?.data?.preferences).not.toHaveProperty('shareBoard');
 });
 
-test('an opt-out that fails is kept across a reload and sent before anything else, until then this device’s saves carry no summary, and turning sharing back on writes one from the row', async ({ page, supabase }) => {
+test('an opt-out that fails is kept across a reload and sent before anything else, and until then this device’s saves carry no summary', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
   await openApp(page);
@@ -681,6 +681,62 @@ test('an opt-out that fails is kept across a reload and sent before anything els
   // Settled, the opt-out is no longer kept on the device, and nothing turned sharing back on.
   await expect.poll(() => optOutsKept(page)).toEqual([]);
   expect(supabase.board.calls.slice(before)).not.toContain('share');
+  // Her saves carry her summary again, into her own row only.
+  await openView(page, 'Practice');
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect.poll(() => weekRuns(supabase, ada)).toBe(4);
+  expect(supabase.board.members.has(ada.id)).toBe(false);
+});
+
+test('turning sharing back on while an opt-out is still kept sends that opt-out first, then the share', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await expect(page.locator('#board-week')).toContainText('2 runs');
+  supabase.board.missing = true;
+  await page.locator('#share-board').uncheck();
+  await expect(page.locator('#friends-board-status')).toContainText('Your row comes off once the board can be reached.');
+  // While the board is still out of reach, turning it back on fails, and the opt-out stays kept. (A click:
+  // the switch turns itself back off as soon as that fails, which check() would read as no change.)
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-status')).toHaveText('The friends board is being set up. Please try again shortly.');
+  await expect(page.locator('#share-board')).not.toBeChecked();
+  expect(await optOutsKept(page)).toHaveLength(1);
+  supabase.board.missing = false;
+  const actions = boardActions(page);
+  await page.locator('#share-board').check();
+  await expect(page.locator('#friends-board-lists')).toBeVisible();
+  expect(actions).toEqual(['unshare', 'share']);
+  expect(supabase.board.members.has(ada.id)).toBe(true);
+  expect(await optOutsKept(page)).toEqual([]);
+  await expect(page.locator('#share-board')).toBeChecked();
+  await expect(page.locator('#board-week')).toContainText('2 runs');
+});
+
+test('a save made while an opt-out was unconfirmed leaves no summary, and turning sharing back on writes one from the row', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await expect(page.locator('#board-week')).toContainText('2 runs');
+  // Sharing is turned off while the board can't be reached, and a run is saved meanwhile: no summary.
+  supabase.board.missing = true;
+  await page.locator('#share-board').uncheck();
+  await expect(page.locator('#friends-board-status')).toContainText('Your row comes off once the board can be reached.');
+  await openView(page, 'Practice');
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect.poll(() => supabase.profiles.get(ada.id).data.runs.length).toBe(3);
+  expect(column(supabase, ada)).toBeNull();
+  // The opt-out lands with the next board read.
+  supabase.board.missing = false;
+  await openBoard(page);
+  await expect.poll(() => supabase.board.members.has(ada.id)).toBe(false);
+  await expect.poll(() => optOutsKept(page)).toEqual([]);
   expect(column(supabase, ada)).toBeNull();
   // Turning sharing back on writes the summary of the row as it stands, so her row shows its three runs.
   await page.locator('#share-board').click();
@@ -689,14 +745,6 @@ test('an opt-out that fails is kept across a reload and sent before anything els
   expect(weekRuns(supabase, ada)).toBe(3);
   expect(supabase.profileWrites.at(-1).method).toBe('PATCH');
   expect(Date.parse(column(supabase, ada).at)).toBe(Date.parse(supabase.profiles.get(ada.id).updated_at));
-  // Off again, and confirmed at once: her saves carry her summary, into her own row only.
-  await page.locator('#share-board').uncheck();
-  await expect(page.locator('#friends-board-status')).toHaveText('Your row is off the board.');
-  await openView(page, 'Practice');
-  await chooseWords(page, 10);
-  await completePassage(page);
-  await expect.poll(() => weekRuns(supabase, ada)).toBe(4);
-  expect(supabase.board.members.has(ada.id)).toBe(false);
 });
 
 test('an opt-out still on its way is not undone by another device, and lands when it is retried', async ({ page, browser, supabase }) => {
@@ -1324,7 +1372,7 @@ test('a slow board read answered before another tab turned sharing on changes no
   await expect(page.locator('#friends-board-status')).toHaveText('');
 });
 
-test('an opt-out whose reply was lost goes again before sharing is turned back on, even after a try the board was out of reach for, and the share counts at the first click', async ({ page, supabase }) => {
+test('an opt-out whose reply was lost goes again before sharing is turned back on, and the share counts at the first click', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   seedProfile(supabase, ada, practiceThisWeek(2));
   await openApp(page);
@@ -1342,14 +1390,6 @@ test('an opt-out whose reply was lost goes again before sharing is turned back o
   expect(supabase.board.members.has(ada.id)).toBe(false);
   expect(supabase.board.version(ada.id)).toBe(2);
   expect(await optOutsKept(page)).toHaveLength(1);
-  // While the board is out of reach, turning it back on fails, and the opt-out stays kept. (A click: the
-  // switch turns itself back off as soon as that fails, which check() would read as no change.)
-  supabase.board.missing = true;
-  await page.locator('#share-board').click();
-  await expect(page.locator('#friends-board-status')).toHaveText('The friends board is being set up. Please try again shortly.');
-  await expect(page.locator('#share-board')).not.toBeChecked();
-  expect(await optOutsKept(page)).toHaveLength(1);
-  supabase.board.missing = false;
   // Turned back on, that same opt-out goes first. The service has applied it already, so it moves
   // nothing, and the share counts at the first click, with no word of another device.
   const actions = boardActions(page);
@@ -1363,7 +1403,6 @@ test('an opt-out whose reply was lost goes again before sharing is turned back o
   expect(supabase.board.version(ada.id)).toBe(3);
   expect(await optOutsKept(page)).toEqual([]);
   await expect.poll(() => knownHere(page, ada)).toBe('1:3');
-  await expect(page.locator('#board-week')).toContainText('2 runs');
 });
 
 // Ada shares, then turns sharing off; the service applies it (version 2), but the reply is lost, so the
