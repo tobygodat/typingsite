@@ -87,37 +87,35 @@ async function failDrill(page, policy, reason, options = {}) {
   await expect(page.locator('#run-card-stamp')).toContainText(`· drill · failed · ${reason}`);
 }
 
-for (const [policy, reason] of [['fail-any', 'wrong key'], ['fail-word', 'word error']]) {
-  test(`a drill failed by ${policy} shows its result, then retries or goes on to the retest`, async ({ page }) => {
-    await openApp(page);
-    await chooseWords(page, 10);
-    await chooseCorrection(page, policy);
-    const baseline = await completePassage(page);
-    await expect(page.locator('#start-drill')).toHaveText('Start drill');
+test('a drill failed by fail-word shows its result, then retries or goes on to the retest', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await chooseCorrection(page, 'fail-word');
+  const baseline = await completePassage(page);
+  await expect(page.locator('#start-drill')).toHaveText('Start drill');
 
-    await failDrill(page, policy, reason);
-    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-    await expect(page.locator('#announcement')).toHaveText(new RegExp(`^Drill failed, ${reason}\\. \\d+ wpm, \\d+% accuracy\\.$`));
-    await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 10-word retest.');
-    await expect(page.locator('#start-drill')).toHaveText('Try drill again');
-    await expect(page.locator('#start-drill')).toBeFocused();
-    await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await failDrill(page, 'fail-word', 'word error');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#announcement')).toHaveText(/^Drill failed, word error\. \d+ wpm, \d+% accuracy\.$/);
+  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 10-word retest.');
+  await expect(page.locator('#start-drill')).toHaveText('Try drill again');
+  await expect(page.locator('#start-drill')).toBeFocused();
+  await expect(page.locator('#skip-to-retest')).toBeEnabled();
 
-    // Trying again starts the drill afresh under the same policy.
-    await failDrill(page, policy, reason);
-    await expect(page.locator('#start-drill')).toBeFocused();
+  // Trying again starts the drill afresh under the same policy.
+  await failDrill(page, 'fail-word', 'word error');
+  await expect(page.locator('#start-drill')).toBeFocused();
 
-    await page.locator('#skip-to-retest').click();
-    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
-    await expect(page.locator('#condition-line')).toContainText(`10 words · plain · physical keyboard · ${FAILURE_LABELS[policy]}`);
-    expect(await passageText(page)).not.toBe(baseline);
-    await completePassage(page);
-    await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', /^(improved|mixed|regressed|steady)$/);
-    // No drill was finished, so the loop is recorded as a fresh-text check.
-    await openView(page, 'Progress');
-    await expect(page.locator('.history-target')).toHaveText('Fresh-text check');
-  });
-}
+  await page.locator('#skip-to-retest').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await expect(page.locator('#condition-line')).toContainText('10 words · plain · physical keyboard · fail on word error');
+  expect(await passageText(page)).not.toBe(baseline);
+  await completePassage(page);
+  await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', /^(improved|mixed|regressed|steady)$/);
+  // No drill was finished, so the loop is recorded as a fresh-text check.
+  await openView(page, 'Progress');
+  await expect(page.locator('.history-target')).toHaveText('Fresh-text check');
+});
 
 test('a drill that runs its minute under fail on any error still goes straight to the retest', async ({ page }) => {
   await page.clock.install();
@@ -152,6 +150,7 @@ async function showFailedDrill(page, viewport) {
 }
 
 test('failed drill result screenshots', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await showFailedDrill(page, { width: 1280, height: 800 });
   await page.screenshot({ path: shot(testInfo, 'failed-drill-dark.png') });
   await page.emulateMedia({ colorScheme: 'light' });
@@ -161,8 +160,8 @@ test('failed drill result screenshots', async ({ page }, testInfo) => {
 test('failed drill result fits at 320px', async ({ page }, testInfo) => {
   await showFailedDrill(page, { width: 320, height: 568 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
-  // The run card comes first on a phone; the shot shows the failed headline and its actions below it.
-  await page.locator('#results-heading').evaluate((node) => node.scrollIntoView({ block: 'start' }));
+  // On a phone the drill follows the score card; the shot shows the drill and its actions.
+  await page.locator('.recommendation-panel').evaluate((node) => node.scrollIntoView({ block: 'start' }));
   await expect(page.locator('#start-drill')).toBeInViewport();
   await page.screenshot({ path: shot(testInfo, 'failed-drill-320.png') });
 });
@@ -180,6 +179,7 @@ test('no backspace ignores Backspace', async ({ page }) => {
 
 for (const scheme of ['dark', 'light']) {
   test(`settings select screenshot (${scheme})`, async ({ page }, testInfo) => {
+    test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);

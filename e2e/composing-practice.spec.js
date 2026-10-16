@@ -443,71 +443,43 @@ async function finishUnsupported(page) {
   await expect(page.locator('#compose-saved')).toHaveText('IME input isn’t measured. Esc to start over.');
 }
 
-test('text no counted key typed, such as an autocorrection, marks it unsupported and is never saved', async ({ page }) => {
+test('text no counted key typed, an edit a refusal could not cancel or unlike its key, or a delete of more than one character marks it unsupported and is never saved', async ({ page }) => {
+  // Nine sessions of about forty keys each.
+  test.setTimeout(90_000);
   await startPausedClock(page);
   await openCompose(page);
   const input = page.locator('#compose-input');
-  const typed = 'I made teh tea and sat by the window. ';
-  // Input with no cancellable beforeinput first: a replacement, and a type nothing here knows.
-  for (const inputType of ['insertReplacementText', 'insertFromAssistiveText']) {
+  const autocorrected = 'I made teh tea and sat by the window. ';
+  const bus = 'The bus came early, so I walked the last bit';
+  const sentence = `${bus}. `;
+  const phrase = 'and then a little more';
+  const edits = [
+    // Input with no cancellable beforeinput first: a replacement, and a type nothing here knows.
+    [autocorrected, autocorrected.replace('teh', 'the'), { after: { inputType: 'insertReplacementText', data: 'the' } }],
+    [autocorrected, autocorrected.replace('teh', 'the'), { after: { inputType: 'insertFromAssistiveText', data: 'the' } }],
+    // A refused replacement whose beforeinput can't be cancelled, which the browser then applies.
+    [sentence, sentence.replace('bit', 'part'), { before: { inputType: 'insertReplacementText', data: 'part' }, after: { inputType: 'insertReplacementText', data: 'part' } }],
+    // Several characters at once, refused but not cancellable: a counted type, but not one key.
+    [sentence, sentence + phrase, { before: { inputType: 'insertText', data: phrase }, after: { inputType: 'insertText', data: phrase } }],
+    // A counted key whose change isn't that key: the field no longer matches the recorded text.
+    [sentence, `${sentence.replace('bus', 'tram')}x`, { after: { inputType: 'insertText', data: 'x' } }],
+    // One character reported as typed but with no character to check it against.
+    [sentence, `${sentence}x`, { before: { inputType: 'insertText', data: null }, after: { inputType: 'insertText', data: null } }],
+    // An ordinary Backspace at the caret, as the browser reports it, that took a whole word.
+    [bus, bus.slice(0, -'bit'.length), { before: { inputType: 'deleteContentBackward' }, after: { inputType: 'deleteContentBackward' } }],
+    // A Delete with no beforeinput at all that took a selection's worth of letters.
+    [bus, bus.replace('early', 'e'), { after: { inputType: 'deleteContentForward' } }],
+  ];
+  for (const [typed, value, events] of edits) {
     await typePaced(page, [...typed], 230);
-    await browserEdit(input, typed.replace('teh', 'the'), { after: { inputType, data: 'the' } });
+    await browserEdit(input, value, events);
     await finishUnsupported(page);
     await page.locator('#compose-retry').click();
   }
   // A change with no event at all is caught at the end: the field no longer matches the keys.
-  await typePaced(page, [...typed], 230);
+  await typePaced(page, [...autocorrected], 230);
   await input.evaluate((node) => { node.value += 'and a line no key typed'; });
   await finishUnsupported(page);
-
-  await openView(page, 'Progress');
-  await expect(page.locator('#compose-history')).toBeHidden();
-});
-
-test('an edit a refusal could not cancel, or one unlike its key, is never saved', async ({ page }) => {
-  await startPausedClock(page);
-  await openCompose(page);
-  const input = page.locator('#compose-input');
-  const typed = 'The bus came early, so I walked the last bit. ';
-  const phrase = 'and then a little more';
-  const edits = [
-    // A refused replacement whose beforeinput can't be cancelled, which the browser then applies.
-    [typed.replace('bit', 'part'), { before: { inputType: 'insertReplacementText', data: 'part' }, after: { inputType: 'insertReplacementText', data: 'part' } }],
-    // Several characters at once, refused but not cancellable: a counted type, but not one key.
-    [typed + phrase, { before: { inputType: 'insertText', data: phrase }, after: { inputType: 'insertText', data: phrase } }],
-    // A counted key whose change isn't that key: the field no longer matches the recorded text.
-    [`${typed.replace('bus', 'tram')}x`, { after: { inputType: 'insertText', data: 'x' } }],
-    // One character reported as typed but with no character to check it against.
-    [`${typed}x`, { before: { inputType: 'insertText', data: null }, after: { inputType: 'insertText', data: null } }],
-  ];
-  for (const [value, events] of edits) {
-    await typePaced(page, [...typed], 230);
-    await browserEdit(input, value, events);
-    await finishUnsupported(page);
-    await page.locator('#compose-retry').click();
-  }
-
-  await openView(page, 'Progress');
-  await expect(page.locator('#compose-history')).toBeHidden();
-});
-
-test('a Backspace or Delete that removes more than one character is never saved', async ({ page }) => {
-  await startPausedClock(page);
-  await openCompose(page);
-  const input = page.locator('#compose-input');
-  const typed = 'The bus came early, so I walked the last bit';
-  const edits = [
-    // An ordinary Backspace at the caret, as the browser reports it, that took a whole word.
-    [typed.slice(0, -'bit'.length), { before: { inputType: 'deleteContentBackward' }, after: { inputType: 'deleteContentBackward' } }],
-    // A Delete with no beforeinput at all that took a selection's worth of letters.
-    [typed.replace('early', 'e'), { after: { inputType: 'deleteContentForward' } }],
-  ];
-  for (const [value, events] of edits) {
-    await typePaced(page, [...typed], 230);
-    await browserEdit(input, value, events);
-    await finishUnsupported(page);
-    await page.locator('#compose-retry').click();
-  }
 
   await openView(page, 'Progress');
   await expect(page.locator('#compose-history')).toBeHidden();
@@ -614,6 +586,7 @@ test('signed in, only the numbers reach the account', async ({ page, supabase })
 });
 
 test('composing screenshots, dark and light', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.emulateMedia({ colorScheme: 'dark' });
   await startPausedClock(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
@@ -1014,6 +987,8 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
     test.use({ viewport, hasTouch: true, isMobile: true });
 
     test('composing fits without sideways scroll and keeps 44px targets', async ({ page }, testInfo) => {
+      // The narrow phone checks the layout; the phone only takes the docs screenshot.
+      test.skip(viewport.width === 390 && !process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
       await page.emulateMedia({ colorScheme: 'dark' });
       await startPausedClock(page);
       await chooseMore(page, 'mode-compose');

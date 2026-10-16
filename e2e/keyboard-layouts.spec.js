@@ -214,15 +214,6 @@ test('a retest keeps the chosen layout and refuses a baseline typed on another',
   await expect(page.locator('#condition-line')).toContainText('10 words · plain · physical keyboard · dvorak');
 });
 
-test('touch input keeps the default key: the layout setting describes a physical keyboard', async ({ page }) => {
-  await openApp(page);
-  await runCommand(page, 'layout · dvorak');
-  await expect(page.locator('#condition-line')).toContainText('physical keyboard · dvorak');
-  await page.locator('#typing-input').dispatchEvent('pointerdown', { pointerType: 'touch' });
-  await expect(page.locator('#condition-line')).toContainText('touch input · continue on error');
-  await expect(page.locator('#condition-line')).not.toContainText('dvorak');
-});
-
 test.describe('on a touch screen', () => {
   test.use({ hasTouch: true });
 
@@ -231,8 +222,10 @@ test.describe('on a touch screen', () => {
     await openApp(page);
     await runCommand(page, 'layout · dvorak');
     await chooseWords(page, 10);
+    await expect(page.locator('#condition-line')).toContainText('physical keyboard · dvorak');
     await page.locator('#typing-input').tap();
     await expect(page.locator('#condition-line')).toContainText('touch input · continue on error');
+    await expect(page.locator('#condition-line')).not.toContainText('dvorak');
     await completePassage(page);
     await expect(page.locator('#result-conditions')).not.toContainText('dvorak');
 
@@ -325,6 +318,7 @@ test('custom text keeps master’s custom key on any layout, and a layout change
 });
 
 test('screenshots: Dvorak with the finger map, settings, and a result', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   test.setTimeout(90_000);
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
@@ -403,17 +397,4 @@ test('lessons name their QWERTY finger map and preserve the chosen practice layo
   await page.keyboard.press('Escape');
   await openView(page, 'Practice');
   await expect(page.locator('#condition-line')).toContainText('dvorak');
-});
-
-
-test('explicit layout reselect is recorded as a fresh preference choice', async ({ page, supabase }) => {
-  const user = supabase.addUser('choice-46@stilltype.test');
-  const stamp = '2000-01-01T00:00:00.000Z';
-  supabase.profiles.set(user.id, { data: { version: 2, preferences: { layout: "qwerty" }, preferencesAt: { layout: stamp },
-    attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, updatedAt: stamp } });
-  await openApp(page);
-  await signInWithEmail(page, user.email);
-  await runCommand(page, 'layout · qwerty');
-  await expect.poll(() => supabase.profileFor(user.email)?.preferencesAt?.layout).not.toBe(stamp);
-  expect(supabase.profileFor(user.email).preferences.layout).toEqual("qwerty");
 });

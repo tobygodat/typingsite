@@ -90,13 +90,15 @@ test('two tabs: a tab that missed the other’s saves keeps its run and settings
   expect(errors).toEqual([]);
 });
 
-test('two devices: a stale device’s push keeps the other device’s run, higher best and settings', async ({ page, browser, supabase }) => {
+test('two devices: a stale device’s push keeps the other device’s run, higher best and settings, and its settings change wins as the newest', async ({ page, browser, supabase }) => {
   supabase.addUser(EMAIL);
   const errors = [];
+  await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
   await signInWithEmail(page, EMAIL);
   const { context, page: phone } = await device(browser, supabase, errors);
   try {
+    await phone.emulateMedia({ colorScheme: 'dark' });
     const fast = await finishRun(phone);
     await openSettings(phone);
     await phone.locator('#font-size').selectOption('22');
@@ -117,35 +119,20 @@ test('two devices: a stale device’s push keeps the other device’s run, highe
     await expect(phone.locator('body')).toHaveAttribute('data-font-size', '22');
     await expectBothRuns(page, { runs: 2, best: fast });
     await expect(page.locator('body')).toHaveAttribute('data-font-size', '22');
-    expect(errors).toEqual([]);
-  } finally {
-    await context.close();
-  }
-});
 
-test('a settings change from a stale device keeps the history saved elsewhere and wins as the newest change', async ({ page, browser, supabase }) => {
-  supabase.addUser(EMAIL);
-  const errors = [];
-  await page.emulateMedia({ colorScheme: 'dark' });
-  await openApp(page);
-  await signInWithEmail(page, EMAIL);
-  const { context, page: phone } = await device(browser, supabase, errors);
-  try {
-    await phone.emulateMedia({ colorScheme: 'dark' });
-    const wpm = await finishRun(phone);
-    await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
+    // A settings change from the laptop, stale again after another phone run, keeps the history and wins.
+    const third = await finishRun(phone);
+    await expect.poll(() => runIds(cloud(supabase)).length).toBe(3);
     const before = cloud(supabase);
-
     await openSettings(page);
     await page.locator('#theme-select').selectOption('light');
     await expect.poll(() => cloud(supabase).preferences.theme).toBe('light');
-    const data = cloud(supabase);
-    expect(runIds(data)).toEqual(runIds(before));
-    expect(data.attempts.map((attempt) => attempt.id)).toEqual(before.attempts.map((attempt) => attempt.id));
-    expect(data.bests).toEqual(before.bests);
-    expect(data.seenTextIds).toEqual(expect.arrayContaining(before.seenTextIds));
-
-    await expectBothRuns(phone, { runs: 1, best: wpm });
+    const after = cloud(supabase);
+    expect(runIds(after)).toEqual(runIds(before));
+    expect(after.attempts.map((attempt) => attempt.id)).toEqual(before.attempts.map((attempt) => attempt.id));
+    expect(after.bests).toEqual(before.bests);
+    expect(after.seenTextIds).toEqual(expect.arrayContaining(before.seenTextIds));
+    await expectBothRuns(phone, { runs: 3, best: Math.max(fast, third) });
     await expect(phone.locator('html')).toHaveAttribute('data-theme', 'light');
     expect(errors).toEqual([]);
   } finally {
@@ -1139,6 +1126,7 @@ test('undo right after a clear keeps a run saved while an earlier write was stil
 
 test('signing out while the account service never answers still finishes and keeps this device’s runs', async ({ page, supabase }) => {
   supabase.addUser(EMAIL);
+  await page.clock.install();
   await openApp(page);
   await signInWithEmail(page, EMAIL);
   let release;
@@ -1151,9 +1139,22 @@ test('signing out while the account service never answers still finishes and kee
     await finishRun(page);
     const userId = (await storageKeys(page)).find((key) => key.startsWith('stilltype-profile-v2:'));
     await page.locator('#account-trigger').click();
-    const started = Date.now();
-    await Promise.all([page.waitForEvent('load', { timeout: 45000 }), page.locator('#account-signout').click()]);
-    expect(Date.now() - started).toBeLessThan(40000);
+    // The page's own clock when it gives up on the account and ends the sign-in.
+    let abandoned;
+    await page.route(/\/auth\/v1\/logout/, async (route) => {
+      abandoned = await page.evaluate(() => Date.now());
+      await route.fallback();
+    });
+    const started = await page.evaluate(() => Date.now());
+    const signedOut = page.waitForEvent('load');
+    await page.locator('#account-signout').click();
+    // Its requests time out on the page's clock, moved on a second at a time until it gives up on them.
+    await expect.poll(async () => {
+      if (abandoned === undefined) await page.clock.runFor(1000);
+      return abandoned !== undefined;
+    }, { intervals: [100], timeout: 20000 }).toBe(true);
+    await signedOut;
+    expect(abandoned - started).toBeLessThan(40000);
     await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
     // Nothing reached the account, so the run stays on the device for the next sign-in.
     expect(await storageKeys(page)).toContain(userId);
@@ -1217,28 +1218,6 @@ async function expectNoMemberCalls(page, calls) {
   expect(await storageKeys(page)).toEqual([]);
 }
 
-test('a tab open when another signs out having sent everything starts again as a guest', async ({ page, context, supabase }) => {
-  supabase.addUser(EMAIL);
-  const errors = [];
-  await openApp(page);
-  await signInWithEmail(page, EMAIL);
-  const other = await extraPage(context, supabase, errors);
-  const calls = memberCalls(other);
-  await openApp(other);
-  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  expect(calls.length).toBeGreaterThan(0);
-
-  await page.locator('#account-trigger').click();
-  await Promise.all([page.waitForEvent('load'), page.locator('#account-signout').click()]);
-  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
-  // Everything had reached the account, so the sign-out left no marker, only a removed cache.
-  expect(await storageKeys(page)).toEqual([]);
-  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
-  await expectNoMemberCalls(other, calls);
-  expect(runIds(cloud(supabase))).toEqual([]);
-  expect(errors).toEqual([]);
-});
-
 for (const next of [null, EMAIL, 'second@stilltype.test']) {
   const then = !next ? 'as a guest' : next === EMAIL ? 'as the same account, signed in again' : 'as the account signed in since';
   test(`a tab mid-run when another signs out having sent everything finishes the run, then starts again ${then}`, async ({ page, context, supabase }) => {
@@ -1254,6 +1233,7 @@ for (const next of [null, EMAIL, 'second@stilltype.test']) {
     await chooseWords(other, 10);
     await expect.poll(() => cloud(supabase)?.preferences.count).toBe(10);
     await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    expect(calls.length).toBeGreaterThan(0);
     const text = await passageText(other);
     await typeInto(other, text.slice(0, 3));
 
