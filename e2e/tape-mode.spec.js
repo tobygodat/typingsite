@@ -315,6 +315,7 @@ for (const easing of [false, true]) test(`leaving a scrolled ghost race for the 
   await page.keyboard.press('Control+k');
   await page.keyboard.type('standard');
   await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('standard test · 60 seconds');
+  if (easing) expect(await display.evaluate((node) => node.getAnimations().length)).toBeGreaterThan(0);
   await page.keyboard.press('Enter');
   await expect(page.locator('body')).toHaveAttribute('data-tape', 'true');
   await page.waitForFunction(() => window.tapeFrames.length >= 30);
@@ -497,13 +498,14 @@ test('switching layouts mid-run keeps the run going and the caret in view', asyn
   await expect(page.locator('#typing-status')).toHaveText('In progress');
 });
 
-// A realistic run, roughly 80 wpm with one slip, then a pointer nudge so the chrome is back.
+// A run with one slip (typed at about 80 wpm when taking screenshots), then a pointer nudge so the chrome is back.
 async function midRun(page) {
+  const delay = process.env.SCREENSHOTS ? 150 : 0;
   await chooseWords(page, 50);
   const text = await passageText(page);
-  await typeInto(page, text.slice(0, 48), '#typing-input', { delay: 150 });
-  await page.keyboard.type(text[48] === 'x' ? 'z' : 'x', { delay: 150 });
-  await page.keyboard.type(text.slice(49, 76), { delay: 150 });
+  await typeInto(page, text.slice(0, 48), '#typing-input', { delay });
+  await page.keyboard.type(text[48] === 'x' ? 'z' : 'x', { delay });
+  await page.keyboard.type(text.slice(49, 76), { delay });
   await expect(page.locator('#text-display .char.wrong')).toHaveCount(1);
   await page.mouse.move(5, 5);
   await page.mouse.move(400, 300, { steps: 4 });
@@ -513,6 +515,7 @@ async function midRun(page) {
 
 for (const scheme of ['dark', 'light']) {
   test(`screenshot · ${scheme} desktop mid-run`, async ({ page }, testInfo) => {
+    test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);
     await setTape(page, true);
@@ -524,17 +527,18 @@ for (const scheme of ['dark', 'light']) {
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test('screenshot · 390px mid-run', async ({ page }, testInfo) => {
+  test('390px mid-run has no sideways overflow', async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
     await setTape(page, true);
     await midRun(page);
     expect(await overflow(page)).toBeLessThanOrEqual(0);
-    await page.screenshot({ path: shotPath(testInfo, 'tape-mobile') });
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: shotPath(testInfo, 'tape-mobile') });
   });
 });
 
 test('screenshot · the settings row', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
   await openSettings(page);
