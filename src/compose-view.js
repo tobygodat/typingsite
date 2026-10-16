@@ -14,6 +14,7 @@ import {
 } from './compose.js';
 import { drawCaret, holdsCaretStill } from './compose-caret.js';
 import { KEY_OUTCOME } from './sound.js';
+import { formatSpeed, showSpeed, unitLabel } from './units.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -145,12 +146,12 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
   function renderResult(summary, { endedBy, counted, saved }) {
     setText($('compose-result-heading'), resultHeading(summary, endedBy, counted));
     // IME text was never keyed, so neither rate means anything.
-    setText($('compose-wpm'), unsupported ? '—' : summary.wpm ?? '—');
+    showSpeed($('compose-wpm'), unsupported ? null : summary.wpm);
     setText($('compose-backspace'), unsupported ? '—' : summary.backspaceRate ?? '—');
     setText($('compose-active'), (summary.activeMs / 1000).toFixed(1));
     setText($('compose-characters'), summary.characters);
-    setText($('compose-definition'), 'Free-typing wpm: characters in your text ÷ 5, per minute of active typing (a pause over 2\u00a0s counts as your average gap). '
-      + `Backspace rate: ${summary.backspaces} of ${summary.keystrokes} ${summary.keystrokes === 1 ? 'keystroke was' : 'keystrokes were'} backspace or delete, held repeats included. `
+    $('compose-definition').replaceChildren(unitLabel('Free-typing {unit}: characters in your text{wpm: ÷ 5}, per minute of active typing (a pause over 2\u00a0s counts as your average gap). '),
+      `Backspace rate: ${summary.backspaces} of ${summary.keystrokes} ${summary.keystrokes === 1 ? 'keystroke was' : 'keystrokes were'} backspace or delete, held repeats included. `
       + 'Never compared with copy tests, and never a best.');
     let status = notice;
     if (counted) {
@@ -191,7 +192,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
     renderResult(summary, { endedBy, counted, saved });
     if (focus) $('compose-next').focus();
     announce(counted
-      ? `${summary.wpm} wpm free-typing speed, ${summary.backspaceRate}% backspace rate.${saved === false ? ' Couldn’t save on this device.' : ''}`
+      ? `${formatSpeed(summary.wpm)} free-typing speed, ${summary.backspaceRate}% backspace rate.${saved === false ? ' Couldn’t save on this device.' : ''}`
       : `${$('compose-result-heading').textContent}.`);
   }
 

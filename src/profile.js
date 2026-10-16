@@ -1,6 +1,7 @@
 // The stored profile's shape: the settings' defaults, and how a stored copy (this device's cache, another
 // tab's, the account row) is read before anything uses or merges it (normalizeProfile).
 import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
+import { DEFAULT_SPEED_UNIT, normalizeSpeedUnit } from './units.js';
 import { normalizeLengthPreferences } from './lengths.js';
 import { correctionPreference, customTextProblem, normalizeCustomText } from './typing.js';
 import { normalizeKeybindings } from './keybindings.js';
@@ -25,6 +26,7 @@ export const defaultPreferences = {
   quoteLength: 'medium',
   difficulty: 'any',
   wordList: DEFAULT_WORD_LIST,
+  speedUnit: DEFAULT_SPEED_UNIT,
   codeLanguage: DEFAULT_CODE_LANGUAGE,
   // Off: quotes the profile has seen wait until every matching quote has been shown.
   repeatQuotes: false,
@@ -59,7 +61,9 @@ export const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
 export const MIN_ACCURACY_OPTIONS = [0, 80, 90, 95, 98];
 export const MIN_WPM_OPTIONS = [0, 20, 30, 40, 60, 80, 100];
 export const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
-export const clampPace = (value) => Math.min(300, Math.max(10, Math.round(Number(value) || 80)));
+export const PACE_MIN_WPM = 10;
+export const PACE_MAX_WPM = 300;
+export const clampPace = (value) => Math.min(PACE_MAX_WPM, Math.max(PACE_MIN_WPM, Math.round(Number(value) || 80)));
 
 // A new profile has chosen no settings, so it stores none (see storedPreferences).
 export function emptyProfile() {
@@ -90,6 +94,7 @@ export function validPreferences(value) {
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
   value.sound = normalizeSoundMode(value.sound);
   value.soundVolume = normalizeSoundVolume(value.soundVolume);
+  value.speedUnit = normalizeSpeedUnit(value.speedUnit);
   if (!CODE_LANGUAGES.includes(value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
   value.wordHighlight = normalizeWordHighlight(value.wordHighlight);
   value.tape = value.tape === true;

@@ -2992,6 +2992,14 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .nav-item { padding: 0 2px; font-size: 13px; }
   .nav-label-full { display: none; }
   .nav-label-short { display: inline; }
+  /* Three-digit speed (cpm), timer and accuracy side by side. */
+  body[data-session="practice"] .live-stats { gap: var(--space-4); }
+}
+
+/* On a short phone the settings rows tighten to the touch target; the popover reserves room
+   for the account control above and scrolls when more preferences are available. */
+@media (max-width: 760px) and (max-height: 640px) {
+  .preference-row { min-height: var(--control); padding-block: 0; }
 }
 
 /* Any coarse pointer keeps a 44px minimum target. any-pointer, not pointer: a touchscreen laptop or

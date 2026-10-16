@@ -5,6 +5,7 @@
 import { LENGTHS, isPresetLength, isValidLength } from './lengths.js';
 import { MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, clampPace } from './profile.js';
 import { SOUND_LABELS } from './sound.js';
+import { SPEED_UNITS } from './units.js';
 
 export const MAX_IMPORT_LENGTH = 1_000_000;
 
@@ -197,6 +198,13 @@ export function mapMonkeytypeConfig(config) {
       const wpm = clampPace(speed);
       map('custom pace', { paceWpm: wpm }, wpm === Math.round(speed) ? `${wpm} wpm` : `${wpm} wpm (Stilltype allows 10–300)`, from);
     } else skip('custom pace', from, 'Not a speed.');
+  }
+
+  // Both keep every speed in wpm and only show it in this unit, so the numbers above need no conversion.
+  if (has('typingSpeedUnit')) {
+    const from = `typingSpeedUnit: ${shown(config.typingSpeedUnit)}`;
+    if (SPEED_UNITS.includes(config.typingSpeedUnit)) map('speed unit', { speedUnit: config.typingSpeedUnit }, config.typingSpeedUnit, from);
+    else skip('speed unit', from, 'Stilltype shows wpm or cpm.');
   }
 
   // Live speed and accuracy are one setting here; Monkeytype has one for each.

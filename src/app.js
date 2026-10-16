@@ -1,4 +1,5 @@
 import {
+  CHARS_PER_WORD,
   CORPUS_VERSION,
   CUSTOM_MAX,
   CUSTOM_MIN_CHARS,
@@ -64,6 +65,7 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, practiceRun, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
+import { RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, showSpeed, showSpeedUnit, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
 import { readMonkeytypeSettings } from './monkeytype.js';
@@ -72,7 +74,7 @@ import {
   FINGER_ZONES, LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, normalizeLessonProgress, recordLessonRun,
 } from './lessons.js';
-import { CUSTOM_ORDERS, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
+import { CUSTOM_ORDERS, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -308,7 +310,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -460,14 +462,15 @@ function practiceMinimums() {
 }
 
 function describeMinimums(minimums) {
-  return [minimums?.accuracy ? `min ${minimums.accuracy}% accuracy` : '', minimums?.wpm ? `min ${minimums.wpm} wpm` : ''].filter(Boolean).join(' · ');
+  const accuracy = minimums?.accuracy ? [`min ${minimums.accuracy}% accuracy`] : [];
+  return minimums?.wpm ? [...accuracy, accuracy.length ? ' · min ' : 'min ', speedFigure(minimums.wpm)] : accuracy;
 }
 
 // "Stopped: accuracy fell below 95%" for a run ended on the tick; "Finished under your 98% minimum
 // accuracy" for one that reached its end below it.
 function stopReason(stop) {
-  if (stop.atEnd) return `Finished under your ${stop.metric === 'accuracy' ? `${stop.minimum}% minimum accuracy` : `${stop.minimum} wpm minimum speed`}`;
-  return `Stopped: ${stop.metric === 'accuracy' ? `accuracy fell below ${stop.minimum}%` : `speed fell below ${stop.minimum} wpm`}`;
+  if (stop.atEnd) return ['Finished under your ', ...(stop.metric === 'accuracy' ? [`${stop.minimum}% minimum accuracy`] : [speedFigure(stop.minimum), ' minimum speed'])];
+  return ['Stopped: ', ...(stop.metric === 'accuracy' ? [`accuracy fell below ${stop.minimum}%`] : ['speed fell below ', speedFigure(stop.minimum)])];
 }
 
 // Strict space and quick end appear only when they differ from the defaults, as in conditionKey.
@@ -495,13 +498,17 @@ function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words${run.conditions.punctuation ? ' · punctuation' : ''}${run.conditions.numbers ? ' · numbers' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
   if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
-  if (run.kind !== 'drill') return `${run.fresh === false ? 'repeated text · ' : ''}${[describeConditions(run.conditions), describeMinimums(run.minimums)].filter(Boolean).join(' · ')}`;
+  if (run.kind !== 'drill') {
+    const minimums = describeMinimums(run.minimums);
+    return [`${run.fresh === false ? 'repeated text · ' : ''}${describeConditions(run.conditions)}`, ...(minimums.length ? [' · ', ...minimums] : [])];
+  }
   return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}${describeRules(run.conditions)}`;
 }
 
 function describeLesson(run) {
   const index = LESSONS.findIndex((lesson) => lesson.id === run.conditions.lesson);
-  return `lesson ${index + 1} of ${LESSONS.length} · keys ${lessonKeys(index).join(' ')} · ${makeupShort(index, run.lesson)} · pass at ${LESSON_ACCURACY}% accuracy and ${LESSONS[index].wpm} wpm · ${inputName(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}`;
+  return [`lesson ${index + 1} of ${LESSONS.length} · keys ${lessonKeys(index).join(' ')} · ${makeupShort(index, run.lesson)} · pass at ${LESSON_ACCURACY}% accuracy and `,
+    speedFigure(LESSONS[index].wpm), ` · ${inputName(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}`];
 }
 
 // Lesson runs carry their own conditions: never comparable with a practice key, never a best.
@@ -527,6 +534,14 @@ function signed(value, unit) {
   const sign = value > 0 ? '+' : value < 0 ? '−' : '';
   return `${sign}${Math.abs(value)} ${unit}`;
 }
+
+// Copy that holds a speed is a list of parts, each speed a figure that re-texts with the unit (src/units.js).
+// Empty strings, missing values and false are left out: an element with nothing to say stays :empty, a run
+// without an error count shows none rather than "undefined", and a part written `when && part` can drop out.
+function setParts(node, parts) {
+  node.replaceChildren(...[parts].flat(Infinity).filter((part) => part !== '' && part !== null && part !== undefined && part !== false));
+}
+const plain = (parts) => [parts].flat(Infinity).map((part) => (part instanceof Node ? part.textContent : part)).join('');
 
 // The live numbers tick ten times a second; only touch the DOM when the text changes.
 function setText(element, value) {
@@ -594,7 +609,7 @@ function showBest() {
   // Code runs have their own key but never set a best. (A custom session over code says it isn't counted.)
   if (key && (attempt?.conditions || conditions()).mode === 'code') { $('best').textContent = 'Code runs aren’t ranked'; return; }
   const best = key && profile.bests[key];
-  $('best').textContent = !key ? 'Not counted' : best ? `Best · ${best.wpm} wpm` : 'No best yet';
+  setParts($('best'), !key ? 'Not counted' : best ? ['Best · ', speedFigure(best.wpm)] : 'No best yet');
 }
 
 function resolvedTheme() {
@@ -683,6 +698,7 @@ function applyPreferences() {
   $('quote-length').value = prefs.quoteLength;
   $('quote-difficulty').value = prefs.difficulty;
   $('word-list').value = prefs.wordList;
+  applySpeedUnit();
   $('repeat-quotes-toggle').checked = prefs.repeatQuotes;
   keybindingEditor?.refresh();
   document.querySelectorAll('.restart-key-hint').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.restart); });
@@ -718,13 +734,27 @@ function applySoundPreferences() {
   $('sound-volume-value').textContent = `${prefs.soundVolume}%`;
 }
 
+// Display only: every speed and unit word on screen re-texts in place (src/units.js), so nothing restarts
+// and open rows and focus stay as they are. Only text re-texts: a speed placed in an attribute or drawn in
+// SVG has to be redrawn here, as the raw speed's tooltip, the words' spoken paces and the two charts are
+// (the pace field follows in showPace).
+function applySpeedUnit() {
+  $('speed-unit').value = prefs.speedUnit;
+  const changed = showSpeedUnit(prefs.speedUnit);
+  $('result-raw-row').title = unitText(RAW_SPEED_DEFINITION);
+  if (!changed) return;
+  labelWords();
+  if (shownResult && rateShown(shownResult)) renderSpeedGraph($('speed-graph'), shownResult, { animate: false });
+  if ($('progress-trend').childElementCount) redrawTrend();
+}
+
 // Minimums decide which practice runs count, and custom text never counts, so a custom run has none and
 // runs to the end like a drill: the note stands aside while Custom or composing is on, as the test
 // controls do, and while the standard test is selected (practiceMinimums).
 function showMinimumNote() {
   const minimums = describeMinimums(practiceMinimums());
-  $('minimum-note').textContent = minimums;
-  $('minimum-note').hidden = !minimums || customOpen || composeOpen || sessionKind === 'custom';
+  setParts($('minimum-note'), minimums);
+  $('minimum-note').hidden = !minimums.length || customOpen || composeOpen || sessionKind === 'custom';
 }
 
 // Why a rule switch can't change the session on hand, shown under it and read as its description.
@@ -1335,7 +1365,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
       $('typing-status').className = 'badge badge-warning';
       $('condition-line').textContent = describeConditions();
       $('input-help').textContent = 'Try another quote length or difficulty.';
-      for (const id of ['live-wpm', 'live-accuracy', 'timer']) $(id).textContent = '—';
+      showSpeed($('live-wpm'), null);
+      for (const id of ['live-accuracy', 'timer']) $(id).textContent = '—';
       $('progress-bar').style.setProperty('--progress', '0');
       $('progress-track').setAttribute('aria-valuenow', '0');
       configureSessionCopy();
@@ -1383,7 +1414,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
   // Open practice hides the condition line, so a repeated passage says so in the footer, before and during the run.
   setPassageNotice(repeatedTextNotice());
-  $('condition-line').textContent = describeRun(attempt);
+  setParts($('condition-line'), describeRun(attempt));
   configureSessionCopy();
   updateLive(true);
   if (show) switchView('practice');
@@ -1414,7 +1445,7 @@ function showUnavailableRetest(reason, sample = 'no matching fresh text') {
   $('comparison-status').textContent = 'No fair retest available.';
   $('comparison-accuracy').textContent = '—';
   $('comparison-timing').textContent = '—';
-  $('comparison-wpm').textContent = '—';
+  showSpeed($('comparison-wpm'), null);
   $('comparison-sample').textContent = sample;
   $('comparison-caveat').textContent = reason;
   announce(reason);
@@ -1933,7 +1964,7 @@ function ghostPace(mode = prefs.paceCaret) {
   // In a lesson the pace line runs at the lesson's speed target, whatever the pace setting.
   if (attempt?.kind === 'lesson') {
     const wpm = LESSONS[lessonIndex].wpm;
-    return { wpm, cps: (wpm * 5) / 60, fromBest: false, fallback: false };
+    return { wpm, cps: (wpm * CHARS_PER_WORD) / 60, fromBest: false, fallback: false };
   }
   // The active attempt knows its real input class (from the press that started it, or a later touch).
   const key = conditionKey(attempt?.conditions || conditions());
@@ -1949,7 +1980,7 @@ function ghostPace(mode = prefs.paceCaret) {
   const fromBest = mode === 'best' && Boolean(wpm);
   const fallback = !wpm;
   wpm = wpm || 60;
-  return { wpm, cps: (wpm * 5) / 60, fromBest, fallback };
+  return { wpm, cps: (wpm * CHARS_PER_WORD) / 60, fromBest, fallback };
 }
 
 function showPace() {
@@ -1958,13 +1989,25 @@ function showPace() {
   // A ghost race's caret is the friend's run, not the pacer, so the pace isn't labelled there.
   const shown = on && sessionKind !== 'challenge';
   $('pace-label').hidden = !shown;
-  $('pace-label').textContent = shown ? `pace ${pace.wpm} wpm` : '';
+  setParts($('pace-label'), shown ? ['pace ', speedFigure(pace.wpm)] : '');
   $('pace-select').value = prefs.paceCaret;
-  // A speed being typed in stays as typed when this redraws (another tab's save taken in, say): setting
-  // the field would drop the edit without a change event. Leaving the field saves it and redraws.
-  if (document.activeElement !== $('pace-wpm')) $('pace-wpm').value = prefs.paceWpm;
+  // The custom pace field holds its speed in its own unit (data-unit), with its range beside it in that unit.
+  // A speed being typed in (focused, and not what was last written here, data-shown) stays as typed, in the
+  // unit it was typed in, when this redraws (another tab's save taken in, say): setting the field would drop
+  // the edit without a change event. Leaving the field redraws it.
+  const field = $('pace-wpm');
+  if (document.activeElement !== field || field.value === field.dataset.shown) {
+    const unit = prefs.speedUnit;
+    field.dataset.unit = unit;
+    field.dataset.shown = speedValue(prefs.paceWpm, unit);
+    field.value = field.dataset.shown;
+    field.min = speedValue(PACE_MIN_WPM, unit);
+    field.max = speedValue(PACE_MAX_WPM, unit);
+    field.step = speedValue(1, unit);
+  }
+  $('pace-range').textContent = `${formatSpeed(PACE_MIN_WPM, { bare: true }, field.dataset.unit)}–${formatSpeed(PACE_MAX_WPM, {}, field.dataset.unit)}`;
   $('pace-custom').hidden = prefs.paceCaret !== 'custom';
-  $('pace-note').textContent = on && prefs.paceCaret !== 'custom' ? (pace.fallback ? 'no runs yet — 60 wpm' : `${pace.wpm} wpm`) : '';
+  setParts($('pace-note'), on && prefs.paceCaret !== 'custom' ? [pace.fallback ? 'no runs yet — ' : '', speedFigure(pace.wpm)] : '');
   document.body.dataset.ghost = on ? 'on' : 'off';
 }
 
@@ -2021,7 +2064,7 @@ function updateLive(reset = false, at = now()) {
     liveSecond = second;
     const live = second >= 0 && boundedElapsed >= RATE_FLOOR_MS ? replayAttempt({ ...attempt, endedAt: boundedElapsed }) : null;
     const score = live?.score;
-    setText($('live-wpm'), score ? score.wpm : '—');
+    showSpeed($('live-wpm'), score ? score.wpm : null);
     setText($('live-accuracy'), score ? score.accuracy : '—');
     // Minimums are judged on this once-a-second tick, after the grace period, never per keystroke.
     // At the run's end (its duration, or its last character) this live check stands aside: the
@@ -2213,11 +2256,11 @@ function renderPracticeWords(completed) {
   if (!words.length) return;
   // Sentences about this run's words, set in Literata like the word pace line, and each number is a
   // book-face figure (.num), never the mono of the conditions line.
-  const figure = (value) => element('span', String(value), 'num');
+  const figure = (value) => element('span', value, 'num');
   const lines = [
     missed.length && [`missed first try: ${missed.map(wordCopy).join(', ')}`],
-    slow.length && ['slowest in this run: ', ...slow.flatMap((item, index) => [`${index ? ', ' : ''}${item.word} `, figure(item.wpm), ' wpm']),
-      ' · median ', figure(medianWpm), ' wpm over ', figure(timedCount), ' clean words'],
+    slow.length && ['slowest in this run: ', ...slow.flatMap((item, index) => [`${index ? ', ' : ''}${item.word} `, figure(speedFigure(item.wpm, { bare: true })), ' ', unitLabel()]),
+      ' · median ', figure(speedFigure(medianWpm, { bare: true })), ' ', unitLabel(), ' over ', figure(timedCount), ' clean words'],
   ].filter(Boolean);
   evidence.replaceChildren(...lines.flatMap((parts, index) => (index ? ['\n', ...parts] : parts)));
   button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
@@ -2282,12 +2325,13 @@ function resultHeadline(completed) {
     if (!resultPassageBefore) return 'Repeated text · not counted toward your best';
     const before = resultPassageBefore.score.wpm;
     const change = completed.summary.score.wpm - before;
-    return change === 0 ? `Repeated text · matched your best of ${before} on this passage` : `Repeated text · ${change > 0 ? '+' : '−'}${Math.abs(change)} vs your best of ${before} on this passage`;
+    return change === 0 ? ['Repeated text · matched your best of ', speedFigure(before), ' on this passage']
+      : ['Repeated text · ', speedFigure(change, { bare: true, signed: true }), ' vs your best of ', speedFigure(before), ' on this passage'];
   }
   if (!resultBestBefore) return 'First run at these settings';
   const delta = completed.summary.score.wpm - resultBestBefore.wpm;
-  if (delta === 0) return `Matched your best of ${resultBestBefore.wpm}`;
-  return `${delta > 0 ? '+' : '−'}${Math.abs(delta)} vs your best of ${resultBestBefore.wpm}`;
+  if (delta === 0) return ['Matched your best of ', speedFigure(resultBestBefore.wpm)];
+  return [speedFigure(delta, { bare: true, signed: true }), ' vs your best of ', speedFigure(resultBestBefore.wpm)];
 }
 
 function retestLength(value) {
@@ -2313,21 +2357,20 @@ function renderResults(completed, saved) {
   const counted = completed.status === 'complete';
   const firstErrors = replay.firstAttempts.filter((item) => !item.correct).length;
   showResult(completed);
-  const speed = rateShown(completed) ? `${replay.score.wpm} wpm` : 'Too quick to time';
-  $('result-wpm').textContent = rateShown(completed) ? replay.score.wpm : '—';
+  const speed = rateShown(completed) ? formatSpeed(replay.score.wpm) : 'Too quick to time';
+  showSpeed($('result-wpm'), rateShown(completed) ? replay.score.wpm : null);
   $('result-accuracy').textContent = replay.score.accuracy;
   $('result-errors').textContent = firstErrors;
   $('result-time').textContent = `${(replay.elapsedMs / 1000).toFixed(1)} s`;
   renderSecondaryStats(completed);
-  $('result-conditions').textContent = describeRun(completed);
-  $('result-delta').textContent = resultHeadline(completed);
+  setParts($('result-conditions'), describeRun(completed));
+  setParts($('result-delta'), resultHeadline(completed));
   const repeated = repeatedResult(completed);
   const stopped = completed.stopped ? stopReason(completed.stopped) : '';
+  const uncounted = counted ? '' : completed.failed ? 'The correction setting ended this run, so it isn’t counted.' : stopped ? [stopped, ', so it isn’t counted.'] : 'Focus or input changed during the run, so it isn’t counted.';
   // A retest reports a failed save once, in the comparison caveat.
-  $('result-comparison-note').textContent = [
-    counted ? '' : completed.failed ? 'The correction setting ended this run, so it isn’t counted.' : stopped ? `${stopped}, so it isn’t counted.` : 'Focus or input changed during the run, so it isn’t counted.',
-    saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
-  ].filter(Boolean).join(' ');
+  const unsaved = saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.';
+  setParts($('result-comparison-note'), [uncounted, uncounted && unsaved ? ' ' : '', unsaved]);
 
   if (sessionKind === 'practice' || sessionKind === 'daily') {
     activeRecommendation = trainingRecommendation(completed.conditions, completed);
@@ -2341,7 +2384,7 @@ function renderResults(completed, saved) {
   renderTraining();
   renderDaily();
   $('comparison-panel').hidden = true;
-  const failure = completed.failed ? `${completed.kind === 'drill' ? 'Drill' : 'Run'} failed, ${completed.failed}. ` : stopped ? `${stopped}. ` : '';
+  const failure = completed.failed ? `${completed.kind === 'drill' ? 'Drill' : 'Run'} failed, ${completed.failed}. ` : stopped ? `${plain(stopped)}. ` : '';
   $('ghost-result').hidden = completed.kind !== 'challenge';
   renderGhostOffer(completed);
   announce([`${failure}${speed}, ${replay.score.accuracy}% accuracy.`,
@@ -2409,7 +2452,7 @@ function renderComparison(before, after, saved) {
   panel.dataset.outcome = outcome;
   $('comparison-status').textContent = comparison.comparable ? COMPARISON_HEADINGS[comparison.state] : 'Retest complete.';
   $('comparison-accuracy').textContent = comparison.comparable ? signed(comparison.accuracyDelta, 'pp') : '—';
-  $('comparison-wpm').textContent = comparison.comparable ? signed(comparison.wpmDelta, 'wpm') : '—';
+  showSpeed($('comparison-wpm'), comparison.comparable ? comparison.wpmDelta : null);
 
   const trainedTarget = trainingContext?.target || selectedTarget;
   // No comparison means no timing comparison either: a retest that isn't compared (stopped under a
@@ -2619,7 +2662,7 @@ function renderSecondaryStats(completed) {
   const steady = consistency(completed, replay);
   const chars = characterBreakdown(completed, replay);
   // Raw speed is a rate too, so a custom run that ends inside a second shows none, as for net wpm.
-  $('result-raw').textContent = rateShown(completed) ? rawWpm(completed, replay) : '—';
+  showSpeed($('result-raw'), rateShown(completed) ? rawWpm(completed, replay) : null);
   $('result-consistency').textContent = steady ?? '—';
   // A break opportunity after each slash, so a long breakdown wraps instead of widening the card.
   $('result-chars').replaceChildren(...[chars.correct, chars.incorrect, chars.extra, chars.missed]
@@ -2631,7 +2674,7 @@ function renderSecondaryStats(completed) {
 // shows that word's pace in the line below, so the numbers never depend on a hover tooltip.
 let wordItems = [];
 let wordIndex = null;
-const wordPace = (item) => (item.wpm === null ? 'no pace' : `${item.wpm} wpm`);
+const wordPace = (item) => (item.wpm === null ? 'no pace' : formatSpeed(item.wpm));
 
 function renderWords(completed, replay) {
   wordItems = wordHistory(completed, replay);
@@ -2640,12 +2683,20 @@ function renderWords(completed, replay) {
   $('result-words').replaceChildren(...wordItems.flatMap((item, i) => {
     const word = element('span', item.word, item.wrong ? 'word-miss' : '');
     word.setAttribute('role', 'option');
-    word.setAttribute('aria-label', `${item.word}, ${wordPace(item)}${item.wrong ? ', mistyped' : ''}`);
     word.dataset.index = String(i);
-    word.title = wordPace(item);
     return i ? [' ', word] : [word];
   }));
+  labelWords();
   selectWord(null);
+}
+
+// Each word's pace in the chosen unit. A unit change relabels the list in place, keeping the selection.
+function labelWords() {
+  $('result-words').querySelectorAll('[role="option"]').forEach((word) => {
+    const item = wordItems[Number(word.dataset.index)];
+    word.setAttribute('aria-label', `${item.word}, ${wordPace(item)}${item.wrong ? ', mistyped' : ''}`);
+    word.title = wordPace(item);
+  });
 }
 
 // Before any choice the first word is the tab stop and the line names the fastest and slowest words.
@@ -2654,7 +2705,7 @@ function wordSummary() {
   if (paced.length < 2) return wordItems.length ? 'select a word for its pace' : '';
   const fastest = paced.reduce((best, item) => (item.wpm > best.wpm ? item : best));
   const slowest = paced.reduce((low, item) => (item.wpm < low.wpm ? item : low));
-  return `fastest “${fastest.word}” ${fastest.wpm} wpm · slowest “${slowest.word}” ${slowest.wpm} wpm · select a word for its pace`;
+  return [`fastest “${fastest.word}” `, speedFigure(fastest.wpm), ` · slowest “${slowest.word}” `, speedFigure(slowest.wpm), ' · select a word for its pace'];
 }
 
 function selectWord(index, { focus = false } = {}) {
@@ -2665,7 +2716,7 @@ function selectWord(index, { focus = false } = {}) {
     word.setAttribute('aria-selected', String(i === wordIndex));
   });
   const item = wordItems[wordIndex];
-  $('result-word-detail').textContent = item ? `“${item.word}” · ${wordPace(item)}${item.wrong ? ' · mistyped' : ''}` : wordSummary();
+  setParts($('result-word-detail'), item ? [`“${item.word}” · `, item.wpm === null ? 'no pace' : speedFigure(item.wpm), item.wrong ? ' · mistyped' : ''] : wordSummary());
   if (focus && item) words[wordIndex].focus();
 }
 
@@ -2681,7 +2732,7 @@ function moveWordFocus(event) {
 
 function element(tag, text, className = '') {
   const node = document.createElement(tag);
-  node.textContent = text;
+  setParts(node, text);
   node.className = className;
   return node;
 }
@@ -2814,8 +2865,8 @@ function renderStandardScore() {
   const source = { ...standardConditions(sourceInput), layout: inputLayout(sourceInput) };
   const score = onTouch ? touch : keyboard;
   const other = onTouch ? keyboard : touch;
-  setText($('standard-best'), score.best ?? '—');
-  setText($('standard-median'), score.median === null ? '—' : Number(score.median.toFixed(1)));
+  showSpeed($('standard-best'), score.best);
+  showSpeed($('standard-median'), score.median);
   // A dash stands alone: "— wpm" would read as a measurement.
   $('standard-best').nextElementSibling.hidden = score.best === null;
   $('standard-median').nextElementSibling.hidden = score.median === null;
@@ -2830,8 +2881,7 @@ function renderStandardScore() {
   if (!score.total && score.best !== null) note = `Your best is kept, but your standard runs are older than the newest ${kept} runs that Progress keeps, so the median waits for ${STANDARD_MIN_RUNS} new ones.`;
   else if (!score.total) note = 'No standard runs yet. Every one is fresh text from the same fixed recipe, so the scores stay comparable.';
   else if (!score.settled) note = `${plural(score.total, 'standard run')} kept.${olderBest} The median appears after ${STANDARD_MIN_RUNS}, so a single fast or slow run can’t set your score.`;
-  if (other.best !== null) note += ` Your ${onTouch ? 'physical keyboard' : 'touch'} best is ${other.best} wpm.`;
-  setText($('standard-score-note'), note);
+  setParts($('standard-score-note'), [note, other.best === null ? '' : [` Your ${onTouch ? 'physical keyboard' : 'touch'} best is `, speedFigure(other.best), '.']]);
 }
 
 // Static heatmap: coral steps by first-attempt miss rate; thin evidence stays neutral.
@@ -3051,9 +3101,9 @@ function renderHistory() {
   const repeats = runRows.length - matching.length;
   const repeatCopy = repeats ? ` ${repeats} repeated-text ${repeats === 1 ? 'run is' : 'runs are'} listed below but left out of the chart and weekly medians.` : '';
   const week = weeklyChange(eligible, key);
-  $('progress-week').textContent = week.wpm === null
+  setParts($('progress-week'), week.wpm === null
     ? `This week: ${week.current.length} matching runs. A week-to-week change needs runs in both this week and the preceding week.`
-    : `Weekly median: ${signed(week.wpm, 'wpm')} · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs this week / ${week.previous.length} last week. This describes your runs, not a proven learning effect.`;
+    : ['Weekly median: ', speedFigure(week.wpm, { signed: true }), ` · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs this week / ${week.previous.length} last week. This describes your runs, not a proven learning effect.`]);
   renderTrend($('progress-trend'), matching, openHistoryRun);
   $('progress-trend-note').textContent = matching.length
     ? `${matching.length} completed practice runs and retests on fresh text, oldest to newest. Select a point or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs appear only in All saved runs.' : ''}${repeatCopy}`
@@ -3065,7 +3115,7 @@ function renderHistory() {
     const row = element('details', '', 'run-row');
     row.dataset.runId = run.id;
     const summary = element('summary', '', 'run-summary');
-    summary.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
+    summary.append(element('strong', [speedFigure(run.score.wpm), ` · ${run.score.accuracy}%`], 'num'),
       element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : run.conditions?.mode === 'standard' ? 'standard' : 'practice'}${run.fresh === false ? ' · repeated text' : ''} · view details`));
     const detail = element('div', '', 'run-detail');
     detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
@@ -3096,15 +3146,15 @@ function renderHistory() {
     }
     row.querySelector('.history-accuracy').textContent = signed(loop.comparison.accuracyDelta, 'pp');
     const measures = row.querySelectorAll('.history-measure span');
-    if (measures[1]) measures[1].textContent = 'Corrected wpm';
-    row.querySelector('.history-timing').textContent = signed(loop.comparison.wpmDelta, 'wpm');
+    if (measures[1]) measures[1].replaceChildren(unitLabel('Corrected {unit}'));
+    row.querySelector('.history-timing').replaceChildren(speedFigure(loop.comparison.wpmDelta, { signed: true }));
     const status = row.querySelector('.history-status');
     status.textContent = loop.comparison.state;
     status.className = `history-status badge ${loop.comparison.state === 'improved' ? 'badge-success' : loop.comparison.state === 'regressed' ? 'badge-danger' : 'badge-neutral'}`;
     const detail = row.querySelector('.history-detail');
     detail.append(scoreFacts([
-      ['before', loop.comparison.before ? `${loop.comparison.before.wpm} wpm · ${loop.comparison.before.accuracy}%` : 'Not retained in this older comparison'],
-      ['after', loop.comparison.after ? `${loop.comparison.after.wpm} wpm · ${loop.comparison.after.accuracy}%` : 'Not retained in this older comparison'],
+      ['before', loop.comparison.before ? [speedFigure(loop.comparison.before.wpm), ` · ${loop.comparison.before.accuracy}%`] : 'Not retained in this older comparison'],
+      ['after', loop.comparison.after ? [speedFigure(loop.comparison.after.wpm), ` · ${loop.comparison.after.accuracy}%`] : 'Not retained in this older comparison'],
       ['drill', loop.drillCompleted ? `${loop.drill?.duration || 60} s · ${loop.target || 'general'}` : 'Skipped'],
     ]));
     const timing = loop.targetTiming;
@@ -3129,13 +3179,13 @@ function renderComposeHistory() {
   $('compose-history').hidden = !list.length;
   if (!list.length) return;
   const shown = [...list].reverse().slice(0, 10);
-  $('compose-history-note').textContent = 'Free-typing wpm is characters in your text ÷ 5 per minute of active typing, a pause over 2\u00a0s counting as your average gap. '
-    + `Kept apart from copy-test charts and never a best. ${list.length} ${list.length === 1 ? 'session' : 'sessions'} saved`
-    + `${list.length > shown.length ? `; the newest ${shown.length} are shown` : ''}. Only these numbers are kept, never your words.`;
+  setParts($('compose-history-note'), [unitLabel('Free-typing {unit} is characters in your text{wpm: ÷ 5} per minute of active typing, a pause over 2\u00a0s counting as your average gap. '),
+    `Kept apart from copy-test charts and never a best. ${list.length} ${list.length === 1 ? 'session' : 'sessions'} saved`
+    + `${list.length > shown.length ? `; the newest ${shown.length} are shown` : ''}. Only these numbers are kept, never your words.`]);
   $('compose-history-list').replaceChildren(...shown.map((item) => {
     const row = element('article', '', 'compose-row');
     const main = element('div', '', 'compose-row-main');
-    main.append(element('strong', `${item.wpm} wpm`, 'num'), element('span', `${item.backspaceRate}% backspace rate`, 'num'));
+    main.append(element('strong', speedFigure(item.wpm), 'num'), element('span', `${item.backspaceRate}% backspace rate`, 'num'));
     const prompt = promptText(item.promptId);
     row.append(main, element('p', prompt ? `“${prompt}”` : 'A prompt no longer offered'),
       element('p', `${dateCopy(item.at)} · ${item.characters} characters · ${item.backspaces} ${item.backspaces === 1 ? 'backspace' : 'backspaces'} in ${item.keystrokes} keystrokes · ${(item.activeMs / 1000).toFixed(1)} s active of ${(item.elapsedMs / 1000).toFixed(1)} s · ${item.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`, 'condition-copy'));
@@ -3173,13 +3223,13 @@ function renderDaily() {
   const today = completed.filter((r) => r.challengeDate === daily.day && conditionKey(r.conditions) === conditionKey(dailyConditions()));
   const best = [...today].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
   const layout = isDefaultLayout(prefs.layout) ? '' : ` in ${layoutLabel(prefs.layout)}`;
-  $('daily-status').textContent = best
-    ? `Today’s best: ${best.score.wpm} wpm · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard${layout}.${session ? '' : ' Sign in to save future results beyond this tab.'}`
-    : `No completed physical-keyboard attempt${layout} today.${session ? ' Your results save to your account.' : ' Results last in this tab; sign in to save future attempts.'}`;
+  setParts($('daily-status'), best
+    ? ['Today’s best: ', speedFigure(best.score.wpm), ` · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard${layout}.${session ? '' : ' Sign in to save future results beyond this tab.'}`]
+    : `No completed physical-keyboard attempt${layout} today.${session ? ' Your results save to your account.' : ' Results last in this tab; sign in to save future attempts.'}`);
   $('daily-history-panel').hidden = !completed.length;
   $('daily-history').replaceChildren(...[...completed].reverse().slice(0, 30).map((run) => {
     const row = element('div', '', 'daily-result');
-    row.append(element('strong', `${run.score.wpm} wpm · ${run.score.accuracy}%`, 'num'),
+    row.append(element('strong', [speedFigure(run.score.wpm), ` · ${run.score.accuracy}%`], 'num'),
       element('span', `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${inputLabel(run.conditions)}`));
     return row;
   }));
@@ -3206,7 +3256,7 @@ function fingerNames(lesson) {
 function lessonMeta(index) {
   const lesson = LESSONS[index];
   const tries = profile.lessons[lesson.id]?.tries;
-  return `${lessonFingers(lesson)} · pass at ${LESSON_ACCURACY}% accuracy and ${lesson.wpm} wpm in one run${tries ? ` · ${tries} ${tries === 1 ? 'try' : 'tries'} so far` : ''}`;
+  return [`${lessonFingers(lesson)} · pass at ${LESSON_ACCURACY}% accuracy and `, speedFigure(lesson.wpm), ` in one run${tries ? ` · ${tries} ${tries === 1 ? 'try' : 'tries'} so far` : ''}`];
 }
 
 // Like every run, a lesson is classed by the press that started it (resetSession reads activationInput).
@@ -3254,7 +3304,7 @@ function finishLesson(completed, valid) {
   }
   lessonResult = { failed: completed.failed, index: lessonIndex, score, elapsedMs, errors: firstAttempts.filter((item) => !item.correct).length, outcome, firstPass, recorded, at, touch, saved, valid };
   switchView('learn');
-  announce(`${lessonHeadline(lessonResult)} ${score.accuracy}% accuracy, ${score.wpm} wpm.`);
+  announce(`${plain(lessonHeadline(lessonResult))} ${score.accuracy}% accuracy, ${formatSpeed(score.wpm)}.`);
   // Show the result from the top of the page, or from the result itself when the page is too short.
   scrollTo({ top: 0, behavior: 'instant' });
   if ($('lesson-current').getBoundingClientRect().bottom > innerHeight) $('lesson-current').scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -3282,8 +3332,8 @@ function lessonHeadline(result) {
     return `Lesson ${n} passed. ${keysLabel(keys)} ${keys.length > 1 ? 'are' : 'is'} next.`;
   }
   const { accuracyMet, speedMet, accuracyTarget, wpmTarget } = result.outcome;
-  const needs = [accuracyMet ? '' : `${accuracyTarget}% accuracy`, speedMet ? '' : `${wpmTarget} wpm`].filter(Boolean).join(' and ');
-  return `Not yet. Lesson ${n} needs ${needs} in one run.`;
+  const needs = [accuracyMet ? '' : `${accuracyTarget}% accuracy`, !accuracyMet && !speedMet ? ' and ' : '', speedMet ? '' : speedFigure(wpmTarget)];
+  return [`Not yet. Lesson ${n} needs `, needs, ' in one run.'];
 }
 
 function lessonFacts(result) {
@@ -3305,7 +3355,7 @@ function lessonFacts(result) {
   };
   return [
     met(group('accuracy', `${score.accuracy}%`, `${outcome.accuracyTarget}% needed`), outcome.accuracyMet),
-    met(group('wpm', String(score.wpm), `${outcome.wpmTarget} needed`), outcome.speedMet),
+    met(group(unitLabel(), speedFigure(score.wpm, { bare: true }), [speedFigure(outcome.wpmTarget, { bare: true }), ' needed']), outcome.speedMet),
     group('first-try errors', String(result.errors)),
     group('time', `${(result.elapsedMs / 1000).toFixed(1)} s`),
   ];
@@ -3358,7 +3408,7 @@ function renderLessons() {
       if (complete) secondary = ['Take a practice run', startTrainingLoop];
       else if (next !== result.index) secondary = [`Start lesson ${next + 1}`, start(next)];
     }
-    if (!result.saved) meta = [meta, 'Couldn’t save on this device.'].filter(Boolean).join(' · ');
+    if (!result.saved) meta = [meta, meta ? ' · ' : '', 'Couldn’t save on this device.'];
   } else if (complete) {
     status = ['all letters in', 'badge-success'];
     heading = 'Every letter is in.';
@@ -3375,9 +3425,9 @@ function renderLessons() {
     $('lesson-status').className = `status badge ${status[1]}`;
     $('lesson-status-word').textContent = status[0];
   }
-  $('lesson-current-heading').textContent = heading;
+  setParts($('lesson-current-heading'), heading);
   $('lesson-current-copy').textContent = copy;
-  $('lesson-current-meta').textContent = meta;
+  setParts($('lesson-current-meta'), meta);
   $('lesson-facts').hidden = !result?.valid;
   $('lesson-facts').replaceChildren(...(result?.valid ? lessonFacts(result) : []));
   $('lesson-primary').textContent = primary[0];
@@ -3404,8 +3454,8 @@ function renderLessons() {
     const dot = element('span', '', 'status-dot');
     dot.setAttribute('aria-hidden', 'true');
     state.append(dot, passed ? 'passed' : open ? 'next' : 'locked');
-    const numbers = passed ? `${entry.passed.wpm} wpm · ${entry.passed.accuracy}%`
-      : entry?.last ? `${entry.tries} ${entry.tries === 1 ? 'try' : 'tries'} · last ${entry.last.wpm} wpm · ${entry.last.accuracy}%${entry.last.inputClass === 'touch' ? ' · touch input' : ''}` : '';
+    const numbers = passed ? [speedFigure(entry.passed.wpm), ` · ${entry.passed.accuracy}%`]
+      : entry?.last ? [`${entry.tries} ${entry.tries === 1 ? 'try' : 'tries'} · last `, speedFigure(entry.last.wpm), ` · ${entry.last.accuracy}%${entry.last.inputClass === 'touch' ? ' · touch input' : ''}`] : '';
     const detail = element('div', '', 'lesson-row-detail');
     detail.append(state, element('span', numbers, 'lesson-row-numbers num'));
     row.append(element('span', String(index + 1), 'lesson-number num'), main, detail);
@@ -3542,10 +3592,10 @@ function renderGhostResult() {
   $('ghost-result-rows').replaceChildren(...rows.map(({ name, score }) => {
     const row = element('article', '', 'race-result-row');
     row.append(element('strong', name));
-    for (const value of [`${score.wpm} wpm`, `${score.accuracy}% accuracy`, `${(score.elapsedMs / 1000).toFixed(1)} s`]) row.append(element('span', value, 'num'));
+    for (const value of [speedFigure(score.wpm), `${score.accuracy}% accuracy`, `${(score.elapsedMs / 1000).toFixed(1)} s`]) row.append(element('span', value, 'num'));
     return row;
   }));
-  $('ghost-result-rule').textContent = `${outcomeRule(ghost)} wpm counts correct characters kept.`;
+  setParts($('ghost-result-rule'), [`${outcomeRule(ghost)} `, unitLabel(SPEED_DEFINITION), '.']);
   const retry = ghost.state === 'failed' && (!ghost.error?.status || ghost.error.status >= 500);
   $('ghost-result-status').textContent = {
     sending: `Sending your run to ${ghost.name}…`,
@@ -3884,7 +3934,7 @@ function renderRaceResults() {
     name.textContent = result.name;
     const speed = document.createElement('span');
     speed.className = 'num';
-    speed.textContent = result.attempt.status === 'complete' ? `${score.wpm} wpm` : result.attempt.failed ? `failed · ${result.attempt.failed}` : 'interrupted';
+    speed.append(result.attempt.status === 'complete' ? speedFigure(score.wpm) : result.attempt.failed ? `failed · ${result.attempt.failed}` : 'interrupted');
     const accuracy = document.createElement('span');
     accuracy.className = 'num';
     accuracy.textContent = `${score.accuracy}% accuracy`;
@@ -3906,7 +3956,9 @@ function forgetTraining() {
   activeRecommendation = null;
   // The practised words came from the cleared runs, so Run again starts a normal test.
   wordsPassage = null;
-  for (const id of ['result-wpm', 'result-accuracy', 'result-errors', 'result-time', 'result-raw', 'result-consistency', 'result-chars']) $(id).textContent = '—';
+  showSpeed($('result-wpm'), null);
+  showSpeed($('result-raw'), null);
+  for (const id of ['result-accuracy', 'result-errors', 'result-time', 'result-consistency', 'result-chars']) $(id).textContent = '—';
   $('result-words').replaceChildren();
   wordItems = [];
   selectWord(null);
@@ -4920,6 +4972,7 @@ function bindEvents() {
   $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()));
   $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()));
   $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
+  $('speed-unit').addEventListener('change', (event) => setSpeedUnit(event.target.value));
   $('word-highlight').addEventListener('change', (event) => setWordHighlight(event.target.value));
   keybindingEditor = createKeybindingEditor({
     form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => prefs.keybindings,
@@ -4938,8 +4991,13 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
-  $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(event.target.value); setPaceCaret('custom', { speed: true }); });
-  // Left unedited, it shows any speed that arrived while it had focus (see showPace).
+  $('pace-wpm').addEventListener('change', (event) => {
+    const field = event.target;
+    prefs.paceWpm = clampPace(wpmFromSpeed(field.value, field.dataset.unit));
+    field.dataset.shown = field.value;
+    setPaceCaret('custom', { speed: true });
+  });
+  // Left unsaved, it shows any speed or unit that arrived while it was being typed in (see showPace).
   $('pace-wpm').addEventListener('blur', showPace);
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('tape-toggle').addEventListener('change', (event) => { prefs.tape = event.target.checked; applyPreferences(); saveChoice('tape'); });
@@ -4981,7 +5039,7 @@ function bindEvents() {
     if (activationInput !== 'touch' || !['ready', 'running'].includes(attempt?.status) || attempt.conditions.inputClass === 'touch') return;
     attempt.conditions.inputClass = 'touch';
     attempt.conditions.layout = inputLayout('touch');
-    $('condition-line').textContent = describeRun(attempt);
+    setParts($('condition-line'), describeRun(attempt));
     showBest();
     if (attempt.status === 'ready') armPace();
   }, true);
@@ -5296,6 +5354,13 @@ function setSoundVolume(volume, { save = true } = {}) {
   if (save) saveChoice('soundVolume');
 }
 
+// Display only: bests, comparisons and condition keys stay in wpm, so nothing is reset or re-keyed.
+function setSpeedUnit(unit) {
+  prefs.speedUnit = unit;
+  applyPreferences();
+  saveChoice('speedUnit');
+}
+
 // Strict space and quick end change how a run is scored, so a change on the practice screen starts
 // the session again as the same kind: a drill stays a drill. A session that can't take it (quick
 // end in a timed run, the daily, a retest, custom text) carries on and the preference waits for a run it applies
@@ -5379,7 +5444,7 @@ function labelPassage(fresh, exhausted) {
   passage.exhausted = exhausted;
   attempt.fresh = fresh;
   setPassageNotice(repeatedTextNotice());
-  $('condition-line').textContent = describeRun(attempt);
+  setParts($('condition-line'), describeRun(attempt));
 }
 
 // An unstarted repeated passage that repeats-off would have replaced with unseen text.
@@ -5396,7 +5461,7 @@ function setMinimum(key, value) {
   if (sessionKind !== 'practice' || !attempt) return;
   if (attempt.status === 'ready') {
     attempt.minimums = practiceMinimums();
-    $('condition-line').textContent = describeRun(attempt);
+    setParts($('condition-line'), describeRun(attempt));
   } else if (attempt.status === 'running') resetSession('practice');
 }
 
@@ -5500,12 +5565,13 @@ function paletteCommands(query) {
     { group: 'test', label: 'strict space', keywords: 'space bar early skip word mistakes input', hint: onOff(prefs.strictSpace), on: prefs.strictSpace, run: () => setInputRule('strictSpace', !prefs.strictSpace) },
     { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: prefs.minAccuracy === value ? 'current' : '', on: prefs.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
-    ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? `${value} wpm` : 'off'}`, keywords: 'min wpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
+    ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? formatSpeed(value) : 'off'}`, keywords: 'min wpm cpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
     ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     // Named "this word" / "next word" so no mode reads like the palette's "current" hint.
     ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),
     { group: 'display', label: 'one-line tape', keywords: 'tape mode single line passage layout scroll', hint: onOff(prefs.tape), on: prefs.tape, run: () => togglePreference('tape') },
+    ...[['wpm', 'words'], ['cpm', 'characters']].map(([unit, per]) => ({ group: 'display', label: `speed unit · ${unit}`, keywords: `${per} per minute speed measure`, hint: prefs.speedUnit === unit ? 'current' : '', on: prefs.speedUnit === unit, run: () => setSpeedUnit(unit) })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(prefs.keyboard && prefs.fingerMap), on: prefs.keyboard && prefs.fingerMap, run: toggleFingerMap },
@@ -5556,13 +5622,12 @@ function bindPalette() {
 function toggleGhost() {
   const on = !ghostOn();
   const pace = ghostPace('best');
-  const message = on ? `Ghost pacer · ${pace.wpm} wpm${pace.fromBest ? ' (your best)' : ''}` : 'Ghost off';
-  $('egg-feedback').textContent = message;
+  setParts($('egg-feedback'), on ? ['Ghost pacer · ', speedFigure(pace.wpm), pace.fromBest ? ' (your best)' : ''] : 'Ghost off');
   $('egg-toast').hidden = false;
   $('egg-toast').classList.toggle('is-solo', $('history-toast').hidden);
   clearTimeout(toggleGhost.timer);
   toggleGhost.timer = setTimeout(() => { $('egg-toast').hidden = true; }, 3000);
-  announce(message);
+  announce($('egg-feedback').textContent);
   setPaceCaret(on ? 'best' : 'off');
 }
 
@@ -5590,12 +5655,16 @@ new ResizeObserver(() => {
   if (!shownResult || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
   renderSpeedGraph(graph, shownResult, { animate: false });
 }).observe($('speed-graph'));
+// The trend as Progress last drew it, drawn again (at a new width, or in a new unit).
+function redrawTrend() {
+  renderTrend($('progress-trend'), filterRuns(profile.runs.filter(trendRun), $('progress-conditions').value, $('progress-period').value), openHistoryRun);
+}
 let trendWidth = 0;
 new ResizeObserver(() => {
   const container = $('progress-trend');
   if (!container.clientWidth || trendWidth === container.clientWidth) return;
   trendWidth = container.clientWidth;
-  renderTrend(container, filterRuns(profile.runs.filter(trendRun), $('progress-conditions').value, $('progress-period').value), openHistoryRun);
+  redrawTrend();
 }).observe($('progress-trend'));
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
@@ -5609,6 +5678,7 @@ compose = createCompose({
     return saveProfile();
   },
 });
+$('speed-definition').replaceChildren(unitLabel(SPEED_DEFINITION));
 buildKeyboard();
 applyPreferences();
 setModeControls();

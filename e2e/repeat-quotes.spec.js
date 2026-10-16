@@ -170,7 +170,7 @@ test('on: a seen quote can return to chase its score, but never sets a best, a b
   const pace = (keys) => quote.length / 5 / (keys * 125 / 60000);
   expect(again).toBeGreaterThanOrEqual(Math.floor(pace(quote.length)));
   expect(again).toBeLessThanOrEqual(Math.ceil(pace(quote.length - quote.match(/\S+$/)[0].length)));
-  await expect(page.locator('#result-delta')).toHaveText(`Repeated text · +${again - first} vs your best of ${first} on this passage`);
+  await expect(page.locator('#result-delta')).toHaveText(`Repeated text · +${again - first} vs your best of ${first} wpm on this passage`);
   await expect(page.locator('#result-comparison-note')).toHaveText('');
   await expect(page.locator('#result-conditions')).toContainText('repeated text · english · short quote · gentle');
   await expect(page.locator('#best')).toHaveText(best);

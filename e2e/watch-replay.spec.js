@@ -368,3 +368,25 @@ for (const theme of ['dark', 'light']) {
     await page.screenshot({ path: shotPath(testInfo, `replay-phone-${theme}.png`) });
   });
 }
+
+
+test('replay live and final stats use the chosen display unit without changing the saved score', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await finishWithCorrectedMiss(page);
+  const wpm = Number(await page.locator('#result-wpm').textContent());
+  await openSettings(page);
+  await page.locator('#speed-unit').selectOption('cpm');
+  await page.locator('details.preferences > summary').click();
+  await page.locator('#watch-replay').click();
+  await expect(page.locator('#replay-dialog')).toHaveAttribute('data-state', 'done');
+  await expect(page.locator('#replay-wpm')).toHaveText(String(wpm * 5));
+  await expect(page.locator('#replay-speed-unit')).toHaveText('cpm');
+  await expect(page.locator('#replay-stats-label')).toContainText(`${wpm * 5} cpm,`);
+  await page.locator('#replay-close').click();
+  await openSettings(page);
+  await page.locator('#speed-unit').selectOption('wpm');
+  await page.locator('details.preferences > summary').click();
+  await page.locator('#watch-replay').click();
+  await expect(page.locator('#replay-wpm')).toHaveText(String(wpm));
+  await expect(page.locator('#replay-speed-unit')).toHaveText('wpm');
+});

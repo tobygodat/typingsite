@@ -73,6 +73,13 @@
               <span><strong>one-line tape</strong></span>
               <input class="switch" id="tape-toggle" type="checkbox">
             </label>
+            <label class="preference-row" for="speed-unit">
+              <span><strong>speed unit</strong></span>
+              <select class="input select" id="speed-unit">
+                <option value="wpm" selected>wpm</option>
+                <option value="cpm">cpm</option>
+              </select>
+            </label>
             <details class="preference-category" id="test-content-settings">
               <summary class="preference-row"><span><strong>test content</strong></span></summary>
               <label class="preference-row" for="word-list">
@@ -114,7 +121,7 @@
               </select>
             </label>
             <label class="preference-row" for="live-toggle">
-              <span><strong>live wpm and accuracy</strong></span>
+              <span><strong data-speed-unit="live {unit} and accuracy">live wpm and accuracy</strong></span>
               <input class="switch" id="live-toggle" type="checkbox">
             </label>
             <label class="preference-row" for="keyboard-toggle">
@@ -154,13 +161,13 @@
                   <option value="98">98%</option>
                 </select>
                 <select class="input select" id="min-wpm" aria-label="minimum speed">
-                  <option value="0" selected>any wpm</option>
-                  <option value="20">20 wpm</option>
-                  <option value="30">30 wpm</option>
-                  <option value="40">40 wpm</option>
-                  <option value="60">60 wpm</option>
-                  <option value="80">80 wpm</option>
-                  <option value="100">100 wpm</option>
+                  <option value="0" data-speed-unit="any {unit}" selected>any wpm</option>
+                  <option value="20" data-wpm="20">20 wpm</option>
+                  <option value="30" data-wpm="30">30 wpm</option>
+                  <option value="40" data-wpm="40">40 wpm</option>
+                  <option value="60" data-wpm="60">60 wpm</option>
+                  <option value="80" data-wpm="80">80 wpm</option>
+                  <option value="100" data-wpm="100">100 wpm</option>
                 </select>
               </span>
             </div>
@@ -175,8 +182,8 @@
               </select>
             </label>
             <label id="pace-custom" class="preference-row" for="pace-wpm" hidden>
-              <span><strong>custom pace</strong><small class="pace-note">10–300 wpm</small></span>
-              <input class="input pace-wpm num" id="pace-wpm" type="number" min="10" max="300" step="1" value="80" inputmode="numeric">
+              <span><strong>custom pace</strong><small id="pace-range" class="pace-note">10–300 wpm</small></span>
+              <input class="input pace-wpm num" id="pace-wpm" type="number" min="10" max="300" step="1" value="80" inputmode="numeric" data-unit="wpm">
             </label>
             <label class="preference-row" for="focus-toggle">
               <span><strong>focus mode</strong></span>
@@ -386,7 +393,7 @@
                 <small id="timer-label" class="sr-only">remaining</small>
               </div>
               <div class="live-stat">
-                <strong id="live-wpm" class="num">—</strong><span>wpm</span>
+                <strong id="live-wpm" class="num" data-bare>—</strong><span data-speed-unit>wpm</span>
               </div>
               <div class="live-stat">
                 <strong id="live-accuracy" class="num">—</strong><span>%<span class="sr-only"> input accuracy</span></span>
@@ -464,7 +471,7 @@
           <section id="compose-result" class="compose-result" aria-labelledby="compose-result-heading" hidden>
             <h2 id="compose-result-heading"></h2>
             <dl class="compose-facts">
-              <div><dt>free-typing speed</dt><dd><strong id="compose-wpm" class="num">—</strong><span>wpm</span></dd></div>
+              <div><dt>free-typing speed</dt><dd><strong id="compose-wpm" class="num" data-bare>—</strong><span data-speed-unit>wpm</span></dd></div>
               <div><dt>backspace rate</dt><dd><strong id="compose-backspace" class="num">—</strong><span>%</span></dd></div>
               <div><dt>active typing</dt><dd><strong id="compose-active" class="num">—</strong><span>s</span></dd></div>
               <div><dt>characters</dt><dd><strong id="compose-characters" class="num">—</strong></dd></div>
@@ -501,8 +508,8 @@
               <span id="run-card-stamp" class="run-card-stamp">no run yet</span>
             </header>
             <div class="run-card-score">
-              <strong id="result-wpm" class="num">—</strong>
-              <span class="run-card-unit">wpm</span>
+              <strong id="result-wpm" class="num" data-bare>—</strong>
+              <span class="run-card-unit" data-speed-unit>wpm</span>
             </div>
             <dl class="run-card-facts">
               <div><dt>accuracy</dt><dd><strong id="result-accuracy" class="num">—</strong><b>%</b></dd></div>
@@ -510,11 +517,11 @@
               <div><dt>time</dt><dd id="result-time" class="num">—</dd></div>
             </dl>
             <dl class="run-card-facts run-card-more">
-              <div title="Every character typed, mistakes included, per five characters per minute"><dt>raw wpm</dt><dd id="result-raw" class="num">—</dd></div>
+              <div id="result-raw-row"><dt data-speed-unit="raw {unit}">raw wpm</dt><dd id="result-raw" class="num" data-bare>—</dd></div>
               <div title="100 minus the variation of your per-second raw speed; needs 3 seconds"><dt>consistency</dt><dd><strong id="result-consistency" class="num">—</strong><b>%</b></dd></div>
               <div title="The finished text: correct / still wrong / extra / missed characters. Slips you fixed count as first-try errors"><dt>final c/i/e/m</dt><dd id="result-chars" class="num">—</dd></div>
             </dl>
-            <p class="metric-note">wpm counts correct characters kept · accuracy counts every character typed, corrected ones included</p>
+            <p class="metric-note"><span id="speed-definition"></span> · accuracy counts every character typed, corrected ones included</p>
             <p class="condition-copy" id="result-conditions">english · common words · corpus v3 · metric v1</p>
             <details class="manual-panel metric-more">
               <summary>How raw, consistency and c/i/e/m are counted</summary>
@@ -536,7 +543,7 @@
               <div class="comparison-rows">
                 <div><span>accuracy</span><strong id="comparison-accuracy" class="num">—</strong></div>
                 <div><span>target timing</span><strong id="comparison-timing" class="num">—</strong></div>
-                <div><span>wpm</span><strong id="comparison-wpm" class="num">—</strong></div>
+                <div><span data-speed-unit>wpm</span><strong id="comparison-wpm" class="num" data-signed>—</strong></div>
               </div>
               <p><span id="comparison-sample">No observed sample</span> · <span id="comparison-caveat">One sample, not proof of lasting change.</span></p>
             </article>
@@ -590,7 +597,7 @@
             <figure class="run-card-graph">
               <div id="speed-graph" class="speed-graph" role="img" aria-label="Speed over time"></div>
               <figcaption class="graph-legend" aria-hidden="true">
-                <span class="legend-speed">speed</span>
+                <span class="legend-speed" data-speed-unit="speed · {unit}">speed · wpm</span>
                 <span class="legend-average">average</span>
                 <span class="legend-miss">mistake</span>
               </figcaption>
@@ -681,8 +688,8 @@
             <button id="take-standard" class="btn btn-secondary btn-sm" type="button">Take the standard test</button>
           </div>
           <dl class="standard-figures">
-            <div><dt>best</dt><dd><strong id="standard-best" class="num">—</strong><span>wpm</span></dd></div>
-            <div><dt id="standard-median-label">median</dt><dd><strong id="standard-median" class="num">—</strong><span>wpm</span></dd></div>
+            <div><dt>best</dt><dd><strong id="standard-best" class="num" data-bare>—</strong><span data-speed-unit>wpm</span></dd></div>
+            <div><dt id="standard-median-label">median</dt><dd><strong id="standard-median" class="num" data-bare>—</strong><span data-speed-unit>wpm</span></dd></div>
           </dl>
           <p id="standard-score-note" class="result-note"></p>
           <p id="standard-score-conditions" class="condition-copy"></p>
@@ -845,7 +852,7 @@
             <section id="online-results" class="race-leaderboard" hidden aria-labelledby="online-winner">
               <div class="race-result-heading"><h2 id="online-winner">Race results</h2><button id="online-again" class="btn btn-secondary" type="button">New race</button></div>
               <div id="online-result-rows" class="race-results"></div>
-              <p>Corrected wpm uses matching characters and elapsed race time. Accuracy includes corrected mistakes. Online scores are unranked and don’t count in your progress.</p>
+              <p><span data-speed-unit="Corrected {unit}">Corrected wpm</span> uses matching characters and elapsed race time. Accuracy includes corrected mistakes. Online scores are unranked and don’t count in your progress.</p>
             </section>
             <div id="online-after" class="online-after" hidden>
               <p id="online-rematch-note" class="online-copy" role="status"></p>
@@ -993,7 +1000,7 @@
         <h2 id="replay-title">Replay</h2>
         <div class="replay-readout">
           <span id="replay-stats-label" class="sr-only"></span>
-          <span class="replay-stat" aria-hidden="true"><span id="replay-wpm" class="replay-stat-value">—</span><span>wpm</span></span>
+          <span class="replay-stat" aria-hidden="true"><span id="replay-wpm" class="replay-stat-value" data-bare>—</span><span id="replay-speed-unit" data-speed-unit>wpm</span></span>
           <span class="replay-stat" aria-hidden="true"><span id="replay-accuracy" class="replay-stat-value">—</span><span>%</span></span>
           <span class="replay-stat" aria-hidden="true"><span id="replay-errors" class="replay-stat-value">0</span><span id="replay-errors-unit">errors</span></span>
           <span class="replay-stat"><span id="replay-clock" class="replay-stat-value">0.0</span><span>s</span></span>

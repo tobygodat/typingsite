@@ -1,4 +1,6 @@
 // Presentational only. Charts never participate in scoring or comparisons.
+import { speedValue, unitText } from './units.js';
+
 const svgNS = 'http://www.w3.org/2000/svg';
 const svgNode = (name, attrs) => {
   const node = document.createElementNS(svgNS, name);
@@ -6,10 +8,12 @@ const svgNode = (name, attrs) => {
   return node;
 };
 
+// Speed is saved in wpm and drawn in the chosen display unit (wpm or cpm).
 export function renderTrend(container, runs, onSelect) {
   container.replaceChildren();
   if (!runs.length) return;
-  for (const [metric, label] of [['wpm', 'Corrected WPM'], ['accuracy', 'Input accuracy']]) {
+  const unitLabel = unitText('{unit}').toUpperCase();
+  for (const [metric, label] of [['wpm', `Corrected ${unitLabel}`], ['accuracy', 'Input accuracy']]) {
     const figure = document.createElement('figure');
     figure.className = 'trend-figure';
     const caption = document.createElement('figcaption');
@@ -17,9 +21,10 @@ export function renderTrend(container, runs, onSelect) {
     figure.append(caption);
     container.append(figure);
     const width = Math.max(280, figure.clientWidth || 640);
-    const values = runs.map((r) => r.score[metric]);
-    const low = Math.max(0, Math.min(...values) - (metric === 'wpm' ? 5 : 2));
-    const high = Math.min(metric === 'accuracy' ? 100 : Infinity, Math.max(...values) + (metric === 'wpm' ? 5 : 2));
+    const values = runs.map((r) => (metric === 'wpm' ? speedValue(r.score.wpm) : r.score[metric]));
+    const margin = metric === 'wpm' ? speedValue(5) : 2;
+    const low = Math.max(0, Math.min(...values) - margin);
+    const high = Math.min(metric === 'accuracy' ? 100 : Infinity, Math.max(...values) + margin);
     const chart = svgNode('svg', { viewBox: `0 0 ${width} 180`, role: 'group', 'aria-label': `${label} across ${runs.length} matching runs. Select a point for details.` });
     const step = runs.length === 1 ? width : (width - 72) / (runs.length - 1);
     const point = (v, i) => [48 + (runs.length === 1 ? (width - 72) / 2 : i * step), 140 - ((v - low) / Math.max(1, high - low)) * 116];
@@ -38,7 +43,7 @@ export function renderTrend(container, runs, onSelect) {
     runs.forEach((run, i) => {
       const [x, y] = point(values[i], i);
       const date = run.at ? new Date(run.at).toLocaleDateString() : 'Earlier run';
-      const dot = svgNode('g', { tabindex: 0, role: 'button', class: `trend-dot trend-${metric}`, 'aria-label': `${date}: ${values[i]} ${metric === 'accuracy' ? 'percent accuracy' : 'WPM'}. View run.` });
+      const dot = svgNode('g', { tabindex: 0, role: 'button', class: `trend-dot trend-${metric}`, 'aria-label': `${date}: ${values[i]} ${metric === 'accuracy' ? 'percent accuracy' : unitLabel}. View run.` });
       dot.append(svgNode('ellipse', { cx: x, cy: y, rx: Math.min(22, step / 2), ry: 22, class: 'trend-hit' }), svgNode('circle', { cx: x, cy: y, r: 5 }));
       const title = svgNode('title', {});
       title.textContent = dot.getAttribute('aria-label');

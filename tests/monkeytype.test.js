@@ -186,3 +186,16 @@ test('typing sounds and their volume carry over; an error sound alone is skipped
   const inUse = preferencesInUse(both.preferences);
   for (const [key, value] of Object.entries(both.preferences)) assert.equal(inUse[key], value, key);
 });
+
+test('the speed unit carries over as wpm or cpm, and speeds stay the wpm Monkeytype saved', () => {
+  const { preferences, mapped } = mapMonkeytypeConfig({ typingSpeedUnit: 'cpm', minWpm: 'custom', minWpmCustomSpeed: 60, paceCaretCustomSpeed: 90 });
+  assert.deepEqual(preferences, { speedUnit: 'cpm', minWpm: 60, paceWpm: 90 });
+  assert.ok(mapped.find((row) => row.setting === 'speed unit' && row.value === 'cpm' && row.from === 'typingSpeedUnit: cpm'));
+  assert.equal(preferencesInUse(preferences).speedUnit, 'cpm');
+  assert.equal(mapMonkeytypeConfig({ typingSpeedUnit: 'wpm' }).preferences.speedUnit, 'wpm');
+  for (const unit of ['wps', 'cps', 'wph']) {
+    const { preferences: none, skipped } = mapMonkeytypeConfig({ typingSpeedUnit: unit });
+    assert.deepEqual(none, {});
+    assert.deepEqual(skipped, [{ setting: 'speed unit', from: `typingSpeedUnit: ${unit}`, reason: 'Stilltype shows wpm or cpm.' }]);
+  }
+});
