@@ -13,7 +13,9 @@ import {
   soundFor,
 } from '../src/sound.js';
 
-// A Web Audio stand-in that records what was built and started.
+// A Web Audio stand-in that records what was built and started. As in a browser, suspend() and resume()
+// change state only once the audio thread has acted, on a later task (settle).
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 function fakeAudio({ state = 'running', failOn = null } = {}) {
   const log = { created: 0, closed: 0, resumed: 0, suspended: 0, started: [], gains: [], options: [], contexts: [] };
   const param = () => ({ value: 0, setValueAtTime(v) { log.gains.push(v); }, exponentialRampToValueAtTime() {} });
@@ -29,8 +31,9 @@ function fakeAudio({ state = 'running', failOn = null } = {}) {
       this.sampleRate = 48000;
       this.destination = node();
     }
-    resume() { log.resumed += 1; this.state = 'running'; return Promise.resolve(); }
-    suspend() { log.suspended += 1; this.state = 'suspended'; return Promise.resolve(); }
+    resume() { log.resumed += 1; return this.later('running'); }
+    suspend() { log.suspended += 1; return this.later('suspended'); }
+    later(state) { return settle().then(() => { if (this.state !== 'closed') this.state = state; }); }
     close() { log.closed += 1; this.state = 'closed'; return Promise.resolve(); }
     createBuffer(channels, length) { const data = new Float32Array(length); return { getChannelData: () => data }; }
     createBufferSource() {
@@ -208,7 +211,7 @@ test('sound off or at volume 0 closes the context, and the next audible key asks
   assert.equal(sounds.hasContext(), false);
 });
 
-test('the context suspends when the page is hidden and after a run, and the next key resumes it', (t) => {
+test('the context suspends when the page is hidden and after a run, and the next key resumes it', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { log, FakeContext } = fakeAudio();
   const later = deferQueue();
@@ -220,43 +223,114 @@ test('the context suspends when the page is hidden and after a run, and the next
   assert.equal(log.suspended, 0, 'no context, nothing to suspend');
   sounds.play('correct');
   later.flush();
+  const [context] = log.contexts;
 
   page.hidden = true;
   page.dispatchEvent(new Event('visibilitychange'));
-  assert.equal(log.suspended, 1);
+  await settle();
+  assert.equal(context.state, 'suspended');
   page.hidden = false;
   page.dispatchEvent(new Event('visibilitychange'));
-  assert.equal(log.suspended, 1, 'showing the page again waits for a key');
+  await settle();
+  assert.equal(context.state, 'suspended', 'showing the page again waits for a key');
   assert.equal(sounds.play('correct'), 'click');
-  assert.equal(log.resumed, 1);
+  await settle();
+  assert.equal(context.state, 'running');
 
   // A finished run waits for its last key's voice to play out before suspending.
   sounds.rest();
   t.mock.timers.tick(100);
-  assert.equal(log.suspended, 1);
+  await settle();
+  assert.equal(context.state, 'running');
   t.mock.timers.tick(200);
-  assert.equal(log.suspended, 2);
+  await settle();
+  assert.equal(context.state, 'suspended');
   assert.equal(sounds.play('correct'), 'click');
-  assert.equal(log.resumed, 2);
+  await settle();
+  assert.equal(context.state, 'running');
 
   // A key soon after the run ends keeps the context running.
   sounds.rest();
   sounds.play('correct');
   t.mock.timers.tick(1000);
-  assert.equal(log.suspended, 2);
-  assert.equal(log.contexts[0].state, 'running');
+  await settle();
+  assert.equal(context.state, 'running');
 });
 
-test('a suspended context is resumed without waiting, and a closed one is replaced', () => {
+// The context's own state changes only once the audio thread has acted, so a key or a hidden page in
+// that window must still be heard as a request for the other state.
+test('a key while a suspend is in flight is heard, and hiding while a resume is in flight suspends', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { log, FakeContext } = fakeAudio();
+  const later = deferQueue();
+  const page = Object.assign(new EventTarget(), { hidden: false });
+  const sounds = createSounds({ settings: () => ({ mode: 'clicks', volume: 50 }), AudioContextClass: FakeContext, defer: later.defer, page });
+  sounds.play('correct');
+  later.flush();
+  const [context] = log.contexts;
+  sounds.rest();
+  t.mock.timers.tick(300);
+  assert.equal(context.state, 'running', 'the suspend has not landed yet');
+  assert.equal(sounds.play('correct'), 'click');
+  await settle();
+  assert.equal(context.state, 'running', 'the key woke the context, so its click plays now');
+
+  page.hidden = true;
+  page.dispatchEvent(new Event('visibilitychange'));
+  await settle();
+  page.hidden = false;
+  assert.equal(sounds.play('correct'), 'click');
+  assert.equal(context.state, 'suspended', 'the resume has not landed yet');
+  page.hidden = true;
+  page.dispatchEvent(new Event('visibilitychange'));
+  await settle();
+  assert.equal(context.state, 'suspended', 'a hidden page stays silent');
+});
+
+test('a run that ends before the deferred build leaves the new context suspended until a key', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const settings = () => ({ mode: 'clicks-errors', volume: 50 });
+
+  // The rest lands first, then the build.
+  let audio = fakeAudio();
+  let later = deferQueue();
+  let sounds = createSounds({ settings, AudioContextClass: audio.FakeContext, defer: later.defer });
+  sounds.play('wrong');
+  sounds.rest();
+  t.mock.timers.tick(300);
+  later.flush();
+  await settle();
+  assert.equal(audio.log.created, 1);
+  assert.equal(audio.log.contexts[0].state, 'suspended');
+  assert.equal(sounds.play('correct'), 'click');
+  await settle();
+  assert.equal(audio.log.contexts[0].state, 'running');
+
+  // The build lands inside the rest's wait.
+  audio = fakeAudio();
+  later = deferQueue();
+  sounds = createSounds({ settings, AudioContextClass: audio.FakeContext, defer: later.defer });
+  sounds.play('wrong');
+  sounds.rest();
+  later.flush();
+  t.mock.timers.tick(300);
+  await settle();
+  assert.equal(audio.log.contexts[0].state, 'suspended');
+});
+
+test('a suspended context is resumed without waiting, and a closed one is replaced', async () => {
   const { log, FakeContext } = fakeAudio({ state: 'suspended' });
   const later = deferQueue();
   const sounds = createSounds({ settings: () => ({ mode: 'clicks', volume: 50 }), AudioContextClass: FakeContext, defer: later.defer });
   sounds.play('correct');
   later.flush();
   assert.equal(log.resumed, 1, 'resumed as soon as it is built');
+  await settle();
+  // The browser suspending it on its own, as an interruption does.
   log.contexts[0].state = 'suspended';
   assert.equal(sounds.play('correct'), 'click');
   assert.equal(log.resumed, 2);
+  await settle();
   assert.equal(sounds.play('correct'), 'click');
   assert.equal(log.resumed, 2, 'a running context is left alone');
   assert.deepEqual(log.started, ['click', 'click']);
@@ -267,6 +341,27 @@ test('a suspended context is resumed without waiting, and a closed one is replac
   later.flush();
   assert.equal(log.created, 2);
   assert.equal(sounds.play('correct'), 'click');
+});
+
+test('choosing an audible sound builds the context after the change, so the first key is heard', () => {
+  const { log, FakeContext } = fakeAudio();
+  const later = deferQueue();
+  const settings = { mode: 'off', volume: 50 };
+  const sounds = createSounds({ settings: () => settings, AudioContextClass: FakeContext, defer: later.defer });
+  sounds.prepare();
+  settings.mode = 'clicks';
+  settings.volume = 0;
+  sounds.prepare();
+  assert.equal(later.size, 0, 'off or volume 0 asks for no context');
+  settings.volume = 30;
+  sounds.prepare();
+  assert.equal(log.created, 0, 'never built inside the change itself');
+  later.flush();
+  assert.equal(log.created, 1);
+  assert.equal(sounds.play('correct'), 'click');
+  sounds.prepare();
+  assert.equal(later.size, 0);
+  assert.equal(log.created, 1, 'one context');
 });
 
 test('missing or failing audio never throws into input handling', () => {

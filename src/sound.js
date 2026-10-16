@@ -103,9 +103,9 @@ function afterPaint(callback) {
   else setTimeout(callback, 0);
 }
 
-// settings() returns { mode, volume } at the moment of each key. The first key that should make a
-// sound asks for an AudioContext and stays silent itself; the context is built after that key has
-// painted, and later keys play through it. It is suspended while the page is hidden and after a run
+// settings() returns { mode, volume } at the moment of each key. The context is built after the change
+// that makes sound audible (prepare) or, failing that, after the first audible key, which stays silent
+// itself; it is never built inside an event. It is suspended while the page is hidden and after a run
 // (rest), resumed by the next key, and closed once a key or a settings change (sync) finds sound off
 // or at volume 0.
 export function createSounds({ settings, AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext, defer = afterPaint, page = globalThis.document } = {}) {
@@ -115,10 +115,17 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
   let failed = false;
   let generation = 0;
   let resting = null;
+  // Whether the context should be suspended. Kept here because context.state changes only once the
+  // audio thread has acted, and a context still to be built must start suspended too.
+  let asleep = false;
 
   const audible = () => {
     const { mode, volume } = settings();
     return soundFor(mode, volume, 'correct') !== null;
+  };
+
+  const request = (method) => {
+    try { Promise.resolve(context?.[method]?.()).catch(() => {}); } catch {}
   };
 
   function build() {
@@ -126,7 +133,8 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
       if (context || failed || !audible()) return;
       context = new AudioContextClass({ latencyHint: 'interactive' });
       noise = noiseBuffer(context);
-      if (context.state !== 'running') Promise.resolve(context.resume?.()).catch(() => {});
+      if (asleep) request('suspend');
+      else if (context.state !== 'running') request('resume');
     } catch {
       // No audio device, or the browser refused: stay silent until sound is turned off and on again.
       const broken = context;
@@ -137,25 +145,30 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
     }
   }
 
-  // The running context, or null while one is still to be built.
+  function queueBuild() {
+    if (pending || failed || typeof AudioContextClass !== 'function') return;
+    pending = true;
+    const ticket = generation;
+    defer(() => {
+      if (ticket !== generation) return;
+      pending = false;
+      build();
+    });
+  }
+
+  // The context to play through, or null while one is still to be built.
   function ready() {
     if (context?.state === 'closed') { context = null; noise = null; }
     clearTimeout(resting);
-    if (context) {
-      // A suspended or interrupted context is resumed without waiting.
-      if (context.state !== 'running') Promise.resolve(context.resume?.()).catch(() => {});
-      return context;
+    const waking = asleep;
+    asleep = false;
+    if (!context) {
+      queueBuild();
+      return null;
     }
-    if (!pending && !failed && typeof AudioContextClass === 'function') {
-      pending = true;
-      const ticket = generation;
-      defer(() => {
-        if (ticket !== generation) return;
-        pending = false;
-        build();
-      });
-    }
-    return null;
+    // Resumed without waiting, including a context whose suspend hasn't landed yet.
+    if (waking || context.state !== 'running') request('resume');
+    return context;
   }
 
   // Never throws: a sound that can't play must not disturb input handling.
@@ -177,9 +190,16 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
     }
   }
 
+  // The person chose an audible setting: a user gesture, so the context can be built after it and the
+  // first typed key already has one to play through.
+  function prepare() {
+    try {
+      if (!context && audible()) queueBuild();
+    } catch {}
+  }
+
   function release() {
     const closing = context;
-    clearTimeout(resting);
     generation += 1;
     pending = false;
     failed = false;
@@ -198,16 +218,18 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
 
   function suspend() {
     clearTimeout(resting);
-    if (context?.state !== 'running') return;
-    try { Promise.resolve(context.suspend?.()).catch(() => {}); } catch {}
+    asleep = true;
+    if (context && context.state !== 'closed') request('suspend');
   }
 
+  // A run ended: suspend once its last key's voice has played out. A context still to be built starts
+  // suspended.
   function rest() {
     clearTimeout(resting);
-    if (context) resting = setTimeout(suspend, REST_AFTER_MS);
+    resting = setTimeout(suspend, REST_AFTER_MS);
   }
 
   page?.addEventListener?.('visibilitychange', () => { if (page.hidden) suspend(); });
 
-  return { play, sync, rest, hasContext: () => Boolean(context) };
+  return { play, prepare, sync, rest, hasContext: () => Boolean(context) };
 }

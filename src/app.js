@@ -162,7 +162,7 @@ let heldDeadKey = null;
 let accentPair = null;
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
-// Key sounds read the current preferences on each key; the AudioContext waits for the first audible key.
+// Key sounds read the current preferences on each key; the AudioContext waits for an audible choice or key.
 const sounds = createSounds({ settings: () => ({ mode: prefs.sound, volume: prefs.soundVolume }) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -538,14 +538,14 @@ function setRunning(running) {
   if (runActive !== running) {
     runActive = running;
     runChanged();
-    if (!running) sounds.rest();
   }
   if (!running) flushDeferredSync();
   showChrome(!running);
 }
-// A run began or ended: what waited for its end appears now.
+// A run began or ended: what waited for its end appears now, and the sound rests.
 function runChanged() {
   inbox?.runChanged();
+  if (!runInProgress()) sounds.rest();
   if (!heldRaceError || runInProgress()) return;
   showAccountToast(heldRaceError);
   heldRaceError = '';
@@ -682,8 +682,10 @@ function applyPreferences() {
 }
 
 // The volume row is always there (so the popover never grows under a finger) and is disabled while
-// sound is off.
+// sound is off. Every preference change (a setting, an import, another tab, a sign-in) passes here, so
+// this is where sound turned off or to volume 0 closes the context.
 function applySoundPreferences() {
+  sounds.sync();
   const volume = $('sound-volume');
   $('sound-select').value = prefs.sound;
   volume.value = String(prefs.soundVolume);
@@ -5209,14 +5211,14 @@ function setCorrection(policy) {
 function setSound(mode) {
   prefs.sound = normalizeSoundMode(mode);
   applySoundPreferences();
-  sounds.sync();
+  sounds.prepare();
   saveChoice('sound');
 }
 
 function setSoundVolume(volume, { save = true } = {}) {
   prefs.soundVolume = normalizeSoundVolume(volume);
   applySoundPreferences();
-  sounds.sync();
+  sounds.prepare();
   if (save) saveChoice('soundVolume');
 }
 
