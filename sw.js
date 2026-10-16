@@ -37,6 +37,7 @@ const SHELL = [
   '/src/profile.js',
   '/src/progress-view.js',
   '/src/replay-view.js',
+  '/src/tape.js',
   '/src/typing.js',
   '/src/word-highlight.js',
   '/src/words.js',
