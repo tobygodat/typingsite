@@ -152,6 +152,7 @@ async function showFailedDrill(page, viewport) {
 }
 
 test('failed drill result screenshots', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await showFailedDrill(page, { width: 1280, height: 800 });
   await page.screenshot({ path: shot(testInfo, 'failed-drill-dark.png') });
   await page.emulateMedia({ colorScheme: 'light' });
@@ -180,6 +181,7 @@ test('no backspace ignores Backspace', async ({ page }) => {
 
 for (const scheme of ['dark', 'light']) {
   test(`settings select screenshot (${scheme})`, async ({ page }, testInfo) => {
+    test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);

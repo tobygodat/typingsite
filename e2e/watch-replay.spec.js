@@ -351,6 +351,7 @@ test('the replay ends on the run card even when its last frame falls mid-second'
 
 for (const theme of ['dark', 'light']) {
   test(`screenshot: replay mid-playback (${theme})`, async ({ page }, testInfo) => {
+    test.skip(theme === 'light' && !process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ colorScheme: theme });
