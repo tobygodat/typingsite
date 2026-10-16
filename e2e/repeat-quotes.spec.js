@@ -164,8 +164,8 @@ test('on: a seen quote can return to chase its score, but never sets a best, a b
   await typeQuote(page, 125);
   const again = Number(await page.locator('#result-wpm').textContent());
   expect(again).toBeGreaterThan(first);
-  // The clock moves a word at a time, so the run lasts between the passage less its last word and the whole
-  // passage at 125 ms a key, and its pace sits between those two.
+  // The run ends on its last key, before the clock steps past the last word, so it lasts the passage less that
+  // word at 125 ms a key. The bounds allow up to one word of slack.
   const pace = (keys) => quote.length / 5 / (keys * 125 / 60000);
   expect(again).toBeGreaterThanOrEqual(Math.floor(pace(quote.length)));
   expect(again).toBeLessThanOrEqual(Math.ceil(pace(quote.length - quote.match(/\S+$/)[0].length)));
