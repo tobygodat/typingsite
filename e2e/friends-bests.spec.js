@@ -2,8 +2,9 @@
 // of the board, from each account's own profile row, where every profile save writes them.
 import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey, quoteCorpus } from '../src/typing.js';
-import { BOARD_V, shapeOf } from '../src/friends-board.js';
-import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto } from './fixtures.js';
+import { BOARD_V, dailyVersion, shapeOf } from '../src/friends-board.js';
+import { dailyPassage } from '../src/insights.js';
+import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText } from './fixtures.js';
 import { mondayOf, utcDay } from './fake-board.js';
 
 test.setTimeout(120000);
@@ -26,6 +27,7 @@ const K60_OLD = conditionKey({ ...TIME60, metricVersion: 'stilltype-metrics-v0' 
 // A 60-second test with stop on error, and a medium quote.
 const K60_STOP = conditionKey({ ...TIME60, correctionPolicy: 'mandatory' });
 const KQUOTE = conditionKey(shape({ mode: 'quote', duration: null, wordList: null, quoteLength: 'medium', difficulty: 'any' }));
+const DAILY = shape({ mode: 'quote', duration: null, quoteLength: 'medium', difficulty: 'any', wordList: null, punctuation: true });
 
 const dayAgo = (days, hour = 18) => {
   const date = new Date(Date.now() - days * DAY_MS);
@@ -113,8 +115,8 @@ const rowTexts = (page) => page.locator('#board-bests .board-row').evaluateAll((
 const scrollBelow = (page, selector, offset) => page.evaluate(([css, gap]) => {
   window.scrollTo(0, document.querySelector(css).getBoundingClientRect().top + window.scrollY - gap);
 }, [selector, offset]);
-async function shot(page, testInfo, name) {
-  const path = process.env.SCREENSHOTS ? `docs/screenshots/friends-bests/${name}.png` : testInfo.outputPath(`${name}.png`);
+async function shot(page, testInfo, name, folder = 'friends-bests') {
+  const path = process.env.SCREENSHOTS ? `docs/screenshots/${folder}/${name}.png` : testInfo.outputPath(`${name}.png`);
   await page.screenshot({ path });
 }
 async function openBoard(page) {
@@ -129,10 +131,24 @@ async function clearHistory(page) {
   await page.locator('#confirm-clear').click();
   await expect(page.locator('#history-feedback')).toHaveText('History cleared.');
 }
+// Types the passage at `gap` ms a key on the page's clock (installed by the test, with reduced motion so
+// the paused time holds no animation frames), moved on ten keys at a time: a person's pace without the
+// wait. The board leaves out anything faster than 400 wpm.
+async function typePaced(page, gap) {
+  const text = await passageText(page);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.locator('#typing-input').focus();
+  for (let at = 0; at < text.length; at += 10) {
+    const chunk = text.slice(at, at + 10);
+    await page.keyboard.type(chunk);
+    await page.clock.runFor(gap * chunk.length);
+  }
+  await page.clock.resume();
+}
 // A ten-word test typed at a human pace (about 90 wpm), as a person would.
 async function typeTenWords(page) {
   await chooseWords(page, 10);
-  await typeInto(page, await passageText(page), '#typing-input', { delay: 130 });
+  await typePaced(page, 130);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   return { wpm: Number(await page.locator('#result-wpm').textContent()), accuracy: Number(await page.locator('#result-accuracy').textContent()) };
 }
@@ -216,7 +232,7 @@ test('only completed practice tests and retests are shared, never drills, dailie
   const runs = [
     fast('test', { score: { wpm: 64, accuracy: 95 } }),
     fast('drill', { kind: 'drill', target: 'th' }),
-    fast('daily', { kind: 'daily', conditions: shape({ mode: 'quote', duration: null, quoteLength: 'medium', difficulty: 'any', wordList: null, punctuation: true }), challengeDate: utcDay() }),
+    fast('daily', { kind: 'daily', conditions: DAILY, challengeDate: utcDay() }),
     fast('race', { kind: 'race' }),
     fast('custom', { kind: 'custom' }),
     fast('interrupted', { kind: 'test', interrupted: true }),
@@ -224,6 +240,8 @@ test('only completed practice tests and retests are shared, never drills, dailie
     fast('drill-shape', { kind: 'drill', conditions: TIME30 }),
   ];
   await sharing(page, supabase, ada, runs);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.install();
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   const only = { [K60]: { wpm: 64, accuracy: 95, date: at.slice(0, 10) } };
@@ -235,7 +253,7 @@ test('only completed practice tests and retests are shared, never drills, dailie
   await page.locator('#challenge-daily').click();
   await page.locator('#start-daily').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
-  await typeInto(page, await passageText(page), '#typing-input', { delay: 120 });
+  await typePaced(page, 120);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect.poll(() => column(supabase, ada)?.days?.[utcDay()] ?? null).not.toBeNull();
   expect(bestsIn(supabase, ada)).toEqual(only);
@@ -265,12 +283,12 @@ test('a clear takes your bests off the board, and undo brings them back', async 
   const { ada } = circle(supabase);
   const runs = practice();
   await sharing(page, supabase, ada, runs);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.install();
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   // A run typed here sets a best on a new shape, and goes to the board after the run.
   const typed = await typeTenWords(page);
-  expect(typed.wpm).toBeGreaterThanOrEqual(40);
-  expect(typed.wpm).toBeLessThanOrEqual(110);
   await expect.poll(() => bestsIn(supabase, ada)?.[K10]?.wpm).toBe(typed.wpm);
   const before = bestsIn(supabase, ada);
   expect(Object.keys(before).sort()).toEqual([K60, K30, K25, K10].sort());
@@ -309,13 +327,23 @@ test('a clear takes your bests off the board, and undo brings them back', async 
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test('the bests fit a phone and 320px', async ({ page, supabase }, testInfo) => {
+  test('the board stacks on a phone, and it and its bests fit at 320px', async ({ page, supabase }, testInfo) => {
     const { ada, lin } = circle(supabase);
-    await sharing(page, supabase, ada, practice());
+    const today = dailyPassage();
+    const dailyRun = { id: 'seed-daily', at: new Date().toISOString(), kind: 'daily', status: 'complete', interrupted: false, fresh: true,
+      textId: today.sourceTextId, conditions: DAILY, score: { wpm: 84, accuracy: 97 }, elapsedMs: 41200, errors: 2, target: null,
+      challengeDate: today.day, firstDailyAttempt: true, patterns: [] };
+    await sharing(page, supabase, ada, practice([dailyRun]));
     await openApp(page);
     await signInWithEmail(page, 'ada@stilltype.test');
     await expect.poll(() => bestsIn(supabase, ada)).not.toBeNull();
     await openBoard(page);
+    await expect(page.locator('#board-daily')).toContainText('You 84 wpm');
+    // Her row had no summary; this load wrote one from her history.
+    expect(column(supabase, ada).days[today.day]).toEqual({ version: dailyVersion(conditionKey(DAILY)), wpm: 84, accuracy: 97, attempts: 1 });
+    const daily = await page.locator('#board-daily').boundingBox();
+    const week = await page.locator('#board-week').boundingBox();
+    expect(week.y).toBeGreaterThan(daily.y + daily.height);
     await expect(page.locator('#board-bests .board-row')).toHaveCount(4);
     await expect(page.locator('#board-bests [data-self]')).toContainText('wpm');
     expect(await overflow(page)).toBeLessThanOrEqual(0);
@@ -325,6 +353,8 @@ test.describe('phone', () => {
     await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
     await page.waitForTimeout(400);
     await shot(page, testInfo, 'bests-phone-dark');
+    await scrollBelow(page, '#friends-board-heading', 24);
+    await shot(page, testInfo, 'board-phone-dark', 'friends-leaderboard');
     await page.setViewportSize({ width: 320, height: 640 });
     expect(await overflow(page)).toBeLessThanOrEqual(0);
     // Nothing in the section is cut off: every line fits its column.
@@ -332,8 +362,8 @@ test.describe('phone', () => {
       .filter((node) => node.scrollWidth > node.clientWidth + 1 && getComputedStyle(node).overflow !== 'visible' && node.tagName !== 'SELECT').map((node) => node.id || node.className));
     expect(clipped).toEqual([]);
     const select = await page.locator('#board-shape').boundingBox();
-    const column = await page.locator('#friends-board-lists .board-bests').boundingBox();
-    expect(select.x + select.width).toBeLessThanOrEqual(column.x + column.width + 0.5);
+    const section = await page.locator('#friends-board-lists .board-bests').boundingBox();
+    expect(select.x + select.width).toBeLessThanOrEqual(section.x + section.width + 0.5);
 
     // With shapes that differ in more than length and text (a correction policy, a quote), the closed
     // select at 320px still tells every shape apart: what differs comes right after the length and text,

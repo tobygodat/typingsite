@@ -174,25 +174,25 @@ test('the calendar and its longest caption fit a 320px screen', async ({ page, s
   await page.locator('#practice-goal').screenshot({ path: testInfo.outputPath('progress-goal-320.png') });
 });
 
-test('drills alone count toward daily practice and the empty trend copy agrees', async ({ page, supabase }) => {
+// Custom text is never compared, and drills aren't trend runs, but both are real practice: their minutes
+// count toward the goal and streak, while they add no trend point.
+test('drills and a custom text run count toward daily practice but not the trend', async ({ page, supabase }) => {
   const user = supabase.addUser('drills@stilltype.test');
-  const runs = seededHistory().slice(-3).map((run) => ({ ...run, kind: 'drill' }));
+  const yesterday = (at) => new Date(Date.parse(at) - 86400000).toISOString();
+  const runs = seededHistory().slice(-3).map((run) => ({ ...run, kind: 'drill', at: yesterday(run.at) }));
   supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: [], runs, loops: [],
     seenTextIds: [], bests: {}, updatedAt: runs.at(-1).at } });
+  const text = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
-  await expect(page.locator('#goal-line')).toHaveText(/^Today (<1|\d+) min · 1-day streak$/);
+  await expect(page.locator('#goal-line')).toHaveText(/ · 1-day streak$/);
+  await expect(page.locator(`#goal-calendar .goal-day[data-day="${dayKey(runs.at(-1).at)}"]`)).not.toHaveAttribute('data-level', '0');
+  await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '0');
   await expect(page.locator('#progress-empty')).toBeVisible();
   await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');
   await expect(page.locator('#progress-empty-copy')).toContainText('Drills, daily and custom runs count toward your daily practice.');
-});
-
-// Custom text is never compared, but it is real practice: its minutes count toward the goal and streak,
-// while it still adds no trend point.
-test('a custom text run counts toward daily practice but not the trend', async ({ page }) => {
-  const text = 'the quick brown fox jumps over the lazy dog';
-  await openApp(page);
+  await openView(page, 'Practice');
   await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();
@@ -200,7 +200,7 @@ test('a custom text run counts toward daily practice but not the trend', async (
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await openView(page, 'Progress');
   await expect(page.locator('#practice-goal')).toBeVisible();
-  await expect(page.locator('#goal-line')).toHaveText(/^Today (<1|\d+) min · 1-day streak$/);
+  await expect(page.locator('#goal-line')).toHaveText(/^Today (<1|\d+) min · 2-day streak$/);
   await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '1');
   await expect(page.locator('#progress-content')).toBeHidden();
   await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');

@@ -14,10 +14,10 @@ async function shot(page, testInfo, name) {
   await page.screenshot({ path });
 }
 
-// A practice run typed at a person's pace (about 75 wpm), so the account has history to lose.
+// A practice run, so the account has history to lose.
 async function finishRun(page, supabase) {
   await chooseWords(page, 10);
-  await typeInto(page, await passageText(page), '#typing-input', { delay: 150 });
+  await typeInto(page, await passageText(page));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect.poll(() => supabase.profileFor(ADA)?.runs?.length).toBe(1);
 }
@@ -289,7 +289,7 @@ test('a lost reply still finishes the deletion, and another open tab follows it'
   // The other tab is a guest now, so a run there saves nothing for the deleted account.
   await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
   await chooseWords(other, 10);
-  await typeInto(other, await passageText(other), '#typing-input', { delay: 150 });
+  await typeInto(other, await passageText(other));
   await expect(other.locator('body')).toHaveAttribute('data-view', 'results');
   expect(await storageKeys(other)).toEqual([]);
   await other.close();
@@ -348,7 +348,7 @@ test('opening deletion mid-run interrupts the run, and nothing typed in the dial
   await signInWithEmail(page, ADA);
   await chooseWords(page, 10);
   const text = await passageText(page);
-  await typeInto(page, text.slice(0, 6), '#typing-input', { delay: 150 });
+  await typeInto(page, text.slice(0, 6));
   await openDeleteDialog(page);
   await expect(page.locator('#typing-status')).toHaveText('Interrupted');
   await expect(page.locator('#input-help')).toHaveText('Account deletion opened mid-run, so it won’t count.');
@@ -356,7 +356,7 @@ test('opening deletion mid-run interrupts the run, and nothing typed in the dial
   await page.locator('#cancel-delete-account').click();
   await expect(page.locator('#typing-input')).not.toHaveValue(/delete/);
 
-  await typeInto(page, text.slice(6), '#typing-input', { delay: 150 });
+  await typeInto(page, text.slice(6));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
   await expect(page.locator('#best')).toHaveText('No best yet');

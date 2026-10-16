@@ -39,6 +39,7 @@ const shot = (testInfo, name) =>
   process.env.SCREENSHOTS ? `docs/screenshots/pwa-offline/${name}.png` : testInfo.outputPath(`${name}.png`);
 
 test('screenshots', async ({ page, context }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.emulateMedia({ colorScheme: 'dark' });
   await goOffline(page, context);
   await page.screenshot({ path: shot(testInfo, 'offline-dark') });

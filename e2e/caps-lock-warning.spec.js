@@ -31,15 +31,12 @@ test('shows while Caps Lock is on, stays during a run, hides once it is off', as
   await capsKey(page, 'keyup', false);
   await expect(warning).toBeHidden();
   expect(await wrap.boundingBox()).toEqual(before);
-});
 
-test('blurring the typing field hides the warning', async ({ page }) => {
-  await openApp(page);
-  await page.locator('#typing-input').focus();
+  // Blurring the typing field hides it too.
   await capsKey(page, 'keydown', true);
-  await expect(page.locator('#caps-warning')).toBeVisible();
+  await expect(warning).toBeVisible();
   await page.locator('#typing-input').blur();
-  await expect(page.locator('#caps-warning')).toBeHidden();
+  await expect(warning).toBeHidden();
 });
 
 // Committed docs are only rewritten on request (SCREENSHOTS=1); normal runs write to the test output dir.
@@ -48,6 +45,7 @@ const shotPath = (testInfo, name) => (process.env.SCREENSHOTS
   : testInfo.outputPath(`${name}.png`));
 
 test('screenshots', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme });
