@@ -165,6 +165,7 @@ test('test content and its numbers switch work by keyboard at 320px', async ({ p
 });
 
 test('screenshots', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });

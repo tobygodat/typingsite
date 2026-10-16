@@ -316,13 +316,10 @@ test('a missed capital is practised as written, and the run doesn’t say punctu
   await expect(page.locator('#condition-line')).toContainText('missed words · not counted · 40 words · physical keyboard');
 });
 
-// Committed docs images are only rewritten on request (SCREENSHOTS=1); normal runs still take
-// the shots, into the test's own output folder.
-const shot = (testInfo, name) => process.env.SCREENSHOTS
-  ? `docs/screenshots/practice-missed-words/${name}.png`
-  : testInfo.outputPath(`${name}.png`);
+const shot = (name) => `docs/screenshots/practice-missed-words/${name}.png`;
 
-test('screenshots', async ({ page }, testInfo) => {
+test('screenshots', async ({ page }) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   // Two runs typed at a human pace take most of the default 30 s.
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1280, height: 1000 });
@@ -335,12 +332,12 @@ test('screenshots', async ({ page }, testInfo) => {
     // The card runs past the fold; show its foot, where the evidence and the offer sit.
     await page.locator('#run-card').evaluate((card) => card.scrollIntoView({ block: 'end', behavior: 'instant' }));
     await page.evaluate(() => window.scrollBy(0, 24));
-    await page.screenshot({ path: shot(testInfo, `run-card-${scheme}`) });
+    await page.screenshot({ path: shot(`run-card-${scheme}`) });
     if (scheme === 'dark') {
       await page.locator('#practice-words').click();
       await expect(page.locator('#session-kicker')).toHaveText('missed words');
       await page.evaluate(() => window.scrollTo(0, 0));
-      await page.screenshot({ path: shot(testInfo, 'practice-passage') });
+      await page.screenshot({ path: shot('practice-passage') });
     }
   }
 });

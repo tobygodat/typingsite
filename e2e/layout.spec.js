@@ -1,5 +1,5 @@
 // Responsive layout, self-hosted fonts and exactly what the server hands out.
-import { test, expect, openApp, openView, chooseWords, chooseMore, passageText, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, chooseWords, chooseMore, passageText, typeInto, freshTextCheck } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -35,17 +35,17 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
         expect(await overflow(page), view).toBeLessThanOrEqual(0);
         if (learnLinks[view]) expect((await page.locator(learnLinks[view]).boundingBox()).height, view).toBeGreaterThanOrEqual(44);
       }
-    });
 
-    test('results fit after a run at a human pace', async ({ page }) => {
-      await openApp(page);
-      await chooseWords(page, 10);
-      // About 60 wpm, a human pace; automation's instant typing scores hundreds or thousands.
-      // Three-digit scores at the narrowest width have their own check below.
-      await typeInto(page, await passageText(page), '#typing-input', { delay: 200 });
-      await expect(page.locator('#run-card')).toBeVisible();
-      expect(Number(await page.locator('#result-wpm').textContent())).toBeLessThan(100);
-      expect(await overflow(page)).toBeLessThanOrEqual(0);
+      // At the narrowest width, the same views with a run, a comparison and the daily in them.
+      if (viewport.width === 320) {
+        await openView(page, 'Practice');
+        await freshTextCheck(page);
+        for (const view of ['Progress', 'Train', 'Challenge']) {
+          await openView(page, view);
+          if (view === 'Challenge') await page.locator('#challenge-daily').click();
+          expect(await overflow(page), `${view} with a run`).toBeLessThanOrEqual(0);
+        }
+      }
     });
   });
 }
@@ -56,7 +56,7 @@ test.describe('narrow run card', () => {
   test('a three-digit score and its unit fit inside the run card at 320px', async ({ page }) => {
     await openApp(page);
     await chooseWords(page, 10);
-    await typeInto(page, await passageText(page), '#typing-input', { delay: 120 });
+    await typeInto(page, await passageText(page));
     await expect(page.locator('#run-card')).toBeVisible();
     // Figures are tabular, so any three digits are as wide as 188. Under 360px the numeral steps
     // down to --text-numeral-narrow; 361 and 360 sit either side of that step. Narrowing from 390

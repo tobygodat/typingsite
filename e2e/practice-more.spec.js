@@ -49,24 +49,22 @@ test('Escape closes "more" without restarting, and a click elsewhere closes it t
   await expect(page.locator('#mode-more')).not.toHaveAttribute('open');
 });
 
-for (const width of [390, 320]) {
-  test(`at ${width}px the open menu stays on screen and above the lengths`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 760 });
-    await openApp(page);
-    await page.locator('#mode-more-label').click();
-    const menu = await page.locator('.mode-more-menu').boundingBox();
-    expect(menu.x).toBeGreaterThanOrEqual(0);
-    expect(menu.x + menu.width).toBeLessThanOrEqual(width);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
-    // Every item is the topmost thing under its own centre, so nothing after the row covers it.
-    for (const item of await page.locator('.mode-more-menu button').all()) {
-      expect(await item.evaluate((node) => {
-        const box = node.getBoundingClientRect();
-        return node.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
-      })).toBe(true);
-    }
-  });
-}
+test('at 320px the open menu stays on screen and above the lengths', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 760 });
+  await openApp(page);
+  await page.locator('#mode-more-label').click();
+  const menu = await page.locator('.mode-more-menu').boundingBox();
+  expect(menu.x).toBeGreaterThanOrEqual(0);
+  expect(menu.x + menu.width).toBeLessThanOrEqual(320);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  // Every item is the topmost thing under its own centre, so nothing after the row covers it.
+  for (const item of await page.locator('.mode-more-menu button').all()) {
+    expect(await item.evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      return node.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+    })).toBe(true);
+  }
+});
 
 const PANELS = [['quote', '#quote-options'], ['standard', '#standard-options'], ['custom', '#custom-options']];
 

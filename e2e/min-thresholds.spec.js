@@ -122,22 +122,6 @@ test('the grace period forgives an early miss, and a run that ends above the min
   await expect(page.locator('#condition-line')).not.toContainText('min');
 });
 
-test('a run that reaches its end under the minimum isn’t counted either, so every counted run met it', async ({ page }) => {
-  await openApp(page);
-  await chooseWords(page, 10);
-  await openSettings(page);
-  await page.locator('#min-accuracy').selectOption('98');
-  await page.keyboard.press('Escape');
-  // Finished well inside the grace period, so only the final check can catch it.
-  const text = await passageText(page);
-  await typeInto(page, withMisses(text));
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-delta')).toHaveText('Under your minimum · not counted');
-  await expect(page.locator('#result-comparison-note')).toHaveText('Finished under your 98% minimum accuracy, so it isn’t counted.');
-  await expect(page.locator('#announcement')).toHaveText(/^Finished under your 98% minimum accuracy\. \d+ wpm, \d+% accuracy\.$/);
-  await expect(page.locator('#best')).toHaveText('No best yet');
-});
-
 test('the palette sets a minimum speed, which stops a slow run and resets for a guest', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
@@ -285,6 +269,10 @@ for (const end of ['last character', 'timer']) {
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
     await expect(page.locator('#result-delta')).toHaveText('Under your minimum · not counted');
     await expect(page.locator('#result-comparison-note')).toHaveText('Finished under your 98% minimum accuracy, so it isn’t counted.');
+    if (end === 'last character') {
+      await expect(page.locator('#announcement')).toHaveText(/^Finished under your 98% minimum accuracy\. \d+ wpm, \d+% accuracy\.$/);
+      await expect(page.locator('#best')).toHaveText('No best yet');
+    }
     await expect(page.locator('#run-again')).toBeFocused();
     if (end === 'timer') await expect(page.locator('#result-time')).toHaveText('15.0 s');
 
@@ -401,18 +389,19 @@ test('a retest stopped under its baseline’s minimum shows no timing for the dr
   await expect(page.locator('#history-empty')).toBeVisible();
 });
 
-for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
-  test.describe(`${viewport.width}px`, () => {
-    test.use({ viewport, hasTouch: true, isMobile: true });
+test.describe('390px, then 320px', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-    test('the settings rows and practice label fit', async ({ page }, testInfo) => {
-      await page.emulateMedia({ colorScheme: 'dark' });
-      await openApp(page);
+  test('the settings rows and practice label fit', async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await openApp(page);
+    const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
+      await page.setViewportSize(viewport);
       await openSettings(page);
       await page.locator('#min-accuracy').selectOption('95');
       await page.locator('#min-wpm').selectOption('40');
       await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy · min 40 wpm');
-      const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(await overflow()).toBeLessThanOrEqual(0);
       const popover = await page.locator('.preferences-popover').boundingBox();
       for (const id of ['#min-accuracy', '#min-wpm']) {
@@ -438,9 +427,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
       await page.locator('details.preferences > summary').click();
       await expect(page.locator('.preferences-popover')).toBeHidden();
       expect(await overflow()).toBeLessThanOrEqual(0);
-    });
+    }
   });
-}
+});
 
 test('desktop settings and the practice label, dark and light', async ({ page }, testInfo) => {
   for (const scheme of ['dark', 'light']) {

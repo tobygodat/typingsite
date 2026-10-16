@@ -473,6 +473,7 @@ test('the daily challenge keeps its own conditions while standard is selected', 
 });
 
 test('screenshots', async ({ page, supabase }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 1280, height: 800 });
   const user = supabase.addUser('shots@stilltype.test');

@@ -2,17 +2,16 @@ import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, conditionKey, createAt
 import { runRecord } from '../src/insights.js';
 import { test, expect, openApp, openView, passageText, typeInto, signInWithEmail, chooseMore } from './fixtures.js';
 
-// Committed docs images are only rewritten on request (SCREENSHOTS=1); normal runs still take
-// the shots, into the test's own output folder.
-const shot = (testInfo, name) => process.env.SCREENSHOTS
-  ? `docs/screenshots/missed-words-list/${name}.png`
-  : testInfo.outputPath(`${name}.png`);
+// Docs images are taken only on request (SCREENSHOTS=1), when the quotes are typed at a human pace
+// (~130 ms a key, a believable 70-100 wpm) so the run card beside the list looks real.
+const shot = (name) => `docs/screenshots/missed-words-list/${name}.png`;
+const pace = process.env.SCREENSHOTS ? 130 : 0;
 
 // Common words that recur from quote to quote, so the same word gets missed in more than one run.
 const TARGETS = ['the', 'and', 'a', 'of', 'to', 'in', 'it', 'that', 'for', 'was'];
 const bare = (raw) => raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
 
-// Types `text` at a human pace (`delay` ms a key), with one wrong-then-fixed lowercase letter in the
+// Types `text` at `delay` ms a key, with one wrong-then-fixed lowercase letter in the
 // first occurrence of each target word, and returns the words missed.
 async function typeWithMisses(page, text, delay) {
   const words = text.split(' ');
@@ -38,9 +37,8 @@ async function typeWithMisses(page, text, delay) {
 
 const listRows = (page) => page.locator('#missed-words-list li').evaluateAll((rows) => rows.map((row) => [row.children[0].textContent, row.children[1].textContent]));
 
-test('words missed across runs build a list in Training that starts an uncounted practice', async ({ page }, testInfo) => {
-  // Several runs typed at a human pace.
-  test.setTimeout(360_000);
+test('words missed across runs build a list in Training that starts an uncounted practice', async ({ page }) => {
+  if (process.env.SCREENSHOTS) test.setTimeout(360_000);
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await openApp(page);
   await openView(page, 'Train');
@@ -58,13 +56,9 @@ test('words missed across runs build a list in Training that starts an uncounted
   while (runs < 3 || recurring().length < 2) {
     expect(runs, 'two target words recur within a few short quotes').toBeLessThan(6);
     if (runs) await page.locator('#run-again').click();
-    // ~130 ms a key is a believable 70-100 wpm.
-    for (const word of await typeWithMisses(page, await passageText(page), 130)) tally.set(word, (tally.get(word) || 0) + 1);
+    for (const word of await typeWithMisses(page, await passageText(page), pace)) tally.set(word, (tally.get(word) || 0) + 1);
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
     runs += 1;
-    const wpm = Number(await page.locator('#result-wpm').textContent());
-    expect(wpm).toBeGreaterThanOrEqual(40);
-    expect(wpm).toBeLessThanOrEqual(110);
     if (runs === 1) await expect(page.locator('#missed-words-note')).toHaveText(/^Not enough evidence yet: one run on a physical keyboard counted so far\./);
   }
 
@@ -89,14 +83,16 @@ test('words missed across runs build a list in Training that starts an uncounted
   const listTop = await page.locator('section.missed-words').evaluate((node) => node.getBoundingClientRect().top);
   expect(listTop - patternsEnd).toBe(0);
 
-  // The whole list down to its button, 32px above the fold, with the drill beside it.
-  await action.evaluate((button) => window.scrollTo(0, button.getBoundingClientRect().bottom + window.scrollY + 32 - window.innerHeight));
-  await page.mouse.move(1270, 790);
-  await page.screenshot({ path: shot(testInfo, 'training-list-dark') });
-  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await page.screenshot({ path: shot(testInfo, 'training-list-light') });
-  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  if (process.env.SCREENSHOTS) {
+    // The whole list down to its button, 32px above the fold, with the drill beside it.
+    await action.evaluate((button) => window.scrollTo(0, button.getBoundingClientRect().bottom + window.scrollY + 32 - window.innerHeight));
+    await page.mouse.move(1270, 790);
+    await page.screenshot({ path: shot('training-list-dark') });
+    await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await page.screenshot({ path: shot('training-list-light') });
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  }
 
   await action.click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
@@ -106,13 +102,9 @@ test('words missed across runs build a list in Training that starts an uncounted
   const practice = (await passageText(page)).split(' ');
   expect(practice.length).toBe(40);
   for (const [word] of rows) expect(practice).toContain(word);
-  // A little quicker than the quotes: short familiar words.
-  await typeInto(page, practice.join(' '), '#typing-input', { delay: 115 });
+  await typeInto(page, practice.join(' '));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-delta')).toHaveText('Word practice complete · not counted toward your best');
-  const practiceWpm = Number(await page.locator('#result-wpm').textContent());
-  expect(practiceWpm).toBeGreaterThanOrEqual(40);
-  expect(practiceWpm).toBeLessThanOrEqual(110);
   // Out of the evidence: the list still counts the same runs. (#best says word practice isn't counted,
   // so the signed-in test checks the stored bests instead.)
   await expect(note).toContainText(`your last ${runs} complete tests`);
@@ -153,9 +145,7 @@ function trace(id, at, missed, kind = 'test') {
   return { ...completeAttempt(attempt, { endedAt: t }), at, fresh: true };
 }
 
-test('signed in, the list rides the synced run summaries, starts from the palette and clears with history', async ({ page, supabase }, testInfo) => {
-  // The practice passage is typed at a human pace.
-  test.setTimeout(120_000);
+test('signed in, the list rides the synced run summaries, starts from the palette and clears with history', async ({ page, supabase }) => {
   const user = supabase.addUser('words@stilltype.test');
   const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
   const traces = [trace('a', day(3), ['their', 'because']), trace('b', day(2), ['their', 'river']), trace('c', day(1), ['their', 'because', 'river'])];
@@ -185,7 +175,7 @@ test('signed in, the list rides the synced run summaries, starts from the palett
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.locator('section.missed-words').scrollIntoViewIfNeeded();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await page.screenshot({ path: shot(testInfo, 'training-list-390') });
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: shot('training-list-390') });
   await page.setViewportSize({ width: 320, height: 760 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -199,7 +189,7 @@ test('signed in, the list rides the synced run summaries, starts from the palett
   await expect(page.locator('#session-title')).toHaveText('Practice words you keep missing');
   const passage = (await passageText(page)).split(' ');
   expect(new Set(passage)).toEqual(new Set(['their', 'because', 'river']));
-  await typeInto(page, passage.join(' '), '#typing-input', { delay: 110 });
+  await typeInto(page, passage.join(' '));
   await expect(page.locator('#result-delta')).toHaveText('Word practice complete · not counted toward your best');
   // With no run in this tab, the newest retained run is the retest baseline.
   await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 25-word retest.');

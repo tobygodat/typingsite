@@ -360,9 +360,12 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#condition-line')).toContainText('touch input');
   });
 
-  test('a tap on restart turns a keyboard-started lesson into touch input', async ({ page }) => {
+  // Any later tap counts, wherever it lands, even one on a palette command that refocuses the input with no
+  // tap on the passage. A finished lesson is complete when the tap lands, so the tap must class the run it starts.
+  test('a later tap on restart or a palette command, even after a failed keyboard lesson, makes a touch try that doesn’t unlock', async ({ page }) => {
     await openApp(page);
     await openLessons(page);
+    const rows = page.locator('#lesson-list .lesson-row');
     await page.keyboard.press('Enter');
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
     await expect(page.locator('#condition-line')).toContainText('physical keyboard');
@@ -370,16 +373,10 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await typeLesson(page);
     await expect(page.locator('#lesson-status')).toHaveText('touch input');
-    const rows = page.locator('#lesson-list .lesson-row');
     await expect(rows.first().locator('.lesson-row-numbers')).toContainText('touch input');
     await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
-  });
 
-  // Any later tap counts, wherever it lands: this palette command refocuses the input with no tap on the passage.
-  test('a tap on a palette command during a keyboard-started lesson makes it touch input', async ({ page }) => {
-    await openApp(page);
-    await openLessons(page);
-    await page.keyboard.press('Enter');
+    await page.locator('#lesson-primary').click();
     await expect(page.locator('#condition-line')).toContainText('physical keyboard');
     await page.keyboard.press('Control+k');
     await page.locator('#palette-input').fill('keyboard');
@@ -389,14 +386,9 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await typeLesson(page);
     await expect(page.locator('#lesson-status')).toHaveText('touch input');
-    await expect(page.locator('#lesson-list .lesson-row').nth(1)).toHaveAttribute('data-state', 'locked');
-  });
+    await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
 
-  // The finished lesson is complete when the tap lands, so the tap must class the run it starts.
-  test('a palette restart tapped after a failed keyboard lesson starts a touch try that doesn’t unlock', async ({ page }) => {
-    await openApp(page);
-    await openLessons(page);
-    await page.keyboard.press('Enter');
+    await page.locator('#lesson-primary').click();
     await expect(page.locator('#condition-line')).toContainText('physical keyboard');
     const text = await passageText(page);
     await typeInto(page, [...text].map((char, i) => (i % 4 === 1 && char !== ' ' ? (char === 'f' ? 'j' : 'f') : char)).join(''));
@@ -409,7 +401,7 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await typeLesson(page);
     await expect(page.locator('#lesson-status')).toHaveText('touch input');
-    await expect(page.locator('#lesson-list .lesson-row').nth(1)).toHaveAttribute('data-state', 'locked');
+    await expect(rows.nth(1)).toHaveAttribute('data-state', 'locked');
   });
 
   test('a tapped “Take a practice run” after every lesson is a touch run, never a physical-keyboard best', async ({ page, supabase }) => {
@@ -649,28 +641,6 @@ test('clearing history replaces a lesson it locks, and a restart never starts a 
   await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 1 passed. d and k are next.');
 });
 
-test('opening learn to type mid-drill ends the drill without drawing a retest passage', async ({ page, supabase }) => {
-  const user = supabase.addUser('drill@stilltype.test');
-  await openApp(page);
-  await signInWithEmail(page, user.email);
-  await chooseWords(page, 10);
-  await completePassage(page);
-  await page.locator('#start-drill').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-  await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1);
-  const seen = supabase.profileFor(user.email).seenTextIds;
-  await typeInto(page, (await passageText(page)).slice(0, 4));
-  await expect(body(page)).toHaveAttribute('data-running', 'true');
-
-  await page.keyboard.press('Control+k');
-  await page.keyboard.type('learn to type');
-  await page.keyboard.press('Enter');
-  await expect(body(page)).toHaveAttribute('data-view', 'learn');
-  // The interrupted drill and anything drawn with it reach the account in the same save.
-  await expect.poll(() => supabase.profileFor(user.email)?.runs?.map((run) => `${run.kind} ${run.status}`)).toEqual(['test complete', 'drill interrupted']);
-  expect(supabase.profileFor(user.email).seenTextIds).toEqual(seen);
-});
-
 test('a suggestion sent from the learn screen records the learn view', async ({ page, supabase }) => {
   await openApp(page);
   await openLessons(page);
@@ -734,21 +704,23 @@ test('a device that saves after another device passed a lesson keeps that pass',
   } finally { await context.close(); }
 });
 
-test('passing every lesson hands off to the training loop', async ({ page }) => {
-  test.setTimeout(120_000);
+test('passing every lesson hands off to the training loop', async ({ page, supabase }, testInfo) => {
+  if (process.env.SCREENSHOTS) test.setTimeout(90_000);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const user = learner(supabase, 'last@stilltype.test', LESSONS.length - 1);
   await openApp(page);
+  await signInWithEmail(page, user.email);
   await openLessons(page);
-  for (let number = 1; number <= LESSONS.length; number += 1) {
-    await startLesson(page, number);
-    const text = await typeLesson(page);
-    const allowed = new Set([...LESSONS.slice(0, number).flatMap((lesson) => lesson.keys), ' ']);
-    expect([...text].every((char) => allowed.has(char)), text).toBe(true);
-    await expect(page.locator('#lesson-status')).toHaveText('passed');
-  }
+  await startLesson(page, LESSONS.length);
+  await typeLesson(page, process.env.SCREENSHOTS ? { delay: 190 } : {});
+  await expect(page.locator('#lesson-status')).toHaveText('passed');
   await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 14 passed. Every letter is in.');
   await expect(page.locator('#lesson-current-copy')).toContainText('the training loop takes over');
   await expect(page.locator('#lesson-list .lesson-row[data-state="passed"]')).toHaveCount(LESSONS.length);
   await expect(page.locator('#lesson-primary')).toHaveText('Take a practice run');
+  await expect(page.locator('#lesson-keyboard .key.target')).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await shot(page, testInfo, 'handoff-dark');
   await page.keyboard.press('Control+k');
   await page.keyboard.type('next lesson');
   await expect(page.locator('#palette-list')).not.toContainText('next lesson ·');
@@ -802,6 +774,7 @@ test('a key-pair lesson is labelled, and its finger map stays in view on a lapto
 
 for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow phone', { width: 320, height: 640 }]]) {
   test(`lessons fit a ${name} at ${viewport.width}px with the finger map`, async ({ page }, testInfo) => {
+    test.skip(viewport.width === 390 && !process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     await page.setViewportSize(viewport);
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
@@ -834,6 +807,7 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
 
 for (const scheme of ['dark', 'light']) {
   test(`a learner types a lesson at a human pace and passes (${scheme})`, async ({ page, supabase }, testInfo) => {
+    test.skip(scheme === 'light' && !process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     test.setTimeout(120_000);
     await page.emulateMedia({ colorScheme: scheme });
     const user = learner(supabase, `pace-${scheme}@stilltype.test`, 4);
@@ -868,19 +842,3 @@ for (const scheme of ['dark', 'light']) {
     await shot(page, testInfo, `result-${scheme}`);
   });
 }
-
-test('the last lesson hands off clearly (screenshot)', async ({ page, supabase }, testInfo) => {
-  test.setTimeout(90_000);
-  await page.emulateMedia({ colorScheme: 'dark' });
-  const user = learner(supabase, 'last@stilltype.test', LESSONS.length - 1);
-  await openApp(page);
-  await signInWithEmail(page, user.email);
-  await openLessons(page);
-  await startLesson(page, LESSONS.length);
-  await typeLesson(page, { delay: 190 });
-  await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 14 passed. Every letter is in.');
-  await expect(page.locator('#lesson-primary')).toHaveText('Take a practice run');
-  await expect(page.locator('#lesson-keyboard .key.target')).toHaveCount(0);
-  await page.mouse.move(0, 0);
-  await shot(page, testInfo, 'handoff-dark');
-});

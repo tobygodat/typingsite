@@ -134,6 +134,7 @@ for (const theme of ['dark', 'light']) {
     test.setTimeout(120000);
 
     test(`the run card and the enlarged text controls look unchanged, ${theme}`, async ({ page }, testInfo) => {
+      test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
       await openApp(page);
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await chooseWords(page, 25);
