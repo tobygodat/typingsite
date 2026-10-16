@@ -187,6 +187,8 @@ components:
     textColor: "{colors.text}"
     padding: "6px 6px 6px 20px"
     height: "58px"
+  # The run print: the score and the trace on card stock. From 901px one frame, drawn on the
+  # results grid, spans both side by side; up to 900px each is its own card on the same stock.
   run-card:
     backgroundColor: "{colors.card-top}"
     textColor: "{colors.text}"
@@ -285,13 +287,13 @@ Weights in use are 300 (large numerals), 400 (headings and text), 500 (buttons, 
 A single centred column, `min(1080px, 100% - 48px)` wide (100% - 32px under 760px), in a three-row grid of dock, screen and footer. Screens open with 56px top padding (32px on mobile).
 
 - **Practice:** the passage block is vertically centred in the viewport. Above it, a centred row of segmented controls (from 901px one hairline rail, see Segmented controls); then a measure row of numbers (and, for drills and retests, the heading block) closed by a hairline rule; then the three-line passage, a 2px progress line, and a footer of help text and actions. A mono shortcut row and an optional on-screen keyboard sit below.
-- **Results:** a two-column grid (run card 320–400px, copy fluid, 64px gap). The run card is sticky at 104px from the top. Under 900px it stacks, with the card centred at up to 420px, and it stops sticking when the viewport is 1120px tall or less, since the full card runs to about 980px.
+- **Results:** the delta headline spans the top. From 901px, below it, one wide run print in a single card frame: the score (stamp, numeral, facts, notes) on the left and the trace (speed graph, words, practice offer) on the right. Below the print, two equal columns with a 64px gap: the drill (comparison, recommendation and its actions, "Drill something else", the ghost offer) on the left and the history (patterns, missed words) on the right. Up to 900px it is one column in the order headline, score, drill, trace, history, so the drill sits near the top; the score and the trace are each a card on the same stock. The print scrolls with the page. The DOM follows the phone order, so on desktop the keyboard reads the left column (score, drill) before the right (trace, history); that order is deliberate. How raw, consistency and c/i/e/m are counted sits behind a quiet disclosure under the conditions line.
 - **Progress / Challenge:** heading row, then hairline-separated rows on fixed column grids that collapse to two columns under 900px and 760px.
 - **Spacing:** a 4px-based scale (4, 8, 12, 16, 24, 32, 40, 56, 64). Section breaks are 32px of padding above a hairline rule. Row padding is 12px (evidence) or 24px (history, race results).
-- **Breakpoints:** 900px (results and tables stack), 760px (dock moves to the bottom, keyboard and shortcuts hidden, type steps down), 360px (nav tightens; run-card stat values step down to 20px and the character breakdown takes its own row), max-height 1120px (run card un-sticks). Any coarse pointer keeps a 44px minimum target (`any-pointer: coarse`, so a touchscreen laptop whose primary pointer is its trackpad counts too), checked for every visible control by `e2e/touch-targets.spec.js` and on a hybrid desktop by `e2e/touch-targets-hybrid.spec.js`; text-sized controls (the footer link, plain disclosures) reach it with a transparent `::after`, so neither the text nor the focus ring moves.
+- **Breakpoints:** 900px (results and tables stack), 760px (dock moves to the bottom, keyboard and shortcuts hidden, type steps down), 360px (nav tightens; run-card stat values step down to 20px and the character breakdown takes its own row). Any coarse pointer keeps a 44px minimum target (`any-pointer: coarse`, so a touchscreen laptop whose primary pointer is its trackpad counts too), checked for every visible control by `e2e/touch-targets.spec.js` and on a hybrid desktop by `e2e/touch-targets-hybrid.spec.js`; text-sized controls (the footer link, plain disclosures) reach it with a transparent `::after`, so neither the text nor the focus ring moves.
 
 ### Named Rules
-**The Rules-Not-Boxes Rule.** Sections are separated by a 1px hairline and space, never by a card. If a region is not a floating object or the run card, it has no background and no border box.
+**The Rules-Not-Boxes Rule.** Sections are separated by a 1px hairline and space, never by a card. If a region is not a floating object or the run print, it has no background and no border box. On a phone the print's score and trace are two cards on the same stock.
 
 **The Step-Back Rule.** While a run is in progress (`body[data-running="true"]`), the dock, controls, shortcuts and footer fade to zero opacity and stop taking pointer input unless they hold focus. Only the passage and the numbers remain.
 
