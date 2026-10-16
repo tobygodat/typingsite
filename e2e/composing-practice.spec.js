@@ -1,6 +1,6 @@
 // Composing practice: a prompt, a free-typing field, free-typing speed and backspace rate,
 // kept apart from copy tests and stored as numbers only.
-import { test, expect, openApp, openSettings, openView, passageText, signInWithEmail, storageKeys } from './fixtures.js';
+import { test, expect, openApp, openSettings, openView, passageText, signInWithEmail, storageKeys, chooseMore } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const shot = (testInfo, name) => (process.env.SCREENSHOTS
@@ -52,7 +52,7 @@ async function startPausedClock(page) {
 }
 
 async function openCompose(page) {
-  await page.locator('#mode-compose').click();
+  await chooseMore(page, 'mode-compose');
   await page.clock.runFor(50);
   await expect(page.locator('#compose-form')).toBeVisible();
   await expect(page.locator('#compose-input')).toBeFocused();
@@ -177,7 +177,7 @@ test('the minute ends it on its own and the field stops taking keys', async ({ p
 
 test('paste, key repeat and too-short writing are handled honestly', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-compose').click();
+  await chooseMore(page, 'mode-compose');
   await expect(page.locator('#compose-input')).toBeFocused();
 
   await page.locator('#compose-input').evaluate((input) => {
@@ -552,7 +552,7 @@ test('composing and custom text replace each other in the mode row', async ({ pa
   const text = 'the quick brown fox jumps over the lazy dog';
   await startPausedClock(page);
   // A custom passage, then composing: Custom is no longer marked and its editor stays shut.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
@@ -562,7 +562,7 @@ test('composing and custom text replace each other in the mode row', async ({ pa
   await expect(page.locator('#custom-options')).toBeHidden();
 
   // Custom from composing leaves it: the passage is back, under the open editor.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('body')).toHaveAttribute('data-compose', 'false');
   await expect(page.locator('#compose-form')).toBeHidden();
   await expect(page.locator('#typing-form')).toBeVisible();
@@ -583,7 +583,7 @@ test('composing and custom text replace each other in the mode row', async ({ pa
   await expect(page.locator('#palette')).toBeHidden();
 
   // Using the text from composing starts the custom passage and ends composing.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-use').click();
   await expect(page.locator('body')).toHaveAttribute('data-compose', 'false');
   await expect(page.locator('#condition-line')).toContainText('custom text');
@@ -594,7 +594,7 @@ test('signed in, only the numbers reach the account', async ({ page, supabase })
   supabase.addUser('ada@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
-  await page.locator('#mode-compose').click();
+  await chooseMore(page, 'mode-compose');
   await expect(page.locator('#compose-privacy')).toHaveText('Your words are never saved. Only the numbers go to your history.');
   const phrase = 'Zebra marmalade on toast, then a walk along the canal path.';
   await page.locator('#compose-input').focus();
@@ -1016,7 +1016,7 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
     test('composing fits without sideways scroll and keeps 44px targets', async ({ page }, testInfo) => {
       await page.emulateMedia({ colorScheme: 'dark' });
       await startPausedClock(page);
-      await page.locator('#mode-compose').click();
+      await chooseMore(page, 'mode-compose');
       await page.clock.runFor(50);
       await expect(page.locator('#compose-form')).toBeVisible();
       expect(await overflow(page)).toBeLessThanOrEqual(0);

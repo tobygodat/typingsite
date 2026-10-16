@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore } from './fixtures.js';
 
 // Accent (dead) keys, as US-International and similar layouts send them. On macOS (and Linux with an
 // input method) the mark arrives as a composition that the next key commits; Chrome sends that through
@@ -424,7 +424,7 @@ test('without composition (Windows), a mark and letter sent together are two key
 test('stop on error still blocks keys after a wrong accent commit', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
-  await page.locator('#stop-on-error-toggle').check();
+  await page.locator('#correction-select').selectOption('mandatory');
   await page.keyboard.press('Escape');
   const keys = await accentKeys(page);
   const text = await quoteWithMarks(page);
@@ -1188,7 +1188,7 @@ test('a commit on a passage’s last letter counts every key in it before the ru
   await signInWithEmail(page, user.email);
   const keys = await accentKeys(page);
   const custom = 'She said "go"';
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');
@@ -1209,7 +1209,7 @@ test('a commit on a passage’s last letter counts every key in it before the ru
   for (const [way, commit] of Object.entries(ways)) {
     if (way === 'stopOnError') {
       await openSettings(page);
-      await page.locator('#stop-on-error-toggle').check();
+      await page.locator('#correction-select').selectOption('mandatory');
       await page.keyboard.press('Escape');
       await expect(page.locator('#condition-line')).toContainText('stop on error');
     }
@@ -1235,7 +1235,7 @@ test('a doubled mark on a passage’s last letter costs nothing, after a slip to
   await openApp(page);
   const keys = await accentKeys(page);
   const custom = 'She said "go"';
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');
@@ -1265,7 +1265,7 @@ test('a custom passage takes accent keys like any other passage', async ({ page 
   await openApp(page);
   const keys = await accentKeys(page);
   const custom = 'She said "be brief" and it\'s "done" now.';
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');

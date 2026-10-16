@@ -6,8 +6,10 @@ PRODUCT.md holds durable product truth (users, purpose, metric contract, accessi
 CI runs only unit tests and the build on each push; the browser suite does not run automatically,
 to save GitHub Actions minutes. Run it locally and report the result in the PR:
 `npm test`, `npm run build`, then `npm run test:e2e` (`CHROMIUM=/usr/bin/chromium` if Playwright's
-own browser isn't installed). On GitHub it runs only on request (Actions → Browser checks → Run
-workflow), so do not trigger it yourself unless asked.
+own browser isn't installed). While iterating, `npm run test:e2e:quick` runs the core practice
+loop, layout and chrome specs in a few minutes; it does not replace the full run. On GitHub it
+runs only on request (Actions → Browser checks → Run workflow), so do not trigger it yourself
+unless asked.
 
 ## Design system: Afterimage
 The redesign shipped on 22 September 2026 is the binding visual system. Follow DESIGN.md and the
@@ -23,12 +25,14 @@ durations or easings — use the CSS variables, and add a token before using a n
 - Rules and space, not boxes. Dock, settings, palette and toasts are opaque raised surfaces:
   no glass, no glow.
 
-## Motion: still run
-Nothing decorative moves near the passage while a run is in progress: a solid spring caret, instant
-letter states, a ~150ms line scroll. The rest of the chrome fades out after the first keystroke
-(body[data-running]) and returns on pointer movement, finish or restart. Motion belongs after the
-run and in chrome only, kept short (fades ≤200ms; run-card art ~450ms), and scales to zero under
-prefers-reduced-motion. HANDOFF.md lists effects removed on purpose; do not bring them back.
+## Motion: fluid
+Motion is welcome, on the typing surface during a run as well as in chrome and after it, wherever it
+makes speed, position or progress easier to follow: the spring caret, the pace caret gliding at its
+speed, a ghost race gliding between a friend's keys, the line scroll. Nothing has to stay rigid or
+static. Keep it smooth (transform and opacity, one animation frame at a time), never let it move or
+hide the letters someone is reading, and scale it to zero under prefers-reduced-motion. The chrome
+still fades out after the first keystroke (body[data-running]) and returns on pointer movement,
+finish or restart. Durations come from the --dur-* tokens; add a token before using a new one.
 src/motion.js and src/graph.js are presentational; scoring never reads from them.
 
 ## Historical references

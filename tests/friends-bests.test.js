@@ -214,9 +214,9 @@ test('a key that reads back the same but holds a value this build never writes i
     { ...quote, quoteLength: 'epic' },
     { ...time60, wordList: '50k' },
     { ...time60, wordList: 'every-word-ever' },
-    { ...time60, duration: 45 },
+    { ...time60, duration: 4 },
     { ...time60, duration: 3600 },
-    { ...words10, count: 7 },
+    { ...words10, count: 501 },
     { ...time60, correctionPolicy: 'lenient' },
     // A field its mode doesn't have, or one it leaves empty.
     { ...time60, count: 25 },
@@ -337,4 +337,17 @@ test('the bests migration changes board_numbers only by adding the bests', () =>
   const returned = "  return jsonb_build_object('daily', v_daily, 'week', v_week);";
   assert.ok(earlier.includes(returned));
   assert.equal(later, earlier.replace(returned, "  return jsonb_build_object('daily', v_daily, 'week', v_week, 'bests', race_private.board_bests(p_board->'bests'));"));
+});
+
+test('board shapes keep rule suffixes and layouts together in the canonical order', () => {
+  for (const layout of ['qwerty', 'dvorak']) {
+    for (const strictSpace of [false, true]) {
+      for (const quickEnd of [false, true]) {
+        const conditions = { ...words25, layout, strictSpace, quickEnd };
+        const parsed = shapeOf(conditionKey(conditions));
+        assert.ok(parsed);
+        assert.equal(conditionKey(parsed), conditionKey(conditions));
+      }
+    }
+  }
 });

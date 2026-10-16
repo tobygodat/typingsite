@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CORPUS_VERSION, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, standardConditions, wordHistory } from '../src/typing.js';
-import { KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, comparableKind, dailyPassage, evidenceRun, filterRuns, keyAnalysis, measuredKind, missedAndSlowWords, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainRuns, runRecord, standardInputClass, standardScore, trendRun, weeklyChange } from '../src/insights.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, practiceLevel, practiceStreak, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
+
 
 test('missed and slowest words come from first tries and per-word speed', () => {
   const text = 'the cat sat on mat';
@@ -147,7 +148,7 @@ test('missed-word run records leave out pattern counts nothing reads', () => {
   const typed = { id: 'm', kind: 'missed', status: 'complete', conditions: {}, text: 'the cat', events: [...'the cat'].map((char, i) => ({ type: 'insert', text: char, position: i, offsetMs: i * 100 })) };
   const record = runRecord(typed);
   assert.equal('patterns' in record, false);
-  assert.deepEqual(Object.keys(record).sort(), ['at', 'challengeDate', 'conditions', 'elapsedMs', 'errors', 'firstDailyAttempt', 'fresh', 'id', 'interrupted', 'kind', 'score', 'status', 'target', 'textId']);
+  assert.deepEqual(Object.keys(record).sort(), ['at', 'challengeDate', 'conditions', 'day', 'elapsedMs', 'errors', 'firstDailyAttempt', 'fresh', 'id', 'interrupted', 'kind', 'score', 'status', 'target', 'textId']);
   assert.ok(Array.isArray(runRecord({ ...typed, kind: 'test' }).patterns));
   // Trimming old pattern memory doesn't add the field back.
   const kept = retainRuns([record, ...Array.from({ length: 120 }, (_, i) => runRecord({ ...typed, id: String(i), kind: 'test' }))]);
@@ -266,6 +267,128 @@ test('original quote pool has fresh choices in every length and difficulty bucke
         seenIds.push(passage.id);
       }
     }
+  }
+});
+
+test('a run stopped by a minimum is interrupted everywhere; a completed run keeps its minimums as a label', () => {
+  const attempt = createAttempt({ id: 'min', text: 'the cat', textId: 'one', kind: 'test', conditions });
+  attempt.events = [...'thx cat'].map((text, i) => ({ type: 'insert', text, offsetMs: i * 200 }));
+  attempt.startedAt = 0;
+  attempt.minimums = { accuracy: 95 };
+  const stopped = { ...completeAttempt(attempt, { endedAt: 6000 }), status: 'interrupted', stopped: { metric: 'accuracy', minimum: 95, value: 86 } };
+  const record = runRecord(stopped, '2026-10-08T12:00:00Z');
+  assert.equal(record.interrupted, true);
+  assert.equal(validRun(record), false);
+  assert.equal(trendRun(record), false);
+  assert.deepEqual(record.stopped, { metric: 'accuracy', minimum: 95, value: 86 });
+  // The stop alone keeps a run out of trends and practice time, whatever its stored status says.
+  assert.equal(validRun(runRecord({ ...stopped, status: 'complete' })), false);
+
+  const kept = runRecord(completeAttempt({ ...attempt, minimums: { wpm: 20 } }, { endedAt: 6000 }), '2026-10-08T12:00:00Z');
+  assert.equal(trendRun(kept), true);
+  assert.deepEqual(kept.minimums, { wpm: 20 });
+  assert.equal(conditionKey(kept.conditions), conditionKey(conditions));
+  assert.equal('stopped' in kept, false);
+  assert.equal('minimums' in runRecord(completeAttempt({ ...attempt, minimums: undefined }, { endedAt: 6000 })), false);
+});
+
+test('a retest stopped by its baseline\'s minimum is never compared, and its pairs feed no evidence', () => {
+  const typed = (id, text, keys) => {
+    const attempt = createAttempt({ id, text, textId: id, kind: id === 'before' ? 'test' : 'retest', conditions });
+    attempt.events = [...keys].map((key, i) => ({ type: 'insert', text: key, offsetMs: i * 150 }));
+    attempt.startedAt = 0;
+    attempt.minimums = { wpm: 20 };
+    return completeAttempt(attempt, { endedAt: keys.length * 150 });
+  };
+  const text = 'the other three think that the';
+  const before = typed('before', text, text);
+  // As the app stores it: interrupted, with the stop that ended it.
+  const after = { ...typed('after', text, 'thx other three think that the'), status: 'interrupted', stopped: { metric: 'wpm', minimum: 20, value: 12 } };
+  const comparison = compareAttempts(before, after);
+  assert.equal(comparison.comparable, false);
+  assert.equal(comparison.reason, 'The retest fell under the baseline’s minimums, so no comparison is made.');
+  assert.equal('wpmDelta' in comparison, false);
+  assert.equal(summarizePatterns([after]).attemptCount, 0);
+  assert.equal(summarizePatterns([before, after]).pairs.find((p) => p.pair === 'th').observations, summarizePatterns([before]).pairs.find((p) => p.pair === 'th').observations);
+  assert.equal(recommendTarget([after]).evidence.attemptCount, 0);
+  assert.deepEqual(runRecord(after, '2026-10-08T12:00:00Z').patterns, []);
+  assert.deepEqual(recurringTargets([runRecord(after, '2026-10-08T12:00:00Z'), runRecord({ ...after, id: 'again' }, '2026-10-08T12:01:00Z')], [], conditions), []);
+});
+
+test('daily minutes sum every run on the local day, and the streak counts days meeting the goal', () => {
+  const at = (y, m, d, h = 12) => new Date(y, m - 1, d, h).toISOString();
+  const runs = [
+    run('a', { at: at(2026, 10, 8, 9), elapsedMs: 4 * 60000 }),
+    run('b', { at: at(2026, 10, 8, 21), elapsedMs: 2 * 60000, kind: 'drill' }),
+    run('c', { at: at(2026, 10, 7), elapsedMs: 6 * 60000, kind: 'daily' }),
+    run('d', { at: at(2026, 10, 6), elapsedMs: 3 * 60000 }),
+    run('e', { at: at(2026, 10, 5), elapsedMs: 0 }),
+    run('f', { at: null, elapsedMs: 60000 }),
+    run('g', { at: at(2026, 10, 7, 15), elapsedMs: 20 * 60000, status: 'interrupted', interrupted: true }),
+  ];
+  const byDay = minutesByDay(runs);
+  assert.equal(byDay[dayKey(at(2026, 10, 8))], 6);
+  assert.equal(byDay[dayKey(at(2026, 10, 5))], undefined);
+  const today = new Date(2026, 9, 8, 22);
+  assert.equal(practiceStreak(byDay, 5, today), 2);
+  assert.equal(practiceStreak(byDay, 0, today), 3);
+  assert.equal(practiceStreak(byDay, 10, today), 0);
+  // Today not yet practised: yesterday's streak still stands until the day is over.
+  assert.equal(practiceStreak(byDay, 0, new Date(2026, 9, 9, 8)), 3);
+  assert.equal(practiceStreak(byDay, 0, new Date(2026, 9, 10, 8)), 0);
+  assert.deepEqual([0, 1, 4, 6, 25].map((m) => practiceLevel(m, 5)), [0, 1, 2, 3, 4]);
+  assert.equal(byDay[dayKey(at(2026, 10, 7))], 6, 'an interrupted run keeps no idle time');
+  assert.deepEqual([0, undefined, 0.2, 4.99, 5, 12.7].map(goalMinutes), ['0', '0', '<1', '4', '5', '12']);
+});
+
+test('practice minutes outlive the run summaries that retention drops', () => {
+  const at = (back) => new Date(2026, 9, 8 - back, 12).toISOString();
+  const runs = Array.from({ length: MAX_RUN_SUMMARIES + 40 }, (_, i) => run(`r${i}`, { at: at(Math.floor((MAX_RUN_SUMMARIES + 39 - i) / 20)), elapsedMs: 30000 }));
+  const before = minutesByDay(runs);
+  const kept = retainHistory(runs, { '2025-01-01': 60000 });
+  assert.equal(kept.runs.length, MAX_RUN_SUMMARIES);
+  assert.deepEqual(minutesByDay(kept.runs, kept.practiceDays), { ...before, '2025-01-01': 1 });
+  assert.deepEqual(retainHistory(kept.runs, kept.practiceDays), kept, 'retaining again moves nothing twice');
+});
+
+test('custom runs count as practice time, and their time outlives their own retention budget', () => {
+  const at = (back) => new Date(2026, 9, 8 - back, 12).toISOString();
+  // Ten older custom runs fall outside the 50-run custom budget; comparable runs fill exactly their own budget.
+  const custom = Array.from({ length: MAX_NON_COMPARABLE_RUNS + 10 }, (_, i) => run(`c${i}`, { kind: 'custom', patterns: undefined, at: at(i < 10 ? 3 : 1), elapsedMs: 60000 }));
+  const tests = Array.from({ length: MAX_RUN_SUMMARIES }, (_, i) => run(`t${i}`, { at: at(0), elapsedMs: 30000 }));
+  const runs = [...custom, ...tests];
+  const before = minutesByDay(runs);
+  assert.equal(before[dayKey(at(3))], 10, 'custom minutes count toward the day');
+  const kept = retainHistory(runs);
+  assert.equal(kept.runs.filter((r) => r.kind === 'custom').length, MAX_NON_COMPARABLE_RUNS);
+  assert.equal(kept.runs.filter((r) => r.kind === 'test').length, MAX_RUN_SUMMARIES, 'custom runs push no comparable run out');
+  assert.deepEqual(kept.practiceDays, { [dayKey(at(3))]: 600000 });
+  assert.deepEqual(minutesByDay(kept.runs, kept.practiceDays), before);
+  assert.deepEqual(retainHistory(kept.runs, kept.practiceDays), kept, 'retaining again moves nothing twice');
+});
+
+test('a run keeps the day it was practised on, whichever time zone reads it later', () => {
+  const zone = process.env.TZ;
+  try {
+    // 23:30 on 8 October in Los Angeles is already 9 October in Tokyo.
+    process.env.TZ = 'America/Los_Angeles';
+    const attempt = completeAttempt(createAttempt({ id: 'late', text: 'the', textId: 'one', conditions }), { endedAt: 0 });
+    const late = { ...runRecord({ ...attempt, status: 'complete' }, '2026-10-09T06:30:00Z'), elapsedMs: 10 * 60000 };
+    assert.equal(late.day, '2026-10-08');
+    const newer = Array.from({ length: MAX_RUN_SUMMARIES }, (_, i) => run(`n${i}`, { at: '2026-10-11T18:00:00Z', day: '2026-10-11', elapsedMs: 1000 }));
+    const readings = ['America/Los_Angeles', 'Asia/Tokyo'].map((tz) => {
+      process.env.TZ = tz;
+      const kept = retainHistory([late, ...newer]);
+      return [kept.practiceDays, minutesByDay([late]), minutesByDay(kept.runs, kept.practiceDays)['2026-10-08']];
+    });
+    assert.deepEqual(readings[0], [{ '2026-10-08': 600000 }, { '2026-10-08': 10 }, 10]);
+    assert.deepEqual(readings[1], readings[0], 'retained and archived runs land on the same day in both zones');
+    // A summary from before days were recorded falls back to its timestamp in the reading zone.
+    assert.equal(runDay({ ...late, day: undefined }), '2026-10-09');
+    assert.equal(runDay({ at: null }), null);
+  } finally {
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
   }
 });
 
@@ -450,6 +573,55 @@ test('a profile with only comparable runs is retained exactly as before', () => 
   assert.equal(JSON.stringify(retainRuns(short)), JSON.stringify(previous(short)));
 });
 
+// A timed run as app.js stores it: one insert per letter, and every 20th letter (5%) mistyped, deleted and retyped,
+// with offsets as Chromium reports them (0.1 ms steps less the start stamp, so most carry float noise).
+function timedTrace(id, seconds, wpm) {
+  const passage = selectPassage({ mode: 'time', duration: seconds, random: () => 0.37 });
+  const attempt = createAttempt({ id, text: passage.text, textId: passage.id,
+    conditions: { mode: 'time', duration: seconds, wordList: '200', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION } });
+  const letters = Math.min(passage.text.length, Math.round((wpm * 5 * seconds) / 60));
+  const step = (seconds * 1000) / (letters * 1.1);
+  const offset = (n) => Math.round((52345.7 + n * step) * 10) / 10 - 52345.7;
+  let n = 0;
+  for (let position = 0; position < letters; position += 1) {
+    if (position % 20 === 7) {
+      attempt.events.push({ type: 'insert', text: 'q', position, accepted: true, offsetMs: offset(n += 1) });
+      attempt.events.push({ type: 'delete', count: 1, offsetMs: offset(n += 1) });
+    }
+    attempt.events.push({ type: 'insert', text: passage.text[position], position, accepted: true, offsetMs: offset(n += 1) });
+  }
+  attempt.startedAt = 0;
+  return completeAttempt(attempt, { endedAt: seconds * 1000 });
+}
+const size = (value) => JSON.stringify(value).length;
+
+test('a single trace larger than the whole budget is not kept, even as the newest', () => {
+  const short = Array.from({ length: 5 }, (_, i) => ({ ...timedTrace('short', 30, 90), id: `s${i}` }));
+  // Ten minutes past ~215 wpm (or a key held down) records more than the budget on its own.
+  const huge = timedTrace('huge', 600, 300);
+  assert.ok(size(huge) > TRACE_BUDGET, `${size(huge)} characters`);
+  const kept = retainTraces([...short, huge]);
+  assert.ok(size(kept) <= TRACE_BUDGET, `${size(kept)} characters kept`);
+  // Its run keeps only the summary record; the earlier traces stay as baselines and evidence.
+  assert.deepEqual(kept.map((t) => t.id), short.map((t) => t.id));
+  assert.deepEqual(retainTraces([huge]), []);
+  // A profile saved before this rule, with an oversized trace among older ones, sheds it too.
+  assert.deepEqual(retainTraces([short[0], { ...huge, id: 'old-huge' }, ...short.slice(1)]).map((t) => t.id), short.map((t) => t.id));
+  // One character over the budget is enough: the next newest trace that fits is kept instead.
+  const slower = timedTrace('slower', 30, 60);
+  assert.ok(size(slower) < size(short[0]) - 1);
+  assert.deepEqual(retainTraces([slower, short[0]], { budget: size(short[0]) - 1 }).map((t) => t.id), ['slower']);
+});
+
+test('a newest trace within the budget is always kept, however large', () => {
+  // Ten minutes at 200 wpm: within the budget alone, so it is kept and the older traces give way.
+  const fast = timedTrace('fast', 600, 200);
+  const older = timedTrace('older', 600, 120);
+  assert.ok(size(fast) <= TRACE_BUDGET && size(fast) + size(older) > TRACE_BUDGET, `${size(fast)} + ${size(older)}`);
+  assert.deepEqual(retainTraces([older, fast]).map((t) => t.id), ['fast']);
+  // Exactly at the budget still counts as within it.
+  assert.deepEqual(retainTraces([older, fast], { budget: size(fast) }).map((t) => t.id), ['fast']);
+});
 test('missed-word practice is not comparable, so it never pushes practice runs out of the pattern window', () => {
   assert.equal(comparableKind('missed'), false);
   assert.equal(comparableKind('custom'), false);
@@ -506,7 +678,7 @@ test('a counted run records its first-try missed words as practice uses them, ca
   const record = typedRun('a', text, [1, 9, 11, 15]);
   assert.deepEqual(record.missedWords, ['the', 'table,', 'Still']);
   // Nothing else in the summary changes: the same keys as before, plus the list.
-  assert.deepEqual(Object.keys(record).sort(), ['at', 'challengeDate', 'conditions', 'elapsedMs', 'errors', 'firstDailyAttempt', 'fresh', 'id', 'interrupted', 'keys', 'keysVersion', 'kind', 'missedWords', 'patterns', 'score', 'status', 'target', 'textId']);
+  assert.deepEqual(Object.keys(record).sort(), ['at', 'challengeDate', 'conditions', 'day', 'elapsedMs', 'errors', 'firstDailyAttempt', 'fresh', 'id', 'interrupted', 'keys', 'keysVersion', 'kind', 'missedWords', 'patterns', 'score', 'status', 'target', 'textId']);
   assert.equal(record.errors, 4);
   // A clean counted run records an empty list: evidence that nothing was missed.
   assert.deepEqual(typedRun('clean', text, []).missedWords, []);
@@ -650,4 +822,3 @@ test('touch runs are never pooled with physical-keyboard runs: the newest run pi
   // Back on a keyboard, the keyboard runs count again, without the touch misses.
   assert.deepEqual(tally([...keys, missedRun('t1', ['the'], { conditions: touch }), missedRun('k4', ['of'], { conditions: keyboard })]), ['physical-keyboard', 4, [['and', 2], ['the', 2]]]);
 });
-
