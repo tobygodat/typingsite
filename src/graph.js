@@ -71,15 +71,15 @@ function el(name, attrs = {}, text) {
 const seconds = (value) => `${Number.isInteger(value) ? value : value.toFixed(1)}s`;
 
 // Points are in wpm; the summary reads them in the chosen display unit.
-export function describeSeries({ points }, averageWpm, unit = 'wpm') {
+export function describeSeries({ points }, averageWpm, unit) {
   if (!points.length) return 'No keystrokes to graph.';
   const speeds = points.map((point) => point.wpm);
   const misses = points.reduce((sum, point) => sum + point.misses, 0);
-  return `Speed over time: average ${formatSpeed(averageWpm, unit)}, peak ${formatSpeed(Math.max(...speeds), unit)}, lowest ${formatSpeed(Math.min(...speeds), unit)}. `
+  return `Speed over time: average ${formatSpeed(averageWpm, {}, unit)}, peak ${formatSpeed(Math.max(...speeds), {}, unit)}, lowest ${formatSpeed(Math.min(...speeds), {}, unit)}. `
     + `${misses} ${misses === 1 ? 'mistake' : 'mistakes'} marked.`;
 }
 
-export function renderSpeedGraph(container, attempt, { animate = true, unit = 'wpm' } = {}) {
+export function renderSpeedGraph(container, attempt, { animate = true } = {}) {
   const width = Math.round(container.clientWidth);
   const height = Math.round(container.clientHeight);
   container.replaceChildren();
@@ -87,15 +87,15 @@ export function renderSpeedGraph(container, attempt, { animate = true, unit = 'w
 
   const series = speedSeries(attempt);
   const averageWpm = attempt?.summary?.score?.wpm ?? 0;
-  container.setAttribute('aria-label', describeSeries(series, averageWpm, unit));
+  container.setAttribute('aria-label', describeSeries(series, averageWpm));
   const svg = el('svg', { viewBox: `0 0 ${width} ${height}`, width, height, 'aria-hidden': 'true' });
   if (animate) svg.classList.add('is-drawing');
   container.append(svg);
 
   // Drawn in the display unit, so the gridline labels are round numbers in that unit.
   const { durationS } = series;
-  const points = series.points.map((point) => ({ ...point, speed: speedValue(point.wpm, unit) }));
-  const average = speedValue(averageWpm, unit);
+  const points = series.points.map((point) => ({ ...point, speed: speedValue(point.wpm) }));
+  const average = speedValue(averageWpm);
   const top = niceMax(Math.max(average, ...points.map((point) => point.speed)));
   // Four-digit cpm labels need a little more room than the usual two or three digits.
   const left = String(top).length > 3 ? PAD.left + 8 : PAD.left;

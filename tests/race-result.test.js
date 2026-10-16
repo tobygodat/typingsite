@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeInboxEntry, parseLegacyRaceResult, raceResultOf, raceResultText } from '../src/race-result.js';
+import { normalizeInboxEntry, parseLegacyRaceResult, raceResultOf, raceResultParts, raceResultText } from '../src/race-result.js';
+import { formatSpeed } from '../src/units.js';
 
 // Exactly what the inbox saved for a race result before the speed unit setting:
 // `${lead} ${opponent.name}: ${me.wpm || 0} wpm to ${opponent.wpm || 0}.`
@@ -24,9 +25,10 @@ test('a read-back sentence rewords to the saved text in wpm and converts in cpm'
   for (const text of ['You beat Lin: 72 wpm to 65.', 'You raced Sam: 5 wpm to 9.: 61 wpm to 64.', 'You tied with 李: 0 wpm to 0.']) {
     const race = parseLegacyRaceResult(text);
     assert.ok(race, text);
-    assert.equal(raceResultText(race, 'wpm'), text);
+    assert.equal(raceResultText(race), text);
   }
-  assert.equal(raceResultText(parseLegacyRaceResult('You beat Lin: 72 wpm to 65.'), 'cpm'), 'You beat Lin: 360 cpm to 325.');
+  const cpm = (wpm, options) => formatSpeed(wpm, options, 'cpm');
+  assert.equal(raceResultParts(parseLegacyRaceResult('You beat Lin: 72 wpm to 65.'), cpm).join(''), 'You beat Lin: 360 cpm to 325.');
 });
 
 test('anything that is not exactly the legacy sentence is left as text', () => {

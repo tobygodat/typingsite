@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CHARS_PER_WORD, CORPUS_VERSION, METRIC_VERSION, conditionKey, metrics } from '../src/typing.js';
-import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, rawSpeedDefinition, speedDefinition, speedValue, wpmFromSpeed } from '../src/units.js';
+import { DEFAULT_SPEED_UNIT, RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, normalizeSpeedUnit, speedValue, unitText, wpmFromSpeed } from '../src/units.js';
 import { describeSeries } from '../src/graph.js';
-import { raceResultText } from '../src/race-result.js';
+import { resultParts, resultText } from '../src/ghost-race.js';
+import { raceResultParts } from '../src/race-result.js';
+
+// A speed as the inbox shows it, in cpm; on screen the figure is speedFigure, the same text.
+const cpm = (wpm, options) => formatSpeed(wpm, options, 'cpm');
 
 test('speed unit defaults to wpm and rejects anything else', () => {
   assert.equal(DEFAULT_SPEED_UNIT, 'wpm');
@@ -23,13 +27,21 @@ test('cpm is the engine’s five-character word counted per character', () => {
 });
 
 test('scores, bests, medians and differences convert the same way', () => {
-  assert.equal(formatSpeed(77, 'wpm'), '77 wpm');
-  assert.equal(formatSpeed(77, 'cpm'), '385 cpm');
-  assert.equal(formatSpeed(0, 'cpm'), '0 cpm');
-  // Differences keep their sign; a median of two runs can sit on a half.
-  assert.equal(speedValue(-3, 'cpm'), -15);
-  assert.equal(speedValue(2.5, 'cpm'), 12.5);
-  assert.equal(formatSpeed(64, undefined), '64 wpm');
+  assert.equal(formatSpeed(77, {}, 'wpm'), '77 wpm');
+  assert.equal(formatSpeed(77, {}, 'cpm'), '385 cpm');
+  assert.equal(formatSpeed(0, {}, 'cpm'), '0 cpm');
+  // Nothing has chosen a unit yet, so wpm.
+  assert.equal(formatSpeed(64), '64 wpm');
+  // Beside its own unit label, a figure is the number alone.
+  assert.equal(formatSpeed(77, { bare: true }, 'cpm'), '385');
+  // Differences keep their sign, with a typographic minus; a median of two runs can sit on a half,
+  // and a longer median is kept to one place.
+  assert.equal(formatSpeed(-3, { signed: true }, 'cpm'), '−15 cpm');
+  assert.equal(formatSpeed(3, { signed: true, bare: true }, 'wpm'), '+3');
+  assert.equal(formatSpeed(0, { signed: true }, 'wpm'), '0 wpm');
+  assert.equal(formatSpeed(72.5, { bare: true }, 'cpm'), '362.5');
+  assert.equal(formatSpeed(64 + 1 / 3, {}, 'wpm'), '64.3 wpm');
+  assert.equal(formatSpeed(64 + 1 / 3, {}, 'cpm'), '321.7 cpm');
 });
 
 test('a figure entered in the chosen unit goes back to wpm, the inverse of the display', () => {
@@ -44,14 +56,23 @@ test('a figure entered in the chosen unit goes back to wpm, the inverse of the d
 });
 
 test('the metric note names the unit and how it is derived', () => {
-  assert.equal(speedDefinition('wpm'), 'wpm counts correct characters kept');
-  assert.equal(speedDefinition('cpm'), 'cpm counts correct characters kept (wpm × 5)');
+  assert.equal(unitText(SPEED_DEFINITION, 'wpm'), 'wpm counts correct characters kept');
+  assert.equal(unitText(SPEED_DEFINITION, 'cpm'), 'cpm counts correct characters kept (wpm × 5)');
 });
 
 test('the raw speed tooltip defines the unit it is shown in', () => {
-  assert.equal(rawSpeedDefinition('wpm'), 'Every character typed, mistakes included: characters ÷ 5 per minute');
-  assert.equal(rawSpeedDefinition('cpm'), 'Every character typed, mistakes included: characters per minute');
-  assert.equal(rawSpeedDefinition(undefined), rawSpeedDefinition('wpm'));
+  assert.equal(unitText(RAW_SPEED_DEFINITION, 'wpm'), 'Every character typed, mistakes included: characters ÷ 5 per minute');
+  assert.equal(unitText(RAW_SPEED_DEFINITION, 'cpm'), 'Every character typed, mistakes included: characters per minute');
+  assert.equal(unitText(RAW_SPEED_DEFINITION), unitText(RAW_SPEED_DEFINITION, 'wpm'));
+});
+
+test('a unit template names the unit and keeps text only its unit shows', () => {
+  assert.equal(unitText('live {unit} and accuracy', 'cpm'), 'live cpm and accuracy');
+  assert.equal(unitText('Corrected {unit}', 'wpm'), 'Corrected wpm');
+  // In this UI % is the accuracy unit, so it is never a placeholder.
+  assert.equal(unitText('{unit} · 98%', 'cpm'), 'cpm · 98%');
+  assert.equal(unitText('text{wpm: ÷ 5}, per minute', 'wpm'), 'text ÷ 5, per minute');
+  assert.equal(unitText('text{wpm: ÷ 5}, per minute', 'cpm'), 'text, per minute');
 });
 
 test('the speed unit is not a test condition, so bests and retests keep matching', () => {
@@ -70,14 +91,23 @@ test('the graph summary reads its points in the chosen unit', () => {
 
 test('an online race result is worded in the unit chosen when it is shown', () => {
   const race = { lead: 'You beat', opponent: 'Lin', wpm: [70, 60] };
-  assert.equal(raceResultText(race, 'wpm'), 'You beat Lin: 70 wpm to 60.');
-  assert.equal(raceResultText(race, 'cpm'), 'You beat Lin: 350 cpm to 300.');
+  assert.equal(raceResultParts(race).join(''), 'You beat Lin: 70 wpm to 60.');
+  assert.equal(raceResultParts(race, cpm).join(''), 'You beat Lin: 350 cpm to 300.');
 });
 
-test('ghost result speed conversion keeps names and stored text intact', async () => {
-  const { ghostResultSpeed } = await import('../src/units.js');
-  const text = '60 wpm raced your run: finished first · you 72 wpm, 60 wpm 65 wpm.';
-  assert.equal(ghostResultSpeed(text, 'cpm'), '60 wpm raced your run: finished first · you 360 cpm, 60 wpm 325 cpm.');
-  assert.equal(ghostResultSpeed(text, 'wpm'), text);
-  assert.equal(ghostResultSpeed('Older result text', 'cpm'), 'Older result text');
+// The inbox keeps a ghost race result as resultText wrote it, in wpm, and reads its speeds back to show
+// them in the chosen unit, so the two are checked against each other on real results.
+test('a ghost race result reads back from the sentence resultText writes, whatever the name', () => {
+  for (const name of ['Ada', '60 wpm', 'Lin · you 5 wpm, Mo', '李']) {
+    for (const role of ['sent', 'received']) {
+      const challenge = { role, name, duration: null, conditions: { mode: 'words', count: 25 },
+        sender: { wpm: 72, elapsedMs: 44000, correct: 130 }, result: { wpm: 65, elapsedMs: 41200, correct: 125 } };
+      const text = resultText(challenge);
+      const [mine, theirs] = role === 'sent' ? [72, 65] : [65, 72];
+      assert.equal(resultParts(text, (wpm) => `${wpm} wpm`).join(''), text);
+      assert.equal(resultParts(text, cpm).join(''), text.replace(`you ${mine} wpm, ${name} ${theirs} wpm.`, `you ${mine * 5} cpm, ${name} ${theirs * 5} cpm.`));
+    }
+  }
+  assert.equal(resultParts('Older result text', cpm), null);
+  assert.equal(resultParts('Ada’s run: a tie · you 072 wpm, Ada 72 wpm.', cpm), null);
 });

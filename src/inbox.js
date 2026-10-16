@@ -2,7 +2,9 @@
 // come from the race service; other entries (an opponent joined, a race result) are added by the
 // online race. Entries are kept per signed-in user on this device only; guests keep nothing and see
 // no inbox.
-import { offerText, resultText } from './ghost-race.js';
+import { offerText, resultParts, resultText } from './ghost-race.js';
+import { normalizeInboxEntry, raceResultOf, raceResultParts } from './race-result.js';
+import { speedFigure } from './units.js';
 
 const $ = (id) => document.getElementById(id);
 const STORE = 'stilltype-inbox-v1:';
@@ -38,10 +40,15 @@ function ago(at, now = Date.now()) {
   return new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-// `describe` can word an entry from its saved fields (a race result in the current speed unit).
-// `normalize` brings an entry saved by an older build up to the current shape as it is loaded; it
-// must keep what was saved (the text above all) and return a current entry unchanged.
-export function createInbox({ getSession, listInvites, listChallenges = null, actions, announce, isRunning, describe = (entry) => entry.text, normalize = (entry) => entry }) {
+// An entry as shown: a result's speeds are figures in the chosen unit, read from its saved scores or,
+// for a ghost race or a result saved before the setting, from its sentence. Anything else reads as saved.
+function copyOf(entry) {
+  const race = raceResultOf(entry);
+  if (race) return raceResultParts(race, speedFigure);
+  return (entry.kind === 'challenge-result' && resultParts(entry.text, speedFigure)) || [entry.text];
+}
+
+export function createInbox({ getSession, listInvites, listChallenges = null, actions, announce, isRunning }) {
   let entries = [];
   let invites = [];
   let delivered = new Set();
@@ -73,7 +80,7 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     if (!userId()) return;
     try {
       const saved = JSON.parse(localStorage.getItem(STORE + userId()));
-      if (Array.isArray(saved)) entries = saved.filter((entry) => entry?.id && entry.text).map(normalize);
+      if (Array.isArray(saved)) entries = saved.filter((entry) => entry?.id && entry.text).map(normalizeInboxEntry);
     } catch {}
     trim();
     try {
@@ -135,8 +142,6 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
 
   function render() {
     retire();
-    // A toast on screen is reworded too (a result in a newly chosen speed unit).
-    if (toastEntry) $('challenge-toast-text').textContent = describe(toastEntry);
     const signedIn = Boolean(userId());
     $('inbox').hidden = !signedIn;
     if (!signedIn) return;
@@ -152,7 +157,7 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
       row.dataset.kind = entry.kind;
       if (!entry.read) row.dataset.unread = 'true';
       const copy = document.createElement('p');
-      copy.textContent = describe(entry);
+      copy.append(...copyOf(entry));
       const meta = document.createElement('span');
       meta.className = 'inbox-meta';
       const closed = isClosed(entry);
@@ -206,13 +211,12 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     pendingToast = null;
     toastEntry = entry;
     const action = actions[entry.kind];
-    const text = describe(entry);
-    $('challenge-toast-text').textContent = text;
+    $('challenge-toast-text').replaceChildren(...copyOf(entry));
     $('challenge-toast-action').hidden = !action;
     $('challenge-toast-action').textContent = action?.label || '';
     markWaiting($('challenge-toast-action'), entry.kind);
     $('challenge-toast').hidden = false;
-    announce(text);
+    announce($('challenge-toast-text').textContent);
     toastLeft = TOAST_MS;
     startToastTimer();
   }
@@ -371,7 +375,6 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     refresh,
     notify,
     runChanged,
-    render,
     get invites() { return invites; },
     subscribe(listener) { listeners.add(listener); },
     // Marks these kinds' actions as waiting (none, once the request has landed).

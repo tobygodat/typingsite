@@ -13,7 +13,7 @@ import {
   refusedEdit,
 } from './compose.js';
 import { drawCaret, holdsCaretStill } from './compose-caret.js';
-import { formatSpeed, speedValue } from './units.js';
+import { formatSpeed, showSpeed, unitLabel } from './units.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -29,7 +29,7 @@ export const COMPOSE_NOTICES = {
   composition: 'IME input isn’t measured. Esc to start over.',
 };
 
-export function createCompose({ speedUnit = () => 'wpm', setRunning, announce, save, signedIn, uid }) {
+export function createCompose({ setRunning, announce, save, signedIn, uid }) {
   const input = $('compose-input');
   const done = $('compose-done');
   // Only where the native caret would blink; Chromium holds its own still with `caret-animation`.
@@ -46,7 +46,6 @@ export function createCompose({ speedUnit = () => 'wpm', setRunning, announce, s
   let unsupported = false;
   let inputClass = 'physical-keyboard';
   let notice = '';
-  let shownResult = null;
   let deck = [];
   let deckIndex = -1;
   let promptId = null;
@@ -143,15 +142,14 @@ export function createCompose({ speedUnit = () => 'wpm', setRunning, announce, s
   }
 
   function renderResult(summary, { endedBy, counted, saved }) {
-    shownResult = { summary, endedBy, counted, saved };
     setText($('compose-result-heading'), resultHeading(summary, endedBy, counted));
     // IME text was never keyed, so neither rate means anything.
-    setText($('compose-wpm'), unsupported ? '—' : summary.wpm === null ? '—' : speedValue(summary.wpm, speedUnit()));
+    showSpeed($('compose-wpm'), unsupported ? null : summary.wpm);
     setText($('compose-backspace'), unsupported ? '—' : summary.backspaceRate ?? '—');
     setText($('compose-active'), (summary.activeMs / 1000).toFixed(1));
     setText($('compose-characters'), summary.characters);
-    setText($('compose-definition'), `Free-typing ${speedUnit()}: characters in your text${speedUnit() === 'wpm' ? ' ÷ 5' : ''}, per minute of active typing (a pause over 2\u00a0s counts as your average gap). `
-      + `Backspace rate: ${summary.backspaces} of ${summary.keystrokes} ${summary.keystrokes === 1 ? 'keystroke was' : 'keystrokes were'} backspace or delete, held repeats included. `
+    $('compose-definition').replaceChildren(unitLabel('Free-typing {unit}: characters in your text{wpm: ÷ 5}, per minute of active typing (a pause over 2\u00a0s counts as your average gap). '),
+      `Backspace rate: ${summary.backspaces} of ${summary.keystrokes} ${summary.keystrokes === 1 ? 'keystroke was' : 'keystrokes were'} backspace or delete, held repeats included. `
       + 'Never compared with copy tests, and never a best.');
     let status = notice;
     if (counted) {
@@ -192,7 +190,7 @@ export function createCompose({ speedUnit = () => 'wpm', setRunning, announce, s
     renderResult(summary, { endedBy, counted, saved });
     if (focus) $('compose-next').focus();
     announce(counted
-      ? `${formatSpeed(summary.wpm, speedUnit())} free-typing speed, ${summary.backspaceRate}% backspace rate.${saved === false ? ' Couldn’t save on this device.' : ''}`
+      ? `${formatSpeed(summary.wpm)} free-typing speed, ${summary.backspaceRate}% backspace rate.${saved === false ? ' Couldn’t save on this device.' : ''}`
       : `${$('compose-result-heading').textContent}.`);
   }
 
@@ -335,7 +333,6 @@ export function createCompose({ speedUnit = () => 'wpm', setRunning, announce, s
       // Ended by leaving the screen: the result waits there, and focus stays where you went.
       if (end) finish('done', { focus: false });
     },
-    refreshSpeed() { if (shownResult && ['complete', 'interrupted'].includes(state)) renderResult(shownResult.summary, shownResult); },
     refreshAccount: renderPrivacy,
     isRunning: () => state === 'running',
     get promptId() { return promptId; },

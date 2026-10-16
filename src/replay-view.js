@@ -6,13 +6,13 @@
 // Like the live passage, only a short stretch is mounted and three lines show: a timed run's
 // 1,600-word passage costs no more to draw than a ten-word one.
 import { RATE_FLOOR_MS, replayCursor, replayScoreAt, replaySpan } from './typing.js';
-import { normalizeSpeedUnit, speedValue } from './units.js';
+import { showSpeed, speedFigure, unitLabel } from './units.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // Letters mounted from the top visible line: well over three lines at any dialog width.
 const MOUNTED = 480;
 
-export function createReplayView(dialog, { speedUnit = () => 'wpm' } = {}) {
+export function createReplayView(dialog) {
   const display = dialog.querySelector('#replay-text');
   const clock = dialog.querySelector('#replay-clock');
   const [wpmText, accuracyText, errorsText, errorsUnit, statsLabel] = ['wpm', 'accuracy', 'errors', 'errors-unit', 'stats-label']
@@ -83,13 +83,12 @@ export function createReplayView(dialog, { speedUnit = () => 'wpm' } = {}) {
     scored = { second, due, position };
     const { wpm, accuracy, errors, elapsedMs } = replayScoreAt(attempt, span.start + position);
     const rated = done || elapsedMs >= RATE_FLOOR_MS;
-    const unit = normalizeSpeedUnit(speedUnit());
-    dialog.querySelector('#replay-speed-unit').textContent = unit;
-    if (tick) wpmText.textContent = rated ? speedValue(wpm, unit) : '—';
+    if (tick) showSpeed(wpmText, rated ? wpm : null);
     accuracyText.textContent = rated ? accuracy : '—';
     errorsText.textContent = errors;
     errorsUnit.textContent = errors === 1 ? 'error' : 'errors';
-    statsLabel.textContent = `${wpmText.textContent} ${unit}, ${accuracyText.textContent}% accuracy, ${errors} ${errorsUnit.textContent}`;
+    const speed = wpmText.dataset.wpm ? [speedFigure(Number(wpmText.dataset.wpm))] : ['— ', unitLabel()];
+    statsLabel.replaceChildren(...speed, `, ${accuracyText.textContent}% accuracy, ${errors} ${errorsUnit.textContent}`);
   }
 
   function draw() {
@@ -148,10 +147,6 @@ export function createReplayView(dialog, { speedUnit = () => 'wpm' } = {}) {
   });
 
   return {
-    refreshSpeed() {
-      scored = null;
-      if (attempt) drawStats();
-    },
     open(finished) {
       if (!finished?.events?.length) return;
       attempt = finished;

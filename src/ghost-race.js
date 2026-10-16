@@ -266,6 +266,15 @@ export function resultText(challenge) {
   return `${subject}: ${who} · you ${mine} wpm, ${them} ${theirs} wpm.`;
 }
 
+// A saved resultText sentence with its two speeds made by `figure` (speedFigure, to show them in the
+// chosen unit), or null for text that isn't one. The name can hold anything, "60 wpm" included; it opens
+// the sentence and comes again before the last speed, so the two must agree.
+const RESULT_SPEEDS = /^((.+?)(?:’s | raced your ).* · you )(0|[1-9]\d*) wpm, \2 (0|[1-9]\d*) wpm\.$/s;
+export function resultParts(text, figure) {
+  const match = RESULT_SPEEDS.exec(text);
+  return match && [match[1], figure(Number(match[3])), `, ${match[2]} `, figure(Number(match[4])), '.'];
+}
+
 async function call(session, action, id = null, data = {}) {
   if (!session?.user?.id) throw new AuthError('Sign in to send or race a ghost challenge.');
   // A background poll may have rotated the refresh token; the newest stored session wins.

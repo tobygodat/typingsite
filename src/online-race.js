@@ -1,7 +1,7 @@
 import { blocksOnError, createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 import { createTypingFx } from './motion.js';
 import * as multiplayer from './multiplayer.js';
-import { formatSpeed } from './units.js';
+import { speedFigure } from './units.js';
 import { raceResultText } from './race-result.js';
 import { redrawList } from './inbox.js';
 
@@ -32,7 +32,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, speedUnit = () => 'wpm' }) {
+export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -365,7 +365,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       // Saved in wpm, like every speed; the inbox words it in the unit chosen when it is shown.
       const race = { lead, opponent: opponent.name, wpm: [me.wpm || 0, opponent.wpm || 0] };
       inbox.notify({ id: `result:${room.id}`, kind: 'result', roomId: room.id, until,
-        conditions: room.conditions, race, text: raceResultText(race, 'wpm') }, { toast: justFinished && away() });
+        conditions: room.conditions, race, text: raceResultText(race) }, { toast: justFinished && away() });
     }
   }
   function renderAfter() {
@@ -501,10 +501,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       const name = document.createElement('strong');
       name.textContent = player.name;
       row.append(name);
-      for (const value of [formatSpeed(player.wpm || 0, speedUnit()), `${player.accuracy ?? 100}% accuracy`, `${(player.elapsed || 0).toFixed(1)} s`]) {
+      for (const value of [speedFigure(player.wpm || 0), `${player.accuracy ?? 100}% accuracy`, `${(player.elapsed || 0).toFixed(1)} s`]) {
         const span = document.createElement('span');
         span.className = 'num';
-        span.textContent = value;
+        span.append(value);
         row.append(span);
       }
       return row;
@@ -660,8 +660,6 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     rematchRoom: (roomId, conditions) => rematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions),
     // The race this tab is seated in and still waiting or racing, if any.
     get liveRoomId() { return room && !terminal(room) ? room.id : null; },
-    // The speed unit changed: redraw a finished race's scores in it.
-    refreshSpeed() { if (room?.status === 'finished') renderResults(); },
     // Which Challenge tab shows: online, daily or local (one keyboard).
     get mode() { return mode; },
     // A request made from this screen is still in flight (a room being created, joined or rematched, or a

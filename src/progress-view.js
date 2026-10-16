@@ -1,5 +1,5 @@
 // Presentational only. Charts never participate in scoring or comparisons.
-import { normalizeSpeedUnit, speedValue } from './units.js';
+import { speedValue, unitText } from './units.js';
 
 const svgNS = 'http://www.w3.org/2000/svg';
 const svgNode = (name, attrs) => {
@@ -9,11 +9,10 @@ const svgNode = (name, attrs) => {
 };
 
 // Speed is saved in wpm and drawn in the chosen display unit (wpm or cpm).
-export function renderTrend(container, runs, onSelect, unit = 'wpm') {
+export function renderTrend(container, runs, onSelect) {
   container.replaceChildren();
   if (!runs.length) return;
-  const speedUnit = normalizeSpeedUnit(unit);
-  const unitLabel = speedUnit.toUpperCase();
+  const unitLabel = unitText('{unit}').toUpperCase();
   for (const [metric, label] of [['wpm', `Corrected ${unitLabel}`], ['accuracy', 'Input accuracy']]) {
     const figure = document.createElement('figure');
     figure.className = 'trend-figure';
@@ -22,8 +21,8 @@ export function renderTrend(container, runs, onSelect, unit = 'wpm') {
     figure.append(caption);
     container.append(figure);
     const width = Math.max(280, figure.clientWidth || 640);
-    const values = runs.map((r) => (metric === 'wpm' ? speedValue(r.score.wpm, speedUnit) : r.score[metric]));
-    const margin = metric === 'wpm' ? speedValue(5, speedUnit) : 2;
+    const values = runs.map((r) => (metric === 'wpm' ? speedValue(r.score.wpm) : r.score[metric]));
+    const margin = metric === 'wpm' ? speedValue(5) : 2;
     const low = Math.max(0, Math.min(...values) - margin);
     const high = Math.min(metric === 'accuracy' ? 100 : Infinity, Math.max(...values) + margin);
     const chart = svgNode('svg', { viewBox: `0 0 ${width} 180`, role: 'group', 'aria-label': `${label} across ${runs.length} matching runs. Select a point for details.` });

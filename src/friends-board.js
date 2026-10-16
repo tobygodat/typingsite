@@ -15,7 +15,7 @@ import { isValidLength } from './lengths.js';
 import { layoutIds, isDefaultLayout } from './layouts.js';
 import { wordListIds } from './words.js';
 import { comparableKind, dailyPassage, trendRun, validRun } from './insights.js';
-import { speedValue } from './units.js';
+import { speedFigure, unitLabel } from './units.js';
 
 const DAY_MS = 86400000;
 // The service shows nothing outside these, so they are never written.
@@ -372,7 +372,7 @@ export const readBoard = (session) => call(session, 'board');
 export const startSharing = (session, version) => call(session, 'share', { version });
 export const stopSharing = (session, id = null) => call(session, 'unshare', id ? { id } : {});
 
-export function createFriendsBoard({ speedUnit = () => 'wpm', getSession, dailyKey, runs, conditionParts, signIn, openOnline, onShared = () => {} }) {
+export function createFriendsBoard({ getSession, dailyKey, runs, conditionParts, signIn, openOnline, onShared = () => {} }) {
   let visible = false;
   // Whether this account shares, as this device last knew it (see knownSharing); null until it knows.
   const known = getSession() ? knownSharing(getSession()) : { sharing: null, version: null };
@@ -541,12 +541,12 @@ export function createFriendsBoard({ speedUnit = () => 'wpm', getSession, dailyK
     measure.className = 'board-value';
     const number = document.createElement('strong');
     number.className = 'num';
-    number.textContent = value;
+    number.append(value);
     measure.append(number);
     if (unit) {
       const suffix = document.createElement('span');
       suffix.className = 'board-unit';
-      suffix.textContent = unit;
+      suffix.append(unit);
       measure.append(' ', suffix);
     }
     const note = document.createElement('span');
@@ -587,7 +587,7 @@ export function createFriendsBoard({ speedUnit = () => 'wpm', getSession, dailyK
     $('board-daily-meta').textContent = `${board.date} · best completed attempt · physical keyboard`;
     $('board-week-meta').textContent = `since monday ${board.weekStart}, 00:00 utc · completed runs`;
     $('board-daily').replaceChildren(...dailyOrder(rows).map((entry) => (entry.daily
-      ? row(entry, String(speedValue(entry.daily.wpm, speedUnit())), speedUnit(), `${entry.daily.accuracy}% accuracy · ${entry.daily.attempts === 1 ? '1 attempt' : `best of ${entry.daily.attempts}`}`)
+      ? row(entry, speedFigure(entry.daily.wpm, { bare: true }), unitLabel(), `${entry.daily.accuracy}% accuracy · ${entry.daily.attempts === 1 ? '1 attempt' : `best of ${entry.daily.attempts}`}`)
       : row(entry, '—', '', entry.otherVersion ? 'another version of the daily · not compared' : 'no completed attempt yet'))));
     $('board-week').replaceChildren(...weekOrder(rows).map((entry) => {
       if (!entry.week) return row(entry, '—', '', 'nothing yet this week');
@@ -624,7 +624,7 @@ export function createFriendsBoard({ speedUnit = () => 'wpm', getSession, dailyK
     if (select.value !== key) select.value = key;
     $('board-bests-meta').textContent = `${shapeDescription(shapes, key, conditionParts)} · best completed test or retest · dates in utc`;
     $('board-bests').replaceChildren(...bestsOrder(rows, key).map((entry) => (entry.best
-      ? row(entry, String(speedValue(entry.best.wpm, speedUnit())), speedUnit(), `${entry.best.accuracy}% accuracy · ${entry.best.date}`)
+      ? row(entry, speedFigure(entry.best.wpm, { bare: true }), unitLabel(), `${entry.best.accuracy}% accuracy · ${entry.best.date}`)
       : row(entry, '—', '', entry.otherVersion ? 'another version of this shape · not compared' : 'no best on this shape yet'))));
   }
 
@@ -796,7 +796,6 @@ export function createFriendsBoard({ speedUnit = () => 'wpm', getSession, dailyK
       else if (sharing === null && !turningOn && !loading) refresh({ quiet: true });
     },
     // A profile save (or a repair of its summary) reached the account: an open board reads it, quietly.
-    refreshSpeed() { if (visible) render(); },
     pushed() { if (visible && getSession()) refresh({ quiet: true }); },
     // What the switch shows: true or false, or null while this device doesn't know yet.
     get sharing() {
