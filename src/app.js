@@ -90,6 +90,8 @@ const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'rand
 
 const PACE_MIN_WPM = 10;
 const PACE_MAX_WPM = 300;
+// The unit a custom pace being typed was started in, until it is saved or left.
+let paceEdit = null;
 let storageAvailable = true;
 // No session means guest mode: default settings, and nothing leaves this tab.
 let session = account.loadSession();
@@ -1894,12 +1896,15 @@ function showPace() {
   $('pace-label').hidden = !shown;
   setParts($('pace-label'), shown ? ['pace ', speedFigure(pace.wpm)] : '');
   $('pace-select').value = prefs.paceCaret;
-  // A speed being typed in stays as typed when this redraws (another tab's save taken in, say): setting
-  // the field would drop the edit without a change event. Leaving the field saves it and redraws.
-  if (document.activeElement !== $('pace-wpm')) $('pace-wpm').value = speedValue(prefs.paceWpm);
-  $('pace-wpm').min = speedValue(PACE_MIN_WPM);
-  $('pace-wpm').max = speedValue(PACE_MAX_WPM);
-  $('pace-wpm').step = speedValue(1);
+  // A speed being typed in stays as typed, in the unit it was typed in, when this redraws (another tab's
+  // save taken in, say): setting the field would drop the edit without a change event. Leaving the field
+  // saves it (paceEdit) and redraws.
+  if (!paceEdit) {
+    $('pace-wpm').value = speedValue(prefs.paceWpm);
+    $('pace-wpm').min = speedValue(PACE_MIN_WPM);
+    $('pace-wpm').max = speedValue(PACE_MAX_WPM);
+    $('pace-wpm').step = speedValue(1);
+  }
   $('pace-custom').hidden = prefs.paceCaret !== 'custom';
   setParts($('pace-note'), on && prefs.paceCaret !== 'custom' ? [pace.fallback ? 'no runs yet — ' : '', speedFigure(pace.wpm)] : '');
   document.body.dataset.ghost = on ? 'on' : 'off';
@@ -4885,9 +4890,14 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
-  $('pace-wpm').addEventListener('change', (event) => { prefs.paceWpm = clampPace(wpmFromSpeed(event.target.value)); setPaceCaret('custom', { speed: true }); });
+  $('pace-wpm').addEventListener('input', () => { paceEdit ||= prefs.speedUnit; });
+  $('pace-wpm').addEventListener('change', (event) => {
+    prefs.paceWpm = clampPace(wpmFromSpeed(event.target.value, paceEdit || prefs.speedUnit));
+    paceEdit = null;
+    setPaceCaret('custom', { speed: true });
+  });
   // Left unedited, it shows any speed that arrived while it had focus (see showPace).
-  $('pace-wpm').addEventListener('blur', showPace);
+  $('pace-wpm').addEventListener('blur', () => { paceEdit = null; showPace(); });
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;
