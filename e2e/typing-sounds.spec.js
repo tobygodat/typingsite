@@ -94,7 +94,7 @@ async function shot(page, testInfo, name) {
 
 test.beforeEach(async ({ page }) => { await stubAudio(page); });
 test.afterEach(async ({ page }, testInfo) => {
-  if (testInfo.status === 'skipped') return;
+  if (testInfo.status !== 'passed') return;
   expect((await sound(page)).builtDuring, 'no AudioContext is built inside an event handler').toEqual([]);
 });
 

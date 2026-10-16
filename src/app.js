@@ -1912,8 +1912,8 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   // Said once when the space is refused or the run starts waiting, and again if a key is ignored.
   if (blocked === 'space' || (waiting && (length > previousLength || blocked === 'submit'))) announce(rule);
   if (isPrimary) {
-    // A backspace before the first letter starts nothing; after one, a key marks the run as under way again
-    // (leaving the screen mid-run clears the mark).
+    // A backspace before the first letter starts nothing. Once the run has started, every key marks it as
+    // under way, which restores the mark after leaving the screen mid-run.
     if (startTime !== null) setRunning(true);
     $('input-help').textContent = rule ? withRule(primaryNotice, rule) : blocked ? NOTICES.blocked : primaryNotice;
     updateLive(false, at);
