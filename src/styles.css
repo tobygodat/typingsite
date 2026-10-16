@@ -49,6 +49,7 @@
   --radius-full: 999px;
 
   --control: 44px;
+  --disabled-opacity: 0.38;
   --sound-select-width: 176px;
   --sound-range-width: 104px;
   --sound-range-height: 36px;
@@ -465,7 +466,7 @@ kbd {
 .range::-moz-range-thumb { width: var(--space-4); height: var(--space-4); border: 0; border-radius: var(--radius-full); background: var(--accent); }
 
 /* While sound is off the volume stays in place, dimmed, so the popover never changes height. */
-.preference-range:has(> .range:disabled) { opacity: 0.38; }
+.preference-range:has(> .range:disabled) { opacity: var(--disabled-opacity); }
 .range:disabled { cursor: not-allowed; }
 .preference-row:has(.range:disabled) { cursor: default; background: transparent; }
 .preference-lock { color: var(--muted); font: italic var(--text-label)/1.4 var(--font-serif); }
@@ -692,7 +693,7 @@ kbd {
 }
 
 .btn:active:not(:disabled, [aria-disabled="true"]) { transform: scale(0.98); }
-.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.38; cursor: not-allowed; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: var(--disabled-opacity); cursor: not-allowed; }
 /* A waiting control (aria-disabled) can hold keyboard focus. Its focus ring stays at full strength,
    so its own colours dim to the same 38% instead of the whole box. */
 .btn[aria-disabled="true"]:focus-visible { opacity: 1; color: color-mix(in srgb, var(--text) 38%, transparent); }
@@ -2959,7 +2960,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
    content after it. */
 @media (any-pointer: coarse) {
   .goal-day-picker { display: block; }
-  .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control, .mode-more > summary, .range { min-height: 44px; }
+  .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control, .mode-more > summary, .range { min-height: var(--control); }
   /* A short mode ("time") among five on a 320px phone is narrower than 44px: the row still fits. */
   .segmented button { min-width: var(--control); }
   .footer-link, .run-detail summary, .daily-challenge summary { position: relative; }
