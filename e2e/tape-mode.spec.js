@@ -266,9 +266,52 @@ test('a ghost race keeps three lines with the tape on, so the friend’s caret s
   await page.keyboard.type(passage.slice(6), { delay: 20 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results', { timeout: 15000 });
   await page.locator('.nav-item[data-nav="practice"]').click();
+  await expect(page.locator('body')).toHaveAttribute('data-tape', 'true');
+  expect(await wrapHeight(page)).toBe(Math.round(line));
   await chooseWords(page, 50);
   await expect(page.locator('body')).toHaveAttribute('data-tape', 'true');
   expect(await wrapHeight(page)).toBe(Math.round(line));
+});
+
+test('leaving a scrolled ghost race for the tape never slides the passage vertically', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  const passage = Array.from({ length: 60 }, (_, i) => ['time', 'over', 'water', 'still', 'light'][i % 5]).join(' ');
+  supabase.challenges.seed(ada.id, lin.id, { name: 'Ada', passage,
+    conditions: { mode: 'words', count: 60, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' },
+    trace: { v: 1, k: passage, t: [...passage].map((_, i) => (i ? 40 : 0)), e: (passage.length - 1) * 40 } });
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await setTape(page, true);
+  await page.locator('#challenge-toast').getByRole('button', { name: 'Race' }).click({ timeout: 12000 });
+  await expect(page.locator('body')).toHaveAttribute('data-tape', 'false');
+  const display = page.locator('#text-display');
+  const scrollY = () => display.evaluate((node) => new DOMMatrix(getComputedStyle(node).transform).m42);
+  await page.locator('#typing-input').focus();
+  for (const char of passage.slice(0, 200)) {
+    await page.keyboard.type(char);
+    if ((await scrollY()) < 0) break;
+  }
+  await expect.poll(scrollY).toBeLessThan(0);
+
+  // Every frame from the first one on the tape: the vertical offset the passage shows.
+  await page.evaluate(() => {
+    window.tapeFrames = [];
+    const node = document.getElementById('text-display');
+    const sample = () => {
+      if (document.body.dataset.tape === 'true') window.tapeFrames.push(new DOMMatrix(getComputedStyle(node).transform).m42);
+      if (window.tapeFrames.length < 30) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('standard');
+  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('standard test · 60 seconds');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-tape', 'true');
+  await page.waitForFunction(() => window.tapeFrames.length >= 30);
+  const frames = await page.evaluate(() => window.tapeFrames);
+  expect(frames.filter((y) => Math.abs(y) > 0.5)).toEqual([]);
 });
 
 test('the pace caret rides the tape and keeps gliding through a step', async ({ page }) => {

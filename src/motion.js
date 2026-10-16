@@ -254,7 +254,8 @@ export function createTypingFx(wrap, display, options = {}) {
       tapeWord = null;
       measuredPosition = 0;
       clearTimeout(idleTimer);
-      if (wasTape) setScroll('', true);
+      // Into or out of the tape, the old scroll drops at once: easing it would slide the passage.
+      if (wasTape || options.tape?.()) setScroll('', true);
       else display.style.transform = '';
       wrap.dataset.blocked = 'false';
       stopGhost();

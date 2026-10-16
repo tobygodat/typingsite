@@ -638,15 +638,20 @@ function updateGlides(options) {
 // friend's caret stays in view however far ahead or behind it is.
 const tapeLayout = () => String(prefs.tape && sessionKind !== 'challenge');
 
-function applyPreferences() {
+// The one writer of the passage layout: the text size, and three lines or the tape.
+function syncLayout() {
   if (document.body.dataset.tape !== tapeLayout() || document.body.dataset.fontSize !== String(prefs.fontSize)) {
     // Trimmed words leave a spacer shaped for one layout and text size; put them back first.
     primaryTextView?.restore();
   }
   document.body.dataset.fontSize = prefs.fontSize;
   document.body.dataset.tape = tapeLayout();
-  document.body.dataset.wordHighlight = prefs.wordHighlight;
   primaryFx.relayout();
+}
+
+function applyPreferences() {
+  syncLayout();
+  document.body.dataset.wordHighlight = prefs.wordHighlight;
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
   document.body.dataset.keyboard = String(prefs.keyboard);
   document.body.dataset.focusMode = String(prefs.focusMode);
@@ -1276,6 +1281,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   if (kind === 'missed' && !wordsPassage) kind = 'practice';
   const kindChanged = sessionKind !== kind;
   sessionKind = kind;
+  syncLayout();
   // The mode bar marks Custom while a custom session is loaded, so it is redrawn whenever the kind changes.
   // Changing to any session but custom (a lesson or a ghost race too) also closes the custom editor, or Custom would stay marked over it.
   if (kindChanged && kind !== 'custom') customOpen = false;
@@ -1342,7 +1348,6 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('typing-input').value = '';
   $('typing-input').disabled = false;
   $('accessible-passage').textContent = passage.text;
-  document.body.dataset.tape = tapeLayout();
   primaryTextView = renderText($('text-display'), passage.text, { tape: onTape });
   primaryCharacters = primaryTextView.characters;
   primaryFx.reset(primaryCharacters);
