@@ -4898,6 +4898,7 @@ function bindEvents() {
   $('pace-wpm').addEventListener('change', (event) => {
     const field = event.target;
     prefs.paceWpm = clampPace(wpmFromSpeed(field.value, field.dataset.unit));
+    field.dataset.shown = field.value;
     setPaceCaret('custom', { speed: true });
   });
   // Left unsaved, it shows any speed or unit that arrived while it was being typed in (see showPace).

@@ -728,6 +728,32 @@ test('a custom pace hidden by another tab mid-edit is saved in the unit it was t
   await expect(page.locator('#pace-label')).toHaveText('pace 600 cpm');
 });
 
+// Enter saves the pace without leaving the field, so the field must read the saved figure at once: a later
+// edit back to the old figure would otherwise look untouched to a redraw and be overwritten.
+test('a custom pace saved with Enter reads as saved, and a later edit survives a redraw', async ({ page, context, supabase }) => {
+  const { user, other } = await signedInPair(page, context, supabase, 'pace-enter@stilltype.test');
+  await page.locator('#speed-unit').selectOption('cpm');
+  const field = page.locator('#pace-wpm');
+  await expect(field).toHaveValue('400');
+  await field.fill('333');
+  await field.press('Enter');
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue('335');
+  await expect(page.locator('#pace-label')).toHaveText('pace 335 cpm');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceWpm, { timeout: 15000 }).toBe(67);
+  // The other tab's save below must carry the saved pace, so a redraw here would write 335, not 400.
+  await expect(other.locator('#pace-wpm')).toHaveValue('335');
+
+  await field.fill('400');
+  await other.locator('#font-size').selectOption('36');
+  await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue('400');
+  await field.press('Tab');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceWpm, { timeout: 15000 }).toBe(80);
+  await expect(page.locator('#pace-label')).toHaveText('pace 400 cpm');
+});
+
 // A unit picked in another tab mid-race waits for the race to end, then applies as the result is written to
 // the leaderboard, a live region. A second race reuses the hidden leaderboard, still holding the
 // first race's figures: the result must land in a region a screen reader will read, in the new unit.
@@ -764,11 +790,17 @@ test('a unit synced mid-race applies at its end without holding back the race re
   await expect(leaderboard).toBeHidden();
   await expect(leaderboard.locator('[data-wpm]').first()).toBeAttached();
 
-  // Picked without focusing the other tab: leaving the race input would interrupt the race.
+  // Picked without focusing the other tab: leaving the race input would interrupt the race. The app's own
+  // listener runs first, so once this one hears cpm, the race tab has received it and is holding it back.
+  await page.evaluate(() => {
+    window.cpmHeard = false;
+    addEventListener('storage', (event) => { if (event.newValue?.includes('"speedUnit":"cpm"')) window.cpmHeard = true; });
+  });
   await other.locator('#speed-unit').evaluate((select) => {
     select.value = 'cpm';
     select.dispatchEvent(new Event('change', { bubbles: true }));
   });
+  await page.waitForFunction(() => window.cpmHeard);
   await expect.poll(() => supabase.profileFor(user.email)?.preferences?.speedUnit, { timeout: 15000 }).toBe('cpm');
   await expect(page.locator('#race-stage')).toBeVisible();
   await expect(page.locator('#speed-unit')).toHaveValue('wpm');
