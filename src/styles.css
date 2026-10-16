@@ -1297,6 +1297,27 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
 .word > .char { display: inline-block; }
 .passage-spacer { display: block; width: 100%; pointer-events: none; }
 
+/* Tape mode: the passage on one line. It advances in word-aligned steps with the same
+   line-scroll transition as above, never letter by letter (src/tape.js). Edges fade sideways;
+   the left fade appears once typed text has moved past it. */
+body[data-tape="true"] .typing-wrap {
+  /* The left fade; src/motion.js reads it so letters being corrected stay clear of it. */
+  --tape-fade: var(--space-3);
+  /* The unwrapped line must not widen the column around it. */
+  contain: inline-size;
+  height: var(--typing-line);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--space-4)), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--space-4)), transparent 100%);
+}
+
+body[data-tape="true"] .typing-wrap[data-tape-scrolled="true"] {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--tape-fade), #000 calc(100% - var(--space-4)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--tape-fade), #000 calc(100% - var(--space-4)), transparent 100%);
+}
+
+body[data-tape="true"] #text-display { white-space: pre; overflow-wrap: normal; }
+body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; height: 0; }
+
 .char { position: relative; }
 .char.correct { color: var(--text); }
 
