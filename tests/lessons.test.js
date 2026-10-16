@@ -84,6 +84,16 @@ test('every lesson passage is about a minute long, uses only learned keys and pr
   assert.equal(lessonPassage(5, seeded(1)).text, lessonPassage(5, seeded(1)).text, 'seeded passages are deterministic');
 });
 
+test('no draw of any lesson passage uses a key the learner has not reached', () => {
+  for (let index = 0; index < LESSONS.length; index += 1) {
+    const allowed = new Set([...lessonKeys(index), ' ']);
+    for (let seed = 1; seed <= 50; seed += 1) {
+      const { text } = lessonPassage(index, seeded(seed));
+      assert.ok([...text].every((char) => allowed.has(char)), `lesson ${index + 1}, seed ${seed}: ${text}`);
+    }
+  }
+});
+
 test('one run at 95% accuracy and the speed target unlocks the next lesson', () => {
   assert.equal(LESSON_ACCURACY, 95);
   assert.deepEqual(lessonOutcome(0, { wpm: 10, accuracy: 95 }), { accuracyMet: true, speedMet: true, passed: true, accuracyTarget: 95, wpmTarget: 10 });

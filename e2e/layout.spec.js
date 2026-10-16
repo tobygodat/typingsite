@@ -56,7 +56,7 @@ test.describe('narrow run card', () => {
   test('a three-digit score and its unit fit inside the run card at 320px', async ({ page }) => {
     await openApp(page);
     await chooseWords(page, 10);
-    await typeInto(page, await passageText(page), '#typing-input', { delay: 120 });
+    await typeInto(page, await passageText(page));
     await expect(page.locator('#run-card')).toBeVisible();
     // Figures are tabular, so any three digits are as wide as 188. Under 360px the numeral steps
     // down to --text-numeral-narrow; 361 and 360 sit either side of that step. Narrowing from 390

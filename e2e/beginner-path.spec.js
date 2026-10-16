@@ -704,21 +704,22 @@ test('a device that saves after another device passed a lesson keeps that pass',
   } finally { await context.close(); }
 });
 
-test('passing every lesson hands off to the training loop', async ({ page }) => {
-  test.setTimeout(120_000);
+test('passing every lesson hands off to the training loop', async ({ page, supabase }, testInfo) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const user = learner(supabase, 'last@stilltype.test', LESSONS.length - 1);
   await openApp(page);
+  await signInWithEmail(page, user.email);
   await openLessons(page);
-  for (let number = 1; number <= LESSONS.length; number += 1) {
-    await startLesson(page, number);
-    const text = await typeLesson(page);
-    const allowed = new Set([...LESSONS.slice(0, number).flatMap((lesson) => lesson.keys), ' ']);
-    expect([...text].every((char) => allowed.has(char)), text).toBe(true);
-    await expect(page.locator('#lesson-status')).toHaveText('passed');
-  }
+  await startLesson(page, LESSONS.length);
+  await typeLesson(page, process.env.SCREENSHOTS ? { delay: 190 } : {});
+  await expect(page.locator('#lesson-status')).toHaveText('passed');
   await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 14 passed. Every letter is in.');
   await expect(page.locator('#lesson-current-copy')).toContainText('the training loop takes over');
   await expect(page.locator('#lesson-list .lesson-row[data-state="passed"]')).toHaveCount(LESSONS.length);
   await expect(page.locator('#lesson-primary')).toHaveText('Take a practice run');
+  await expect(page.locator('#lesson-keyboard .key.target')).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await shot(page, testInfo, 'handoff-dark');
   await page.keyboard.press('Control+k');
   await page.keyboard.type('next lesson');
   await expect(page.locator('#palette-list')).not.toContainText('next lesson ·');
@@ -840,19 +841,3 @@ for (const scheme of ['dark', 'light']) {
     await shot(page, testInfo, `result-${scheme}`);
   });
 }
-
-test('the last lesson hands off clearly (screenshot)', async ({ page, supabase }, testInfo) => {
-  test.setTimeout(90_000);
-  await page.emulateMedia({ colorScheme: 'dark' });
-  const user = learner(supabase, 'last@stilltype.test', LESSONS.length - 1);
-  await openApp(page);
-  await signInWithEmail(page, user.email);
-  await openLessons(page);
-  await startLesson(page, LESSONS.length);
-  await typeLesson(page, { delay: 190 });
-  await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 14 passed. Every letter is in.');
-  await expect(page.locator('#lesson-primary')).toHaveText('Take a practice run');
-  await expect(page.locator('#lesson-keyboard .key.target')).toHaveCount(0);
-  await page.mouse.move(0, 0);
-  await shot(page, testInfo, 'handoff-dark');
-});
