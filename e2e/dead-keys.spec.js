@@ -158,29 +158,7 @@ const dispatchEvents = (page, events, field = '#typing-input') => page.evaluate(
 const lastStoredAttempt = (page, userId) => page.evaluate((key) => JSON.parse(localStorage.getItem(key)).attempts.at(-1), `stilltype-profile-v2:${userId}`);
 const storedRuns = (page, userId) => page.evaluate((key) => JSON.parse(localStorage.getItem(key))?.runs ?? [], `stilltype-profile-v2:${userId}`);
 
-test('a dead-key quote mark followed by space is one typed character', async ({ page }) => {
-  await openApp(page);
-  const keys = await accentKeys(page);
-  const text = await quoteWithMarks(page);
-  const at = text.indexOf('"');
-  await recordHelp(page);
-  await typeInto(page, text.slice(0, at));
-
-  await keys.deadKey('"');
-  // The mark waits in the field (no mid-composition reset) and is not yet scored.
-  await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, at + 1));
-  expect((await scored(page)).correct).toBe(at);
-  await keys.commit('"');
-  expect(await scored(page)).toEqual({ correct: at + 1, wrong: 0, value: text.slice(0, at + 1) });
-
-  await page.keyboard.type(text.slice(at + 1));
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-accuracy')).toHaveText('100');
-  await expect(page.locator('#result-delta')).not.toHaveText('Interrupted · not counted');
-  expect((await page.evaluate(() => window.helpSeen)).filter((text) => text.includes('IME'))).toEqual([]);
-});
-
-test('a quote with \' and " typed on accent keys completes as a counted run', async ({ page, supabase }) => {
+test('a quote with \' and " typed on accent keys completes as a counted run, a mark followed by space as one typed character', async ({ page, supabase }) => {
   // Master's quotes have no apostrophe, so the precise ones gain one: the run needs both marks.
   await page.route('**/src/corpus.js', async (route) => {
     const response = await route.fetch();
@@ -194,18 +172,30 @@ test('a quote with \' and " typed on accent keys completes as a counted run', as
   const text = await quoteWithMarks(page);
   expect(text.startsWith('It\'s here. ')).toBe(true);
   const at = text.indexOf('"');
+  const close = text.lastIndexOf('"');
+  await recordHelp(page);
 
   // Dead ' then s has no composed form, so both characters commit together and both count.
   await typeInto(page, 'It');
   await keys.deadKey("'");
   await keys.commit("'s");
   expect(await scored(page)).toEqual({ correct: 4, wrong: 0, value: "It's" });
-  await typeWithAccentKeys(page, keys, text, 4);
+  await typeWithAccentKeys(page, keys, text, 4, close);
+
+  // The closing " comes before a space or ends the quote, so the typist presses space after the mark.
+  await keys.deadKey('"');
+  // The mark waits in the field (no mid-composition reset) and is not yet scored.
+  await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, close + 1));
+  expect((await scored(page)).correct).toBe(close);
+  await keys.commit('"');
+  expect(await scored(page)).toEqual({ correct: close + 1, wrong: 0, value: text.slice(0, close + 1) });
+  await typeWithAccentKeys(page, keys, text, close + 1);
 
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-accuracy')).toHaveText('100');
   await expect(page.locator('#result-errors')).toHaveText('0');
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
+  expect((await page.evaluate(() => window.helpSeen)).filter((help) => help.includes('IME'))).toEqual([]);
 
   await expect.poll(() => lastStoredAttempt(page, user.id).then((stored) => stored?.textId)).toMatch(/^short-precise-/);
   const stored = await lastStoredAttempt(page, user.id);
@@ -898,38 +888,6 @@ test('an accent key let go where the field can’t hear it doesn’t hold back t
   await expect(page.locator('#typing-input')).toHaveValue('""');
 });
 
-test('a mark pending when focus leaves does not start a ready run', async ({ page }) => {
-  await openApp(page);
-  const keys = await accentKeys(page);
-  await chooseWords(page, 10);
-  const text = await passageText(page);
-  const ready = async () => {
-    await expect(page.locator('#typing-status')).toHaveText('Ready');
-    expect(await scored(page)).toEqual({ correct: 0, wrong: 0, value: '' });
-  };
-
-  // macOS Chrome dispatches the window blur before it commits the pending mark.
-  await page.locator('#typing-input').focus();
-  await keys.deadKey('"');
-  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
-  await keys.commit('"');
-  await ready();
-
-  // Opening commands moves focus, and Chrome commits the mark on the way.
-  await page.locator('#typing-input').focus();
-  await keys.deadKey('"');
-  await page.keyboard.press('Control+k');
-  await expect(page.locator('#palette')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#palette')).toBeHidden();
-  await ready();
-
-  // The run starts with its first real key, and counts.
-  await typeInto(page, text);
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
-});
-
 // Each way focus moves to a control on the page with a mark pending. Chrome commits the mark as focus
 // moves, then blurs the field (Tab, a click); on macOS it commits on Tab's first keydown, a task before
 // the Tab that moves focus. Firefox and Safari blur first and commit after.
@@ -957,47 +915,43 @@ const leaveWithMark = {
   },
 };
 
-test('a mark pending when focus moves to a control on the page is dropped, and the run stays ready', async ({ page }) => {
+// Before a run starts, focus can also leave the page: macOS Chrome dispatches the window blur before it
+// commits the pending mark, and opening commands moves focus, with Chrome committing the mark on the way.
+const leaveReadyRun = {
+  windowBlur: async (page, keys) => {
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await keys.commit('"');
+  },
+  palette: async (page) => {
+    await page.keyboard.press('Control+k');
+    await expect(page.locator('#palette')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#palette')).toBeHidden();
+  },
+};
+
+test('a mark pending when focus moves on is dropped, and the run stays ready or in progress as it was', async ({ page }) => {
   await openApp(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
+  const leaveEachWay = async (ways, typed, status) => {
+    for (const [way, leave] of Object.entries(ways)) {
+      // Clicking the passage puts focus back in the field.
+      await page.locator('#typing-input').click();
+      await keys.deadKey('"');
+      await expect(page.locator('#typing-input'), way).toHaveValue(`${typed.value}"`);
+      await leave(page, keys);
+      expect(await scored(page), way).toEqual(typed);
+      await expect(page.locator('#typing-status'), way).toHaveText(status);
+      await expect(page.locator('#input-help'), way).toHaveText('');
+    }
+  };
 
-  for (const [way, leave] of Object.entries(leaveWithMark)) {
-    // Clicking the passage puts focus back in the field.
-    await page.locator('#typing-input').click();
-    await keys.deadKey('"');
-    await expect(page.locator('#typing-input')).toHaveValue('"');
-    await leave(page, keys);
-    expect(await scored(page), way).toEqual({ correct: 0, wrong: 0, value: '' });
-    await expect(page.locator('#typing-status'), way).toHaveText('Ready');
-    await expect(page.locator('#input-help'), way).toHaveText('');
-  }
-
-  // The run starts with its first real key, and counts.
-  await page.locator('#typing-input').click();
-  await page.keyboard.type(text);
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
-});
-
-test('a mark dropped as focus moves mid-run leaves the run as it was', async ({ page }) => {
-  await openApp(page);
-  const keys = await accentKeys(page);
-  await chooseWords(page, 10);
-  const text = await passageText(page);
+  await leaveEachWay({ ...leaveWithMark, ...leaveReadyRun }, { correct: 0, wrong: 0, value: '' }, 'Ready');
+  // The run starts with its first real key. Moving focus within the page neither ends it nor stops it counting.
   await typeInto(page, text.slice(0, 5));
-  const typed = { correct: 5, wrong: 0, value: text.slice(0, 5) };
-
-  for (const [way, leave] of Object.entries(leaveWithMark)) {
-    await page.locator('#typing-input').click();
-    await keys.deadKey('"');
-    await leave(page, keys);
-    // Not scored, and moving focus within the page neither ends the run nor stops it counting.
-    expect(await scored(page), way).toEqual(typed);
-    await expect(page.locator('#typing-status'), way).toHaveText('In progress');
-    await expect(page.locator('#input-help'), way).toHaveText('');
-  }
+  await leaveEachWay(leaveWithMark, { correct: 5, wrong: 0, value: text.slice(0, 5) }, 'In progress');
 
   await page.locator('#typing-input').click();
   await page.keyboard.type(text.slice(5));

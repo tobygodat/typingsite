@@ -534,7 +534,7 @@ test('a send whose reply was lost after it was stored is stored once when sent a
   expect(supabase.challenges.rows.size).toBe(1);
 });
 
-test('a finish whose reply was lost after it was stored gets the stored result back on Send again', async ({ page, supabase }) => {
+test('a finish whose reply was lost after it was stored gets the stored result back on Send again, and a second try at an answered race shows the first stored finish', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');
   const passage = 'river light patient words carry the quiet home';
@@ -559,27 +559,21 @@ test('a finish whose reply was lost after it was stored gets the stored result b
   expect(challenge.result).toEqual(stored);
   await page.locator('#inbox-trigger').click();
   await expect(page.locator('#inbox-list [data-kind="challenge-result"]')).toContainText(`you ${stored.wpm} wpm`);
-});
 
-test('a second try at an answered race shows the first stored finish, which stands', async ({ page, supabase }) => {
-  const ada = supabase.addUser('ada@stilltype.test');
-  const lin = supabase.addUser('lin@stilltype.test');
-  const passage = 'river light patient words carry the quiet home';
-  const challenge = supabase.challenges.seed(ada.id, lin.id, { name: 'Ada', label: 'Lin', passage,
+  // Another race from Ada, which Lin's other device finishes first, at a pace this run doesn't match.
+  const second = supabase.challenges.seed(ada.id, lin.id, { name: 'Ada', label: 'Lin', passage,
     conditions: { mode: 'words', count: 8, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' },
     trace: steadyTrace(passage, 140) });
-  await openApp(page);
-  await signInWithEmail(page, 'lin@stilltype.test');
-  await page.locator('#challenge-toast').getByRole('button', { name: 'Race' }).click({ timeout: 12000 });
+  await pollInbox(page);
+  await page.locator('#inbox-list [data-inbox-action="challenge"]').click();
   await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
-  // Lin's other device finished first, at a pace this run doesn't match.
   const first = { wpm: 41, accuracy: 100, elapsedMs: 13000, correct: passage.length };
-  Object.assign(challenge, { result: first, completedAt: new Date().toISOString() });
+  Object.assign(second, { result: first, completedAt: new Date().toISOString() });
   await typeInto(page, passage, '#typing-input', { delay: 110 });
   await expect(page.locator('#ghost-result-status')).toHaveText('Your first finish was already sent and stands, so this run wasn’t. Ada sees the result shown here.');
   await expect(page.locator('#ghost-result-rows')).toContainText('41 wpm');
-  await expect(page.locator('#ghost-result-action')).toBeHidden();
-  expect(challenge.result).toEqual(first);
+  await expect(action).toBeHidden();
+  expect(second.result).toEqual(first);
 });
 
 test('a ghost race reply that lands after Run again and a finished practice run stays out of the practice result', async ({ page, supabase }) => {
@@ -713,7 +707,7 @@ test('a Race reply that lands where Lin clicked Race starts the ghost race at on
   await expect(page.locator('#account-toast')).toBeHidden();
 });
 
-test('a Race reply that lands after an online room opened starts no ghost race; the room stays and the race is offered', async ({ page, supabase }) => {
+test('a Race reply that lands after an online room opened, or while one is being created, starts no ghost race; the room opens or stays and the race is offered', async ({ page, supabase }) => {
   const lin = supabase.addUser('lin@stilltype.test');
   const ada = challengeLin(supabase, lin, 'Ada');
   await openApp(page);
@@ -747,23 +741,21 @@ test('a Race reply that lands after an online room opened starts no ghost race; 
   await page.locator('#inbox-trigger').click();
   await expect(page.locator('#inbox-list [data-inbox-action="challenge"]')).toHaveCount(1);
   expect(ada.result).toBeNull();
-});
+  await page.locator('#inbox-trigger').click();
+  await expect(page.locator('#challenge-toast')).toBeHidden();
+  await page.locator('#online-leave').click();
+  await expect(page.locator('#online-room')).toBeHidden();
 
-test('a Race reply that lands while an online room is being created offers the race, and the room still opens', async ({ page, supabase }) => {
-  const lin = supabase.addUser('lin@stilltype.test');
-  const ada = challengeLin(supabase, lin, 'Ada');
-  await linArrives(page);
-  await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Lin');
-  // On Challenge, Lin races Ada from the inbox, then creates a room before either reply lands.
-  const reply = await holdInboxRace(page, supabase);
+  // Out of the room, Lin races Ada from the inbox, then creates a room before either reply lands.
+  const again = await holdInboxRace(page, supabase);
   supabase.races.held = [];
   supabase.races.holding = new Set(['create']);
+  await page.locator('#online-name').fill('Lin');
   await page.locator('#create-online-race').click();
   await expect.poll(() => supabase.races.held.length).toBe(1);
   const [roomReply] = supabase.races.held;
   supabase.races.held = null;
-  await letGo(page, reply, 'get', ada.id);
+  await letGo(page, again, 'get', ada.id);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'compete');
   await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
   await expectOffer(page, 'Ada');
@@ -773,11 +765,12 @@ test('a Race reply that lands while an online room is being created offers the r
   roomReply();
   await opened;
   await expect(page.locator('#online-room')).toBeVisible();
-  const room = [...supabase.races.rooms.values()][0];
-  await expect(page.locator('#online-guest-link')).toHaveValue(new RegExp(room.id));
+  const created = [...supabase.races.rooms.values()].at(-1);
+  expect(created).not.toBe(room);
+  await expect(page.locator('#online-guest-link')).toHaveValue(new RegExp(created.id));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'compete');
   await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
-  expect(room.status).toBe('waiting');
+  expect(created.status).toBe('waiting');
   expect(ada.result).toBeNull();
 });
 
@@ -840,14 +833,32 @@ test('a Race reply that lands after Lin went to Progress leaves Lin there and of
   expect(ada.result).toBeNull();
 });
 
-test('a Race reply that lands after Skip to typing leaves the practice test in place and offers the race', async ({ page, supabase }) => {
+test('a Race reply that lands after Lin restarted the practice test or used Skip to typing leaves the practice test in place and offers the race', async ({ page, supabase }) => {
   const lin = supabase.addUser('lin@stilltype.test');
   const ada = challengeLin(supabase, lin, 'Ada');
-  await linArrives(page);
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
   await chooseWords(page, 10);
-  const text = await passageText(page);
+  let reply = await holdRace(page, supabase);
+  await page.locator('#restart-button').click();
+  let text = await passageText(page);
+  await letGo(page, reply, 'get', ada.id);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
+  await expect(page.locator('#accessible-passage')).toHaveText(text);
+  await expectOffer(page, 'Ada');
+  await typeInto(page, text, '#typing-input', { delay: 90 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#run-card-stamp')).toContainText('practice');
+  await expect(page.locator('#ghost-result')).toBeHidden();
+  expect(ada.result).toBeNull();
+
+  await page.locator('#challenge-toast-close').click();
+  await expect(page.locator('#challenge-toast')).toBeHidden();
+  await page.locator('#run-again').click();
+  text = await passageText(page);
   await openView(page, 'Progress');
-  const reply = await holdInboxRace(page, supabase);
+  reply = await holdInboxRace(page, supabase);
   // Skip to typing goes straight back to the ready practice test.
   await page.locator('.skip-link').focus();
   await page.keyboard.press('Enter');
@@ -895,62 +906,15 @@ test('a Race reply that lands after a drill ran out and its retest began keeps t
   expect(ada.result).toBeNull();
 });
 
-test('a Race reply that lands after Lin restarted the practice test leaves that practice session and offers the race', async ({ page, supabase }) => {
-  const lin = supabase.addUser('lin@stilltype.test');
-  const ada = challengeLin(supabase, lin, 'Ada');
-  await openApp(page);
-  await signInWithEmail(page, 'lin@stilltype.test');
-  await chooseWords(page, 10);
-  const reply = await holdRace(page, supabase);
-  await page.locator('#restart-button').click();
-  const text = await passageText(page);
-  await letGo(page, reply, 'get', ada.id);
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
-  await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
-  await expect(page.locator('#accessible-passage')).toHaveText(text);
-  await expectOffer(page, 'Ada');
-  await typeInto(page, text, '#typing-input', { delay: 90 });
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#run-card-stamp')).toContainText('practice');
-  await expect(page.locator('#ghost-result')).toBeHidden();
-  expect(ada.result).toBeNull();
-});
-
-test('a Race reply that lands after Lin opened the custom editor or set up a local race leaves either in place and offers the race', async ({ page, supabase }) => {
+test('a Race reply that lands while Lin writes in the custom editor, types a name or sets up a local race leaves each in place, the keyboard with Lin, and offers the race', async ({ page, supabase }) => {
   const lin = supabase.addUser('lin@stilltype.test');
   const ada = challengeLin(supabase, lin, 'Ada');
   await openApp(page);
   await signInWithEmail(page, 'lin@stilltype.test');
   let reply = await holdRace(page, supabase);
+  // In the custom editor, Lin writes a passage while the reply loads.
   await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
-  await letGo(page, reply, 'get', ada.id);
-  await expect(page.locator('#custom-options')).toBeVisible();
-  await expect(page.locator('#custom-text')).toBeFocused();
-  await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
-  await expectOffer(page, 'Ada');
-  // On Challenge: a Race from the inbox, then a local race set up while it loads.
-  await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
-  reply = await holdInboxRace(page, supabase);
-  await page.locator('#start-local-race').click();
-  await expect(page.locator('#race-stage')).toBeVisible();
-  await letGo(page, reply, 'get', ada.id);
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'compete');
-  await expect(page.locator('#race-stage')).toBeVisible();
-  await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
-  await expectOffer(page, 'Ada');
-  expect(ada.result).toBeNull();
-});
-
-test('a Race reply that lands while Lin types into a field on the same screen leaves the field and the keyboard with Lin', async ({ page, supabase }) => {
-  const lin = supabase.addUser('lin@stilltype.test');
-  const ada = challengeLin(supabase, lin, 'Ada');
-  await linArrives(page);
-  // In the custom editor, Lin races Ada from the inbox, then writes a passage while the reply loads.
-  await chooseMore(page, 'mode-custom');
-  await expect(page.locator('#custom-options')).toBeVisible();
-  let reply = await holdInboxRace(page, supabase);
   await page.locator('#custom-text').click();
   await page.keyboard.type('a passage of my own', { delay: 60 });
   await letGo(page, reply, 'get', ada.id);
@@ -968,6 +932,16 @@ test('a Race reply that lands while Lin types into a field on the same screen le
   await letGo(page, reply, 'get', ada.id);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'compete');
   await expect(page.locator('#online-name')).toBeFocused();
+  await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
+  await expectOffer(page, 'Ada');
+  // A Race from the inbox, then a local race set up while it loads.
+  await page.locator('#challenge-local').click();
+  reply = await holdInboxRace(page, supabase);
+  await page.locator('#start-local-race').click();
+  await expect(page.locator('#race-stage')).toBeVisible();
+  await letGo(page, reply, 'get', ada.id);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'compete');
+  await expect(page.locator('#race-stage')).toBeVisible();
   await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
   await expectOffer(page, 'Ada');
   expect(ada.result).toBeNull();
