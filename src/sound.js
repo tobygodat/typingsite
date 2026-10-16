@@ -13,7 +13,8 @@ const KEY_OUTCOMES = Object.values(KEY_OUTCOME);
 // Peak gain at full volume. Both voices are short and sit well below full scale.
 const CLICK_PEAK = 0.9;
 const TICK_PEAK = 0.3;
-// A finished run's context is suspended once the last key's voice (0.1 s at most) has played out.
+// A key outside a run, and the end of a run, suspend the context once the last key's voice (0.1 s at
+// most) has played out.
 const REST_AFTER_MS = 250;
 
 export function normalizeSoundMode(value) {
@@ -106,16 +107,18 @@ function afterPaint(callback) {
 // settings() returns { mode, volume } at the moment of each key. Every event only says what the
 // context should be (want) and reconcile() moves it there:
 //   closed  no context: nothing has asked for sound yet, or sound is off or at volume 0;
-//   asleep  built and suspended: sound was chosen, the page is hidden, or no key for a while after a run;
-//   awake   built and running: a key was just typed.
+//   asleep  built and suspended: sound was chosen, the page is hidden, or no key for a while outside a run;
+//   awake   built and running: a key was just typed, or a run is in progress.
 // The context is built after the change that chooses an audible sound (prepare) or, failing that,
 // after the first audible key, which stays silent itself; it is never built inside an event.
-export function createSounds({ settings, AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext, defer = afterPaint, page = globalThis.document } = {}) {
+export function createSounds({ settings, running = () => false, AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext, defer = afterPaint, page = globalThis.document } = {}) {
   let want = 'closed';
   let context = null;
   let noise = null;
-  // The state last requested of this context. context.state changes only once the audio thread has
-  // acted, so a request still in flight is judged by what was asked.
+  // The state last requested of this context, null until a request is made. context.state changes
+  // only once the audio thread has acted, so a request still in flight is judged by what was asked, and
+  // by context.state too, since a context can change state by itself: a new one may report 'suspended'
+  // and start running a moment later, so its state at construction says nothing about where it is going.
   let asked = null;
   let pending = false;
   let failed = false;
@@ -147,7 +150,7 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
     if (want === 'closed') release();
     else if (!context) queueBuild();
     else if (want === 'awake' && (asked !== 'awake' || context.state !== 'running')) request('resume');
-    else if (want === 'asleep' && asked !== 'asleep') request('suspend');
+    else if (want === 'asleep' && (asked !== 'asleep' || context.state === 'running')) request('suspend');
   }
 
   function build() {
@@ -155,7 +158,7 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
     try {
       context = new AudioContextClass({ latencyHint: 'interactive' });
       noise = noiseBuffer(context);
-      asked = context.state === 'running' ? 'awake' : 'asleep';
+      asked = null;
     } catch {
       // No audio device, or the browser refused: stay silent until sound is turned off and on again.
       const broken = context;
@@ -186,9 +189,9 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
         sync();
         return null;
       }
-      clearTimeout(resting);
       want = 'awake';
       reconcile();
+      rest();
       if (!context) return null;
       if (kind === 'tick') playTick(context, gainFor(volume));
       else playClick(context, gainFor(volume), noise);
@@ -200,11 +203,12 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
 
   // The person chose an audible setting. The build runs just after the change, while the page still
   // has the gesture's activation, and the context rests until the first key, which resumes it (and
-  // also starts a context the browser built suspended, as WebKit does).
+  // also starts a context the browser built suspended, as WebKit does). A context already built keeps
+  // its state, so moving the volume mid-run never delays the next click.
   function prepare() {
     try {
       if (!audible()) return;
-      want = 'asleep';
+      if (want === 'closed') want = 'asleep';
       reconcile();
     } catch {}
   }
@@ -225,10 +229,13 @@ export function createSounds({ settings, AudioContextClass = globalThis.AudioCon
     reconcile();
   }
 
-  // A run ended: suspend once its last key's voice has played out.
+  // A key was typed or a run ended: suspend once the last voice has played out, unless a run is then in
+  // progress. A pause mid-run stays awake; the run's end rests it again.
   function rest() {
     clearTimeout(resting);
-    resting = setTimeout(suspend, REST_AFTER_MS);
+    resting = setTimeout(() => {
+      try { if (!running()) suspend(); } catch {}
+    }, REST_AFTER_MS);
   }
 
   page?.addEventListener?.('visibilitychange', () => { if (page.hidden) suspend(); });

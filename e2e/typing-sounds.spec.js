@@ -7,7 +7,7 @@ import { test, expect, openApp, openView, passageText, typeInto, chooseWords, ch
 
 async function stubAudio(page) {
   await page.addInitScript(() => {
-    const log = { created: 0, closed: 0, state: null, plays: [], clickGains: [], builtDuring: [] };
+    const log = { created: 0, closed: 0, state: null, states: [], plays: [], clickGains: [], builtDuring: [] };
     window.__sound = log;
     const node = (extra) => ({ connect(target) { return target; }, disconnect() {}, ...extra });
     const param = (record) => ({ value: 0, setValueAtTime(value) { record?.(value); return this; }, exponentialRampToValueAtTime() { return this; } });
@@ -27,7 +27,7 @@ async function stubAudio(page) {
       suspend() { return this.settle('suspended'); }
       settle(state) {
         return new Promise((resolve) => setTimeout(() => {
-          if (this.state !== 'closed') { this.state = state; log.state = state; }
+          if (this.state !== 'closed') { this.state = state; log.state = state; log.states.push(state); }
           resolve();
         }));
       }
@@ -44,7 +44,7 @@ async function stubAudio(page) {
   });
 }
 
-const sound = (page) => page.evaluate(() => ({ ...window.__sound, plays: [...window.__sound.plays], clickGains: [...window.__sound.clickGains], builtDuring: [...window.__sound.builtDuring] }));
+const sound = (page) => page.evaluate(() => ({ ...window.__sound, states: [...window.__sound.states], plays: [...window.__sound.plays], clickGains: [...window.__sound.clickGains], builtDuring: [...window.__sound.builtDuring] }));
 const plays = async (page) => (await sound(page)).plays;
 const wrongFor = (char) => (char === 'x' ? 'z' : 'x');
 
@@ -93,7 +93,8 @@ async function shot(page, testInfo, name) {
 }
 
 test.beforeEach(async ({ page }) => { await stubAudio(page); });
-test.afterEach(async ({ page }) => {
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === 'skipped') return;
   expect((await sound(page)).builtDuring, 'no AudioContext is built inside an event handler').toEqual([]);
 });
 
@@ -138,14 +139,25 @@ test('a sound chosen before any run leaves its context suspended until the first
   await openView(page, 'Train');
   await chooseSound(page, 'clicks');
   await soundReady(page);
-  await page.waitForTimeout(400);
-  expect((await sound(page)).state, 'nothing is being typed, so the context rests').toBe('suspended');
+  await expect.poll(async () => (await sound(page)).state, 'nothing is being typed, so the context rests').toBe('suspended');
 
   await openView(page, 'Practice');
   const text = await passageText(page);
   await typeInto(page, text[0]);
   expect(await plays(page), 'the first key still clicks').toEqual(['click']);
   await expect.poll(async () => (await sound(page)).state).toBe('running');
+});
+
+test('a backspace before the first letter clicks, then the context rests again', async ({ page }) => {
+  await openApp(page);
+  await chooseSound(page, 'clicks');
+  await soundReady(page);
+  await expect.poll(async () => (await sound(page)).state).toBe('suspended');
+  await page.locator('#typing-input').focus();
+  await page.keyboard.press('Backspace');
+  expect(await plays(page)).toEqual(['click']);
+  await expect(page.locator('body')).not.toHaveAttribute('data-running', 'true');
+  await expect.poll(async () => (await sound(page)).states.slice(-2), 'woken for the click, then suspended').toEqual(['running', 'suspended']);
 });
 
 test('stop on error: a refused key clicks, only the mistyped letter ticks', async ({ page }) => {
@@ -461,6 +473,7 @@ test('a member’s sound and volume follow the account', async ({ page, supabase
 
 for (const theme of ['dark', 'light']) {
   test(`settings show sound and volume (${theme})`, async ({ page }, testInfo) => {
+    test.skip(theme === 'light' && !process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
     await openSettings(page);
@@ -472,6 +485,7 @@ for (const theme of ['dark', 'light']) {
     await expect(page.locator('#sound-volume')).toHaveValue('55');
     await expect(page.locator('#sound-volume-value')).toHaveText('55%');
     await page.evaluate(() => document.activeElement.blur());
+    if (!process.env.SCREENSHOTS) return;
     await page.mouse.move(0, 400);
     await shot(page, testInfo, `settings-${theme}`);
   });
@@ -557,6 +571,10 @@ test('an online race ticks a mistyped letter and clicks refused keys and backspa
   try {
     const passage = await page.locator('#online-accessible-passage').textContent();
     await soundReady(page);
+    // A backspace before the first letter clicks, and with no race run begun the context rests again.
+    await page.locator('#online-input').focus();
+    await page.keyboard.press('Backspace');
+    await expect.poll(async () => (await sound(page)).states.slice(-2)).toEqual(['running', 'suspended']);
     await typeInto(page, passage[0], '#online-input');
     // Races always stop on error: the mistyped letter ticks; the refused key, each backspace and a
     // backspace with nothing left to delete click.
@@ -566,7 +584,7 @@ test('an online race ticks a mistyped letter and clicks refused keys and backspa
     await expect(page.locator('#online-input')).toHaveValue('');
     await page.keyboard.type(passage[0]);
     await expect(page.locator('#online-input')).toHaveValue(passage[0]);
-    expect(await plays(page)).toEqual(['click', 'tick', 'click', 'click', 'click', 'click', 'click']);
+    expect(await plays(page)).toEqual(['click', 'click', 'tick', 'click', 'click', 'click', 'click', 'click']);
   } finally { await context.close(); }
 });
 

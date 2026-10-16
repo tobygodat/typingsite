@@ -163,7 +163,7 @@ let accentPair = null;
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index) });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 // Key sounds read the current preferences on each key; the AudioContext waits for an audible choice or key.
-const sounds = createSounds({ settings: () => ({ mode: prefs.sound, volume: prefs.soundVolume }) });
+const sounds = createSounds({ settings: () => ({ mode: prefs.sound, volume: prefs.soundVolume }), running: () => runInProgress() });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // The completed run the results view shows: its numbers, run card graph and Watch replay. Only
@@ -1841,7 +1841,9 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   // Said once when the space is refused or the run starts waiting, and again if a key is ignored.
   if (blocked === 'space' || (waiting && (length > previousLength || blocked === 'submit'))) announce(rule);
   if (isPrimary) {
-    setRunning(true);
+    // A backspace before the first letter starts nothing; after one, a key marks the run as under way again
+    // (leaving the screen mid-run clears the mark).
+    if (startTime !== null) setRunning(true);
     $('input-help').textContent = rule ? withRule(primaryNotice, rule) : blocked ? NOTICES.blocked : primaryNotice;
     updateLive(false, at);
     if (sessionDurationMs() === null && passageComplete(targetAttempt, replay.typed)) finishPrimary();
