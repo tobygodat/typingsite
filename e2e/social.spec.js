@@ -107,7 +107,7 @@ test('the challenge toast leaves on its own after about eighteen seconds', async
   await expect(page.locator('#inbox-list [data-inbox-action="invite"]')).toHaveText('Join');
 });
 
-test('a challenge that arrives mid-run waits for the run to end, even with the chrome revealed', async ({ page, supabase }) => {
+test('a challenge that arrives mid-run waits for the run to end, even with the chrome revealed, and one waits while a one-keyboard race is typed', async ({ page, supabase }) => {
   const host = supabase.addUser('host@stilltype.test');
   supabase.addUser('lin@stilltype.test');
   await page.clock.install();
@@ -131,28 +131,23 @@ test('a challenge that arrives mid-run waits for the run to end, even with the c
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await page.clock.fastForward(11000);
   await expect(page.locator('#challenge-toast')).toContainText('Ada challenged you to a race.');
-});
+  await page.locator('#challenge-toast-close').click();
+  await expect(page.locator('#challenge-toast')).toBeHidden();
 
-test('a challenge waits while a one-keyboard race is being typed', async ({ page, supabase }) => {
-  const host = supabase.addUser('host@stilltype.test');
-  supabase.addUser('lin@stilltype.test');
-  await page.clock.install();
-  await openApp(page);
-  await signInWithEmail(page, 'lin@stilltype.test');
   await openView(page, 'Challenge');
   await page.locator('#challenge-local').click();
   await page.locator('#player-one-name').fill('Ada');
   await page.locator('#player-two-name').fill('Lin');
   await page.locator('#start-local-race').click();
-  const text = await page.locator('#race-accessible-passage').textContent();
-  await typeInto(page, text.slice(0, 3), '#race-input');
+  const racePassage = await page.locator('#race-accessible-passage').textContent();
+  await typeInto(page, racePassage.slice(0, 3), '#race-input');
   await new Promise((resolve) => supabase.races.handle(host.id, { p_action: 'create', p_data: {
     passage: 'The quick brown fox jumps over the lazy dog, twice over.', conditions: {}, displayName: 'Ada', inviteEmail: 'lin@stilltype.test',
   } }, resolve));
   await page.clock.fastForward(11000);
   await page.waitForTimeout(1500);
   await expect(page.locator('#challenge-toast')).toBeHidden();
-  await page.keyboard.type(text.slice(3));
+  await page.keyboard.type(racePassage.slice(3));
   await expect(page.locator('#race-handoff')).toBeVisible();
   await page.clock.fastForward(11000);
   await expect(page.locator('#challenge-toast')).toContainText('Ada challenged you to a race.');
@@ -236,7 +231,7 @@ test('after a race either player can race again against the same opponent, and a
   } finally { await context.close(); }
 });
 
-test('a guest races again with the same seat and no new link', async ({ page, browser, supabase }) => {
+test('a guest races again with the same seat and no new link, and a rematch the host cancels takes its toast away', async ({ page, browser, supabase }) => {
   supabase.addUser('host@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'host@stilltype.test');
@@ -261,26 +256,6 @@ test('a guest races again with the same seat and no new link', async ({ page, br
     await expect(guest.locator('#online-rematch-note')).toBeHidden();
     await expect(page.locator('#online-room-status')).toContainText('Both players are here.', { timeout: 5000 });
     await race(page, guest);
-    expect(await guest.evaluate(() => Object.keys(localStorage))).toEqual([]);
-  } finally { await context.close(); }
-});
-
-test('a guest’s rematch toast goes away when the host cancels the rematch', async ({ page, browser, supabase }) => {
-  supabase.addUser('host@stilltype.test');
-  await openApp(page);
-  await signInWithEmail(page, 'host@stilltype.test');
-  await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
-  const link = await createGuestRace(page);
-  const context = await browser.newContext();
-  const guest = await context.newPage();
-  await supabase.attach(guest);
-  try {
-    await guest.goto(link);
-    await expect(guest.locator('#online-guest-join')).toBeVisible();
-    await guest.locator('#online-guest-name').fill('Lin');
-    await guest.locator('#join-online-race').click();
-    await race(page, guest);
     await page.locator('#online-rematch').click();
     await expect(guest.locator('#challenge-toast')).toContainText('Ada wants a rematch.', { timeout: 8000 });
     await expect(guest.locator('#online-rematch')).toHaveText('Join rematch');
@@ -288,6 +263,7 @@ test('a guest’s rematch toast goes away when the host cancels the rematch', as
     await expect(guest.locator('#challenge-toast')).toBeHidden({ timeout: 8000 });
     await expect(guest.locator('#online-rematch-note')).toBeHidden();
     await expect(guest.locator('#online-rematch')).toHaveText('Race again');
+    expect(await guest.evaluate(() => Object.keys(localStorage))).toEqual([]);
   } finally { await context.close(); }
 });
 

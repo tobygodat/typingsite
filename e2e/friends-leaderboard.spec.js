@@ -9,7 +9,6 @@ import { mondayOf, utcDay } from './fake-board.js';
 
 test.setTimeout(120000);
 
-const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const DAILY = { mode: 'quote', duration: null, count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any', wordList: null,
   inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
 const VERSION = dailyVersion(conditionKey(DAILY));
@@ -414,29 +413,6 @@ test('a project without the board column keeps profile sync working, leaving the
   expect(supabase.profileWrites.every((write) => write.board === undefined)).toBe(true);
 });
 
-test('a midnight re-read that fails is tried again at the next check', async ({ page, supabase }) => {
-  await sharing(page, supabase, supabase.addUser('ada@stilltype.test'));
-  let now = '2026-10-03T23:50:00Z';
-  supabase.board.now = () => new Date(now);
-  await page.clock.install({ time: new Date(now) });
-  await openApp(page);
-  await signInWithEmail(page, 'ada@stilltype.test');
-  await openBoard(page);
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
-  // The first read after midnight fails, quietly; the next 30-second check reads Sunday's board.
-  now = '2026-10-04T00:00:30Z';
-  supabase.board.missing = true;
-  const reads = boardRequests(supabase);
-  await page.clock.fastForward('10:30');
-  await expect.poll(() => boardRequests(supabase)).toBeGreaterThan(reads);
-  await expect(page.locator('#friends-board-status')).toHaveText('');
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
-  supabase.board.missing = false;
-  await page.clock.fastForward(30_000);
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04 · best completed attempt · physical keyboard');
-  await expect(page.locator('#friends-board-status')).toHaveText('');
-});
-
 test('a board left open reads the new day after 00:00 UTC, and the new week on Monday', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');
@@ -654,7 +630,7 @@ test('sharing turned on during the account check takes effect at once, and the b
   expect(supabase.profiles.get(ada.id)?.data?.preferences).not.toHaveProperty('shareBoard');
 });
 
-test('an opt-out that fails is kept across a reload and sent before anything else, and until then this device’s saves carry no summary', async ({ page, supabase }) => {
+test('an opt-out that fails is kept across a reload and sent before anything else, until then this device’s saves carry no summary, and turning sharing back on writes one from the row', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
   await openApp(page);
@@ -688,62 +664,6 @@ test('an opt-out that fails is kept across a reload and sent before anything els
   // Settled, the opt-out is no longer kept on the device, and nothing turned sharing back on.
   await expect.poll(() => optOutsKept(page)).toEqual([]);
   expect(supabase.board.calls.slice(before)).not.toContain('share');
-  // Her saves carry her summary again, into her own row only.
-  await openView(page, 'Practice');
-  await chooseWords(page, 10);
-  await completePassage(page);
-  await expect.poll(() => weekRuns(supabase, ada)).toBe(4);
-  expect(supabase.board.members.has(ada.id)).toBe(false);
-});
-
-test('turning sharing back on while an opt-out is still kept sends that opt-out first, then the share', async ({ page, supabase }) => {
-  const ada = supabase.addUser('ada@stilltype.test');
-  await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
-  await openApp(page);
-  await signInWithEmail(page, 'ada@stilltype.test');
-  await openBoard(page);
-  await expect(page.locator('#board-week')).toContainText('2 runs');
-  supabase.board.missing = true;
-  await page.locator('#share-board').uncheck();
-  await expect(page.locator('#friends-board-status')).toContainText('Your row comes off once the board can be reached.');
-  // While the board is still out of reach, turning it back on fails, and the opt-out stays kept. (A click:
-  // the switch turns itself back off as soon as that fails, which check() would read as no change.)
-  await page.locator('#share-board').click();
-  await expect(page.locator('#friends-board-status')).toHaveText('The friends board is being set up. Please try again shortly.');
-  await expect(page.locator('#share-board')).not.toBeChecked();
-  expect(await optOutsKept(page)).toHaveLength(1);
-  supabase.board.missing = false;
-  const actions = boardActions(page);
-  await page.locator('#share-board').check();
-  await expect(page.locator('#friends-board-lists')).toBeVisible();
-  expect(actions).toEqual(['unshare', 'share']);
-  expect(supabase.board.members.has(ada.id)).toBe(true);
-  expect(await optOutsKept(page)).toEqual([]);
-  await expect(page.locator('#share-board')).toBeChecked();
-  await expect(page.locator('#board-week')).toContainText('2 runs');
-});
-
-test('a save made while an opt-out was unconfirmed leaves no summary, and turning sharing back on writes one from the row', async ({ page, supabase }) => {
-  const ada = supabase.addUser('ada@stilltype.test');
-  await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
-  await openApp(page);
-  await signInWithEmail(page, 'ada@stilltype.test');
-  await openBoard(page);
-  await expect(page.locator('#board-week')).toContainText('2 runs');
-  // Sharing is turned off while the board can't be reached, and a run is saved meanwhile: no summary.
-  supabase.board.missing = true;
-  await page.locator('#share-board').uncheck();
-  await expect(page.locator('#friends-board-status')).toContainText('Your row comes off once the board can be reached.');
-  await openView(page, 'Practice');
-  await chooseWords(page, 10);
-  await completePassage(page);
-  await expect.poll(() => supabase.profiles.get(ada.id).data.runs.length).toBe(3);
-  expect(column(supabase, ada)).toBeNull();
-  // The opt-out lands with the next board read.
-  supabase.board.missing = false;
-  await openBoard(page);
-  await expect.poll(() => supabase.board.members.has(ada.id)).toBe(false);
-  await expect.poll(() => optOutsKept(page)).toEqual([]);
   expect(column(supabase, ada)).toBeNull();
   // Turning sharing back on writes the summary of the row as it stands, so her row shows its three runs.
   await page.locator('#share-board').click();
@@ -752,6 +672,14 @@ test('a save made while an opt-out was unconfirmed leaves no summary, and turnin
   expect(weekRuns(supabase, ada)).toBe(3);
   expect(supabase.profileWrites.at(-1).method).toBe('PATCH');
   expect(Date.parse(column(supabase, ada).at)).toBe(Date.parse(supabase.profiles.get(ada.id).updated_at));
+  // Off again, and confirmed at once: her saves carry her summary, into her own row only.
+  await page.locator('#share-board').uncheck();
+  await expect(page.locator('#friends-board-status')).toHaveText('Your row is off the board.');
+  await openView(page, 'Practice');
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect.poll(() => weekRuns(supabase, ada)).toBe(4);
+  expect(supabase.board.members.has(ada.id)).toBe(false);
 });
 
 test('an opt-out still on its way is not undone by another device, and lands when it is retried', async ({ page, browser, supabase }) => {
@@ -903,7 +831,7 @@ test('a share waiting behind this device’s own opt-out counts only that opt-ou
   } finally { await laptopContext.close(); }
 });
 
-test('sharing turned off in one tab and back on in another shares at the first click, with no word of another device', async ({ page, supabase }) => {
+test('sharing turned off in one tab and back on in another shares at the first try, from the switch or from the palette with the board hidden, with no word of another device', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
   await openApp(page);
@@ -917,53 +845,33 @@ test('sharing turned off in one tab and back on in another shares at the first c
   await openBoard(second);
   await expect(second.locator('#share-board')).toBeChecked();
   const actions = boardActions(page);
-  for (let round = 0; round < 2; round += 1) {
+  for (const fromPalette of [false, true]) {
+    if (fromPalette) await openView(page, 'Practice');
     // Off in the second tab, confirmed; the first tab's switch follows at once.
     await second.locator('#share-board').uncheck();
     await expect(second.locator('#friends-board-status')).toHaveText('Your row is off the board.');
-    await expect(page.locator('#share-board')).not.toBeChecked();
+    if (!fromPalette) await expect(page.locator('#share-board')).not.toBeChecked();
     expect(supabase.board.members.has(ada.id)).toBe(false);
     // On again in the first tab, having seen it off there: it shares with the version the second tab
-    // read, so the first click counts.
+    // read, so the first try counts. From the palette the board opens too, and the switch overtakes its read.
     const mark = actions.length;
-    await page.locator('#share-board').check();
+    if (fromPalette) {
+      await page.bringToFront();
+      await page.keyboard.press('Control+k');
+      await page.keyboard.type('share on friends');
+      await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('share on friends board');
+      await page.keyboard.press('Enter');
+    } else {
+      await page.locator('#share-board').check();
+    }
     await expect(page.locator('#friends-board-lists')).toBeVisible();
     await expect(page.locator('#share-board')).toBeChecked();
     await expect(page.locator('#friends-board-status')).toHaveText('');
-    expect(actions.slice(mark)).toEqual(['share']);
+    const sent = actions.slice(mark);
+    expect(fromPalette ? sent.filter((action) => action !== 'board') : sent).toEqual(['share']);
     expect(supabase.board.members.has(ada.id)).toBe(true);
     await expect(second.locator('#share-board')).toBeChecked();
   }
-});
-
-test('the palette turns sharing on at the first try in a tab whose board is hidden, after another tab turned it off', async ({ page, supabase }) => {
-  const ada = supabase.addUser('ada@stilltype.test');
-  await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
-  await openApp(page);
-  await signInWithEmail(page, 'ada@stilltype.test');
-  await openBoard(page);
-  await expect(page.locator('#friends-board-lists')).toBeVisible();
-  await openView(page, 'Practice');
-  const second = await page.context().newPage();
-  await supabase.attach(second);
-  await openApp(second);
-  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  await openBoard(second);
-  await second.locator('#share-board').uncheck();
-  await expect(second.locator('#friends-board-status')).toHaveText('Your row is off the board.');
-  // Back in the first tab, from the palette: the board opens (its read is overtaken by the switch) and
-  // the share counts.
-  const actions = boardActions(page);
-  await page.bringToFront();
-  await page.keyboard.press('Control+k');
-  await page.keyboard.type('share on friends');
-  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('share on friends board');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#friends-board-lists')).toBeVisible();
-  await expect(page.locator('#share-board')).toBeChecked();
-  await expect(page.locator('#friends-board-status')).toHaveText('');
-  expect(actions.filter((action) => action !== 'board')).toEqual(['share']);
-  expect(supabase.board.members.has(ada.id)).toBe(true);
 });
 
 test('a share waiting its turn in one tab can’t undo an opt-out made after it in another tab', async ({ page, supabase }) => {
@@ -1194,10 +1102,12 @@ test('a device whose clock is behind, saving just after 00:00 UTC, still shows t
   expect(await rowTexts(page, 'board-week')).toEqual(['You 41 s 1 run']);
 });
 
-test('a board that can’t be read says so once, and the checks after it retry without a word', async ({ page, supabase }) => {
+test('a board that can’t be read says so once, and the checks after it retry without a word, a midnight re-read included', async ({ page, supabase }) => {
   await sharing(page, supabase, supabase.addUser('ada@stilltype.test'));
   supabase.board.missing = true;
-  await page.clock.install();
+  let now = '2026-10-03T23:50:00Z';
+  supabase.board.now = () => new Date(now);
+  await page.clock.install({ time: new Date(now) });
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await openBoard(page);
@@ -1222,6 +1132,19 @@ test('a board that can’t be read says so once, and the checks after it retry w
   supabase.board.missing = false;
   await refreshBoard(page);
   await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  // The first read after midnight fails, quietly; the next 30-second check reads Sunday's board.
+  now = '2026-10-04T00:00:30Z';
+  supabase.board.missing = true;
+  const reads = boardRequests(supabase);
+  await page.clock.fastForward('10:30');
+  await expect.poll(() => boardRequests(supabase)).toBeGreaterThan(reads);
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  supabase.board.missing = false;
+  await page.clock.fastForward(30_000);
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04 · best completed attempt · physical keyboard');
+  await expect(page.locator('#friends-board-status')).toHaveText('');
 });
 
 test('an opt-out another tab settled while this tab’s own try failed leaves sharing free to turn on again', async ({ page, supabase }) => {
@@ -1384,7 +1307,7 @@ test('a slow board read answered before another tab turned sharing on changes no
   await expect(page.locator('#friends-board-status')).toHaveText('');
 });
 
-test('an opt-out whose reply was lost goes again before sharing is turned back on, and the share counts at the first click', async ({ page, supabase }) => {
+test('an opt-out whose reply was lost goes again before sharing is turned back on, even after a try the board was out of reach for, and the share counts at the first click', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   seedProfile(supabase, ada, practiceThisWeek(2));
   await openApp(page);
@@ -1402,6 +1325,14 @@ test('an opt-out whose reply was lost goes again before sharing is turned back o
   expect(supabase.board.members.has(ada.id)).toBe(false);
   expect(supabase.board.version(ada.id)).toBe(2);
   expect(await optOutsKept(page)).toHaveLength(1);
+  // While the board is out of reach, turning it back on fails, and the opt-out stays kept. (A click: the
+  // switch turns itself back off as soon as that fails, which check() would read as no change.)
+  supabase.board.missing = true;
+  await page.locator('#share-board').click();
+  await expect(page.locator('#friends-board-status')).toHaveText('The friends board is being set up. Please try again shortly.');
+  await expect(page.locator('#share-board')).not.toBeChecked();
+  expect(await optOutsKept(page)).toHaveLength(1);
+  supabase.board.missing = false;
   // Turned back on, that same opt-out goes first. The service has applied it already, so it moves
   // nothing, and the share counts at the first click, with no word of another device.
   const actions = boardActions(page);
@@ -1415,6 +1346,7 @@ test('an opt-out whose reply was lost goes again before sharing is turned back o
   expect(supabase.board.version(ada.id)).toBe(3);
   expect(await optOutsKept(page)).toEqual([]);
   await expect.poll(() => knownHere(page, ada)).toBe('1:3');
+  await expect(page.locator('#board-week')).toContainText('2 runs');
 });
 
 // Ada shares, then turns sharing off; the service applies it (version 2), but the reply is lost, so the
@@ -1598,32 +1530,4 @@ test('where the browser can’t keep an opt-out, the page keeps it, and sends it
   expect(supabase.board.version(ada.id)).toBe(3);
   expect(supabase.board.members.has(ada.id)).toBe(true);
   await expect(page.locator('#share-board')).toBeChecked();
-});
-
-test.describe('phone', () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-
-  test('the board stacks on a phone and fits at 320px', async ({ page, supabase }, testInfo) => {
-    const { ada } = circle(supabase);
-    const day = dailyPassage();
-    const dailyRun = { id: 'seed-daily', at: new Date().toISOString(), kind: 'daily', status: 'complete', interrupted: false, fresh: true,
-      textId: day.sourceTextId, conditions: DAILY, score: { wpm: 84, accuracy: 97 }, elapsedMs: 41200, errors: 2, target: null,
-      challengeDate: day.day, firstDailyAttempt: true, patterns: [] };
-    await sharing(page, supabase, ada, { runs: practiceThisWeek(18, [dailyRun]) });
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await openApp(page);
-    await signInWithEmail(page, 'ada@stilltype.test');
-    await openBoard(page);
-    await expect(page.locator('#board-daily')).toContainText('You 84 wpm');
-    // Her row had no summary; this load wrote one from her history.
-    expect(column(supabase, ada).days[day.day]).toEqual({ version: VERSION, wpm: 84, accuracy: 97, attempts: 1 });
-    const daily = await page.locator('#board-daily').boundingBox();
-    const week = await page.locator('#board-week').boundingBox();
-    expect(week.y).toBeGreaterThan(daily.y + daily.height);
-    expect(await overflow(page)).toBeLessThanOrEqual(0);
-    await scrollBelow(page, '#friends-board-heading', 24);
-    await shot(page, testInfo, 'board-phone-dark');
-    await page.setViewportSize({ width: 320, height: 640 });
-    expect(await overflow(page)).toBeLessThanOrEqual(0);
-  });
 });
