@@ -1,4 +1,4 @@
-import { test, expect, chooseWords, completePassage, openApp, openView, passageText, signInWithEmail, typeInto } from './fixtures.js';
+import { test, expect, chooseWords, completePassage, openApp, openView, passageText, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
 
 // Committed docs screenshots are only rewritten when SCREENSHOTS is set; normal runs write to test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/error-modes/${name}` : testInfo.outputPath(name));
@@ -195,7 +195,7 @@ for (const scheme of ['dark', 'light']) {
 test('a failure policy applies to custom text and keeps its passage', async ({ page }) => {
   const custom = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await chooseCorrection(page, 'fail-any');
@@ -220,7 +220,7 @@ test('correction choices survive account save, reload and a fixed standard run',
   await expect.poll(() => supabase.profileFor('correction@stilltype.test')?.preferences?.correction).toBe('no-backspace');
   await page.reload();
   await expect(page.locator('#condition-line')).toContainText('no backspace');
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   await expect(page.locator('#condition-line')).toContainText('stop on error');
   await page.locator('details.preferences > summary').click();
   await expect(page.locator('#correction-select')).toBeDisabled();
@@ -233,7 +233,7 @@ test('correction choices survive account save, reload and a fixed standard run',
 test('a lesson ended by fail-on-any-error names the failed key rule', async ({ page }) => {
   await openApp(page);
   await chooseCorrection(page, 'fail-any');
-  await page.locator('#open-lessons').click();
+  await chooseMore(page, 'open-lessons');
   await page.locator('#lesson-primary').click();
   const text = await passageText(page);
   await typeInto(page, text[0] === 'x' ? 'z' : 'x');

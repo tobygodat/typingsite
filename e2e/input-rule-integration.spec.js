@@ -1,4 +1,4 @@
-import { test, expect, chooseWords, openApp, openSettings, passageText, typeInto } from './fixtures.js';
+import { test, expect, chooseWords, openApp, openSettings, passageText, typeInto, chooseMore } from './fixtures.js';
 
 test('a space refused by strict space still fails fail-on-any-error', async ({ page }) => {
   await openApp(page);
@@ -15,7 +15,7 @@ test('a space refused by strict space still fails fail-on-any-error', async ({ p
 
 test('standard keeps its recipe while a strict-space choice waits for ordinary practice', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   const standard = await passageText(page);
   await openSettings(page);
   await page.locator('#strict-space-toggle').check();

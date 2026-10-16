@@ -1,6 +1,6 @@
 // Custom time and word count: the "custom" pill in the length row, its bounds and messages, its own
 // bests and retests, the palette commands, and what is remembered (guests: the tab only).
-import { test, expect, openApp, passageText, typeInto, completePassage, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, completePassage, signInWithEmail, chooseMore } from './fixtures.js';
 
 // Committed docs images are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/custom-length/${name}` : testInfo.outputPath(name));
@@ -177,7 +177,7 @@ test('custom text hides the custom length, and the palette leaves custom text fo
   // Opening the custom text editor closes a custom length field left open in the row it hides.
   await pill(page).click();
   await expect(field(page)).toBeFocused();
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   await expect(page.locator('#duration-options')).toBeHidden();
   await expect(page.locator('#custom-length-form')).toBeHidden();

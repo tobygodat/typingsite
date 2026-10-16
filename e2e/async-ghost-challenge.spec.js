@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto, openSettings } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto, openSettings, chooseMore } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -258,7 +258,7 @@ test('a custom run is never offered as a ghost, and racing a ghost closes the cu
   await expect(page.locator('#ghost-offer')).toBeVisible();
   await page.locator('.nav-item[data-nav="practice"]').click();
   const text = 'the quick brown fox jumps over the lazy dog';
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');
@@ -270,7 +270,7 @@ test('a custom run is never offered as a ghost, and racing a ghost closes the cu
 
   // The custom editor open on Practice, then the ghost race from the inbox: the editor closes and Custom is unmarked.
   await page.locator('.nav-item[data-nav="practice"]').click();
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   await page.locator('#inbox-trigger').click();
   await page.locator('#inbox-list [data-inbox-action="challenge"]').click();
@@ -922,7 +922,7 @@ test('a Race reply that lands after Lin opened the custom editor or set up a loc
   await openApp(page);
   await signInWithEmail(page, 'lin@stilltype.test');
   let reply = await holdRace(page, supabase);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   await letGo(page, reply, 'get', ada.id);
   await expect(page.locator('#custom-options')).toBeVisible();
@@ -948,7 +948,7 @@ test('a Race reply that lands while Lin types into a field on the same screen le
   const ada = challengeLin(supabase, lin, 'Ada');
   await linArrives(page);
   // In the custom editor, Lin races Ada from the inbox, then writes a passage while the reply loads.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   let reply = await holdInboxRace(page, supabase);
   await page.locator('#custom-text').click();

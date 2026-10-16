@@ -1,4 +1,4 @@
-import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto } from './fixtures.js';
+import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore } from './fixtures.js';
 
 // Committed docs screenshots are only rewritten when SCREENSHOTS is set; normal runs write to test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/strict-space/${name}` : testInfo.outputPath(name));
@@ -264,7 +264,7 @@ test('custom text keeps the default rules and its passage, so its key stays the 
   await chooseWords(page, 10);
   await setSwitch(page, 'strict-space-toggle', true);
   await setSwitch(page, 'quick-end-toggle', false);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');

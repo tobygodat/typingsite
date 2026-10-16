@@ -611,7 +611,9 @@ function updateGlide(container, { instant = false } = {}) {
     pill.setAttribute('aria-hidden', 'true');
     container.prepend(pill);
   }
-  const target = container.querySelector(container.dataset.glide === 'current' ? ':scope > [aria-current="page"]' : ':scope > [aria-pressed="true"]');
+  // A mode chosen inside "more" leaves its summary marked, so the pill rests there.
+  const target = container.querySelector(container.dataset.glide === 'current' ? ':scope > [aria-current="page"]' : ':scope > [aria-pressed="true"]')
+    ?? container.querySelector(':scope > [data-active]');
   if (!target || !target.offsetWidth) {
     pill.style.setProperty('--pill-o', '0');
     return;
@@ -765,6 +767,10 @@ function setModeControls() {
     button.setAttribute('aria-pressed', String(selected));
   });
   document.querySelector('.compact-switch').hidden = custom || composeOpen;
+  // "more" takes the name of the mode chosen inside it.
+  const moreActive = $('mode-more').querySelector('[aria-pressed="true"]');
+  $('mode-more-label').textContent = moreActive ? moreActive.textContent : 'more';
+  $('mode-more').toggleAttribute('data-active', Boolean(moreActive));
   showMinimumNote();
   if (custom || composeOpen || prefs.mode === "standard") closeCustomLength();
   renderLengthOptions();
@@ -4758,6 +4764,12 @@ function bindEvents() {
     if (event.target.closest('[data-action="open-lessons"]')) openLessons();
   });
   $('mode-compose').addEventListener('click', openCompose);
+  $('mode-more').addEventListener('click', (event) => {
+    if (event.target.closest('button')) $('mode-more').open = false;
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if ($('mode-more').open && !$('mode-more').contains(event.target)) $('mode-more').open = false;
+  });
   $('lesson-primary').addEventListener('click', () => lessonActions.primary?.());
   $('lesson-secondary').addEventListener('click', () => lessonActions.secondary?.());
   $('mode-custom').addEventListener('click', () => openCustom(!customOpen));
@@ -5016,6 +5028,12 @@ function bindEvents() {
         event.preventDefault();
         if (!event.repeat) palette.close();
       }
+      return;
+    }
+    if ($('mode-more').open && event.key === 'Escape') {
+      event.preventDefault();
+      $('mode-more').open = false;
+      $('mode-more-label').focus();
       return;
     }
     const menuOpen = preferences.open || $('account').open || $('inbox').open;

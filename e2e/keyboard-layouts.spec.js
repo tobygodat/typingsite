@@ -1,6 +1,6 @@
 // Keyboard layouts: the on-screen legend, the optional finger map, and the layout as a test condition.
 import { conditionKey } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail, chooseMore } from './fixtures.js';
 
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/keyboard-layouts/${name}.png` : testInfo.outputPath(`${name}.png`));
 const row = (page, index) => page.locator(`#keyboard .key-row:nth-child(${index}) .key`);
@@ -294,7 +294,7 @@ test('custom text keeps master’s custom key on any layout, and a layout change
   await page.locator('#layout-select').selectOption('dvorak');
   await page.keyboard.press('Escape');
 
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');

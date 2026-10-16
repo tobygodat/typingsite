@@ -1,6 +1,6 @@
 // One account in two tabs or on two devices, against the fake Supabase in e2e/fake-supabase.js: a save
 // from a copy that is out of date merges with the other copy instead of replacing it.
-import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, chooseMore } from './fixtures.js';
 import { textStamp } from '../src/account.js';
 
 test.setTimeout(90000);
@@ -564,21 +564,21 @@ test('using the custom text already shown keeps it over different text waiting f
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
 
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(MINE);
   await page.locator('#custom-use').click();
   expect(await passageText(page)).toBe(MINE);
   await expect.poll(() => cloud(supabase)?.preferences.customText, { timeout: 15000 }).toBe(MINE);
 
   // The other tab uses its own text. This tab's custom passage is ready, so that text waits here.
-  await other.locator('#mode-custom').click();
+  await chooseMore(other, 'mode-custom');
   await other.locator('#custom-text').fill(THEIRS);
   await other.locator('#custom-use').click();
   await expect.poll(() => cloud(supabase)?.preferences.customText, { timeout: 15000 }).toBe(THEIRS);
   expect(await passageText(page)).toBe(MINE);
 
   // Using the text shown here again is a choice: it stays, and reaches the account.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-text')).toHaveValue(MINE);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');

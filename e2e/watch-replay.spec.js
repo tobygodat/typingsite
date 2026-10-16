@@ -1,5 +1,5 @@
 import { quoteCorpus } from '../src/typing.js';
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore } from './fixtures.js';
 
 async function finishWithCorrectedMiss(page) {
   await openApp(page);
@@ -137,7 +137,7 @@ test('Watch replay plays the run the results show, not a drill whose retest was 
 test('a custom run keeps no trace, so it offers no replay; the next counted run does again', async ({ page }) => {
   const custom = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await typeInto(page, custom);
