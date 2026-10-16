@@ -152,7 +152,7 @@ test('on: a seen quote can return to chase its score, but never sets a best, a b
   const again = Number(await page.locator('#result-wpm').textContent());
   expect(again).toBeGreaterThan(first);
   expect(again).toBeLessThan(115);
-  await expect(page.locator('#result-delta')).toHaveText(`Repeated text · +${again - first} vs your best of ${first} on this passage`);
+  await expect(page.locator('#result-delta')).toHaveText(`Repeated text · +${again - first} vs your best of ${first} wpm on this passage`);
   await expect(page.locator('#result-comparison-note')).toHaveText('');
   await expect(page.locator('#result-conditions')).toContainText('repeated text · english · short quote · gentle');
   await expect(page.locator('#best')).toHaveText(best);

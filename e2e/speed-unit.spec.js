@@ -1,6 +1,6 @@
 // Speed unit: wpm (default) or cpm. Display only: scoring, bests, comparisons and condition keys stay in wpm.
 import { CORPUS_VERSION, METRIC_VERSION, standardConditions, conditionKey } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, chooseMore, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -555,7 +555,7 @@ test('a custom run too quick to time shows no rate in cpm, before or after a uni
   await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
   await openApp(page);
   await command(page, 'speed unit · cpm');
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill('hello world');
   await page.locator('#custom-use').click();
   await expect(page.locator('#best')).toHaveText('Not counted');
@@ -589,7 +589,7 @@ test('new learning and composing surfaces follow cpm without changing their stor
   await expect(page.locator('#lesson-current-meta')).toContainText('cpm');
   await expect(page.locator('#lesson-list')).not.toContainText(/\d+ wpm/);
   await openView(page, 'practice');
-  await page.locator('#mode-compose').click();
+  await chooseMore(page, 'mode-compose');
   await page.locator('#compose-input').pressSequentially('a quiet sentence has enough letters to measure the active typing speed', { delay: 100 });
   await page.locator('#compose-done').click();
   const cpm = Number(await page.locator('#compose-wpm').textContent());
