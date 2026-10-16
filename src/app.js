@@ -186,7 +186,7 @@ let activeRecommendation = null;
 let selectedTarget = null;
 let trainingContext = null;
 let resultBestBefore = null;
-// The shown run's context when it finished: the bests it was measured against and whether it saved.
+// The shown run's context when it finished: the bests it was measured against and whether its card reports a failed save.
 let shownContext = null;
 let replayView = null;
 let shownComparison = null;
@@ -2241,7 +2241,7 @@ function renderResultNote() {
   const stopped = completed.stopped ? stopReason(completed.stopped) : '';
   $('result-comparison-note').textContent = [
     completed.status === 'complete' ? '' : completed.failed ? 'The correction setting ended this run, so it isn’t counted.' : stopped ? `${stopped}, so it isn’t counted.` : 'Focus or input changed during the run, so it isn’t counted.',
-    shownContext.saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.',
+    shownContext.unsaved ? 'Couldn’t save on this device.' : '',
   ].filter(Boolean).join(' ');
 }
 
@@ -2259,7 +2259,7 @@ const CODE_DRILL_NOTE = 'A standalone drill. Code runs have no fresh-text retest
 // (any non-comparable kind) keeps no trace, so, as with its best, it offers no replay.
 function showResult(completed, saved = true) {
   shownResult = completed;
-  shownContext = completed ? { best: resultBestBefore, passage: resultPassageBefore, saved } : null;
+  shownContext = completed ? { best: resultBestBefore, passage: resultPassageBefore, unsaved: !saved && sessionKind !== 'retest' } : null;
   $('watch-replay').hidden = !completed?.events?.length || !comparableKind(completed.kind);
 }
 
