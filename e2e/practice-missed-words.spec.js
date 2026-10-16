@@ -142,31 +142,6 @@ test('after a timed test, the practice run lasts until its passage is typed', as
   await expect(page.locator('#result-conditions')).not.toContainText('15 s');
 });
 
-test('a missed comma is practised with its comma, and the run says punctuation', async ({ page }) => {
-  await openApp(page);
-  await chooseWords(page, 10);
-  await page.locator('#punctuation-toggle').check();
-  await expect(page.locator('#condition-line')).toContainText('punctuation');
-  const text = await passageText(page);
-  const words = text.split(' ');
-  // Generated punctuation puts a comma after the fifth word: miss only that comma.
-  const comma = words[4];
-  expect(comma).toMatch(/,$/);
-  const at = words.slice(0, 5).join(' ').length - 1;
-  await page.locator('#typing-input').focus();
-  await page.keyboard.type(text.slice(0, at));
-  await page.keyboard.type('x');
-  await page.keyboard.press('Backspace');
-  await page.keyboard.type(text.slice(at));
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#practice-words-evidence')).toContainText(`missed first try: “${comma}”`);
-
-  await page.locator('#practice-words').click();
-  await expect(page.locator('#session-kicker')).toHaveText('missed words');
-  expect((await passageText(page)).split(' ')).toContain(comma);
-  await expect(page.locator('#condition-line')).toContainText('missed words · not counted · 40 words · punctuation');
-});
-
 test('a drill offers no word practice, while a daily run does', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
@@ -290,7 +265,7 @@ test('words practised from a drill’s retest leave the drill’s target behind'
   await expect(page.locator('.history-target')).toHaveText(['Fresh-text check', '“br” drill and retest']);
 });
 
-test('a missed capital is practised as written, and the run doesn’t say punctuation', async ({ page }) => {
+test('a missed capital is practised as written without saying punctuation, and a missed comma with its comma', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   await page.locator('#punctuation-toggle').check();
@@ -314,6 +289,29 @@ test('a missed capital is practised as written, and the run doesn’t say punctu
   // A capital is a letter: with no comma, period or other mark in the passage, it isn't punctuation.
   expect(practice).not.toMatch(/[^\p{L}\p{N} ]/u);
   await expect(page.locator('#condition-line')).toContainText('missed words · not counted · 40 words · physical keyboard');
+
+  await openApp(page);
+  await chooseWords(page, 10);
+  await page.locator('#punctuation-toggle').check();
+  await expect(page.locator('#condition-line')).toContainText('punctuation');
+  const next = await passageText(page);
+  const words = next.split(' ');
+  // Generated punctuation puts a comma after the fifth word: miss only that comma.
+  const comma = words[4];
+  expect(comma).toMatch(/,$/);
+  const commaAt = words.slice(0, 5).join(' ').length - 1;
+  await page.locator('#typing-input').focus();
+  await page.keyboard.type(next.slice(0, commaAt));
+  await page.keyboard.type('x');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type(next.slice(commaAt));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#practice-words-evidence')).toContainText(`missed first try: “${comma}”`);
+
+  await page.locator('#practice-words').click();
+  await expect(page.locator('#session-kicker')).toHaveText('missed words');
+  expect((await passageText(page)).split(' ')).toContain(comma);
+  await expect(page.locator('#condition-line')).toContainText('missed words · not counted · 40 words · punctuation');
 });
 
 const shot = (name) => `docs/screenshots/practice-missed-words/${name}.png`;

@@ -318,7 +318,7 @@ test('a daily repeat attempt is repeated text too, so it is never a retest basel
 });
 
 test('stop on error: a blocked letter swaps the notice for its hint without moving restart', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 640 });
+  await page.setViewportSize({ width: 390, height: 844 });
   await openApp(page);
   await shortGentleQuotes(page);
   await openTestContent(page);
@@ -327,6 +327,10 @@ test('stop on error: a blocked letter swaps the notice for its hint without movi
   await page.keyboard.press('Escape');
   await page.locator('#restart-button').click();
   await expect(page.locator('#input-help')).toHaveText('Repeated text · doesn’t count toward your best.');
+  // The notice fits beside restart on a phone.
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+  await page.setViewportSize({ width: 320, height: 640 });
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
   const text = await passageText(page);
   const top = async () => (await page.locator('#restart-button').boundingBox()).y;
   await page.locator('#typing-input').focus();
@@ -357,6 +361,7 @@ test.describe('phone 390px', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
   test('the repeated-text notice fits beside restart', async ({ page }, testInfo) => {
+    test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
     await shortGentleQuotes(page);
