@@ -19,6 +19,14 @@ async function scheme(page, colorScheme) {
   await page.waitForTimeout(600);
 }
 
+// The light copy of a dark screenshot, taken only for docs refreshes.
+async function lightShot(page, testInfo, name) {
+  if (!process.env.SCREENSHOTS) return;
+  await scheme(page, 'light');
+  await shot(page, testInfo, name);
+  await scheme(page, 'dark');
+}
+
 async function member(browser, supabase, email, viewport = { width: 1280, height: 800 }) {
   const context = await browser.newContext({ viewport, colorScheme: 'dark' });
   const page = await context.newPage();
@@ -88,9 +96,7 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
   await expect(page.locator('#ghost-offer-status')).toHaveText('Sent to Lin. They have 7 days to race it, and the result arrives in your inbox.');
   await page.locator('#ghost-offer-status').scrollIntoViewIfNeeded();
   await shot(page, testInfo, 'offer-dark');
-  await scheme(page, 'light');
-  await shot(page, testInfo, 'offer-light');
-  await scheme(page, 'dark');
+  await lightShot(page, testInfo, 'offer-light');
   await page.locator('#send-ghost').click();
   await expect(page.locator('#ghost-offer-status')).toHaveText('Already sent to Lin.');
   expect(supabase.challenges.rows.size).toBe(1);
@@ -122,9 +128,7 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
     await typeInto(linPage, text.slice(0, half), '#typing-input', { delay: 170 });
     await expect.poll(() => ghostX(linPage)).toBeGreaterThan(40);
     await shot(linPage, testInfo, 'racing-dark');
-    await scheme(linPage, 'light');
-    await shot(linPage, testInfo, 'racing-light');
-    await scheme(linPage, 'dark');
+    await lightShot(linPage, testInfo, 'racing-light');
     await linPage.keyboard.type(text.slice(half), { delay: 110 });
     await expect(linPage.locator('body')).toHaveAttribute('data-view', 'results');
     await expect(linPage.locator('#run-again')).toBeFocused();
@@ -149,9 +153,7 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
     expect(supabase.profileFor('lin@stilltype.test').attempts).toEqual([]);
     expect('patterns' in supabase.profileFor('lin@stilltype.test').runs[0]).toBe(false);
     await shot(linPage, testInfo, 'result-dark');
-    await scheme(linPage, 'light');
-    await shot(linPage, testInfo, 'result-light');
-    await scheme(linPage, 'dark');
+    await lightShot(linPage, testInfo, 'result-light');
 
     // Lin's inbox has the result and nothing left to race.
     await linPage.locator('#inbox-trigger').click();
@@ -343,11 +345,11 @@ test('at 320 px a long sender name wraps, a corrected slip onto ö is still sent
   await chooseWords(page, 10);
   await typeInto(page, await passageText(page), '#typing-input', { delay: 20 });
   await expect(page.locator('#skip-to-retest')).toBeEnabled();
-  // The inbox is polled every 10 s; a poll with nothing new leaves keyboard focus where it was.
+  // A poll of the inbox with nothing new leaves keyboard focus where it was.
   await page.locator('#inbox-trigger').click();
   const raceButton = page.locator('#inbox-list [data-inbox-action="challenge"]');
   await raceButton.focus();
-  await page.waitForTimeout(11000);
+  await pollInbox(page);
   await expect(raceButton).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
@@ -456,7 +458,7 @@ test('an older open ghost race still reaches a new device behind more than fifty
   await expect(rows).toHaveCount(56);
   await expect(rows.first()).toHaveAttribute('data-kind', 'challenge');
   await expect(page.locator('#inbox-list [data-inbox-action="challenge"]')).toHaveCount(1);
-  await page.waitForTimeout(11000);
+  await pollInbox(page);
   await expect(rows).toHaveCount(56);
   await expect(page.locator('#inbox-count')).toBeHidden();
   await page.locator('#inbox-list [data-inbox-action="challenge"]').click();
@@ -470,7 +472,7 @@ test('a slow send for an earlier run never re-enables Send while a newer run is 
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await chooseWords(page, 10);
-  await typeInto(page, await passageText(page), '#typing-input', { delay: 90 });
+  await typeInto(page, await passageText(page));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   const send = page.locator('#send-ghost');
   const status = page.locator('#ghost-offer-status');
@@ -484,7 +486,7 @@ test('a slow send for an earlier run never re-enables Send while a newer run is 
   // While the first send is in flight, a second run is finished and sent too.
   await page.locator('#run-again').click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
-  await typeInto(page, await passageText(page), '#typing-input', { delay: 90 });
+  await typeInto(page, await passageText(page));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await page.locator('#ghost-offer summary').click();
   await expect(send).toBeEnabled();
@@ -951,7 +953,7 @@ test('a Race clicked mid-run waits for the run’s end once Lin goes back to typ
   const lin = supabase.addUser('lin@stilltype.test');
   const ada = challengeLin(supabase, lin, 'Ada');
   await linArrives(page);
-  await chooseWords(page, 25);
+  await chooseWords(page, 10);
   let text = await passageText(page);
   await typeInto(page, text.slice(0, 10), '#typing-input', { delay: 90 });
   await page.mouse.move(5, 5);
