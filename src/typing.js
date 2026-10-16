@@ -6,11 +6,13 @@ export const METRIC_VERSION = 'stilltype-metrics-v1';
 export const EVENT_VERSION = 'stilltype-events-v1';
 export const CORPUS_VERSION = 'original-en-v5';
 export const MAX_PAIR_PAUSE_MS = 2000;
+// The standard word for speed: five characters, spaces and punctuation included.
+export const CHARS_PER_WORD = 5;
 
 export function metrics(target, typed, attempts, mistakes, elapsedMs) {
   const correct = [...typed].reduce((sum, char, i) => sum + (char === target[i] ? 1 : 0), 0);
   return {
-    wpm: elapsedMs > 0 ? Math.round(correct / 5 / (elapsedMs / 60000)) : 0,
+    wpm: elapsedMs > 0 ? Math.round(correct / CHARS_PER_WORD / (elapsedMs / 60000)) : 0,
     accuracy: attempts ? Math.round(((attempts - mistakes) / attempts) * 100) : 100,
   };
 }
@@ -859,7 +861,7 @@ function keystrokes(attempt) {
 
 export function rawWpm(attempt, replay = replayAttempt(attempt)) {
   const typed = keystrokes(attempt).reduce((sum, event) => sum + [...event.text].length, 0);
-  return replay.elapsedMs > 0 ? Math.round(typed / 5 / (replay.elapsedMs / 60000)) : 0;
+  return replay.elapsedMs > 0 ? Math.round(typed / CHARS_PER_WORD / (replay.elapsedMs / 60000)) : 0;
 }
 
 // 100 − coefficient of variation of per-second raw speed, over whole seconds; null under 3 s.
@@ -966,7 +968,7 @@ export function wordHistory(attempt, replay = replayAttempt(attempt)) {
     words.push({
       word: shown,
       wrong,
-      wpm: durationMs > 0 ? Math.round(letters / 5 / (durationMs / 60000)) : null,
+      wpm: durationMs > 0 ? Math.round(letters / CHARS_PER_WORD / (durationMs / 60000)) : null,
     });
   }
   return words;

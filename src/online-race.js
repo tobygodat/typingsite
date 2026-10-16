@@ -1,6 +1,8 @@
 import { blocksOnError, createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 import { createTypingFx } from './motion.js';
 import * as multiplayer from './multiplayer.js';
+import { speedFigure } from './units.js';
+import { raceResultText } from './race-result.js';
 import { redrawList } from './inbox.js';
 
 const $ = (id) => document.getElementById(id);
@@ -360,9 +362,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       const lead = ahead === 0 ? 'You tied with' : ahead > 0 ? 'You beat' : 'You raced';
       // Finished rooms are deleted a day after they expire, so Race again lapses a little before.
       const until = new Date(Date.parse(room.expiresAt || new Date().toISOString()) + RESULT_RETAINED_MS).toISOString();
+      // Saved in wpm, like every speed; the inbox words it in the unit chosen when it is shown.
+      const race = { lead, opponent: opponent.name, wpm: [me.wpm || 0, opponent.wpm || 0] };
       inbox.notify({ id: `result:${room.id}`, kind: 'result', roomId: room.id, until,
-        conditions: room.conditions,
-        text: `${lead} ${opponent.name}: ${me.wpm || 0} wpm to ${opponent.wpm || 0}.` }, { toast: justFinished && away() });
+        conditions: room.conditions, race, text: raceResultText(race) }, { toast: justFinished && away() });
     }
   }
   function renderAfter() {
@@ -498,10 +501,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       const name = document.createElement('strong');
       name.textContent = player.name;
       row.append(name);
-      for (const value of [`${player.wpm || 0} wpm`, `${player.accuracy ?? 100}% accuracy`, `${(player.elapsed || 0).toFixed(1)} s`]) {
+      for (const value of [speedFigure(player.wpm || 0), `${player.accuracy ?? 100}% accuracy`, `${(player.elapsed || 0).toFixed(1)} s`]) {
         const span = document.createElement('span');
         span.className = 'num';
-        span.textContent = value;
+        span.append(value);
         row.append(span);
       }
       return row;
