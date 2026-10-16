@@ -159,7 +159,10 @@ let heldDeadKey = null;
 // are scored together: { type, attempt, key (that key), mark (its first input, once it came), at,
 // repeated (the accent key was held: what the key types to commit its pending mark is repeat too) }.
 let accentPair = null;
-const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index), tape: () => prefs.tape });
+// Whether the practice passage is on one line. Read from the body, as the stylesheet does, so trimming and
+// measuring always follow the layout on screen (see tapeLayout).
+const onTape = () => document.body.dataset.tape === 'true';
+const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index), tape: onTape });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -631,13 +634,17 @@ function updateGlides(options) {
   document.querySelectorAll('.glide').forEach((container) => updateGlide(container, options));
 }
 
+// The tape is for solo practice. A ghost race keeps three lines, as the other races do, so the
+// friend's caret stays in view however far ahead or behind it is.
+const tapeLayout = () => String(prefs.tape && sessionKind !== 'challenge');
+
 function applyPreferences() {
-  if (document.body.dataset.tape !== String(prefs.tape) || document.body.dataset.fontSize !== String(prefs.fontSize)) {
+  if (document.body.dataset.tape !== tapeLayout() || document.body.dataset.fontSize !== String(prefs.fontSize)) {
     // Trimmed words leave a spacer shaped for one layout and text size; put them back first.
     primaryTextView?.restore();
   }
   document.body.dataset.fontSize = prefs.fontSize;
-  document.body.dataset.tape = String(prefs.tape);
+  document.body.dataset.tape = tapeLayout();
   document.body.dataset.wordHighlight = prefs.wordHighlight;
   primaryFx.relayout();
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
@@ -1335,7 +1342,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('typing-input').value = '';
   $('typing-input').disabled = false;
   $('accessible-passage').textContent = passage.text;
-  primaryTextView = renderText($('text-display'), passage.text, { tape: () => prefs.tape });
+  document.body.dataset.tape = tapeLayout();
+  primaryTextView = renderText($('text-display'), passage.text, { tape: onTape });
   primaryCharacters = primaryTextView.characters;
   primaryFx.reset(primaryCharacters);
   // In a ghost race the ghost caret replays the friend's run; armPace leaves it to that.
@@ -5513,7 +5521,7 @@ listenForSequence(() => {
 let resizeFrame = 0;
 addEventListener('resize', () => {
   // On one line, crossing the 760px breakpoint changes the text size, which the trim spacer cannot follow.
-  if (prefs.tape) primaryTextView?.restore();
+  if (onTape()) primaryTextView?.restore();
   primaryFx.relayout();
   raceFx.relayout();
   cancelAnimationFrame(resizeFrame);

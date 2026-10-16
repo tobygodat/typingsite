@@ -233,6 +233,44 @@ test('a code snippet runs on the tape as one line, caret in view', async ({ page
   expect(await overflow(page)).toBe(0);
 });
 
+test('a ghost race keeps three lines with the tape on, so the friend’s caret stays in view', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  const passage = Array.from({ length: 16 }, (_, i) => ['time', 'over', 'water', 'still', 'light'][i % 5]).join(' ');
+  supabase.challenges.seed(ada.id, lin.id, { name: 'Ada', passage,
+    conditions: { mode: 'words', count: 16, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' },
+    trace: { v: 1, k: passage, t: [...passage].map((_, i) => (i ? 40 : 0)), e: (passage.length - 1) * 40 } });
+  await openApp(page);
+  await signInWithEmail(page, 'lin@stilltype.test');
+  await setTape(page, true);
+  const line = await lineHeight(page);
+  expect(await wrapHeight(page)).toBe(Math.round(line));
+
+  await page.locator('#challenge-toast').getByRole('button', { name: 'Race' }).click({ timeout: 12000 });
+  await expect(page.locator('#session-title')).toHaveText('Race Ada’s run');
+  await expect(page.locator('body')).toHaveAttribute('data-tape', 'false');
+  await expect(page.locator('#tape-toggle')).toBeChecked();
+  expect(await wrapHeight(page)).toBe(Math.round(line * 3));
+  await expect(page.locator('#text-display')).not.toHaveCSS('white-space', 'pre');
+  const ghost = page.locator('#text-display .ghost-caret');
+  await typeInto(page, passage.slice(0, 6), '#typing-input', { delay: 60 });
+  // Ada's ghost runs well ahead, onto the second line, and is still inside the passage window.
+  await expect.poll(() => ghost.evaluate((node) => new DOMMatrix(getComputedStyle(node).transform).m42), { timeout: 8000 }).toBeGreaterThan(line / 2);
+  await expect(ghost).not.toHaveClass(/is-hidden/);
+  const wrap = await page.locator('#typing-wrap').boundingBox();
+  const box = await ghost.boundingBox();
+  expect(box.y).toBeGreaterThanOrEqual(wrap.y - 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(wrap.y + wrap.height + 1);
+
+  // Back in solo practice, the tape returns.
+  await page.keyboard.type(passage.slice(6), { delay: 20 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results', { timeout: 15000 });
+  await page.locator('.nav-item[data-nav="practice"]').click();
+  await chooseWords(page, 50);
+  await expect(page.locator('body')).toHaveAttribute('data-tape', 'true');
+  expect(await wrapHeight(page)).toBe(Math.round(line));
+});
+
 test('the pace caret rides the tape and keeps gliding through a step', async ({ page }) => {
   await openApp(page);
   await openSettings(page);

@@ -62,6 +62,7 @@ export function createTypingFx(wrap, display, options = {}) {
 
   let characters = [];
   let position = 0;
+  let line = 0;
   let frame = 0;
   let lastTime = 0;
   let needsMeasure = false;
@@ -77,7 +78,7 @@ export function createTypingFx(wrap, display, options = {}) {
     wrap.dataset.caret = state;
   }
 
-  // A re-layout jumps straight to the new position; only steps and line changes use the
+  // Tape mode: a re-layout or restart jumps straight to the new position; only steps use the
   // ~150 ms scroll from the stylesheet.
   function setScroll(transform, instant) {
     if (display.style.transform === transform) return;
@@ -135,15 +136,20 @@ export function createTypingFx(wrap, display, options = {}) {
       tapeScroll = 0;
       tapeWord = null;
       wrap.dataset.tapeScrolled = 'false';
+      // Leaving the tape drops its sideways scroll at once; the three lines then scroll as usual.
+      if (!tape) setScroll('', true);
     }
     if (tape) measureTape(x, current, lineHeight, snapNext);
     else {
       const spacer = display.querySelector('.passage-spacer');
       const spacerHeight = spacer?.offsetHeight || 0;
       const logicalTop = top - spacerHeight;
-      const line = Math.floor((logicalTop + lineHeight * 0.25) / lineHeight);
+      const nextLine = Math.floor((logicalTop + lineHeight * 0.25) / lineHeight);
+      if (nextLine !== line) {
+        line = nextLine;
+      }
       const scrollY = spacerHeight + Math.max(0, line - 1) * lineHeight;
-      setScroll(scrollY ? `translateY(-${scrollY}px)` : '', snapNext);
+      display.style.transform = scrollY ? `translateY(-${scrollY}px)` : '';
     }
     if (snapNext || reducedMotion.matches) {
       springs.forEach((s) => snap(s, s.target));
@@ -243,11 +249,13 @@ export function createTypingFx(wrap, display, options = {}) {
     reset(nextCharacters) {
       characters = nextCharacters;
       position = 0;
+      line = 0;
       tapeScroll = 0;
       tapeWord = null;
       measuredPosition = 0;
       clearTimeout(idleTimer);
-      setScroll('', true);
+      if (wasTape) setScroll('', true);
+      else display.style.transform = '';
       wrap.dataset.blocked = 'false';
       stopGhost();
       ghost.spot = null;
@@ -329,6 +337,7 @@ export function createTypingFx(wrap, display, options = {}) {
     relayout() {
       ghost.spot = null;
       if (!characters.length) return;
+      line = -1;
       snapNext = true;
       needsMeasure = true;
       schedule();
