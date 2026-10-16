@@ -2,7 +2,7 @@
 // mistyped letter, volume (0 is silent), palette commands and the guest/member preference rules.
 // AudioContext is stubbed so each test can count what would have played. The first audible key asks
 // for the context and is silent; the context is built after that key paints, never inside an event.
-import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage, openSettings, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, chooseWords, chooseMore, completePassage, openSettings, signInWithEmail } from './fixtures.js';
 
 async function stubAudio(page) {
   await page.addInitScript(() => {
@@ -121,7 +121,7 @@ test('clicks wait for the first key; the tick marks only mistyped letters', asyn
 test('stop on error: a refused key clicks, only the mistyped letter ticks', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
-  await page.locator('#stop-on-error-toggle').check();
+  await page.locator('#correction-select').selectOption('mandatory');
   await page.locator('#sound-select').selectOption('clicks-errors');
   await page.keyboard.press('Escape');
   const text = await passageText(page);
@@ -129,6 +129,95 @@ test('stop on error: a refused key clicks, only the mistyped letter ticks', asyn
   await page.keyboard.type(`${wrongFor(text[1])}${text[2]}`);
   await expect(page.locator('#input-help')).toHaveText('Fix the underlined letter.');
   expect(await plays(page)).toEqual(['tick', 'click']);
+});
+
+// The first position from `from` inside a word of at least three letters, so a space there is early.
+function midWord(text, from = 1) {
+  return [...text].findIndex((char, i) => i >= from && /[a-z]/i.test(char) && /[a-z]/i.test(text[i - 1]) && /[a-z]/i.test(text[i + 1] || ''));
+}
+
+test('strict space: a refused space ticks, as the wrong key it scores', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await openSettings(page);
+  await page.locator('#strict-space-toggle').check();
+  await page.locator('#sound-select').selectOption('clicks-errors');
+  await page.keyboard.press('Escape');
+  const text = await passageText(page);
+  const at = midWord(text);
+  await firstKey(page, text[0]);
+  await page.keyboard.type(`${text.slice(1, at)} `);
+  await expect(page.locator('#input-help')).toHaveText('Strict space is on. Type the next letter.');
+  await page.keyboard.type(text[at]);
+  expect(await plays(page)).toEqual([...Array(at - 1).fill('click'), 'tick', 'click']);
+});
+
+test('no backspace: a refused backspace is silent; fail on any error ticks the key that ends the run', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await openSettings(page);
+  await page.locator('#correction-select').selectOption('no-backspace');
+  await page.locator('#sound-select').selectOption('clicks-errors');
+  await page.keyboard.press('Escape');
+  let text = await passageText(page);
+  await firstKey(page, text[0]);
+  await page.keyboard.type(wrongFor(text[1]));
+  await page.keyboard.press('Backspace');
+  await expect(page.locator('#typing-input')).toHaveValue(`${text[0]}${wrongFor(text[1])}`);
+  expect(await plays(page)).toEqual(['tick']);
+
+  await restart(page);
+  await openSettings(page);
+  await page.locator('#correction-select').selectOption('fail-any');
+  await page.keyboard.press('Escape');
+  text = await passageText(page);
+  await typeInto(page, `${text[0]}${wrongFor(text[1])}`);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  expect(await plays(page)).toEqual(['tick', 'click', 'tick']);
+});
+
+test('code mode clicks and ticks through the same path as practice', async ({ page }) => {
+  await openApp(page);
+  await chooseSound(page, 'clicks-errors');
+  await chooseMore(page, 'mode-code');
+  await expect(page.locator('#condition-line')).toContainText('code ·');
+  const text = await passageText(page);
+  await firstKey(page, text[0]);
+  await page.keyboard.type(`${text[1]}${wrongFor(text[2])}`);
+  await page.keyboard.press('Backspace');
+  expect(await plays(page)).toEqual(['click', 'tick', 'click']);
+});
+
+// An accent key opens a composition that the next key commits (src/app.js scores it after
+// compositionend). The accent key itself is silent; the commit sounds once, as one key.
+test('a dead-key commit sounds once, never for the accent key too', async ({ page }) => {
+  await openApp(page);
+  await chooseSound(page, 'clicks-errors');
+  const text = await passageText(page);
+  await firstKey(page, text[0]);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
+  await cdp.send('Input.imeSetComposition', { text: '"', selectionStart: 1, selectionEnd: 1 });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
+  expect(await plays(page), 'the open accent mark plays nothing').toEqual([]);
+  await cdp.send('Input.insertText', { text: '"' });
+  await expect.poll(() => plays(page)).toEqual(['tick']);
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type(text[1]);
+  expect(await plays(page)).toEqual(['tick', 'click', 'click']);
+});
+
+test('watch replay plays no sound', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await chooseSound(page, 'clicks-errors');
+  await firstKey(page, (await passageText(page))[0]);
+  await restart(page);
+  const text = await completePassage(page);
+  expect(await plays(page)).toHaveLength(text.length);
+  await page.locator('#watch-replay').click();
+  await expect(page.locator('#replay-dialog')).toHaveAttribute('data-state', 'done', { timeout: 20000 });
+  expect(await plays(page)).toHaveLength(text.length);
 });
 
 test('volume 0 is silent and a lower volume plays more quietly', async ({ page }) => {
@@ -395,7 +484,7 @@ test('composing uses clicks for accepted keys and deletion without an error tick
   await stubAudio(page);
   await openApp(page);
   await chooseSound(page, 'clicks-errors');
-  await page.locator('#mode-compose').click();
+  await chooseMore(page, 'mode-compose');
   await firstKey(page, 'a', 1, '#compose-input');
   await typeInto(page, 'b', '#compose-input');
   await page.keyboard.press('Backspace');
