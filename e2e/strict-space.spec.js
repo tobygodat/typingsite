@@ -544,6 +544,7 @@ test('a one-keyboard race takes quick end whatever the practice shape, and keeps
 
 for (const scheme of ['dark', 'light']) {
   test(`settings rows screenshot (${scheme})`, async ({ page }, testInfo) => {
+    test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);
     await chooseWords(page, 25);

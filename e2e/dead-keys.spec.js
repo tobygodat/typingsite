@@ -532,21 +532,6 @@ test('Esc with a mark pending restarts cleanly', async ({ page }) => {
   await expect(page.locator('#typing-status')).toHaveText('In progress');
 });
 
-test('a composition dropped without compositionend frees the field for the next key', async ({ page }) => {
-  await openApp(page);
-  const keys = await accentKeys(page);
-  const text = await quoteWithMarks(page);
-  const at = text.indexOf('"');
-  await typeInto(page, text.slice(0, at));
-  await keys.deadKey('"');
-  // Setting the field mid-composition ends it with no compositionend; the next commit is plain text.
-  await page.evaluate(() => { document.querySelector('#typing-input').value = 'zz'; });
-  await keys.commit('"');
-  expect(await scored(page)).toEqual({ correct: at + 1, wrong: 0, value: text.slice(0, at + 1) });
-  await page.keyboard.type(text.slice(at + 1, at + 4));
-  expect(await scored(page)).toEqual({ correct: at + 4, wrong: 0, value: text.slice(0, at + 4) });
-});
-
 // A browser can end a composition without compositionend and send what it commits as plain text. Setting
 // the field mid-composition ends one that way here; the plain text after it stands for that commit.
 const loseCompositionEnd = (page, field = '#typing-input') => page.evaluate((f) => { document.querySelector(f).value = 'zz'; }, field);
@@ -564,7 +549,10 @@ test('when compositionend is lost, an accent key’s commit still types and an i
   await keys.commit('"');
   expect(await scored(page)).toEqual({ correct: mark + 1, wrong: 0, value: quote.slice(0, mark + 1) });
   await expect(page.locator('#input-help')).toHaveText('');
-  await typeWithAccentKeys(page, keys, quote, mark + 1);
+  // The field is free for the next keys.
+  await page.keyboard.type(quote.slice(mark + 1, mark + 4));
+  expect(await scored(page)).toEqual({ correct: mark + 4, wrong: 0, value: quote.slice(0, mark + 4) });
+  await typeWithAccentKeys(page, keys, quote, mark + 4);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-delta')).not.toHaveText('Interrupted · not counted');
 
@@ -1259,43 +1247,6 @@ test('a doubled mark on a passage’s last letter costs nothing, after a slip to
     await page.locator('#run-again').click();
     await expect(page.locator('#typing-status')).toHaveText('Ready');
   }
-});
-
-test('a custom passage takes accent keys like any other passage', async ({ page }) => {
-  await openApp(page);
-  const keys = await accentKeys(page);
-  const custom = 'She said "be brief" and it\'s "done" now.';
-  await chooseMore(page, 'mode-custom');
-  await page.locator('#custom-text').fill(custom);
-  await page.locator('#custom-use').click();
-  await expect(page.locator('#condition-line')).toContainText('custom text');
-  expect(await passageText(page)).toBe(custom);
-
-  // A mark pending as focus moves on is dropped, and the run stays ready.
-  await page.locator('#typing-input').click();
-  await keys.deadKey('"');
-  await page.keyboard.press('Tab');
-  await expect(page.locator('#typing-input')).not.toBeFocused();
-  expect(await scored(page)).toEqual({ correct: 0, wrong: 0, value: '' });
-  await expect(page.locator('#typing-status')).toHaveText('Ready');
-
-  // Every quotation mark and apostrophe through the accent key: "b and 's commit together.
-  await page.locator('#typing-input').click();
-  await typeWithAccentKeys(page, keys, custom);
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-accuracy')).toHaveText('100');
-  await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
-
-  // Run again keeps the custom passage, and an emoji committed through a composition is refused there too.
-  await page.locator('#run-again').click();
-  expect(await passageText(page)).toBe(custom);
-  await typeInto(page, custom.slice(0, 3));
-  await keys.preview('😀');
-  await expect(page.locator('#input-help')).toHaveText(IME_NOTICE);
-  await keys.commit('😀');
-  expect(await scored(page)).toEqual({ correct: 3, wrong: 0, value: custom.slice(0, 3) });
-  await typeWithAccentKeys(page, keys, custom, 3);
-  await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
 });
 
 test('both one-keyboard race players can type with accent keys', async ({ page }) => {

@@ -614,6 +614,7 @@ test('signed in, only the numbers reach the account', async ({ page, supabase })
 });
 
 test('composing screenshots, dark and light', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.emulateMedia({ colorScheme: 'dark' });
   await startPausedClock(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
