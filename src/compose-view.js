@@ -13,6 +13,7 @@ import {
   refusedEdit,
 } from './compose.js';
 import { drawCaret, holdsCaretStill } from './compose-caret.js';
+import { formatSpeed, speedValue } from './units.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -27,8 +28,6 @@ export const COMPOSE_NOTICES = {
   repeat: 'Key repeat ignored.',
   composition: 'IME input isn’t measured. Esc to start over.',
 };
-
-import { speedValue, formatSpeed } from './units.js';
 
 export function createCompose({ speedUnit = () => 'wpm', setRunning, announce, save, signedIn, uid }) {
   const input = $('compose-input');
@@ -336,7 +335,7 @@ export function createCompose({ speedUnit = () => 'wpm', setRunning, announce, s
       // Ended by leaving the screen: the result waits there, and focus stays where you went.
       if (end) finish('done', { focus: false });
     },
-    refreshSpeed() { if (shownResult && ["complete", "interrupted"].includes(state)) renderResult(shownResult.summary, shownResult); },
+    refreshSpeed() { if (shownResult && ['complete', 'interrupted'].includes(state)) renderResult(shownResult.summary, shownResult); },
     refreshAccount: renderPrivacy,
     isRunning: () => state === 'running',
     get promptId() { return promptId; },

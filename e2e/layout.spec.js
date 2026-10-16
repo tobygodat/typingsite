@@ -1,5 +1,5 @@
 // Responsive layout, self-hosted fonts and exactly what the server hands out.
-import { test, expect, openApp, openView, chooseWords, passageText, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, chooseWords, chooseMore, passageText, typeInto } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -11,10 +11,10 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
       await openApp(page);
       expect(await overflow(page)).toBeLessThanOrEqual(0);
       // The practice column itself never widens past its gutters (the document can't show that).
-      for (const mode of ['time', 'standard']) {
-        await page.locator(`#mode-${mode}`).click();
-        expect(await page.locator('#typing-screen').evaluate((node) => node.scrollWidth - node.clientWidth), mode).toBeLessThanOrEqual(0);
-      }
+      const columnOverflow = () => page.locator('#typing-screen').evaluate((node) => node.scrollWidth - node.clientWidth);
+      expect(await columnOverflow(), 'time').toBeLessThanOrEqual(0);
+      await chooseMore(page, 'mode-standard');
+      expect(await columnOverflow(), 'standard').toBeLessThanOrEqual(0);
       await page.locator('#mode-time').click();
 
       // The dock moves to the bottom and spans the viewport.

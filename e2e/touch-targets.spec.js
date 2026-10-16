@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
 import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, completePassage,
-  freshTextCheck, signInWithEmail } from './fixtures.js';
+  freshTextCheck, signInWithEmail, chooseMore } from './fixtures.js';
 
 const MIN = 44;
 
@@ -190,7 +190,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await page.locator('#mode-quote').click();
       small.push(...await sweep(page, 'practice, quote'));
       // Custom text: its editor opens under the mode bar, with a text box, an order select and "Use this text".
-      await page.locator('#mode-custom').click();
+      await chooseMore(page, 'mode-custom');
       await expect(page.locator('#custom-options')).toBeVisible();
       small.push(...await sweep(page, 'practice, custom text'));
       await chooseWords(page, 10);

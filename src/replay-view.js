@@ -6,7 +6,6 @@
 // Like the live passage, only a short stretch is mounted and three lines show: a timed run's
 // 1,600-word passage costs no more to draw than a ten-word one.
 import { RATE_FLOOR_MS, replayCursor, replayScoreAt, replaySpan } from './typing.js';
-
 import { normalizeSpeedUnit, speedValue } from './units.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');

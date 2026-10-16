@@ -1,6 +1,6 @@
 ---
 name: Stilltype
-description: Focused typing practice in Literata on warm near-black or warm paper, one green, and a static print of every run.
+description: Focused typing practice in Literata on warm near-black or warm paper, one green, a caret that glides, and a print of every run.
 colors:
   ground: "#0f0f0e"
   ground-2: "#151514"
@@ -25,6 +25,7 @@ colors:
   heat-3: "rgba(255, 138, 107, 0.56)"
   warning: "#e0b565"
   selection: "#34322e"
+  word-highlight: "rgba(236, 232, 225, 0.05)"
   ghost: "#b9c3ff"
   card-top: "#1f1e1c"
   card-bottom: "#121211"
@@ -51,9 +52,12 @@ colors:
   heat-3-light: "rgba(180, 67, 44, 0.44)"
   warning-light: "#8a5a00"
   selection-light: "#e3dccf"
+  word-highlight-light: "rgba(27, 26, 25, 0.05)"
   ghost-light: "#434db5"
   card-top-light: "#fffdf9"
   card-bottom-light: "#efeae1"
+  finger-band: "rgba(255, 255, 255, 0.1)"
+  finger-band-light: "rgba(27, 26, 25, 0.05)"
 typography:
   numeral:
     fontFamily: "Literata, Iowan Old Style, Palatino Linotype, Palatino, Book Antiqua, Georgia, serif"
@@ -203,7 +207,7 @@ components:
 
 The typing passage is the screen. Everything readable is set in one book face, Literata, on a warm near-black ground (or warm paper in light), so a passage reads like a page and a result reads like a print rather than a dashboard. One green carries every meaning of "act here" or "you are here": the caret, the primary button, the current selection and the timer. Content sits on hairline rules and open space. Boxes are kept for the few things that really are objects: the floating dock, the settings popover, the command palette, dialogs, toasts, and the run card.
 
-Motion is governed by "still run". While a run is in progress, nothing decorative moves near the passage. The caret is a solid spring-driven bar, letter states change instantly, lines scroll in about 150 ms, and the chrome fades out after the first keystroke. Motion belongs to chrome and to the time after a run: short fades, one gliding selection pill, and the run card's speed graph drawing once in about 450 ms. Every duration comes from one scale that drops to zero under reduced motion.
+Motion is fluid. It is welcome on the typing surface during a run as well as in chrome and after it, wherever it makes speed, position or progress easier to follow: the caret is a spring-driven bar, the pace caret glides through the letters at its speed, a ghost race glides from one of a friend's keys to the next, and lines scroll in about 150 ms. Nothing is required to stay rigid or static. Letter states still change at once so the passage stays readable, and the chrome fades out after the first keystroke. After a run there are short fades, one gliding selection pill, and the run card's speed graph drawing in about 450 ms. Every duration comes from one scale that drops to zero under reduced motion.
 
 Density is low and deliberate. The practice screen centres the passage with the numbers above it and a small set of controls. Results, progress and challenge are single editorial columns separated by rules. The name "Stilltype" is a working title, so the wordmark stays a cheap italic word plus a green full stop.
 
@@ -212,8 +216,8 @@ Density is low and deliberate. The practice screen centres the passage with the 
 - Dark (default) and light theme sets; the theme follows the system until the user picks one.
 - One green accent; coral for mistyped letters and regressions; amber for interrupted and mixed results.
 - Rules and space instead of boxes; opaque raised surfaces with a single soft float shadow; no glass, no glow.
-- Still run: the passage area stays motionless apart from the caret and line scroll.
-- Results are a static print: a run card with a plain speed-over-time graph drawn from the real keystrokes.
+- Fluid motion: carets glide, lines scroll, and motion may live on the typing surface when it helps someone follow the run.
+- Results are a print: a run card with a plain speed-over-time graph drawn from the real keystrokes.
 
 ## Colors
 
@@ -237,6 +241,7 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 - **Bone** (text): primary text and correctly typed letters.
 - **Pumice** (muted): untyped passage letters, secondary copy, labels and inactive navigation.
 - **Placeholder**: input placeholder text, a translucent muted (80% in dark, 92% in light) so it stays quieter than typed text.
+- **Word Wash** (word-highlight): the optional current/next-word tint, the text colour at 5% (`color-mix(in oklab, var(--text) 5%, transparent)`).
 - **Hairline / Strong Hairline**: rules between sections and rows (hairline), and the borders of raised surfaces, keys and secondary buttons (hairline-strong).
 - **Field Outline** (outline): input borders.
 - **Card Stock** (card-top to card-bottom): the run card's 165-degree gradient, a subtle paper-stock sheen that sits only on that card.
@@ -279,7 +284,7 @@ Weights in use are 300 (large numerals), 400 (headings and text), 500 (buttons, 
 
 A single centred column, `min(1080px, 100% - 48px)` wide (100% - 32px under 760px), in a three-row grid of dock, screen and footer. Screens open with 56px top padding (32px on mobile).
 
-- **Practice:** the passage block is vertically centred in the viewport. Above it, a centred row of segmented controls; then a measure row of numbers (and, for drills and retests, the heading block) closed by a hairline rule; then the three-line passage, a 2px progress line, and a footer of help text and actions. A mono shortcut row and an optional on-screen keyboard sit below.
+- **Practice:** the passage block is vertically centred in the viewport. Above it, a centred row of segmented controls (from 901px one hairline rail, see Segmented controls); then a measure row of numbers (and, for drills and retests, the heading block) closed by a hairline rule; then the three-line passage, a 2px progress line, and a footer of help text and actions. A mono shortcut row and an optional on-screen keyboard sit below.
 - **Results:** a two-column grid (run card 320–400px, copy fluid, 64px gap). The run card is sticky at 104px from the top. Under 900px it stacks, with the card centred at up to 420px, and it stops sticking when the viewport is 1120px tall or less, since the full card runs to about 980px.
 - **Progress / Challenge:** heading row, then hairline-separated rows on fixed column grids that collapse to two columns under 900px and 760px.
 - **Spacing:** a 4px-based scale (4, 8, 12, 16, 24, 32, 40, 56, 64). Section breaks are 32px of padding above a hairline rule. Row padding is 12px (evidence) or 24px (history, race results).
@@ -318,7 +323,7 @@ Quiet and confident: one filled green button, and everything else recedes.
 - **Focus:** a neutral 2px ring in the text colour, 3px offset, on every control.
 
 ### Segmented controls and the gliding pill
-Mode and length pickers are a 14px frame with a hairline border, holding 36px Literata options (13px Geist Mono for numeric lengths). The selected option's text turns to the text colour, and a raised-wash pill glides under it with a transform-only 200ms slide. The same pill marks the current dock item. The palette highlight glides the same way, vertically, in 150ms.
+Mode and length pickers are a 14px frame with a hairline border, holding 36px Literata options (13px Geist Mono for numeric lengths). The selected option's text turns to the text colour, and a raised-wash pill glides under it with a transform-only 200ms slide. The same pill marks the current dock item. From 901px the mode, length and punctuation groups share one rail instead of three frames: a single hairline frame with 12px corners, the groups divided by short 16px hairline rules; narrower, the rail dissolves and each group keeps its own frame. The modes show time, words and quote, then "more" with the disclosure chevron: a 16px raised popover holding code, standard, compose and custom, and "learn to type" under a hairline rule. Once a mode inside it is chosen, "more" takes that mode's name and the pill glides under it. On phones the popover hangs from the right edge of "more". The palette highlight glides the same way, vertically, in 150ms.
 
 ### Inputs / Fields
 - **Style:** raised fill, 1px outline border, 12px corners, 44px tall, 16px text.
@@ -342,13 +347,15 @@ The training memory section sits below the existing drill actions. Pair headings
 
 Challenge opens with the daily passage and its one filled-green action, followed by the shared-keyboard section with a neutral Start button. The daily date/reset uses the existing condition label; result history uses hairline-separated rows. First and repeat attempts, previously displayed passages and input classes are written explicitly.
 
+The optional on-screen keyboard shows the thirty main keys with a real row stagger (home a quarter key in, bottom three quarters) and a space bar, labelled for the chosen layout. Its finger map puts a small mono initial (i, m, r, p) in the corner of each key for the finger that types it, so it reads without telling shades apart and survives forced colours; a faint neutral band (`--finger-band`, never a hue) sits behind alternate fingers (index, ring) so neighbouring fingers stay apart. Letters keep their muted/text colours, so drill targets still stand out, and muted text on the band stays at 4.5:1 or more in both themes. The two hands sit a little apart, and a mono legend repeats the initials. Screen readers hear each key as one phrase ("f, left index") from visually hidden text, only while the map is on. Colemak-DH follows its ANSI angle mod. Below 760px the keyboard and both of its settings rows are hidden.
+
 Below 360px, the run-card WPM uses `--text-numeral-narrow` (80px); the existing mobile size is now `--text-numeral-mobile` (112px).
 
 ### Typing zone (signature)
-Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint (no underline). The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost pacer is a 2px periwinkle bar at 70% opacity; in a ghost race the same bar, at full opacity because it is the opponent, replays a friend's recorded keystrokes, stepping from key to key with no transition.
+Three passage lines are visible, with 12–16px mask fades at the top and bottom. Untyped letters are muted, correct letters are text-coloured, and wrong letters are coral with a tint (no underline). The caret is a 3px accent bar driven by a stiff spring (stiffness 1400, damping 70). It breathes (opacity to 0.25 over 1300ms) only while idle, drops to 35% when unfocused, turns coral when blocked, and disappears at the finish. Line changes translate the passage over 150ms. The optional ghost pacer is a 2px periwinkle bar at 70% opacity; in a ghost race the same bar, at full opacity because it is the opponent, replays a friend's recorded keystrokes, stepping from key to key with no transition. The word highlight setting (off by default) tints the current or the next word with `--word-highlight`, the text colour at 5%: neutral, so it never reads as green or coral, and faint enough that muted letters keep 4.5:1. It moves with the caret from word to word at once, with no transition of its own, and is not the retired underline that swept through the glyphs; the tint sits on the word's letters and skips a miss, so a miss keeps exactly its own coral tint. It shows on every passage typed against a text (practice, drills, retests, daily, standard, lessons, custom text, ghost, one-keyboard and online races); watch replay and composing practice have no current word and never show it.
 
 ### Composing practice
-"compose" joins the mode segments. The passage block becomes a prompt at title size with a mono conditions line, the green countdown on the right and a ghost "Another prompt" that steps back while writing. The writing field is open, like the passage: no fill and no border, Literata at the passage size, three lines tall and scrolling inside with no scrollbar, with the field’s own accent caret held solid (`caret-animation: manual`) and a muted italic placeholder. Where `caret-animation` isn’t supported, the native caret turns transparent (it still edits, selects and composes) and `src/compose-caret.js` draws a solid 2px accent bar, as tall as the letters, at the collapsed selection, measured from a hidden mirror of the field and kept whole inside it; where a line wraps it stands on the line the last key or click left it on, as the browser’s own caret does. It jumps with each key, click, scroll or re-wrap, never glides, fades or blinks, and shows only while the field is focused, nothing is selected and the session isn’t finished. The time line sits under it, then a one-line privacy note, the green Done and the start-over icon after it, so Tab from the field reaches Done first. The result follows on the same page: a lead-size heading, four facts in the live-stat style (48px light Literata, mono units and labels), an italic metric definition, the saved note and one green "Write another". The finished writing and the clock turn muted, and the field leaves the tab order. Nothing in it animates. It has no spring caret: a free-typing field has no letter positions for one to glide between.
+"compose" sits in the "more" menu with the rarer modes. The passage block becomes a prompt at title size with a mono conditions line, the green countdown on the right and a ghost "Another prompt" that steps back while writing. The writing field is open, like the passage: no fill and no border, Literata at the passage size, three lines tall and scrolling inside with no scrollbar, with the field’s own accent caret held solid (`caret-animation: manual`) and a muted italic placeholder. Where `caret-animation` isn’t supported, the native caret turns transparent (it still edits, selects and composes) and `src/compose-caret.js` draws a solid 2px accent bar, as tall as the letters, at the collapsed selection, measured from a hidden mirror of the field and kept whole inside it; where a line wraps it stands on the line the last key or click left it on, as the browser’s own caret does. It jumps with each key, click, scroll or re-wrap, never glides, fades or blinks, and shows only while the field is focused, nothing is selected and the session isn’t finished. The time line sits under it, then a one-line privacy note, the green Done and the start-over icon after it, so Tab from the field reaches Done first. The result follows on the same page: a lead-size heading, four facts in the live-stat style (48px light Literata, mono units and labels), an italic metric definition, the saved note and one green "Write another". The finished writing and the clock turn muted, and the field leaves the tab order. Nothing in it animates. It has no spring caret: a free-typing field has no letter positions for one to glide between.
 
 ### Run card (signature)
 A static print: 22px corners, 22px padding, a strong hairline border, and the card-stock gradient. From top to bottom it holds a mono date stamp, the 16:9 speed graph (an SVG line chart: a 2px accent line of wpm per second, averaged over a trailing three seconds; a dotted muted line at the final wpm; coral dots on the line where mistakes happened; hairline gridlines at 0, half and top with 12px mono labels, and a mono time axis), a one-line mono legend, which draws once over about 450ms (`--dur-develop`), the numeral WPM with a mono unit, a three-column facts list (mono labels, 24px Literata values), an italic 13px metric note, and the mono conditions line. It does not tilt, shine or animate after the graph has drawn.
@@ -356,7 +363,7 @@ A static print: 22px corners, 22px padding, a strong hairline border, and the ca
 ### Learn to type and the finger map
 The learn screen is an editorial column like Progress: the page heading, then the current lesson (or the last lesson result) beside the finger map, then hairline-separated lesson rows with keys as `kbd` caps, the fingers in words, a status word (passed in green, next in green, locked muted) and Literata numbers. The current block holds the screen's one filled-green action. A lesson result lists accuracy, wpm, first-try errors and time as Literata numbers under mono labels; each target sits under its number with a status word, "met" (green) or "not met" (muted). Nothing about a missed target is coral: it isn't an error or a regression.
 
-The finger map is the on-screen keyboard split into two hands, with each column labelled underneath by its finger (pinky, ring, middle, index) over a strong hairline rule, and the space bar labelled "thumbs". Learned keys read in the text colour, keys not yet learned stay muted, and the current lesson's keys get a full green edge (the caption points at it, so it keeps 3:1 against the ground in both themes). Finger names wider than their column overflow evenly on both sides. It shows on the learn screen and under the passage for the whole of a lesson, whatever the keyboard setting; from 901px wide a lesson reserves two passage lines (its passage is about 60 characters), so the finger names and thumbs row stay above the fold at 721px tall, and the lesson's description keeps only the short key-pair label; under 760px the keys shrink to the column and the finger names shorten to a letter, with a one-line legend. Its accessible name lists every finger's keys. The entry point is a quiet underlined "learn to type" text button at the end of the practice controls, plus first-run links on Train and Progress; there is no banner.
+The finger map is the on-screen keyboard split into two hands, with each column labelled underneath by its finger (pinky, ring, middle, index) over a strong hairline rule, and the space bar labelled "thumbs". Learned keys read in the text colour, keys not yet learned stay muted, and the current lesson's keys get a full green edge (the caption points at it, so it keeps 3:1 against the ground in both themes). Finger names wider than their column overflow evenly on both sides. It shows on the learn screen and under the passage for the whole of a lesson, whatever the keyboard setting; from 901px wide a lesson reserves two passage lines (its passage is about 60 characters), so the finger names and thumbs row stay above the fold at 721px tall, and the lesson's description keeps only the short key-pair label; under 760px the keys shrink to the column and the finger names shorten to a letter, with a one-line legend. Its accessible name lists every finger's keys. The entry point is "learn to type" at the foot of the practice controls' "more" menu, plus first-run links on Train and Progress; there is no banner.
 
 ### Command palette
 A 600px opaque raised panel with 22px corners over a flat dim. It has a 62px search row (19px input) and 46px option rows with a 6px state dot (accent when selected). Mono group labels and mono hints sit on the right. It enters and exits with a 4px lift and fade over 150ms.

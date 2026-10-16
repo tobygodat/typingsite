@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { dayKey, goalMinutes } from '../src/insights.js';
-import { test, expect, openApp, chooseWords, completePassage, openView, openSettings, signInWithEmail, typeInto } from './fixtures.js';
+import { test, expect, openApp, chooseWords, completePassage, openView, openSettings, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
 
 test('daily goal line and practice calendar render on Progress', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -193,7 +193,7 @@ test('drills alone count toward daily practice and the empty trend copy agrees',
 test('a custom text run counts toward daily practice but not the trend', async ({ page }) => {
   const text = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();
   await typeInto(page, text);
@@ -294,7 +294,7 @@ test('recorded lessons and composing active time increase the daily practice goa
       await page.clock.runFor(gap);
     }
   };
-  await page.locator('#open-lessons').click();
+  await chooseMore(page, 'open-lessons');
   await page.locator('#lesson-primary').click();
   const lessonText = await page.locator('#accessible-passage').textContent();
   await typePaced('#typing-input', lessonText, 250);
@@ -305,7 +305,7 @@ test('recorded lessons and composing active time increase the daily practice goa
   await openView(page, 'Progress');
   await expect(page.locator('#goal-line')).toHaveText(`Today ${goalMinutes(lessonMs / 60000)} / 5 min · 0-day streak`);
   await openView(page, 'Practice');
-  await page.locator('#mode-compose').click();
+  await chooseMore(page, 'mode-compose');
   await typePaced('#compose-input', 'A few sentences of my own are still typing practice, and their active time belongs in the goal.', 400);
   await page.locator('#compose-done').click();
   await expect(page.locator('#compose-result')).toBeVisible();

@@ -62,6 +62,12 @@ export async function freshTextCheck(page) {
   return { baseline, retest };
 }
 
+// Code, standard, compose, custom text and lessons sit behind "more" in the practice controls.
+export async function chooseMore(page, id) {
+  if ((await page.locator('#mode-more').getAttribute('open')) === null) await page.locator('#mode-more-label').click();
+  await page.locator(`#${id}`).click();
+}
+
 export async function openView(page, label) {
   // A run fades the dock and disables its pointer events; a real mouse nudge brings it back.
   await page.mouse.move(5, 5);

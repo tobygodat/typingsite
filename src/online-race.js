@@ -1,4 +1,4 @@
-import { createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
+import { blocksOnError, createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 import { createTypingFx } from './motion.js';
 import * as multiplayer from './multiplayer.js';
 import { formatSpeed } from './units.js';
@@ -32,7 +32,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, speedUnit = () => "wpm" }) {
+export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, speedUnit = () => 'wpm' }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -86,6 +86,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('compete-heading').textContent = HEADINGS[value];
     setRunning(false);
     if (value === 'online') { fx.relayout(); refreshInvites(); }
+    onModeChange?.();
     if (value === 'friends') board?.show(); else board?.hide();
   }
   function renderHome() {
@@ -523,7 +524,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       attempt.events.push({ type: 'delete', count: 1, offsetMs });
     } else if (event.inputType === 'insertText' && event.data && [...event.data].length === 1 && !/[\r\n]/u.test(event.data)) {
       if (replay.typed.length >= attempt.text.length) return;
-      const mustCorrect = attempt.conditions.correctionPolicy !== 'relaxed' && replay.typed.length > 0 && replay.typed.at(-1) !== attempt.text[replay.typed.length - 1];
+      const mustCorrect = blocksOnError(attempt.conditions.correctionPolicy) && replay.typed.length > 0 && replay.typed.at(-1) !== attempt.text[replay.typed.length - 1];
       if (mustCorrect) { $('online-help').textContent = 'Correct the mistyped letter before continuing.'; return; }
       attempt.events.push({ type: 'insert', text: event.data, position: replay.typed.length, accepted: true, offsetMs });
     } else return;
@@ -661,6 +662,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     get liveRoomId() { return room && !terminal(room) ? room.id : null; },
     // The speed unit changed: redraw a finished race's scores in it.
     refreshSpeed() { if (room?.status === 'finished') renderResults(); },
+    // Which Challenge tab shows: online, daily or local (one keyboard).
+    get mode() { return mode; },
     // A request made from this screen is still in flight (a room being created, joined or rematched, or a
     // seat, friend or readiness change), or this tab's room is being restored. A room either opens moves
     // the person to it.

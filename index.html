@@ -21,7 +21,7 @@
   </script>
   <link rel="stylesheet" href="/src/styles.css">
 </head>
-<body data-view="practice" data-session="practice" data-font-size="28" data-live-metrics="false" data-keyboard="false" data-focus-mode="false" data-ghost="off">
+<body data-view="practice" data-session="practice" data-font-size="28" data-word-highlight="off" data-live-metrics="false" data-keyboard="false" data-focus-mode="false" data-ghost="off">
   <a class="skip-link" href="#typing-input">Skip to typing</a>
 
   <div class="app-shell">
@@ -61,6 +61,14 @@
                 <option value="36">large</option>
               </select>
             </label>
+            <label class="preference-row" for="word-highlight">
+              <span><strong>word highlight</strong></span>
+              <select class="input select" id="word-highlight">
+                <option value="off" selected>off</option>
+                <option value="current">this word</option>
+                <option value="next">next word</option>
+              </select>
+            </label>
             <label class="preference-row" for="speed-unit">
               <span><strong>speed unit</strong></span>
               <select class="input select" id="speed-unit">
@@ -83,7 +91,21 @@
                 <span><strong>numbers</strong><small class="preference-lock" hidden>fixed for standard</small></span>
                 <input id="numbers-toggle" class="switch" type="checkbox">
               </label>
+              <label class="preference-row" for="repeat-quotes-toggle">
+                <span><strong>repeat quotes</strong></span>
+                <input class="switch" id="repeat-quotes-toggle" type="checkbox">
+              </label>
             </details>
+            <label class="preference-row" for="layout-select">
+              <span><strong>keyboard layout</strong></span>
+              <select class="input select" id="layout-select">
+                <option value="qwerty" selected>qwerty</option>
+                <option value="dvorak">dvorak</option>
+                <option value="colemak">colemak</option>
+                <option value="colemak-dh">colemak-dh</option>
+                <option value="workman">workman</option>
+              </select>
+            </label>
             <label class="preference-row" for="daily-goal">
               <span><strong>daily goal</strong></span>
               <select class="input select" id="daily-goal">
@@ -102,10 +124,49 @@
               <span><strong>keyboard</strong></span>
               <input class="switch" id="keyboard-toggle" type="checkbox">
             </label>
-            <label class="preference-row" for="stop-on-error-toggle">
-              <span><strong>stop on error</strong><small class="preference-lock" hidden>fixed for standard</small></span>
-              <input class="switch" id="stop-on-error-toggle" type="checkbox">
+            <label id="finger-row" class="preference-row preference-sub" for="finger-toggle" hidden>
+              <span><strong>finger map</strong></span>
+              <input class="switch" id="finger-toggle" type="checkbox">
             </label>
+            <label class="preference-row" for="correction-select">
+              <span><strong>correction</strong><small class="preference-lock" hidden>fixed for standard</small></span>
+              <select class="input select" id="correction-select">
+                <option value="relaxed" selected>free</option>
+                <option value="mandatory">stop on error</option>
+                <option value="no-backspace">no backspace</option>
+                <option value="fail-word">fail on word error</option>
+                <option value="fail-any">fail on any error</option>
+              </select>
+            </label>
+            <label class="preference-row" for="strict-space-toggle">
+              <span><strong>strict space</strong><small class="preference-note" id="rules-note" hidden></small></span>
+              <input class="switch" id="strict-space-toggle" type="checkbox" aria-describedby="rules-note">
+            </label>
+            <label class="preference-row" for="quick-end-toggle">
+              <span><strong>quick end</strong><small class="preference-note" id="quick-end-note" hidden></small></span>
+              <input class="switch" id="quick-end-toggle" type="checkbox" checked aria-describedby="quick-end-note rules-note">
+            </label>
+            <div class="preference-row" role="group" aria-labelledby="minimums-label">
+              <span><strong id="minimums-label">minimums</strong></span>
+              <span class="preference-pair">
+                <select class="input select" id="min-accuracy" aria-label="minimum accuracy">
+                  <option value="0" selected>any %</option>
+                  <option value="80">80%</option>
+                  <option value="90">90%</option>
+                  <option value="95">95%</option>
+                  <option value="98">98%</option>
+                </select>
+                <select class="input select" id="min-wpm" aria-label="minimum speed">
+                  <option value="0" selected>any wpm</option>
+                  <option value="20">20 wpm</option>
+                  <option value="30">30 wpm</option>
+                  <option value="40">40 wpm</option>
+                  <option value="60">60 wpm</option>
+                  <option value="80">80 wpm</option>
+                  <option value="100">100 wpm</option>
+                </select>
+              </span>
+            </div>
             <label class="preference-row" for="pace-select">
               <span><strong>pace caret</strong><small id="pace-note" class="pace-note"></small></span>
               <select class="input select" id="pace-select">
@@ -124,6 +185,44 @@
               <span><strong>focus mode</strong></span>
               <input class="switch" id="focus-toggle" type="checkbox">
             </label>
+            <details class="keybindings-category">
+              <summary>keybindings</summary>
+              <p id="keybindings-help">Enter a combination or record it. Mod means Ctrl or ⌘. Leave blank to disable. Escape still closes menus; Tab and Shift+Tab navigate controls. Restart applies to solo tests and the local challenge, not online races. Enter restarts only before or after a run.</p>
+              <form id="keybindings-form">
+                <div class="keybinding-row">
+                  <label for="keybinding-restart">restart test / local challenge</label>
+                  <div class="keybinding-controls">
+                    <input class="input" id="keybinding-restart" name="restart" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-restart-error">
+                    <button class="btn btn-secondary btn-sm" type="button" data-record="restart" aria-label="Record restart test / local challenge binding" aria-pressed="false">Record</button>
+                  </div>
+                  <p class="keybinding-error" id="keybinding-restart-error"></p>
+                </div>
+                <div class="keybinding-row">
+                  <label for="keybinding-commands">commands</label>
+                  <div class="keybinding-controls">
+                    <input class="input" id="keybinding-commands" name="commands" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-commands-error">
+                    <button class="btn btn-secondary btn-sm" type="button" data-record="commands" aria-label="Record commands binding" aria-pressed="false">Record</button>
+                  </div>
+                  <p class="keybinding-error" id="keybinding-commands-error"></p>
+                </div>
+                <div class="keybinding-row">
+                  <label for="keybinding-exitFocus">exit focus mode</label>
+                  <div class="keybinding-controls">
+                    <input class="input" id="keybinding-exitFocus" name="exitFocus" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-exitFocus-error">
+                    <button class="btn btn-secondary btn-sm" type="button" data-record="exitFocus" aria-label="Record exit focus mode binding" aria-pressed="false">Record</button>
+                  </div>
+                  <p class="keybinding-error" id="keybinding-exitFocus-error"></p>
+                </div>
+                <div class="keybinding-actions">
+                  <button class="btn btn-primary btn-sm" type="submit">Save keybindings</button>
+                  <button class="btn btn-ghost btn-sm" type="button" data-reset-bindings>Reset defaults</button>
+                </div>
+                <p id="keybindings-status" role="status" aria-live="polite"></p>
+              </form>
+            </details>
+            <button id="import-trigger" class="preference-row preference-action" type="button" aria-haspopup="dialog" aria-controls="import-dialog">
+              <span><strong>import from Monkeytype</strong><small class="pace-note">paste its exported settings</small></span>
+            </button>
           </div>
         </details>
 
@@ -175,26 +274,46 @@
     <main id="main-content">
       <section id="typing-screen" class="screen typing-screen" data-screen="practice" data-session="practice" aria-labelledby="session-title">
         <div class="practice-controls" aria-label="Practice setup">
-          <div class="segmented glide mode-options" role="group" aria-label="Practice mode" data-glide="pressed">
-            <span class="glide-pill" aria-hidden="true"></span>
-            <button id="mode-time" type="button" data-mode="time" aria-pressed="true" class="is-active">time</button>
-            <button id="mode-words" type="button" data-mode="words" aria-pressed="false">words</button>
-            <button id="mode-quote" type="button" data-mode="quote" aria-pressed="false">quote</button>
-            <button id="mode-standard" type="button" data-mode="standard" aria-pressed="false">standard</button>
-            <button id="mode-compose" type="button" data-compose aria-pressed="false">compose</button>
-            <button id="mode-custom" type="button" aria-pressed="false" aria-controls="custom-options" aria-expanded="false">custom</button>
+          <div class="practice-rail">
+            <div class="segmented glide mode-options" role="group" aria-label="Practice mode" data-glide="pressed">
+              <span class="glide-pill" aria-hidden="true"></span>
+              <button id="mode-time" type="button" data-mode="time" aria-pressed="true" class="is-active">time</button>
+              <button id="mode-words" type="button" data-mode="words" aria-pressed="false">words</button>
+              <button id="mode-quote" type="button" data-mode="quote" aria-pressed="false">quote</button>
+              <details id="mode-more" class="mode-more">
+                <summary id="mode-more-label">more</summary>
+                <div class="mode-more-menu" role="group" aria-label="More practice modes">
+                  <button id="mode-code" type="button" data-mode="code" aria-pressed="false">code</button>
+                  <button id="mode-standard" type="button" data-mode="standard" aria-pressed="false">standard</button>
+                  <button id="mode-compose" type="button" data-compose aria-pressed="false">compose</button>
+                  <button id="mode-custom" type="button" aria-pressed="false" aria-controls="custom-options" aria-expanded="false">custom</button>
+                  <button id="open-lessons" class="mode-more-lessons" type="button" data-action="open-lessons">learn to type</button>
+                </div>
+              </details>
+            </div>
+            <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
+              <button type="button" data-length="15" aria-pressed="false" aria-label="15 seconds">15</button>
+              <button type="button" data-length="30" aria-pressed="true" aria-label="30 seconds" class="is-active">30</button>
+              <button type="button" data-length="60" aria-pressed="false" aria-label="60 seconds">60</button>
+              <button type="button" data-length="120" aria-pressed="false" aria-label="120 seconds">120</button>
+              <button id="custom-length" type="button" aria-pressed="false" aria-label="custom time">custom</button>
+              <form id="custom-length-form" class="custom-length" novalidate hidden>
+                <input id="custom-length-input" class="custom-length-input" type="text" inputmode="numeric" enterkeyhint="done" maxlength="12" autocomplete="off" spellcheck="false" placeholder="5–600" aria-label="custom time in seconds, 5 to 600" aria-describedby="custom-length-error">
+              </form>
+            </div>
+            <div id="code-options" class="segmented compact glide" role="group" aria-label="Code language" data-glide="pressed" hidden>
+              <button type="button" data-language="js" aria-pressed="true" class="is-active">js</button>
+              <button type="button" data-language="python" aria-pressed="false">python</button>
+              <button type="button" data-language="go" aria-pressed="false">go</button>
+              <button type="button" data-language="rust" aria-pressed="false">rust</button>
+            </div>
+            <label id="punctuation-switch" class="compact-switch" for="punctuation-toggle">
+              <input id="punctuation-toggle" class="switch" type="checkbox">
+              <span>punctuation</span>
+            </label>
           </div>
-          <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
-            <button type="button" aria-pressed="false" aria-label="15 seconds">15</button>
-            <button type="button" aria-pressed="true" aria-label="30 seconds" class="is-active">30</button>
-            <button type="button" aria-pressed="false" aria-label="60 seconds">60</button>
-            <button type="button" aria-pressed="false" aria-label="120 seconds">120</button>
-          </div>
-          <label id="punctuation-switch" class="compact-switch" for="punctuation-toggle">
-            <input id="punctuation-toggle" class="switch" type="checkbox">
-            <span>punctuation</span>
-          </label>
-          <button id="open-lessons" class="quiet-link" type="button" data-action="open-lessons">learn to type</button>
+          <p id="custom-length-error" class="field-error custom-length-error" role="alert"></p>
+          <span id="minimum-note" class="minimum-note" hidden></span>
         </div>
 
         <div id="quote-options" class="quote-options" hidden>
@@ -278,7 +397,10 @@
           <div id="keyboard" class="keyboard" aria-label="On-screen keyboard" hidden></div>
 
           <div class="typing-footer">
-            <p id="input-help"></p>
+            <div class="input-help-slot">
+              <p id="input-help"></p>
+              <span id="input-help-reserve" aria-hidden="true"></span>
+            </div>
             <div class="typing-actions">
               <button id="restart-button" class="icon-control" type="button" title="Restart test (Escape)" aria-label="Restart test">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
@@ -348,9 +470,9 @@
 
         <div class="shortcut-row" aria-hidden="true">
           <span class="compose-shortcut"><kbd class="mod-key">ctrl</kbd><kbd>enter</kbd> done</span>
-          <span class="practice-shortcut"><kbd>esc</kbd> restart</span>
-          <span class="compose-shortcut"><kbd>esc</kbd> start over</span>
-          <span><kbd class="mod-key">ctrl</kbd><kbd>k</kbd> commands</span>
+          <span class="practice-shortcut"><kbd id="restart-key-hint" class="restart-key-hint">esc</kbd> restart</span>
+          <span class="compose-shortcut"><kbd class="restart-key-hint">esc</kbd> start over</span>
+          <span><kbd class="command-key">mod+k</kbd> commands</span>
         </div>
       </section>
 
@@ -830,7 +952,7 @@
     </footer>
   </div>
 
-  <button id="exit-focus" class="btn btn-secondary exit-focus" type="button"><kbd>esc</kbd> exit focus</button>
+  <button id="exit-focus" class="btn btn-secondary exit-focus" type="button"><kbd id="exit-focus-hint">esc</kbd> exit focus</button>
 
   <dialog id="palette" class="palette" aria-label="Command palette">
     <div class="palette-box">
@@ -963,6 +1085,44 @@
         <button id="send-suggest" class="btn btn-primary" type="submit" disabled>Send suggestion</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="import-dialog" aria-labelledby="import-dialog-title">
+    <form id="import-form" class="dialog-content" novalidate>
+      <div>
+        <h2 id="import-dialog-title">Import Monkeytype settings</h2>
+        <p>In Monkeytype, open settings, go to danger zone and choose import/export settings, then export. Paste what it gives you here, or choose a file you saved it in.</p>
+      </div>
+      <label for="import-text">Monkeytype settings
+        <textarea id="import-text" class="input textarea import-text" rows="6" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder='{ "mode": "time", "time": 30, … }' aria-describedby="import-error"></textarea>
+      </label>
+      <div class="import-meta">
+        <p id="import-error" class="field-error" role="alert"></p>
+        <button id="import-choose" class="btn btn-ghost btn-sm" type="button">Choose a file</button>
+        <input id="import-file" type="file" accept=".json,.txt,application/json,text/plain" hidden>
+      </div>
+      <div class="dialog-actions">
+        <button id="cancel-import" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="confirm-import" class="btn btn-primary" type="submit" disabled>Import settings</button>
+      </div>
+    </form>
+    <div id="import-report" class="dialog-content" hidden>
+      <div>
+        <h2 id="import-report-title" tabindex="-1">Settings imported</h2>
+        <p id="import-summary"></p>
+      </div>
+      <section class="import-group" aria-labelledby="import-mapped-title">
+        <h3 id="import-mapped-title" class="account-kicker">brought over</h3>
+        <ul id="import-mapped" class="import-rows"></ul>
+      </section>
+      <section id="import-skipped-group" class="import-group" aria-labelledby="import-skipped-title">
+        <h3 id="import-skipped-title" class="account-kicker">left as they were</h3>
+        <ul id="import-skipped" class="import-rows"></ul>
+      </section>
+      <div class="dialog-actions">
+        <button id="import-done" class="btn btn-primary" type="button">Done</button>
+      </div>
+    </div>
   </dialog>
 
   <div id="history-toast" class="toast" role="status" hidden>

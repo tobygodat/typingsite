@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, conditionKey, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, passageText, typeInto, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, signInWithEmail, chooseMore } from './fixtures.js';
 
 // Committed docs images are only rewritten on request (SCREENSHOTS=1); normal runs still take
 // the shots, into the test's own output folder.
@@ -260,7 +260,7 @@ test('custom text never feeds the list: its misses aren’t counted, as stored o
 
   // A custom run typed here, missing "the", "and" and "it" on the first try, adds no evidence either.
   await openView(page, 'Practice');
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(TEXT);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');
