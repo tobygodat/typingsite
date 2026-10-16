@@ -197,7 +197,9 @@ test('word highlight tints the word under the caret, in view, after each step', 
   await page.keyboard.press('Escape');
   await setTape(page, true);
   await chooseWords(page, 50);
-  const text = (await passageText(page)).slice(0, 140);
+  // One letter into a word, so the caret is on a letter of the tinted word (a space belongs to the word before it).
+  const passage = await passageText(page);
+  const text = passage.slice(0, passage.lastIndexOf(' ', 140) + 2);
   const states = await trace(page, text);
   expect(states.some((state) => state.stepped)).toBe(true);
   const highlight = await page.evaluate(() => {
