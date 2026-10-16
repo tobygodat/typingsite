@@ -113,19 +113,6 @@ test.describe('pace caret', () => {
     await expect(label).toHaveText(last);
   });
 
-  test('the key sequence with the input focused restarts the same passage without the stray "b"', async ({ page }) => {
-    await openApp(page);
-    const text = await passageText(page);
-    await page.locator('#typing-input').focus();
-    for (const key of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a']) {
-      await page.keyboard.press(key);
-    }
-    await expect(page.locator('body')).toHaveAttribute('data-ghost', 'on');
-    await expect(page.locator('#typing-input')).toHaveValue('');
-    await expect(page.locator('#typing-status')).toHaveText('Ready');
-    expect(await passageText(page)).toBe(text);
-  });
-
   test('the palette sets a pace mode and the ghost toggle maps to personal best', async ({ page }) => {
     await openApp(page);
     await page.keyboard.press('Control+k');

@@ -1,6 +1,6 @@
 // Custom time and word count: the "custom" pill in the length row, its bounds and messages, its own
 // bests and retests, the palette commands, and what is remembered (guests: the tab only).
-import { test, expect, openApp, passageText, typeInto, completePassage, signInWithEmail, chooseMore } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, completePassage, signInWithEmail, chooseMore, openSettings } from './fixtures.js';
 
 // Committed docs images are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/custom-length/${name}` : testInfo.outputPath(name));
@@ -18,7 +18,7 @@ async function setCustom(page, value) {
   await field(page).press('Enter');
 }
 
-test('a custom time is validated in place and becomes the test length', async ({ page }) => {
+test('a custom time is validated in place, becomes the test length, and lasts for a guest’s tab only', async ({ page }) => {
   await openApp(page);
   await expect(pill(page)).toHaveText('custom');
   await expect(pill(page)).toHaveAttribute('aria-pressed', 'false');
@@ -66,6 +66,12 @@ test('a custom time is validated in place and becomes the test length', async ({
   await expect(pill(page)).toHaveText('custom');
   await pill(page).click();
   await expect(field(page)).toHaveValue('45');
+
+  await page.reload();
+  await expect(pill(page)).toHaveText('custom');
+  await expect(page.locator('#condition-line')).toContainText('· 30 s ·');
+  await pill(page).click();
+  await expect(field(page)).toHaveValue('');
 });
 
 test('a custom time has its own best and its retest keeps the custom length', async ({ page }) => {
@@ -306,17 +312,6 @@ test('the palette’s custom length after a finished quote draws no quote just t
   expect(await seenQuotes()).toEqual(before);
 });
 
-test('a guest’s custom length lasts for the tab only', async ({ page }) => {
-  await openApp(page);
-  await setCustom(page, 45);
-  await expect(pill(page)).toHaveText('45');
-  await page.reload();
-  await expect(pill(page)).toHaveText('custom');
-  await expect(page.locator('#condition-line')).toContainText('· 30 s ·');
-  await pill(page).click();
-  await expect(field(page)).toHaveValue('');
-});
-
 test('a signed-in custom length is saved with the account', async ({ page, supabase }) => {
   supabase.addUser('ada@stilltype.test');
   await openApp(page);
@@ -340,8 +335,8 @@ test('a signed-in custom length is saved with the account', async ({ page, supab
   await expect(page.locator('#condition-line')).toContainText('· 45 s ·');
 });
 
-for (const width of [320, 390]) {
-  test(`the field and its message fit a ${width}px phone`, async ({ page }) => {
+test('the field and its message fit a 390px and a 320px phone', async ({ page }) => {
+  for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 740 });
     await openApp(page);
     const closed = await rowWidth(page);
@@ -362,8 +357,8 @@ for (const width of [320, 390]) {
     await pill(page).click();
     await field(page).fill('75');
     expect(await overflow(page)).toBeLessThanOrEqual(0);
-  });
-}
+  }
+});
 
 test('screenshots', async ({ page }, testInfo) => {
   test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
@@ -409,16 +404,37 @@ test('screenshots', async ({ page }, testInfo) => {
 });
 
 
-test('explicit duration reselect is recorded as a fresh preference choice', async ({ page, supabase }) => {
+test('explicit duration, layout and keybindings reselects are each recorded as a fresh preference choice', async ({ page, supabase }) => {
   const user = supabase.addUser('choice-39@stilltype.test');
   const stamp = '2000-01-01T00:00:00.000Z';
-  supabase.profiles.set(user.id, { data: { version: 2, preferences: { duration: 30 }, preferencesAt: { duration: stamp },
+  const keybindings = { restart: 'Escape', commands: 'Mod+K', exitFocus: 'Escape' };
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { duration: 30, layout: 'qwerty', keybindings },
+    preferencesAt: { duration: stamp, layout: stamp, keybindings: stamp },
     attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, updatedAt: stamp } });
+  const stamps = () => supabase.profileFor(user.email)?.preferencesAt;
   await openApp(page);
   await signInWithEmail(page, user.email);
+
   await pill(page).click();
   await field(page).fill('30');
   await field(page).press('Enter');
-  await expect.poll(() => supabase.profileFor(user.email)?.preferencesAt?.duration).not.toBe(stamp);
-  expect(supabase.profileFor(user.email).preferences.duration).toEqual(30);
+  await expect.poll(() => stamps()?.duration).not.toBe(stamp);
+  expect(stamps()).toMatchObject({ layout: stamp, keybindings: stamp });
+
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('layout · qwerty');
+  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('layout · qwerty');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#palette')).toBeHidden();
+  await expect.poll(() => stamps()?.layout).not.toBe(stamp);
+  expect(stamps().keybindings).toBe(stamp);
+
+  await openSettings(page);
+  const category = page.locator('.keybindings-category');
+  if (await category.getAttribute('open') === null) await category.locator(':scope > summary').click();
+  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
+  await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
+  await expect.poll(() => stamps()?.keybindings).not.toBe(stamp);
+
+  expect(supabase.profileFor(user.email).preferences).toMatchObject({ duration: 30, layout: 'qwerty', keybindings });
 });

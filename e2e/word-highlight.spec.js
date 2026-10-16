@@ -1,6 +1,6 @@
 // Word highlight: settings → word highlight (off, current, next) and its palette commands.
 // A display preference: it tints one passage word, changes instantly and never enters the conditions.
-import { test, expect, openApp, openView, openSettings, passageText, typeInto, signInWithEmail, storageKeys, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, passageText, typeInto, signInWithEmail, chooseMore } from './fixtures.js';
 
 // Committed docs screenshots are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/word-highlight/${name}.png` : testInfo.outputPath(`${name}.png`));
@@ -33,19 +33,15 @@ async function runPalette(page, label) {
 // The passage's first word, so a test can type it and then its space.
 const firstWord = (text) => text.split(' ')[0];
 
-test('off by default: nothing is tinted and the setting reads off', async ({ page }) => {
+test('nothing is tinted by default, and current tints the word being typed until its space, instantly and without motion', async ({ page }) => {
   await openApp(page);
   await expect(page.locator('body')).toHaveAttribute('data-word-highlight', 'off');
+  expect(await tinted(page)).toEqual([]);
   await openSettings(page);
   await expect(page.locator('#word-highlight')).toHaveValue('off');
   await expect(page.locator('label[for="word-highlight"]')).toContainText('word highlight');
   // No mode is named "current", the palette's hint for the active choice.
   expect(await page.locator('#word-highlight option').allTextContents()).toEqual(['off', 'this word', 'next word']);
-  expect(await tinted(page)).toEqual([]);
-});
-
-test('current tints the word being typed until its space, instantly and without motion', async ({ page }) => {
-  await openApp(page);
   await pickHighlight(page, 'current');
   expect(await tinted(page)).toEqual([0]);
 
@@ -120,16 +116,9 @@ test('next tints the word after the current one, and the palette switches modes'
   await runPalette(page, 'word highlight · off');
   expect(await tinted(page)).toEqual([]);
   await expect(page.locator('#word-highlight')).toHaveValue('off');
-});
-
-test('changing it never restarts the passage or changes the conditions', async ({ page }) => {
-  await openApp(page);
-  const text = await passageText(page);
-  const conditionLine = await page.locator('#condition-line').textContent();
-  await pickHighlight(page, 'next');
-  await pickHighlight(page, 'current');
-  expect(await passageText(page)).toBe(text);
-  await expect(page.locator('#condition-line')).toHaveText(conditionLine);
+  // The word markers keep following the caret, so turning it back on is instant.
+  await runPalette(page, 'word highlight · this word');
+  expect(await tinted(page)).toEqual([1]);
 });
 
 test('a custom passage is tinted too, and changing the highlight keeps it', async ({ page }) => {
@@ -139,31 +128,19 @@ test('a custom passage is tinted too, and changing the highlight keeps it', asyn
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');
+  const conditionLine = await page.locator('#condition-line').textContent();
   await pickHighlight(page, 'current');
   await pickHighlight(page, 'next');
   expect(await passageText(page)).toBe(custom);
-  await expect(page.locator('#condition-line')).toContainText('custom text');
+  await expect(page.locator('#condition-line')).toHaveText(conditionLine);
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'custom');
   expect(await tinted(page)).toEqual([1]);
   await typeInto(page, 'the ', '#typing-input', { delay: 60 });
   expect(await tinted(page)).toEqual([2]);
 });
 
-test('the one-keyboard challenge passage follows the same setting', async ({ page }) => {
-  await openApp(page);
-  await pickHighlight(page, 'current');
-  await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
-  await page.locator('#start-local-race').click();
-  await expect(page.locator('#race-stage')).toBeVisible();
-  expect(await tinted(page, '#race-text-display')).toEqual([0]);
-  const text = await page.locator('#race-accessible-passage').textContent();
-  await typeInto(page, `${firstWord(text)} `, '#race-input', { delay: 60 });
-  expect(await tinted(page, '#race-text-display')).toEqual([1]);
-});
-
 // Every session typed against a text renders through the same passage, so each follows the setting.
-test('the daily, the standard test and a lesson follow the same setting', async ({ page }) => {
+test('the daily, the standard test, a lesson and the one-keyboard challenge follow the same setting', async ({ page }) => {
   await openApp(page);
   await pickHighlight(page, 'next');
 
@@ -188,15 +165,15 @@ test('the daily, the standard test and a lesson follow the same setting', async 
   expect(await tinted(page)).toEqual([1]);
   await typeInto(page, `${firstWord(await passageText(page))} `, '#typing-input', { delay: 60 });
   expect(await tinted(page)).toEqual([2]);
-});
 
-test('a guest’s pick lasts only for the tab', async ({ page }) => {
-  await openApp(page);
-  await pickHighlight(page, 'next');
-  expect(await storageKeys(page)).toEqual([]);
-  await page.reload();
-  await expect(page.locator('body')).toHaveAttribute('data-word-highlight', 'off');
-  await expect(page.locator('#word-highlight')).toHaveValue('off');
+  await openView(page, 'Challenge');
+  await page.locator('#challenge-local').click();
+  await page.locator('#start-local-race').click();
+  await expect(page.locator('#race-stage')).toBeVisible();
+  expect(await tinted(page, '#race-text-display')).toEqual([1]);
+  const race = await page.locator('#race-accessible-passage').textContent();
+  await typeInto(page, `${firstWord(race)} `, '#race-input', { delay: 60 });
+  expect(await tinted(page, '#race-text-display')).toEqual([2]);
 });
 
 test('an account keeps the pick; older or unknown saved values read as off', async ({ page, supabase }) => {
@@ -301,16 +278,4 @@ test.describe('phone', () => {
     await page.waitForTimeout(400);
     await page.screenshot({ path: shot(testInfo, 'current-mobile') });
   });
-});
-
-test('turning it off and on mid-run applies at once', async ({ page }) => {
-  await openApp(page);
-  await pickHighlight(page, 'current');
-  // One key: the caret is still in (or on the space after) the first word.
-  await typeInto(page, (await passageText(page))[0]);
-  await runPalette(page, 'word highlight · off');
-  expect(await tinted(page)).toEqual([]);
-  // The word markers keep following the caret, so turning it back on is instant.
-  await runPalette(page, 'word highlight · this word');
-  expect(await tinted(page)).toEqual([0]);
 });

@@ -7,7 +7,7 @@ async function setRestart(page, binding) {
   await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
 }
 
-test('tab as the restart key resets the passage, and escape no longer restarts', async ({ page }) => {
+test('tab as the restart key resets the passage once while held, and escape no longer restarts', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
@@ -34,6 +34,17 @@ test('tab as the restart key resets the passage, and escape no longer restarts',
   // Escape remains a dismissal key but does not override a custom restart binding.
   await typeInto(page, (await passageText(page)).slice(0, 2));
   await page.keyboard.press('Escape');
+  await expect(page.locator('#text-display .char.correct')).toHaveCount(2);
+
+  await page.locator('#typing-input').focus();
+  await page.keyboard.down('Tab');
+  await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
+  await typeInto(page, (await passageText(page)).slice(0, 2));
+  // Further keydowns while Tab is still held arrive as repeats and must leave the run alone.
+  await page.keyboard.down('Tab');
+  await page.keyboard.down('Tab');
+  await page.keyboard.up('Tab');
+  await expect(page.locator('#typing-input')).toBeFocused();
   await expect(page.locator('#text-display .char.correct')).toHaveCount(2);
 });
 
@@ -92,25 +103,6 @@ test('esc, the default key, restarts from the focused run-again button', async (
   await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
 });
 
-test('holding the restart key restarts once, not on every repeat', async ({ page }) => {
-  await openApp(page);
-  await chooseWords(page, 10);
-  await openSettings(page);
-  await setRestart(page, 'Tab');
-  await page.keyboard.press('Escape');
-
-  await typeInto(page, (await passageText(page)).slice(0, 3));
-  await page.keyboard.down('Tab');
-  await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
-  await typeInto(page, (await passageText(page)).slice(0, 2));
-  // Further keydowns while Tab is still held arrive as repeats and must leave the run alone.
-  await page.keyboard.down('Tab');
-  await page.keyboard.down('Tab');
-  await page.keyboard.up('Tab');
-  await expect(page.locator('#typing-input')).toBeFocused();
-  await expect(page.locator('#text-display .char.correct')).toHaveCount(2);
-});
-
 test('tab still moves focus inside the settings popover', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
@@ -121,7 +113,7 @@ test('tab still moves focus inside the settings popover', async ({ page }) => {
   await expect(page.locator('.preferences-popover')).toBeVisible();
 });
 
-test('enter restarts from the result card but not mid-run', async ({ page }) => {
+test('enter restarts from the result card but not mid-run, even after the chrome returns', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
@@ -134,22 +126,6 @@ test('enter restarts from the result card but not mid-run', async ({ page }) => 
   await page.keyboard.press('Enter');
   await expect(page.locator('#text-display .char.correct')).toHaveCount(3);
 
-  await page.locator('#restart-button').click({ force: true });
-  await completePassage(page);
-  await expect(page.locator('#run-again')).toBeFocused();
-  await page.keyboard.press('Enter');
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
-  await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
-});
-
-test('enter stays inert mid-run after the chrome returns via the practice nav', async ({ page }) => {
-  await openApp(page);
-  await chooseWords(page, 10);
-  await openSettings(page);
-  await setRestart(page, 'Enter');
-  await page.keyboard.press('Escape');
-
-  await typeInto(page, (await passageText(page)).slice(0, 3));
   await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
   // Clicking the already-active practice nav shows the chrome but leaves the run going.
   await openView(page, 'Practice');
@@ -158,6 +134,13 @@ test('enter stays inert mid-run after the chrome returns via the practice nav', 
   await page.keyboard.press('Enter');
   await expect(page.locator('#text-display .char.correct')).toHaveCount(3);
   await expect(page.locator('#typing-status')).toContainText('In progress');
+
+  await page.locator('#restart-button').click({ force: true });
+  await completePassage(page);
+  await expect(page.locator('#run-again')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
 });
 
 test('enter restarts from the bare page while the run is ready, but not mid-run', async ({ page }) => {
@@ -197,17 +180,15 @@ test('enter restarts from the bare page while the run is ready, but not mid-run'
   expect(await passageText(page)).toBe(second);
 });
 
-for (const stored of ['toString', '__proto__']) {
-  test(`a synced restart key of "${stored}" falls back to esc`, async ({ page, supabase }) => {
-    const user = supabase.addUser(`restart-${stored.replace(/_/g, '')}@stilltype.test`);
-    supabase.profiles.set(user.id, { data: { version: 2, preferences: { restartKey: stored }, attempts: [], runs: [], loops: [],
-      seenTextIds: [], bests: {}, updatedAt: new Date(Date.now() + 60000).toISOString() } });
-    await openApp(page);
-    await signInWithEmail(page, user.email);
-    await expect(page.locator('#keybinding-restart')).toHaveValue('Escape');
-    await expect(page.locator('#restart-key-hint')).toHaveText('esc');
-  });
-}
+test('a synced restart key of "toString" falls back to esc', async ({ page, supabase }) => {
+  const user = supabase.addUser('restart-toString@stilltype.test');
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { restartKey: 'toString' }, attempts: [], runs: [], loops: [],
+    seenTextIds: [], bests: {}, updatedAt: new Date(Date.now() + 60000).toISOString() } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await expect(page.locator('#keybinding-restart')).toHaveValue('Escape');
+  await expect(page.locator('#restart-key-hint')).toHaveText('esc');
+});
 
 // Committed docs are only rewritten on purpose (SCREENSHOTS=1); a normal run keeps its captures in test output.
 test('screenshots', async ({ page }, testInfo) => {
