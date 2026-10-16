@@ -1009,7 +1009,7 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
 }
 
 .quote-options {
-  margin: calc(var(--space-10) * -1) auto var(--space-10);
+  margin: calc(var(--space-4) * -1) auto var(--space-10);
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -1028,7 +1028,7 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
 
 /* The standard test's fixed recipe, in the quote options' place. The lock notes live in settings. */
 .standard-options {
-  margin: calc(var(--space-10) * -1) auto var(--space-10);
+  margin: calc(var(--space-4) * -1) auto var(--space-10);
   display: grid;
   justify-items: center;
   gap: var(--space-1);
@@ -1043,7 +1043,7 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
    It sits beside the passage, so it appears instantly, without a fade. */
 .custom-options {
   width: min(560px, 100%);
-  margin: calc(var(--space-10) * -1) auto var(--space-10);
+  margin: calc(var(--space-4) * -1) auto var(--space-10);
   padding-top: var(--space-3);
   display: grid;
   gap: var(--space-2);
@@ -2856,7 +2856,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .segmented button, .segmented .custom-length-input { height: 40px; padding: 0 var(--space-2); }
   .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
-  .quote-options, .standard-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
+  .quote-options, .standard-options, .custom-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
   .quote-options .input { width: 112px; }
 
   .measure-row { flex-direction: column; align-items: stretch; gap: var(--space-4); }
