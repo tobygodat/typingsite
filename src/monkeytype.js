@@ -4,6 +4,7 @@
 // Pure: app.js applies the result as a pick of each setting it holds (saveChoice), so it syncs like one.
 import { LENGTHS, isPresetLength, isValidLength } from './lengths.js';
 import { MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, clampPace } from './profile.js';
+import { SOUND_LABELS } from './sound.js';
 
 export const MAX_IMPORT_LENGTH = 1_000_000;
 
@@ -218,6 +219,25 @@ export function mapMonkeytypeConfig(config) {
       const [size, name] = rem < 1.75 ? FONT_SIZES[0] : rem < 2.5 ? FONT_SIZES[1] : FONT_SIZES[2];
       map('text size', { fontSize: size }, name, from);
     } else skip('text size', from, 'Not a size.');
+  }
+
+  // Monkeytype picks one of many click and error sounds; Stilltype has one of each. Its error sound
+  // plays without clicks, and Stilltype's tick only comes with them.
+  const click = has('playSoundOnClick') ? config.playSoundOnClick !== 'off' : null;
+  const error = has('playSoundOnError') ? config.playSoundOnError !== 'off' : null;
+  const soundFrom = [['playSoundOnClick', click], ['playSoundOnError', error]].filter(([, on]) => on !== null).map(([key]) => `${key}: ${shown(config[key])}`).join(', ');
+  if (click) map('sound', { sound: error ? 'clicks-errors' : 'clicks' }, SOUND_LABELS[error ? 'clicks-errors' : 'clicks'], soundFrom);
+  else if (error) skip('sound', soundFrom, 'Stilltype’s error tick plays only with key clicks.');
+  else if (click === false) map('sound', { sound: 'off' }, SOUND_LABELS.off, soundFrom);
+
+  if (has('soundVolume')) {
+    const level = Number(config.soundVolume);
+    const from = `soundVolume: ${shown(config.soundVolume)}`;
+    // A 0–1 fraction, shown on Stilltype's slider in steps of 5%.
+    if (Number.isFinite(level) && level >= 0 && level <= 1) {
+      const volume = Math.round(level * 20) * 5;
+      map('sound volume', { soundVolume: volume }, `${volume}%`, from);
+    } else skip('sound volume', from, 'Not a volume.');
   }
 
   if (config.autoSwitchTheme === true) {

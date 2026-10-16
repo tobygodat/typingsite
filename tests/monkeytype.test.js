@@ -147,3 +147,22 @@ test('strict space, quick end, minimums, repeat quotes and the keymap layout car
   const inUse = preferencesInUse(preferences);
   for (const [key, value] of Object.entries(preferences)) assert.equal(inUse[key], value, key);
 });
+
+test('typing sounds and their volume carry over; an error sound alone is skipped', () => {
+  const both = mapMonkeytypeConfig({ playSoundOnClick: '7', playSoundOnError: '2', soundVolume: 0.33 });
+  assert.deepEqual(both.preferences, { sound: 'clicks-errors', soundVolume: 35 });
+  assert.deepEqual(both.skipped, []);
+  assert.equal(both.mapped.find((row) => row.setting === 'sound').from, 'playSoundOnClick: 7, playSoundOnError: 2');
+  assert.deepEqual(mapMonkeytypeConfig({ playSoundOnClick: '1', playSoundOnError: 'off' }).preferences, { sound: 'clicks' });
+  assert.deepEqual(mapMonkeytypeConfig({ playSoundOnClick: 'off', playSoundOnError: 'off' }).preferences, { sound: 'off' });
+  // Stilltype's tick only plays with clicks, so an error sound on its own changes nothing.
+  const errorOnly = mapMonkeytypeConfig({ playSoundOnClick: 'off', playSoundOnError: '1' });
+  assert.deepEqual(errorOnly.preferences, {});
+  assert.match(errorOnly.skipped[0].reason, /only with key clicks/);
+  // Older exports wrote the volume as a string.
+  assert.equal(mapMonkeytypeConfig({ soundVolume: '1.0' }).preferences.soundVolume, 100);
+  assert.equal(mapMonkeytypeConfig({ soundVolume: 'loud' }).skipped[0].setting, 'sound volume');
+
+  const inUse = preferencesInUse(both.preferences);
+  for (const [key, value] of Object.entries(both.preferences)) assert.equal(inUse[key], value, key);
+});
