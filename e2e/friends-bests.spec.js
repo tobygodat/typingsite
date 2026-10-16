@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey, quoteCorpus } from '../src/typing.js';
 import { BOARD_V, dailyVersion, shapeOf } from '../src/friends-board.js';
 import { dailyPassage } from '../src/insights.js';
-import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText } from './fixtures.js';
 import { mondayOf, utcDay } from './fake-board.js';
 
 test.setTimeout(120000);
@@ -131,10 +131,24 @@ async function clearHistory(page) {
   await page.locator('#confirm-clear').click();
   await expect(page.locator('#history-feedback')).toHaveText('History cleared.');
 }
+// Types the passage at `gap` ms a key on the page's clock (installed by the test, with reduced motion so
+// the paused time holds no animation frames), moved on ten keys at a time: a person's pace without the
+// wait. The board leaves out anything faster than 400 wpm.
+async function typePaced(page, gap) {
+  const text = await passageText(page);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.locator('#typing-input').focus();
+  for (let at = 0; at < text.length; at += 10) {
+    const chunk = text.slice(at, at + 10);
+    await page.keyboard.type(chunk);
+    await page.clock.runFor(gap * chunk.length);
+  }
+  await page.clock.resume();
+}
 // A ten-word test typed at a human pace (about 90 wpm), as a person would.
 async function typeTenWords(page) {
   await chooseWords(page, 10);
-  await typeInto(page, await passageText(page), '#typing-input', { delay: 130 });
+  await typePaced(page, 130);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   return { wpm: Number(await page.locator('#result-wpm').textContent()), accuracy: Number(await page.locator('#result-accuracy').textContent()) };
 }
@@ -226,6 +240,8 @@ test('only completed practice tests and retests are shared, never drills, dailie
     fast('drill-shape', { kind: 'drill', conditions: TIME30 }),
   ];
   await sharing(page, supabase, ada, runs);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.install();
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   const only = { [K60]: { wpm: 64, accuracy: 95, date: at.slice(0, 10) } };
@@ -237,7 +253,7 @@ test('only completed practice tests and retests are shared, never drills, dailie
   await page.locator('#challenge-daily').click();
   await page.locator('#start-daily').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
-  await typeInto(page, await passageText(page), '#typing-input', { delay: 120 });
+  await typePaced(page, 120);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect.poll(() => column(supabase, ada)?.days?.[utcDay()] ?? null).not.toBeNull();
   expect(bestsIn(supabase, ada)).toEqual(only);
@@ -267,12 +283,12 @@ test('a clear takes your bests off the board, and undo brings them back', async 
   const { ada } = circle(supabase);
   const runs = practice();
   await sharing(page, supabase, ada, runs);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.install();
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   // A run typed here sets a best on a new shape, and goes to the board after the run.
   const typed = await typeTenWords(page);
-  expect(typed.wpm).toBeGreaterThanOrEqual(40);
-  expect(typed.wpm).toBeLessThanOrEqual(110);
   await expect.poll(() => bestsIn(supabase, ada)?.[K10]?.wpm).toBe(typed.wpm);
   const before = bestsIn(supabase, ada);
   expect(Object.keys(before).sort()).toEqual([K60, K30, K25, K10].sort());

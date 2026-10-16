@@ -1126,6 +1126,7 @@ test('undo right after a clear keeps a run saved while an earlier write was stil
 
 test('signing out while the account service never answers still finishes and keeps this device’s runs', async ({ page, supabase }) => {
   supabase.addUser(EMAIL);
+  await page.clock.install();
   await openApp(page);
   await signInWithEmail(page, EMAIL);
   let release;
@@ -1138,9 +1139,20 @@ test('signing out while the account service never answers still finishes and kee
     await finishRun(page);
     const userId = (await storageKeys(page)).find((key) => key.startsWith('stilltype-profile-v2:'));
     await page.locator('#account-trigger').click();
-    const started = Date.now();
-    await Promise.all([page.waitForEvent('load', { timeout: 45000 }), page.locator('#account-signout').click()]);
-    expect(Date.now() - started).toBeLessThan(40000);
+    let finished = false;
+    const signedOut = page.waitForEvent('load').then(() => { finished = true; });
+    await page.locator('#account-signout').click();
+    // Its requests time out on the page's clock, moved on five seconds at a time until it finishes.
+    let waited = 0;
+    await expect.poll(async () => {
+      if (!finished) {
+        await page.clock.fastForward(5000);
+        waited += 5000;
+      }
+      return finished;
+    }, { intervals: [200], timeout: 20000 }).toBe(true);
+    await signedOut;
+    expect(waited).toBeLessThan(40000);
     await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
     // Nothing reached the account, so the run stays on the device for the next sign-in.
     expect(await storageKeys(page)).toContain(userId);

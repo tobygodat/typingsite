@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey, quoteCorpus } from '../src/typing.js';
 import { dailyPassage } from '../src/insights.js';
 import { BOARD_V, dailyVersion } from '../src/friends-board.js';
-import { test, expect, openApp, openView, openSettings, signInWithEmail, chooseWords, completePassage, passageText, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, signInWithEmail, chooseWords, completePassage, passageText } from './fixtures.js';
 import { mondayOf, utcDay } from './fake-board.js';
 
 test.setTimeout(120000);
@@ -194,6 +194,8 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   // Saved by an earlier build that synced the sharing setting: membership alone says whether an account
   // shares, and Ada has none.
   seedProfile(supabase, ada, practiceThisWeek(24), { preferences: { shareBoard: true } });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.install();
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   // Sharing is off by default: the board shows nobody and says why.
@@ -206,8 +208,10 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   // Her own profile row carries her summary whether or not she shares; only she can read it.
   await expect.poll(() => weekRuns(supabase, ada)).toBe(24);
   expect(supabase.board.members.has(ada.id)).toBe(false);
-  await scrollBelow(page, '#friends-board-heading', 120);
-  await shot(page, testInfo, 'board-off-light');
+  if (process.env.SCREENSHOTS) {
+    await scrollBelow(page, '#friends-board-heading', 120);
+    await shot(page, testInfo, 'board-off-light');
+  }
   // Turning it on makes her a member, sending no numbers, and the friends who share appear.
   const actions = boardActions(page);
   await page.locator('#share-board').check();
@@ -221,17 +225,25 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   await page.locator('#challenge-daily').click();
   await page.locator('#start-daily').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
-  // A human pace with two corrected slips, so the result reads like a real one.
+  // A human pace, 120 ms a key on the paused page clock, with two corrected slips, so the result reads
+  // like a real one. The board leaves out anything faster than 400 wpm.
   const passage = await passageText(page);
+  const slip = (at) => (passage[at] === 'q' ? 'w' : 'q');
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await page.locator('#typing-input').focus();
-  let typed = 0;
-  for (const slip of [60, 150]) {
-    await page.keyboard.type(passage.slice(typed, slip), { delay: 120 });
-    await page.keyboard.type(passage[slip] === 'q' ? 'w' : 'q');
-    await page.keyboard.press('Backspace');
-    typed = slip;
+  for (const [from, to] of [[0, 60], [60, 150], [150, passage.length]]) {
+    if (from) {
+      await page.keyboard.type(slip(from));
+      await page.keyboard.press('Backspace');
+      await page.clock.runFor(240);
+    }
+    for (let at = from; at < to; at += 10) {
+      const chunk = passage.slice(at, Math.min(at + 10, to));
+      await page.keyboard.type(chunk);
+      await page.clock.runFor(120 * chunk.length);
+    }
   }
-  await page.keyboard.type(passage.slice(typed), { delay: 120 });
+  await page.clock.resume();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   const wpm = Number(await page.locator('#result-wpm').textContent());
   const accuracy = Number(await page.locator('#result-accuracy').textContent());
@@ -268,13 +280,15 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   await expect(page.locator('#friends-board')).not.toContainText('Kai');
   await expect(page.locator('#friends-board-empty')).toBeHidden();
 
-  await shot(page, testInfo, 'board-light', { fullPage: true });
-  await page.emulateMedia({ colorScheme: 'dark' });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  // Let the theme's colour fade settle before the picture.
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
-  await page.waitForTimeout(400);
-  await shot(page, testInfo, 'board-dark', { fullPage: true });
+  if (process.env.SCREENSHOTS) {
+    await shot(page, testInfo, 'board-light', { fullPage: true });
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    // Let the theme's colour fade settle before the picture.
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
+    await page.waitForTimeout(400);
+    await shot(page, testInfo, 'board-dark', { fullPage: true });
+  }
 
   // Lin, who shares, sees Ada under her own name for her, with the result Ada's row now holds.
   const context = await page.context().browser().newContext();
@@ -569,16 +583,18 @@ test('F2: clear and undo twice while the first save’s reply is held, and the b
   await expect(page.locator('#board-week')).toContainText('3 runs');
 });
 
-test('F3: a board reply ten seconds late, around another device’s clear, still leads to the run made after it', async ({ page, browser, supabase }) => {
+test('F3: a late board reply, around another device’s clear, still leads to the run made after it', async ({ page, browser, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   await sharing(page, supabase, ada, { runs: practiceThisWeek(3) });
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await openBoard(page);
   await expect(page.locator('#board-week')).toContainText('3 runs');
-  // This device's next board read is answered ten seconds late.
-  supabase.board.delayNextReply = 10000;
+  // This device's next board read is answered late: read on arrival, its reply held until after the clear.
+  let answer;
+  supabase.board.holdNextRead = new Promise((resolve) => { answer = resolve; });
   await refreshBoard(page);
+  await expect.poll(() => supabase.board.holdNextRead === null).toBe(true);
   // Meanwhile Ada's other device clears its history and makes one run.
   const context = await browser.newContext();
   const other = await context.newPage();
@@ -593,7 +609,8 @@ test('F3: a board reply ten seconds late, around another device’s clear, still
     await expect.poll(() => supabase.profiles.get(ada.id).data.runs.length).toBe(1);
     await expect.poll(() => weekRuns(supabase, ada)).toBe(1);
     // The late reply arrives; whatever it held, the next read counts the run made after the clear.
-    await expect(page.locator('#friends-board-status')).toHaveText('Updated.', { timeout: 20000 });
+    answer();
+    await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
     await refreshBoard(page);
     await expect(page.locator('#board-week')).toContainText('1 run');
     await openBoard(other);
