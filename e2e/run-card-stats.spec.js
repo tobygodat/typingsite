@@ -34,7 +34,7 @@ test('the run card shows raw wpm, consistency, c/i/e/m and the words typed', asy
   await expect(page.locator('.run-card .metric-note').nth(1)).toContainText('consistency is 100 minus');
   await expect(page.locator('.run-card .metric-note').nth(1)).toContainText('still wrong');
   await expect(page.locator('.run-card .metric-note').nth(1)).toContainText('fixed slips are first-try errors');
-  // At 800 px tall the card is taller than the space below the dock, so it scrolls with the page.
+  // The print scrolls with the page.
   expect(await page.locator('#run-card').evaluate((node) => getComputedStyle(node).position)).toBe('static');
 
   const words = page.locator('#result-words span');
@@ -59,16 +59,13 @@ test('the run card shows raw wpm, consistency, c/i/e/m and the words typed', asy
   await page.screenshot({ path: shot(testInfo, 'run-card-dark.png'), fullPage: true, clip });
   await page.emulateMedia({ colorScheme: 'light' });
   await page.screenshot({ path: shot(testInfo, 'run-card-light.png'), fullPage: true, clip });
-
-  // On a tall screen the whole card fits below the dock, so it sticks again.
-  await page.setViewportSize({ width: 1280, height: 1200 });
-  expect(await page.locator('#run-card').evaluate((node) => getComputedStyle(node).position)).toBe('sticky');
 });
 
 test('the words list is one tab stop whose words show their pace by keyboard', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openApp(page);
-  await chooseWords(page, 50);
+  await // Enough words to run past the list's four lines in the wide trace.
+  await chooseWords(page, 100);
   await typeInto(page, await passageText(page));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   const list = page.locator('#result-words');
@@ -80,9 +77,9 @@ test('the words list is one tab stop whose words show their pace by keyboard', a
   // Before a choice the line names the fastest and slowest words; only one word is a tab stop.
   await expect(detail).toHaveText(/^fastest “\S+” \d+ wpm · slowest “\S+” \d+ wpm · select a word for its pace$/);
   await expect(list.locator('[tabindex="0"]')).toHaveCount(1);
-  // Finish focuses "run again", after the card; Shift+Tab walks back to the list's one stop.
+  // Finish focuses "run again" in the drill; Tab walks on to the trace and the list's one stop.
   for (let i = 0; i < 12 && !(await words.first().evaluate((node) => node === document.activeElement)); i += 1) {
-    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
   }
   await expect(words.first()).toBeFocused();
   const firstWord = await words.first().textContent();

@@ -1770,26 +1770,57 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 /* ── Results: the run card ──────────────────────────────────────────────── */
 
+/* Up to 900px one column in source order: the score, then the drill, then the trace. */
 .results-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
-  gap: var(--space-16);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-10);
   align-items: start;
 }
 
-/* Before the first run there is no print to show; the copy takes the whole width. */
-.results-layout:has(> .run-card[hidden]) { grid-template-columns: minmax(0, 1fr); }
+/* Before the first run there is no print to show. */
+.results-layout:has(> .run-card[hidden]) > .run-trace { display: none; }
 
-/* A static print: card stock, the speed graph, the number, the facts. */
-.run-card {
-  position: sticky;
-  top: 104px;
+/* A static print on card stock: the score (number, facts) and the trace (speed graph, words). */
+.run-card,
+.run-trace {
+  min-width: 0;
   padding: 22px;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-xl);
   background: linear-gradient(165deg, var(--card-top), var(--card-bottom));
   display: grid;
   gap: var(--space-4);
+}
+
+.results-drill { min-width: 0; display: grid; gap: var(--space-10); }
+
+/* From 901px the score and the trace share one frame, drawn by the grid's ::before across their row. */
+@media (min-width: 901px) {
+  .results-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "heading heading" "score trace" "drill history";
+    column-gap: var(--space-16);
+  }
+  .results-layout > .section-heading { grid-area: heading; }
+  .results-layout > .run-card { grid-area: score; }
+  .results-layout > .run-trace { grid-area: trace; }
+  .results-layout > .results-drill { grid-area: drill; }
+  .results-layout > .results-history { grid-area: history; }
+  .results-layout::before {
+    content: "";
+    grid-area: score / score / trace / trace;
+    align-self: stretch;
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius-xl);
+    background: linear-gradient(165deg, var(--card-top), var(--card-bottom));
+  }
+  .run-card,
+  .run-trace { border: 0; border-radius: 0; background: none; }
+  .run-card { padding-inline-end: 0; }
+  .run-trace { padding-inline-start: 0; }
+  .results-layout:has(> .run-card[hidden]) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "heading" "drill" "history"; }
+  .results-layout:has(> .run-card[hidden])::before { display: none; }
 }
 
 .run-card-head { display: flex; align-items: baseline; }
@@ -1891,8 +1922,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
    Literata (.word-detail), one sentence per line. */
 .practice-evidence { white-space: pre-line; overflow-wrap: anywhere; }
 .run-card-practice { justify-self: start; align-self: start; margin-inline-start: calc((var(--space-4) + var(--space-1)) * -1); }
-
-.results-copy { min-width: 0; display: grid; gap: var(--space-10); padding-top: var(--space-2); }
 
 .section-heading h1 {
   margin: 0 0 var(--space-3);
@@ -2009,7 +2038,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .manual-panel > summary:hover,
 .manual-panel[open] > summary { color: var(--text); }
 
-.manual-panel > form { margin-top: var(--space-3); }
+.manual-panel > form,
+.metric-more > .metric-note { margin-top: var(--space-3); }
 
 .input-action { display: flex; gap: var(--space-2); max-width: 460px; }
 .input-action .input { flex: 1; }
@@ -2183,12 +2213,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .pairs-table { width: 100%; }
   .pairs-table th, .pairs-table td { padding-right: var(--space-2); }
 }
-.training-memory { margin-top: var(--space-8); }
 .training-target, .run-row, .daily-result { padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
 .training-target { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: center; }
 .training-target h3 { margin: 0; font-size: var(--text-lead); }
 .training-target p { margin: var(--space-2) 0 0; font-size: var(--text-small); color: var(--muted); }
-.training-memory.missed-words { margin-top: 0; }
 .missed-words > .result-note { max-width: 60ch; margin: 0; }
 .missed-words-list { margin: var(--space-4) 0 var(--space-6); padding: 0; list-style: none; }
 .missed-word { padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-1) var(--space-4); }
@@ -2782,8 +2810,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (max-width: 900px) {
-  .results-layout { grid-template-columns: 1fr; gap: var(--space-10); }
-  .run-card { position: static; width: min(420px, 100%); justify-self: center; }
   .history-summary { grid-template-columns: minmax(0, 1fr) 120px 120px; }
   .history-status { grid-column: 1 / -1; justify-self: start; }
   .challenge-setup { grid-template-columns: 1fr; }
@@ -2802,13 +2828,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 @media (max-width: 1023px) and (min-width: 761px) {
   .corner { flex-direction: column-reverse; align-items: flex-end; }
   .challenge-toast { top: calc(var(--space-4) + 2 * (58px + var(--space-2))); }
-}
-
-/* A card taller than the viewport cannot stick without hiding its foot. With the secondary facts,
-   a full words list and its pace line the card runs to about 980px, so it sticks (104px down) only
-   on tall screens. */
-@media (max-height: 1120px) {
-  .run-card { position: static; }
 }
 
 @media (max-width: 760px) {

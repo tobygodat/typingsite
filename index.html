@@ -471,22 +471,16 @@
 
       <section id="results-screen" class="screen results-screen" data-screen="results" aria-labelledby="results-heading" hidden>
         <div class="results-layout">
+          <header class="section-heading">
+            <h1 id="results-heading"><span id="result-delta">No run yet.</span></h1>
+            <p id="result-comparison-note" class="result-note"></p>
+            <p id="train-learn" class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button> a few keys at a time first.</p>
+          </header>
+
           <article id="run-card" class="run-card" aria-label="Run summary" hidden>
             <header class="run-card-head">
               <span id="run-card-stamp" class="run-card-stamp">no run yet</span>
             </header>
-            <figure class="run-card-graph">
-              <div id="speed-graph" class="speed-graph" role="img" aria-label="Speed over time"></div>
-              <figcaption class="graph-legend" aria-hidden="true">
-                <span class="legend-speed">speed</span>
-                <span class="legend-average">average</span>
-                <span class="legend-miss">mistake</span>
-              </figcaption>
-            </figure>
-            <div class="run-card-wordlist">
-              <div id="result-words" class="run-card-words" role="listbox" aria-label="Words typed; mistyped words are marked. Arrow keys move between words."></div>
-              <p id="result-word-detail" class="word-detail"></p>
-            </div>
             <div class="run-card-score">
               <strong id="result-wpm" class="num">—</strong>
               <span class="run-card-unit">wpm</span>
@@ -502,19 +496,14 @@
               <div title="The finished text: correct / still wrong / extra / missed characters. Slips you fixed count as first-try errors"><dt>final c/i/e/m</dt><dd id="result-chars" class="num">—</dd></div>
             </dl>
             <p class="metric-note">wpm counts correct characters kept · accuracy counts every character typed, corrected ones included</p>
-            <p class="metric-note">raw counts every character typed, mistakes included · consistency is 100 minus the variation of per-second speed · final c/i/e/m: correct, still wrong, extra past the end, missed; fixed slips are first-try errors</p>
             <p class="condition-copy" id="result-conditions">english · common words · corpus v3 · metric v1</p>
-            <p class="word-detail practice-evidence" id="practice-words-evidence" hidden></p>
-            <button id="practice-words" class="btn btn-ghost run-card-practice" type="button" data-action="practice-words" hidden>Practice missed words</button>
+            <details class="manual-panel metric-more">
+              <summary>How raw, consistency and c/i/e/m are counted</summary>
+              <p class="metric-note">raw counts every character typed, mistakes included · consistency is 100 minus the variation of per-second speed · final c/i/e/m: correct, still wrong, extra past the end, missed; fixed slips are first-try errors</p>
+            </details>
           </article>
 
-          <div class="results-copy">
-            <header class="section-heading">
-              <h1 id="results-heading"><span id="result-delta">No run yet.</span></h1>
-              <p id="result-comparison-note" class="result-note"></p>
-              <p id="train-learn" class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button> a few keys at a time first.</p>
-            </header>
-
+          <div class="results-drill">
             <article id="ghost-result" class="comparison-panel ghost-result" aria-labelledby="ghost-result-heading" hidden>
               <h2 id="ghost-result-heading">Ghost race</h2>
               <div id="ghost-result-rows" class="race-results"></div>
@@ -576,24 +565,41 @@
               <p id="ghost-offer-status" class="result-note" role="status"></p>
               <p id="ghost-offer-error" class="field-error" role="alert"></p>
             </details>
+          </div>
 
-            <!-- Block flow, so the grid gap doesn't sit between the two: one hairline and 32px. -->
-            <div>
-              <section class="training-memory" aria-labelledby="training-memory-heading">
-                <h2 id="training-memory-heading">Patterns across runs</h2>
-                <label class="filter-field" for="training-conditions">Test conditions
-                  <select id="training-conditions" class="input"></select>
-                </label>
-                <p id="training-memory-note" class="result-note"></p>
-                <div id="training-targets"></div>
-              </section>
-              <section class="training-memory missed-words" aria-labelledby="missed-words-heading">
-                <h2 id="missed-words-heading" tabindex="-1">Words you keep missing</h2>
-                <p id="missed-words-note" class="result-note"></p>
-                <ol id="missed-words-list" class="missed-words-list" hidden></ol>
-                <button id="practice-missed-list" class="btn btn-secondary" type="button" data-action="practice-missed-list" hidden>Practice these words</button>
-              </section>
+          <div class="run-trace">
+            <figure class="run-card-graph">
+              <div id="speed-graph" class="speed-graph" role="img" aria-label="Speed over time"></div>
+              <figcaption class="graph-legend" aria-hidden="true">
+                <span class="legend-speed">speed</span>
+                <span class="legend-average">average</span>
+                <span class="legend-miss">mistake</span>
+              </figcaption>
+            </figure>
+            <div class="run-card-wordlist">
+              <div id="result-words" class="run-card-words" role="listbox" aria-label="Words typed; mistyped words are marked. Arrow keys move between words."></div>
+              <p id="result-word-detail" class="word-detail"></p>
             </div>
+            <p class="word-detail practice-evidence" id="practice-words-evidence" hidden></p>
+            <button id="practice-words" class="btn btn-ghost run-card-practice" type="button" data-action="practice-words" hidden>Practice missed words</button>
+          </div>
+
+          <!-- Block flow, so the grid gap doesn't sit between the two: one hairline and 32px. -->
+          <div class="results-history">
+            <section class="training-memory" aria-labelledby="training-memory-heading">
+              <h2 id="training-memory-heading">Patterns across runs</h2>
+              <label class="filter-field" for="training-conditions">Test conditions
+                <select id="training-conditions" class="input"></select>
+              </label>
+              <p id="training-memory-note" class="result-note"></p>
+              <div id="training-targets"></div>
+            </section>
+            <section class="training-memory missed-words" aria-labelledby="missed-words-heading">
+              <h2 id="missed-words-heading" tabindex="-1">Words you keep missing</h2>
+              <p id="missed-words-note" class="result-note"></p>
+              <ol id="missed-words-list" class="missed-words-list" hidden></ol>
+              <button id="practice-missed-list" class="btn btn-secondary" type="button" data-action="practice-missed-list" hidden>Practice these words</button>
+            </section>
           </div>
         </div>
       </section>
