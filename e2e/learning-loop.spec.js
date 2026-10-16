@@ -101,6 +101,18 @@ test('leaving a drill for another view ends it without drawing a retest passage'
   await expect.poll(runs).toEqual(['test complete', 'drill interrupted', 'drill interrupted']);
   expect(supabase.profileFor(user.email).seenTextIds).toEqual(seen);
 
+  // And leaving for learn to type.
+  await openView(page, 'Train');
+  await page.locator('#start-drill').click();
+  await typeInto(page, (await passageText(page)).slice(0, 4));
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('learn to type');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'learn');
+  await expect.poll(runs).toEqual(['test complete', 'drill interrupted', 'drill interrupted', 'drill interrupted']);
+  expect(supabase.profileFor(user.email).seenTextIds).toEqual(seen);
+
   // Train still offers the retest, which draws its passage only when asked.
   await openView(page, 'Train');
   await page.locator('#skip-to-retest').click();
@@ -118,7 +130,7 @@ test('leaving a drill for another view ends it without drawing a retest passage'
   await page.keyboard.press('Enter');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   const added = () => supabase.profileFor(user.email).seenTextIds.filter((id) => !withRetest.includes(id));
-  await expect.poll(() => runs().length).toBe(4);
+  await expect.poll(() => runs().length).toBe(5);
   await expect.poll(() => added().some((id) => id.startsWith('daily-'))).toBe(true);
   expect(added().filter((id) => !id.startsWith('daily-'))).toEqual([]);
   // The daily dropped the drill's baseline, so Train offers a standalone drill and no retest.

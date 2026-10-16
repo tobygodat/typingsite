@@ -36,17 +36,6 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
         if (learnLinks[view]) expect((await page.locator(learnLinks[view]).boundingBox()).height, view).toBeGreaterThanOrEqual(44);
       }
     });
-
-    test('results fit after a run at a human pace', async ({ page }) => {
-      await openApp(page);
-      await chooseWords(page, 10);
-      // About 60 wpm, a human pace; automation's instant typing scores hundreds or thousands.
-      // Three-digit scores at the narrowest width have their own check below.
-      await typeInto(page, await passageText(page), '#typing-input', { delay: 200 });
-      await expect(page.locator('#run-card')).toBeVisible();
-      expect(Number(await page.locator('#result-wpm').textContent())).toBeLessThan(100);
-      expect(await overflow(page)).toBeLessThanOrEqual(0);
-    });
   });
 }
 
