@@ -151,21 +151,6 @@ test('a custom run keeps no trace, so it offers no replay; the next counted run 
   await expect(page.locator('#watch-replay')).toBeVisible();
 });
 
-test('replay controls wrap inside the dialog at phone width', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 640 });
-  await finishWithCorrectedMiss(page);
-  await page.locator('#watch-replay').click();
-  const dialog = page.locator('#replay-dialog');
-  await expect(dialog).toBeVisible();
-  const box = await dialog.boundingBox();
-  for (const id of ['replay-toggle', 'replay-speed', 'replay-restart', 'replay-close', 'replay-wpm', 'replay-errors-unit', 'replay-clock']) {
-    const button = await page.locator(`#${id}`).boundingBox();
-    expect(button.x).toBeGreaterThanOrEqual(box.x);
-    expect(button.x + button.width).toBeLessThanOrEqual(box.x + box.width);
-  }
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
-});
-
 // The mounted letters, the caret's place among them, and whether the caret sits on one of the
 // first two of the three visible lines.
 const replayWindow = (page) => page.locator('#replay-text').evaluate((node) => {
@@ -370,10 +355,16 @@ for (const theme of ['dark', 'light']) {
     expect(view.lines).toBe(3);
     expect(view.caretShown).toBe(true);
     await page.screenshot({ path: shotPath(testInfo, `replay-${theme}.png`) });
-    // At phone width the stats wrap below the title.
+    // At phone width the stats wrap below the title and the controls wrap inside the dialog.
     await page.setViewportSize({ width: 320, height: 640 });
     await expect(page.locator('#replay-wpm')).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+    const box = await dialog.boundingBox();
+    for (const id of ['replay-toggle', 'replay-speed', 'replay-restart', 'replay-close', 'replay-wpm', 'replay-errors-unit', 'replay-clock']) {
+      const control = await page.locator(`#${id}`).boundingBox();
+      expect(control.x).toBeGreaterThanOrEqual(box.x);
+      expect(control.x + control.width).toBeLessThanOrEqual(box.x + box.width);
+    }
     await page.screenshot({ path: shotPath(testInfo, `replay-phone-${theme}.png`) });
   });
 }
