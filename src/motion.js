@@ -81,9 +81,8 @@ export function createTypingFx(wrap, display, options = {}) {
   // Tape mode: a re-layout or restart jumps straight to the new position; only steps use the
   // ~150 ms scroll from the stylesheet.
   function setScroll(transform, instant) {
-    if (display.style.transform === transform) return;
     if (!instant) {
-      display.style.transform = transform;
+      if (display.style.transform !== transform) display.style.transform = transform;
       return;
     }
     display.style.transition = 'none';

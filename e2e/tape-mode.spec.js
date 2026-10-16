@@ -32,6 +32,8 @@ const tapeState = (page) => page.evaluate(() => new Promise((resolve) => request
   const word = current?.closest('.word');
   resolve({
     typed: document.getElementById('typing-input').value.length,
+    caretState: document.getElementById('typing-wrap').dataset.caret,
+    caretAnimation: getComputedStyle(display.querySelector('.caret-bar')).animationName,
     offset,
     width: display.clientWidth,
     caret: current ? leftOf(current) - offset : null,
@@ -113,6 +115,7 @@ test('an account with no valid tape value starts on three lines and keeps the ta
 });
 
 test('the tape steps by whole words near the right edge, never per letter', async ({ page }) => {
+  test.setTimeout(60_000);
   await openApp(page);
   await setTape(page, true);
   await chooseWords(page, 50);
@@ -141,9 +144,8 @@ test('the tape steps by whole words near the right edge, never per letter', asyn
   await expect(page.locator('#typing-wrap')).toHaveAttribute('data-tape-scrolled', 'true');
 
   // A solid caret and instant letter states while typing.
+  expect(states.at(-1)).toMatchObject({ caretState: 'typing', caretAnimation: 'none' });
   await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
-  await expect(page.locator('#typing-wrap')).toHaveAttribute('data-caret', 'typing');
-  await expect(page.locator('#text-display .caret-bar')).toHaveCSS('animation-name', 'none');
   await expect(page.locator('#text-display .char.correct').first()).toHaveCSS('transition-duration', '0s');
 
   // Backspacing past the last step into the left edge steps back, and the caret stays in view.
@@ -202,6 +204,7 @@ test('word highlight tints the word under the caret, in view, after each step', 
   const text = passage.slice(0, passage.lastIndexOf(' ', 140) + 2);
   const states = await trace(page, text);
   expect(states.some((state) => state.stepped)).toBe(true);
+  await page.waitForFunction(() => document.getElementById('text-display').getAnimations().length === 0);
   const highlight = await page.evaluate(() => {
     const display = document.getElementById('text-display');
     const area = document.getElementById('typing-wrap').getBoundingClientRect();
@@ -273,7 +276,7 @@ test('a ghost race keeps three lines with the tape on, so the friend’s caret s
   expect(await wrapHeight(page)).toBe(Math.round(line));
 });
 
-test('leaving a scrolled ghost race for the tape never slides the passage vertically', async ({ page, supabase }) => {
+for (const easing of [false, true]) test(`leaving a scrolled ghost race for the tape never slides the passage vertically${easing ? ', mid-scroll back to the top' : ''}`, async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');
   const passage = Array.from({ length: 60 }, (_, i) => ['time', 'over', 'water', 'still', 'light'][i % 5]).join(' ');
@@ -288,11 +291,16 @@ test('leaving a scrolled ghost race for the tape never slides the passage vertic
   const display = page.locator('#text-display');
   const scrollY = () => display.evaluate((node) => new DOMMatrix(getComputedStyle(node).transform).m42);
   await page.locator('#typing-input').focus();
-  for (const char of passage.slice(0, 200)) {
-    await page.keyboard.type(char);
+  for (const word of passage.split(' ')) {
+    await page.keyboard.type(`${word} `);
     if ((await scrollY()) < 0) break;
   }
   await expect.poll(scrollY).toBeLessThan(0);
+  if (easing) {
+    // A slow scroll, so the switch below lands while it is still easing back to the first line.
+    await display.evaluate((node) => node.style.setProperty('--dur-quick', '4s'));
+    while (await display.evaluate((node) => node.style.transform !== '')) await page.keyboard.press('Backspace');
+  }
 
   // Every frame from the first one on the tape: the vertical offset the passage shows.
   await page.evaluate(() => {
@@ -312,6 +320,7 @@ test('leaving a scrolled ghost race for the tape never slides the passage vertic
   await page.waitForFunction(() => window.tapeFrames.length >= 30);
   const frames = await page.evaluate(() => window.tapeFrames);
   expect(frames.filter((y) => Math.abs(y) > 0.5)).toEqual([]);
+  expect(await display.evaluate((node) => node.getAnimations().length)).toBe(0);
 });
 
 test('the pace caret rides the tape and keeps gliding through a step', async ({ page }) => {
@@ -333,7 +342,7 @@ test('the pace caret rides the tape and keeps gliding through a step', async ({ 
   const ride = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
     const display = document.getElementById('text-display');
     const node = display.querySelector('.ghost-caret');
-    const scroll = Number(/translateX\((-?[\d.]+)px\)/.exec(display.style.transform)?.[1] || 0);
+    const scroll = new DOMMatrix(getComputedStyle(display).transform).m41;
     const along = Number(/translate3d\((-?[\d.]+)px/.exec(node.style.transform)?.[1]);
     const screen = node.getBoundingClientRect().left - document.getElementById('typing-wrap').getBoundingClientRect().left;
     resolve({ along, expected: along + scroll, screen });

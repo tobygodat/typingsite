@@ -649,6 +649,11 @@ function syncLayout() {
   primaryFx.relayout();
 }
 
+function setSessionKind(kind) {
+  sessionKind = kind;
+  syncLayout();
+}
+
 function applyPreferences() {
   syncLayout();
   document.body.dataset.wordHighlight = prefs.wordHighlight;
@@ -1280,8 +1285,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   // Word practice whose words were cleared with history falls back to a normal test.
   if (kind === 'missed' && !wordsPassage) kind = 'practice';
   const kindChanged = sessionKind !== kind;
-  sessionKind = kind;
-  syncLayout();
+  setSessionKind(kind);
   // The mode bar marks Custom while a custom session is loaded, so it is redrawn whenever the kind changes.
   // Changing to any session but custom (a lesson or a ghost race too) also closes the custom editor, or Custom would stay marked over it.
   if (kindChanged && kind !== 'custom') customOpen = false;
@@ -1303,7 +1307,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
       startTime = null;
       $('typing-input').value = '';
       $('typing-input').disabled = true;
-      $('text-display').style.transform = '';
+      primaryFx.reset([]);
       primaryCharacters = [];
       primaryTextView = null;
       $('text-display').textContent = 'No passage matches these filters.';
@@ -1407,7 +1411,7 @@ function openCompose() {
       primaryFx.finish();
       attempt = null;
     }
-    sessionKind = 'practice';
+    setSessionKind('practice');
     composeOpen = true;
     // Composing replaces any custom passage or open custom editor, as a mode button does.
     customOpen = false;
