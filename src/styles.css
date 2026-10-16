@@ -2,7 +2,8 @@
  * Stilltype.
  * Literata on near-black (or warm paper), one green, and a speed graph on the
  * card of every finished run. Tokens first, then shell, then screens. See DESIGN.md.
- * Motion rule: nothing decorative moves while a run is in progress.
+ * Motion rule: fluid. Motion may live on the typing surface mid-run when it helps
+ * someone follow the run; it scales to zero under reduced motion.
  */
 
 @font-face { font-family: "Geist Mono"; src: url("/src/fonts/geist-mono-400.ttf") format("truetype"); font-weight: 400; font-display: swap; }
@@ -20,6 +21,7 @@
   --text-mono: 12px;
   --text-label: 14px;
   --text-small: 15px;
+  --text-field: 16px;
   --text-body: 17px;
   --text-lead: 20px;
   --text-title: 30px;
@@ -50,6 +52,7 @@
   --sound-select-width: 176px;
   --sound-range-width: 104px;
   --sound-range-height: 36px;
+  --layout-select-width: 128px;
   --heat-key: 52px;
   --heat-gap: 6px;
   --content-max: 1080px;
@@ -91,10 +94,14 @@
   --heat-3: rgba(255, 138, 107, 0.56);
   --warning: #e0b565;
   --selection: #34322e;
+  /* The word highlight: a faint wash of the text colour, light enough that untyped (muted) letters keep 4.5:1. */
+  --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
   --ghost: #b9c3ff;
   --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
   --card-top: #1f1e1c;
   --card-bottom: #121211;
+  /* Finger map: one neutral band behind alternate fingers (index, ring). Not a colour. */
+  --finger-band: rgba(255, 255, 255, 0.1);
 }
 
 :root[data-theme="light"] {
@@ -122,10 +129,12 @@
   --heat-3: rgba(180, 67, 44, 0.44);
   --warning: #8a5a00;
   --selection: #e3dccf;
+  --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
   --ghost: #434db5;
   --shadow-float: 0 8px 24px rgba(70, 56, 30, 0.12);
   --card-top: #fffdf9;
   --card-bottom: #efeae1;
+  --finger-band: rgba(27, 26, 25, 0.05);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -402,7 +411,22 @@ kbd {
 .preference-row:hover { background: var(--raised-2); }
 .preference-row > span { min-width: 0; display: grid; gap: 2px; }
 .preference-row strong { font-size: 15px; font-weight: 600; }
-.preference-row .select { width: 104px; height: 36px; font-size: 14px; }
+/* A row whose control can't change right now doesn't invite a click. */
+.preference-row:has(:disabled) { cursor: default; }
+.preference-row:has(:disabled):hover { background: none; }
+.preference-note { color: var(--muted); font-size: var(--text-label); line-height: 1.35; }
+/* Wide enough for the longest options ("next word", "personal best") without clipping. */
+.preference-row .select { width: 116px; height: 36px; font-size: 14px; }
+/* Two narrow selects share one row (minimum accuracy and speed). */
+.preference-row > .preference-pair { flex: none; display: flex; gap: var(--space-2); }
+.preference-pair .select { width: auto; padding-left: 10px; }
+.preference-row[role="group"] { cursor: default; }
+.preference-row #correction-select { width: 180px; }
+/* Wide enough for its longest option, colemak-dh, beside the native arrow. */
+.preference-row #layout-select { width: var(--layout-select-width); }
+/* A sub-setting of the row above it (finger map under keyboard): indented and a little shorter. */
+.preference-sub { min-height: var(--control); padding-inline-start: var(--space-6); }
+.preference-sub strong { font-weight: 500; color: var(--muted); }
 .preference-row .select-wide { width: var(--sound-select-width); }
 .preference-row > .preference-range { display: flex; align-items: center; gap: var(--space-3); }
 .preference-value { min-width: 4ch; color: var(--muted); font: 500 var(--text-mono)/1 var(--font-mono); text-align: right; }
@@ -450,8 +474,25 @@ kbd {
 .preference-row[hidden] { display: none; }
 .pace-note { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); }
 .pace-note:empty { display: none; }
-.preference-row .pace-wpm { width: 104px; height: 36px; font-size: 14px; }
+.preference-row .pace-wpm { width: 116px; height: 36px; font-size: 14px; }
 
+.preference-action { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
+
+.keybindings-category { border-top: 1px solid var(--hairline-strong); margin-top: var(--space-2); padding: var(--space-2); }
+.keybindings-category > summary { min-height: var(--control); display: flex; align-items: center; gap: var(--space-2); cursor: pointer; font-size: var(--text-small); font-weight: 600; }
+.keybindings-category > summary::after { content: ' +'; color: var(--muted); }
+.keybindings-category[open] > summary::after { content: ' −'; }
+.keybindings-category p { font-size: var(--text-small); color: var(--muted); }
+.keybinding-row { margin-block: var(--space-4); }
+.keybinding-row label { display: block; font-size: var(--text-small); margin-bottom: var(--space-2); }
+.keybinding-controls, .keybinding-actions { display: flex; align-items: center; gap: var(--space-2); }
+.keybinding-controls .input { min-width: 0; flex: 1; font: var(--text-fine)/1.5 var(--font-mono); }
+.keybinding-controls .btn { flex: none; }
+.keybindings-category .btn { height: var(--control); }
+.keybindings-category .keybinding-error { color: var(--danger); margin-top: var(--space-2); }
+.keybinding-error:empty { display: none; }
+.keybinding-controls [aria-invalid="true"] { border-color: var(--danger); }
+.keybinding-controls [aria-pressed="true"] { outline: 2px solid var(--accent); }
 .preference-category > summary { color: var(--muted); }
 .preference-category > summary::after { content: '+'; }
 .preference-category[open] > summary::after { content: '−'; }
@@ -791,8 +832,12 @@ kbd {
   padding-top: var(--space-10);
 }
 
+/* The row paints above what follows it: the "more" menu over the passage, and its controls over the
+   custom text panel, which rises into the space under the row. */
 .practice-controls {
-  margin: 0 auto var(--space-14);
+  position: relative;
+  z-index: 1;
+  margin: 0 auto var(--space-8);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -811,7 +856,8 @@ kbd {
 
 .segmented .glide-pill { border-radius: var(--radius); }
 
-.segmented button {
+.segmented button,
+.segmented .custom-length-input {
   height: 36px;
   padding: 0 15px;
   border: 0;
@@ -825,11 +871,135 @@ kbd {
 .segmented button:hover,
 .segmented button[aria-pressed="true"] { color: var(--text); }
 
-.segmented.compact button {
+/* The mode buttons sit a little closer than other segmented controls, so the row stays short. */
+/* Raised over the groups after it, so the "more" menu opens above them when they wrap below. */
+.mode-options { z-index: 2; gap: 0; }
+.mode-options button { padding: 0 var(--space-3); }
+
+/* From 901px the mode, length and punctuation groups share one hairline rail instead of three
+   frames, divided by short rules. Narrower, the rail dissolves and each group keeps its own frame. */
+@media (min-width: 901px) {
+  .practice-rail {
+    padding: 3px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-control);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .practice-rail > .segmented { padding: 0; border: 0; }
+  .practice-rail > .compact-switch { height: 36px; padding: 0 var(--space-3) 0 var(--space-2); border: 0; }
+  .practice-rail > :not(:first-child) { position: relative; }
+  .practice-rail > :not(:first-child)::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    left: calc(var(--space-3) / -2);
+    width: 1px;
+    height: var(--space-4);
+    background: var(--hairline-strong);
+    transform: translate(-50%, -50%);
+  }
+}
+@media (max-width: 900px) {
+  .practice-rail { display: contents; }
+}
+
+/* "more": the rarer modes and the way into lessons. It reads as one more mode; once one of its
+   modes is chosen it takes that mode's name and the gliding pill rests under it. */
+.mode-more { position: relative; }
+.mode-more > summary {
+  height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  list-style: none;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+.mode-more > summary::-webkit-details-marker { display: none; }
+/* The disclosure chevron of "drill something else", at the same rotated 1.5px corner. */
+.mode-more > summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--dur-quick) var(--ease-out);
+}
+.mode-more[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+.mode-more > summary:hover,
+.mode-more[open] > summary,
+.mode-more[data-active] > summary { color: var(--text); }
+
+.mode-more-menu {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  width: max-content;
+  padding: var(--space-1);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-lg);
+  background: var(--raised);
+  box-shadow: var(--shadow-float);
+  display: grid;
+  gap: 2px;
+  transform: translateX(-50%);
+  animation: fade-in var(--dur-quick) var(--ease-out);
+}
+.segmented .mode-more-menu button { width: 100%; padding: 0 var(--space-6) 0 var(--space-3); text-align: left; white-space: nowrap; }
+.segmented .mode-more-menu button:hover,
+.segmented .mode-more-menu button[aria-pressed="true"] { background: var(--raised-2); }
+/* "learn to type" is a way in, not a mode: it sits under a rule, after the modes. */
+.segmented .mode-more-menu .mode-more-lessons { margin-top: 2px; border-top: 1px solid var(--hairline); border-radius: 0 0 var(--radius) var(--radius); }
+
+.segmented.compact button,
+.segmented.compact .custom-length-input {
   min-width: 46px;
   padding: 0 8px;
   font: 500 13px/1 var(--font-mono);
 }
+
+/* Code language names are readable words, so they set in Literata like the mode buttons and the
+   word "custom". */
+.segmented.compact button[data-language] { font: 400 var(--text-small)/1 var(--font-serif); }
+
+/* The custom length: the pill becomes a short field in place, with no box of its own beyond the
+   focus ring. Pill and field share one width, so the row never jumps, and the message sits in the
+   gap under the row, so the passage never moves. The word "custom" is Literata like the mode
+   options; only a number in the pill is mono, like the presets beside it. */
+.custom-length { display: flex; }
+.segmented.compact #custom-length { min-width: var(--space-16); padding: 0 var(--space-1); }
+.segmented.compact #custom-length:not(.is-active) { font: 400 var(--text-small)/1 var(--font-serif); }
+.segmented .custom-length-input { width: var(--space-16); color: var(--text); text-align: center; }
+.custom-length-input::placeholder { color: var(--muted); opacity: 1; }
+/* A coral hairline, as on other fields, paired with the message's words; no tint, so the
+   placeholder keeps its contrast. */
+.custom-length-input[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--danger); }
+
+.custom-length-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  min-height: 0;
+  margin: var(--space-1) 0 0;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* Focus mode hides the row; the palette's "custom time…" shows it while the field is open, and a
+   message left by an invalid entry stays readable until the run starts. */
+body[data-focus-mode="true"] .practice-controls[data-editing],
+body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visible; }
 
 .compact-switch {
   height: 44px;
@@ -847,7 +1017,7 @@ kbd {
 
 .compact-switch:hover { color: var(--text); }
 
-/* A quiet text action: the "learn to type" entry in the mode area and the first-run links. */
+/* A quiet text action: the first-run "learn to type" links. */
 .quiet-link {
   min-height: var(--control);
   padding: 0 var(--space-2);
@@ -871,8 +1041,19 @@ kbd {
 .compact-switch .switch::before { width: 12px; height: 12px; }
 .compact-switch .switch:checked::before { transform: translateX(12px); }
 
+/* Practice minimums, when set: a quiet condition label on its own centred line under every
+   control (lengths included on phones), so the controls stay centred. Never a control. */
+.minimum-note {
+  flex-basis: 100%;
+  order: 2;
+  color: var(--muted);
+  font: var(--text-mono)/1.4 var(--font-mono);
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
 .quote-options {
-  margin: calc(var(--space-10) * -1) auto var(--space-10);
+  margin: calc(var(--space-4) * -1) auto var(--space-10);
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -891,7 +1072,7 @@ kbd {
 
 /* The standard test's fixed recipe, in the quote options' place. The lock notes live in settings. */
 .standard-options {
-  margin: calc(var(--space-10) * -1) auto var(--space-10);
+  margin: calc(var(--space-4) * -1) auto var(--space-10);
   display: grid;
   justify-items: center;
   gap: var(--space-1);
@@ -906,7 +1087,7 @@ kbd {
    It sits beside the passage, so it appears instantly, without a fade. */
 .custom-options {
   width: min(560px, 100%);
-  margin: calc(var(--space-10) * -1) auto var(--space-10);
+  margin: calc(var(--space-4) * -1) auto var(--space-10);
   padding-top: var(--space-3);
   display: grid;
   gap: var(--space-2);
@@ -1062,7 +1243,7 @@ body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options
   transition: opacity var(--dur-base) var(--ease-out), visibility 0s;
 }
 
-/* Still run: next to the passage mid-run, the warning appears and leaves instantly. */
+/* Next to the passage mid-run, the warning appears and leaves instantly. */
 body[data-running="true"] .caps-warning { transition: none; }
 
 /* ── Typing zone ────────────────────────────────────────────────────────── */
@@ -1136,6 +1317,24 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
   background: var(--danger-soft);
 }
 
+/* Word highlight (settings): a quiet tint on the current or next word. It is a letter state like
+   the ones above: it moves with the caret from word to word at once, with no transition of its own.
+   It is neutral, so it never reads as the green current-state accent or the coral miss. The tint
+   sits on the word's letters, not the word, and skips a miss, so a miss keeps exactly its own
+   coral tint over whatever the passage sits on. */
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:not(.wrong) {
+  background: var(--word-highlight);
+  transition: none;
+}
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:first-child {
+  border-start-start-radius: var(--radius-sm);
+  border-end-start-radius: var(--radius-sm);
+}
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:last-child {
+  border-start-end-radius: var(--radius-sm);
+  border-end-end-radius: var(--radius-sm);
+}
+
 /* Forced colours strip the tint, so keep the mark as a system highlight. */
 @media (forced-colors: active) {
   .char.wrong,
@@ -1144,6 +1343,10 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
     color: MarkText;
     background: Mark;
   }
+
+  /* The word tint is stripped too; a system-colour outline marks the word instead. */
+  body[data-word-highlight="current"] .word.word-current,
+  body[data-word-highlight="next"] .word.word-next { outline: 1px solid CanvasText; }
 }
 
 .caret {
@@ -1281,6 +1484,7 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
 }
 
 #input-help,
+#input-help-reserve,
 #race-help {
   margin: 0;
   color: var(--muted);
@@ -1290,6 +1494,11 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
   align-items: center;
   gap: var(--space-2);
 }
+
+/* A mid-run hint shares the passage notice's cell; the hidden reserve keeps the notice's height. */
+.input-help-slot { display: grid; }
+.input-help-slot > * { grid-area: 1 / 1; }
+#input-help-reserve { visibility: hidden; }
 
 .shortcut-row {
   margin-top: var(--space-6);
@@ -1456,17 +1665,24 @@ body[data-session="practice"] .compose-measure { justify-content: space-between;
 body[data-compose="true"] .personal-best { visibility: hidden; }
 
 .keyboard {
+  --key: 40px;
+  --key-gap: 5px;
+  --key-pitch: calc(var(--key) + var(--key-gap));
   margin: var(--space-6) auto var(--space-4);
   display: grid;
   justify-content: center;
-  gap: 5px;
+  gap: var(--key-gap);
 }
 
-.key-row { display: flex; justify-content: center; gap: 5px; }
+/* The thirty main keys keep a real row stagger: home a quarter key in, bottom three quarters. */
+.key-row { display: flex; gap: var(--key-gap); }
+.key-row:nth-child(2) { padding-inline-start: calc(var(--key-pitch) / 4); }
+.key-row:nth-child(3) { padding-inline-start: calc(var(--key-pitch) * 3 / 4); }
+.key-row:nth-child(4) { justify-content: center; }
 
 .key {
-  width: 40px;
-  height: 40px;
+  width: var(--key);
+  height: var(--key);
   border: 1px solid var(--hairline-strong);
   border-bottom-width: 3px;
   border-radius: var(--radius);
@@ -1477,9 +1693,52 @@ body[data-compose="true"] .personal-best { visibility: hidden; }
   transition: color var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out), border-color var(--dur-micro) var(--ease-out);
 }
 
-.key.space { width: 240px; }
+.key.space { width: calc(var(--key) * 6); }
 .key.target { color: var(--text); border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
 .key.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); transform: translateY(2px); }
+
+/* Finger map: each key carries a small mono initial for the finger that types it (i, m, r, p), so it
+   reads without shading, in forced colours too. A faint band behind alternate fingers (index, ring)
+   keeps neighbouring fingers apart, and the two hands sit apart. Letters keep their colours, so drill
+   targets still stand out. :where() keeps these below .key.target and .key.active. */
+:where(.keyboard[data-fingers="true"]) [data-finger="index"] { --finger-mark: "i"; --finger-shade: var(--finger-band); }
+:where(.keyboard[data-fingers="true"]) [data-finger="middle"] { --finger-mark: "m"; }
+:where(.keyboard[data-fingers="true"]) [data-finger="ring"] { --finger-mark: "r"; --finger-shade: var(--finger-band); }
+:where(.keyboard[data-fingers="true"]) [data-finger="pinky"] { --finger-mark: "p"; }
+:where(.keyboard[data-fingers="true"]) .key { position: relative; background-color: var(--finger-shade, transparent); }
+:where(.keyboard[data-fingers="true"]) .key::after {
+  content: var(--finger-mark) / "";
+  position: absolute;
+  right: var(--space-1);
+  bottom: 1px;
+  color: var(--muted);
+  font: 400 var(--text-fine)/1 var(--font-mono);
+}
+.key.active::after { color: inherit; }
+:where(.keyboard[data-fingers="true"]) .key[data-column="5"] { margin-inline-start: var(--space-3); }
+
+.finger-legend {
+  margin: var(--space-2) 0 0;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  color: var(--muted);
+  font: var(--text-fine)/1 var(--font-mono);
+  letter-spacing: 0.03em;
+}
+
+.finger-legend span { display: inline-flex; align-items: center; gap: var(--space-2); }
+.finger-legend [data-finger]::before {
+  content: var(--finger-mark) / "";
+  width: var(--space-6);
+  height: var(--space-6);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  background: var(--finger-shade, transparent);
+}
 
 /* The finger map: a split keyboard, one column per finger, labelled under each column with a rule.
    Learned keys read in the text colour; the lesson's new keys get the full green edge. */
@@ -1516,9 +1775,9 @@ body[data-compose="true"] .personal-best { visibility: hidden; }
 }
 
 .finger-label-short,
-.finger-legend { display: none; }
+.finger-map > .finger-legend { display: none; }
 
-.finger-legend { margin-top: var(--space-1); color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); text-align: center; }
+.finger-map > .finger-legend { margin-top: var(--space-1); color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); text-align: center; }
 
 .finger-thumbs {
   grid-column: 1 / -1;
@@ -1531,7 +1790,7 @@ body[data-compose="true"] .personal-best { visibility: hidden; }
 /* Space sits centred under the two hands, with its label beside it. */
 .finger-thumbs .key.space { width: calc(var(--key-size) * 6); height: var(--key-size); margin-left: calc(var(--space-3) + 6ch); }
 .finger-thumbs .finger-label { width: 6ch; padding: 0; border: 0; justify-content: flex-start; }
-.finger-legend { grid-column: 1 / -1; }
+.finger-map > .finger-legend { grid-column: 1 / -1; }
 
 body[data-focus-mode="true"] .dock-zone,
 body[data-focus-mode="true"] .corner,
@@ -2388,7 +2647,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 #account-dialog,
 #replay-dialog,
 #delete-account-dialog,
-#suggest-dialog {
+#suggest-dialog,
+#import-dialog {
   width: min(460px, calc(100% - 32px));
   padding: 0;
   border: 1px solid var(--hairline-strong);
@@ -2402,13 +2662,16 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 #account-dialog[open],
 #delete-account-dialog[open],
 #replay-dialog[open],
+#import-dialog[open],
 #suggest-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
 #delete-account-dialog::backdrop,
 #replay-dialog::backdrop,
+#import-dialog::backdrop,
 #suggest-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
-:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #delete-account-dialog, #replay-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
+:root[data-theme="light"] :is(#clear-dialog, #account-dialog, #delete-account-dialog, #replay-dialog, #import-dialog, #suggest-dialog)::backdrop { background: rgba(40, 32, 20, 0.22); }
+
 
 .account-fields { display: grid; gap: var(--space-3); }
 .account-fields label { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); }
@@ -2477,6 +2740,22 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .textarea { height: auto; min-height: 132px; padding: var(--space-3) 14px; line-height: 1.5; resize: vertical; }
 .suggest-meta { margin-top: calc(var(--space-4) * -1); display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); }
 .suggest-meta .field-error { margin: 0; }
+/* Import from Monkeytype: a paste box, then a report of what was brought over and what was left. */
+#import-dialog { width: min(520px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.import-text { font: var(--text-label)/1.5 var(--font-mono); }
+.import-meta { margin-top: calc(var(--space-4) * -1); display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4); }
+.import-meta .field-error { margin: 0; }
+.import-meta .btn { flex: none; }
+.import-group { display: grid; gap: var(--space-2); }
+.import-group h3 { margin: 0; font-weight: 400; }
+.import-group[hidden] { display: none; }
+.import-rows { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hairline); }
+.import-rows li { padding: var(--space-2) 0; border-bottom: 1px solid var(--hairline); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--space-4); align-items: baseline; }
+.import-setting { font-weight: 600; }
+.import-value { text-align: right; }
+.import-from { grid-column: 1 / -1; color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); overflow-wrap: anywhere; }
+.import-reason { grid-column: 1 / -1; color: var(--muted); font-size: var(--text-label); }
+
 .suggest-count { flex: none; color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); letter-spacing: 0.02em; }
 .suggest-trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
@@ -2617,11 +2896,12 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .mode-options { flex-wrap: wrap; justify-content: center; max-width: 100%; }
   /* Two rows at most: mode and punctuation, then lengths. */
   .practice-controls { margin-bottom: var(--space-6); gap: var(--space-2); }
-  #duration-options { order: 1; }
-  .segmented button { height: 40px; padding: 0 var(--space-2); }
-  .segmented.compact button { min-width: 44px; padding: 0 6px; }
+  /* "more" ends the mode row near the right edge, so its menu hangs from the right. */
+  .mode-more-menu { left: auto; right: 0; transform: none; }
+  .segmented button, .segmented .custom-length-input { height: 40px; padding: 0 var(--space-2); }
+  .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
-  .quote-options, .standard-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
+  .quote-options, .standard-options, .custom-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
   .quote-options .input { width: 112px; }
 
   .measure-row { flex-direction: column; align-items: stretch; gap: var(--space-4); }
@@ -2641,13 +2921,14 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .keyboard.finger-map { --key-size: calc((100vw - 32px - var(--space-4) - 40px) / 10); display: grid; column-gap: var(--space-4); }
   .finger-label-full { display: none; }
   .finger-label-short { display: inline; }
-  .finger-legend { display: block; }
+  .finger-map > .finger-legend { display: block; }
   .finger-map .key { font-size: var(--text-fine); }
   .lesson-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lesson-current { scroll-margin-top: var(--space-4); }
   .lesson-row { grid-template-columns: var(--space-6) minmax(0, 1fr) auto; gap: var(--space-2) var(--space-3); }
   .lesson-row-detail { grid-column: 2; grid-row: 2; justify-content: flex-start; }
   .lesson-row .btn { grid-column: 3; grid-row: 1 / span 2; }
+  label[for="keyboard-toggle"], #finger-row { display: none; }
   .site-footer { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: var(--space-2); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
@@ -2663,7 +2944,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (max-width: 360px) {
-  /* Five modes fit the 288px column. */
+  /* The mode buttons tighten so each wrapped row fits the 288px column. */
   .segmented button { padding: 0 var(--space-1); font-size: var(--text-label); }
   .nav-item { padding: 0 2px; font-size: 13px; }
   .nav-label-full { display: none; }
@@ -2678,7 +2959,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
    content after it. */
 @media (any-pointer: coarse) {
   .goal-day-picker { display: block; }
-  .btn, .input, .nav-item, .segmented button, .icon-control, .range { min-height: 44px; }
+  .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control, .mode-more > summary, .range { min-height: 44px; }
   /* A short mode ("time") among five on a 320px phone is narrower than 44px: the row still fits. */
   .segmented button { min-width: var(--control); }
   .footer-link, .run-detail summary, .daily-challenge summary { position: relative; }
@@ -2696,9 +2977,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .trend-label { pointer-events: none; }
   /* A link inside a sentence still gets a full touch target; the negative margin keeps its line from growing. */
   .first-run-learn .quiet-link { min-height: var(--control); margin-block: calc((var(--control) - 1lh) / -2); }
-  /* The custom text panel rises into the space under the controls row (only its top padding and rule);
-     the row paints above it, so "learn to type" keeps its whole 44px. */
-  .practice-controls { position: relative; z-index: 1; }
+  /* Under 16px, iOS zooms the page in to type, and leaves it zoomed. The width stays shared with the pill. */
+  .segmented.compact .custom-length-input { padding: 0 var(--space-1); font-size: var(--text-field); }
 }
 
 @media (max-width: 760px) {

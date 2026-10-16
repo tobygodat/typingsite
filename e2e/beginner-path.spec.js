@@ -3,7 +3,7 @@
 import { LESSONS } from '../src/lessons.js';
 import { conditionKey } from '../src/typing.js';
 import { DEFAULT_WORD_LIST } from '../src/words.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail, storageKeys } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail, storageKeys, chooseMore } from './fixtures.js';
 
 const body = (page) => page.locator('body');
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -14,7 +14,7 @@ const shot = (page, testInfo, name, options = {}) => page.screenshot({
 });
 
 async function openLessons(page) {
-  await page.locator('#open-lessons').click();
+  await chooseMore(page, 'open-lessons');
   await expect(body(page)).toHaveAttribute('data-view', 'learn');
 }
 
@@ -107,6 +107,9 @@ test('learn to type opens from the mode area, the palette and first-run states',
   await expect(page.locator('#palette')).toBeHidden();
   await expect(page.locator('#lesson-primary')).toBeFocused();
   await openView(page, 'Practice');
+  // From the keyboard: Enter opens "more", then Enter on "learn to type".
+  await page.locator('#mode-more-label').focus();
+  await page.keyboard.press('Enter');
   await page.locator('#open-lessons').focus();
   await page.keyboard.press('Enter');
   await expect(body(page)).toHaveAttribute('data-view', 'learn');
@@ -234,13 +237,13 @@ test('Escape restarts a lesson, and an interrupted lesson is not counted', async
 test('a lesson closes the custom editor and restarts as a lesson, not as custom text', async ({ page }) => {
   const custom = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await typeInto(page, custom);
   await expect(body(page)).toHaveAttribute('data-view', 'results');
   await page.locator('#run-again').click();
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
 
   await openLessons(page);
@@ -785,6 +788,8 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
     await page.setViewportSize(viewport);
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
+    // The way in sits under "more"; the open menu still fits the phone.
+    await page.locator('#mode-more-label').click();
     await expect(page.locator('#open-lessons')).toBeVisible();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
     await openLessons(page);

@@ -1,5 +1,5 @@
 import { conditionKey, standardConditions } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, completePassage, passageText, typeInto, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, completePassage, passageText, typeInto, signInWithEmail, chooseMore } from './fixtures.js';
 
 // Committed docs images are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/standard-test/${name}` : testInfo.outputPath(name));
@@ -55,7 +55,7 @@ const settle = (page) => page.waitForFunction(() => document.getAnimations()
 
 test('standard mode shows its recipe, locks the settings that would change it, and draws fresh text', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
   await expect(page.locator('#standard-recipe')).toHaveText(`${RECIPE} · stop on error`);
@@ -75,11 +75,11 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   // The recipe always has numbers; the numbers switch shows that and stays locked.
   await expect(page.locator('#numbers-toggle')).toBeDisabled();
   await expect(page.locator('#numbers-toggle')).toBeChecked();
-  await expect(page.locator('#stop-on-error-toggle')).toBeDisabled();
-  await expect(page.locator('#stop-on-error-toggle')).toBeChecked();
+  await expect(page.locator('#correction-select')).toBeDisabled();
+  await expect(page.locator('#correction-select')).toHaveValue('mandatory');
   await expect(page.getByRole('combobox', { name: 'word list fixed for standard' })).toBeDisabled();
   await expect(page.getByRole('checkbox', { name: 'numbers fixed for standard' })).toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'stop on error fixed for standard' })).toBeChecked();
+  await expect(page.getByRole('combobox', { name: 'correction fixed for standard' })).toHaveValue('mandatory');
   await page.keyboard.press('Escape');
 
   // Correction is required: a miss blocks the next letter.
@@ -102,8 +102,8 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   await expect(page.locator('#word-list')).toHaveValue('200');
   await expect(page.locator('#numbers-toggle')).toBeEnabled();
   await expect(page.locator('#numbers-toggle')).not.toBeChecked();
-  await expect(page.locator('#stop-on-error-toggle')).toBeEnabled();
-  await expect(page.locator('#stop-on-error-toggle')).not.toBeChecked();
+  await expect(page.locator('#correction-select')).toBeEnabled();
+  await expect(page.locator('#correction-select')).toHaveValue('relaxed');
   await expect(page.locator('.preference-lock').first()).toBeHidden();
   // The recipe's word-list value leaves with it, so type-ahead can't pick it in another mode.
   await expect(page.locator('#word-list option[value="standard"]')).toHaveCount(0);
@@ -117,7 +117,7 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await page.clock.install();
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   // 300 correct characters over the full minute: 60 wpm.
   await typeInto(page, (await passageText(page)).slice(0, 300));
   await page.clock.fastForward(60_000);
@@ -136,7 +136,7 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await page.locator('#duration-options [data-length="60"]').click();
   await page.locator('#punctuation-toggle').check();
   await openSettings(page);
-  await page.locator('#stop-on-error-toggle').check();
+  await page.locator('#correction-select').selectOption('mandatory');
   await expect(page.locator('#best')).toHaveText('No best yet');
 
   await openView(page, 'Progress');
@@ -154,7 +154,7 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
 test('a fresh-text retest of a standard run draws a new standard passage and compares like with like', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   const baseline = await passageText(page);
   await typeInto(page, baseline.slice(0, 300));
   await page.clock.fastForward(60_000);
@@ -179,7 +179,7 @@ test('standard mode, its run card and its Progress headline fit a 320px screen',
   await page.clock.install();
   await openApp(page);
   expect(await screenOverflow(page)).toBeLessThanOrEqual(0);
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   await expect(page.locator('#standard-options')).toBeVisible();
   expect(await overflow(page)).toBeLessThanOrEqual(0);
   // The four mode buttons fit the column, so the passage keeps both 16px gutters.
@@ -415,8 +415,8 @@ test('the palette starts the standard test and leaves out the settings it locks'
 test('a custom passage over standard keeps its own condition and never reaches the standard score', async ({ page }) => {
   const text = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
-  await page.locator('#mode-standard').click();
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-standard');
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   await expect(page.locator('#standard-options')).toBeHidden();
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'false');
@@ -430,8 +430,8 @@ test('a custom passage over standard keeps its own condition and never reaches t
   await expect(page.locator('#standard-options')).toBeHidden();
   await expect(page.locator('#best')).toHaveText('Not counted');
   await openSettings(page);
-  await expect(page.locator('#stop-on-error-toggle')).toBeEnabled();
-  await expect(page.locator('#stop-on-error-toggle')).not.toBeChecked();
+  await expect(page.locator('#correction-select')).toBeEnabled();
+  await expect(page.locator('#correction-select')).toHaveValue('relaxed');
   await expect(page.locator('.preference-lock').first()).toBeHidden();
   await page.keyboard.press('Escape');
 
@@ -447,20 +447,20 @@ test('a custom passage over standard keeps its own condition and never reaches t
 
   // Standard again closes the custom passage and locks the recipe's settings.
   await openView(page, 'Practice');
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
   await expect(page.locator('#best')).toHaveText('No best yet');
   await openSettings(page);
-  await expect(page.locator('#stop-on-error-toggle')).toBeDisabled();
-  await expect(page.locator('#stop-on-error-toggle')).toBeChecked();
+  await expect(page.locator('#correction-select')).toBeDisabled();
+  await expect(page.locator('#correction-select')).toHaveValue('mandatory');
 });
 
 test('the daily challenge keeps its own conditions while standard is selected', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-09-30T12:00:00Z') });
   await openApp(page);
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   await openView(page, 'Challenge');
   await page.locator('#challenge-daily').click();
   await page.locator('#start-daily').click();
@@ -492,7 +492,7 @@ test('screenshots', async ({ page, supabase }, testInfo) => {
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await openView(page, 'Practice');
-    await page.locator('#mode-standard').click();
+    await chooseMore(page, 'mode-standard');
     await expect(page.locator('#standard-options')).toBeVisible();
     await page.mouse.move(0, 0);
     await page.screenshot({ path: shot(testInfo, `practice-${theme}.png`) });

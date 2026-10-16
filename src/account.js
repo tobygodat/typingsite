@@ -1,6 +1,7 @@
 // Accounts: Supabase Auth and one row of profile data per user, spoken to over fetch so the app
 // keeps no runtime dependencies. With no session the visitor is a guest and nothing is stored.
 // The publishable key is meant for browsers; row-level security limits every row to its owner.
+import { retainTraces } from './insights.js';
 import { retainCompositions } from './compose.js';
 import { mergePracticeDays, retainHistory, validPracticeDays, dayKey, dailyChallengeId, retainRuns, settleDailyFirsts, trendRun } from './insights.js';
 import { conditionKey } from './typing.js';
@@ -502,7 +503,7 @@ export const MAX_STORED_ATTEMPTS = 24;
 // after a save or merge. Items are never edited once stored, so an id names one record everywhere.
 // A new collection is added here and nowhere else.
 export const HISTORY = {
-  attempts: { at: 'at', keep: (items) => items.slice(-MAX_STORED_ATTEMPTS) },
+  attempts: { at: 'at', keep: (items) => retainTraces(items) },
   runs: { at: 'at', keep: retainRuns },
   loops: { at: 'at', keep: (items) => items },
   // Composing practice's numbers (src/compose.js): never runs, never text, the newest MAX_COMPOSITIONS.
