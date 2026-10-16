@@ -1,7 +1,7 @@
-// Tape mode: the passage on one line instead of three. Still run: the tape advances in
+// Tape mode: the passage on one line instead of three. The tape advances in
 // word-aligned steps with the ~150 ms line scroll, never letter by letter, and instantly under
 // reduced motion. Screenshots go to docs/screenshots/tape-mode only when SCREENSHOTS is set.
-import { test, expect, openApp, openSettings, passageText, typeInto, chooseWords, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openSettings, passageText, typeInto, chooseWords, chooseMore, signInWithEmail } from './fixtures.js';
 import { wordList } from '../src/words.js';
 import { TAPE_LEAD } from '../src/tape.js';
 
@@ -140,7 +140,7 @@ test('the tape steps by whole words near the right edge, never per letter', asyn
   }
   await expect(page.locator('#typing-wrap')).toHaveAttribute('data-tape-scrolled', 'true');
 
-  // Still run: a solid caret and instant letter states while typing.
+  // A solid caret and instant letter states while typing.
   await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
   await expect(page.locator('#typing-wrap')).toHaveAttribute('data-caret', 'typing');
   await expect(page.locator('#text-display .caret-bar')).toHaveCSS('animation-name', 'none');
@@ -188,6 +188,77 @@ test('trimming and remounting passed words moves nothing on the line', async ({ 
     previous = state;
   }
   expect(previous.typed).toBeGreaterThan(0);
+});
+
+test('word highlight tints the word under the caret, in view, after each step', async ({ page }) => {
+  await openApp(page);
+  await openSettings(page);
+  await page.locator('#word-highlight').selectOption('current');
+  await page.keyboard.press('Escape');
+  await setTape(page, true);
+  await chooseWords(page, 50);
+  const text = (await passageText(page)).slice(0, 140);
+  const states = await trace(page, text);
+  expect(states.some((state) => state.stepped)).toBe(true);
+  const highlight = await page.evaluate(() => {
+    const display = document.getElementById('text-display');
+    const area = document.getElementById('typing-wrap').getBoundingClientRect();
+    const tinted = [...display.querySelectorAll('.word')].filter((word) => getComputedStyle(word.firstElementChild).backgroundColor !== 'rgba(0, 0, 0, 0)');
+    const box = tinted[0]?.getBoundingClientRect();
+    return { count: tinted.length, holdsCaret: Boolean(tinted[0]?.querySelector('.char.current')), left: box && box.left - area.left, right: box && box.right - area.left, width: area.width };
+  });
+  expect(highlight.count).toBe(1);
+  expect(highlight.holdsCaret).toBe(true);
+  expect(highlight.left).toBeGreaterThanOrEqual(0);
+  expect(highlight.right).toBeLessThanOrEqual(highlight.width);
+});
+
+test('a code snippet runs on the tape as one line, caret in view', async ({ page }) => {
+  await openApp(page);
+  await setTape(page, true);
+  await chooseMore(page, 'mode-code');
+  await expect(page.locator('#condition-line')).toContainText('code');
+  expect(await wrapHeight(page)).toBe(Math.round(await lineHeight(page)));
+  // Up to the last letter, so the run is still going and the caret still shows.
+  const snippet = await passageText(page);
+  const text = snippet.slice(0, Math.min(120, snippet.length - 1));
+  const states = await trace(page, text);
+  expect(states.at(-1).typed).toBe(text.length);
+  for (const state of states) {
+    expect(state.caret).toBeGreaterThanOrEqual(0);
+    expect(state.caret).toBeLessThanOrEqual(state.width);
+  }
+  expect(await overflow(page)).toBe(0);
+});
+
+test('the pace caret rides the tape and keeps gliding through a step', async ({ page }) => {
+  await openApp(page);
+  await openSettings(page);
+  await page.locator('#pace-select').selectOption('custom');
+  await openSettings(page);
+  await page.locator('#pace-wpm').fill('40');
+  await page.locator('#pace-wpm').press('Tab');
+  await page.keyboard.press('Escape');
+  await setTape(page, true);
+  await chooseWords(page, 50);
+  const ghost = page.locator('#text-display .ghost-caret');
+  await expect(ghost).not.toHaveClass(/is-hidden/);
+  const text = await passageText(page);
+  const states = await trace(page, text.slice(0, 120));
+  expect(states.some((state) => state.stepped)).toBe(true);
+  // On screen, the pace caret sits at its place on the line less the tape's scroll: it moves with the line.
+  const ride = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
+    const display = document.getElementById('text-display');
+    const node = display.querySelector('.ghost-caret');
+    const scroll = Number(/translateX\((-?[\d.]+)px\)/.exec(display.style.transform)?.[1] || 0);
+    const along = Number(/translate3d\((-?[\d.]+)px/.exec(node.style.transform)?.[1]);
+    const screen = node.getBoundingClientRect().left - document.getElementById('typing-wrap').getBoundingClientRect().left;
+    resolve({ along, expected: along + scroll, screen });
+  })));
+  const first = await ride();
+  expect(Math.abs(first.screen - first.expected)).toBeLessThanOrEqual(1);
+  // Still gliding: the pace caret keeps moving along the line between keys.
+  await expect.poll(async () => (await ride()).along, { timeout: 3000 }).toBeGreaterThan(first.along);
 });
 
 test.describe('narrow phone with large text', () => {

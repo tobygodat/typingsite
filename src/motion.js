@@ -62,7 +62,6 @@ export function createTypingFx(wrap, display, options = {}) {
 
   let characters = [];
   let position = 0;
-  let line = 0;
   let frame = 0;
   let lastTime = 0;
   let needsMeasure = false;
@@ -142,10 +141,7 @@ export function createTypingFx(wrap, display, options = {}) {
       const spacer = display.querySelector('.passage-spacer');
       const spacerHeight = spacer?.offsetHeight || 0;
       const logicalTop = top - spacerHeight;
-      const nextLine = Math.floor((logicalTop + lineHeight * 0.25) / lineHeight);
-      if (nextLine !== line) {
-        line = nextLine;
-      }
+      const line = Math.floor((logicalTop + lineHeight * 0.25) / lineHeight);
       const scrollY = spacerHeight + Math.max(0, line - 1) * lineHeight;
       setScroll(scrollY ? `translateY(-${scrollY}px)` : '', snapNext);
     }
@@ -247,7 +243,6 @@ export function createTypingFx(wrap, display, options = {}) {
     reset(nextCharacters) {
       characters = nextCharacters;
       position = 0;
-      line = 0;
       tapeScroll = 0;
       tapeWord = null;
       measuredPosition = 0;
@@ -334,7 +329,6 @@ export function createTypingFx(wrap, display, options = {}) {
     relayout() {
       ghost.spot = null;
       if (!characters.length) return;
-      line = -1;
       snapNext = true;
       needsMeasure = true;
       schedule();
