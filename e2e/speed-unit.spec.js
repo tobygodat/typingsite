@@ -46,6 +46,27 @@ async function command(page, label) {
   await expect(page.locator('#palette')).toBeHidden();
 }
 
+// Every figure or unit word re-texted inside a live region from here on, and whether the region was
+// aria-busy as it changed (a busy region isn't read out).
+const watchLiveFigures = (page) => page.evaluate(() => {
+  const live = '[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"]';
+  const busy = new Set();
+  window.liveFigures = [];
+  new MutationObserver((records) => {
+    for (const record of records) {
+      if (record.type === 'attributes') {
+        if (record.target.getAttribute('aria-busy') === 'true' || record.oldValue === null) busy.add(record.target);
+        else busy.delete(record.target);
+        continue;
+      }
+      const node = record.target.nodeType === Node.ELEMENT_NODE ? record.target : record.target.parentElement;
+      const region = node.closest(live);
+      if (!region || !node.closest('[data-wpm], [data-speed-unit]')) continue;
+      window.liveFigures.push({ region: region.id, busy: [...busy].some((element) => element.contains(node)) });
+    }
+  }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-busy'], attributeOldValue: true });
+});
+
 // "+15 wpm" → [sign, 15]
 const parseSigned = (text) => {
   const match = text.match(/^([+−]?)(\d+(?:\.\d+)?) (wpm|cpm)$/);
@@ -75,6 +96,8 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('.run-card-unit')).toHaveText('cpm');
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
   await expect(page.locator('#best')).toHaveText(`Best · ${first * 5} cpm`);
+  // The figure's machine-readable value stays the wpm it was saved in.
+  await expect(page.locator('#best data')).toHaveAttribute('value', String(first));
   await expect(page.locator('#speed-definition')).toHaveText('cpm counts correct characters kept (wpm × 5)');
   await expect(page.locator('.legend-speed')).toHaveText('speed · cpm');
   // The run card's secondary stats read in the unit too: raw speed and each word's pace.
@@ -157,9 +180,15 @@ test('live speed and the ghost pacer read in the chosen unit', async ({ page }) 
   await command(page, 'ghost');
   await expect(page.locator('#egg-feedback')).toHaveText('Ghost pacer · 300 cpm');
   await expect(page.locator('#pace-label')).toHaveText('pace 300 cpm');
-  // A toast already showing is reworded with the unit, and so is the pace caret's label.
+  // A toast already showing is reworded with the unit, and so is the pace caret's label. The toast is a
+  // live region, held busy while it changes, so the new figure isn't read out on its own.
+  await watchLiveFigures(page);
   await command(page, 'speed unit · wpm');
   await expect(page.locator('#egg-feedback')).toHaveText('Ghost pacer · 60 wpm');
+  const changes = await page.evaluate(() => window.liveFigures);
+  expect(changes.map(({ region }) => region)).toContain('egg-toast');
+  expect(changes.filter(({ busy }) => !busy)).toEqual([]);
+  await expect(page.locator('#egg-toast')).not.toHaveAttribute('aria-busy', /./);
   await expect(page.locator('#pace-label')).toHaveText('pace 60 wpm');
   await command(page, 'speed unit · cpm');
   await command(page, 'ghost');
@@ -608,7 +637,7 @@ test('standard scores display cpm while profile bests remain stored in wpm', asy
   const conditions = standardConditions();
   const runs = [58, 63, 61, 66, 64].map((wpm, i) => ({ id: `unit-standard-${i}`, at: new Date(Date.now() - (5 - i) * 86400000).toISOString(),
     kind: 'test', status: 'complete', conditions, textId: `standard-v1-unit${i}`, fresh: true, interrupted: false,
-    score: { wpm, accuracy: 98 }, elapsedMs: 60000, errors: 1, patterns: [] }));
+    score: { wpm, accuracy: 98 }, elapsedMs: 60000, ...(i ? { errors: 1 } : {}), patterns: [] }));
   supabase.profiles.set(user.id, { data: { version: 2, preferences: { speedUnit: 'cpm' }, attempts: [], runs, loops: [], seenTextIds: [],
     bests: { [conditionKey(conditions)]: { wpm: 66, attemptId: runs[3].id, at: runs[3].at } }, updatedAt: new Date().toISOString() } });
   await openApp(page);
@@ -617,6 +646,10 @@ test('standard scores display cpm while profile bests remain stored in wpm', asy
   await expect(page.locator('#standard-best')).toHaveText('330');
   await expect(page.locator('#standard-median')).toHaveText('315');
   await expect(page.locator('#standard-best + span')).toHaveText('cpm');
+  // The oldest run has no error count: its row leaves the figure blank rather than print a placeholder.
+  const facts = await page.locator('#run-history dd').allTextContents();
+  expect(facts.length).toBeGreaterThan(0);
+  expect(facts.filter((fact) => /undefined|null|false/.test(fact))).toEqual([]);
   expect(supabase.profileFor(user.email).bests[conditionKey(conditions)].wpm).toBe(66);
 });
 
@@ -649,11 +682,15 @@ test('a lesson’s pass target on the practice screen follows the unit with its 
   await expect(page.locator('#pace-label')).toHaveText('pace 50 cpm');
 });
 
-// Another tab's unit arriving while a custom pace is being typed doesn't change what the typed number means.
-test('a custom pace typed in wpm is saved in wpm when cpm arrives from another tab before it is left', async ({ page, context, supabase }) => {
-  const user = supabase.addUser('pace-unit@stilltype.test');
+async function signedInPair(page, context, supabase, email, { finished = false } = {}) {
+  const user = supabase.addUser(email);
   await openApp(page);
   await signInWithEmail(page, user.email);
+  // Test settings from elsewhere wait while a passage is ready to type; after a run they're taken in at once.
+  if (finished) {
+    await chooseWords(page, 10);
+    await completePassage(page);
+  }
   const other = await context.newPage();
   await supabase.attach(other);
   await openApp(other);
@@ -661,15 +698,84 @@ test('a custom pace typed in wpm is saved in wpm when cpm arrives from another t
   await openSettings(page);
   await page.locator('#pace-select').selectOption('custom');
   await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceCaret, { timeout: 15000 }).toBe('custom');
+  await openSettings(other);
+  return { user, other };
+}
+
+// Another tab's unit arriving while a custom pace is being typed doesn't change what the typed number means.
+test('a custom pace typed in wpm is saved in wpm when cpm arrives from another tab before it is left', async ({ page, context, supabase }) => {
+  const { user, other } = await signedInPair(page, context, supabase, 'pace-unit@stilltype.test');
+  const range = page.locator('#pace-custom .pace-note');
   await page.locator('#pace-wpm').fill('100');
 
-  await openSettings(other);
   await other.locator('#speed-unit').selectOption('cpm');
   await expect(page.locator('#speed-unit')).toHaveValue('cpm');
   await expect(page.locator('#pace-wpm')).toHaveValue('100');
+  // Its range stays beside it in the unit it is being typed in.
+  await expect(range).toHaveText('10–300 wpm');
+  await expect(page.locator('#pace-wpm')).toHaveAttribute('max', '300');
 
   await page.locator('#pace-wpm').press('Tab');
   await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceWpm, { timeout: 15000 }).toBe(100);
   await expect(page.locator('#pace-wpm')).toHaveValue('500');
+  await expect(range).toHaveText('50–1500 cpm');
   await expect(page.locator('#pace-label')).toHaveText('pace 500 cpm');
+});
+
+test('a custom pace typed back to what it was and left reads in the unit that arrived meanwhile', async ({ page, context, supabase }) => {
+  const { other } = await signedInPair(page, context, supabase, 'pace-undo@stilltype.test');
+  const field = page.locator('#pace-wpm');
+  await field.fill('100');
+  await other.locator('#speed-unit').selectOption('cpm');
+  await expect(page.locator('#speed-unit')).toHaveValue('cpm');
+  await expect(field).toHaveValue('100');
+  await field.fill('80');
+  await field.press('Tab');
+  await expect(field).toHaveValue('400');
+  await expect(page.locator('#pace-custom .pace-note')).toHaveText('50–1500 cpm');
+  await expect(page.locator('#pace-label')).toHaveText('pace 400 cpm');
+});
+
+// Chrome leaves a field it hides, which saves an edit in it: another tab's pick of a different pace hides
+// it mid-edit, and the typed pace is saved as custom in the unit it was typed in.
+test('a custom pace hidden by another tab mid-edit is saved in the unit it was typed in', async ({ page, context, supabase }) => {
+  const { user, other } = await signedInPair(page, context, supabase, 'pace-hidden@stilltype.test', { finished: true });
+  const field = page.locator('#pace-wpm');
+  await field.fill('100');
+  await other.locator('#pace-select').selectOption('best');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceWpm, { timeout: 15000 }).toBe(100);
+  await expect(page.locator('#pace-custom')).toBeVisible();
+  await other.locator('#speed-unit').selectOption('cpm');
+  await expect(page.locator('#speed-unit')).toHaveValue('cpm');
+  await expect(field).toHaveValue('500');
+  await expect(page.locator('#pace-custom .pace-note')).toHaveText('50–1500 cpm');
+  await field.fill('600');
+  await field.press('Tab');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceWpm, { timeout: 15000 }).toBe(120);
+  await expect(page.locator('#pace-label')).toHaveText('pace 600 cpm');
+});
+
+// Speeds placed in attributes and SVG can't re-text in place; whatever draws them must redraw them.
+test('a unit change leaves no old unit in the word list, the speed graph or the Progress trend', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await typeRun(page, 11);
+  await openView(page, 'Progress');
+  await expect(page.locator('#progress-trend .trend-dot').first()).toBeAttached();
+  // Each surface's text and its aria-label and title attributes that name the unit.
+  const naming = (unit) => page.evaluate((unit) => Object.fromEntries(['#result-words', '#speed-graph', '#progress-trend'].map((selector) => {
+    const found = [];
+    const root = document.querySelector(selector);
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    for (let node = root; node; node = walker.nextNode()) {
+      const texts = node.nodeType === Node.TEXT_NODE ? [node.data] : ['aria-label', 'title'].map((name) => node.getAttribute(name) || '');
+      found.push(...texts.filter((text) => new RegExp(`\\b${unit}\\b`, 'i').test(text)));
+    }
+    return [selector, found];
+  })), unit);
+  for (const found of Object.values(await naming('wpm'))) expect(found.length).toBeGreaterThan(0);
+  await command(page, 'speed unit · cpm');
+  await expect(page.locator('#progress-trend figcaption').first()).toHaveText('Corrected CPM');
+  expect(await naming('wpm')).toEqual({ '#result-words': [], '#speed-graph': [], '#progress-trend': [] });
+  for (const found of Object.values(await naming('cpm'))) expect(found.length).toBeGreaterThan(0);
 });

@@ -82,12 +82,12 @@ export function describeSeries({ points }, averageWpm, unit) {
 export function renderSpeedGraph(container, attempt, { animate = true } = {}) {
   const width = Math.round(container.clientWidth);
   const height = Math.round(container.clientHeight);
-  container.replaceChildren();
-  if (!width || !height) return;
-
   const series = speedSeries(attempt);
   const averageWpm = attempt?.summary?.score?.wpm ?? 0;
+  // Described even while hidden and undrawn, so the label always reads in the unit on screen.
   container.setAttribute('aria-label', describeSeries(series, averageWpm));
+  container.replaceChildren();
+  if (!width || !height) return;
   const svg = el('svg', { viewBox: `0 0 ${width} ${height}`, width, height, 'aria-hidden': 'true' });
   if (animate) svg.classList.add('is-drawing');
   container.append(svg);

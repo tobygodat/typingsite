@@ -90,8 +90,6 @@ const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'rand
 
 const PACE_MIN_WPM = 10;
 const PACE_MAX_WPM = 300;
-// The unit a custom pace being typed was started in, until it is saved or left.
-let paceEdit = null;
 let storageAvailable = true;
 // No session means guest mode: default settings, and nothing leaves this tab.
 let session = account.loadSession();
@@ -534,9 +532,10 @@ function signed(value, unit) {
 }
 
 // Copy that holds a speed is a list of parts, each speed a figure that re-texts with the unit (src/units.js).
-// Empty strings are left out, so an element with nothing to say stays :empty.
+// Empty strings, missing values and false are left out: an element with nothing to say stays :empty, a run
+// without an error count shows none rather than "undefined", and a part written `when && part` can drop out.
 function setParts(node, parts) {
-  node.replaceChildren(...[parts].flat(Infinity).filter((part) => part !== ''));
+  node.replaceChildren(...[parts].flat(Infinity).filter((part) => part !== '' && part !== null && part !== undefined && part !== false));
 }
 const plain = (parts) => [parts].flat(Infinity).map((part) => (part instanceof Node ? part.textContent : part)).join('');
 
@@ -696,12 +695,15 @@ function applyPreferences() {
 }
 
 // Display only: every speed and unit word on screen re-texts in place (src/units.js), so nothing restarts
-// and open rows, focus and live regions stay as they are. What can't be re-texted is redrawn here: the raw
-// speed's tooltip, the words' spoken paces and the two charts (the pace field follows in showPace).
+// and open rows and focus stay as they are. Only text re-texts: a speed placed in an attribute or drawn in
+// SVG has to be redrawn here, as the run card's definitions, the words' spoken paces and the two charts are
+// (the pace field follows in showPace).
 function applySpeedUnit() {
   $('speed-unit').value = prefs.speedUnit;
-  if (!showSpeedUnit(prefs.speedUnit)) return;
+  const changed = showSpeedUnit(prefs.speedUnit);
+  $('speed-definition').textContent = unitText(SPEED_DEFINITION);
   $('result-raw-row').title = unitText(RAW_SPEED_DEFINITION);
+  if (!changed) return;
   labelWords();
   if (shownResult && rateShown(shownResult)) renderSpeedGraph($('speed-graph'), shownResult, { animate: false });
   if ($('progress-trend').childElementCount) redrawTrend();
@@ -1896,15 +1898,21 @@ function showPace() {
   $('pace-label').hidden = !shown;
   setParts($('pace-label'), shown ? ['pace ', speedFigure(pace.wpm)] : '');
   $('pace-select').value = prefs.paceCaret;
-  // A speed being typed in stays as typed, in the unit it was typed in, when this redraws (another tab's
-  // save taken in, say): setting the field would drop the edit without a change event. Leaving the field
-  // saves it (paceEdit) and redraws.
-  if (!paceEdit) {
-    $('pace-wpm').value = speedValue(prefs.paceWpm);
-    $('pace-wpm').min = speedValue(PACE_MIN_WPM);
-    $('pace-wpm').max = speedValue(PACE_MAX_WPM);
-    $('pace-wpm').step = speedValue(1);
+  // The custom pace field holds its speed in its own unit (data-unit), with its range beside it in that unit.
+  // A speed being typed in (focused, and not what was last written here) stays as typed, in the unit it was
+  // typed in, when this redraws (another tab's save taken in, say): setting the field would drop the edit
+  // without a change event. Saving or leaving the field redraws it.
+  const field = $('pace-wpm');
+  if (document.activeElement !== field || field.value === field.defaultValue) {
+    const unit = prefs.speedUnit;
+    field.dataset.unit = unit;
+    field.defaultValue = speedValue(prefs.paceWpm, unit);
+    field.value = field.defaultValue;
+    field.min = speedValue(PACE_MIN_WPM, unit);
+    field.max = speedValue(PACE_MAX_WPM, unit);
+    field.step = speedValue(1, unit);
   }
+  $('pace-range').textContent = `${formatSpeed(PACE_MIN_WPM, { bare: true }, field.dataset.unit)}–${formatSpeed(PACE_MAX_WPM, {}, field.dataset.unit)}`;
   $('pace-custom').hidden = prefs.paceCaret !== 'custom';
   setParts($('pace-note'), on && prefs.paceCaret !== 'custom' ? [pace.fallback ? 'no runs yet — ' : '', speedFigure(pace.wpm)] : '');
   document.body.dataset.ghost = on ? 'on' : 'off';
@@ -4890,14 +4898,15 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
-  $('pace-wpm').addEventListener('input', () => { paceEdit ||= prefs.speedUnit; });
   $('pace-wpm').addEventListener('change', (event) => {
-    prefs.paceWpm = clampPace(wpmFromSpeed(event.target.value, paceEdit || prefs.speedUnit));
-    paceEdit = null;
+    const field = event.target;
+    prefs.paceWpm = clampPace(wpmFromSpeed(field.value, field.dataset.unit));
+    // Saved, so no longer an edit: showPace writes it back as kept, in the unit on screen.
+    field.defaultValue = field.value;
     setPaceCaret('custom', { speed: true });
   });
-  // Left unedited, it shows any speed that arrived while it had focus (see showPace).
-  $('pace-wpm').addEventListener('blur', () => { paceEdit = null; showPace(); });
+  // Left unsaved, it shows any speed or unit that arrived while it was being typed in (see showPace).
+  $('pace-wpm').addEventListener('blur', showPace);
   $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
   $('exit-focus').addEventListener('click', () => {
     prefs.focusMode = false;

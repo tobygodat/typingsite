@@ -48,12 +48,15 @@ export function unitText(template, unit = shown) {
 export function showSpeed(node, wpm) {
   if (wpm === null || wpm === undefined) delete node.dataset.wpm;
   else node.dataset.wpm = wpm;
+  if (node.localName === 'data') node.value = wpm ?? '';
   const text = wpm === null || wpm === undefined ? '—' : formatSpeed(wpm, { bare: 'bare' in node.dataset, signed: 'signed' in node.dataset });
   if (node.textContent !== text) node.textContent = text;
   return node;
 }
 
-// A <data> element, not a span, so the rules that style the spans of a row never reach a figure inside one.
+// A <data> element: a value for machines (its wpm, in value) shown as text for people (the speed in the
+// unit on screen), which is what <data> is for. Not being a span also keeps the rules that style the spans
+// of a row off a figure inside one.
 export function speedFigure(wpm, { bare = false, signed = false } = {}) {
   const node = document.createElement('data');
   if (bare) node.dataset.bare = '';
@@ -69,12 +72,32 @@ export function unitLabel(template = '') {
   return node;
 }
 
+// A live region whose figures re-text is held busy (aria-busy) while they change, so a screen reader doesn't
+// read each new figure out on its own. Chrome sends accessibility changes in batches, so the hold outlasts one.
+const LIVE_REGION = '[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"]';
+const LIVE_HOLD_MS = 1000;
+const held = new Set();
+let release = 0;
+
 // Re-texts every speed and unit word on screen in this unit. Returns whether the unit changed.
 export function showSpeedUnit(unit) {
   const next = normalizeSpeedUnit(unit);
   if (next === shown) return false;
   shown = next;
-  document.querySelectorAll('[data-wpm]').forEach((node) => showSpeed(node, Number(node.dataset.wpm)));
-  document.querySelectorAll('[data-speed-unit]').forEach((node) => { node.textContent = unitText(node.dataset.speedUnit || '{unit}'); });
+  const figures = [...document.querySelectorAll('[data-wpm]')];
+  const words = [...document.querySelectorAll('[data-speed-unit]')];
+  for (const node of [...figures, ...words]) {
+    const region = node.closest(LIVE_REGION);
+    if (!region || held.has(region)) continue;
+    region.setAttribute('aria-busy', 'true');
+    held.add(region);
+  }
+  figures.forEach((node) => showSpeed(node, Number(node.dataset.wpm)));
+  words.forEach((node) => { node.textContent = unitText(node.dataset.speedUnit || '{unit}'); });
+  clearTimeout(release);
+  release = setTimeout(() => {
+    held.forEach((region) => region.removeAttribute('aria-busy'));
+    held.clear();
+  }, LIVE_HOLD_MS);
   return true;
 }

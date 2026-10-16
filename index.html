@@ -178,8 +178,8 @@
               </select>
             </label>
             <label id="pace-custom" class="preference-row" for="pace-wpm" hidden>
-              <span><strong>custom pace</strong><small class="pace-note"><span data-wpm="10" data-bare>10</span>–<span data-wpm="300">300 wpm</span></small></span>
-              <input class="input pace-wpm num" id="pace-wpm" type="number" min="10" max="300" step="1" value="80" inputmode="numeric">
+              <span><strong>custom pace</strong><small id="pace-range" class="pace-note">10–300 wpm</small></span>
+              <input class="input pace-wpm num" id="pace-wpm" type="number" min="10" max="300" step="1" value="80" inputmode="numeric" data-unit="wpm">
             </label>
             <label class="preference-row" for="focus-toggle">
               <span><strong>focus mode</strong></span>
@@ -504,11 +504,11 @@
               <div><dt>time</dt><dd id="result-time" class="num">—</dd></div>
             </dl>
             <dl class="run-card-facts run-card-more">
-              <div id="result-raw-row" title="Every character typed, mistakes included: characters ÷ 5 per minute"><dt data-speed-unit="raw {unit}">raw wpm</dt><dd id="result-raw" class="num" data-bare>—</dd></div>
+              <div id="result-raw-row"><dt data-speed-unit="raw {unit}">raw wpm</dt><dd id="result-raw" class="num" data-bare>—</dd></div>
               <div title="100 minus the variation of your per-second raw speed; needs 3 seconds"><dt>consistency</dt><dd><strong id="result-consistency" class="num">—</strong><b>%</b></dd></div>
               <div title="The finished text: correct / still wrong / extra / missed characters. Slips you fixed count as first-try errors"><dt>final c/i/e/m</dt><dd id="result-chars" class="num">—</dd></div>
             </dl>
-            <p class="metric-note"><span id="speed-definition" data-speed-unit="{unit} counts correct characters kept{cpm: (wpm × 5)}">wpm counts correct characters kept</span> · accuracy counts every character typed, corrected ones included</p>
+            <p class="metric-note"><span id="speed-definition"></span> · accuracy counts every character typed, corrected ones included</p>
             <p class="metric-note">raw counts every character typed, mistakes included · consistency is 100 minus the variation of per-second speed · final c/i/e/m: correct, still wrong, extra past the end, missed; fixed slips are first-try errors</p>
             <p class="condition-copy" id="result-conditions">english · common words · corpus v3 · metric v1</p>
             <p class="word-detail practice-evidence" id="practice-words-evidence" hidden></p>
