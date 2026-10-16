@@ -244,6 +244,44 @@ test('the custom pace is entered in cpm, kept in wpm, and the caret runs at the 
   await expect(page.locator('#pace-label')).toHaveText('pace 67 wpm');
 });
 
+test('a minimum speed is picked and named in cpm, kept in wpm, and the stop reason follows the unit', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await command(page, 'speed unit · cpm');
+  await openSettings(page);
+  // The options keep their wpm values and read in cpm.
+  await expect(page.locator('#min-wpm option')).toHaveText(['any cpm', '100 cpm', '150 cpm', '200 cpm', '300 cpm', '400 cpm', '500 cpm']);
+  await page.locator('#min-wpm').selectOption({ label: '300 cpm' });
+  await expect(page.locator('#min-wpm')).toHaveValue('60');
+  await expect(page.locator('#minimum-note')).toHaveText('min 300 cpm');
+  await page.locator('details.preferences > summary').click();
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('minimum speed · 300 cpm');
+  await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).toHaveText('current');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#palette')).toBeHidden();
+
+  // 22 keys by five seconds is about 53 wpm (265 cpm): under the minimum once the grace is over.
+  const text = await passageText(page);
+  await page.clock.pauseAt(Date.now() + 1000);
+  await page.locator('#typing-input').focus();
+  for (const char of text.slice(0, 22)) {
+    await page.keyboard.type(char);
+    await page.clock.runFor(200);
+  }
+  await page.clock.runFor(1000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await page.clock.resume();
+  await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: speed fell below 300 cpm, so it isn’t counted.');
+  await expect(page.locator('#result-conditions')).toContainText('min 300 cpm');
+
+  // Switching back rewords what is on screen without touching the saved minimum.
+  await command(page, 'speed unit · wpm');
+  await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: speed fell below 60 wpm, so it isn’t counted.');
+  await expect(page.locator('#result-conditions')).toContainText('min 60 wpm');
+  await expect(page.locator('#min-wpm option:checked')).toHaveText('60 wpm');
+});
+
 test('a retest comparison and the drills and retests list read in cpm', async ({ page }) => {
   await openApp(page);
   await freshTextCheck(page);

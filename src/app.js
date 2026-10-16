@@ -4728,6 +4728,7 @@ function importSettings(event) {
   prefs = validPreferences({ ...prefs, ...result.preferences });
   if (keys.includes('mode')) customOpen = false;
   applyPreferences();
+  if (keys.includes('speedUnit')) renderSpeeds();
   setModeControls();
   // The correction rule and the older stop-on-error flag are one choice, saved together as setCorrection does.
   saveChoice(...keys, ...(keys.includes('correction') ? ['stopOnError'] : []));
