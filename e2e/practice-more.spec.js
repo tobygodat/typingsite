@@ -67,3 +67,20 @@ for (const width of [390, 320]) {
     }
   });
 }
+
+const PANELS = [['quote', '#quote-options'], ['standard', '#standard-options'], ['custom', '#custom-options']];
+
+for (const width of [1280, 390]) {
+  test(`at ${width}px each mode's options sit below the practice controls, not on them`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await openApp(page);
+    for (const [mode, panel] of PANELS) {
+      if (mode !== 'quote') await page.locator('#mode-more-label').click();
+      await page.locator(`#mode-${mode}`).click();
+      await expect(page.locator(panel)).toBeVisible();
+      const controls = await page.locator('.practice-controls').boundingBox();
+      const options = await page.locator(panel).boundingBox();
+      expect(options.y, `${mode} options clear the controls`).toBeGreaterThanOrEqual(controls.y + controls.height);
+    }
+  });
+}
