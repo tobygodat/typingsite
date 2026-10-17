@@ -63,7 +63,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, practiceRun, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodStats, practiceRun, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { renderTrend } from './progress-view.js';
 import { RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
@@ -3089,6 +3089,7 @@ function renderHistory() {
     ? 'Drills, daily and custom runs count toward your daily practice. Recorded lessons and composing active time count too. Finish a practice run to chart speed and accuracy. Daily results are in Challenge.'
     : 'Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.';
   $('progress-content').hidden = !hasProgress;
+  $('progress-history').hidden = !hasProgress;
   const hasHistory = hasAnyHistory();
   $('clear-history').hidden = !hasHistory;
   $('clear-history').disabled = !hasHistory;
@@ -3103,9 +3104,10 @@ function renderHistory() {
   setParts($('progress-week'), week.wpm === null
     ? `This week: ${week.current.length} matching runs. A week-to-week change needs runs in both this week and the preceding week.`
     : ['Weekly median: ', speedFigure(week.wpm, { signed: true }), ` · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs this week / ${week.previous.length} last week. This describes your runs, not a proven learning effect.`]);
+  renderPeriodStats(matching);
   renderTrend($('progress-trend'), matching, openHistoryRun);
   $('progress-trend-note').textContent = matching.length
-    ? `${matching.length} completed practice runs and retests on fresh text, oldest to newest. Select a point or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs appear only in All saved runs.' : ''}${repeatCopy}`
+    ? `${matching.length} completed practice runs and retests on fresh text, one point per day at that day’s median. Select a point for the day’s latest run, or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs count in the figures above but have no day to chart.' : ''}${repeatCopy}`
     : runRows.length
       ? `No fresh-text practice runs at these conditions in this period, so there is no chart.${repeatCopy}`
       : 'No completed practice runs at these conditions in this period. Try a longer period or different conditions.';
@@ -3165,6 +3167,27 @@ function renderHistory() {
   });
   $('history-list').replaceChildren(...rows);
   renderComposeHistory();
+}
+
+// The figures above the charts describe exactly the runs the filters select: medians, the fastest run, a count.
+function renderPeriodStats(runs) {
+  const stats = periodStats(runs);
+  const list = $('progress-stats');
+  list.hidden = !stats.count;
+  if (!stats.count) return list.replaceChildren();
+  const period = $('progress-period').selectedOptions[0].textContent.toLowerCase();
+  const stat = (label, value, className = '') => {
+    const group = element('div', '', className);
+    group.append(element('dt', label), element('dd', value, 'num'));
+    return group;
+  };
+  const speed = (wpm) => [speedFigure(wpm, { bare: true }), unitLabel()];
+  list.replaceChildren(
+    stat(`median, ${period}`, speed(stats.wpm), 'progress-stat-lead'),
+    stat(stats.best.at ? `best, ${new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'best', speed(stats.best.score.wpm)),
+    stat('median accuracy', `${Number(stats.accuracy.toFixed(1))}%`),
+    stat('runs', String(stats.count)),
+  );
 }
 
 function hasAnyHistory() {

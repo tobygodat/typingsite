@@ -675,6 +675,23 @@
           <button id="clear-history" class="btn btn-ghost btn-sm danger-text" type="button" disabled>Clear history</button>
         </header>
 
+        <div id="progress-content" hidden>
+          <div class="progress-filters">
+            <label class="filter-field" for="progress-conditions">Test conditions
+              <select id="progress-conditions" class="input"></select>
+            </label>
+            <label class="filter-field" for="progress-period">Period
+              <select id="progress-period" class="input">
+                <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="all">All saved runs</option>
+              </select>
+            </label>
+          </div>
+          <dl id="progress-stats" class="progress-stats"></dl>
+          <p id="progress-week" class="result-note"></p>
+          <div id="progress-trend" class="progress-trend"></div>
+          <p id="progress-trend-note" class="result-note"></p>
+        </div>
+
         <section id="practice-goal" class="practice-goal" aria-label="Daily practice" hidden>
           <p id="goal-line" class="goal-line"></p>
           <div id="goal-calendar" class="goal-calendar" role="group"></div>
@@ -702,20 +719,7 @@
           <p class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button> a few keys at a time first.</p>
         </div>
 
-        <div id="progress-content" hidden>
-          <div class="progress-filters">
-            <label class="filter-field" for="progress-conditions">Test conditions
-              <select id="progress-conditions" class="input"></select>
-            </label>
-            <label class="filter-field" for="progress-period">Period
-              <select id="progress-period" class="input">
-                <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="all">All saved runs</option>
-              </select>
-            </label>
-          </div>
-          <p id="progress-week" class="result-note"></p>
-          <div id="progress-trend" class="progress-trend"></div>
-          <p id="progress-trend-note" class="result-note"></p>
+        <div id="progress-history" hidden>
           <section class="progress-section" aria-labelledby="keys-heading">
             <h2 id="keys-heading">Keys</h2>
             <p id="key-note" class="result-note"></p>

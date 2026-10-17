@@ -214,10 +214,10 @@ test('Progress shows the standard best and the median of recent runs with its co
   await expect(page.locator('#standard-median-label')).toHaveText('median of last 5 runs');
   await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs kept. Interrupted runs don’t count. Your touch best is 41 wpm.');
   await expect(page.locator('#standard-score-conditions')).toContainText('physical keyboard');
-  // With history, the standard score still heads the page, above the filters.
+  // With history, the filtered figures and charts head the page and the standard score follows them.
   await expect(page.locator('#progress-empty')).toBeHidden();
-  const standard = await page.locator('#standard-score').boundingBox();
-  expect(standard.y + standard.height).toBeLessThanOrEqual((await page.locator('.progress-filters').boundingBox()).y);
+  const trend = await page.locator('#progress-trend').boundingBox();
+  expect(trend.y + trend.height).toBeLessThanOrEqual((await page.locator('#standard-score').boundingBox()).y);
 
   await page.locator('#take-standard').click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');

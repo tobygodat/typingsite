@@ -2183,8 +2183,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .history-detail dl, .run-detail dl { display: flex; flex-wrap: wrap; gap: var(--space-6); }
 .history-detail dt, .run-detail dt { font: var(--text-mono)/1.5 var(--font-mono); color: var(--muted); }
 .history-detail dd, .run-detail dd { margin: var(--space-2) 0 0; font-size: var(--text-lead); }
-/* Standard score: the one fixed recipe's best and recent median. It heads Progress on every profile,
-   above the empty state or the filtered history. */
+/* Standard score: the one fixed recipe's best and recent median. It follows the filtered figures and
+   charts when there is history, and heads the page above the empty state when there is none. */
 .standard-score {
   margin-bottom: var(--space-8);
   padding-bottom: var(--space-8);
@@ -2228,9 +2228,22 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .filter-field { min-width: 0; display: grid; gap: var(--space-2); font-size: var(--text-small); }
 .progress-filters .filter-field:first-child { flex: 1; }
 .filter-field select { width: 100%; max-width: 100%; text-overflow: ellipsis; }
-.progress-trend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-6); }
+/* Progress opens on the filtered runs: filters, the period's figures and the by-day charts, ruled off
+   from the daily goal and standard score below. */
+#progress-content { margin-bottom: var(--space-8); padding-bottom: var(--space-8); border-bottom: 1px solid var(--hairline); }
+/* The period's figures: each number over its label, the median speed leading at display size. */
+.progress-stats { margin: var(--space-8) 0 var(--space-4); display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4) var(--space-10); }
+.progress-stats > div { display: flex; flex-direction: column-reverse; gap: var(--space-2); }
+.progress-stats dt { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
+.progress-stats dd { margin: 0; display: flex; align-items: baseline; gap: 6px; font-family: var(--font-serif); font-size: var(--text-title); font-weight: 300; line-height: 1; }
+.progress-stats dd span { color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
+.progress-stats .progress-stat-lead dd { font-size: var(--text-display); letter-spacing: -0.035em; }
+.progress-trend { display: grid; gap: 0; }
 .trend-figure { margin: var(--space-6) 0; min-width: 0; }
-.trend-figure figcaption { font-size: var(--text-lead); }
+.trend-figure figcaption { margin-bottom: var(--space-3); display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); font-size: var(--text-lead); }
+.trend-caption-note { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
+.trend-area { fill: var(--accent-soft); stroke: none; }
+.trend-best { fill: var(--text); pointer-events: none; }
 .trend-figure svg { width: 100%; height: auto; overflow: visible; }
 .trend-rule { stroke: var(--hairline-strong); }
 .trend-label { fill: var(--muted); font: var(--text-mono) var(--font-mono); }
@@ -2241,6 +2254,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .trend-hit { fill: transparent; stroke: none; }
 .trend-dot:hover, .trend-dot:focus { fill: var(--accent); stroke: var(--text); }
 .progress-section, .training-memory, .daily-challenge { padding: var(--space-8) 0; border-top: 1px solid var(--hairline); }
+/* The standard score's rule and space already divide it from the first history section. */
+#progress-history > .progress-section:first-child { padding-top: 0; border-top: 0; }
 .progress-section h2, .training-memory h2, .daily-challenge h2, .local-challenge-heading { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
 
 /* Keys: static heatmap, coral steps only, no motion. Rows stagger by half a key, then a whole key. */
@@ -3033,7 +3048,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (max-width: 760px) {
-  .progress-trend { grid-template-columns: 1fr; }
   .progress-filters { flex-direction: column; }
   .training-target { grid-template-columns: 1fr; }
   .training-target button { justify-self: start; }
