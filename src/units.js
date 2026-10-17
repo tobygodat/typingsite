@@ -27,10 +27,17 @@ export function wpmFromSpeed(value, unit = shown) {
   return Number(value) / speedValue(1, unit);
 }
 
+// A difference to at most one decimal, signed: "+0.3", "−2", "0". Rounded before the sign is chosen,
+// so a float remainder like 0.30000000000000004 reads 0.3 and a tiny one reads 0, unsigned.
+export function signedNumber(value) {
+  const rounded = Number(Number(value).toFixed(1));
+  return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded)}`;
+}
+
 // "72 wpm"; bare, "72" beside its own unit label; signed, "+3 wpm" or "−3 wpm".
 export function formatSpeed(wpm, { bare = false, signed = false } = {}, unit = shown) {
-  const value = Number(speedValue(wpm, unit).toFixed(1));
-  const number = `${signed && value > 0 ? '+' : signed && value < 0 ? '−' : ''}${signed ? Math.abs(value) : value}`;
+  const value = speedValue(wpm, unit);
+  const number = signed ? signedNumber(value) : `${Number(value.toFixed(1))}`;
   return bare ? number : `${number} ${normalizeSpeedUnit(unit)}`;
 }
 

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CHARS_PER_WORD, CORPUS_VERSION, METRIC_VERSION, conditionKey, metrics } from '../src/typing.js';
-import { DEFAULT_SPEED_UNIT, RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, normalizeSpeedUnit, speedValue, unitText, wpmFromSpeed } from '../src/units.js';
+import { DEFAULT_SPEED_UNIT, RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, normalizeSpeedUnit, signedNumber, speedValue, unitText, wpmFromSpeed } from '../src/units.js';
 import { describeSeries } from '../src/graph.js';
 import { resultParts, resultText } from '../src/ghost-race.js';
 import { raceResultParts } from '../src/race-result.js';
@@ -110,4 +110,14 @@ test('a ghost race result reads back from the sentence resultText writes, whatev
   }
   assert.equal(resultParts('Older result text', cpm), null);
   assert.equal(resultParts('Ada’s run: a tie · you 072 wpm, Ada 72 wpm.', cpm), null);
+});
+
+test('signed differences round to one decimal and drop a trailing zero', () => {
+  // Two accuracy medians a float apart: the weekly line once read "+0.30000000000000004 pp accuracy".
+  assert.equal(signedNumber(96.4 - 96.1), '+0.3');
+  assert.equal(signedNumber(-2), '−2');
+  assert.equal(signedNumber(1.04), '+1');
+  assert.equal(signedNumber(0), '0');
+  assert.equal(signedNumber(-0.04), '0', 'a difference that rounds to nothing carries no sign');
+  assert.equal(formatSpeed(0.1 + 0.2, { signed: true }, 'wpm'), '+0.3 wpm');
 });
