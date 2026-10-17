@@ -38,7 +38,7 @@ test('Progress filters comparable runs, opens chart points, and explains a saved
   await page.locator('#progress-conditions').selectOption(key);
   await expect(page.locator('#run-history .run-row')).toHaveCount(1);
   await expect(page.locator('#history-list')).toBeHidden();
-  await expect(page.locator('#progress-week')).toContainText('both this week and the preceding week');
+  await expect(page.locator('#progress-week')).toContainText('last week 0');
 });
 
 test('daily passage ignores practice settings, labels repeats, and saves scores separately across reload', async ({ page, supabase }) => {

@@ -52,10 +52,14 @@ export function renderTrend(container, runs, onSelect) {
     const figure = document.createElement('figure');
     figure.className = 'trend-figure';
     const caption = document.createElement('figcaption');
-    const note = document.createElement('span');
-    note.className = 'trend-caption-note';
-    note.textContent = metric === 'wpm' ? `daily median, corrected ${unitLabel}` : 'daily median, input accuracy';
-    caption.append(title, ' ', note);
+    caption.append(title);
+    // The speed axis is bare numbers, so its unit stays visible; accuracy's axis carries its own %.
+    if (metric === 'wpm') {
+      const note = document.createElement('span');
+      note.className = 'trend-caption-note';
+      note.textContent = unitLabel;
+      caption.append(' ', note);
+    }
     figure.append(caption);
     container.append(figure);
     const width = Math.max(280, figure.clientWidth || 640);

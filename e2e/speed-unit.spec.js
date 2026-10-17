@@ -108,7 +108,7 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await shot(page, testInfo, 'results-dark');
 
   await openView(page, 'Progress');
-  await expect(page.locator('#progress-trend figcaption').first()).toHaveText('Speed by day daily median, corrected CPM');
+  await expect(page.locator('#progress-trend figcaption').first()).toHaveText('Speed by day CPM');
   await expect(page.locator('#run-history .run-summary strong').first()).toHaveText(new RegExp(`^${second} cpm · \\d+%$`));
   // Both runs fall on one day: one point, their median, in cpm.
   await expect(page.locator('#progress-trend .trend-dot.trend-wpm').last()).toHaveAttribute('aria-label', new RegExp(`: median ${(first * 5 + second) / 2} CPM over 2 runs, the best day\\. View the latest run\\.$`));
@@ -116,7 +116,7 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
 
   // Back to wpm from the palette; nothing was re-keyed, so the same best and runs come back.
   await command(page, 'speed unit · wpm');
-  await expect(page.locator('#progress-trend figcaption').first()).toHaveText('Speed by day daily median, corrected WPM');
+  await expect(page.locator('#progress-trend figcaption').first()).toHaveText('Speed by day WPM');
   await expect(page.locator('#run-history .run-summary strong').first()).toHaveText(new RegExp(`^${second / 5} wpm · \\d+%$`));
   await expect(page.locator('#best')).toHaveText(`Best · ${Math.max(first, second / 5)} wpm`);
   await openView(page, 'Train');
@@ -844,7 +844,7 @@ test('a unit change leaves no old unit in the word list, the speed graph or the 
   })), unit);
   for (const found of Object.values(await naming('wpm'))) expect(found.length).toBeGreaterThan(0);
   await command(page, 'speed unit · cpm');
-  await expect(page.locator('#progress-trend figcaption').first()).toContainText('corrected CPM');
+  await expect(page.locator('#progress-trend figcaption').first()).toContainText('CPM');
   expect(await naming('wpm')).toEqual({ '#result-words': [], '#speed-graph': [], '#progress-trend': [] });
   for (const found of Object.values(await naming('cpm'))) expect(found.length).toBeGreaterThan(0);
 });

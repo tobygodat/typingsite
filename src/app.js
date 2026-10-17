@@ -2876,10 +2876,12 @@ function renderStandardScore() {
   const kept = MAX_RUN_SUMMARIES.toLocaleString('en-US');
   const keptBest = standardScore(profile.runs, conditionKey(source)).best;
   const olderBest = score.total && score.best > keptBest ? ` Your best comes from a run older than the newest ${kept} runs that Progress keeps.` : '';
-  let note = `${plural(score.total, 'completed standard run')} kept.${olderBest} Interrupted runs don’t count.`;
+  let note = `${plural(score.total, 'completed standard run')} kept.${olderBest}`;
   if (!score.total && score.best !== null) note = `Your best is kept, but your standard runs are older than the newest ${kept} runs that Progress keeps, so the median waits for ${STANDARD_MIN_RUNS} new ones.`;
-  else if (!score.total) note = 'No standard runs yet. Every one is fresh text from the same fixed recipe, so the scores stay comparable.';
-  else if (!score.settled) note = `${plural(score.total, 'standard run')} kept.${olderBest} The median appears after ${STANDARD_MIN_RUNS}, so a single fast or slow run can’t set your score.`;
+  else if (!score.total) note = 'No standard runs yet.';
+  else if (!score.settled) note = `${plural(score.total, 'standard run')} kept.${olderBest} The median appears after ${STANDARD_MIN_RUNS}.`;
+  // With nothing scored yet, the recipe is what Take the standard test sets up, so it isn't repeated here.
+  $('standard-score-conditions').hidden = !score.total && score.best === null;
   setParts($('standard-score-note'), [note, other.best === null ? '' : [` Your ${onTouch ? 'physical keyboard' : 'touch'} best is `, speedFigure(other.best), '.']]);
 }
 
@@ -2909,8 +2911,7 @@ function renderKeys(runs) {
   const analysis = keyAnalysis(runs);
   const pct = (v) => `${(v * 100).toFixed(1)}%`;
   const older = analysis.pairDerivedRuns;
-  $('key-note').textContent = `First-try misses per key from ${analysis.runs} saved ${analysis.runs === 1 ? 'run' : 'runs'} at these conditions. Keys with fewer than ${MIN_PATTERN_SAMPLES} samples stay neutral.${older
-    ? ` ${older} older ${older === 1 ? 'run counts' : 'runs count'} only letters typed after another letter, not the first letter of a word.` : ''}`;
+  $('key-note').textContent = `First-try misses per key · ${plural(analysis.runs, 'run')}${older ? ` · ${older} older ${older === 1 ? 'run skips' : 'runs skip'} first letters` : ''}`;
   heatDetails = {};
   const grid = $('key-heatmap');
   const hadFocus = grid.contains(document.activeElement);
@@ -2988,7 +2989,7 @@ function selectHeatKey(letter, { focus = false } = {}) {
   }
   heatKey = letter ? target.dataset.letter : null;
   $('key-select').value = heatKey || '';
-  $('key-detail').textContent = heatKey ? heatDetails[heatKey] : 'Select a key to see its miss rate and sample count.';
+  $('key-detail').textContent = heatKey ? heatDetails[heatKey] : '';
   if (focus && !picture) target.focus();
 }
 
@@ -3086,8 +3087,8 @@ function renderHistory() {
   const goalOnly = !hasProgress && !$('practice-goal').hidden;
   $('progress-empty-title').textContent = goalOnly ? 'No speed trend yet.' : 'No practice runs yet.';
   $('progress-empty-copy').textContent = goalOnly
-    ? 'Drills, daily and custom runs count toward your daily practice. Recorded lessons and composing active time count too. Finish a practice run to chart speed and accuracy. Daily results are in Challenge.'
-    : 'Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.';
+    ? 'Drills, daily and custom runs count toward your daily practice. Finish a practice run to chart speed and accuracy.'
+    : 'Finish a practice run to begin your history.';
   $('progress-content').hidden = !hasProgress;
   $('progress-history').hidden = !hasProgress;
   const hasHistory = hasAnyHistory();
@@ -3099,25 +3100,24 @@ function renderHistory() {
   const matching = source ? filterRuns(eligible, key, period) : [];
   const runRows = source ? filterRuns(listed, key, period) : [];
   const repeats = runRows.length - matching.length;
-  const repeatCopy = repeats ? ` ${repeats} repeated-text ${repeats === 1 ? 'run is' : 'runs are'} listed below but left out of the chart and weekly medians.` : '';
+  const repeatCopy = repeats ? `${repeats} repeated-text ${repeats === 1 ? 'run' : 'runs'} not charted.` : '';
   const week = weeklyChange(eligible, key);
   setParts($('progress-week'), week.wpm === null
-    ? `This week: ${week.current.length} matching runs. A week-to-week change needs runs in both this week and the preceding week.`
-    : ['Weekly median: ', speedFigure(week.wpm, { signed: true }), ` · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs this week / ${week.previous.length} last week. This describes your runs, not a proven learning effect.`]);
+    ? `This week ${plural(week.current.length, 'run')} · last week ${week.previous.length}`
+    : ['This week ', speedFigure(week.wpm, { signed: true }), ` · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs vs ${week.previous.length}`]);
   renderPeriodStats(matching);
   renderTrend($('progress-trend'), matching, openHistoryRun);
+  // Only what the charts can't show: an empty period, or runs listed below that aren't drawn.
   $('progress-trend-note').textContent = matching.length
-    ? `${matching.length} completed practice runs and retests on fresh text, one point per day at that day’s median. Select a point for the day’s latest run, or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs count in the figures above but have no day to chart.' : ''}${repeatCopy}`
-    : runRows.length
-      ? `No fresh-text practice runs at these conditions in this period, so there is no chart.${repeatCopy}`
-      : 'No completed practice runs at these conditions in this period. Try a longer period or different conditions.';
+    ? [matching.some((r) => !r.at) ? 'Undated runs not charted.' : '', repeatCopy].filter(Boolean).join(' ')
+    : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
   renderKeys(source ? filterRuns(profile.runs, key, period) : []);
   $('run-history').replaceChildren(...[...runRows].reverse().map((run) => {
     const row = element('details', '', 'run-row');
     row.dataset.runId = run.id;
     const summary = element('summary', '', 'run-summary');
     summary.append(element('strong', [speedFigure(run.score.wpm), ` · ${run.score.accuracy}%`], 'num'),
-      element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : run.conditions?.mode === 'standard' ? 'standard' : 'practice'}${run.fresh === false ? ' · repeated text' : ''} · view details`));
+      element('span', `${dateCopy(run.at)}${run.kind === 'retest' ? ' · retest' : run.conditions?.mode === 'standard' ? ' · standard' : ''}${run.fresh === false ? ' · repeated text' : ''}`));
     const detail = element('div', '', 'run-detail');
     detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
       element('p', describeRun(run)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
@@ -3175,7 +3175,6 @@ function renderPeriodStats(runs) {
   const list = $('progress-stats');
   list.hidden = !stats.count;
   if (!stats.count) return list.replaceChildren();
-  const period = $('progress-period').selectedOptions[0].textContent.toLowerCase();
   const stat = (label, value, className = '') => {
     const group = element('div', '', className);
     group.append(element('dt', label), element('dd', value, 'num'));
@@ -3183,8 +3182,8 @@ function renderPeriodStats(runs) {
   };
   const speed = (wpm) => [speedFigure(wpm, { bare: true }), unitLabel()];
   list.replaceChildren(
-    stat(`median, ${period}`, speed(stats.wpm), 'progress-stat-lead'),
-    stat(stats.best.at ? `best, ${new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'best', speed(stats.best.score.wpm)),
+    stat('median', speed(stats.wpm), 'progress-stat-lead'),
+    stat(stats.best.at ? `best · ${new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'best', speed(stats.best.score.wpm)),
     stat('median accuracy', `${Number(stats.accuracy.toFixed(1))}%`),
     stat('runs', String(stats.count)),
   );
@@ -3201,9 +3200,8 @@ function renderComposeHistory() {
   $('compose-history').hidden = !list.length;
   if (!list.length) return;
   const shown = [...list].reverse().slice(0, 10);
-  setParts($('compose-history-note'), [unitLabel('Free-typing {unit} is characters in your text{wpm: ÷ 5} per minute of active typing, a pause over 2\u00a0s counting as your average gap. '),
-    `Kept apart from copy-test charts and never a best. ${list.length} ${list.length === 1 ? 'session' : 'sessions'} saved`
-    + `${list.length > shown.length ? `; the newest ${shown.length} are shown` : ''}. Only these numbers are kept, never your words.`]);
+  $('compose-history-note').textContent = `${list.length} ${list.length === 1 ? 'session' : 'sessions'} saved`
+    + `${list.length > shown.length ? ` · newest ${shown.length} shown` : ''} · never a best`;
   $('compose-history-list').replaceChildren(...shown.map((item) => {
     const row = element('article', '', 'compose-row');
     const main = element('div', '', 'compose-row-main');

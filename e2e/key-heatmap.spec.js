@@ -62,8 +62,8 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   // Every "q" starts a word ("quick"): only the run with per-letter counts sees them.
   await expect(key('q')).toHaveAttribute('title', 'q: 0.0% miss · 12 samples');
   await expect(key('q')).toHaveAttribute('data-heat', '0');
-  await expect(page.locator('#key-note')).toContainText('2 saved runs');
-  await expect(page.locator('#key-note')).toContainText('1 older run counts only letters typed after another letter');
+  await expect(page.locator('#key-note')).toContainText('2 runs');
+  await expect(page.locator('#key-note')).toContainText('1 older run skips first letters');
 
   const rows = page.locator('#pairs-table tbody tr');
   await expect(page.locator('#pairs-table')).toBeVisible();
@@ -93,7 +93,7 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
 
   // The heatmap is one tab stop; arrow keys move between keys and the line below shows the numbers.
   const detail = page.locator('#key-detail');
-  await expect(detail).toHaveText('Select a key to see its miss rate and sample count.');
+  await expect(detail).toHaveText('');
   await expect(heatmap.locator('[tabindex="0"]')).toHaveCount(1);
   await page.locator('#keys-heading').evaluate((heading) => { heading.tabIndex = -1; heading.focus(); });
   await page.keyboard.press('Tab');
@@ -149,7 +149,7 @@ test('a custom text run never reaches the key heatmap or pairs', async ({ page, 
   await expect(page.locator('#result-delta')).toContainText('not counted toward your best');
 
   await openView(page, 'Progress');
-  await expect(page.locator('#key-note')).toContainText('2 saved runs');
+  await expect(page.locator('#key-note')).toContainText('2 runs');
   await expect(key('o')).toHaveAttribute('title', 'o: 42.9% miss · 84 samples');
   expect(await page.locator('#pairs-table tbody').innerText()).toBe(pairsBefore);
 });

@@ -2306,7 +2306,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .missed-word:first-child { border-top: 1px solid var(--hairline); }
 .missed-word-text { min-width: 0; font-size: var(--text-lead); overflow-wrap: anywhere; }
 .missed-word .num { color: var(--muted); font-size: var(--text-small); }
-.run-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3); }
+.run-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--control); }
 .run-summary strong { font-size: var(--text-lead); font-weight: 400; }
 .run-summary span { color: var(--muted); }
 .run-detail { padding-top: var(--space-4); }
