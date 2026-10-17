@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, completePassage,
+import { test, expect, openApp, openView, openProgressView, openSettings, chooseWords, passageText, typeInto, completePassage,
   freshTextCheck, signInWithEmail, chooseMore } from './fixtures.js';
 
 const MIN = 44;
@@ -291,10 +291,14 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await openView(page, 'Progress');
       await expect(page.locator('#progress-trend .trend-dot').first()).toBeVisible();
       small.push(...await sweep(page, 'progress'));
+      // Every view's own controls, one panel at a time.
+      for (const view of ['Accuracy', 'Consistency', 'Practice', 'Keys', 'Speed']) {
+        await openProgressView(page, view);
+        small.push(...await sweep(page, `progress, ${view.toLowerCase()} view`));
+      }
       await page.locator('#run-history .run-summary').first().click();
       small.push(...await sweep(page, 'progress, run open'));
-      const key = await page.locator('#progress-conditions option').evaluateAll((options) => options.find((o) => o.textContent.includes('10 words')).value);
-      await page.locator('#progress-conditions').selectOption(key);
+      await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '10 words' }).click();
       await page.locator('.history-summary').first().click();
       small.push(...await sweep(page, 'progress, comparison open'));
 
@@ -348,8 +352,13 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await openApp(page);
       await signInWithEmail(page, user.email);
       await openView(page, 'Progress');
-      await expect(page.locator('#progress-trend .trend-dot')).toHaveCount(28);
-      await expect(page.locator('#progress-trend svg.trend-dense')).toHaveCount(2);
+      await openProgressView(page, 'Accuracy');
+      await expect(page.locator('#accuracy-trend .trend-dot')).toHaveCount(14);
+      await expect(page.locator('#accuracy-trend svg.trend-dense')).toHaveCount(1);
+      expect(await sweep(page, 'progress, dense accuracy chart')).toEqual([]);
+      await openProgressView(page, 'Speed');
+      await expect(page.locator('#progress-trend .trend-dot')).toHaveCount(14);
+      await expect(page.locator('#progress-trend svg.trend-dense')).toHaveCount(1);
       expect(await sweep(page, 'progress, dense chart')).toEqual([]);
 
       // The exempt points: each owns its centre, is at least 44px tall and fills the gap it has.
@@ -357,7 +366,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
         * svg.getBoundingClientRect().width / svg.viewBox.baseVal.width);
       expect(step).toBeLessThan(MIN);
       const points = await page.evaluate(measure, { root: '#progress-trend', exempt: [] });
-      expect(points).toHaveLength(28);
+      expect(points).toHaveLength(14);
       for (const { control, hit } of points) {
         expect(hit[0], `${control} width`).toBeGreaterThanOrEqual(Math.floor(step) - 1);
         expect(hit[1], `${control} height`).toBeGreaterThanOrEqual(MIN);

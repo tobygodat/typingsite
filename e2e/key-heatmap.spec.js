@@ -1,7 +1,7 @@
 // Progress › Keys: per-key miss-rate heatmap and the "Pairs to watch" table from saved pattern memory.
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, openProgressView, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
 
 const conditions = { mode: 'words', count: 25, duration: null, punctuation: false, quoteLength: null,
   difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
@@ -39,6 +39,7 @@ async function openKeys(page, supabase) {
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
+  await openProgressView(page, 'Keys');
 }
 
 test('Progress shows a per-key miss heatmap and ranked pairs with sample counts', async ({ page, supabase }, testInfo) => {

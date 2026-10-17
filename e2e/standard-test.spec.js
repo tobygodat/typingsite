@@ -146,7 +146,7 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await expect(page.locator('#standard-median-label')).toHaveText('median');
   await expect(page.locator('#standard-score-note')).toHaveText('1 standard run kept. The median appears after 3.');
   await expect(page.locator('#standard-score-conditions')).toHaveText(`${RECIPE} · physical keyboard · stop on error · corpus v5 · metric v1`);
-  expect((await page.locator('#progress-conditions option').allTextContents()).filter((label) => label.startsWith('standard v1'))).toHaveLength(1);
+  await expect(page.getByRole('group', { name: 'Test' }).getByRole('button', { name: 'standard', exact: true })).toHaveCount(1);
   await expect(page.locator('#run-history .run-row').first()).toContainText('standard');
   await page.screenshot({ path: shot(testInfo, 'progress-first-run-dark.png') });
 });

@@ -75,6 +75,13 @@ export async function openView(page, label) {
   await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: label }).click();
 }
 
+// One of Progress's views (Speed, Accuracy, Consistency, Practice, Keys), chosen from its tabs.
+export async function openProgressView(page, name) {
+  const tab = page.getByRole('tablist', { name: 'View' }).getByRole('tab', { name, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
 export async function openSettings(page) {
   const settings = page.locator('details.preferences');
   if ((await settings.getAttribute('open')) === null) await settings.locator(':scope > summary').click();

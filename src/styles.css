@@ -3058,6 +3058,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (max-width: 360px) {
+  /* Eighteen weeks fill the 288px column, so the weekday names give way. */
+  .goal-weekdays { display: none; }
+  .goal-chart { grid-template-columns: auto; grid-template-areas: "months" "calendar"; }
   /* The mode buttons tighten so each wrapped row fits the 288px column. */
   .segmented button { padding: 0 var(--space-1); font-size: var(--text-label); }
   .nav-item { padding: 0 2px; font-size: 13px; }

@@ -86,7 +86,7 @@ function chartFigure(container, title, { note = '', subline = '', legend = false
   container.append(figure);
   return figure;
 }
-const figureWidth = (figure, fallback = 640) => Math.max(260, figure.clientWidth || fallback);
+const figureWidth = (figure, fallback = 640) => Math.max(280, figure.clientWidth || fallback);
 
 const METRICS = {
   wpm: { title: 'Speed by day', value: (wpm) => speedValue(wpm), run: (run) => speedValue(run.score.wpm), shown: shownSpeed, suffix: '', minStep: () => speedValue(5), ceiling: Infinity },

@@ -63,7 +63,8 @@ test('the layout relabels the keyboard and joins the test conditions; bests stay
 
   // Progress names the layout only where it isn't QWERTY.
   await openView(page, 'Progress');
-  await expect(page.locator('#progress-conditions option')).toHaveText(['english 200 · 10 words · plain · physical keyboard · dvorak · continue on error · corpus v5 · metric v1']);
+  await expect(page.locator('#progress-conditions')).toHaveText('english 200 · 10 words · plain · physical keyboard · dvorak · continue on error · corpus v5 · metric v1');
+  await expect(page.locator('#progress-variants')).toBeHidden();
 });
 
 test('the finger map names each key’s finger, bands alternate fingers, splits the hands and follows the layout', async ({ page }) => {

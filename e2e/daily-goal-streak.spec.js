@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { dayKey, goalMinutes } from '../src/insights.js';
-import { test, expect, openApp, chooseWords, completePassage, openView, openSettings, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
+import { test, expect, openApp, chooseWords, completePassage, openView, openProgressView, openSettings, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
 
 test('daily goal line and practice calendar render on Progress', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -11,6 +11,7 @@ test('daily goal line and practice calendar render on Progress', async ({ page }
   await chooseWords(page, 10);
   await completePassage(page);
   await openView(page, 'Progress');
+  await openProgressView(page, 'Practice');
   await expect(page.locator('#practice-goal')).toBeVisible();
   await expect(page.locator('#goal-line')).toHaveText(/^Today (<1|\d+) \/ 5 min · \d+-day streak$/);
   const days = page.locator('#goal-calendar .goal-day');
@@ -102,6 +103,7 @@ test('Progress screenshots with ten weeks of seeded history', async ({ page, sup
   await page.locator('#daily-goal').selectOption('10');
   await page.keyboard.press('Escape');
   await openView(page, 'Progress');
+  await openProgressView(page, 'Practice');
   await expect(page.locator('#goal-line')).toHaveText(/^Today \d+ \/ 10 min · 5-day streak$/);
 
   // Goal-met days carry a mark beyond colour: the attribute, the label's words and an accent-ink centre dot.
@@ -157,6 +159,7 @@ test('the calendar and its longest caption fit a 320px screen', async ({ page, s
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 320, height: 640 });
   await openView(page, 'Progress');
+  await openProgressView(page, 'Practice');
   const days = page.locator('#goal-calendar .goal-day');
   const longest = await days.evaluateAll((cells) => cells.reduce((best, cell, i) => (cell.dataset.caption.length > cells[best].dataset.caption.length ? i : best), 0));
   await days.nth(longest).focus();
@@ -331,6 +334,7 @@ test.describe('calendar on a touch device', () => {
     await chooseWords(page, 10);
     await completePassage(page);
     await openView(page, 'Progress');
+    await openProgressView(page, 'Practice');
     const picker = page.getByLabel('Practice day', { exact: true });
     await expect(picker).toBeVisible();
     expect((await picker.boundingBox()).height).toBeGreaterThanOrEqual(44);

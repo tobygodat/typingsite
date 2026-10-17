@@ -20,7 +20,7 @@ test('Progress filters comparable runs, opens chart points, and explains a saved
   await freshTextCheck(page);
   await openView(page, 'Progress');
   await expect(page.locator('#run-history .run-row')).toHaveCount(2);
-  await expect(page.locator('#progress-trend svg')).toHaveCount(2);
+  await expect(page.locator('#progress-trend svg')).toHaveCount(1);
   const point = page.locator('#progress-trend .trend-dot').first();
   await point.focus();
   await page.keyboard.press('Enter');
@@ -34,11 +34,13 @@ test('Progress filters comparable runs, opens chart points, and explains a saved
   await chooseWords(page, 25);
   await completePassage(page);
   await openView(page, 'Progress');
-  const key = await page.locator('#progress-conditions option').evaluateAll((options) => options.find((o) => o.textContent.includes('25 words')).value);
-  await page.locator('#progress-conditions').selectOption(key);
+  await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '25 words' }).click();
+  await expect(page.locator('#progress-conditions')).toContainText('25 words');
   await expect(page.locator('#run-history .run-row')).toHaveCount(1);
   await expect(page.locator('#history-list')).toBeHidden();
-  await expect(page.locator('#progress-week')).toContainText('last week 0');
+  const lastWeek = page.locator('#progress-stats .progress-figure').nth(1);
+  await expect(lastWeek).toContainText('Last week');
+  await expect(lastWeek).toContainText('no runs');
 });
 
 test('daily passage ignores practice settings, labels repeats, and saves scores separately across reload', async ({ page, supabase }) => {
