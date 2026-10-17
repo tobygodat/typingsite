@@ -2205,54 +2205,110 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 /* The standard score's rule already divides it from the empty state, so the empty state drops its own. */
 .standard-score + .empty-state { padding-top: 0; border-top: 0; }
 
-.progress-filters { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+/* Pills: the period, the test length, its condition sets and the views. Literata on a hairline,
+   the chosen one on the accent tint; a 44px target everywhere. */
+.pill-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.pill {
+  min-height: var(--control);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-serif);
+  font-size: var(--text-small);
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums lining-nums;
+  transition: background-color var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out);
+}
+.pill:hover:not(:disabled) { border-color: var(--outline); }
+.pill:is([aria-pressed="true"], [aria-selected="true"]) { background: var(--accent-soft); border-color: var(--accent); }
+.pill:disabled { opacity: var(--disabled-opacity); cursor: default; }
+.pill-rule { width: 1px; height: var(--space-6); margin: 0 var(--space-2); background: var(--hairline-strong); }
+.view-pill { font-size: var(--text-body); }
+.variant-pill { font-size: var(--text-label); }
+.progress-heading { align-items: center; }
+#progress-tests { margin-bottom: var(--space-3); }
+.variant-row { margin-bottom: var(--space-3); }
+.progress-conditions { margin: 0; }
+/* Overview and practice figures: no boxes. A label, the numeral in Literata with its unit, a line under it. */
+.progress-stats { margin: var(--space-8) 0 var(--space-4); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-6) var(--space-6); }
+.progress-figure { min-width: 0; display: grid; align-content: start; gap: var(--space-1); }
+.progress-figure dt { color: var(--muted); font-size: var(--text-small); }
+.progress-figure dd { margin: 0; }
+.figure-value { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--text-display); font-weight: 300; line-height: 1.1; letter-spacing: -0.02em; white-space: nowrap; }
+.figure-value [data-speed-unit], .figure-unit { color: var(--muted); font-size: var(--text-body); letter-spacing: 0; }
+.figure-note { color: var(--muted); font-size: var(--text-small); }
+/* Progress opens on the filtered runs: the filters and the period's figures, then the views, ruled off
+   from the standard score below. */
+#progress-content { padding-bottom: var(--space-4); }
+.progress-views { margin-bottom: var(--space-8); padding: var(--space-8) 0; border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); }
+#progress-content[hidden] + .progress-views { border-top: 0; padding-top: 0; }
+.view-tabs { margin-bottom: var(--space-6); }
+.view-heading { margin: 0 0 var(--space-3); font-size: var(--text-lead); font-weight: 400; }
+.view-panel:focus-visible { outline-offset: var(--space-2); }
 /* Daily goal: static calendar, accent at four steps (--practice-level-1…3, then --accent); empty days sit on the hairline. */
-.practice-goal { display: grid; gap: var(--space-3); margin-bottom: var(--space-8); }
+.practice-goal { display: grid; gap: var(--space-8); }
+.practice-layout { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-8); align-items: start; }
+.practice-calendar { min-width: 0; display: grid; gap: var(--space-3); justify-items: start; }
+.practice-stats { margin: 0; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
 .goal-line { margin: 0; font-family: var(--font-serif); font-size: var(--text-body); font-variant-numeric: tabular-nums; }
 .goal-label { margin-right: var(--space-1); color: var(--muted); font: 500 var(--text-fine)/1 var(--font-mono); }
+.goal-chart { display: grid; grid-template-columns: auto auto; grid-template-areas: ". months" "weekdays calendar"; gap: var(--space-1) var(--space-2); max-width: 100%; overflow-x: auto; }
+.goal-months { grid-area: months; display: grid; grid-auto-flow: column; grid-auto-columns: var(--space-3); gap: var(--space-1); color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); white-space: nowrap; }
+.goal-weekdays { grid-area: weekdays; display: grid; grid-template-rows: repeat(7, var(--space-3)); gap: var(--space-1); color: var(--muted); font: var(--text-fine)/var(--space-3) var(--font-mono); }
 .goal-calendar {
+  grid-area: calendar;
   display: grid; grid-template-rows: repeat(7, var(--space-3)); grid-auto-flow: column; grid-auto-columns: var(--space-3);
   gap: var(--space-1); justify-content: start;
 }
+.goal-legend { margin: 0; display: flex; align-items: center; gap: var(--space-1); color: var(--muted); font-size: var(--text-label); }
+.goal-legend span { width: var(--space-3); height: var(--space-3); border-radius: var(--radius-cell); background: var(--hairline); }
+.goal-legend span:first-child { margin-left: var(--space-1); }
+.goal-legend span:last-child { margin-right: var(--space-1); }
 .goal-day-picker { display: none; }
 .goal-day-picker .input { width: 100%; min-width: 0; max-width: 100%; }
 .goal-day { display: grid; place-items: center; border-radius: var(--radius-cell); background: var(--hairline); }
-.goal-day[data-level="1"] { background: var(--practice-level-1); }
-.goal-day[data-level="2"] { background: var(--practice-level-2); }
-.goal-day[data-level="3"] { background: var(--practice-level-3); }
-.goal-day[data-level="4"] { background: var(--accent); }
+:is(.goal-day, .goal-legend span)[data-level="1"] { background: var(--practice-level-1); }
+:is(.goal-day, .goal-legend span)[data-level="2"] { background: var(--practice-level-2); }
+:is(.goal-day, .goal-legend span)[data-level="3"] { background: var(--practice-level-3); }
+:is(.goal-day, .goal-legend span)[data-level="4"] { background: var(--accent); }
 /* Goal met: a centre dot in accent-ink (≥3:1 on both green steps in both themes), so it never rests on colour alone. */
 .goal-day[data-goal="met"]::after { content: ""; width: var(--space-1); height: var(--space-1); border-radius: var(--radius-full); background: var(--accent-ink); }
 /* The focused or hovered day, in words. One line is reserved so the page below never shifts. */
 .goal-caption { min-height: 1lh; margin: 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums; }
 .filter-field { min-width: 0; display: grid; gap: var(--space-2); font-size: var(--text-small); }
-.progress-filters .filter-field:first-child { flex: 1; }
 .filter-field select { width: 100%; max-width: 100%; text-overflow: ellipsis; }
-/* Progress opens on the filtered runs: filters, the period's figures and the by-day charts, ruled off
-   from the daily goal and standard score below. */
-#progress-content { margin-bottom: var(--space-8); padding-bottom: var(--space-8); border-bottom: 1px solid var(--hairline); }
-/* The period's figures: each number over its label, the median speed leading at display size. */
-.progress-stats { margin: var(--space-8) 0 var(--space-4); display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4) var(--space-10); }
-.progress-stats > div { display: flex; flex-direction: column-reverse; gap: var(--space-2); }
-.progress-stats dt { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.progress-stats dd { margin: 0; display: flex; align-items: baseline; gap: 6px; font-family: var(--font-serif); font-size: var(--text-title); font-weight: 300; line-height: 1; }
-.progress-stats dd span { color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
-.progress-stats .progress-stat-lead dd { font-size: var(--text-display); letter-spacing: -0.035em; }
 .progress-trend { display: grid; gap: 0; }
-.trend-figure { margin: var(--space-6) 0; min-width: 0; }
+.progress-spread { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); }
+.trend-figure { margin: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: var(--space-4); }
+.trend-figure > svg, .trend-subline { grid-column: 1 / -1; }
 .trend-figure figcaption { margin-bottom: var(--space-3); display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); font-size: var(--text-lead); }
+.trend-subline { margin: calc(var(--space-3) * -1) 0 var(--space-3); color: var(--muted); font-size: var(--text-small); }
 .trend-caption-note { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.trend-area { fill: var(--accent-soft); stroke: none; }
-.trend-best { fill: var(--text); pointer-events: none; }
+.trend-legend { margin: 0; display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--text-label); white-space: nowrap; }
+.legend-line { width: var(--space-4); height: 2px; background: var(--accent); }
+.legend-dot { width: var(--space-1); height: var(--space-1); margin-left: var(--space-3); border-radius: var(--radius-full); background: var(--outline); }
 .trend-figure svg { width: 100%; height: auto; overflow: visible; }
 .trend-rule { stroke: var(--hairline-strong); }
 .trend-label { fill: var(--muted); font: var(--text-mono) var(--font-mono); }
-.trend-line { fill: none; stroke-width: 2; }
-.trend-wpm { stroke: var(--accent); }
-.trend-accuracy { stroke: var(--text); }
-.trend-dot { fill: var(--ground); stroke-width: 2; cursor: pointer; }
+.trend-callout { fill: var(--text); font: var(--text-label) var(--font-serif); pointer-events: none; }
+.trend-runs circle, .scatter-runs circle { fill: var(--outline); }
+.trend-runs circle { opacity: 0.6; }
+.trend-line { fill: none; stroke-width: 2; stroke: var(--accent); stroke-linejoin: round; }
+/* The days' points show where they are named (the latest and the best) and when hovered or focused. */
+.trend-dot { fill: var(--ground); stroke: var(--accent); stroke-width: 2; cursor: pointer; }
+.trend-dot circle { opacity: 0; transition: opacity var(--dur-quick) var(--ease-out); }
+.trend-dot:is(.trend-last-dot, .trend-best-dot, :hover, :focus) circle { opacity: 1; }
 .trend-hit { fill: transparent; stroke: none; }
 .trend-dot:hover, .trend-dot:focus { fill: var(--accent); stroke: var(--text); }
+.spread-band { fill: var(--accent-soft); }
+.spread-bar { fill: var(--outline); opacity: 0.6; }
+.spread-median { stroke: var(--accent); stroke-width: 2; }
+.strip-bar { fill: var(--outline); opacity: 0.6; }
+.progress-danger { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
+.progress-danger:has(> [hidden]) { display: none; }
 .progress-section, .training-memory, .daily-challenge { padding: var(--space-8) 0; border-top: 1px solid var(--hairline); }
 /* The standard score's rule and space already divide it from the first history section. */
 #progress-history > .progress-section:first-child { padding-top: 0; border-top: 0; }
@@ -3048,7 +3104,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (max-width: 760px) {
-  .progress-filters { flex-direction: column; }
+  .progress-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .practice-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .practice-layout, .progress-spread { grid-template-columns: minmax(0, 1fr); }
+  .progress-spread { gap: var(--space-8); }
+  .trend-figure { grid-template-columns: minmax(0, 1fr); }
+  .trend-legend { margin-bottom: var(--space-3); }
+  .figure-value { font-size: var(--text-title); }
   .training-target { grid-template-columns: 1fr; }
   .training-target button { justify-self: start; }
   .daily-heading { flex-direction: column; }
@@ -3066,4 +3128,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .run-card-facts dd { font-size: var(--text-lead); }
   .run-card-more { grid-template-columns: repeat(2, 1fr); }
   .run-card-more div:last-child { grid-column: 1 / -1; }
+}
+
+@media (max-width: 1000px) and (min-width: 761px) {
+  .progress-stats:not(.practice-stats) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

@@ -63,8 +63,8 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodStats, practiceRun, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
-import { renderTrend } from './progress-view.js';
+import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
 import { RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
@@ -744,7 +744,7 @@ function applySpeedUnit() {
   if (!changed) return;
   labelWords();
   if (shownResult && rateShown(shownResult)) renderSpeedGraph($('speed-graph'), shownResult, { animate: false });
-  if ($('progress-trend').childElementCount) redrawTrend();
+  if (!$('progress-views').hidden) drawProgressView();
 }
 
 // Minimums decide which practice runs count, and custom text never counts, so a custom run has none and
@@ -3057,8 +3057,10 @@ function renderGoal(date = new Date()) {
   $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last 18 weeks: ${practised} days with practice. Arrow keys move between days.`);
   captionGoalDay(null);
   $('goal-calendar').replaceChildren(...cells);
+  $('goal-months').replaceChildren(...monthLabels(cells.map((cell) => cell.dataset.day)).map((month) => element('span', month)));
   if (hadFocus && !coarse) cells.at(-1).focus();
   if (document.activeElement === picker) captionGoalDay(cells.find((cell) => cell.dataset.day === picker.value));
+  renderPracticeStats(progressState.period, date);
 }
 
 function moveGoalFocus(event) {
@@ -3076,6 +3078,74 @@ function moveGoalFocus(event) {
   to.focus();
 }
 
+// Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
+const progressState = { period: '30', key: '', view: 'speed' };
+// What the width-dependent charts last drew from, so a resize, a unit change or a new view redraws them.
+let progressRuns = [];
+let practicePerDay = [];
+
+const shapeLabel = (shape) => {
+  if (shape.mode === 'words') return { text: `${shape.size} words` };
+  if (shape.mode === 'time') return { text: `${shape.size} s`, label: `${shape.size} seconds` };
+  if (shape.mode === 'quote') return { text: `${shape.size} quote` };
+  if (shape.mode === 'code') return { text: `code · ${shape.size}` };
+  return { text: shape.mode };
+};
+
+// The parts of a variant's conditions that the other variants at its length don't share, so a pill
+// names only what tells it apart ("punctuation", "stop on error").
+function variantLabels(variants) {
+  const parts = variants.map((variant) => describeConditions(variant.conditions).split(' · '));
+  return parts.map((own, i) => own.filter((part) => !parts.every((other) => other.includes(part))).join(' · ') || `conditions ${i + 1}`);
+}
+
+function pill(text, { pressed = false, disabled = false, label = '', className = '' } = {}) {
+  const button = element('button', text, `pill${className ? ` ${className}` : ''}`);
+  button.type = 'button';
+  button.setAttribute('aria-pressed', String(pressed));
+  button.disabled = disabled;
+  if (label) button.setAttribute('aria-label', label);
+  return button;
+}
+
+// One pill per test length with history, word counts then times then the rest. Where someone has run
+// a mode, its preset lengths without runs stay in place, disabled, so the row keeps its shape.
+function renderTestPills(shapes) {
+  const selected = shapes.find((shape) => shape.variants.some((variant) => variant.key === progressState.key));
+  const shown = [...shapes];
+  for (const mode of ['words', 'time']) {
+    if (!shapes.some((shape) => shape.mode === mode)) continue;
+    for (const size of LENGTHS[mode].presets) {
+      if (!shapes.some((shape) => shape.id === `${mode}:${size}`)) shown.push({ id: `${mode}:${size}`, mode, size: String(size), variants: [] });
+    }
+  }
+  const order = ['words', 'time'];
+  shown.sort((a, b) => (order.includes(a.mode) ? order.indexOf(a.mode) : 2) - (order.includes(b.mode) ? order.indexOf(b.mode) : 2)
+    || (order.includes(a.mode) && a.mode === b.mode ? Number(a.size) - Number(b.size) : shapes.indexOf(a) - shapes.indexOf(b)));
+  const row = [];
+  shown.forEach((shape, i) => {
+    if (i && shape.mode !== shown[i - 1].mode) {
+      const rule = element('span', '', 'pill-rule');
+      rule.setAttribute('aria-hidden', 'true');
+      row.push(rule);
+    }
+    const { text, label } = shapeLabel(shape);
+    const button = pill(text, { pressed: shape === selected, disabled: !shape.variants.length, label });
+    button.dataset.shape = shape.id;
+    button.addEventListener('click', () => { progressState.key = shape.variants[0].key; renderHistory(); });
+    row.push(button);
+  });
+  $('progress-tests').replaceChildren(...row);
+  const variants = selected?.variants || [];
+  $('progress-variants').hidden = variants.length < 2;
+  const labels = variantLabels(variants);
+  $('progress-variants').replaceChildren(...(variants.length < 2 ? [] : variants.map((variant, i) => {
+    const button = pill(labels[i], { pressed: variant.key === progressState.key, className: 'variant-pill' });
+    button.addEventListener('click', () => { progressState.key = variant.key; renderHistory(); });
+    return button;
+  })));
+}
+
 function renderHistory() {
   renderStandardScore();
   const listed = profile.runs.filter(practiceRun);
@@ -3090,28 +3160,37 @@ function renderHistory() {
     ? 'Drills, daily and custom runs count toward your daily practice. Finish a practice run to chart speed and accuracy.'
     : 'Finish a practice run to begin your history.';
   $('progress-content').hidden = !hasProgress;
+  $('progress-views').hidden = !hasProgress && !goalOnly;
   $('progress-history').hidden = !hasProgress;
   const hasHistory = hasAnyHistory();
   $('clear-history').hidden = !hasHistory;
   $('clear-history').disabled = !hasHistory;
-  const source = conditionOptions($('progress-conditions'), [...listed, ...profile.loops]);
-  const key = source ? conditionKey(source) : '';
-  const period = $('progress-period').value;
+  // Conditions never mix: every figure, chart and list below reads one exact condition set. A length
+  // opens on its most used set; with no choice yet, on the length of the newest run.
+  const shapes = testShapes([...listed, ...profile.loops]);
+  const variants = shapes.flatMap((shape) => shape.variants);
+  if (!variants.some((variant) => variant.key === progressState.key)) {
+    const newest = listed.at(-1) || profile.loops.at(-1);
+    progressState.key = (newest && shapes.find((shape) => shape.id === shapeOf(newest.conditions))?.variants[0].key) || variants[0]?.key || '';
+  }
+  renderTestPills(shapes);
+  const source = variants.find((variant) => variant.key === progressState.key)?.conditions;
+  const key = source ? progressState.key : '';
+  const period = progressState.period;
+  for (const button of $('progress-period').querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
+  $('progress-conditions').textContent = source ? describeConditions(source) : '';
   const matching = source ? filterRuns(eligible, key, period) : [];
   const runRows = source ? filterRuns(listed, key, period) : [];
   const repeats = runRows.length - matching.length;
   const repeatCopy = repeats ? `${repeats} repeated-text ${repeats === 1 ? 'run' : 'runs'} not charted.` : '';
-  const week = weeklyChange(eligible, key);
-  setParts($('progress-week'), week.wpm === null
-    ? `This week ${plural(week.current.length, 'run')} · last week ${week.previous.length}`
-    : ['This week ', speedFigure(week.wpm, { signed: true }), ` · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs vs ${week.previous.length}`]);
-  renderPeriodStats(matching);
-  renderTrend($('progress-trend'), matching, openHistoryRun);
+  renderOverview(matching, source ? weeklyChange(eligible, key) : null, period);
+  progressRuns = matching;
   // Only what the charts can't show: an empty period, or runs listed below that aren't drawn.
   $('progress-trend-note').textContent = matching.length
     ? [matching.some((r) => !r.at) ? 'Undated runs not charted.' : '', repeatCopy].filter(Boolean).join(' ')
     : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
   renderKeys(source ? filterRuns(profile.runs, key, period) : []);
+  showProgressView(hasProgress ? progressState.view : 'practice', { remember: false, only: hasProgress ? null : 'practice' });
   $('run-history').replaceChildren(...[...runRows].reverse().map((run) => {
     const row = element('details', '', 'run-row');
     row.dataset.runId = run.id;
@@ -3169,24 +3248,93 @@ function renderHistory() {
   renderComposeHistory();
 }
 
-// The figures above the charts describe exactly the runs the filters select: medians, the fastest run, a count.
-function renderPeriodStats(runs) {
+// The overview: this week's and last week's medians with their run counts, the period's median speed and
+// accuracy, and its fastest run, all at the selected conditions. Speeds read whole, like the run card.
+const PERIOD_NAMES = { 7: ['7 days', '7-day median'], 30: ['30 days', '30-day median'], all: ['All', 'all-time median'] };
+function renderOverview(runs, week, period) {
   const stats = periodStats(runs);
-  const list = $('progress-stats');
-  list.hidden = !stats.count;
-  if (!stats.count) return list.replaceChildren();
-  const stat = (label, value, className = '') => {
-    const group = element('div', '', className);
-    group.append(element('dt', label), element('dd', value, 'num'));
+  const runsCopy = (count) => (count ? `median of ${plural(count, 'run')}` : 'no runs');
+  const speed = (wpm) => (wpm === null ? ['—'] : [speedFigure(Math.round(wpm), { bare: true }), ' ', unitLabel()]);
+  const figure = (label, value, note) => {
+    const group = element('div', '', 'progress-figure');
+    group.append(element('dt', label), element('dd', value, 'num figure-value'), element('dd', note, 'figure-note'));
     return group;
   };
-  const speed = (wpm) => [speedFigure(wpm, { bare: true }), unitLabel()];
-  list.replaceChildren(
-    stat('median', speed(stats.wpm), 'progress-stat-lead'),
-    stat(stats.best.at ? `best · ${new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'best', speed(stats.best.score.wpm)),
-    stat('median accuracy', `${Number(stats.accuracy.toFixed(1))}%`),
-    stat('runs', String(stats.count)),
+  const weekStats = (list) => periodStats(list || []);
+  const [thisWeek, lastWeek] = [weekStats(week?.current), weekStats(week?.previous)];
+  const [periodName, accuracyNote] = PERIOD_NAMES[period];
+  $('progress-stats').replaceChildren(
+    figure('This week', speed(thisWeek.wpm), runsCopy(thisWeek.count)),
+    figure('Last week', speed(lastWeek.wpm), runsCopy(lastWeek.count)),
+    figure(periodName, speed(stats.wpm), runsCopy(stats.count)),
+    figure('Accuracy', stats.count ? `${Number(stats.accuracy.toFixed(1))}%` : '—', stats.count ? accuracyNote : 'no runs'),
+    figure('Best run', stats.count ? speed(stats.best.score.wpm) : '—', stats.best?.at ? new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : stats.count ? 'date unavailable' : 'no runs'),
   );
+}
+
+// Practice over the period, whatever the test: days practised, the longest streak (days meeting the goal,
+// or with any practice when it's off) and minutes typed, from the same minutes the calendar draws.
+function renderPracticeStats(period, date = new Date()) {
+  const byDay = minutesByDay(profile.runs, profile.practiceDays);
+  const first = Object.keys(byDay).sort()[0] || null;
+  const days = periodDays(period, date, first);
+  const goal = prefs.dailyGoal;
+  const stats = practiceStats(byDay, profile.runs, days, goal);
+  practicePerDay = stats.runsPerDay;
+  const runs = stats.runsPerDay.reduce((sum, d) => sum + d.runs, 0);
+  const current = practiceStreak(byDay, goal, date);
+  const figure = (label, value, unit, note) => {
+    const group = element('div', '', 'progress-figure');
+    group.append(element('dt', label), element('dd', [element('span', value), ' ', element('span', unit, 'figure-unit')], 'num figure-value'), element('dd', note, 'figure-note'));
+    return group;
+  };
+  const daysWord = (n) => (n === 1 ? 'day' : 'days');
+  const runDays = stats.runsPerDay.filter((d) => d.runs).length;
+  $('practice-stats').replaceChildren(
+    figure('Active days', String(stats.active), `of ${days.length}`, runDays ? `${Number((runs / runDays).toFixed(1))} runs a day when you practise` : 'no runs in this period'),
+    figure('Longest streak', String(stats.longest), daysWord(stats.longest), `current: ${current} ${daysWord(current)}${goal ? ` at ${goal} min` : ''}`),
+    figure('Time typing', goalMinutes(stats.minutes), 'min', period === 'all' ? `since ${new Date(`${days[0]}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : `in the last ${days.length} days`),
+  );
+}
+
+// Only the shown view's charts are drawn: a hidden panel has no width to draw to.
+function drawProgressView() {
+  const view = $('progress-tabs').querySelector('[aria-selected="true"]')?.dataset.viewTab;
+  const draw = {
+    speed: () => renderTrend($('progress-trend'), progressRuns, openHistoryRun, 'wpm'),
+    accuracy: () => renderTrend($('accuracy-trend'), progressRuns, openHistoryRun, 'accuracy'),
+    consistency: () => renderSpread($('progress-spread'), progressRuns),
+    practice: () => renderRunsPerDay($('practice-runs'), practicePerDay),
+  };
+  for (const [name, container] of [['speed', 'progress-trend'], ['accuracy', 'accuracy-trend'], ['consistency', 'progress-spread'], ['practice', 'practice-runs']]) {
+    if (name !== view) $(container).replaceChildren();
+  }
+  if (!$('progress-views').hidden && draw[view]) draw[view]();
+}
+
+// The views are tabs: one panel at a time, arrow keys move between tabs and show each as they go.
+// With no practice runs yet, Practice is the only view.
+function showProgressView(view, { focus = false, remember = true, only = null } = {}) {
+  if (remember) progressState.view = view;
+  for (const tab of $('progress-tabs').querySelectorAll('[role="tab"]')) {
+    const on = tab.dataset.viewTab === view;
+    tab.hidden = Boolean(only) && tab.dataset.viewTab !== only;
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+    $(tab.getAttribute('aria-controls')).hidden = !on;
+    if (on && focus) tab.focus();
+  }
+  $('progress-tabs').hidden = Boolean(only);
+  drawProgressView();
+}
+
+function moveProgressTab(event) {
+  const tabs = [...$('progress-tabs').querySelectorAll('[role="tab"]:not([hidden])')];
+  const from = tabs.indexOf(event.target);
+  const to = { ArrowRight: from + 1, ArrowLeft: from - 1, Home: 0, End: tabs.length - 1 }[event.key];
+  if (from < 0 || to === undefined) return;
+  event.preventDefault();
+  showProgressView(tabs[(to + tabs.length) % tabs.length].dataset.viewTab, { focus: true });
 }
 
 function hasAnyHistory() {
@@ -5094,9 +5242,16 @@ function bindEvents() {
     const word = event.target.closest('[role="option"]');
     if (word) selectWord(Number(word.dataset.index), { focus: true });
   });
-  $('progress-conditions').addEventListener('change', renderHistory);
+  $('progress-period').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-period]');
+    if (button) { progressState.period = button.dataset.period; renderHistory(); }
+  });
+  $('progress-tabs').addEventListener('click', (event) => {
+    const tab = event.target.closest('[role="tab"]');
+    if (tab) showProgressView(tab.dataset.viewTab);
+  });
+  $('progress-tabs').addEventListener('keydown', moveProgressTab);
   $('take-standard').addEventListener('click', () => setTestShape('standard'));
-  $('progress-period').addEventListener('change', renderHistory);
   $('key-heatmap').addEventListener('keydown', moveHeatFocus);
   $('key-heatmap').addEventListener('focusin', (event) => {
     const cell = event.target.closest('.key');
@@ -5675,17 +5830,14 @@ new ResizeObserver(() => {
   if (!shownResult || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
   renderSpeedGraph(graph, shownResult, { animate: false });
 }).observe($('speed-graph'));
-// The trend as Progress last drew it, drawn again (at a new width, or in a new unit).
-function redrawTrend() {
-  renderTrend($('progress-trend'), filterRuns(profile.runs.filter(trendRun), $('progress-conditions').value, $('progress-period').value), openHistoryRun);
-}
-let trendWidth = 0;
+// The shown view's charts, drawn again at a new width.
+let viewsWidth = 0;
 new ResizeObserver(() => {
-  const container = $('progress-trend');
-  if (!container.clientWidth || trendWidth === container.clientWidth) return;
-  trendWidth = container.clientWidth;
-  redrawTrend();
-}).observe($('progress-trend'));
+  const panels = document.querySelector('.view-panels');
+  if (!panels.clientWidth || viewsWidth === panels.clientWidth) return;
+  viewsWidth = panels.clientWidth;
+  drawProgressView();
+}).observe(document.querySelector('.view-panels'));
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
 compose = createCompose({
