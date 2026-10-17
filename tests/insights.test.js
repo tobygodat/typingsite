@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, practiceLevel, practiceStreak, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, periodStats, practiceLevel, practiceStreak, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from '../src/insights.js';
 import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
 
 
@@ -821,4 +821,38 @@ test('touch runs are never pooled with physical-keyboard runs: the newest run pi
   assert.deepEqual(tally([...keys, missedRun('t1', ['the'], { conditions: touch }), missedRun('t2', ['the', 'of'], { conditions: touch })]), ['touch', 2, [['the', 2]]]);
   // Back on a keyboard, the keyboard runs count again, without the touch misses.
   assert.deepEqual(tally([...keys, missedRun('t1', ['the'], { conditions: touch }), missedRun('k4', ['of'], { conditions: keyboard })]), ['physical-keyboard', 4, [['and', 2], ['the', 2]]]);
+});
+
+test('runs group by local day, oldest first, with each day\'s medians', () => {
+  const run = (id, day, wpm, accuracy, at = `${day}T12:00:00`) => ({ id, day, at, score: { wpm, accuracy } });
+  const runs = [
+    run('b1', '2026-10-03', 60, 95),
+    run('a1', '2026-10-01', 50, 90),
+    run('b2', '2026-10-03', 70, 97),
+    run('b3', '2026-10-03', 64, 99),
+    { id: 'c1', at: '2026-10-05T09:00:00', score: { wpm: 72, accuracy: 96 } },
+    { id: 'undated', score: { wpm: 99, accuracy: 100 } },
+  ];
+  const days = runsByDay(runs);
+  assert.deepEqual(days.map((d) => d.day), ['2026-10-01', '2026-10-03', '2026-10-05'], 'a run without a day falls back to its timestamp; one without either is left out');
+  assert.deepEqual(days[1].runs.map((r) => r.id), ['b1', 'b2', 'b3']);
+  assert.equal(days[1].wpm, 64);
+  assert.equal(days[1].accuracy, 97);
+  assert.deepEqual(runsByDay([]), []);
+});
+
+test('period stats are medians over the selected runs, with the fastest run as best', () => {
+  assert.deepEqual(periodStats([]), { count: 0, wpm: null, accuracy: null, best: null });
+  const runs = [
+    { id: 'old', at: '2026-10-01T10:00:00', score: { wpm: 70, accuracy: 94 } },
+    { id: 'mid', at: '2026-10-02T10:00:00', score: { wpm: 60, accuracy: 98 } },
+    { id: 'new', at: '2026-10-03T10:00:00', score: { wpm: 70, accuracy: 96 } },
+    { id: 'low', at: '2026-10-04T10:00:00', score: { wpm: 50, accuracy: 90 } },
+  ];
+  const stats = periodStats(runs);
+  assert.equal(stats.count, 4);
+  assert.equal(stats.wpm, 65);
+  assert.equal(stats.accuracy, 95);
+  assert.equal(stats.best.id, 'new', 'a tie for fastest goes to the most recent run');
+  assert.equal(periodStats([...runs].reverse()).best.id, 'new', 'whatever order the runs arrive in');
 });

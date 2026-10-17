@@ -167,6 +167,31 @@ export function weeklyChange(runs, key, date = new Date()) {
   };
 }
 
+// The runs a Progress view selects, one entry per local calendar day, oldest first. Each day carries its
+// runs in the order given, and the medians of their speed and accuracy. Undated runs have no day and are left out.
+export function runsByDay(runs) {
+  const days = new Map();
+  for (const run of runs) {
+    const day = runDay(run);
+    if (!day) continue;
+    if (!days.has(day)) days.set(day, []);
+    days.get(day).push(run);
+  }
+  return [...days.keys()].sort().map((day) => {
+    const list = days.get(day);
+    return { day, runs: list, wpm: median(list.map((run) => run.score.wpm)), accuracy: median(list.map((run) => run.score.accuracy)) };
+  });
+}
+
+// The figures above the Progress charts: medians over every selected run, and the fastest of them.
+// A tie for fastest goes to the most recent run.
+export function periodStats(runs) {
+  if (!runs.length) return { count: 0, wpm: null, accuracy: null, best: null };
+  const best = runs.reduce((top, run) => (run.score.wpm > top.score.wpm
+    || (run.score.wpm === top.score.wpm && (run.at || '') >= (top.at || '')) ? run : top));
+  return { count: runs.length, wpm: median(runs.map((run) => run.score.wpm)), accuracy: median(runs.map((run) => run.score.accuracy)), best };
+}
+
 export const STANDARD_RECENT_RUNS = 10;
 export const STANDARD_MIN_RUNS = 3;
 
