@@ -14,11 +14,19 @@ const svgText = (text, attrs) => {
   return node;
 };
 
-const HEIGHT = 220;
-const TOP = 40;
-const BOTTOM = 180;
 const LEFT = 8;
 const RIGHT = 48;
+const TOP = 40;
+const AXIS = 40;
+const CALLOUT_GAP = 8;
+
+// The chart's height: about 2.5 wide to 1 tall, between the --chart-height-min and --chart-height tokens.
+function chartHeight(figure, width) {
+  const style = getComputedStyle(figure);
+  const max = parseFloat(style.getPropertyValue('--chart-height')) || 400;
+  const min = parseFloat(style.getPropertyValue('--chart-height-min')) || 240;
+  return Math.round(Math.max(min, Math.min(max, width / 2.5)));
+}
 
 // Three gridlines a round step apart that hold every value: 40, 60, 80 rather than 47, 63, 79.
 // Accuracy never reads past 100%.
@@ -35,14 +43,18 @@ function gridlines(values, minStep, ceiling) {
   }
 }
 
-// Round values a nice step apart (1, 2 or 5 times a power of ten) inside the values' own range, about three of them.
-function roundTicks(values) {
+// Round values a nice step apart (1, 2 or 5 times a power of ten), about three or four of them, from
+// the one at or below the lowest value to the one at or above the highest, so every value sits on the
+// scale. A ceiling (100% accuracy) caps the top.
+function roundTicks(values, ceiling = Infinity) {
   const [low, high] = [Math.min(...values), Math.max(...values)];
   const span = Math.max(high - low, 1);
   const power = 10 ** Math.floor(Math.log10(span / 3));
   const step = [1, 2, 5, 10].map((n) => n * power).find((n) => span / n <= 4);
   const ticks = [];
-  for (let v = Math.ceil(low / step) * step; v <= high; v += step) ticks.push(Number(v.toFixed(6)));
+  const top = Math.min(ceiling, Math.ceil(high / step) * step);
+  for (let v = Math.floor(low / step) * step; v < top + step / 2; v += step) ticks.push(Number(Math.min(v, ceiling).toFixed(6)));
+  if (ticks.length === 1) ticks.unshift(Number((ticks[0] - step).toFixed(6)));
   return ticks;
 }
 
@@ -93,6 +105,77 @@ const METRICS = {
   accuracy: { title: 'Accuracy by day', value: (accuracy) => accuracy, run: (run) => run.score.accuracy, shown: shownAccuracy, suffix: '%', minStep: () => 1, ceiling: 100 },
 };
 
+const boxesOverlap = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+const grow = (box, by) => ({ left: box.left - by, top: box.top - by, right: box.right + by, bottom: box.bottom + by });
+// Liang–Barsky: does the segment from a to b pass through the box?
+function segmentCrosses([x1, y1], [x2, y2], box) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let from = 0;
+  let to = 1;
+  for (const [p, q] of [[-dx, x1 - box.left], [dx, box.right - x1], [-dy, y1 - box.top], [dy, box.bottom - y1]]) {
+    if (p === 0) {
+      if (q < 0) return false;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) from = Math.max(from, t);
+    else to = Math.min(to, t);
+    if (from > to) return false;
+  }
+  return true;
+}
+
+// Where each callout goes: the first spot round its point, nearest first, whose box clears every dot, every
+// segment of the line, the callouts already placed and the chart's edges by `gap`. Each callout is
+// { x, y, width, height } (its point and its text's size); dots are { x, y, r }; segments are [[x, y], [x, y]].
+// Returns the boxes { left, top, right, bottom }. With no clear spot, the one with the fewest collisions wins.
+export function placeCallouts(callouts, { dots = [], segments = [], bounds, gap = CALLOUT_GAP }) {
+  const placed = [];
+  const collisions = (box) => {
+    const clear = grow(box, gap);
+    return dots.filter((d) => boxesOverlap(clear, { left: d.x - d.r, top: d.y - d.r, right: d.x + d.r, bottom: d.y + d.r })).length
+      + segments.filter(([a, b]) => segmentCrosses(a, b, clear)).length
+      + placed.filter((other) => boxesOverlap(clear, other)).length;
+  };
+  const inside = (box) => box.left >= bounds.left && box.right <= bounds.right && box.top >= bounds.top && box.bottom <= bounds.bottom;
+  for (const { x, y, width, height } of callouts) {
+    const spots = [];
+    for (const d of [10, 18, 28, 40, 56, 76, 100, 130]) {
+      const above = y - d - height;
+      const below = y + d;
+      const beside = y - height / 2;
+      spots.push(
+        [x - width / 2, above], [x - width - d / 2, above], [x + d / 2, above],
+        [x - width / 2, below], [x - width - d / 2, below], [x + d / 2, below],
+        [x - width - d, beside], [x + d, beside],
+      );
+    }
+    let best = null;
+    for (const [left, top] of spots) {
+      const box = { left, top, right: left + width, bottom: top + height };
+      if (!inside(box)) continue;
+      const hits = collisions(box);
+      if (!best || hits < best.hits) best = { box, hits };
+      if (!hits) break;
+    }
+    const box = best?.box || { left: Math.max(bounds.left, Math.min(x - width / 2, bounds.right - width)), top: bounds.top, right: 0, bottom: bounds.top + height };
+    box.right = box.left + width;
+    placed.push(box);
+  }
+  return placed;
+}
+
+// A callout's text, sized by the browser where it can measure (an SVG in the page), placed by placeCallouts.
+function measureText(chart, text) {
+  const node = svgText(text, { x: 0, y: 0, class: 'trend-callout', 'aria-hidden': 'true' });
+  chart.append(node);
+  let box = null;
+  try { box = node.getBBox(); } catch { box = null; }
+  if (!box?.width) box = { x: 0, y: -14, width: text.length * 7, height: 18 };
+  return { node, box };
+}
+
 // One point per day: that day's median of the selected runs, drawn as a line over every run as a faint
 // dot. Speed is saved in wpm and drawn in the chosen display unit (wpm or cpm). A point opens the day's
 // most recent run.
@@ -101,22 +184,24 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', today = n
   const days = runsByDay(runs);
   if (!days.length) return;
   const spec = METRICS[metric];
-  const unit = metric === 'wpm' ? unitName().toUpperCase() : 'percent accuracy';
+  const unit = metric === 'wpm' ? unitName() : 'percent accuracy';
   // The speed axis is bare numbers, so its unit stays visible; accuracy's axis carries its own %.
   const figure = chartFigure(container, spec.title, { note: metric === 'wpm' ? unit : '', legend: true });
   const width = figureWidth(figure);
+  const height = chartHeight(figure, width);
+  const bottom = height - AXIS;
   const values = days.map((day) => spec.value(day[metric]));
   const dots = days.flatMap((day) => day.runs.map(spec.run));
   const lines = gridlines(values, spec.minStep(), spec.ceiling);
   const low = Math.min(lines[0], ...dots);
   const high = Math.max(lines[2], ...dots);
   const runCount = dots.length;
-  const chart = svgNode('svg', { viewBox: `0 0 ${width} ${HEIGHT}`, role: 'group',
+  const chart = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, role: 'group',
     'aria-label': `${spec.title}: the median of each day's runs, ${days.length} ${days.length === 1 ? 'day' : 'days'} and ${runCount} ${runCount === 1 ? 'run' : 'runs'}. Select a point for that day's latest run.` });
   const plot = width - LEFT - RIGHT;
   const step = days.length === 1 ? plot : plot / (days.length - 1);
   const xOf = (i) => LEFT + (days.length === 1 ? plot / 2 : i * step);
-  const yOf = (v) => (high === low ? (TOP + BOTTOM) / 2 : BOTTOM - ((v - low) / (high - low)) * (BOTTOM - TOP));
+  const yOf = (v) => (high === low ? (TOP + bottom) / 2 : bottom - ((v - low) / (high - low)) * (bottom - TOP));
   // A point's hit area is 44px tall and no wider than the gap to its neighbours, so hit areas
   // never overlap and a tap opens the point under it. Points closer than a 44px target are
   // marked dense: each run is also a full-size row in the run history below.
@@ -128,8 +213,13 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', today = n
       svgText(`${v}${spec.suffix}`, { x: width - RIGHT + 12, y: y + 4, class: 'trend-label' }));
   }
   const runDots = svgNode('g', { class: 'trend-runs', 'aria-hidden': 'true' });
+  const dotMarks = [];
   days.forEach((day, i) => {
-    for (const run of day.runs) runDots.append(svgNode('circle', { cx: xOf(i), cy: yOf(spec.run(run)), r: 2.5 }));
+    for (const run of day.runs) {
+      const [cx, cy] = [xOf(i), yOf(spec.run(run))];
+      runDots.append(svgNode('circle', { cx, cy, r: 2.5 }));
+      dotMarks.push({ x: cx, y: cy, r: 2.5 });
+    }
   });
   chart.append(runDots);
   const points = values.map((v, i) => [xOf(i), yOf(v)]);
@@ -154,24 +244,25 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', today = n
     });
     chart.append(dot);
   });
+  figure.append(chart);
   const named = (i) => `${spec.shown(values[i])}${spec.suffix}`;
   const isToday = days[last].day === dayKey(today);
-  const anchorAt = (x) => (x < LEFT + 60 ? 'start' : x > width - RIGHT - 60 ? 'end' : 'middle');
-  const [lastX, lastY] = points[last];
-  const lastText = `${named(last)} ${isToday ? 'today' : `on ${shortDate(days[last].day)}`}${best === last && days.length > 1 ? ', best day' : ''}`;
-  // The latest day's name sits on the side of its point away from the line coming into it.
-  const below = last > 0 && points[last - 1][1] < lastY && lastY + 24 < BOTTOM + 16;
-  chart.append(svgText(lastText, { x: lastX - 10, y: below ? lastY + 20 : lastY - 10, 'text-anchor': 'end', class: 'trend-callout', 'aria-hidden': 'true' }));
-  if (best !== last) {
-    const [bestX, bestY] = points[best];
-    // Close to the latest day's label, the best day's rises clear of it.
-    const crowded = lastX - bestX < 140 && Math.abs(lastY - bestY) < 18;
-    chart.append(svgText(`${named(best)} on ${shortDate(days[best].day)}`, { x: bestX, y: Math.max(14, Math.min(bestY, crowded ? lastY : bestY) - (crowded ? 28 : 12)),
-      'text-anchor': anchorAt(bestX), class: 'trend-callout', 'aria-hidden': 'true' }));
-  }
-  const ends = days.length === 1 ? [[days[0], points[0][0], 'middle']] : [[days[0], LEFT, 'start'], [days.at(-1), width - RIGHT, 'end']];
-  for (const [day, x, textAnchor] of ends) chart.append(svgText(shortDate(day.day), { x, y: HEIGHT - 6, 'text-anchor': textAnchor, class: 'trend-label' }));
-  figure.append(chart);
+  const callouts = [[last, `${named(last)} ${isToday ? 'today' : `on ${shortDate(days[last].day)}`}${best === last && days.length > 1 ? ', best day' : ''}`]];
+  if (best !== last) callouts.push([best, `${named(best)} on ${shortDate(days[best].day)}`]);
+  const texts = callouts.map(([i, text]) => ({ i, ...measureText(chart, text) }));
+  const boxes = placeCallouts(texts.map(({ i, box }) => ({ x: points[i][0], y: points[i][1], width: box.width, height: box.height })), {
+    dots: [...dotMarks, ...points.map(([x, y]) => ({ x, y, r: 4 }))],
+    segments: points.slice(1).map((point, i) => [points[i], point]),
+    bounds: { left: 0, top: 0, right: width - RIGHT, bottom },
+  });
+  texts.forEach(({ node, box }, n) => {
+    node.setAttribute('x', String(boxes[n].left - box.x));
+    node.setAttribute('y', String(boxes[n].top - box.y));
+  });
+  // The first and last days, and the middle one where the chart is wide enough to keep three dates apart.
+  const ends = days.length === 1 ? [[0, 'middle']] : [[0, 'start'], [last, 'end']];
+  if (days.length >= 5 && width >= 480) ends.push([Math.round(last / 2), 'middle']);
+  for (const [i, textAnchor] of ends) chart.append(svgText(shortDate(days[i].day), { x: textAnchor === 'start' ? LEFT : textAnchor === 'end' ? width - RIGHT : xOf(i), y: height - 6, 'text-anchor': textAnchor, class: 'trend-label' }));
 }
 
 const SPREAD_HEIGHT = 200;
@@ -207,7 +298,10 @@ function drawHistogram(figure, speeds, { q1, mid, q3, unit }) {
   const range = (wpm) => shownSpeed(speedValue(wpm));
   const chart = svgNode('svg', { viewBox: `0 0 ${width} ${SPREAD_HEIGHT}`, role: 'img',
     'aria-label': `${speeds.length} ${speeds.length === 1 ? 'run' : 'runs'} by speed, from ${range(Math.min(...speeds))} to ${range(Math.max(...speeds))} ${unit}. Median ${Number(speedValue(mid).toFixed(1))} ${unit}${speeds.length >= 4 ? `; half the runs between ${range(q1)} and ${range(q3)} ${unit}` : ''}.` });
-  if (speeds.length >= 4) chart.append(svgNode('rect', { x: xOf(q1), y: SPREAD_TOP, width: Math.max(1, xOf(q3) - xOf(q1)), height: SPREAD_BOTTOM - SPREAD_TOP, class: 'spread-band' }));
+  if (speeds.length >= 4) {
+    chart.append(svgNode('rect', { x: xOf(q1), y: SPREAD_TOP, width: Math.max(1, xOf(q3) - xOf(q1)), height: SPREAD_BOTTOM - SPREAD_TOP, class: 'spread-band' }));
+    for (const edge of [q1, q3]) chart.append(svgNode('line', { x1: xOf(edge), x2: xOf(edge), y1: SPREAD_TOP, y2: SPREAD_BOTTOM, class: 'spread-band-edge' }));
+  }
   const barWidth = width / bins.length;
   for (const bin of bins) {
     if (!bin.count) continue;
@@ -217,13 +311,19 @@ function drawHistogram(figure, speeds, { q1, mid, q3, unit }) {
   const midX = xOf(mid);
   chart.append(svgNode('line', { x1: midX, x2: midX, y1: SPREAD_TOP - 6, y2: SPREAD_BOTTOM, class: 'spread-median' }),
     svgText(`median ${Number(speedValue(mid).toFixed(1))}`, { x: midX > width - 120 ? midX - 6 : midX + 6, y: SPREAD_TOP - 8, 'text-anchor': midX > width - 120 ? 'end' : 'start', class: 'trend-callout' }));
-  // Edges every 10 wpm from the lowest, or every bin when there are only a few.
+  // Edges every 10 wpm from the lowest, or every bin when there are only a few, and always the last
+  // edge, named with the unit; an interior edge too close to it gives way.
   const every = bins.length <= 6 ? 1 : 5;
+  const endLabel = `${range(hi)} ${unit}`;
+  const endWidth = endLabel.length * 8;
   bins.forEach((bin, i) => {
-    if (i % every) return;
+    if (i % every || xOf(bin.from) > width - endWidth - 24) return;
     chart.append(svgText(String(range(bin.from)), { x: xOf(bin.from), y: SPREAD_HEIGHT - 6, 'text-anchor': i ? 'middle' : 'start', class: 'trend-label' }));
   });
-  if (bins.length % every === 0) chart.append(svgText(String(range(hi)), { x: width, y: SPREAD_HEIGHT - 6, 'text-anchor': 'end', class: 'trend-label' }));
+  chart.append(svgText(endLabel, { x: width, y: SPREAD_HEIGHT - 6, 'text-anchor': 'end', class: 'trend-label' }));
+  // Bar height is a count of runs: the tallest bar's count names its height.
+  chart.append(svgNode('line', { x1: 0, x2: width, y1: yOf(tallest), y2: yOf(tallest), class: 'trend-rule spread-count-rule' }),
+    svgText(`${tallest} ${tallest === 1 ? 'run' : 'runs'}`, { x: 0, y: yOf(tallest) - 6, class: 'trend-label' }));
   figure.append(chart);
 }
 
@@ -233,10 +333,9 @@ function drawScatter(figure, runs, unit) {
   const xs = runs.map((run) => speedValue(run.score.wpm));
   const ys = runs.map((run) => run.score.accuracy);
   const xLines = roundTicks(xs);
-  const yLines = roundTicks(ys).filter((v) => v <= 100);
-  const pad = (values) => Math.max(1, (Math.max(...values) - Math.min(...values)) * 0.05);
-  const [xLo, xHi] = [Math.min(...xs) - pad(xs), Math.max(...xs) + pad(xs)];
-  const [yLo, yHi] = [Math.min(...ys) - pad(ys), Math.min(100, Math.max(...ys) + pad(ys))];
+  const yLines = roundTicks(ys, 100);
+  const [xLo, xHi] = [xLines[0], xLines.at(-1)];
+  const [yLo, yHi] = [yLines[0], yLines.at(-1)];
   const xOf = (v) => left + 6 + ((v - xLo) / (xHi - xLo || 1)) * (width - left - 12);
   const yOf = (v) => SPREAD_BOTTOM - 6 - ((v - yLo) / (yHi - yLo || 1)) * (SPREAD_BOTTOM - SPREAD_TOP - 12);
   const chart = svgNode('svg', { viewBox: `0 0 ${width} ${SPREAD_HEIGHT}`, role: 'img',
