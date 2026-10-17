@@ -2752,6 +2752,7 @@ function scoreFacts(items) {
 
 function openHistoryRun(id) {
   const row = [...$('run-history').children].find((item) => item.dataset.runId === id);
+  if (row?.hidden) showAllRuns();
   if (row) { row.open = true; row.scrollIntoView({ block: 'center', behavior: 'instant' }); row.querySelector('summary').focus(); }
 }
 
@@ -2881,7 +2882,11 @@ function renderStandardScore() {
   else if (!score.total) note = 'No standard runs yet.';
   else if (!score.settled) note = `${plural(score.total, 'standard run')} kept.${olderBest} The median appears after ${STANDARD_MIN_RUNS}.`;
   // With nothing scored yet, the recipe is what Take the standard test sets up, so it isn't repeated here.
-  $('standard-score-conditions').hidden = !score.total && score.best === null;
+  const empty = !score.total && score.best === null;
+  $('standard-score-conditions').hidden = empty;
+  // Nothing scored: the section is one line, the note beside the action, with no blank figures.
+  $('standard-score').classList.toggle('is-empty', empty);
+  $('standard-figures').hidden = empty;
   setParts($('standard-score-note'), [note, other.best === null ? '' : [` Your ${onTouch ? 'physical keyboard' : 'touch'} best is `, speedFigure(other.best), '.']]);
 }
 
@@ -2911,7 +2916,11 @@ function renderKeys(runs) {
   const analysis = keyAnalysis(runs);
   const pct = (v) => `${(v * 100).toFixed(1)}%`;
   const older = analysis.pairDerivedRuns;
-  $('key-note').textContent = `First-try misses per key · ${plural(analysis.runs, 'run')}${older ? ` · ${older} older ${older === 1 ? 'run skips' : 'runs skip'} first letters` : ''}`;
+  // With no per-key detail in these runs there is nothing to draw: one line says why instead of an empty map.
+  $('keys-layout').hidden = !analysis.runs;
+  $('key-note').textContent = analysis.runs
+    ? `First-try misses per key · ${plural(analysis.runs, 'run')}${older ? ` · ${older} older ${older === 1 ? 'run skips' : 'runs skip'} first letters` : ''}`
+    : runs.length ? `No keystroke detail in ${runs.length === 1 ? 'this run' : `these ${runs.length} runs`} yet. Fresh-text runs from now on fill in the map.` : 'No runs at these conditions in this period.';
   heatDetails = {};
   const grid = $('key-heatmap');
   const hadFocus = grid.contains(document.activeElement);
@@ -3014,13 +3023,15 @@ function moveHeatFocus(event) {
   if (letter) selectHeatKey(letter, { focus: true });
 }
 
-// Daily goal line and an 18-week practice calendar (Sunday-first columns), static by design.
+// The practice calendar (Sunday-first columns), static by design: 26 weeks across the column, fewer on a phone.
 // The calendar is one tab stop: each day is a labelled cell, and the arrow keys move between them as drawn.
 // Goal-met days carry a dot as well as the green step, and the caption under the calendar repeats the
 // focused or hovered day's label for sighted users (it is aria-hidden; the cell's own label is announced).
 let goalDay = '';
 function captionGoalDay(cell) { $('goal-caption').textContent = cell?.dataset?.caption || ''; }
 const focusedGoalDay = () => ($('goal-calendar').contains(document.activeElement) ? document.activeElement : null);
+const narrowColumn = window.matchMedia('(max-width: 760px)');
+const calendarWeeks = () => (narrowColumn.matches ? 17 : 26);
 function renderGoal(date = new Date()) {
   goalDay = dayKey(date);
   const byDay = minutesByDay(profile.runs, profile.practiceDays);
@@ -3029,9 +3040,8 @@ function renderGoal(date = new Date()) {
   const selectedDay = picker.value || goalDay;
   $('practice-goal').hidden = Object.keys(byDay).length === 0;
   const goal = prefs.dailyGoal;
-  const streak = practiceStreak(byDay, goal, date);
-  $('goal-line').replaceChildren(element('span', 'Today', 'goal-label'), ` ${goalMinutes(byDay[goalDay])}${goal ? ` / ${goal}` : ''} min · ${streak}-day streak`);
-  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - 17 * 7 - date.getDay());
+  const weeks = calendarWeeks();
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - (weeks - 1) * 7 - date.getDay());
   const cells = [];
   for (const day = new Date(start); day <= date; day.setDate(day.getDate() + 1)) {
     const minutes = byDay[dayKey(day)] || 0;
@@ -3054,8 +3064,10 @@ function renderGoal(date = new Date()) {
   picker.value = cells.some((cell) => cell.dataset.day === selectedDay) ? selectedDay : goalDay;
   const practised = cells.filter((cell) => cell.dataset.level !== '0').length;
   const hadFocus = Boolean(focusedGoalDay());
-  $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last 18 weeks: ${practised} days with practice. Arrow keys move between days.`);
+  $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last ${weeks} weeks: ${practised} days with practice. Arrow keys move between days.`);
   captionGoalDay(null);
+  $('goal-calendar').style.setProperty('--weeks', String(weeks));
+  $('goal-months').style.setProperty('--weeks', String(weeks));
   $('goal-calendar').replaceChildren(...cells);
   $('goal-months').replaceChildren(...monthLabels(cells.map((cell) => cell.dataset.day)).map((month) => element('span', month)));
   if (hadFocus && !coarse) cells.at(-1).focus();
@@ -3079,7 +3091,20 @@ function moveGoalFocus(event) {
 }
 
 // Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
-const progressState = { period: '30', key: '', view: 'speed' };
+const progressState = { period: '30', key: '', view: 'speed', allRuns: false };
+
+// The run list opens on the newest few; every run stays in the list, and one button shows the rest.
+const RECENT_RUNS = 10;
+function shownRuns() {
+  const rows = [...$('run-history').children];
+  rows.forEach((row, i) => { row.hidden = !progressState.allRuns && i >= RECENT_RUNS; });
+  $('show-all-runs').hidden = progressState.allRuns || rows.length <= RECENT_RUNS;
+  $('show-all-runs').textContent = `Show all ${rows.length} runs`;
+}
+function showAllRuns() {
+  progressState.allRuns = true;
+  shownRuns();
+}
 // What the width-dependent charts last drew from, so a resize, a unit change or a new view redraws them.
 let progressRuns = [];
 let practicePerDay = [];
@@ -3209,6 +3234,7 @@ function renderHistory() {
     row.append(summary, detail);
     return row;
   }));
+  shownRuns();
   const loops = source ? filterRuns(profile.loops, key, period).reverse() : [];
   $('history-list').hidden = !loops.length;
   $('history-empty').hidden = Boolean(loops.length);
@@ -3272,8 +3298,8 @@ function renderOverview(runs, week, period) {
   );
 }
 
-// Practice over the period, whatever the test: days practised, the longest streak (days meeting the goal,
-// or with any practice when it's off) and minutes typed, from the same minutes the calendar draws.
+// Practice over the period, whatever the test: days practised, the longest and current streaks (days meeting
+// the goal, or with any practice when it's off) and minutes typed, from the same minutes the calendar draws.
 function renderPracticeStats(period, date = new Date()) {
   const byDay = minutesByDay(profile.runs, profile.practiceDays);
   const first = Object.keys(byDay).sort()[0] || null;
@@ -3292,7 +3318,8 @@ function renderPracticeStats(period, date = new Date()) {
   const runDays = stats.runsPerDay.filter((d) => d.runs).length;
   $('practice-stats').replaceChildren(
     figure('Active days', String(stats.active), `of ${days.length}`, runDays ? `${Number((runs / runDays).toFixed(1))} runs a day when you practise` : 'no runs in this period'),
-    figure('Longest streak', String(stats.longest), daysWord(stats.longest), `current: ${current} ${daysWord(current)}${goal ? ` at ${goal} min` : ''}`),
+    figure('Longest streak', String(stats.longest), daysWord(stats.longest), goal ? `at ${goal} min a day` : 'in this period'),
+    figure('Current streak', String(current), daysWord(current), `today ${goalMinutes(byDay[dayKey(date)])}${goal ? ` of ${goal}` : ''} min`),
     figure('Time typing', goalMinutes(stats.minutes), 'min', period === 'all' ? `since ${new Date(`${days[0]}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : `in the last ${days.length} days`),
   );
 }
@@ -5132,6 +5159,12 @@ function bindEvents() {
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('repeat-quotes-toggle').addEventListener('change', (event) => setRepeatQuotes(event.target.checked));
   $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveChoice('dailyGoal'); renderGoal(); });
+  $('show-all-runs').addEventListener('click', () => {
+    const next = $('run-history').children[RECENT_RUNS];
+    showAllRuns();
+    next?.querySelector('summary').focus();
+  });
+  narrowColumn.addEventListener('change', () => renderGoal());
   $('goal-day-select').addEventListener('change', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
   $('goal-day-select').addEventListener('focus', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
   $('goal-calendar').addEventListener('keydown', moveGoalFocus);

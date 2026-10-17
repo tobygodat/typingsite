@@ -681,8 +681,13 @@
 
         <div id="progress-content" hidden>
           <div id="progress-tests" class="pill-row" role="group" aria-label="Test"></div>
-          <div id="progress-variants" class="pill-row variant-row" role="group" aria-label="Conditions" hidden></div>
-          <p id="progress-conditions" class="condition-copy progress-conditions"></p>
+          <div class="variant-line">
+            <div id="progress-variants" class="pill-row variant-row" role="group" aria-label="Conditions" hidden></div>
+            <details class="conditions-disclosure">
+              <summary>conditions</summary>
+              <p id="progress-conditions" class="condition-copy progress-conditions"></p>
+            </details>
+          </div>
           <dl id="progress-stats" class="progress-stats"></dl>
           <p id="progress-trend-note" class="result-note"></p>
         </div>
@@ -710,7 +715,6 @@
                 <div class="practice-layout">
                   <div class="practice-calendar">
                     <h2 class="view-heading">Days you practised</h2>
-                    <p id="goal-line" class="goal-line"></p>
                     <div class="goal-chart">
                       <div id="goal-months" class="goal-months" aria-hidden="true"></div>
                       <div class="goal-weekdays" aria-hidden="true"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span></div>
@@ -729,7 +733,7 @@
               <section class="keys-section" aria-labelledby="keys-heading">
                 <h2 id="keys-heading" class="view-heading">Keys</h2>
                 <p id="key-note" class="result-note"></p>
-                <div class="keys-layout">
+                <div id="keys-layout" class="keys-layout">
                   <div class="keys-map">
                     <div id="key-heatmap" class="keyboard key-heatmap" role="grid" aria-label="Miss rate by key. Arrow keys move between keys."></div>
                     <ul id="heat-legend" class="heat-legend" aria-hidden="true"></ul>
@@ -757,7 +761,7 @@
             <h2 id="standard-score-heading">Standard score</h2>
             <button id="take-standard" class="btn btn-secondary btn-sm" type="button">Take the standard test</button>
           </div>
-          <dl class="standard-figures">
+          <dl id="standard-figures" class="standard-figures">
             <div><dt>best</dt><dd><strong id="standard-best" class="num" data-bare>—</strong><span data-speed-unit>wpm</span></dd></div>
             <div><dt id="standard-median-label">median</dt><dd><strong id="standard-median" class="num" data-bare>—</strong><span data-speed-unit>wpm</span></dd></div>
           </dl>
@@ -776,6 +780,7 @@
           <section class="progress-section" aria-labelledby="run-history-heading">
             <h2 id="run-history-heading">Runs</h2>
             <div id="run-history"></div>
+            <button id="show-all-runs" class="btn btn-secondary btn-sm show-all-runs" type="button" hidden>Show all runs</button>
           </section>
           <section class="progress-section" aria-labelledby="comparison-history-heading">
             <h2 id="comparison-history-heading">Drills and retests</h2>

@@ -57,6 +57,9 @@
   --heat-key: 52px;
   --heat-gap: 6px;
   --content-max: 1080px;
+  /* Progress charts: about 2.5 wide to 1 tall, between these heights. */
+  --chart-height: 400px;
+  --chart-height-min: 240px;
 
   /* Motion: every duration scales from one place and drops to zero for reduced motion. */
   --motion-scale: 1;
@@ -927,7 +930,8 @@ kbd {
 }
 .mode-more > summary::-webkit-details-marker { display: none; }
 /* The disclosure chevron of "drill something else", at the same rotated 1.5px corner. */
-.mode-more > summary::after {
+.mode-more > summary::after,
+.conditions-disclosure > summary::after {
   content: "";
   width: 7px;
   height: 7px;
@@ -937,7 +941,7 @@ kbd {
   transform: translateY(-2px) rotate(45deg);
   transition: transform var(--dur-quick) var(--ease-out);
 }
-.mode-more[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+:is(.mode-more, .conditions-disclosure)[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
 .mode-more > summary:hover,
 .mode-more[open] > summary,
 .mode-more[data-active] > summary { color: var(--text); }
@@ -2202,6 +2206,12 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .standard-figures strong { color: var(--text); font-family: var(--font-serif); font-size: var(--text-display); font-weight: 300; line-height: 1; letter-spacing: -0.035em; }
 .standard-score p { max-width: 64ch; margin: 0; }
 .standard-score .result-note { color: var(--muted); }
+/* With nothing scored, the section is one line: its name, the note, the action. */
+.standard-score.is-empty { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); }
+.standard-score.is-empty .standard-score-heading { display: contents; }
+.standard-score.is-empty #take-standard { order: 2; margin-left: auto; align-self: center; }
+.standard-score.is-empty #standard-score-note { order: 1; }
+.standard-figures[hidden] { display: none; }
 /* The standard score's rule already divides it from the empty state, so the empty state drops its own. */
 .standard-score + .empty-state { padding-top: 0; border-top: 0; }
 
@@ -2224,14 +2234,22 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 .pill:hover:not(:disabled) { border-color: var(--outline); }
 .pill:is([aria-pressed="true"], [aria-selected="true"]) { background: var(--accent-soft); border-color: var(--accent); }
-.pill:disabled { opacity: var(--disabled-opacity); cursor: default; }
+/* A disabled pill keeps its hairline; only the text dims, to --outline, which holds 3:1 on both grounds. */
+.pill:disabled { color: var(--outline); cursor: default; }
 .pill-rule { width: 1px; height: var(--space-6); margin: 0 var(--space-2); background: var(--hairline-strong); }
 .view-pill { font-size: var(--text-body); }
 .variant-pill { font-size: var(--text-label); }
 .progress-heading { align-items: center; }
 #progress-tests { margin-bottom: var(--space-3); }
-.variant-row { margin-bottom: var(--space-3); }
-.progress-conditions { margin: 0; }
+/* The condition sets, and the full conditions line behind a small disclosure beside them. */
+.variant-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.variant-row { min-width: 0; }
+.conditions-disclosure { min-width: 0; }
+.conditions-disclosure > summary { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control); color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); cursor: pointer; list-style: none; transition: color var(--dur-quick) var(--ease-out); }
+.conditions-disclosure > summary::-webkit-details-marker { display: none; }
+.conditions-disclosure > summary:hover { color: var(--text); }
+.conditions-disclosure[open] { flex-basis: 100%; }
+.progress-conditions { margin: 0 0 var(--space-2); }
 /* Overview and practice figures: no boxes. A label, the numeral in Literata with its unit, a line under it. */
 .progress-stats { margin: var(--space-8) 0 var(--space-4); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-6) var(--space-6); }
 .progress-figure { min-width: 0; display: grid; align-content: start; gap: var(--space-1); }
@@ -2250,26 +2268,25 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .view-panel:focus-visible { outline-offset: var(--space-2); }
 /* Daily goal: static calendar, accent at four steps (--practice-level-1…3, then --accent); empty days sit on the hairline. */
 .practice-goal { display: grid; gap: var(--space-8); }
-.practice-layout { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-8); align-items: start; }
-.practice-calendar { min-width: 0; display: grid; gap: var(--space-3); justify-items: start; }
-.practice-stats { margin: 0; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
-.goal-line { margin: 0; font-family: var(--font-serif); font-size: var(--text-body); font-variant-numeric: tabular-nums; }
-.goal-label { margin-right: var(--space-1); color: var(--muted); font: 500 var(--text-fine)/1 var(--font-mono); }
-.goal-chart { display: grid; grid-template-columns: auto auto; grid-template-areas: ". months" "weekdays calendar"; gap: var(--space-1) var(--space-2); max-width: 100%; overflow-x: auto; }
-.goal-months { grid-area: months; display: grid; grid-auto-flow: column; grid-auto-columns: var(--space-3); gap: var(--space-1); color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); white-space: nowrap; }
-.goal-weekdays { grid-area: weekdays; display: grid; grid-template-rows: repeat(7, var(--space-3)); gap: var(--space-1); color: var(--muted); font: var(--text-fine)/var(--space-3) var(--font-mono); }
+/* The calendar fills the column, the practice figures in one row under it. */
+.practice-layout { display: grid; gap: var(--space-8); }
+.practice-calendar { min-width: 0; display: grid; gap: var(--space-3); }
+.practice-stats { margin: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-6); }
+.goal-chart { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: ". months" "weekdays calendar"; gap: var(--space-1) var(--space-2); }
+.goal-months { grid-area: months; display: grid; grid-template-columns: repeat(var(--weeks, 26), minmax(0, 1fr)); gap: var(--space-1); color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); white-space: nowrap; }
+.goal-weekdays { grid-area: weekdays; display: grid; grid-template-rows: repeat(7, minmax(0, 1fr)); gap: var(--space-1); align-items: center; color: var(--muted); font: var(--text-fine)/1 var(--font-mono); }
 .goal-calendar {
   grid-area: calendar;
-  display: grid; grid-template-rows: repeat(7, var(--space-3)); grid-auto-flow: column; grid-auto-columns: var(--space-3);
-  gap: var(--space-1); justify-content: start;
+  display: grid; grid-template-columns: repeat(var(--weeks, 26), minmax(0, 1fr)); grid-template-rows: repeat(7, auto); grid-auto-flow: column;
+  gap: var(--space-1);
 }
-.goal-legend { margin: 0; display: flex; align-items: center; gap: var(--space-1); color: var(--muted); font-size: var(--text-label); }
+.goal-legend { margin: 0; justify-self: end; display: flex; align-items: center; gap: var(--space-1); color: var(--muted); font-size: var(--text-label); }
 .goal-legend span { width: var(--space-3); height: var(--space-3); border-radius: var(--radius-cell); background: var(--hairline); }
 .goal-legend span:first-child { margin-left: var(--space-1); }
 .goal-legend span:last-child { margin-right: var(--space-1); }
 .goal-day-picker { display: none; }
 .goal-day-picker .input { width: 100%; min-width: 0; max-width: 100%; }
-.goal-day { display: grid; place-items: center; border-radius: var(--radius-cell); background: var(--hairline); }
+.goal-day { aspect-ratio: 1; display: grid; place-items: center; border-radius: var(--radius-cell); background: var(--hairline); }
 :is(.goal-day, .goal-legend span)[data-level="1"] { background: var(--practice-level-1); }
 :is(.goal-day, .goal-legend span)[data-level="2"] { background: var(--practice-level-2); }
 :is(.goal-day, .goal-legend span)[data-level="3"] { background: var(--practice-level-3); }
@@ -2304,6 +2321,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .trend-hit { fill: transparent; stroke: none; }
 .trend-dot:hover, .trend-dot:focus { fill: var(--accent); stroke: var(--text); }
 .spread-band { fill: var(--accent-soft); }
+.spread-band-edge { stroke: var(--accent); stroke-width: 1; }
+.spread-count-rule { stroke: var(--hairline); }
 .spread-bar { fill: var(--outline); opacity: 0.6; }
 .spread-median { stroke: var(--accent); stroke-width: 2; }
 .strip-bar { fill: var(--outline); opacity: 0.6; }
@@ -2315,7 +2334,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .progress-section h2, .training-memory h2, .daily-challenge h2, .local-challenge-heading { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
 
 /* Keys: static heatmap, coral steps only, no motion. Rows stagger by half a key, then a whole key. */
-.key-heatmap { justify-content: start; gap: var(--heat-gap); margin: var(--space-4) 0 var(--space-3); }
+.key-heatmap { justify-content: center; gap: var(--heat-gap); margin: var(--space-4) 0 var(--space-3); }
 .key-heatmap .key-row { justify-content: start; gap: var(--heat-gap); }
 .key-heatmap .key-row:nth-child(2) { padding-left: calc(var(--heat-key) / 2); }
 .key-heatmap .key-row:nth-child(3) { padding-left: var(--heat-key); }
@@ -2340,11 +2359,13 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .pairs-table td { padding: var(--space-2) var(--space-6) var(--space-2) 0; border-bottom: 1px solid var(--hairline); }
 .pairs-table td.num { font-variant-numeric: tabular-nums; }
 .pair-bar { display: block; height: 3px; margin-top: var(--space-1); border-radius: var(--radius-full); background: var(--danger); }
-@media (min-width: 1100px) {
-  .keys-layout { display: grid; grid-template-columns: min-content minmax(0, 1fr); gap: var(--space-14); align-items: start; }
-  .keys-pairs .pairs-heading { margin-top: var(--space-4); }
-  .keys-pairs .pairs-table { width: 100%; }
-}
+/* The keyboard, its legend and the pairs under it, centred as one group the keyboard's width. */
+.keys-layout { display: grid; grid-template-columns: minmax(0, auto); justify-content: center; gap: var(--space-6); }
+.keys-layout[hidden] { display: none; }
+.keys-map { display: grid; justify-items: center; }
+.heat-legend { justify-content: center; }
+.key-detail { text-align: center; }
+.keys-pairs .pairs-table { width: 100%; }
 @media (max-width: 600px) {
   .key-heatmap { --heat-key: var(--space-8); display: grid; grid-template-columns: minmax(0, 1fr); }
   .key-heatmap .key { flex: 1 1 0; min-width: 0; max-width: var(--heat-key); }
@@ -2362,7 +2383,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .missed-word:first-child { border-top: 1px solid var(--hairline); }
 .missed-word-text { min-width: 0; font-size: var(--text-lead); overflow-wrap: anywhere; }
 .missed-word .num { color: var(--muted); font-size: var(--text-small); }
-.run-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--control); }
+.run-row { padding: var(--space-1) 0; }
+.run-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--control); font-variant-numeric: tabular-nums lining-nums; }
+.show-all-runs { margin-top: var(--space-6); }
 .run-summary strong { font-size: var(--text-lead); font-weight: 400; }
 .run-summary span { color: var(--muted); }
 .run-detail { padding-top: var(--space-4); }
@@ -3107,7 +3130,24 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 }
 
 @media (max-width: 760px) {
+  /* Each pill group is one row that scrolls sideways, fading at its right edge, never a wrapped cloud. */
+  .progress-screen .pill-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+    margin-inline: calc(var(--space-1) * -1); padding: var(--space-1);
+    mask-image: linear-gradient(to right, var(--text) calc(100% - var(--space-6)), transparent); }
+  .progress-screen .pill-row::-webkit-scrollbar { display: none; }
+  .progress-screen .pill-row > * { flex: none; }
+  /* Full width, so the fade lands on empty space when a row doesn't overflow. */
+  .progress-heading .pill-row { align-self: stretch; }
+  .variant-row { flex-basis: 100%; }
   .progress-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* On a phone the chart comes straight after the filters, so it starts on the first screen; the
+     period's figures follow it, before the standard score and the runs. */
+  .progress-screen:not([hidden]) { display: flex; flex-direction: column; }
+  #progress-content:not([hidden]) { display: contents; }
+  #progress-stats, #progress-trend-note { order: 1; }
+  .progress-screen > :is(.standard-score, #progress-empty, #progress-history, #compose-history, .progress-danger) { order: 2; }
+  .progress-views { margin-bottom: 0; }
+  #progress-trend-note:not(:empty) { margin-bottom: var(--space-8); }
   .practice-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .practice-layout, .progress-spread { grid-template-columns: minmax(0, 1fr); }
   .progress-spread { gap: var(--space-8); }
