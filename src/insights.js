@@ -192,6 +192,88 @@ export function periodStats(runs) {
   return { count: runs.length, wpm: median(runs.map((run) => run.score.wpm)), accuracy: median(runs.map((run) => run.score.accuracy)), best };
 }
 
+// The value a share p of the sorted values falls below, interpolating between neighbours (so the 0.5
+// quantile is the median).
+export function quantile(values, p) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (sorted.length - 1) * p;
+  const below = Math.floor(at);
+  return sorted[below] + (sorted[Math.min(below + 1, sorted.length - 1)] - sorted[below]) * (at - below);
+}
+
+// Values counted into bins `width` wide on round edges, lowest first, empty bins between kept.
+export function histogram(values, width) {
+  if (!values.length) return [];
+  const first = Math.floor(Math.min(...values) / width);
+  const bins = Array.from({ length: Math.floor(Math.max(...values) / width) - first + 1 }, (_, i) => ({ from: (first + i) * width, count: 0 }));
+  for (const value of values) bins[Math.floor(value / width) - first].count += 1;
+  return bins;
+}
+
+// The test lengths someone has history at, each holding the exact condition sets (comparison keys)
+// run at that length, most used first. A length is the mode and its size; everything else that
+// enters the key (text, word list, input, correction, corpus, metric) tells its variants apart, and
+// runs are only ever compared within one variant. Word counts first, then times, shortest first,
+// then quotes, the standard test, code and anything else.
+const SHAPE_ORDER = ['words', 'time', 'quote', 'standard', 'code'];
+export function shapeOf(conditions = {}) {
+  const size = conditions.mode === 'words' ? conditions.count : conditions.mode === 'time' ? conditions.duration
+    : conditions.mode === 'quote' ? conditions.quoteLength || 'any' : conditions.mode === 'code' ? conditions.codeLanguage || 'js'
+      : conditions.mode === 'standard' ? conditions.recipe || '' : '';
+  return `${conditions.mode}:${size}`;
+}
+
+export function testShapes(sources) {
+  const shapes = new Map();
+  sources.forEach((source, order) => {
+    const id = shapeOf(source.conditions);
+    if (!shapes.has(id)) shapes.set(id, { id, mode: source.conditions.mode, size: id.slice(id.indexOf(':') + 1), variants: new Map() });
+    const key = conditionKey(source.conditions);
+    const variants = shapes.get(id).variants;
+    if (!variants.has(key)) variants.set(key, { key, conditions: source.conditions, count: 0, last: 0 });
+    Object.assign(variants.get(key), { count: variants.get(key).count + 1, last: order });
+  });
+  const rank = (mode) => (SHAPE_ORDER.includes(mode) ? SHAPE_ORDER.indexOf(mode) : SHAPE_ORDER.length);
+  return [...shapes.values()]
+    .map((shape) => ({ ...shape, variants: [...shape.variants.values()].sort((a, b) => b.count - a.count || b.last - a.last) }))
+    .sort((a, b) => rank(a.mode) - rank(b.mode) || (Number(a.size) || 0) - (Number(b.size) || 0) || (a.id < b.id ? -1 : 1));
+}
+
+// The local calendar days a Progress period covers, oldest first and ending today: the last `days`
+// days, or every day from `first` for all saved runs.
+export function periodDays(days, date = new Date(), first = null) {
+  const end = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const start = days !== 'all' ? new Date(end.getFullYear(), end.getMonth(), end.getDate() - Number(days) + 1)
+    : first ? new Date(`${first}T00:00:00`) : new Date(end);
+  const list = [];
+  for (const day = start; day <= end; day.setDate(day.getDate() + 1)) list.push(dayKey(day));
+  return list;
+}
+
+// Practice over the given days: days with any practice, the longest run of days meeting the goal (any
+// practice when it's off, as practiceStreak counts), minutes typed, and completed runs of every kind per day.
+export function practiceStats(byDay, runs, days, goal = 0) {
+  const met = (day) => (goal ? (byDay[day] || 0) >= goal : (byDay[day] || 0) > 0);
+  let longest = 0;
+  let streak = 0;
+  for (const day of days) {
+    streak = met(day) ? streak + 1 : 0;
+    longest = Math.max(longest, streak);
+  }
+  const counts = new Map(days.map((day) => [day, 0]));
+  for (const run of runs) {
+    const day = runDay(run);
+    if (validRun(run) && counts.has(day)) counts.set(day, counts.get(day) + 1);
+  }
+  return {
+    active: days.filter((day) => (byDay[day] || 0) > 0).length,
+    longest,
+    minutes: days.reduce((sum, day) => sum + (byDay[day] || 0), 0),
+    runsPerDay: [...counts].map(([day, count]) => ({ day, runs: count })),
+  };
+}
+
 export const STANDARD_RECENT_RUNS = 10;
 export const STANDARD_MIN_RUNS = 3;
 

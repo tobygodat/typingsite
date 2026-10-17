@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, periodStats, practiceLevel, practiceStreak, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, periodDays, periodStats, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
 import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
 
 
@@ -855,4 +855,58 @@ test('period stats are medians over the selected runs, with the fastest run as b
   assert.equal(stats.accuracy, 95);
   assert.equal(stats.best.id, 'new', 'a tie for fastest goes to the most recent run');
   assert.equal(periodStats([...runs].reverse()).best.id, 'new', 'whatever order the runs arrive in');
+});
+
+test('quantiles interpolate between sorted values', () => {
+  assert.equal(quantile([], 0.5), null);
+  assert.equal(quantile([70, 60, 80, 50], 0.5), 65, 'the middle quantile is the median');
+  assert.equal(quantile([50, 60, 70, 80, 90], 0.25), 60);
+  assert.equal(quantile([50, 60, 70, 80], 0.75), 72.5);
+  assert.equal(quantile([42], 0.75), 42);
+});
+
+test('a histogram counts values into round bins, keeping the empty ones between', () => {
+  assert.deepEqual(histogram([], 2), []);
+  assert.deepEqual(histogram([61, 60.5, 64, 65.9], 2), [{ from: 60, count: 2 }, { from: 62, count: 0 }, { from: 64, count: 2 }]);
+});
+
+test('test shapes group exact conditions by length, most used variant first', () => {
+  const base = { mode: 'words', count: 25, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' };
+  const run = (conditions) => ({ conditions: { ...base, ...conditions } });
+  const shapes = testShapes([
+    run({ mode: 'time', duration: 60, count: null }),
+    run({ punctuation: true }),
+    run({}),
+    run({ count: 10 }),
+    run({}),
+    run({ mode: 'time', duration: 15, count: null }),
+    run({ mode: 'quote', count: null, quoteLength: 'short' }),
+  ]);
+  assert.deepEqual(shapes.map((s) => s.id), ['words:10', 'words:25', 'time:15', 'time:60', 'quote:short']);
+  const words25 = shapes[1];
+  assert.equal(words25.variants.length, 2, 'punctuation is its own condition set, never pooled');
+  assert.deepEqual(words25.variants.map((v) => [v.conditions.punctuation, v.count]), [[false, 2], [true, 1]]);
+  assert.equal(new Set(words25.variants.map((v) => v.key)).size, 2);
+  assert.equal(words25.variants[0].key, conditionKey(base));
+});
+
+test('period days end today and cover the period, or every day since the first run', () => {
+  const today = new Date(2026, 9, 17, 15);
+  assert.deepEqual(periodDays(7, today), ['2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17']);
+  assert.equal(periodDays(30, today).length, 30);
+  assert.deepEqual(periodDays('all', today, '2026-10-15'), ['2026-10-15', '2026-10-16', '2026-10-17']);
+  assert.deepEqual(periodDays('all', today), ['2026-10-17']);
+});
+
+test('practice stats count active days, the longest streak, minutes and runs per day', () => {
+  const days = ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16'];
+  const byDay = { '2026-10-11': 30, '2026-10-12': 3, '2026-10-13': 12, '2026-10-14': 6, '2026-10-16': 11 };
+  const run = (day, status = 'complete') => ({ day, status });
+  const runs = [run('2026-10-12'), run('2026-10-12'), run('2026-10-13'), run('2026-10-13', 'abandoned'), run('2026-10-11')];
+  const stats = practiceStats(byDay, runs, days);
+  assert.equal(stats.active, 4);
+  assert.equal(stats.longest, 3, 'the day before the period does not extend a streak inside it');
+  assert.equal(stats.minutes, 32);
+  assert.deepEqual(stats.runsPerDay.map((d) => d.runs), [2, 1, 0, 0, 0], 'only completed runs, only inside the period');
+  assert.equal(practiceStats(byDay, runs, days, 10).longest, 1, 'with a goal, only days meeting it count');
 });
