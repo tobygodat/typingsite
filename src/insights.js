@@ -144,12 +144,12 @@ export const evidenceRun = (run) => validRun(run) && measuredKind(run.kind) && r
 const missedWordsRun = (run) => evidenceRun(run) && Array.isArray(run.missedWords);
 const inputClassOf = (run) => run?.conditions?.inputClass || 'physical-keyboard';
 
-// The runs at one condition key inside a period (periodWindow). Undated runs fall in no period but All.
-export function filterRuns(runs, key, days = 'all', date = new Date()) {
-  const { from, to } = periodWindow(days, date);
+// The runs at one condition key, inside a window of local days when given one (a Progress period's
+// periodWindow). Undated runs fall in no window with a first day.
+export function filterRuns(runs, key, { from = null, to = null } = {}) {
   return runs.filter((run) => {
     const day = runDay(run);
-    return (!key || conditionKey(run.conditions) === key) && (day ? (!from || day >= from) && day <= to : !from);
+    return (!key || conditionKey(run.conditions) === key) && (day ? (!from || day >= from) && (!to || day <= to) : !from);
   });
 }
 
@@ -162,8 +162,8 @@ export function median(values) {
 
 export function weeklyChange(runs, key, date = new Date()) {
   const eligible = runs.filter(trendRun);
-  const fortnight = filterRuns(eligible, key, 14, date);
-  const current = filterRuns(fortnight, key, 7, date);
+  const fortnight = filterRuns(eligible, key, periodWindow(14, date));
+  const current = filterRuns(fortnight, key, periodWindow(7, date));
   const ids = new Set(current.map((r) => r.id));
   const previous = fortnight.filter((r) => !ids.has(r.id));
   return { current, previous,

@@ -210,8 +210,8 @@ test('weekly medians require evidence in both weeks, and do not invent dates for
   const change = weeklyChange([recent, previous, old], conditionKey(conditions), date);
   assert.equal(change.wpm, 10);
   assert.equal(change.accuracy, -2);
-  assert.equal(filterRuns([old], conditionKey(conditions), 30, date).length, 0);
-  assert.equal(filterRuns([old], conditionKey(conditions), 'all', date).length, 1);
+  assert.equal(filterRuns([old], conditionKey(conditions), periodWindow(30, date)).length, 0);
+  assert.equal(filterRuns([old], conditionKey(conditions), periodWindow('all', date)).length, 1);
 });
 
 test('recurring targets need multiple runs, and revisit evidence starts after the immediate retest', () => {
@@ -920,20 +920,22 @@ test('a period is whole local calendar days: 7 days is today and the six before,
   const runs = [run('before', { at: at(10, 20) }), run('first', { at: at(11, 0) }), run('today', { at: at(17, 14) })];
   assert.deepEqual(periodWindow(7, today), { from: '2026-10-11', to: '2026-10-17' });
   assert.deepEqual(periodWindow('all', today), { from: null, to: '2026-10-17' });
-  assert.deepEqual(filterRuns(runs, conditionKey(conditions), 7, today).map((r) => r.id), ['first', 'today'],
+  assert.deepEqual(filterRuns(runs, conditionKey(conditions), periodWindow(7, today)).map((r) => r.id), ['first', 'today'],
     'a run on the evening seven days back is outside, though it is less than 7 × 24 hours old');
   assert.equal(periodDays(7, today)[0], periodWindow(7, today).from);
-  assert.deepEqual(filterRuns(runs, conditionKey(conditions), 1, today).map((r) => r.id), ['today']);
+  assert.deepEqual(filterRuns(runs, conditionKey(conditions), periodWindow(1, today)).map((r) => r.id), ['today']);
 });
 
 test('every period ends today: a run saved on a day still ahead here waits for its day, in charts and practice alike', () => {
   const today = new Date(2026, 9, 17, 15);
   const runs = [run('today', { day: '2026-10-17' }), run('tomorrow', { day: '2026-10-18' }), run('undated', { at: null })];
   for (const days of [7, 30]) {
-    assert.deepEqual(filterRuns(runs, conditionKey(conditions), days, today).map((r) => r.id), ['today'], `${days} days`);
+    assert.deepEqual(filterRuns(runs, conditionKey(conditions), periodWindow(days, today)).map((r) => r.id), ['today'], `${days} days`);
   }
-  assert.deepEqual(filterRuns(runs, conditionKey(conditions), 'all', today).map((r) => r.id), ['today', 'undated'],
+  assert.deepEqual(filterRuns(runs, conditionKey(conditions), periodWindow('all', today)).map((r) => r.id), ['today', 'undated'],
     'All has no first day, so an undated run stays, but it still ends today');
+  assert.deepEqual(filterRuns(runs, conditionKey(conditions)).map((r) => r.id), ['today', 'tomorrow', 'undated'],
+    'outside Progress (the pace caret\'s last and average) no period applies, so a run dated ahead still counts');
   assert.deepEqual(periodWindow('all', today, '2026-10-18'), { from: '2026-10-17', to: '2026-10-17' }, 'All never starts after today');
   assert.deepEqual(periodDays('all', today, '2026-10-18'), ['2026-10-17']);
   const stats = practiceStats({ '2026-10-17': 5, '2026-10-18': 5 }, runs.map((r) => ({ ...r, status: 'complete' })), periodDays(7, today));

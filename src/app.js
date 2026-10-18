@@ -3203,8 +3203,9 @@ function renderHistory() {
   const period = progressState.period;
   for (const button of $('progress-period').querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
   $('progress-conditions').textContent = source ? describeConditions(source) : '';
-  const matching = source ? filterRuns(eligible, key, period, date) : [];
-  const runRows = source ? filterRuns(listed, key, period, date) : [];
+  const span = periodWindow(period, date);
+  const matching = source ? filterRuns(eligible, key, span) : [];
+  const runRows = source ? filterRuns(listed, key, span) : [];
   const repeats = runRows.length - matching.length;
   const repeatCopy = repeats ? `${repeats} repeated-text ${repeats === 1 ? 'run' : 'runs'} not charted.` : '';
   renderOverview(matching, source ? weeklyChange(eligible, key, date) : null, period);
@@ -3214,11 +3215,11 @@ function renderHistory() {
   $('progress-trend-note').textContent = matching.length
     ? [matching.some((r) => !r.at) ? 'Undated runs not charted.' : '', repeatCopy].filter(Boolean).join(' ')
     : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
-  renderKeys(source ? filterRuns(profile.runs, key, period, date) : []);
+  renderKeys(source ? filterRuns(profile.runs, key, span) : []);
   showProgressView(hasProgress ? progressState.view : 'practice', { remember: false, only: hasProgress ? null : 'practice' });
   listedRuns = [...runRows].reverse();
   renderRunRows();
-  const loops = source ? filterRuns(profile.loops, key, period, date).reverse() : [];
+  const loops = source ? filterRuns(profile.loops, key, span).reverse() : [];
   $('history-list').hidden = !loops.length;
   $('history-empty').hidden = Boolean(loops.length);
   const template = $('history-row-template');
