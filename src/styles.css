@@ -2237,18 +2237,20 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .pill-rule { width: 1px; height: var(--space-6); margin: 0 var(--space-2); background: var(--hairline-strong); }
 .view-pill { font-size: var(--text-body); }
 .progress-heading { align-items: center; }
+.progress-heading h1 { margin: 0; font-size: var(--text-display); }
+.progress-heading > .pill-row { max-width: 100%; }
 .progress-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-6); margin-bottom: var(--space-3); }
 .progress-filters > .pill-row { min-width: 0; max-width: 100%; }
 #progress-tests:empty { display: none; }
-.variant-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
 .variant-select { field-sizing: content; min-width: var(--control); max-width: 100%; height: var(--control); padding: 0 var(--space-2) 0 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); text-overflow: ellipsis; transition: color var(--dur-quick) var(--ease-out); }
 .variant-select:hover, .variant-select:focus-visible { color: var(--text); }
 .variant-select option { background: var(--raised); color: var(--text); }
-.conditions-disclosure { min-width: 0; }
+.conditions-disclosure { min-width: 0; max-width: 100%; margin-left: auto; }
 .conditions-disclosure > summary { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control); color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); cursor: pointer; list-style: none; transition: color var(--dur-quick) var(--ease-out); }
 .conditions-disclosure > summary::-webkit-details-marker { display: none; }
 .conditions-disclosure > summary:hover { color: var(--text); }
 .conditions-disclosure[open] { flex-basis: 100%; }
+.conditions-disclosure[open] > summary { display: flex; width: fit-content; margin-left: auto; }
 .progress-conditions { margin: 0 0 var(--space-2); }
 /* Overview and practice figures: no boxes. A label, the numeral in Literata with its unit, a line under it. */
 .progress-stats { margin: var(--space-8) 0 var(--space-4); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-6) var(--space-6); }
@@ -2256,6 +2258,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .progress-figure dt { color: var(--muted); font-size: var(--text-small); }
 .progress-figure dd { margin: 0; }
 .figure-value { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--text-display); font-weight: 300; line-height: 1.1; letter-spacing: -0.02em; white-space: nowrap; }
+#progress-stats .figure-value { font-size: var(--text-title); }
 .figure-value [data-speed-unit], .figure-unit { color: var(--muted); font-size: var(--text-body); letter-spacing: 0; }
 .figure-note { color: var(--muted); font-size: var(--text-small); }
 /* Progress opens on the filtered runs: the filters and the period's figures, then the views, ruled off

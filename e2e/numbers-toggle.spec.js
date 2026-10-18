@@ -49,6 +49,7 @@ test('numbers live in test content settings, default off, and keep practice best
 
   await openView(page, 'Progress');
   await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '10 words' }).click();
+  await page.locator('.conditions-disclosure > summary').click();
   const variants = page.getByRole('combobox', { name: 'Conditions' });
   await expect(variants.locator('option')).toHaveCount(2);
   for (const label of await variants.locator('option').allTextContents()) {

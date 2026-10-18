@@ -3208,6 +3208,7 @@ function renderHistory() {
   const period = progressState.period;
   for (const button of $('progress-period').querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
   const siblings = shapes.find((shape) => shape.variants.some((variant) => variant.key === key))?.variants.map((variant) => variant.conditions);
+  document.querySelector('.conditions-disclosure').hidden = !source;
   $('progress-conditions').textContent = source ? describeConditions(source, siblings) : '';
   const span = periodWindow(period, date);
   const matching = source ? filterRuns(eligible, key, span) : [];
