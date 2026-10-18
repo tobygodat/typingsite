@@ -144,11 +144,13 @@ export const evidenceRun = (run) => validRun(run) && measuredKind(run.kind) && r
 const missedWordsRun = (run) => evidenceRun(run) && Array.isArray(run.missedWords);
 const inputClassOf = (run) => run?.conditions?.inputClass || 'physical-keyboard';
 
-// The runs at one condition key inside a period (periodStart). Undated runs fall in no period but All.
+// The runs at one condition key inside a period (periodWindow). Undated runs fall in no period but All.
 export function filterRuns(runs, key, days = 'all', date = new Date()) {
-  const start = periodStart(days, date);
-  return runs.filter((run) => (!key || conditionKey(run.conditions) === key)
-    && (start === null || (runDay(run) || '') >= start));
+  const { from, to } = periodWindow(days, date);
+  return runs.filter((run) => {
+    const day = runDay(run);
+    return (!key || conditionKey(run.conditions) === key) && (day ? (!from || day >= from) && day <= to : !from);
+  });
 }
 
 export function median(values) {
@@ -251,12 +253,6 @@ export function testShapes(sources) {
     .sort((a, b) => rank(a.mode) - rank(b.mode) || (Number(a.size) || 0) - (Number(b.size) || 0) || (a.id < b.id ? -1 : 1));
 }
 
-// The first local calendar day of a Progress period: "7 days" is today and the six days before.
-// All saved runs have no first day.
-export function periodStart(days, date = new Date()) {
-  return days === 'all' ? null : dayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - Number(days) + 1));
-}
-
 export const CORRECTION_LABELS = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
 export function correctionLabel(policy) {
   return CORRECTION_LABELS[policy || 'mandatory'] || 'stop on error';
@@ -285,14 +281,22 @@ export function conditionLabels(sets) {
   return features.map((values, i) => values.filter((_, f) => differs[f]).join(' · ') || `conditions ${i + 1}`);
 }
 
-// The local calendar days a Progress period covers, oldest first and ending today: from periodStart,
-// or every day from `first` for all saved runs.
+// The first and last local calendar days of a Progress period, inclusive: "7 days" is today and the six
+// days before. Every period ends today, so a run saved on a day still ahead here (a device in a timezone
+// ahead) waits until its day comes. All saved runs start on `first`, the oldest day there is (no lower
+// bound without one), and never after today.
+export function periodWindow(days, date = new Date(), first = null) {
+  const to = dayKey(date);
+  const from = days === 'all' ? first : dayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - Number(days) + 1));
+  return { from: from && from > to ? to : from, to };
+}
+
+// The local calendar days a Progress period covers, oldest first: its whole window, or today alone for
+// all saved runs with no first day.
 export function periodDays(days, date = new Date(), first = null) {
-  const end = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const from = periodStart(days, date) || first;
-  const start = from ? new Date(`${from}T00:00:00`) : new Date(end);
+  const { from, to } = periodWindow(days, date, first);
   const list = [];
-  for (const day = start; day <= end; day.setDate(day.getDate() + 1)) list.push(dayKey(day));
+  for (const day = new Date(`${from ?? to}T00:00:00`); dayKey(day) <= to; day.setDate(day.getDate() + 1)) list.push(dayKey(day));
   return list;
 }
 

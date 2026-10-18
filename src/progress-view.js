@@ -192,9 +192,9 @@ function measureText(chart, text) {
 
 // One point per day: that day's median of the selected runs, drawn as a line over every run as a faint
 // dot. Speed is saved in wpm and drawn in the chosen display unit (wpm or cpm). A point opens the day's
-// most recent run. Days sit by date across the period from `from` to today, or from the first run's day
-// to the last's when there is no `from`.
-export function renderTrend(container, runs, onSelect, metric = 'wpm', { from = null, today = new Date() } = {}) {
+// most recent run. Days sit by date across the period's window (periodWindow), the one the runs were
+// selected from, so every point lands inside the plot; without one, from the first run's day to the last's.
+export function renderTrend(container, runs, onSelect, metric = 'wpm', { period = null } = {}) {
   container.replaceChildren();
   const days = runsByDay(runs);
   if (!days.length) return;
@@ -214,7 +214,7 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', { from = 
   const chart = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, role: 'group',
     'aria-label': `${spec.title}: the median of each day's runs, ${days.length} ${days.length === 1 ? 'day' : 'days'} and ${runCount} ${runCount === 1 ? 'run' : 'runs'}. Select a point for that day's latest run.` });
   const plot = width - LEFT - RIGHT;
-  const range = from ? [from, dayKey(today)] : [days[0].day, days.at(-1).day];
+  const range = [period?.from ?? days[0].day, period?.to ?? days.at(-1).day];
   const { xs, gaps } = dayPositions(days.map((day) => day.day), range, LEFT, plot);
   const xOf = (i) => xs[i];
   const yOf = (v) => (high === low ? (TOP + bottom) / 2 : bottom - ((v - low) / (high - low)) * (bottom - TOP));
@@ -262,7 +262,7 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', { from = 
   });
   figure.append(chart);
   const named = (i) => `${spec.shown(values[i])}${spec.suffix}`;
-  const isToday = days[last].day === dayKey(today);
+  const isToday = days[last].day === (period?.to ?? dayKey(new Date()));
   const callouts = [[last, `${named(last)} ${isToday ? 'today' : `on ${shortDate(days[last].day)}`}${best === last && days.length > 1 ? ', best day' : ''}`]];
   if (best !== last) callouts.push([best, `${named(best)} on ${shortDate(days[best].day)}`]);
   const texts = callouts.map(([i, text]) => ({ i, ...measureText(chart, text) }));

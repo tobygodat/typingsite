@@ -63,7 +63,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { CORRECTION_LABELS, DAILY_GOALS, conditionLabels, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStart, periodStats, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { CORRECTION_LABELS, DAILY_GOALS, conditionLabels, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
 import { RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
@@ -3106,8 +3106,10 @@ function showAllRuns() {
   $('run-history').append(...listedRuns.slice($('run-history').children.length).map(runRow));
   $('show-all-runs').hidden = true;
 }
-// What the width-dependent charts last drew from, so a resize, a unit change or a new view redraws them.
+// What the width-dependent charts last drew from, so a resize, a unit change or a new view redraws them:
+// the runs and the period window they were selected from, taken on the same day.
 let progressRuns = [];
+let progressWindow = null;
 let practicePerDay = [];
 
 const shapeLabel = (shape) => {
@@ -3182,10 +3184,12 @@ function runRow(run) {
 
 function renderHistory() {
   renderStandardScore();
+  // One moment for the whole page, so every figure, chart and list reads the same period window.
+  const date = new Date();
   const listed = profile.runs.filter(practiceRun);
   const eligible = listed.filter(trendRun);
   const hasProgress = listed.length > 0 || profile.loops.length > 0;
-  renderGoal();
+  renderGoal(date);
   $('progress-empty').hidden = hasProgress;
   // Drills, daily and custom runs count toward the goal but not the trend, so the empty copy names what is missing.
   const goalOnly = !hasProgress && !$('practice-goal').hidden;
@@ -3213,24 +3217,25 @@ function renderHistory() {
   const period = progressState.period;
   for (const button of $('progress-period').querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
   $('progress-conditions').textContent = source ? describeConditions(source) : '';
-  const matching = source ? filterRuns(eligible, key, period) : [];
-  const runRows = source ? filterRuns(listed, key, period) : [];
+  const matching = source ? filterRuns(eligible, key, period, date) : [];
+  const runRows = source ? filterRuns(listed, key, period, date) : [];
   const repeats = runRows.length - matching.length;
   const repeatCopy = repeats ? `${repeats} repeated-text ${repeats === 1 ? 'run' : 'runs'} not charted.` : '';
-  renderOverview(matching, source ? weeklyChange(eligible, key) : null, period);
+  renderOverview(matching, source ? weeklyChange(eligible, key, date) : null, period);
   progressRuns = matching;
+  progressWindow = periodWindow(period, date, matching.map(runDay).filter(Boolean).sort()[0]);
   // Only what the charts can't show: an empty period, or runs listed below that aren't drawn.
   $('progress-trend-note').textContent = matching.length
     ? [matching.some((r) => !r.at) ? 'Undated runs not charted.' : '', repeatCopy].filter(Boolean).join(' ')
     : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
-  renderKeys(source ? filterRuns(profile.runs, key, period) : []);
+  renderKeys(source ? filterRuns(profile.runs, key, period, date) : []);
   showProgressView(hasProgress ? progressState.view : 'practice', { remember: false, only: hasProgress ? null : 'practice' });
   const filter = `${period}|${key}`;
   if (filter !== listedFilter) progressState.allRuns = false;
   listedFilter = filter;
   listedRuns = [...runRows].reverse();
   renderRunRows();
-  const loops = source ? filterRuns(profile.loops, key, period).reverse() : [];
+  const loops = source ? filterRuns(profile.loops, key, period, date).reverse() : [];
   $('history-list').hidden = !loops.length;
   $('history-empty').hidden = Boolean(loops.length);
   const template = $('history-row-template');
@@ -3317,7 +3322,6 @@ function renderPracticeStats(period, date = new Date()) {
     figure('Current streak', String(current), daysWord(current), `today ${goalMinutes(byDay[dayKey(date)])}${goal ? ` of ${goal}` : ''} min`),
     figure('Time typing', goalMinutes(stats.minutes), 'min', period === 'all' ? `since ${new Date(`${days[0]}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : `in the last ${days.length} days`),
   );
-  if (shownProgressView() === 'practice') drawProgressView();
 }
 
 // Only the shown view's charts are drawn: a hidden panel has no width to draw to.
@@ -3325,8 +3329,8 @@ const shownProgressView = () => $('progress-tabs').querySelector('[aria-selected
 function drawProgressView() {
   const view = shownProgressView();
   const draw = {
-    speed: () => renderTrend($('progress-trend'), progressRuns, openHistoryRun, 'wpm', { from: periodStart(progressState.period) }),
-    accuracy: () => renderTrend($('accuracy-trend'), progressRuns, openHistoryRun, 'accuracy', { from: periodStart(progressState.period) }),
+    speed: () => renderTrend($('progress-trend'), progressRuns, openHistoryRun, 'wpm', { period: progressWindow }),
+    accuracy: () => renderTrend($('accuracy-trend'), progressRuns, openHistoryRun, 'accuracy', { period: progressWindow }),
     consistency: () => renderSpread($('progress-spread'), progressRuns),
     practice: () => renderRunsPerDay($('practice-runs'), practicePerDay),
   };
@@ -5955,7 +5959,12 @@ completeAuthRedirect();
 syncOnLoad();
 inbox.refresh();
 // Refresh the day label and the practice calendar when a tab returns, and across midnight without reloading.
-const refreshGoalDay = () => { if (dayKey(new Date()) !== goalDay) renderGoal(); };
+// On Progress the whole page moves to the new day, so its figures, charts and list keep one window.
+const refreshGoalDay = () => {
+  if (dayKey(new Date()) === goalDay) return;
+  if (document.body.dataset.view === 'progress') renderHistory();
+  else renderGoal();
+};
 setInterval(() => {
   if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); }
   if (document.body.dataset.view === 'progress') refreshGoalDay();

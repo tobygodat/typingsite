@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, conditionLabels, periodDays, periodStart, periodStats, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, conditionLabels, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
 import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
 
 
@@ -915,12 +915,27 @@ test('a period is whole local calendar days: 7 days is today and the six before,
   const today = new Date(2026, 9, 17, 15);
   const at = (day, hour) => new Date(2026, 9, day, hour).toISOString();
   const runs = [run('before', { at: at(10, 20) }), run('first', { at: at(11, 0) }), run('today', { at: at(17, 14) })];
-  assert.equal(periodStart(7, today), '2026-10-11');
-  assert.equal(periodStart('all', today), null);
+  assert.deepEqual(periodWindow(7, today), { from: '2026-10-11', to: '2026-10-17' });
+  assert.deepEqual(periodWindow('all', today), { from: null, to: '2026-10-17' });
   assert.deepEqual(filterRuns(runs, conditionKey(conditions), 7, today).map((r) => r.id), ['first', 'today'],
     'a run on the evening seven days back is outside, though it is less than 7 × 24 hours old');
-  assert.equal(periodDays(7, today)[0], periodStart(7, today));
+  assert.equal(periodDays(7, today)[0], periodWindow(7, today).from);
   assert.deepEqual(filterRuns(runs, conditionKey(conditions), 1, today).map((r) => r.id), ['today']);
+});
+
+test('every period ends today: a run saved on a day still ahead here waits for its day, in charts and practice alike', () => {
+  const today = new Date(2026, 9, 17, 15);
+  const runs = [run('today', { day: '2026-10-17' }), run('tomorrow', { day: '2026-10-18' }), run('undated', { at: null })];
+  for (const days of [7, 30]) {
+    assert.deepEqual(filterRuns(runs, conditionKey(conditions), days, today).map((r) => r.id), ['today'], `${days} days`);
+  }
+  assert.deepEqual(filterRuns(runs, conditionKey(conditions), 'all', today).map((r) => r.id), ['today', 'undated'],
+    'All has no first day, so an undated run stays, but it still ends today');
+  assert.deepEqual(periodWindow('all', today, '2026-10-18'), { from: '2026-10-17', to: '2026-10-17' }, 'All never starts after today');
+  assert.deepEqual(periodDays('all', today, '2026-10-18'), ['2026-10-17']);
+  const stats = practiceStats({ '2026-10-17': 5, '2026-10-18': 5 }, runs.map((r) => ({ ...r, status: 'complete' })), periodDays(7, today));
+  assert.equal(stats.runsPerDay.reduce((sum, d) => sum + d.runs, 0), 1, 'practice counts the same runs the charts do');
+  assert.equal(stats.minutes, 5);
 });
 
 test('test shapes keep a mode\'s preset lengths in place, without runs, between the lengths that have them', () => {

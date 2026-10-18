@@ -236,6 +236,27 @@ test('the runs-per-day strip follows the calendar across midnight', async ({ pag
   await expect(strip).toHaveAttribute('aria-label', /^Runs per day from Oct 12 to Oct 18:/);
 });
 
+test('across midnight on 7 days, the overview and the chart move to the new day together', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [run(6, 50, 95), run(3, 60, 95), run(0, 70, 95)]);
+  await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }).click();
+  const points = page.locator('#progress-trend .trend-dot');
+  await expect(figure(page, '7 days')).toContainText('median of 3 runs');
+  await expect(points).toHaveCount(3);
+  await page.clock.fastForward('09:01:00');
+  await expect(figure(page, '7 days')).toContainText('median of 2 runs');
+  await expect(points).toHaveCount(2);
+  await expect(page.locator('#run-history .run-row')).toHaveCount(2);
+  const drawn = await page.locator('#progress-trend svg').getAttribute('viewBox');
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect(page.locator('#progress-trend svg')).not.toHaveAttribute('viewBox', drawn);
+  const outside = await page.locator('#progress-trend svg').evaluate((svg) => {
+    const rule = svg.querySelector('.trend-rule');
+    const [left, right] = [Number(rule.getAttribute('x1')), Number(rule.getAttribute('x2'))];
+    return [...svg.querySelectorAll('.trend-runs circle')].map((dot) => Number(dot.getAttribute('cx'))).filter((x) => x < left || x > right);
+  });
+  expect(outside).toEqual([]);
+});
+
 test('with only practice to show, the panel stands alone, without tab semantics', async ({ page, supabase }) => {
   await openProgress(page, supabase, [{ ...run(1, 50, 95), kind: 'drill' }, { ...run(0, 50, 95), kind: 'drill' }]);
   await expect(page.locator('#practice-goal')).toBeVisible();
