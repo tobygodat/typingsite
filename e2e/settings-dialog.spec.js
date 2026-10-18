@@ -52,6 +52,29 @@ test('categories preserve shortcut edits and Escape cancels recording before clo
   await expect(page.locator('#typing-status')).toHaveText('Ready');
 });
 
+test('Escape dismisses Settings before its commands binding and cancels recording first', async ({ page }) => {
+  await openApp(page);
+  await openSettings(page, 'shortcuts');
+  for (const [action, value] of Object.entries({ restart: 'F2', commands: 'Escape', exitFocus: 'F8' })) {
+    await page.locator(`#keybinding-${action}`).fill(value);
+  }
+  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
+  await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
+  await page.getByRole('button', { name: 'Record commands binding', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#keybindings-status')).toHaveText('Recording cancelled.');
+  await expect(dialog(page)).toBeVisible();
+  await page.locator('[data-settings-category="appearance"]').click();
+  await page.keyboard.press('Escape');
+  await expect(dialog(page)).toBeHidden();
+  await expect(page.locator('#palette')).toBeHidden();
+  await expect(page.locator('#settings-trigger')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#palette')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#palette')).toBeHidden();
+});
+
 test('native radio arrows apply preferences, retain focus, and update the live sample without changing the passage', async ({ page }) => {
   await openApp(page);
   const text = await passageText(page);
@@ -109,6 +132,51 @@ test('same-value radio picks override a different preference waiting from anothe
   await other.close();
 });
 
+for (const [key, id, remote, current, query] of [
+  ['minAccuracy', 'min-accuracy', 95, 0, 'minimum accuracy · off'],
+  ['minWpm', 'min-wpm', 60, 0, 'minimum speed · off'],
+  ['repeatQuotes', 'repeat-quotes-toggle', true, false, null],
+]) {
+  for (const source of query ? ['radio', 'palette'] : ['radio']) {
+    test(`same-value ${key} ${source} pick stamps over a queued remote preference without restarting`, async ({ page, context, supabase }) => {
+      const user = supabase.addUser(`${key}-${source}@stilltype.test`);
+      await openApp(page);
+      await signInWithEmail(page, user.email);
+      if (key === 'repeatQuotes') await page.locator('#mode-quote').click();
+      else await chooseWords(page);
+      const text = await passageText(page);
+      const typed = text.slice(0, 3);
+      await typeInto(page, typed);
+      const other = await context.newPage();
+      await supabase.attach(other);
+      await openApp(other);
+      await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+      await chooseSetting(other, id, remote);
+      await expect.poll(() => supabase.profileFor(user.email)?.preferences?.[key]).toBe(remote);
+      const remoteStamp = supabase.profileFor(user.email).preferencesAt[key];
+      await openSettings(page, 'practice');
+      await expect(page.locator(`#${id} input:checked`)).toHaveValue(String(current));
+      await expect(page.locator('#typing-input')).toHaveValue(typed);
+      if (source === 'radio') await chooseSetting(page, id, current);
+      else {
+        await closeSettings(page);
+        await page.keyboard.press('Control+k');
+        await page.locator('#palette-input').fill(query);
+        await page.keyboard.press('Enter');
+      }
+      await expect.poll(() => supabase.profileFor(user.email)?.preferences?.[key]).toBe(current);
+      expect(supabase.profileFor(user.email).preferencesAt[key] > remoteStamp).toBe(true);
+      await expect(page.locator('#typing-input')).toHaveValue(typed);
+      expect(await passageText(page)).toBe(text);
+      await closeSettings(page);
+      await page.locator('#restart-button').click();
+      await openSettings(page, 'practice');
+      await expect(page.locator(`#${id} input:checked`)).toHaveValue(String(current));
+      await other.close();
+    });
+  }
+}
+
 test('palette opens shortcuts and import returns focus to a visible settings opener', async ({ page }) => {
   await openApp(page);
   await page.keyboard.press('Control+k');
@@ -138,6 +206,14 @@ for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'],
     await page.screenshot({ path: testInfo.outputPath(`settings-${width}-${height}-${theme}.png`) });
     for (const category of ['appearance', 'practice', 'keyboard', 'sound', 'shortcuts']) {
       await openSettings(page, category);
+      if (width === 1440 && category === 'practice') {
+        const options = await page.locator('#correction-select .setting-option').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().y));
+        expect(options).toHaveLength(5);
+        expect(new Set(options).size).toBe(1);
+        const label = await page.locator('#correction-select-label').boundingBox();
+        const group = await page.locator('#correction-select').boundingBox();
+        expect(label.y + label.height).toBeLessThanOrEqual(group.y);
+      }
       const footer = await page.locator('.settings-footer').boundingBox();
       const controls = page.locator(`#settings-${category} input, #settings-${category} button`);
       for (const control of await controls.all()) {

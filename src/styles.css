@@ -62,10 +62,8 @@
   --settings-preview-small: 22px;
   --settings-preview-medium: var(--text-title);
   --settings-preview-large: 36px;
-  --sound-select-width: 176px;
   --sound-range-width: 104px;
   --sound-range-height: 36px;
-  --layout-select-width: 128px;
   --heat-key: 52px;
   --heat-gap: 6px;
   --content-max: 1080px;
@@ -430,6 +428,8 @@ kbd {
 .preference-note, .preference-lock { color: var(--muted); font: var(--text-label)/1.4 var(--font-serif); }
 .preference-lock { font-style: italic; }
 .setting-options { display: flex; flex: 1; flex-wrap: wrap; min-width: 0; gap: var(--space-1); margin: 0; border: 0; padding: 0; }
+.preference-row-wide { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+.preference-row-wide .setting-options { flex: none; width: 100%; }
 .setting-option { position: relative; display: flex; cursor: pointer; }
 .setting-option input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: inherit; }
 .setting-option span { display: flex; align-items: center; justify-content: center; min-height: var(--control); padding-inline: var(--space-4); border-radius: var(--radius-sm); color: var(--muted); font: var(--text-small)/var(--settings-option-line) var(--font-serif); }
@@ -3029,8 +3029,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .dock-command { flex: none; }
   .dock-settings { width: var(--control); padding: 0; justify-content: center; }
   .dock-settings .dock-label { display: none; }
-
-  /* It grows up from the dock, so its height also leaves room for the account corner at the top. */
 
   /* The dock moves to the bottom; the corner stays top right and scrolls with the page. */
   .app-shell { padding-top: var(--space-10); }

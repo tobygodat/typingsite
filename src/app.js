@@ -5401,6 +5401,7 @@ function bindEvents() {
     }
     if (((event.isComposing || event.keyCode === 229) && !activeAccentComposition()) || event.getModifierState?.('AltGraph')) return;
     if (document.querySelector('dialog[open]')) {
+      if ($('settings-dialog').open && event.key === 'Escape') return;
       if ($('settings-dialog').open && !keybindingEditor.isRecording()
         && !document.activeElement?.closest('input, textarea, select, [contenteditable]')
         && matchesAppBinding(event, prefs.keybindings.commands)) {
@@ -5639,10 +5640,11 @@ function restartHint() {
 
 // Repeat quotes changes only open practice's next quote, so a custom passage (or any other session) is kept.
 function setRepeatQuotes(enabled) {
-  if (prefs.repeatQuotes === enabled) return;
+  const changed = prefs.repeatQuotes !== enabled;
   prefs.repeatQuotes = enabled;
-  applyPreferences();
   saveChoice('repeatQuotes');
+  if (!changed) return;
+  applyPreferences();
   if (sessionKind !== 'practice' || passage?.fresh !== false || attempt?.status !== 'ready') return;
   // A repeated passage that hasn't been started. Off swaps it for unseen text if any remains: here on Practice,
   // otherwise when Practice next opens (staleRepeat), so the setting never changes the view. Else reword its notice.
@@ -5666,10 +5668,11 @@ function staleRepeat() {
 
 // A ready practice run takes a new minimum in place; one already under way restarts with it.
 function setMinimum(key, value) {
-  if (prefs[key] === value) return;
+  const changed = prefs[key] !== value;
   prefs[key] = value;
-  applyPreferences();
   saveChoice(key);
+  if (!changed) return;
+  applyPreferences();
   if (sessionKind !== 'practice' || !attempt) return;
   if (attempt.status === 'ready') {
     attempt.minimums = practiceMinimums();
