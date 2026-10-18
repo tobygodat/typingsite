@@ -320,6 +320,24 @@
                 <input id="custom-length-input" class="custom-length-input" type="text" inputmode="numeric" enterkeyhint="done" maxlength="12" autocomplete="off" spellcheck="false" placeholder="5–600" aria-label="custom time in seconds, 5 to 600" aria-describedby="custom-length-error">
               </form>
             </div>
+            <div id="quote-options" class="segmented quote-options" role="group" aria-label="Quote filters" hidden>
+              <label for="quote-length">quote length
+                <select id="quote-length" class="input select">
+                  <option value="any">any</option>
+                  <option value="short">short</option>
+                  <option value="medium" selected>medium</option>
+                  <option value="long">long</option>
+                </select>
+              </label>
+              <label for="quote-difficulty">difficulty
+                <select id="quote-difficulty" class="input select">
+                  <option value="any" selected>any</option>
+                  <option value="gentle">gentle</option>
+                  <option value="steady">steady</option>
+                  <option value="precise">precise</option>
+                </select>
+              </label>
+            </div>
             <div id="code-options" class="segmented compact glide" role="group" aria-label="Code language" data-glide="pressed" hidden>
               <button type="button" data-language="js" aria-pressed="true" class="is-active">js</button>
               <button type="button" data-language="python" aria-pressed="false">python</button>
@@ -333,25 +351,6 @@
           </div>
           <p id="custom-length-error" class="field-error custom-length-error" role="alert"></p>
           <span id="minimum-note" class="minimum-note" hidden></span>
-        </div>
-
-        <div id="quote-options" class="quote-options" hidden>
-          <label for="quote-length">quote length
-            <select id="quote-length" class="input select">
-              <option value="any">any</option>
-              <option value="short">short</option>
-              <option value="medium" selected>medium</option>
-              <option value="long">long</option>
-            </select>
-          </label>
-          <label for="quote-difficulty">difficulty
-            <select id="quote-difficulty" class="input select">
-              <option value="any" selected>any</option>
-              <option value="gentle">gentle</option>
-              <option value="steady">steady</option>
-              <option value="precise">precise</option>
-            </select>
-          </label>
         </div>
 
         <div id="standard-options" class="standard-options" hidden>

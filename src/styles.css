@@ -882,32 +882,18 @@ kbd {
 .mode-options { z-index: 2; gap: 0; }
 .mode-options button { padding: 0 var(--space-3); }
 
-/* From 901px the mode, length and punctuation groups share one hairline rail instead of three
-   frames, divided by short rules. Narrower, the rail dissolves and each group keeps its own frame. */
-@media (min-width: 901px) {
-  .practice-rail {
-    padding: 3px;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-control);
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-  .practice-rail > .segmented { padding: 0; border: 0; }
-  .practice-rail > .compact-switch { height: 36px; padding: 0 var(--space-3) 0 var(--space-2); border: 0; }
-  .practice-rail > :not(:first-child) { position: relative; }
-  .practice-rail > :not(:first-child)::before {
-    content: "";
-    position: absolute;
-    z-index: 1;
-    top: 50%;
-    left: calc(var(--space-3) / -2);
-    width: 1px;
-    height: var(--space-4);
-    background: var(--hairline-strong);
-    transform: translate(-50%, -50%);
-  }
+.practice-rail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
 }
+
+.practice-rail > :is(.segmented, .compact-switch) { background: var(--raised); }
+
+@media (min-width: 1000px) {
+  .practice-rail { gap: var(--space-6); }
+}
+
 @media (max-width: 900px) {
   .practice-rail { display: contents; }
 }
@@ -1060,22 +1046,32 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
 }
 
 .quote-options {
-  margin: calc(var(--space-4) * -1) auto var(--space-10);
-  display: flex;
+  margin: 0;
+  padding-inline: var(--space-3);
+  max-width: 100%;
   flex-wrap: wrap;
   justify-content: center;
-  gap: var(--space-2) var(--space-4);
+  gap: var(--space-2) var(--space-3);
 }
 
 .quote-options label {
   color: var(--muted);
-  font-size: 14px;
+  font-size: var(--text-label);
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  white-space: nowrap;
 }
 
-.quote-options .input { width: 128px; height: 38px; font-size: 14px; }
+.quote-options .input {
+  width: auto;
+  height: calc(var(--control) - var(--space-2));
+  padding-inline: var(--space-2);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  font-size: var(--text-label);
+}
 
 /* The standard test's fixed recipe, in the quote options' place. The lock notes live in settings. */
 .standard-options {
@@ -3040,8 +3036,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .segmented button, .segmented .custom-length-input { height: 40px; padding: 0 var(--space-2); }
   .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
-  .quote-options, .standard-options, .custom-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
-  .quote-options .input { width: 112px; }
+  .standard-options, .custom-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
+  .quote-options .input { height: var(--space-10); }
 
   .measure-row { flex-direction: column; align-items: stretch; gap: var(--space-4); }
   .live-stats { justify-content: space-between; gap: var(--space-4); }

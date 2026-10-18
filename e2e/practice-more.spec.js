@@ -3,12 +3,20 @@ import { test, expect, openApp, passageText } from './fixtures.js';
 
 const MORE = ['code', 'standard', 'compose', 'custom', 'learn to type'];
 
-test('one rail holds the modes, lengths and punctuation; "more" names the mode chosen inside it', async ({ page }) => {
+test('modes, lengths and punctuation float in separate groups; "more" names the mode chosen inside it', async ({ page }) => {
   await openApp(page);
   const rail = page.locator('.practice-rail');
-  await expect(rail).toHaveCSS('border-top-style', 'solid');
+  await expect(rail).toHaveCSS('border-top-style', 'none');
+  let previous;
   for (const group of ['.mode-options', '#duration-options', '#punctuation-switch']) {
     await expect(rail.locator(group)).toBeVisible();
+    await expect(rail.locator(group)).toHaveCSS('border-top-style', 'solid');
+    const box = await rail.locator(group).boundingBox();
+    if (previous) {
+      expect(box.x).toBeGreaterThan(previous.x + previous.width);
+      expect(box.y).toBe(previous.y);
+    }
+    previous = box;
   }
   // Only time, words and quote show until "more" opens.
   await expect(page.locator('.mode-more-menu')).toBeHidden();
@@ -66,14 +74,30 @@ test('at 320px the open menu stays on screen and above the lengths', async ({ pa
   }
 });
 
-const PANELS = [['quote', '#quote-options'], ['standard', '#standard-options'], ['custom', '#custom-options']];
+const PANELS = [['standard', '#standard-options'], ['custom', '#custom-options']];
 
 for (const width of [1280, 390]) {
-  test(`at ${width}px each mode's options sit below the practice controls, not on them`, async ({ page }) => {
+  test(`at ${width}px quote filters share the setup bar and expanded panels clear it`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await openApp(page);
+    await page.locator('#mode-quote').click();
+    await expect(page.locator('.practice-rail #quote-options')).toBeVisible();
+    await expect(page.locator('#duration-options')).toBeHidden();
+    const setup = await page.locator('.practice-controls').boundingBox();
+    const filters = await page.locator('#quote-options').boundingBox();
+    expect(filters.y).toBeGreaterThanOrEqual(setup.y);
+    expect(filters.y + filters.height).toBeLessThanOrEqual(setup.y + setup.height);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+    if (width > 900) {
+      const modes = await page.locator('.mode-options').boundingBox();
+      const punctuation = await page.locator('#punctuation-switch').boundingBox();
+      expect(filters.y).toBe(modes.y);
+      expect(filters.y).toBe(punctuation.y);
+      expect(filters.x).toBeGreaterThanOrEqual(modes.x + modes.width);
+      expect(filters.x + filters.width).toBeLessThanOrEqual(punctuation.x);
+    }
     for (const [mode, panel] of PANELS) {
-      if (mode !== 'quote') await page.locator('#mode-more-label').click();
+      await page.locator('#mode-more-label').click();
       await page.locator(`#mode-${mode}`).click();
       await expect(page.locator(panel)).toBeVisible();
       const controls = await page.locator('.practice-controls').boundingBox();
