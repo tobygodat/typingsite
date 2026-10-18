@@ -1,5 +1,6 @@
+import { DEFAULT_LAYOUT } from './layouts.js';
 import { LENGTHS } from './lengths.js';
-import { conditionKey, printable, replayAttempt, summarizePatterns, textId } from './typing.js';
+import { CORPUS_VERSION, METRIC_VERSION, conditionKey, inputRules, printable, replayAttempt, summarizePatterns, textId } from './typing.js';
 
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
@@ -254,6 +255,34 @@ export function testShapes(sources) {
 // All saved runs have no first day.
 export function periodStart(days, date = new Date()) {
   return days === 'all' ? null : dayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - Number(days) + 1));
+}
+
+export const CORRECTION_LABELS = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
+export function correctionLabel(policy) {
+  return CORRECTION_LABELS[policy || 'mandatory'] || 'stop on error';
+}
+
+// Every feature beside the length that enters a condition key, named as it reads in either state.
+const version = (id) => id.replace(/^.*-(v\d+)$/, '$1');
+const CONDITION_FEATURES = [
+  (c) => (c.mode === 'quote' ? c.difficulty || 'any difficulty' : c.punctuation ? 'punctuation' : 'no punctuation'),
+  (c) => (c.mode === 'quote' ? '' : c.numbers ? 'numbers' : 'no numbers'),
+  (c) => (c.wordList ? `english ${c.wordList}` : 'english'),
+  (c) => (c.inputClass === 'touch' ? 'touch input' : 'physical keyboard'),
+  (c) => c.layout || DEFAULT_LAYOUT,
+  (c) => correctionLabel(c.correctionPolicy),
+  (c) => (c.strictSpace === true ? 'strict space' : 'no strict space'),
+  (c) => (inputRules(c).includes('quick-end-off') ? 'quick end off' : 'quick end'),
+  (c) => `corpus ${version(c.corpus || CORPUS_VERSION)}`,
+  (c) => `metric ${version(c.metricVersion || METRIC_VERSION)}`,
+];
+
+// Names for the condition sets at one length: each set's value of every feature the sets disagree on
+// ("no numbers · qwerty", "numbers · dvorak"), so a set's name never depends on how often it was run.
+export function conditionLabels(sets) {
+  const features = sets.map((conditions) => CONDITION_FEATURES.map((feature) => feature(conditions)));
+  const differs = CONDITION_FEATURES.map((_, f) => new Set(features.map((values) => values[f])).size > 1);
+  return features.map((values, i) => values.filter((_, f) => differs[f]).join(' · ') || `conditions ${i + 1}`);
 }
 
 // The local calendar days a Progress period covers, oldest first and ending today: from periodStart,

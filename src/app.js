@@ -63,7 +63,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { CORRECTION_LABELS, DAILY_GOALS, conditionLabels, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
 import { RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
@@ -400,10 +400,6 @@ function conditions(inputClass = 'physical-keyboard') {
   return prefs.mode === 'standard' ? { ...standardConditions(inputClass), layout: inputLayout(inputClass) } : settingsConditions(inputClass);
 }
 
-const CORRECTION_LABELS = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
-function correctionLabel(policy) {
-  return CORRECTION_LABELS[policy || 'mandatory'] || 'stop on error';
-}
 
 // "standard v1": the recipe name as people read it, then what the recipe fixes.
 const recipeLabel = (recipe = STANDARD_VERSION) => recipe.replace('-', ' ');
@@ -3117,13 +3113,6 @@ const shapeLabel = (shape) => {
   return { text: shape.mode };
 };
 
-// The parts of a variant's conditions that the other variants at its length don't share, so a pill
-// names only what tells it apart ("punctuation", "stop on error").
-function variantLabels(variants) {
-  const parts = variants.map((variant) => describeConditions(variant.conditions).split(' · '));
-  return parts.map((own, i) => own.filter((part) => !parts.every((other) => other.includes(part))).join(' · ') || `conditions ${i + 1}`);
-}
-
 function pill(text, { pressed = false, disabled = false, label = '', className = '' } = {}) {
   const button = element('button', text, `pill${className ? ` ${className}` : ''}`);
   button.type = 'button';
@@ -3152,7 +3141,7 @@ function renderTestPills(shapes) {
   $('progress-tests').replaceChildren(...row);
   const variants = selected?.variants || [];
   $('progress-variants').hidden = variants.length < 2;
-  const labels = variantLabels(variants);
+  const labels = conditionLabels(variants.map((variant) => variant.conditions));
   $('progress-variants').replaceChildren(...(variants.length < 2 ? [] : variants.map((variant, i) => {
     const button = pill(labels[i], { pressed: variant.key === progressState.key, className: 'variant-pill' });
     button.addEventListener('click', () => { progressState.key = variant.key; renderHistory(); });

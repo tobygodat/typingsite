@@ -43,8 +43,8 @@ test('period and test pills filter the overview, and condition sets never mix', 
 
   // The newest run's length opens, on its most used condition set.
   await expect(tests.getByRole('button', { name: '25 words' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(variants.getByRole('button')).toHaveText(['plain', 'punctuation']);
-  await expect(variants.getByRole('button', { name: 'plain' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(variants.getByRole('button')).toHaveText(['no punctuation', 'punctuation']);
+  await expect(variants.getByRole('button', { name: 'no punctuation' })).toHaveAttribute('aria-pressed', 'true');
   // The full conditions line waits behind a disclosure beside the condition sets.
   const conditionsLine = page.locator('#progress-conditions');
   await expect(conditionsLine).toBeHidden();
@@ -77,7 +77,7 @@ test('period and test pills filter the overview, and condition sets never mix', 
   await expect(page.locator('#run-history .run-row')).toHaveCount(5);
 
   // Punctuation is its own set: only its three runs, none of the plain ones.
-  await variants.getByRole('button', { name: 'punctuation' }).click();
+  await variants.getByRole('button', { name: 'punctuation', exact: true }).click();
   await expect(page.locator('#progress-conditions')).toContainText('25 words · punctuation');
   await expect(figure(page, 'All')).toContainText('31 wpm');
   await expect(figure(page, 'All')).toContainText('median of 3 runs');
@@ -96,7 +96,7 @@ test('period and test pills filter the overview, and condition sets never mix', 
 
   // Back at 25 words, the length opens on its most used set again.
   await tests.getByRole('button', { name: '25 words' }).click();
-  await expect(variants.getByRole('button', { name: 'plain' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(variants.getByRole('button', { name: 'no punctuation' })).toHaveAttribute('aria-pressed', 'true');
   await expect(figure(page, 'All')).toContainText('median of 5 runs');
 });
 

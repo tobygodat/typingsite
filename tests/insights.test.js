@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, periodDays, periodStart, periodStats, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, conditionLabels, periodDays, periodStart, periodStats, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
 import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
 
 
@@ -931,4 +931,17 @@ test('test shapes keep a mode\'s preset lengths in place, without runs, between 
   assert.deepEqual(shapes.filter((s) => s.variants.length).map((s) => s.id), ['words:25', 'words:40', 'time:45', 'quote:short']);
   assert.deepEqual(testShapes([run({ count: 25 })]).map((s) => s.id), ['words:10', 'words:25', 'words:50', 'words:100'],
     'a mode never run gets no placeholders');
+});
+
+test('condition sets at one length are named by every feature they disagree on, absent ones included', () => {
+  const base = { mode: 'words', count: 25, punctuation: false, numbers: false, wordList: '1k', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
+  const labels = (...sets) => conditionLabels(sets.map((extra) => ({ ...base, ...extra })));
+  assert.deepEqual(labels({}, { numbers: true }), ['no numbers', 'numbers']);
+  assert.deepEqual(labels({ punctuation: true }, {}), ['punctuation', 'no punctuation']);
+  assert.deepEqual(labels({}, { layout: 'dvorak' }), ['qwerty', 'dvorak'], 'a set saved before layouts reads as qwerty');
+  assert.deepEqual(labels({}, { correctionPolicy: 'mandatory' }, { correctionPolicy: 'fail-any' }), ['continue on error', 'stop on error', 'fail on any error']);
+  assert.deepEqual(labels({}, { metricVersion: 'stilltype-metrics-v2' }), ['metric v1', 'metric v2']);
+  assert.deepEqual(labels({ numbers: true }, {}, { layout: 'dvorak' }), ['numbers · qwerty', 'no numbers · qwerty', 'no numbers · dvorak']);
+  assert.deepEqual(labels({}, { numbers: true }).reverse(), labels({ numbers: true }, {}), 'a set keeps its name whichever is most used');
+  for (const label of labels({}, { strictSpace: true }, { inputClass: 'touch' }, { wordList: '5k' })) assert.doesNotMatch(label, /conditions \d/);
 });
