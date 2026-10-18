@@ -140,7 +140,6 @@ export function createQuoteFilters({ root, read, commit }) {
   });
   window.addEventListener('blur', dismiss);
   window.addEventListener('resize', dismiss);
-  window.addEventListener('scroll', dismiss, true);
   refresh();
   return { refresh, dismiss };
 }
