@@ -142,10 +142,11 @@ export const evidenceRun = (run) => validRun(run) && measuredKind(run.kind) && r
 const missedWordsRun = (run) => evidenceRun(run) && Array.isArray(run.missedWords);
 const inputClassOf = (run) => run?.conditions?.inputClass || 'physical-keyboard';
 
+// The runs at one condition key inside a period (periodStart). Undated runs fall in no period but All.
 export function filterRuns(runs, key, days = 'all', date = new Date()) {
-  const cutoff = days === 'all' ? null : date.getTime() - Number(days) * 86400000;
+  const start = periodStart(days, date);
   return runs.filter((run) => (!key || conditionKey(run.conditions) === key)
-    && (cutoff === null || (run.at && new Date(run.at).getTime() >= cutoff)));
+    && (start === null || (runDay(run) || '') >= start));
 }
 
 export function median(values) {
@@ -240,12 +241,18 @@ export function testShapes(sources) {
     .sort((a, b) => rank(a.mode) - rank(b.mode) || (Number(a.size) || 0) - (Number(b.size) || 0) || (a.id < b.id ? -1 : 1));
 }
 
-// The local calendar days a Progress period covers, oldest first and ending today: the last `days`
-// days, or every day from `first` for all saved runs.
+// The first local calendar day of a Progress period: "7 days" is today and the six days before.
+// All saved runs have no first day.
+export function periodStart(days, date = new Date()) {
+  return days === 'all' ? null : dayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - Number(days) + 1));
+}
+
+// The local calendar days a Progress period covers, oldest first and ending today: from periodStart,
+// or every day from `first` for all saved runs.
 export function periodDays(days, date = new Date(), first = null) {
   const end = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const start = days !== 'all' ? new Date(end.getFullYear(), end.getMonth(), end.getDate() - Number(days) + 1)
-    : first ? new Date(`${first}T00:00:00`) : new Date(end);
+  const from = periodStart(days, date) || first;
+  const start = from ? new Date(`${from}T00:00:00`) : new Date(end);
   const list = [];
   for (const day = start; day <= end; day.setDate(day.getDate() + 1)) list.push(dayKey(day));
   return list;

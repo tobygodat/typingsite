@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, periodDays, periodStats, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, periodDays, periodStart, periodStats, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
 import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
 
 
@@ -909,4 +909,16 @@ test('practice stats count active days, the longest streak, minutes and runs per
   assert.equal(stats.minutes, 32);
   assert.deepEqual(stats.runsPerDay.map((d) => d.runs), [2, 1, 0, 0, 0], 'only completed runs, only inside the period');
   assert.equal(practiceStats(byDay, runs, days, 10).longest, 1, 'with a goal, only days meeting it count');
+});
+
+test('a period is whole local calendar days: 7 days is today and the six before, for runs and practice alike', () => {
+  const today = new Date(2026, 9, 17, 15);
+  const at = (day, hour) => new Date(2026, 9, day, hour).toISOString();
+  const runs = [run('before', { at: at(10, 20) }), run('first', { at: at(11, 0) }), run('today', { at: at(17, 14) })];
+  assert.equal(periodStart(7, today), '2026-10-11');
+  assert.equal(periodStart('all', today), null);
+  assert.deepEqual(filterRuns(runs, conditionKey(conditions), 7, today).map((r) => r.id), ['first', 'today'],
+    'a run on the evening seven days back is outside, though it is less than 7 × 24 hours old');
+  assert.equal(periodDays(7, today)[0], periodStart(7, today));
+  assert.deepEqual(filterRuns(runs, conditionKey(conditions), 1, today).map((r) => r.id), ['today']);
 });
