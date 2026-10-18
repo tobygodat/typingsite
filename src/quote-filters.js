@@ -72,7 +72,6 @@ export function createQuoteFilters({ root, read, commit }) {
     if (!draft) return;
     const { widget, index } = draft;
     const value = widget.values[index];
-    // Clear the draft before resetting practice can move focus and fire blur again.
     dismiss();
     if (value === read()[widget.key]) return;
     commit(widget.key, value, { focus, trigger: widget.trigger });

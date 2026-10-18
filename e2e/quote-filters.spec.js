@@ -156,7 +156,7 @@ for (const width of [1280, 1000, 901, 900, 390, 320]) {
     for (const name of ['length', 'difficulty']) {
       const trigger = combo(page, name);
       const target = await trigger.boundingBox();
-      expect(target.height).toBeGreaterThanOrEqual(44);
+      expect(target.height).toBeGreaterThanOrEqual(36);
       await trigger.click();
       const popup = await list(page, name).boundingBox();
       expect(popup.x).toBeGreaterThanOrEqual(0);
@@ -179,6 +179,22 @@ for (const width of [1280, 1000, 901, 900, 390, 320]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   });
 }
+
+test.describe('touch quote filters', () => {
+  test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+
+  test('both triggers and menu options keep 44px targets', async ({ page }) => {
+    await quotes(page);
+    for (const name of ['length', 'difficulty']) {
+      expect((await combo(page, name).boundingBox()).height).toBeGreaterThanOrEqual(44);
+      await combo(page, name).tap();
+      for (const option of await list(page, name).getByRole('option').all()) {
+        expect((await option.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      }
+      await page.keyboard.press('Escape');
+    }
+  });
+});
 
 test('focus mode, window blur and resize discard drafts', async ({ page }) => {
   await quotes(page);

@@ -1061,7 +1061,7 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
   gap: var(--space-2);
   width: max-content;
   min-width: var(--control);
-  min-height: var(--control);
+  min-height: calc(var(--control) - var(--space-2));
   padding-inline: var(--space-1);
   border-radius: var(--radius);
   color: var(--muted);
@@ -3084,6 +3084,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
   .standard-options, .custom-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
+  .quote-filter-trigger { min-height: var(--space-10); }
 
   .measure-row { flex-direction: column; align-items: stretch; gap: var(--space-4); }
   .live-stats { justify-content: space-between; gap: var(--space-4); }
@@ -3149,6 +3150,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
    so neither the layout nor the focus ring moves. Relative position keeps that reach above the
    content after it. */
 @media (any-pointer: coarse) {
+  .quote-filter-trigger { min-height: var(--control); }
   .goal-day-picker { display: block; }
   .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control, .mode-more > summary, .range { min-height: var(--control); }
   /* A short mode ("time") among five on a 320px phone is narrower than 44px: the row still fits. */

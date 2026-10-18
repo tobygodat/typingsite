@@ -184,7 +184,6 @@ test('a condition key is compared only when this build writes it the same way', 
 });
 
 test('every key this build can write is listed, read back as the conditions it was written from', () => {
-  // The native word-list options and every supported condition shape stay in sync.
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const options = (id) => [...html.match(new RegExp(`<select[^>]*id="${id}"[^>]*>([^]*?)</select>`))[1].matchAll(/value="([^"]*)"/g)].map((match) => match[1]);
   assert.deepEqual(options('word-list'), wordListIds);
