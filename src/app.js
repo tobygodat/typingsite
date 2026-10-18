@@ -3133,23 +3133,12 @@ function pill(text, { pressed = false, disabled = false, label = '', className =
   return button;
 }
 
-// One pill per test length with history, word counts then times then the rest. Where someone has run
-// a mode, its preset lengths without runs stay in place, disabled, so the row keeps its shape.
+// One pill per test length in testShapes' order; a length without runs is disabled.
 function renderTestPills(shapes) {
   const selected = shapes.find((shape) => shape.variants.some((variant) => variant.key === progressState.key));
-  const shown = [...shapes];
-  for (const mode of ['words', 'time']) {
-    if (!shapes.some((shape) => shape.mode === mode)) continue;
-    for (const size of LENGTHS[mode].presets) {
-      if (!shapes.some((shape) => shape.id === `${mode}:${size}`)) shown.push({ id: `${mode}:${size}`, mode, size: String(size), variants: [] });
-    }
-  }
-  const order = ['words', 'time'];
-  shown.sort((a, b) => (order.includes(a.mode) ? order.indexOf(a.mode) : 2) - (order.includes(b.mode) ? order.indexOf(b.mode) : 2)
-    || (order.includes(a.mode) && a.mode === b.mode ? Number(a.size) - Number(b.size) : shapes.indexOf(a) - shapes.indexOf(b)));
   const row = [];
-  shown.forEach((shape, i) => {
-    if (i && shape.mode !== shown[i - 1].mode) {
+  shapes.forEach((shape, i) => {
+    if (i && shape.mode !== shapes[i - 1].mode) {
       const rule = element('span', '', 'pill-rule');
       rule.setAttribute('aria-hidden', 'true');
       row.push(rule);

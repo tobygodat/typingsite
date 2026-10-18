@@ -882,8 +882,8 @@ test('test shapes group exact conditions by length, most used variant first', ()
     run({ mode: 'time', duration: 15, count: null }),
     run({ mode: 'quote', count: null, quoteLength: 'short' }),
   ]);
-  assert.deepEqual(shapes.map((s) => s.id), ['words:10', 'words:25', 'time:15', 'time:60', 'quote:short']);
-  const words25 = shapes[1];
+  assert.deepEqual(shapes.filter((s) => s.variants.length).map((s) => s.id), ['words:10', 'words:25', 'time:15', 'time:60', 'quote:short']);
+  const words25 = shapes.find((s) => s.id === 'words:25');
   assert.equal(words25.variants.length, 2, 'punctuation is its own condition set, never pooled');
   assert.deepEqual(words25.variants.map((v) => [v.conditions.punctuation, v.count]), [[false, 2], [true, 1]]);
   assert.equal(new Set(words25.variants.map((v) => v.key)).size, 2);
@@ -921,4 +921,14 @@ test('a period is whole local calendar days: 7 days is today and the six before,
     'a run on the evening seven days back is outside, though it is less than 7 × 24 hours old');
   assert.equal(periodDays(7, today)[0], periodStart(7, today));
   assert.deepEqual(filterRuns(runs, conditionKey(conditions), 1, today).map((r) => r.id), ['today']);
+});
+
+test('test shapes keep a mode\'s preset lengths in place, without runs, between the lengths that have them', () => {
+  const run = (conditions) => ({ conditions: { mode: 'words', punctuation: false, ...conditions } });
+  const shapes = testShapes([run({ count: 25 }), run({ count: 40 }), run({ mode: 'quote', quoteLength: 'short' }), run({ mode: 'time', duration: 45 })]);
+  assert.deepEqual(shapes.map((s) => s.id), ['words:10', 'words:25', 'words:40', 'words:50', 'words:100',
+    'time:15', 'time:30', 'time:45', 'time:60', 'time:120', 'quote:short']);
+  assert.deepEqual(shapes.filter((s) => s.variants.length).map((s) => s.id), ['words:25', 'words:40', 'time:45', 'quote:short']);
+  assert.deepEqual(testShapes([run({ count: 25 })]).map((s) => s.id), ['words:10', 'words:25', 'words:50', 'words:100'],
+    'a mode never run gets no placeholders');
 });

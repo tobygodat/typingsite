@@ -1,3 +1,4 @@
+import { LENGTHS } from './lengths.js';
 import { conditionKey, printable, replayAttempt, summarizePatterns, textId } from './typing.js';
 
 export const MAX_RUN_SUMMARIES = 1000;
@@ -216,7 +217,8 @@ export function histogram(values, width) {
 // run at that length, most used first. A length is the mode and its size; everything else that
 // enters the key (text, word list, input, correction, corpus, metric) tells its variants apart, and
 // runs are only ever compared within one variant. Word counts first, then times, shortest first,
-// then quotes, the standard test, code and anything else.
+// then quotes, the standard test, code and anything else. Where someone has run a word count or a
+// time, that mode's preset lengths without runs stay in place with no variants, so the row keeps its shape.
 const SHAPE_ORDER = ['words', 'time', 'quote', 'standard', 'code'];
 export function shapeOf(conditions = {}) {
   const size = conditions.mode === 'words' ? conditions.count : conditions.mode === 'time' ? conditions.duration
@@ -235,6 +237,13 @@ export function testShapes(sources) {
     if (!variants.has(key)) variants.set(key, { key, conditions: source.conditions, count: 0, last: 0 });
     Object.assign(variants.get(key), { count: variants.get(key).count + 1, last: order });
   });
+  for (const mode of Object.keys(LENGTHS)) {
+    if (![...shapes.values()].some((shape) => shape.mode === mode)) continue;
+    for (const size of LENGTHS[mode].presets) {
+      const id = `${mode}:${size}`;
+      if (!shapes.has(id)) shapes.set(id, { id, mode, size: String(size), variants: new Map() });
+    }
+  }
   const rank = (mode) => (SHAPE_ORDER.includes(mode) ? SHAPE_ORDER.indexOf(mode) : SHAPE_ORDER.length);
   return [...shapes.values()]
     .map((shape) => ({ ...shape, variants: [...shape.variants.values()].sort((a, b) => b.count - a.count || b.last - a.last) }))
