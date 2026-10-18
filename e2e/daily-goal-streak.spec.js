@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { dayKey, goalMinutes } from '../src/insights.js';
-import { test, expect, openApp, chooseWords, completePassage, openView, openProgressView, openSettings, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
+import { test, expect, openApp, chooseWords, completePassage, openView, openProgressView, openSettings, signInWithEmail, typeInto, chooseMore, chooseSetting } from './fixtures.js';
 
 // The current streak and today's minutes, in the practice figures under the calendar.
 const streakFigure = (page) => page.locator('#practice-stats .progress-figure').filter({ has: page.locator('dt', { hasText: /^Current streak$/ }) });
@@ -13,7 +13,7 @@ test('daily goal line and practice calendar render on Progress', async ({ page }
   await page.setViewportSize({ width: 1280, height: 800 });
   await openApp(page);
   await openSettings(page);
-  await page.locator('#daily-goal').selectOption('5');
+  await chooseSetting(page, 'daily-goal', '5');
   await page.keyboard.press('Escape');
   await chooseWords(page, 10);
   await completePassage(page);
@@ -107,7 +107,7 @@ test('Progress screenshots with ten weeks of seeded history', async ({ page, sup
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openSettings(page);
-  await page.locator('#daily-goal').selectOption('10');
+  await chooseSetting(page, 'daily-goal', '10');
   await page.keyboard.press('Escape');
   await openView(page, 'Progress');
   await openProgressView(page, 'Practice');
@@ -162,7 +162,7 @@ test('the calendar and its longest caption fit a 320px screen', async ({ page, s
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openSettings(page);
-  await page.locator('#daily-goal').selectOption('10');
+  await chooseSetting(page, 'daily-goal', '10');
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 320, height: 640 });
   await openView(page, 'Progress');
@@ -292,7 +292,7 @@ test('recorded lessons and composing active time increase the daily practice goa
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openSettings(page);
-  await page.locator('#daily-goal').selectOption('5');
+  await chooseSetting(page, 'daily-goal', '5');
   await page.keyboard.press('Escape');
   await page.clock.install({ time: new Date('2026-10-15T12:00:00Z') });
   await page.clock.pauseAt(new Date('2026-10-15T12:00:01Z'));

@@ -3,7 +3,7 @@
 import { LESSONS } from '../src/lessons.js';
 import { conditionKey } from '../src/typing.js';
 import { DEFAULT_WORD_LIST } from '../src/words.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail, storageKeys, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting } from './fixtures.js';
 
 const body = (page) => page.locator('body');
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -129,7 +129,7 @@ test('a lesson shows the finger map, passes at 95% and unlocks the next keys wit
   await expect(page.locator('#session-description')).toContainText('Key pairs only (repetitions, not words)');
   await expect(page.locator('#condition-line')).toHaveText(/^lesson 1 of 14 · keys f j · key pairs · pass at 95% accuracy and 10 wpm · physical keyboard · continue on error$/);
   // The keyboard setting is off, but a lesson always shows the finger map.
-  await expect(page.locator('#keyboard-toggle')).not.toBeChecked();
+  await expect(page.locator('#keyboard-toggle input[value="true"]')).not.toBeChecked();
   await expect(page.locator('#keyboard')).toBeVisible();
   await expect(page.locator('#keyboard')).toHaveClass(/finger-map/);
   await expect(page.locator('#keyboard .key.target')).toHaveText(['f', 'j']);
@@ -693,7 +693,7 @@ test('a device that saves after another device passed a lesson keeps that pass',
     await expect.poll(() => supabase.profileFor(user.email)?.lessons?.fj?.passed?.accuracy).toBe(100);
     // The other device, which never saw that pass, saves a setting.
     await openSettings(stale);
-    await stale.locator('#keyboard-toggle').check();
+    await chooseSetting(stale, 'keyboard-toggle', true);
     await expect.poll(() => supabase.profileFor(user.email)?.preferences?.keyboard).toBe(true);
     expect(supabase.profileFor(user.email).lessons.fj.passed.accuracy).toBe(100);
     // And it shows the pass once it reads the account again.

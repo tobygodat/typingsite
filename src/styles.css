@@ -50,6 +50,18 @@
 
   --control: 44px;
   --disabled-opacity: 0.38;
+  --settings-height: 704px;
+  --settings-body-height: 520px;
+  --settings-sidebar: 216px;
+  --settings-label: 208px;
+  --settings-row: 72px;
+  --settings-selection-line: 2px;
+  --settings-title-line: 40px;
+  --settings-option-line: 18px;
+  --settings-preview-line: 56px;
+  --settings-preview-small: 22px;
+  --settings-preview-medium: var(--text-title);
+  --settings-preview-large: 36px;
   --sound-select-width: 176px;
   --sound-range-width: 104px;
   --sound-range-height: 36px;
@@ -75,6 +87,7 @@
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --settings-backdrop: rgba(0, 0, 0, 0.5);
   --ground: #0f0f0e;
   --ground-2: #151514;
   --raised: #1c1b1a;
@@ -110,6 +123,7 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
+  --settings-backdrop: rgba(40, 32, 20, 0.22);
   --ground: #f4f1eb;
   --ground-2: #ece8e0;
   --raised: #fbf9f5;
@@ -381,61 +395,82 @@ kbd {
   stroke-linejoin: round;
 }
 
-.preferences { flex: none; }
-.preferences summary { list-style: none; }
-.preferences summary::-webkit-details-marker { display: none; }
-.preferences[open] > summary { color: var(--text); background: var(--raised-2); }
-
-.preferences-popover {
-  position: absolute;
-  z-index: 50;
-  top: calc(100% + var(--space-2));
-  right: 0;
-  width: 340px;
-  max-height: calc(100svh - 58px - var(--space-10));
-  overflow-y: auto;
-  padding: var(--space-3);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
+#settings-dialog {
+  width: min(var(--content-max), calc(100% - var(--space-8)));
+  height: min(var(--settings-height), calc(100dvh - var(--space-8)));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  color: var(--text);
   background: var(--raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-float);
-  animation: fade-in var(--dur-quick) var(--ease-out);
+  overflow: clip;
 }
+#settings-dialog[open] { display: flex; flex-direction: column; animation: palette-in var(--dur-quick) var(--ease-out); }
+#settings-dialog::backdrop { background: var(--settings-backdrop); }
+.settings-header { display: flex; flex: none; align-items: center; justify-content: space-between; padding: var(--space-6) var(--space-8) var(--space-4); }
+.settings-header h2 { margin: 0; font-size: var(--text-title); font-weight: 400; line-height: var(--settings-title-line); }
+#settings-close { display: flex; align-items: center; gap: var(--space-3); min-height: var(--control); padding-inline: var(--space-3); border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; font: var(--text-mono)/var(--space-4) var(--font-mono); }
+#settings-close:hover { color: var(--text); background: var(--raised-2); }
+.settings-body { display: flex; flex: 1; min-height: 0; max-height: var(--settings-body-height); }
+.settings-nav { width: var(--settings-sidebar); flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); border-right: 1px solid var(--hairline-strong); }
+.settings-nav button { flex: none; text-align: left; padding: var(--space-2) var(--space-4); min-height: var(--control); border: 0; border-left: var(--settings-selection-line) solid transparent; border-radius: var(--radius-sm); color: var(--muted); background: transparent; font: var(--text-small)/var(--settings-option-line) var(--font-serif); cursor: pointer; }
+.settings-nav button:hover { background: var(--raised-2); color: var(--text); }
+.settings-nav button[aria-current] { color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); }
+.settings-nav .settings-import { margin-top: var(--space-6); font-size: var(--text-label); line-height: 1.7; }
+.settings-content { flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-4) var(--space-8); }
+.settings-intro { display: grid; gap: var(--space-1); padding-block: var(--space-2); }
+.settings-intro h3 { font-size: var(--text-lead); font-weight: 400; line-height: 1.6; margin: 0; }
+.settings-intro p { color: var(--muted); font-size: var(--text-label); line-height: 1.7; margin: 0; }
+.preference-row { display: flex; align-items: center; gap: var(--space-6); min-height: var(--settings-row); padding-block: var(--space-3); border-bottom: 1px solid var(--hairline); }
+.preference-copy { display: flex; flex-direction: column; flex: none; width: var(--settings-label); gap: var(--space-1); }
+.preference-copy strong { font-size: var(--text-small); font-weight: 600; line-height: 1.6; }
+.preference-note, .preference-lock { color: var(--muted); font: var(--text-label)/1.4 var(--font-serif); }
+.preference-lock { font-style: italic; }
+.setting-options { display: flex; flex: 1; flex-wrap: wrap; min-width: 0; gap: var(--space-1); margin: 0; border: 0; padding: 0; }
+.setting-option { position: relative; display: flex; cursor: pointer; }
+.setting-option input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: inherit; }
+.setting-option span { display: flex; align-items: center; justify-content: center; min-height: var(--control); padding-inline: var(--space-4); border-radius: var(--radius-sm); color: var(--muted); font: var(--text-small)/var(--settings-option-line) var(--font-serif); }
+.setting-option:hover span { color: var(--text); background: var(--raised-2); }
+.setting-option input:checked + span { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 calc(-1 * var(--settings-selection-line)) 0 var(--accent); }
+.setting-option input:focus-visible + span { outline: var(--settings-selection-line) solid var(--text); outline-offset: var(--space-1); }
+.setting-option:has(:disabled) { cursor: default; opacity: var(--disabled-opacity); }
+.preference-range { display: flex; align-items: center; gap: var(--space-3); }
+.preference-value { min-width: 4ch; color: var(--muted); font-size: var(--text-small); text-align: right; }
+.pace-note { color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); }
+.pace-note:empty { display: none; }
+.preference-row .pace-wpm { width: var(--settings-label); }
+.settings-preview { padding-top: var(--space-4); display: grid; gap: var(--space-2); }
+.settings-preview-label { margin: 0; color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
+#settings-preview-passage { margin: 0; border-left: var(--settings-selection-line) solid var(--accent); padding-left: var(--space-3); font-size: var(--settings-preview-medium); line-height: var(--settings-preview-line); }
+body[data-font-size="22"] #settings-preview-passage { font-size: var(--settings-preview-small); }
+body[data-font-size="36"] #settings-preview-passage { font-size: var(--settings-preview-large); }
+body[data-word-highlight="current"] #settings-preview-passage span:nth-child(3),
+body[data-word-highlight="next"] #settings-preview-passage span:nth-child(4) { background: var(--word-highlight); border-radius: var(--radius-sm); }
+body[data-tape-preference="true"] #settings-preview-passage { white-space: nowrap; overflow: hidden; }
+.settings-footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--space-6); border-top: 1px solid var(--hairline-strong); padding: var(--space-4) var(--space-8); }
+.settings-footer p { font-size: var(--text-label); line-height: 1.7; color: var(--muted); margin: 0; }
+.settings-footer .btn { flex: none; padding-inline: var(--space-6); font-size: var(--text-small); }
+body:has(#settings-dialog[open]) { overflow: hidden; }
 
-.preference-row {
-  min-height: 52px;
-  padding: var(--space-2);
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  cursor: pointer;
-  transition: background-color var(--dur-quick) var(--ease-out);
+@media (max-width: 760px) {
+  #settings-dialog { width: calc(100% - var(--space-4)); height: min(var(--settings-height), calc(100dvh - var(--space-4))); border-radius: var(--radius-lg); }
+  .settings-header { padding: var(--space-3) var(--space-4); }
+  .settings-body { flex-direction: column; max-height: none; }
+  .settings-nav { width: auto; flex-direction: row; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-right: 0; border-bottom: 1px solid var(--hairline-strong); }
+  .settings-nav button { padding-inline: var(--space-2); border-left: 0; border-bottom: var(--settings-selection-line) solid transparent; }
+  .settings-nav [aria-current] { border-bottom-color: var(--accent); }
+  .settings-nav .settings-import { margin: 0; }
+  .settings-content { padding: var(--space-3) var(--space-4); }
+  .preference-row { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+  .preference-copy { width: auto; }
+  .setting-options { flex: none; width: 100%; }
+  .setting-option span { padding-inline: var(--space-3); }
+  .settings-footer { gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+  .settings-footer p { font-size: var(--text-fine); }
 }
-
-.preference-row:hover { background: var(--raised-2); }
-.preference-row > span { min-width: 0; display: grid; gap: 2px; }
-.preference-row strong { font-size: 15px; font-weight: 600; }
-/* A row whose control can't change right now doesn't invite a click. */
-.preference-row:has(:disabled) { cursor: default; }
-.preference-row:has(:disabled):hover { background: none; }
-.preference-note { color: var(--muted); font-size: var(--text-label); line-height: 1.35; }
-/* Wide enough for the longest options ("next word", "personal best") without clipping. */
-.preference-row .select { width: 116px; height: 36px; font-size: 14px; }
-/* Two narrow selects share one row (minimum accuracy and speed). */
-.preference-row > .preference-pair { flex: none; display: flex; gap: var(--space-2); }
-.preference-pair .select { width: auto; padding-left: 10px; }
-.preference-row[role="group"] { cursor: default; }
-.preference-row #correction-select { width: 180px; }
-/* Wide enough for its longest option, colemak-dh, beside the native arrow. */
-.preference-row #layout-select { width: var(--layout-select-width); }
-/* A sub-setting of the row above it (finger map under keyboard): indented and a little shorter. */
-.preference-sub { min-height: var(--control); padding-inline-start: var(--space-6); }
-.preference-sub strong { font-weight: 500; color: var(--muted); }
-.preference-row .select-wide { width: var(--sound-select-width); }
-.preference-row > .preference-range { display: flex; align-items: center; gap: var(--space-3); }
-.preference-value { min-width: 4ch; color: var(--muted); font: 500 var(--text-mono)/1 var(--font-mono); text-align: right; }
 
 /* The track is an outline rule (3:1 on raised in both themes); the filled part and thumb are the
    accent. app.js keeps --fill at the value for WebKit, which has no progress part. */
@@ -470,25 +505,9 @@ kbd {
 .range::-moz-range-progress { height: var(--space-1); border-radius: var(--radius-full); background: var(--accent); }
 .range::-moz-range-thumb { width: var(--space-4); height: var(--space-4); border: 0; border-radius: var(--radius-full); background: var(--accent); }
 
-/* While sound is off the volume stays in place, dimmed, so the popover never changes height. */
 .preference-range:has(> .range:disabled) { opacity: var(--disabled-opacity); }
 .range:disabled { cursor: not-allowed; }
-.preference-row:has(.range:disabled) { cursor: default; background: transparent; }
-.preference-lock { color: var(--muted); font: italic var(--text-label)/1.4 var(--font-serif); }
-.preference-row:has(:disabled) { cursor: default; }
-.preference-row:has(:disabled):hover { background: transparent; }
-.preference-row[hidden] { display: none; }
-.pace-note { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); }
-.pace-note:empty { display: none; }
-.preference-row .pace-wpm { width: 116px; height: 36px; font-size: 14px; }
-
-.preference-action { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
-
-.keybindings-category { border-top: 1px solid var(--hairline-strong); margin-top: var(--space-2); padding: var(--space-2); }
-.keybindings-category > summary { min-height: var(--control); display: flex; align-items: center; gap: var(--space-2); cursor: pointer; font-size: var(--text-small); font-weight: 600; }
-.keybindings-category > summary::after { content: ' +'; color: var(--muted); }
-.keybindings-category[open] > summary::after { content: ' −'; }
-.keybindings-category p { font-size: var(--text-small); color: var(--muted); }
+.keybindings-category > p { font-size: var(--text-small); color: var(--muted); }
 .keybinding-row { margin-block: var(--space-4); }
 .keybinding-row label { display: block; font-size: var(--text-small); margin-bottom: var(--space-2); }
 .keybinding-controls, .keybinding-actions { display: flex; align-items: center; gap: var(--space-2); }
@@ -499,10 +518,7 @@ kbd {
 .keybinding-error:empty { display: none; }
 .keybinding-controls [aria-invalid="true"] { border-color: var(--danger); }
 .keybinding-controls [aria-pressed="true"] { outline: 2px solid var(--accent); }
-.preference-category > summary { color: var(--muted); }
-.preference-category > summary::after { content: '+'; }
-.preference-category[open] > summary::after { content: '−'; }
-.preference-category > label { margin-left: var(--space-3); }
+
 
 .site-footer {
   padding: var(--space-8) 0 var(--space-6);
@@ -3015,7 +3031,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .dock-settings .dock-label { display: none; }
 
   /* It grows up from the dock, so its height also leaves room for the account corner at the top. */
-  .preferences-popover { top: auto; bottom: calc(100% + var(--space-2)); width: min(340px, 100%); max-height: calc(100svh - 62px - var(--space-10) - var(--control) - var(--space-3) - env(safe-area-inset-bottom)); }
 
   /* The dock moves to the bottom; the corner stays top right and scrolls with the page. */
   .app-shell { padding-top: var(--space-10); }
@@ -3066,7 +3081,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .lesson-row { grid-template-columns: var(--space-6) minmax(0, 1fr) auto; gap: var(--space-2) var(--space-3); }
   .lesson-row-detail { grid-column: 2; grid-row: 2; justify-content: flex-start; }
   .lesson-row .btn { grid-column: 3; grid-row: 1 / span 2; }
-  label[for="keyboard-toggle"], #finger-row { display: none; }
   .site-footer { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: var(--space-2); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
@@ -3092,12 +3106,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .nav-label-short { display: inline; }
   /* Three-digit speed (cpm), timer and accuracy side by side. */
   body[data-session="practice"] .live-stats { gap: var(--space-4); }
-}
-
-/* On a short phone the settings rows tighten to the touch target; the popover reserves room
-   for the account control above and scrolls when more preferences are available. */
-@media (max-width: 760px) and (max-height: 640px) {
-  .preference-row { min-height: var(--control); padding-block: 0; }
 }
 
 /* Any coarse pointer keeps a 44px minimum target. any-pointer, not pointer: a touchscreen laptop or

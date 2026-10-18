@@ -1,5 +1,5 @@
 // Afterimage chrome: theme, settings, command palette, ghost pacer, the still-run fade and reduced motion.
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, storageKeys } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, storageKeys, chooseSetting, closeSettings } from './fixtures.js';
 
 const html = (page) => page.locator('html');
 // index.html carries a light and a dark theme-color meta; the app sets both to the resolved theme.
@@ -24,12 +24,12 @@ test.describe('theme', () => {
     await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
 
     await openSettings(page);
-    await page.locator('#theme-select').selectOption('light');
+    await chooseSetting(page, 'theme-select', 'light');
     await expect(html(page)).toHaveAttribute('data-theme', 'light');
     await page.emulateMedia({ colorScheme: 'dark' });
     await expect(html(page)).toHaveAttribute('data-theme', 'light');
 
-    await page.locator('#theme-select').selectOption('system');
+    await chooseSetting(page, 'theme-select', 'system');
     await expect(html(page)).toHaveAttribute('data-theme', 'dark');
   });
 
@@ -37,18 +37,18 @@ test.describe('theme', () => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
     await openSettings(page);
-    await page.locator('#theme-select').selectOption('light');
-    await page.locator('#font-size').selectOption('36');
+    await chooseSetting(page, 'theme-select', 'light');
+    await chooseSetting(page, 'font-size', '36');
     await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
-    await page.locator('#word-highlight').selectOption('next');
+    await chooseSetting(page, 'word-highlight', 'next');
     await expect(page.locator('body')).toHaveAttribute('data-word-highlight', 'next');
     expect(await storageKeys(page)).toEqual([]);
     await page.reload();
     await expect(html(page)).toHaveAttribute('data-theme', 'dark');
     await expect(page.locator('body')).toHaveAttribute('data-font-size', '28');
-    await expect(page.locator('#theme-select')).toHaveValue('system');
+    await expect(page.locator('#theme-select input:checked')).toHaveValue('system');
     await expect(page.locator('body')).toHaveAttribute('data-word-highlight', 'off');
-    await expect(page.locator('#word-highlight')).toHaveValue('off');
+    await expect(page.locator('#word-highlight input:checked')).toHaveValue('off');
   });
 });
 
@@ -56,36 +56,36 @@ test('settings apply their display preferences', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
   for (const [size, px] of [['22', '29px'], ['36', '44px'], ['28', '36px']]) {
-    await page.locator('#font-size').selectOption(size);
+    await chooseSetting(page, 'font-size', size);
     await expect(page.locator('#text-display')).toHaveCSS('font-size', px);
   }
-  await page.locator('#live-toggle').check();
+  await chooseSetting(page, 'live-toggle', true);
   await expect(page.locator('body')).toHaveAttribute('data-live-metrics', 'true');
-  await page.locator('#keyboard-toggle').check();
+  await chooseSetting(page, 'keyboard-toggle', true);
   await expect(page.locator('#keyboard')).toBeVisible();
   await expect(page.locator('#keyboard .key')).toHaveCount(31);
 
-  // Escape closes the popover and returns focus to its toggle.
   await page.keyboard.press('Escape');
-  await expect(page.locator('.preferences-popover')).toBeHidden();
-  await expect(page.locator('details.preferences > summary')).toBeFocused();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
+  await expect(page.locator('#settings-trigger')).toBeFocused();
 });
 
 test('focus mode has an explicit exit and answers Escape', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
-  await page.locator('#focus-toggle').check();
+  await chooseSetting(page, 'focus-toggle', true);
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
   await expect(page.locator('#exit-focus')).toBeVisible();
+  await closeSettings(page);
   await page.locator('#exit-focus').click();
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'false');
   await expect(page.locator('#typing-input')).toBeFocused();
 
   await openSettings(page);
-  await page.locator('#focus-toggle').check();
-  // Clicking the passage closes the settings popover, which would otherwise take the first Escape.
+  await chooseSetting(page, 'focus-toggle', true);
+  await closeSettings(page);
   await page.locator('#typing-input').click();
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
   await page.keyboard.press('Escape');
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'false');
 });

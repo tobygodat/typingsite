@@ -1,12 +1,12 @@
-import { test, expect, chooseWords, completePassage, openApp, openView, passageText, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
+import { test, expect, chooseWords, completePassage, openApp, openView, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
 
 // Committed docs screenshots are only rewritten when SCREENSHOTS is set; normal runs write to test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/error-modes/${name}` : testInfo.outputPath(name));
 
 async function chooseCorrection(page, policy) {
-  await page.locator('details.preferences > summary').click();
-  await page.locator('#correction-select').selectOption(policy);
-  await page.locator('details.preferences > summary').click();
+  await closeSettings(page);
+  await chooseSetting(page, 'correction-select', policy);
+  await closeSettings(page);
 }
 
 test('fail on any error ends the run as failed on the first wrong key', async ({ page }, testInfo) => {
@@ -183,9 +183,9 @@ for (const scheme of ['dark', 'light']) {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);
-    await page.locator('details.preferences > summary').click();
-    await page.locator('#correction-select').selectOption('fail-word');
-    await expect(page.locator('#correction-select')).toHaveValue('fail-word');
+    await closeSettings(page);
+    await chooseSetting(page, 'correction-select', 'fail-word');
+    await expect(page.locator('#correction-select input:checked')).toHaveValue('fail-word');
     await page.screenshot({ path: shot(testInfo, `settings-${scheme}.png`) });
   });
 }
@@ -222,10 +222,10 @@ test('correction choices survive account save, reload and a fixed standard run',
   await expect(page.locator('#condition-line')).toContainText('no backspace');
   await chooseMore(page, 'mode-standard');
   await expect(page.locator('#condition-line')).toContainText('stop on error');
-  await page.locator('details.preferences > summary').click();
-  await expect(page.locator('#correction-select')).toBeDisabled();
-  await expect(page.locator('#correction-select')).toHaveValue('mandatory');
-  await page.locator('details.preferences > summary').click();
+  await closeSettings(page);
+  await expect(page.locator('#correction-select input').first()).toBeDisabled();
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('mandatory');
+  await closeSettings(page);
   await page.locator('#mode-time').click();
   await expect(page.locator('#condition-line')).toContainText('no backspace');
 });

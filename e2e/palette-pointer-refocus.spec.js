@@ -24,7 +24,7 @@ const liveMetrics = (page) => page.locator('#palette-list [role="option"]', { ha
 test('a command clicked with the mouse leaves a caret in the typing input', async ({ page }) => {
   await openPaletteFromInput(page);
   await liveMetrics(page).click();
-  await expect(page.locator('#live-toggle')).toBeChecked();
+  await expect(page.locator('#live-toggle input[value="true"]')).toBeChecked();
   await expectTyping(page);
 });
 
@@ -40,7 +40,7 @@ test.describe('touch', () => {
   test('a command tapped leaves a caret in the typing input', async ({ page }) => {
     await openPaletteFromInput(page);
     await liveMetrics(page).tap();
-    await expect(page.locator('#live-toggle')).toBeChecked();
+    await expect(page.locator('#live-toggle input[value="true"]')).toBeChecked();
     await expectTyping(page);
   });
 });

@@ -1,5 +1,5 @@
 // Repeat quotes: off by default, a setting and a palette command, and honest labels when a seen quote returns.
-import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
+import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -26,15 +26,13 @@ async function shortGentleQuotes(page) {
 
 // Repeat quotes sits in the collapsed test content category of settings.
 async function openTestContent(page) {
-  await openSettings(page);
-  const category = page.locator('#test-content-settings');
-  if (!(await category.evaluate((node) => node.open))) await category.locator('summary').click();
+  await openSettings(page, 'practice');
   await expect(page.locator('#repeat-quotes-toggle')).toBeVisible();
 }
 
 async function setRepeats(page, on) {
   await openTestContent(page);
-  await page.locator('#repeat-quotes-toggle').setChecked(on);
+  await chooseSetting(page, 'repeat-quotes-toggle', on);
 }
 
 const EXHAUSTED = 'You’ve seen every matching quote. Repeated text doesn’t count toward your best.';
@@ -87,7 +85,7 @@ test('off by default: unseen quotes come first, and an exhausted pool says it is
   await page.keyboard.press('Enter');
   await expect(page.locator('#palette')).toBeHidden();
   await openTestContent(page);
-  await expect(page.locator('#repeat-quotes-toggle')).toBeChecked();
+  await expect(page.locator('#repeat-quotes-toggle input[value="true"]')).toBeChecked();
   await expect(page.locator('#input-help')).toHaveText('Repeated text · doesn’t count toward your best.');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+k');
@@ -98,7 +96,7 @@ test('off by default: unseen quotes come first, and an exhausted pool says it is
   await page.keyboard.press('Escape');
   await page.locator('#mode-words').click();
   await openTestContent(page);
-  await expect(page.locator('#repeat-quotes-toggle')).toBeDisabled();
+  await expect(page.locator('#repeat-quotes-toggle input').first()).toBeDisabled();
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+k');
   await page.keyboard.type('repeat quotes');
@@ -340,8 +338,8 @@ test('stop on error: a blocked letter swaps the notice for its hint without movi
   await openApp(page);
   await shortGentleQuotes(page);
   await openTestContent(page);
-  await page.locator('#correction-select').selectOption('mandatory');
-  await page.locator('#repeat-quotes-toggle').setChecked(true);
+  await chooseSetting(page, 'correction-select', 'mandatory');
+  await chooseSetting(page, 'repeat-quotes-toggle', true);
   await page.keyboard.press('Escape');
   await page.locator('#restart-button').click();
   await expect(page.locator('#input-help')).toHaveText('Repeated text · doesn’t count toward your best.');

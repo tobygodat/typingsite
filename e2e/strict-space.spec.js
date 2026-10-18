@@ -1,4 +1,4 @@
-import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore } from './fixtures.js';
+import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
 
 // Committed docs screenshots are only rewritten when SCREENSHOTS is set; normal runs write to test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/strict-space/${name}` : testInfo.outputPath(name));
@@ -13,16 +13,14 @@ const RACE_NOTE = 'a race keeps the same rules for both players';
 const PACE = { delay: 140 };
 
 async function setSwitch(page, id, on) {
-  await openSettings(page);
+  await openSettings(page, 'practice');
   if (id === 'stop-on-error-toggle') {
-    await page.locator('#correction-select').selectOption(on ? 'mandatory' : 'relaxed');
+    await chooseSetting(page, 'correction-select', on ? 'mandatory' : 'relaxed');
   } else {
-    const toggle = page.locator(`#${id}`);
-    if (on) await toggle.check();
-    else await toggle.uncheck();
+    await chooseSetting(page, id, on);
   }
-  await page.locator('details.preferences > summary').click();
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await closeSettings(page);
+  await expect(page.locator('#settings-dialog')).toBeHidden();
 }
 
 // The first position from `from` inside a word of at least three letters, so a space there is early.
@@ -101,10 +99,10 @@ test('with stop on error, strict space refuses the space without needing a backs
 test('quick end is on by default: a wrong last letter still ends a words run', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
-  await openSettings(page);
-  await expect(page.locator('#quick-end-toggle')).toBeEnabled();
-  await expect(page.locator('#quick-end-toggle')).toBeChecked();
-  await page.locator('details.preferences > summary').click();
+  await openSettings(page, 'practice');
+  await expect(page.locator('#quick-end-toggle input').first()).toBeEnabled();
+  await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
+  await closeSettings(page);
   const text = await passageText(page);
   await typeInto(page, text.slice(0, -1) + wrongFor(text.at(-1)));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
@@ -187,32 +185,32 @@ test('a waiting notice follows the won’t count notice instead of replacing it'
 test('quick end is disabled where it changes nothing, and the palette follows', async ({ page }) => {
   await openApp(page);
   // Timed runs end on the clock. The switch keeps its value and says why it can't change the run.
-  await openSettings(page);
-  await expect(page.locator('#quick-end-toggle')).toBeDisabled();
-  await expect(page.locator('#quick-end-toggle')).toBeChecked();
+  await openSettings(page, 'practice');
+  await expect(page.locator('#quick-end-toggle input').first()).toBeDisabled();
+  await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
   await expect(page.locator('#quick-end-note')).toBeVisible();
   await expect(page.locator('#quick-end-toggle')).toHaveAccessibleDescription(TIMED_NOTE);
-  await page.locator('details.preferences > summary').click();
+  await closeSettings(page);
   await page.keyboard.press('Control+k');
   await page.locator('#palette-input').fill('quick end');
   await expect(page.locator('#palette-list [role="option"]', { hasText: 'quick end' })).toHaveCount(0);
   await page.keyboard.press('Escape');
 
   await chooseWords(page, 10);
-  await openSettings(page);
-  await expect(page.locator('#quick-end-toggle')).toBeEnabled();
-  await expect(page.locator('#quick-end-toggle')).toBeChecked();
+  await openSettings(page, 'practice');
+  await expect(page.locator('#quick-end-toggle input').first()).toBeEnabled();
+  await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
   await expect(page.locator('#quick-end-note')).toBeHidden();
   await expect(page.locator('#quick-end-toggle')).toHaveAccessibleDescription('');
   // Stop on error already waits for every letter.
-  await page.locator('#correction-select').selectOption('mandatory');
-  await expect(page.locator('#quick-end-toggle')).toBeDisabled();
-  await expect(page.locator('#quick-end-toggle')).toBeChecked();
+  await chooseSetting(page, 'correction-select', 'mandatory');
+  await expect(page.locator('#quick-end-toggle input').first()).toBeDisabled();
+  await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
   await expect(page.locator('#quick-end-note')).toHaveText('quick end applies only to free correction');
-  await page.locator('#correction-select').selectOption('relaxed');
-  await expect(page.locator('#quick-end-toggle')).toBeEnabled();
-  await expect(page.locator('#quick-end-toggle')).toBeChecked();
-  await page.locator('details.preferences > summary').click();
+  await chooseSetting(page, 'correction-select', 'relaxed');
+  await expect(page.locator('#quick-end-toggle input').first()).toBeEnabled();
+  await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
+  await closeSettings(page);
 
   await page.keyboard.press('Control+k');
   await page.locator('#palette-input').fill('quick end');
@@ -242,7 +240,7 @@ test('the daily challenge keeps its fixed rules whatever these settings say', as
   await expect(page.locator('#condition-line')).toContainText('first attempt');
   await expect(page.locator('#condition-line')).toContainText('continue on error · corpus');
   // Changing a rule the daily ignores leaves the daily (and its first attempt) in place, and says so.
-  await openSettings(page);
+  await openSettings(page, 'practice');
   await expect(page.locator('#rules-note')).toHaveText(DAILY_NOTE);
   await expect(page.locator('#quick-end-toggle')).toHaveAccessibleDescription(DAILY_NOTE);
   await setSwitch(page, 'strict-space-toggle', false);
@@ -267,7 +265,7 @@ test('custom text keeps the default rules and its passage, so its key stays the 
   await expect(page.locator('#condition-line')).toContainText('custom text');
   await expect(page.locator('#condition-line')).not.toContainText('strict space');
   await expect(page.locator('#condition-line')).not.toContainText('quick end');
-  await openSettings(page);
+  await openSettings(page, 'practice');
   await expect(page.locator('#rules-note')).toHaveText('custom text keeps the default rules');
   // A rule change leaves the custom passage in place rather than starting a generated test.
   await setSwitch(page, 'strict-space-toggle', false);
@@ -323,8 +321,8 @@ test('a retest of a stop-on-error baseline leaves the quick end preference alone
   await page.locator('#skip-to-retest').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
   await expect(page.locator('#condition-line')).toContainText('stop on error · corpus');
-  await openSettings(page);
-  await expect(page.locator('#quick-end-toggle')).toBeChecked();
+  await openSettings(page, 'practice');
+  await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
 });
 
 test('a drill from a words baseline is timed: quick end is disabled and a rule change keeps the drill', async ({ page }, testInfo) => {
@@ -339,15 +337,15 @@ test('a drill from a words baseline is timed: quick end is disabled and a rule c
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   // The baseline was a words run, but every drill is a timed minute, so quick end has nothing to change.
   await expect(page.locator('#condition-line')).toHaveText('drill · 60 s · english · physical keyboard · continue on error');
-  await openSettings(page);
-  await expect(page.locator('#quick-end-toggle')).toBeDisabled();
-  await expect(page.locator('#quick-end-toggle')).not.toBeChecked();
+  await openSettings(page, 'practice');
+  await expect(page.locator('#quick-end-toggle input').first()).toBeDisabled();
+  await expect(page.locator('#quick-end-toggle input[value="true"]')).not.toBeChecked();
   await expect(page.locator('#quick-end-note')).toBeVisible();
   await expect(page.locator('#quick-end-toggle')).toHaveAccessibleDescription(DRILL_NOTE);
   await expect(page.locator('#rules-note')).toBeHidden();
   await settle(page);
   await page.screenshot({ path: shot(testInfo, 'drill-note-dark.png') });
-  await page.locator('details.preferences > summary').click();
+  await closeSettings(page);
   await page.keyboard.press('Control+k');
   await page.locator('#palette-input').fill('quick end');
   await expect(page.locator('#palette-list [role="option"]', { hasText: 'quick end' })).toHaveCount(0);
@@ -387,15 +385,15 @@ test('a rule changed on the results screen or during a retest keeps the retest o
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
   // The retest runs on its baseline's rules; the switch keeps the choice and says why it waits.
   await expect(page.locator('#condition-line')).toContainText('continue on error · quick end off');
-  await openSettings(page);
-  await expect(page.locator('#quick-end-toggle')).toBeChecked();
+  await openSettings(page, 'practice');
+  await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
   await expect(page.locator('#rules-note')).toHaveText(RETEST_NOTE);
-  await page.locator('#strict-space-toggle').check();
+  await chooseSetting(page, 'strict-space-toggle', true);
   await expect(page.locator('#strict-space-toggle')).toHaveAccessibleDescription(RETEST_NOTE);
   await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
   await settle(page);
   await page.screenshot({ path: shot(testInfo, 'retest-note-light.png') });
-  await page.locator('details.preferences > summary').click();
+  await closeSettings(page);
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
   await expect(page.locator('#condition-line')).not.toContainText('strict space');
   // Esc restarts the retest under the baseline's rules too, so it stays comparable.
@@ -412,8 +410,8 @@ test('a rule changed on the results screen or during a retest keeps the retest o
   await expect(page.locator('#condition-line')).toContainText('10 words');
   await expect(page.locator('#condition-line')).toContainText('continue on error · strict space');
   await expect(page.locator('#condition-line')).not.toContainText('quick end');
-  await openSettings(page);
-  await expect(page.locator('#quick-end-toggle')).toBeChecked();
+  await openSettings(page, 'practice');
+  await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
 });
 
 test('the footer best follows a waiting retest’s rules, not a rule changed under it', async ({ page }) => {
@@ -478,12 +476,13 @@ test('a one-keyboard race takes quick end whatever the practice shape, and keeps
   // Practice is still the default timed run, but a race is an untimed quote, where quick end applies.
   await openView(page, 'Challenge');
   await page.locator('#challenge-local').click();
-  await openSettings(page);
-  await expect(page.locator('#quick-end-toggle')).toBeEnabled();
+  await openSettings(page, 'practice');
+  await expect(page.locator('#quick-end-toggle input').first()).toBeEnabled();
   await expect(page.locator('#quick-end-note')).toBeHidden();
   await expect(page.locator('#rules-note')).toBeHidden();
   await setSwitch(page, 'quick-end-toggle', false);
 
+  await closeSettings(page);
   await page.locator('#start-local-race').click();
   const text = await page.locator('#race-accessible-passage').textContent();
   const typed = text.slice(0, -1) + wrongFor(text.at(-1));
@@ -493,10 +492,11 @@ test('a one-keyboard race takes quick end whatever the practice shape, and keeps
   await expect(page.locator('#race-handoff')).toBeVisible();
 
   // Between turns the race is under way: a switch changed now waits for the next race.
-  await openSettings(page);
+  await openSettings(page, 'practice');
   await expect(page.locator('#rules-note')).toHaveText(RACE_NOTE);
   await expect(page.locator('#quick-end-toggle')).toHaveAccessibleDescription(RACE_NOTE);
   await setSwitch(page, 'quick-end-toggle', true);
+  await closeSettings(page);
   await page.locator('#start-next-player').click();
   // The passage is revealed before the second turn takes keys.
   await expect(page.locator('#race-player')).toHaveText('Player two');
@@ -507,13 +507,14 @@ test('a one-keyboard race takes quick end whatever the practice shape, and keeps
   await expect(page.locator('#race-leaderboard')).toBeVisible();
 
   // Once it's over the switches act on the next race, and the other tabs follow practice again.
-  await openSettings(page);
+  await openSettings(page, 'practice');
   await expect(page.locator('#rules-note')).toBeHidden();
-  await expect(page.locator('#quick-end-toggle')).toBeEnabled();
-  await expect(page.locator('#quick-end-toggle')).toBeChecked();
+  await expect(page.locator('#quick-end-toggle input').first()).toBeEnabled();
+  await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
+  await closeSettings(page);
   await page.locator('#challenge-online').click();
-  await openSettings(page);
-  await expect(page.locator('#quick-end-toggle')).toBeDisabled();
+  await openSettings(page, 'practice');
+  await expect(page.locator('#quick-end-toggle input').first()).toBeDisabled();
   await expect(page.locator('#quick-end-note')).toHaveText(TIMED_NOTE);
 });
 
@@ -523,13 +524,13 @@ for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);
     await chooseWords(page, 25);
-    await openSettings(page);
-    await page.locator('#strict-space-toggle').check();
+    await openSettings(page, 'practice');
+    await chooseSetting(page, 'strict-space-toggle', true);
     await expect(page.locator('#condition-line')).toContainText('strict space');
     await settle(page);
     await page.screenshot({ path: shot(testInfo, `settings-${scheme}.png`) });
     // Under stop on error, quick end keeps its value and says where it applies.
-    await page.locator('#correction-select').selectOption('mandatory');
+    await chooseSetting(page, 'correction-select', 'mandatory');
     await expect(page.locator('#quick-end-note')).toBeVisible();
     await settle(page);
     await page.screenshot({ path: shot(testInfo, `settings-note-${scheme}.png`) });
@@ -541,8 +542,8 @@ test('settings rows fit a 390 px phone', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
   await chooseWords(page, 25);
-  await openSettings(page);
-  await page.locator('#strict-space-toggle').check();
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'strict-space-toggle', true);
   await page.locator('#quick-end-toggle').scrollIntoViewIfNeeded();
   await expect(page.locator('#quick-end-toggle')).toBeInViewport();
   await settle(page);

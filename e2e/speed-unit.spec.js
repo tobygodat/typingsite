@@ -1,6 +1,6 @@
 // Speed unit: wpm (default) or cpm. Display only: scoring, bests, comparisons and condition keys stay in wpm.
 import { CORPUS_VERSION, METRIC_VERSION, standardConditions, conditionKey } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, chooseMore, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, chooseMore, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail, chooseSetting, closeSettings } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -38,6 +38,7 @@ async function typeRun(page, seed) {
 }
 
 async function command(page, label) {
+  await closeSettings(page);
   await page.keyboard.press('Control+k');
   await expect(page.locator('#palette')).toBeVisible();
   await page.keyboard.type(label);
@@ -68,9 +69,9 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(rawRow).toHaveAttribute('title', 'Every character typed, mistakes included: characters ÷ 5 per minute');
   await expect(page.locator('#result-word-detail')).toContainText(/^fastest “.+” \d+ wpm · slowest/);
 
-  await openSettings(page);
-  await expect(page.locator('#speed-unit')).toHaveValue('wpm');
-  await page.locator('#speed-unit').selectOption('cpm');
+  await openSettings(page, 'practice');
+  await expect(page.locator('#speed-unit input:checked')).toHaveValue('wpm');
+  await chooseSetting(page, 'speed-unit', 'cpm');
   await expect(page.locator('#result-wpm')).toHaveText(String(first * 5));
   await expect(page.locator('.run-card-unit')).toHaveText('cpm');
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
@@ -90,7 +91,7 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   // The axis is drawn in cpm: its top gridline sits above the run's own average.
   const labels = await page.locator('#speed-graph text.graph-label').allTextContents();
   expect(Math.max(...labels.map(Number).filter(Number.isFinite))).toBeGreaterThanOrEqual(first * 5);
-  await expect(page.locator('.preferences-popover')).toContainText('live cpm and accuracy');
+  await expect(page.locator('#settings-dialog')).toContainText('live cpm and accuracy');
   await shot(page, testInfo, 'settings-dark');
   await page.keyboard.press('Escape');
 
@@ -152,8 +153,8 @@ test('light theme: the run card and the palette command in cpm', async ({ page }
 test('live speed and the ghost pacer read in the chosen unit', async ({ page }) => {
   await openApp(page);
   await command(page, 'speed unit · cpm');
-  await openSettings(page);
-  await page.locator('#live-toggle').check();
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'live-toggle', true);
   await page.keyboard.press('Escape');
 
   // The ghost's pace is 60 wpm without a best: 300 cpm.
@@ -176,10 +177,10 @@ test('live speed and the ghost pacer read in the chosen unit', async ({ page }) 
   // Switching mid-run from settings neither interrupts the run nor waits for the next second.
   await page.mouse.move(5, 5);
   await page.mouse.move(40, 40);
-  await openSettings(page);
-  await page.locator('#speed-unit').selectOption('wpm');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'speed-unit', 'wpm');
   await expect(page.locator('#live-wpm + span')).toHaveText('wpm');
-  await expect(page.locator('.preferences-popover')).toContainText('live wpm and accuracy');
+  await expect(page.locator('#settings-dialog')).toContainText('live wpm and accuracy');
   await expect(page.locator('#typing-status')).toHaveText('In progress');
 });
 
@@ -187,8 +188,8 @@ test('the custom pace is entered in cpm, kept in wpm, and the caret runs at the 
   await openApp(page);
   await chooseWords(page, 25);
   await command(page, 'speed unit · cpm');
-  await openSettings(page);
-  await page.locator('#pace-select').selectOption('custom');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'pace-select', 'custom');
   const input = page.locator('#pace-wpm');
   const range = page.locator('#pace-custom .pace-note');
   // The default 80 wpm reads as 400 cpm, inside a range and step given in cpm.
@@ -238,7 +239,7 @@ test('the custom pace is entered in cpm, kept in wpm, and the caret runs at the 
   // Back in wpm, the same saved pace reads as 67 wpm in the original range.
   await page.keyboard.press('Escape');
   await command(page, 'speed unit · wpm');
-  await openSettings(page);
+  await openSettings(page, 'practice');
   await expect(input).toHaveValue('67');
   await expect(range).toHaveText('10–300 wpm');
   await expect(input).toHaveAttribute('min', '10');
@@ -251,13 +252,13 @@ test('a minimum speed is picked and named in cpm, kept in wpm, and the stop reas
   await page.clock.install();
   await openApp(page);
   await command(page, 'speed unit · cpm');
-  await openSettings(page);
+  await openSettings(page, 'practice');
   // The options keep their wpm values and read in cpm.
-  await expect(page.locator('#min-wpm option')).toHaveText(['any cpm', '100 cpm', '150 cpm', '200 cpm', '300 cpm', '400 cpm', '500 cpm']);
-  await page.locator('#min-wpm').selectOption({ label: '300 cpm' });
-  await expect(page.locator('#min-wpm')).toHaveValue('60');
+  await expect(page.locator('#min-wpm .setting-option span')).toHaveText(['any cpm', '100 cpm', '150 cpm', '200 cpm', '300 cpm', '400 cpm', '500 cpm']);
+  await chooseSetting(page, 'min-wpm', { label: '300 cpm' });
+  await expect(page.locator('#min-wpm input:checked')).toHaveValue('60');
   await expect(page.locator('#minimum-note')).toHaveText('min 300 cpm');
-  await page.locator('details.preferences > summary').click();
+  await closeSettings(page);
   await page.keyboard.press('Control+k');
   await page.keyboard.type('minimum speed · 300 cpm');
   await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).toHaveText('current');
@@ -282,7 +283,7 @@ test('a minimum speed is picked and named in cpm, kept in wpm, and the stop reas
   await command(page, 'speed unit · wpm');
   await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: speed fell below 60 wpm, so it isn’t counted.');
   await expect(page.locator('#result-conditions')).toContainText('min 60 wpm');
-  await expect(page.locator('#min-wpm option:checked')).toHaveText('60 wpm');
+  await expect(page.locator('#min-wpm .setting-option:has(:checked) span')).toHaveText('60 wpm');
 });
 
 test('a retest comparison and the drills and retests list read in cpm', async ({ page }) => {
@@ -347,7 +348,7 @@ test('a member’s unit is saved with the profile, a guest’s is not, and saved
   await openApp(page);
   await command(page, 'speed unit · cpm');
   await page.reload();
-  await expect(page.locator('#speed-unit')).toHaveValue('wpm');
+  await expect(page.locator('#speed-unit input:checked')).toHaveValue('wpm');
   await expect(page.locator('#live-wpm + span')).toHaveText('wpm');
 
   // A profile saved before the setting existed reads in wpm.
@@ -357,17 +358,17 @@ test('a member’s unit is saved with the profile, a guest’s is not, and saved
   const user = supabase.addUser('ada@stilltype.test');
   supabase.profiles.set(user.id, { data: { version: 2, preferences: { theme: 'dark' }, attempts: [], runs: [], loops: [], seenTextIds: [], bests, updatedAt: '2026-09-29T12:00:00Z' } });
   await signInWithEmail(page, user.email);
-  await expect(page.locator('#speed-unit')).toHaveValue('wpm');
+  await expect(page.locator('#speed-unit input:checked')).toHaveValue('wpm');
   await expect(page.locator('#best')).toHaveText('Best · 72 wpm');
 
-  await openSettings(page);
-  await page.locator('#speed-unit').selectOption('cpm');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'speed-unit', 'cpm');
   await expect(page.locator('#best')).toHaveText('Best · 360 cpm');
   await expect.poll(() => supabase.profileFor(user.email)?.preferences?.speedUnit).toBe('cpm');
   expect(supabase.profileFor(user.email).bests).toEqual(bests);
 
   await page.reload();
-  await expect(page.locator('#speed-unit')).toHaveValue('cpm');
+  await expect(page.locator('#speed-unit input:checked')).toHaveValue('cpm');
   await expect(page.locator('#best')).toHaveText('Best · 360 cpm');
   await expect(page.locator('#live-wpm + span')).toHaveText('cpm');
 });
@@ -479,8 +480,8 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
       await openApp(page);
       await chooseWords(page, 10);
       await command(page, 'speed unit · cpm');
-      await openSettings(page);
-      await page.locator('#live-toggle').check();
+      await openSettings(page, 'practice');
+      await chooseSetting(page, 'live-toggle', true);
       expect(await overflow(page)).toBeLessThanOrEqual(0);
       await page.keyboard.press('Escape');
       await page.locator('#typing-input').focus();
@@ -514,8 +515,8 @@ test.describe('narrow phone 320px, a two-minute run', () => {
     await page.locator('#duration-options [data-length="120"]').click();
     await expect(page.locator('#condition-line')).toContainText('120 s');
     await command(page, 'speed unit · cpm');
-    await openSettings(page);
-    await page.locator('#live-toggle').check();
+    await openSettings(page, 'practice');
+    await chooseSetting(page, 'live-toggle', true);
     await page.keyboard.press('Escape');
     await page.locator('#typing-input').focus();
     await typeHumanly(page, (await passageText(page)).slice(0, 30), { seed: 5, slip: false });
@@ -529,26 +530,17 @@ test.describe('narrow phone 320px, a two-minute run', () => {
 test.describe('short phone 375×553', () => {
   test.use({ viewport: { width: 375, height: 553 }, hasTouch: true, isMobile: true });
 
-  test('settings stay below the account button and scroll to every touch-sized row', async ({ page }) => {
+  test('settings scroll to every touch-sized practice row', async ({ page }) => {
     await openApp(page);
-    await openSettings(page);
-    // A tap on the theme select's chevron reaches the select, not the account button above it.
-    const hit = await page.locator('#theme-select').evaluate((node) => {
-      const box = node.getBoundingClientRect();
-      return document.elementFromPoint(box.right - 4, box.top + 4)?.id;
-    });
-    expect(hit).toBe('theme-select');
-    const popover = page.locator('.preferences-popover');
-    expect(await popover.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
+    await openSettings(page, 'practice');
+    const content = page.locator('#settings-dialog .settings-content');
+    expect(await content.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
     await page.locator('#focus-toggle').scrollIntoViewIfNeeded();
     await expect(page.locator('#focus-toggle')).toBeInViewport();
-    expect(await popover.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
-    // Every row on screen; the collapsed test content rows and the hidden custom pace row aren't drawn.
-    const heights = await popover.locator('.preference-row:visible').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+    expect(await content.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    const heights = await page.locator('#settings-practice .preference-row:visible').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
     expect(heights.length).toBeGreaterThanOrEqual(8);
-    for (const height of heights) {
-      expect(height).toBeGreaterThanOrEqual(44);
-    }
+    for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
   });
 });
 
@@ -574,7 +566,7 @@ test('a custom run too quick to time shows no rate in cpm, before or after a uni
   await expect(page.locator('#announcement')).toContainText('Too quick to time');
   for (const unit of ['cpm', 'wpm']) {
     if (unit === 'wpm') await command(page, 'speed unit · wpm');
-    await expect(page.locator('#speed-unit')).toHaveValue(unit);
+    await expect(page.locator('#speed-unit input:checked')).toHaveValue(unit);
     await expect(page.locator('#result-wpm')).toHaveText('—');
     await expect(page.locator('#result-raw')).toHaveText('—');
     await expect(page.locator('.run-card-graph')).toBeHidden();
@@ -585,8 +577,8 @@ test('a custom run too quick to time shows no rate in cpm, before or after a uni
 
 test('new learning and composing surfaces follow cpm without changing their stored metrics', async ({ page }) => {
   await openApp(page);
-  await openSettings(page);
-  await page.locator('#speed-unit').selectOption('cpm');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'speed-unit', 'cpm');
   await page.keyboard.press('Escape');
   await command(page, 'learn to type');
   await expect(page.locator('#lesson-current-meta')).toContainText('cpm');
@@ -599,8 +591,8 @@ test('new learning and composing surfaces follow cpm without changing their stor
   expect(cpm).toBeGreaterThan(0);
   await expect(page.locator('#compose-wpm + span')).toHaveText('cpm');
   await expect(page.locator('#compose-definition')).toContainText('Free-typing cpm:');
-  await openSettings(page);
-  await page.locator('#speed-unit').selectOption('wpm');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'speed-unit', 'wpm');
   await expect(page.locator('#compose-wpm')).toHaveText(String(cpm / 5));
   await expect(page.locator('#compose-definition')).toContainText('Free-typing wpm:');
 });
@@ -635,16 +627,16 @@ test('explicit speedUnit reselect is recorded as a fresh preference choice', asy
     attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, updatedAt: stamp } });
   await openApp(page);
   await signInWithEmail(page, user.email);
-  await openSettings(page);
-  await page.locator('#speed-unit').selectOption('wpm');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'speed-unit', 'wpm');
   await expect.poll(() => supabase.profileFor(user.email)?.preferencesAt?.speedUnit).not.toBe(stamp);
   expect(supabase.profileFor(user.email).preferences.speedUnit).toEqual("wpm");
 });
 
 test('a lesson’s pass target on the practice screen follows the unit with its pace', async ({ page }) => {
   await openApp(page);
-  await openSettings(page);
-  await page.locator('#pace-select').selectOption('best');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'pace-select', 'best');
   await page.keyboard.press('Escape');
   await chooseMore(page, 'open-lessons');
   await page.locator('#lesson-primary').click();
@@ -669,10 +661,10 @@ async function signedInPair(page, context, supabase, email, { finished = false }
   await supabase.attach(other);
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  await openSettings(page);
-  await page.locator('#pace-select').selectOption('custom');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'pace-select', 'custom');
   await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceCaret, { timeout: 15000 }).toBe('custom');
-  await openSettings(other);
+  await openSettings(other, 'practice');
   return { user, other };
 }
 
@@ -682,8 +674,8 @@ test('a custom pace typed in wpm is saved in wpm when cpm arrives from another t
   const range = page.locator('#pace-custom .pace-note');
   await page.locator('#pace-wpm').fill('100');
 
-  await other.locator('#speed-unit').selectOption('cpm');
-  await expect(page.locator('#speed-unit')).toHaveValue('cpm');
+  await chooseSetting(other, 'speed-unit', 'cpm');
+  await expect(page.locator('#speed-unit input:checked')).toHaveValue('cpm');
   await expect(page.locator('#pace-wpm')).toHaveValue('100');
   // Its range stays beside it in the unit it is being typed in.
   await expect(range).toHaveText('10–300 wpm');
@@ -700,8 +692,8 @@ test('a custom pace typed back to what it was and left reads in the unit that ar
   const { other } = await signedInPair(page, context, supabase, 'pace-undo@stilltype.test');
   const field = page.locator('#pace-wpm');
   await field.fill('100');
-  await other.locator('#speed-unit').selectOption('cpm');
-  await expect(page.locator('#speed-unit')).toHaveValue('cpm');
+  await chooseSetting(other, 'speed-unit', 'cpm');
+  await expect(page.locator('#speed-unit input:checked')).toHaveValue('cpm');
   await expect(field).toHaveValue('100');
   await field.fill('80');
   await field.press('Tab');
@@ -716,11 +708,11 @@ test('a custom pace hidden by another tab mid-edit is saved in the unit it was t
   const { user, other } = await signedInPair(page, context, supabase, 'pace-hidden@stilltype.test', { finished: true });
   const field = page.locator('#pace-wpm');
   await field.fill('100');
-  await other.locator('#pace-select').selectOption('best');
+  await chooseSetting(other, 'pace-select', 'best');
   await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceWpm, { timeout: 15000 }).toBe(100);
   await expect(page.locator('#pace-custom')).toBeVisible();
-  await other.locator('#speed-unit').selectOption('cpm');
-  await expect(page.locator('#speed-unit')).toHaveValue('cpm');
+  await chooseSetting(other, 'speed-unit', 'cpm');
+  await expect(page.locator('#speed-unit input:checked')).toHaveValue('cpm');
   await expect(field).toHaveValue('500');
   await expect(page.locator('#pace-custom .pace-note')).toHaveText('50–1500 cpm');
   await field.fill('600');
@@ -733,7 +725,7 @@ test('a custom pace hidden by another tab mid-edit is saved in the unit it was t
 // edit back to the old figure would otherwise look untouched to a redraw and be overwritten.
 test('a custom pace saved with Enter reads as saved, and a later edit survives a redraw', async ({ page, context, supabase }) => {
   const { user, other } = await signedInPair(page, context, supabase, 'pace-enter@stilltype.test');
-  await page.locator('#speed-unit').selectOption('cpm');
+  await chooseSetting(page, 'speed-unit', 'cpm');
   const field = page.locator('#pace-wpm');
   await expect(field).toHaveValue('400');
   await field.fill('333');
@@ -746,7 +738,7 @@ test('a custom pace saved with Enter reads as saved, and a later edit survives a
   await expect(other.locator('#pace-wpm')).toHaveValue('335');
 
   await field.fill('400');
-  await other.locator('#font-size').selectOption('36');
+  await chooseSetting(other, 'font-size', '36');
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   await expect(field).toBeFocused();
   await expect(field).toHaveValue('400');
@@ -797,14 +789,11 @@ test('a unit synced mid-race applies at its end without holding back the race re
     window.cpmHeard = false;
     addEventListener('storage', (event) => { if (event.newValue?.includes('"speedUnit":"cpm"')) window.cpmHeard = true; });
   });
-  await other.locator('#speed-unit').evaluate((select) => {
-    select.value = 'cpm';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  await chooseSetting(other, 'speed-unit', 'cpm');
   await page.waitForFunction(() => window.cpmHeard);
   await expect.poll(() => supabase.profileFor(user.email)?.preferences?.speedUnit, { timeout: 15000 }).toBe('cpm');
   await expect(page.locator('#race-stage')).toBeVisible();
-  await expect(page.locator('#speed-unit')).toHaveValue('wpm');
+  await expect(page.locator('#speed-unit input:checked')).toHaveValue('wpm');
 
   // A busy live region holds back what is written to it, so the leaderboard is never marked busy.
   await leaderboard.evaluate((region) => {
@@ -813,7 +802,7 @@ test('a unit synced mid-race applies at its end without holding back the race re
       .observe(region, { attributes: true, attributeFilter: ['aria-busy'] });
   });
   await page.locator('#race-input').pressSequentially(text.at(-1));
-  await expect(page.locator('#speed-unit')).toHaveValue('cpm');
+  await expect(page.locator('#speed-unit input:checked')).toHaveValue('cpm');
   await expect(leaderboard).toBeVisible();
   await expect(leaderboard).toHaveAttribute('aria-live', 'polite');
   await expect(page.locator('#race-winner')).toHaveText(/^(Ada leads\.|Lin leads\.|It’s a tie\.)$/);

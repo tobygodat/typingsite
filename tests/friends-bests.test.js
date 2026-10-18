@@ -189,7 +189,10 @@ test('every key this build can write is listed, read back as the conditions it w
   const options = (id) => [...html.match(new RegExp(`<select[^>]*id="${id}"[^>]*>([^]*?)</select>`))[1].matchAll(/value="([^"]*)"/g)].map((match) => match[1]);
   assert.deepEqual(options('quote-length'), QUOTE_LENGTHS);
   assert.deepEqual(options('quote-difficulty'), QUOTE_DIFFICULTIES);
-  assert.deepEqual(options('word-list'), wordListIds);
+  const wordList = html.match(/<fieldset[^>]*id="word-list"[^>]*>([^]*?)<\/fieldset>/)[1];
+  const offeredWords = [...wordList.matchAll(/<input[^>]*value="([^"]*)"[^>]*>/g)]
+    .filter(([input]) => !input.includes(' disabled')).map(([, value]) => value);
+  assert.deepEqual(offeredWords, wordListIds);
   const shapes = writtenShapes();
   assert.equal(new Set(shapes.map((conditions) => key(conditions))).size, shapes.length);
   for (const conditions of shapes) assert.deepEqual(shapeOf(key(conditions)), conditions, key(conditions));

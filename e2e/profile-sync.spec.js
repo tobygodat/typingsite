@@ -1,6 +1,6 @@
 // One account in two tabs or on two devices, against the fake Supabase in e2e/fake-supabase.js: a save
 // from a copy that is out of date merges with the other copy instead of replacing it.
-import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting } from './fixtures.js';
 import { textStamp } from '../src/account.js';
 
 test.setTimeout(90000);
@@ -64,7 +64,7 @@ test('two tabs: a tab that missed the other’s saves keeps its run and settings
 
   const fast = await finishRun(other);
   await openSettings(other);
-  await other.locator('#font-size').selectOption('36');
+  await chooseSetting(other, 'font-size', '36');
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
   await expect.poll(() => cloud(supabase).preferences.fontSize).toBe('36');
   const seenByOther = cloud(supabase).seenTextIds;
@@ -101,7 +101,7 @@ test('two devices: a stale device’s push keeps the other device’s run, highe
     await phone.emulateMedia({ colorScheme: 'dark' });
     const fast = await finishRun(phone);
     await openSettings(phone);
-    await phone.locator('#font-size').selectOption('22');
+    await chooseSetting(phone, 'font-size', '22');
     await expect.poll(() => cloud(supabase)?.preferences.fontSize).toBe('22');
     await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
     const seenOnPhone = cloud(supabase).seenTextIds;
@@ -125,7 +125,7 @@ test('two devices: a stale device’s push keeps the other device’s run, highe
     await expect.poll(() => runIds(cloud(supabase)).length).toBe(3);
     const before = cloud(supabase);
     await openSettings(page);
-    await page.locator('#theme-select').selectOption('light');
+    await chooseSetting(page, 'theme-select', 'light');
     await expect.poll(() => cloud(supabase).preferences.theme).toBe('light');
     const after = cloud(supabase);
     expect(runIds(after)).toEqual(runIds(before));
@@ -205,7 +205,7 @@ test('undo brings history back after the clear has synced, even on a device that
 
     // The phone still holds the clear; its next save must not apply it again.
     await openSettings(phone);
-    await phone.locator('#theme-select').selectOption('light');
+    await chooseSetting(phone, 'theme-select', 'light');
     await expect.poll(() => cloud(supabase).preferences.theme).toBe('light');
     expect(runIds(cloud(supabase))).toEqual([kept]);
     await phone.reload();
@@ -347,7 +347,7 @@ test('changes another tab saved during a one-keyboard race apply once the race i
   await typeInto(page, text.slice(0, 5), '#race-input');
 
   await openSettings(other);
-  await other.locator('#font-size').selectOption('36');
+  await chooseSetting(other, 'font-size', '36');
   await finishRun(other);
   // Every write the other tab makes lands while this tab's race is still running.
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
@@ -429,7 +429,7 @@ test('a custom pace being typed is kept when another tab saves before it is left
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
   await openSettings(other);
-  await other.locator('#pace-select').selectOption('custom');
+  await chooseSetting(other, 'pace-select', 'custom');
   await expect.poll(() => cloud(supabase)?.preferences.paceCaret, { timeout: 15000 }).toBe('custom');
   await other.locator('#pace-wpm').fill('120');
 
@@ -460,7 +460,7 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
     await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
     if (mine === 'custom') {
       await openSettings(page);
-      await page.locator('#pace-select').selectOption('custom');
+      await chooseSetting(page, 'pace-select', 'custom');
       await expect(page.locator('#pace-label')).toHaveText('pace 80 wpm');
       await page.keyboard.press('Escape');
       await expect.poll(() => cloud(supabase)?.preferences.paceCaret, { timeout: 15000 }).toBe('custom');
@@ -474,15 +474,15 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
 
     await openSettings(other);
     if (mine === 'custom') {
-      await expect(other.locator('#pace-select')).toHaveValue('custom');
+      await expect(other.locator('#pace-select input:checked')).toHaveValue('custom');
       await other.locator('#pace-wpm').fill('120');
       await other.locator('#pace-wpm').press('Tab');
       await expect.poll(() => cloud(supabase)?.preferences.paceWpm, { timeout: 15000 }).toBe(120);
     } else {
-      await other.locator('#pace-select').selectOption('best');
+      await chooseSetting(other, 'pace-select', 'best');
       await expect.poll(() => cloud(supabase)?.preferences.paceCaret, { timeout: 15000 }).toBe('best');
     }
-    await expect(page.locator('#pace-select')).toHaveValue(mine);
+    await expect(page.locator('#pace-select input:checked')).toHaveValue(mine);
 
     await page.keyboard.press('Control+k');
     await page.keyboard.type(`pace caret: ${mine}`);
@@ -492,11 +492,11 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
     await typeInto(page, await passageText(page));
     await expect(page.locator('#comparison-panel')).toBeVisible();
 
-    await expect(page.locator('#pace-select')).toHaveValue(mine);
+    await expect(page.locator('#pace-select input:checked')).toHaveValue(mine);
     if (mine === 'custom') await expect(page.locator('#pace-label')).toHaveText('pace 80 wpm');
     const expected = mine === 'custom' ? { paceCaret: 'custom', paceWpm: 80 } : { paceCaret: 'off' };
     await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 }).toMatchObject(expected);
-    await expect(other.locator('#pace-select')).toHaveValue(mine);
+    await expect(other.locator('#pace-select input:checked')).toHaveValue(mine);
     expect(errors).toEqual([]);
   });
 }
@@ -519,11 +519,11 @@ test('picking pace caret custom (from off) during a retest keeps the custom spee
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
 
   await openSettings(other);
-  await other.locator('#pace-select').selectOption('custom');
+  await chooseSetting(other, 'pace-select', 'custom');
   await other.locator('#pace-wpm').fill('120');
   await other.locator('#pace-wpm').press('Tab');
   await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 }).toMatchObject({ paceCaret: 'custom', paceWpm: 120 });
-  await expect(page.locator('#pace-select')).toHaveValue('off');
+  await expect(page.locator('#pace-select input:checked')).toHaveValue('off');
 
   await page.keyboard.press('Control+k');
   await page.keyboard.type('pace caret: custom');
@@ -533,7 +533,7 @@ test('picking pace caret custom (from off) during a retest keeps the custom spee
   await typeInto(page, await passageText(page));
   await expect(page.locator('#comparison-panel')).toBeVisible();
 
-  await expect(page.locator('#pace-select')).toHaveValue('custom');
+  await expect(page.locator('#pace-select input:checked')).toHaveValue('custom');
   await expect(page.locator('#pace-label')).toHaveText('pace 120 wpm');
   await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 }).toMatchObject({ paceCaret: 'custom', paceWpm: 120 });
   await expect(other.locator('#pace-wpm')).toHaveValue('120');
@@ -594,7 +594,7 @@ test('a row an older build saved later keeps the settings it lacks from the copy
 
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   await expect(page.locator('#condition-line')).toContainText('numbers');
-  await expect(page.locator('#pace-select')).toHaveValue('custom');
+  await expect(page.locator('#pace-select input:checked')).toHaveValue('custom');
   await expect(page.locator('#pace-label')).toHaveText('pace 120 wpm');
   await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 })
     .toMatchObject({ fontSize: '36', numbers: true, paceCaret: 'custom', paceWpm: 120 });
@@ -961,7 +961,7 @@ test('a run another tab finishes moves a last-run pace caret here', async ({ pag
   await signInWithEmail(page, EMAIL);
   await chooseWords(page, 10);
   await openSettings(page);
-  await page.locator('#pace-select').selectOption('last');
+  await chooseSetting(page, 'pace-select', 'last');
   await page.keyboard.press('Escape');
   await expect(page.locator('#pace-label')).toHaveText('pace 60 wpm');
   const other = await extraPage(context, supabase, errors);

@@ -1,4 +1,4 @@
-import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore } from './fixtures.js';
+import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore, chooseSetting } from './fixtures.js';
 
 const TEXT = 'the quick brown fox jumps over the lazy dog';
 
@@ -151,18 +151,18 @@ test('a word list change keeps a custom passage, from settings or the palette', 
 
   await openSettings(page);
   // The word list and numbers sit under "test content" in settings.
-  await page.locator('#test-content-settings > summary').click();
-  await page.locator('#word-list').selectOption('1k');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'word-list', '1k');
   await expect(page.locator('#condition-line')).toContainText('custom text');
   expect(await passageText(page)).toBe(TEXT);
   // Numbers, beside it, keeps the custom passage too, with no digits mixed into it.
-  await page.locator('#numbers-toggle').check();
+  await chooseSetting(page, 'numbers-toggle', true);
   await expect(page.locator('#condition-line')).toContainText('custom text');
   expect(await passageText(page)).toBe(TEXT);
   await page.keyboard.press('Escape');
 
   await paletteRun(page, 'word list · top 5k');
-  await expect(page.locator('#word-list')).toHaveValue('5k');
+  await expect(page.locator('#word-list input:checked')).toHaveValue('5k');
   await expect(page.locator('#condition-line')).toContainText('custom text');
   expect(await passageText(page)).toBe(TEXT);
 
@@ -270,7 +270,7 @@ test('changing the correction setting keeps the custom passage', async ({ page }
   await expect(page.locator('#condition-line')).toContainText('continue on error');
 
   await openSettings(page);
-  await page.locator('#correction-select').selectOption('mandatory');
+  await chooseSetting(page, 'correction-select', 'mandatory');
   await expect(page.locator('#condition-line')).toContainText('custom text');
   await expect(page.locator('#condition-line')).toContainText('stop on error');
   expect(await passageText(page)).toBe(TEXT);

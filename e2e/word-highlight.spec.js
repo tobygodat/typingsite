@@ -1,6 +1,6 @@
 // Word highlight: settings → word highlight (off, current, next) and its palette commands.
 // A display preference: it tints one passage word, changes instantly and never enters the conditions.
-import { test, expect, openApp, openView, openSettings, passageText, typeInto, signInWithEmail, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting } from './fixtures.js';
 
 // Committed docs screenshots are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/word-highlight/${name}.png` : testInfo.outputPath(`${name}.png`));
@@ -14,10 +14,10 @@ const tinted = (page, display = '#text-display') => page.locator(`${display} .wo
 
 async function pickHighlight(page, mode) {
   await openSettings(page);
-  await page.locator('#word-highlight').selectOption(mode);
+  await chooseSetting(page, 'word-highlight', mode);
   await expect(page.locator('body')).toHaveAttribute('data-word-highlight', mode);
   await page.keyboard.press('Escape');
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
 }
 
 async function runPalette(page, label) {
@@ -38,10 +38,10 @@ test('nothing is tinted by default, and current tints the word being typed until
   await expect(page.locator('body')).toHaveAttribute('data-word-highlight', 'off');
   expect(await tinted(page)).toEqual([]);
   await openSettings(page);
-  await expect(page.locator('#word-highlight')).toHaveValue('off');
-  await expect(page.locator('label[for="word-highlight"]')).toContainText('word highlight');
+  await expect(page.locator('#word-highlight input:checked')).toHaveValue('off');
+  await expect(page.locator('#word-highlight').locator('..')).toContainText('word highlight');
   // No mode is named "current", the palette's hint for the active choice.
-  expect(await page.locator('#word-highlight option').allTextContents()).toEqual(['off', 'this word', 'next word']);
+  expect(await page.locator('#word-highlight .setting-option span').allTextContents()).toEqual(['off', 'this word', 'next word']);
   await pickHighlight(page, 'current');
   expect(await tinted(page)).toEqual([0]);
 
@@ -115,7 +115,7 @@ test('next tints the word after the current one, and the palette switches modes'
   await page.keyboard.press('Escape');
   await runPalette(page, 'word highlight · off');
   expect(await tinted(page)).toEqual([]);
-  await expect(page.locator('#word-highlight')).toHaveValue('off');
+  await expect(page.locator('#word-highlight input:checked')).toHaveValue('off');
   // The word markers keep following the caret, so turning it back on is instant.
   await runPalette(page, 'word highlight · this word');
   expect(await tinted(page)).toEqual([1]);
@@ -193,7 +193,7 @@ test('an account keeps the pick; older or unknown saved values read as off', asy
   await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.preferences.wordHighlight, { timeout: 8000 }).toBe('current');
   await page.reload();
   await expect(page.locator('body')).toHaveAttribute('data-word-highlight', 'current');
-  await expect(page.locator('#word-highlight')).toHaveValue('current');
+  await expect(page.locator('#word-highlight input:checked')).toHaveValue('current');
   expect(await tinted(page)).toEqual([0]);
 });
 
@@ -240,23 +240,11 @@ test.describe('phone', () => {
     await page.setViewportSize({ width: 320, height: 640 });
     await openApp(page);
     await openSettings(page);
-    const row = page.locator('label[for="word-highlight"]');
+    const row = page.locator('#word-highlight');
     await row.scrollIntoViewIfNeeded();
     await expect(row).toBeInViewport();
-    const clipped = await row.evaluate((node) => [node.querySelector(':scope > span'), node.querySelector('select')]
-      .some((child) => child.scrollWidth > child.clientWidth + 1 || child.getBoundingClientRect().right > node.getBoundingClientRect().right + 0.5));
+    const clipped = await row.locator('.setting-option span').evaluateAll((options) => options.some((option) => option.scrollWidth > option.clientWidth));
     expect(clipped).toBe(false);
-    // A select doesn't report a clipped option in scrollWidth, so size each option on its own.
-    const tooWide = await row.locator('select').evaluate((select) => [...select.options].filter((option) => {
-      const probe = select.cloneNode(false);
-      probe.append(option.cloneNode(true));
-      probe.style.width = 'auto';
-      select.after(probe);
-      const width = probe.offsetWidth;
-      probe.remove();
-      return width > select.offsetWidth;
-    }).map((option) => option.textContent));
-    expect(tooWide).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
   });
 
@@ -265,13 +253,13 @@ test.describe('phone', () => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
     await openSettings(page);
-    await page.locator('#word-highlight').selectOption('current');
-    await expect(page.locator('label[for="word-highlight"]')).toBeInViewport();
+    await chooseSetting(page, 'word-highlight', 'current');
+    await expect(page.locator('#word-highlight').locator('..')).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
     await page.screenshot({ path: shot(testInfo, 'settings-mobile') });
 
     await page.keyboard.press('Escape');
-    await expect(page.locator('.preferences-popover')).toBeHidden();
+    await expect(page.locator('#settings-dialog')).toBeHidden();
     const words = (await passageText(page)).split(' ');
     await typeInto(page, `${words.slice(0, 2).join(' ')} ${words[2].slice(0, 1)}`, '#typing-input', { delay: 130 });
     expect(await tinted(page)).toEqual([2]);

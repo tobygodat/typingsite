@@ -1,4 +1,4 @@
-import { test, expect, openApp, chooseWords, completePassage, passageText, openSettings, openView, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, chooseWords, completePassage, passageText, openSettings, openView, signInWithEmail, chooseSetting, closeSettings } from './fixtures.js';
 import { dailyPassage } from '../src/insights.js';
 import { quoteCorpus } from '../src/typing.js';
 
@@ -6,13 +6,12 @@ import { quoteCorpus } from '../src/typing.js';
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/numbers-toggle/${name}` : testInfo.outputPath(name));
 
 async function openTestContent(page) {
-  await openSettings(page);
-  const category = page.locator('#test-content-settings');
-  if (!(await category.evaluate((node) => node.open))) await category.locator('summary').click();
+  await openSettings(page, 'practice');
   await expect(page.locator('#numbers-toggle')).toBeVisible();
 }
 
 async function numbersCommand(page, hint) {
+  await closeSettings(page);
   await page.keyboard.press('Control+k');
   await page.locator('#palette-input').fill('numbers');
   await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).toHaveText(hint);
@@ -25,21 +24,22 @@ test('numbers live in test content settings, default off, and keep practice best
   await chooseWords(page, 10);
   await expect(page.locator('.practice-controls #numbers-toggle')).toHaveCount(0);
   await expect(page.locator('#numbers-toggle')).toBeHidden();
-  await expect(page.locator('#numbers-toggle')).not.toBeChecked();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).not.toBeChecked();
   expect(await passageText(page)).not.toMatch(/\d/);
   await completePassage(page);
   await expect(page.locator('#result-conditions')).not.toContainText('numbers');
 
   await page.locator('#run-again').click();
-  await openSettings(page);
-  await expect(page.locator('#test-content-settings')).not.toHaveAttribute('open');
+  await openSettings(page, 'practice');
+  await openSettings(page, 'appearance');
+  await expect(page.locator('#settings-practice')).toBeHidden();
   await expect(page.locator('#numbers-toggle')).toBeHidden();
   await openTestContent(page);
-  await page.locator('#word-list').selectOption('1k');
+  await chooseSetting(page, 'word-list', '1k');
   await expect(page.locator('#condition-line')).toContainText('english 1k');
-  await page.locator('#word-list').selectOption('200');
+  await chooseSetting(page, 'word-list', '200');
   // By role: the label also holds the hidden "fixed for standard" note, which isn't part of its name.
-  await page.getByRole('checkbox', { name: 'numbers', exact: true }).check();
+  await chooseSetting(page, 'numbers-toggle', true);
   await expect(page.locator('#condition-line')).toContainText('numbers');
   await expect.poll(() => passageText(page)).toMatch(/\d/);
   await expect(page.locator('#best')).toHaveText('No best yet');
@@ -61,12 +61,12 @@ test('numbers live in test content settings, default off, and keep practice best
 test('numbers command stays available and toggles timed passages both ways', async ({ page }) => {
   await openApp(page);
   await numbersCommand(page, 'off');
-  await expect(page.locator('#numbers-toggle')).toBeChecked();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
   await expect(page.locator('#condition-line')).toContainText('30 s');
   await expect(page.locator('#condition-line')).toContainText('numbers');
   expect(await passageText(page)).toMatch(/\d/);
   await numbersCommand(page, 'on');
-  await expect(page.locator('#numbers-toggle')).not.toBeChecked();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).not.toBeChecked();
   await expect(page.locator('#condition-line')).not.toContainText('numbers');
   expect(await passageText(page)).not.toMatch(/\d/);
 });
@@ -77,11 +77,11 @@ test('fresh retests restore numbers from the baseline after the preference chang
   await numbersCommand(page, 'off');
   const baseline = await completePassage(page);
   await numbersCommand(page, 'on');
-  await expect(page.locator('#numbers-toggle')).not.toBeChecked();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).not.toBeChecked();
   await openView(page, 'Train');
   await page.locator('#skip-to-retest').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
-  await expect(page.locator('#numbers-toggle')).toBeChecked();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
   await expect(page.locator('#condition-line')).toContainText('numbers');
   expect(await passageText(page)).not.toBe(baseline);
   expect(await passageText(page)).toMatch(/\d/);
@@ -98,15 +98,15 @@ test('quotes ignore numbers and preserve the practice preference', async ({ page
   expect(quoteCorpus.some((item) => item.text === quote)).toBe(true);
   await expect(page.locator('#condition-line')).not.toContainText('numbers');
   await openTestContent(page);
-  await expect(page.locator('#numbers-toggle')).toBeDisabled();
-  await expect(page.locator('#numbers-toggle')).toBeChecked();
+  await expect(page.locator('#numbers-toggle input').first()).toBeDisabled();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
   await page.keyboard.press('Control+k');
   await page.locator('#palette-input').fill('numbers');
   await expect(page.locator('#palette-list [role="option"] .opt-label').filter({ hasText: /^numbers$/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.locator('#mode-time').click();
-  await expect(page.locator('#numbers-toggle')).toBeEnabled();
-  await expect(page.locator('#numbers-toggle')).toBeChecked();
+  await expect(page.locator('#numbers-toggle input').first()).toBeEnabled();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
   await expect(page.locator('#condition-line')).toContainText('numbers');
 });
 
@@ -120,9 +120,10 @@ test('account reload retains numbers while daily text and scores stay unchanged'
   await numbersCommand(page, 'off');
   await expect.poll(() => supabase.profileFor('numbers@stilltype.test')?.preferences.numbers).toBe(true);
   await page.reload();
-  await expect(page.locator('#numbers-toggle')).toBeChecked();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
   expect(await passageText(page)).toMatch(/\d/);
-  await expect(page.locator('#test-content-settings')).not.toHaveAttribute('open');
+  await openSettings(page, 'appearance');
+  await expect(page.locator('#settings-practice')).toBeHidden();
   await openView(page, 'Challenge');
   await page.locator('#challenge-daily').click();
   await page.locator('#start-daily').click();
@@ -143,25 +144,26 @@ test('account reload retains numbers while daily text and scores stay unchanged'
 test('test content and its numbers switch work by keyboard at 320px', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 760 });
   await openApp(page);
-  const settings = page.locator('details.preferences > summary');
+  const settings = page.locator('#settings-trigger');
   await settings.focus();
   await page.keyboard.press('Enter');
-  const category = page.locator('#test-content-settings > summary');
+  const category = page.locator('[data-settings-category="practice"]');
   await category.focus();
   await page.keyboard.press('Enter');
   await page.keyboard.press('Tab');
-  await expect(page.locator('#word-list')).toBeFocused();
+  await expect(page.locator('[data-settings-category="keyboard"]')).toBeFocused();
+  await page.locator('#word-list input:checked').focus();
   await page.keyboard.press('Tab');
-  await expect(page.locator('#numbers-toggle')).toBeFocused();
-  await page.keyboard.press('Space');
-  await expect(page.locator('#numbers-toggle')).toBeChecked();
+  await expect(page.locator('#numbers-toggle input[value="false"]')).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
   await expect(page.locator('#condition-line')).toContainText('numbers');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   const bounds = await page.locator('#numbers-toggle').boundingBox();
   expect(bounds.x).toBeGreaterThanOrEqual(0);
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
   await page.keyboard.press('Escape');
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
   await expect(settings).toBeFocused();
 });
 
@@ -172,7 +174,7 @@ test('screenshots', async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
     await openTestContent(page);
-    await page.locator('#numbers-toggle').check();
+    await chooseSetting(page, 'numbers-toggle', true);
     await expect.poll(async () => /\d/.test(await passageText(page))).toBe(true);
     await page.screenshot({ path: shot(testInfo, `settings-${theme}.png`) });
     await page.keyboard.press('Escape');

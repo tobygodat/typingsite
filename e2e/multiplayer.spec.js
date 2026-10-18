@@ -1,4 +1,4 @@
-import { test, expect, openApp, openView, signInWithEmail, typeInto, openSettings } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto, openSettings, chooseSetting } from './fixtures.js';
 
 test.setTimeout(60000);
 
@@ -34,8 +34,8 @@ test('an account hosts a guest across separate contexts, shares progress, resume
     .map((node) => Number(node.dataset.wordIndex)));
   const room = await hostRace(page, supabase);
   await openSettings(page);
-  await page.locator('#word-highlight').selectOption('current');
-  await page.locator('.keybindings-category > summary').click();
+  await chooseSetting(page, 'word-highlight', 'current');
+  await openSettings(page, 'shortcuts');
   await page.locator('#keybinding-restart').fill('F2');
   await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
   await page.keyboard.press('Escape');

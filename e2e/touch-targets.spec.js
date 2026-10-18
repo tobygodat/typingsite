@@ -6,8 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, openProgressView, openSettings, chooseWords, passageText, typeInto, completePassage,
-  freshTextCheck, signInWithEmail, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, openProgressView, openSettings, chooseWords, passageText, typeInto, completePassage, freshTextCheck, signInWithEmail, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
 
 const MIN = 44;
 
@@ -26,7 +25,7 @@ const EXEMPT = [
 
 // Runs in the page. Returns every visible control under `root` and its hit area.
 function measure({ root, exempt }) {
-  const CONTROLS = 'button, a[href], input:not([type="hidden"]), select, textarea, summary, '
+  const CONTROLS = 'label.setting-option, button, a[href], input:not([type="hidden"]), select, textarea, summary, '
     + '[role="button"], [role="switch"], [role="tab"], [role="option"], [tabindex="0"]';
   const describe = (el) => {
     const classes = (el.getAttribute('class') || '').trim().split(/\s+/).filter(Boolean).map((c) => `.${c}`).join('');
@@ -34,7 +33,7 @@ function measure({ root, exempt }) {
     return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${classes}${text ? ` “${text.slice(0, 36)}”` : ''}`;
   };
   const controls = [];
-  for (const el of document.querySelector(root).querySelectorAll(CONTROLS)) {
+  for (const el of (document.querySelector('dialog:modal') || document.querySelector(root)).querySelectorAll(CONTROLS)) {
     // Hidden from everyone, faded out mid-run, or not taking pointer input: not a target right now.
     if (el.closest('[aria-hidden="true"], [inert]')) continue;
     if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
@@ -215,14 +214,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
 
       await openView(page, 'Practice');
       await openSettings(page);
-      small.push(...await sweep(page, 'settings', '.preferences'));
-      // Focus mode hides the dock, popover included, and leaves its own exit button.
-      await page.locator('#focus-toggle').check();
+      small.push(...await sweep(page, 'settings', '#settings-dialog'));
+      await chooseSetting(page, 'focus-toggle', true);
+      await closeSettings(page);
       small.push(...await sweep(page, 'focus mode'));
-      await page.locator('#exit-focus').click();
+      await closeSettings(page);
+  await page.locator('#exit-focus').click();
       await expect(page.locator('#exit-focus')).toBeHidden();
-      if (await page.locator('details.preferences').getAttribute('open') !== null) await page.locator('details.preferences summary').click();
-      await expect(page.locator('.preferences-popover')).toBeHidden();
+      if (await page.locator('#settings-dialog').getAttribute('open') !== null) await closeSettings(page);
+      await expect(page.locator('#settings-dialog')).toBeHidden();
 
       await page.locator('#palette-trigger').click();
       await expect(page.locator('#palette')).toBeVisible();

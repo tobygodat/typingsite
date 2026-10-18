@@ -93,6 +93,7 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
   const actions = Object.keys(DEFAULT_KEYBINDINGS);
   let recording = null;
   let renderedBindings = null;
+  let dirty = false;
   const input = (action) => form.querySelector(`[name="${action}"]`);
   const feedback = (message) => { status.textContent = message; };
   function stopRecording() {
@@ -101,7 +102,8 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
   }
   function refresh({ force = false } = {}) {
     const signature = JSON.stringify(getBindings());
-    if (!force && signature === renderedBindings) return;
+    if (!force && (dirty || signature === renderedBindings)) return;
+    dirty = false;
     renderedBindings = signature;
     stopRecording();
     for (const action of actions) {
@@ -111,6 +113,7 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
     }
     feedback('');
   }
+  form.addEventListener('input', () => { dirty = true; });
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     stopRecording();
@@ -121,6 +124,7 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
     }
     const invalid = actions.find((action) => result.errors[action]);
     if (invalid) { feedback('Bindings were not saved. Fix the marked combinations.'); input(invalid).focus(); return; }
+    dirty = false;
     onSave(result.bindings);
     refresh();
     feedback('Keybindings saved.');
@@ -151,6 +155,7 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
     const result = parseBinding(value, action);
     if (result.error) { feedback(result.error); return; }
     input(action).value = result.binding;
+    dirty = true;
     stopRecording();
     input(action).focus();
     feedback('Combination recorded. Save to apply it.');

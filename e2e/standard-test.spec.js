@@ -1,5 +1,5 @@
 import { conditionKey, standardConditions } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, completePassage, passageText, typeInto, signInWithEmail, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, completePassage, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting } from './fixtures.js';
 
 // Committed docs images are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/standard-test/${name}` : testInfo.outputPath(name));
@@ -9,11 +9,8 @@ const RECIPE = 'standard v1 · 60 s · english 1k–10k mix · punctuation, numb
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const screenOverflow = (page) => page.locator('#typing-screen').evaluate((node) => node.scrollWidth - node.clientWidth);
 
-// Settings, with the collapsed test content category (word list and numbers) open.
 async function openTestContent(page) {
-  await openSettings(page);
-  const category = page.locator('#test-content-settings');
-  if (!(await category.evaluate((node) => node.open))) await category.locator('summary').click();
+  await openSettings(page, 'practice');
   await expect(page.locator('#word-list')).toBeVisible();
 }
 
@@ -70,16 +67,16 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   expect(first).toMatch(/\d/);
 
   await openTestContent(page);
-  await expect(page.locator('#word-list')).toBeDisabled();
-  await expect(page.locator('#word-list')).toHaveValue('standard');
+  await expect(page.locator('#word-list input').first()).toBeDisabled();
+  await expect(page.locator('#word-list input:checked')).toHaveValue('standard');
   // The recipe always has numbers; the numbers switch shows that and stays locked.
-  await expect(page.locator('#numbers-toggle')).toBeDisabled();
-  await expect(page.locator('#numbers-toggle')).toBeChecked();
-  await expect(page.locator('#correction-select')).toBeDisabled();
-  await expect(page.locator('#correction-select')).toHaveValue('mandatory');
-  await expect(page.getByRole('combobox', { name: 'word list fixed for standard' })).toBeDisabled();
-  await expect(page.getByRole('checkbox', { name: 'numbers fixed for standard' })).toBeChecked();
-  await expect(page.getByRole('combobox', { name: 'correction fixed for standard' })).toHaveValue('mandatory');
+  await expect(page.locator('#numbers-toggle input').first()).toBeDisabled();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
+  await expect(page.locator('#correction-select input').first()).toBeDisabled();
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('mandatory');
+  await expect(page.getByRole('group', { name: 'word list', exact: true })).toHaveAccessibleDescription('fixed for standard');
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('mandatory');
   await page.keyboard.press('Escape');
 
   // Correction is required: a miss blocks the next letter.
@@ -99,17 +96,17 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
   await expect(page.locator('#condition-line')).toContainText('english 200 · 30 s · plain · physical keyboard · continue on error');
   await openTestContent(page);
-  await expect(page.locator('#word-list')).toHaveValue('200');
-  await expect(page.locator('#numbers-toggle')).toBeEnabled();
-  await expect(page.locator('#numbers-toggle')).not.toBeChecked();
-  await expect(page.locator('#correction-select')).toBeEnabled();
-  await expect(page.locator('#correction-select')).toHaveValue('relaxed');
+  await expect(page.locator('#word-list input:checked')).toHaveValue('200');
+  await expect(page.locator('#numbers-toggle input').first()).toBeEnabled();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).not.toBeChecked();
+  await expect(page.locator('#correction-select input').first()).toBeEnabled();
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('relaxed');
   await expect(page.locator('.preference-lock').first()).toBeHidden();
   // The recipe's word-list value leaves with it, so type-ahead can't pick it in another mode.
-  await expect(page.locator('#word-list option[value="standard"]')).toHaveCount(0);
-  await page.locator('#word-list').focus();
+  await expect(page.locator('#word-list input[value="standard"]')).toBeHidden();
+  await page.locator('#word-list input:checked').focus();
   await page.keyboard.press('1');
-  await expect(page.locator('#word-list')).toHaveValue('200');
+  await expect(page.locator('#word-list input:checked')).toHaveValue('200');
   await expect(page.locator('#condition-line')).toContainText('english 200 · 30 s');
 });
 
@@ -135,8 +132,8 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await page.locator('#mode-time').click();
   await page.locator('#duration-options [data-length="60"]').click();
   await page.locator('#punctuation-toggle').check();
-  await openSettings(page);
-  await page.locator('#correction-select').selectOption('mandatory');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'correction-select', 'mandatory');
   await expect(page.locator('#best')).toHaveText('No best yet');
 
   await openView(page, 'Progress');
@@ -429,9 +426,9 @@ test('a custom passage over standard keeps its own condition and never reaches t
   await expect(page.locator('#condition-line')).toContainText('continue on error');
   await expect(page.locator('#standard-options')).toBeHidden();
   await expect(page.locator('#best')).toHaveText('Not counted');
-  await openSettings(page);
-  await expect(page.locator('#correction-select')).toBeEnabled();
-  await expect(page.locator('#correction-select')).toHaveValue('relaxed');
+  await openSettings(page, 'practice');
+  await expect(page.locator('#correction-select input').first()).toBeEnabled();
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('relaxed');
   await expect(page.locator('.preference-lock').first()).toBeHidden();
   await page.keyboard.press('Escape');
 
@@ -452,9 +449,9 @@ test('a custom passage over standard keeps its own condition and never reaches t
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
   await expect(page.locator('#best')).toHaveText('No best yet');
-  await openSettings(page);
-  await expect(page.locator('#correction-select')).toBeDisabled();
-  await expect(page.locator('#correction-select')).toHaveValue('mandatory');
+  await openSettings(page, 'practice');
+  await expect(page.locator('#correction-select input').first()).toBeDisabled();
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('mandatory');
 });
 
 test('the daily challenge keeps its own conditions while standard is selected', async ({ page }) => {
