@@ -2388,7 +2388,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .show-all-runs { margin-top: var(--space-6); }
 .run-summary strong { font-size: var(--text-lead); font-weight: 400; }
 .run-summary span { color: var(--muted); }
-.run-detail { padding-top: var(--space-4); }
+/* The bottom space keeps the reach of a "View passage" touch target off the next run's row. */
+.run-detail { padding: var(--space-4) 0 var(--space-3); }
 .run-detail p { color: var(--muted); font-size: var(--text-small); }
 .daily-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-4); align-items: start; }
 .daily-challenge > p { color: var(--muted); max-width: 60ch; }

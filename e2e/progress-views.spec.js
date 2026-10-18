@@ -22,12 +22,12 @@ const runs = [
   run(0, 70, 96),
 ];
 
-async function openProgress(page, supabase) {
+async function openProgress(page, supabase, list = runs) {
   await page.clock.install({ time: NOW });
   await page.setViewportSize({ width: 1280, height: 900 });
   const user = supabase.addUser('views@stilltype.test');
-  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: [], runs, loops: [],
-    seenTextIds: runs.map((r) => r.textId), bests: {}, updatedAt: runs.at(-1).at } });
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: [], runs: list, loops: [],
+    seenTextIds: list.map((r) => r.textId), bests: {}, updatedAt: list.at(-1).at } });
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
@@ -45,7 +45,12 @@ test('period and test pills filter the overview, and condition sets never mix', 
   await expect(tests.getByRole('button', { name: '25 words' })).toHaveAttribute('aria-pressed', 'true');
   await expect(variants.getByRole('button')).toHaveText(['plain', 'punctuation']);
   await expect(variants.getByRole('button', { name: 'plain' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#progress-conditions')).toHaveText('english 1k · 25 words · plain · physical keyboard · continue on error · corpus v5 · metric v1');
+  // The full conditions line waits behind a disclosure beside the condition sets.
+  const conditionsLine = page.locator('#progress-conditions');
+  await expect(conditionsLine).toBeHidden();
+  await page.locator('.conditions-disclosure > summary').click();
+  await expect(conditionsLine).toBeVisible();
+  await expect(conditionsLine).toHaveText('english 1k · 25 words · plain · physical keyboard · continue on error · corpus v5 · metric v1');
   // A preset length with no runs stays in the row, disabled.
   await expect(tests.getByRole('button', { name: '100 words' })).toBeDisabled();
   await expect(tests.getByRole('button', { name: '15 seconds' })).toBeEnabled();
@@ -144,4 +149,22 @@ test('view tabs show one panel at a time, by arrow keys or a click, and stay cho
   expect(await shown()).toEqual(['practice']);
   await openProgressView(page, 'Speed');
   expect(await shown()).toEqual(['speed']);
+});
+
+test('the run list opens on the newest ten, and one button lists every run', async ({ page, supabase }) => {
+  const many = Array.from({ length: 14 }, (_, i) => run(14 - i, 50 + i, 95));
+  await openProgress(page, supabase, many);
+  const rows = page.locator('#run-history .run-row');
+  const showAll = page.getByRole('button', { name: 'Show all 14 runs' });
+  await expect(rows).toHaveCount(14);
+  await expect(rows.filter({ visible: true })).toHaveCount(10);
+  await expect(rows.first()).toContainText('63 wpm');
+  await showAll.click();
+  await expect(rows.filter({ visible: true })).toHaveCount(14);
+  await expect(showAll).toBeHidden();
+  // Focus lands on the first run that was out of view, so the keyboard carries on from there.
+  await expect(rows.nth(10).locator('summary')).toBeFocused();
+  await rows.last().locator('summary').click();
+  await expect(rows.last()).toHaveAttribute('open', '');
+  await expect(rows.last()).toContainText('50 wpm');
 });

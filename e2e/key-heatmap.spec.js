@@ -86,11 +86,14 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   for (const bar of bars) expect(bar.width).toBeCloseTo((top.width * bar.rate) / top.rate, 0);
   await expect(rows.first().locator('.pair-bar')).toHaveAttribute('aria-hidden', 'true');
 
-  // Wide screens put the pairs beside the keyboard.
+  // The pairs sit under the keyboard, and the two are centred in the column as one group.
   const keyboardBox = await heatmap.boundingBox();
   const tableBox = await page.locator('#pairs-table').boundingBox();
-  expect(tableBox.x).toBeGreaterThan(keyboardBox.x + keyboardBox.width);
-  expect(tableBox.y).toBeLessThan(keyboardBox.y + keyboardBox.height);
+  const panelBox = await page.locator('#view-keys').boundingBox();
+  expect(tableBox.y).toBeGreaterThan(keyboardBox.y + keyboardBox.height);
+  const centre = (box) => box.x + box.width / 2;
+  expect(Math.abs(centre(keyboardBox) - centre(panelBox))).toBeLessThan(2);
+  expect(Math.abs(centre(tableBox) - centre(panelBox))).toBeLessThan(2);
 
   // The heatmap is one tab stop; arrow keys move between keys and the line below shows the numbers.
   const detail = page.locator('#key-detail');
