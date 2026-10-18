@@ -335,7 +335,7 @@ test('with only practice to show, the panel stands alone, without tab semantics'
   await expect(page.locator('#view-practice')).not.toHaveAttribute('aria-labelledby', /./);
 });
 
-test('period sits beside the heading, with test lengths below and conditions disclosed on demand', async ({ page, supabase }, testInfo) => {
+test('duration and period share a row with a compact overview and conditions disclosed on demand', async ({ page, supabase }, testInfo) => {
   const timed = { mode: 'time', count: null, duration: 15 };
   const list = [
     run(4, 45, 94),
@@ -354,14 +354,19 @@ test('period sits beside the heading, with test lengths below and conditions dis
   const duration = await page.getByRole('button', { name: '15 seconds', exact: true }).boundingBox();
   const period = await page.locator('#progress-period').boundingBox();
   const summary = await disclosure.boundingBox();
-  expect(Math.abs(period.y + period.height / 2 - heading.y - heading.height / 2)).toBeLessThan(1);
-  expect(period.x).toBeGreaterThan(heading.x + heading.width);
+  expect(Math.abs(period.y + period.height / 2 - duration.y - duration.height / 2)).toBeLessThan(1);
+  expect(period.x).toBeGreaterThan(duration.x + duration.width);
   expect(duration.y).toBeGreaterThan(heading.y + heading.height);
   expect(summary.y).toBe(duration.y);
   expect(summary.x).toBeGreaterThan(duration.x + duration.width);
   await expect(page.locator('#progress-heading')).toHaveCSS('font-size', '48px');
   await expect(page.locator('#progress-stats .figure-value').first()).toHaveCSS('font-size', '30px');
   await page.screenshot({ path: testInfo.outputPath('progress-desktop.png') });
+  await page.setViewportSize({ width: 1024, height: 800 });
+  const narrowDuration = await page.getByRole('button', { name: '15 seconds', exact: true }).boundingBox();
+  const narrowPeriod = await page.locator('#progress-period').boundingBox();
+  expect(Math.abs(narrowPeriod.y + narrowPeriod.height / 2 - narrowDuration.y - narrowDuration.height / 2)).toBeLessThan(1);
+  await page.setViewportSize({ width: 1280, height: 900 });
   await disclosure.focus();
   await page.keyboard.press('Enter');
   await page.keyboard.press('Tab');

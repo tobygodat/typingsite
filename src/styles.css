@@ -2238,9 +2238,11 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .view-pill { font-size: var(--text-body); }
 .progress-heading { align-items: center; }
 .progress-heading h1 { margin: 0; font-size: var(--text-display); }
-.progress-heading > .pill-row { max-width: 100%; }
 .progress-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-6); margin-bottom: var(--space-3); }
 .progress-filters > .pill-row { min-width: 0; max-width: 100%; }
+#progress-tests { flex: 1; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+#progress-tests > * { flex: none; }
+#progress-period { flex-wrap: nowrap; }
 #progress-tests:empty { display: none; }
 .variant-select { field-sizing: content; min-width: var(--control); max-width: 100%; height: var(--control); padding: 0 var(--space-2) 0 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); text-overflow: ellipsis; transition: color var(--dur-quick) var(--ease-out); }
 .variant-select:hover, .variant-select:focus-visible { color: var(--text); }
@@ -3141,7 +3143,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .progress-screen .pill-row::-webkit-scrollbar { display: none; }
   .progress-screen .pill-row > * { flex: none; }
   /* Full width, so the fade lands on empty space when a row doesn't overflow. */
-  .progress-filters > .pill-row { flex-basis: 100%; }
+  .progress-filters > #progress-tests, .progress-filters > #progress-period { flex-basis: 100%; }
   .progress-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* On a phone the chart comes straight after the filters, so it starts on the first screen; the
      period's figures follow it, before the standard score and the runs. */
