@@ -262,7 +262,7 @@ export function correctionLabel(policy) {
 // Every part of a condition key (conditionKey), named as people read it, in the order a conditions line
 // reads. Some parts are on the line only away from their default (`shown`), but name a condition set in
 // either state when sets differ by them. A quote ignores the punctuation setting its key keeps, so the
-// line never names it; it still tells two quote sets apart.
+// line names it only beside a quote set that differs by it.
 const version = (id) => id.replace(/^.*-(v\d+)$/, '$1');
 const LENGTH_TEXT = {
   words: (c) => `${c.count} words`,
