@@ -2215,8 +2215,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 /* The standard score's rule already divides it from the empty state, so the empty state drops its own. */
 .standard-score + .empty-state { padding-top: 0; border-top: 0; }
 
-/* Pills: the period, the test length, its condition sets and the views. Literata on a hairline,
-   the chosen one on the accent tint; a 44px target everywhere. */
 .pill-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .pill {
   min-height: var(--control);
@@ -2238,12 +2236,14 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .pill:disabled { color: var(--outline); cursor: default; }
 .pill-rule { width: 1px; height: var(--space-6); margin: 0 var(--space-2); background: var(--hairline-strong); }
 .view-pill { font-size: var(--text-body); }
-.variant-pill { font-size: var(--text-label); }
 .progress-heading { align-items: center; }
-#progress-tests { margin-bottom: var(--space-3); }
-/* The condition sets, and the full conditions line behind a small disclosure beside them. */
+.progress-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-6); margin-bottom: var(--space-3); }
+.progress-filters > .pill-row { min-width: 0; max-width: 100%; }
+#progress-tests:empty { display: none; }
 .variant-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
-.variant-row { min-width: 0; }
+.variant-select { field-sizing: content; min-width: var(--control); max-width: 100%; height: var(--control); padding: 0 var(--space-2) 0 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); text-overflow: ellipsis; transition: color var(--dur-quick) var(--ease-out); }
+.variant-select:hover, .variant-select:focus-visible { color: var(--text); }
+.variant-select option { background: var(--raised); color: var(--text); }
 .conditions-disclosure { min-width: 0; }
 .conditions-disclosure > summary { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control); color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); cursor: pointer; list-style: none; transition: color var(--dur-quick) var(--ease-out); }
 .conditions-disclosure > summary::-webkit-details-marker { display: none; }
@@ -3138,8 +3138,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .progress-screen .pill-row::-webkit-scrollbar { display: none; }
   .progress-screen .pill-row > * { flex: none; }
   /* Full width, so the fade lands on empty space when a row doesn't overflow. */
-  .progress-heading .pill-row { align-self: stretch; }
-  .variant-row { flex-basis: 100%; }
+  .progress-filters > .pill-row { flex-basis: 100%; }
   .progress-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* On a phone the chart comes straight after the filters, so it starts on the first screen; the
      period's figures follow it, before the standard score and the runs. */
