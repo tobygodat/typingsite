@@ -973,6 +973,12 @@ test('the conditions line reads every part shown, in the same words the conditio
   const quote = { mode: 'quote', quoteLength: 'short', difficulty: 'gentle', punctuation: true, correctionPolicy: 'mandatory' };
   assert.equal(Object.values(conditionParts(quote)).join(' · '), 'english · short quote · gentle · physical keyboard · stop on error · corpus v5 · metric v1',
     'a quote ignores the punctuation setting, so the line leaves it out');
+  const off = { ...quote, punctuation: false };
+  const line = (value, sets) => Object.values(conditionParts(value, sets)).join(' · ');
+  assert.equal(line(quote, [off, quote]), 'english · short quote · gentle · punctuation setting on · physical keyboard · stop on error · corpus v5 · metric v1',
+    'beside a quote set that differs only by the setting, the line names it, as the pills do');
+  assert.equal(line(off, [off, quote]), 'english · short quote · gentle · punctuation setting off · physical keyboard · stop on error · corpus v5 · metric v1');
+  assert.equal(line(quote, [quote]), Object.values(conditionParts(quote)).join(' · '), 'with nothing to tell apart, it stays out');
 });
 
 test('two condition sets with different keys never share a name, whichever key part they differ by', () => {

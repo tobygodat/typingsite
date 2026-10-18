@@ -232,6 +232,16 @@ test('Show all stays through a pill already chosen, and resets on a clear, its u
   await expect(rows).toHaveCount(10);
 });
 
+test('quote sets that differ only by the punctuation setting say so on the conditions line, as their pills do', async ({ page, supabase }) => {
+  const quote = { mode: 'quote', count: null, quoteLength: 'short', difficulty: 'any', wordList: null };
+  await openProgress(page, supabase, [run(2, 50, 95, quote), run(1, 55, 95, quote), run(0, 60, 95, { ...quote, punctuation: true })]);
+  const variants = page.getByRole('group', { name: 'Conditions' });
+  await expect(variants.getByRole('button')).toHaveText(['punctuation setting off', 'punctuation setting on']);
+  await expect(page.locator('#progress-conditions')).toContainText('any · punctuation setting off · physical keyboard');
+  await variants.getByRole('button', { name: 'punctuation setting on' }).click();
+  await expect(page.locator('#progress-conditions')).toContainText('any · punctuation setting on · physical keyboard');
+});
+
 test('activating a period, test or condition pill keeps focus on that pill', async ({ page, supabase }) => {
   await openProgress(page, supabase);
   const focused = () => page.evaluate(() => {

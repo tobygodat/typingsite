@@ -285,9 +285,12 @@ const CONDITION_PARTS = [
   { name: 'metric', text: (c) => `metric ${version(c.metricVersion || METRIC_VERSION)}` },
 ];
 
-// The parts a conditions line shows, by name, in reading order.
-export function conditionParts(conditions) {
-  return Object.fromEntries(CONDITION_PARTS.filter((part) => (part.shown ? part.shown(conditions) : part.text(conditions)))
+// The parts a conditions line shows, by name, in reading order. Beside other condition sets (`sets`, as
+// the condition pills list them), a part shown only away from its default is shown whenever they differ
+// by it, so the line names what its pill does.
+export function conditionParts(conditions, sets = []) {
+  const differs = (part) => sets.some((other) => part.text(other) !== part.text(conditions));
+  return Object.fromEntries(CONDITION_PARTS.filter((part) => (part.shown ? part.shown(conditions) || differs(part) : part.text(conditions)))
     .map((part) => [part.name, part.text(conditions)]));
 }
 

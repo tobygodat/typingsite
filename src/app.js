@@ -422,8 +422,8 @@ function customConditions() {
     quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, strictSpace: false, quickEnd: true, customOrder: prefs.customOrder };
 }
 
-function describeConditions(value = conditions()) {
-  const { language, length, text, ...tail } = conditionParts(value);
+function describeConditions(value = conditions(), sets = []) {
+  const { language, length, text, ...tail } = conditionParts(value, sets);
   // The recipe name stands for its punctuation, numbers and quote, keeping the run card's line short.
   if (value.mode === 'standard') return [length, '1k–10k mix', ...Object.values(tail)].join(' · ');
   if (value.mode === 'code') return [length, ...Object.values(tail), 'not counted toward bests'].join(' · ');
@@ -3208,7 +3208,8 @@ function renderHistory() {
   const key = source ? progressState.key : '';
   const period = progressState.period;
   for (const button of $('progress-period').querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
-  $('progress-conditions').textContent = source ? describeConditions(source) : '';
+  const siblings = shapes.find((shape) => shape.variants.some((variant) => variant.key === key))?.variants.map((variant) => variant.conditions);
+  $('progress-conditions').textContent = source ? describeConditions(source, siblings) : '';
   const span = periodWindow(period, date);
   const matching = source ? filterRuns(eligible, key, span) : [];
   const runRows = source ? filterRuns(listed, key, span) : [];
