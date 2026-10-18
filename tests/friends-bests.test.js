@@ -184,11 +184,7 @@ test('a condition key is compared only when this build writes it the same way', 
 });
 
 test('every key this build can write is listed, read back as the conditions it was written from', () => {
-  // The lists are the app's own: the quote filters and word lists offered in index.html are exactly these.
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  const options = (id) => [...html.match(new RegExp(`<select[^>]*id="${id}"[^>]*>([^]*?)</select>`))[1].matchAll(/value="([^"]*)"/g)].map((match) => match[1]);
-  assert.deepEqual(options('quote-length'), QUOTE_LENGTHS);
-  assert.deepEqual(options('quote-difficulty'), QUOTE_DIFFICULTIES);
   const wordList = html.match(/<fieldset[^>]*id="word-list"[^>]*>([^]*?)<\/fieldset>/)[1];
   const offeredWords = [...wordList.matchAll(/<input[^>]*value="([^"]*)"[^>]*>/g)]
     .filter(([input]) => !input.includes(' disabled')).map(([, value]) => value);

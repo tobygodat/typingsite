@@ -119,6 +119,8 @@
                 <input id="custom-length-input" class="custom-length-input" type="text" inputmode="numeric" enterkeyhint="done" maxlength="12" autocomplete="off" spellcheck="false" placeholder="5–600" aria-label="custom time in seconds, 5 to 600" aria-describedby="custom-length-error">
               </form>
             </div>
+            <div id="quote-options" class="segmented quote-options" role="group" aria-label="Quote filters" hidden>
+            </div>
             <div id="code-options" class="segmented compact glide" role="group" aria-label="Code language" data-glide="pressed" hidden>
               <button type="button" data-language="js" aria-pressed="true" class="is-active">js</button>
               <button type="button" data-language="python" aria-pressed="false">python</button>
@@ -132,25 +134,6 @@
           </div>
           <p id="custom-length-error" class="field-error custom-length-error" role="alert"></p>
           <span id="minimum-note" class="minimum-note" hidden></span>
-        </div>
-
-        <div id="quote-options" class="quote-options" hidden>
-          <label for="quote-length">quote length
-            <select id="quote-length" class="input select">
-              <option value="any">any</option>
-              <option value="short">short</option>
-              <option value="medium" selected>medium</option>
-              <option value="long">long</option>
-            </select>
-          </label>
-          <label for="quote-difficulty">difficulty
-            <select id="quote-difficulty" class="input select">
-              <option value="any" selected>any</option>
-              <option value="gentle">gentle</option>
-              <option value="steady">steady</option>
-              <option value="precise">precise</option>
-            </select>
-          </label>
         </div>
 
         <div id="standard-options" class="standard-options" hidden>
@@ -468,25 +451,24 @@
 
       <section id="progress-screen" class="screen progress-screen" data-screen="progress" aria-labelledby="progress-heading" hidden>
         <header class="section-heading page-heading progress-heading">
-          <div>
-            <h1 id="progress-heading">Progress</h1>
-          </div>
+          <h1 id="progress-heading">Progress</h1>
+        </header>
+
+        <div class="progress-filters">
+          <div id="progress-tests" class="pill-row" role="group" aria-label="Test"></div>
           <div id="progress-period" class="pill-row" role="group" aria-label="Period">
             <button class="pill" type="button" data-period="7" aria-pressed="false">7 days</button>
             <button class="pill" type="button" data-period="30" aria-pressed="true">30 days</button>
             <button class="pill" type="button" data-period="all" aria-pressed="false">All</button>
           </div>
-        </header>
+          <details class="conditions-disclosure" hidden>
+            <summary>conditions</summary>
+            <select id="progress-variants" class="select variant-select" aria-label="Conditions" hidden></select>
+            <p id="progress-conditions" class="condition-copy progress-conditions"></p>
+          </details>
+        </div>
 
         <div id="progress-content" hidden>
-          <div id="progress-tests" class="pill-row" role="group" aria-label="Test"></div>
-          <div class="variant-line">
-            <div id="progress-variants" class="pill-row variant-row" role="group" aria-label="Conditions" hidden></div>
-            <details class="conditions-disclosure">
-              <summary>conditions</summary>
-              <p id="progress-conditions" class="condition-copy progress-conditions"></p>
-            </details>
-          </div>
           <dl id="progress-stats" class="progress-stats"></dl>
           <p id="progress-trend-note" class="result-note"></p>
         </div>

@@ -124,3 +124,11 @@ export async function signInWithEmail(page, email, password = 'correct horse bat
 }
 
 export const storageKeys = (page) => page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('stilltype')));
+
+export async function chooseQuoteFilter(page, filter, value) {
+  const trigger = page.getByRole('combobox', { name: filter, exact: true });
+  await trigger.click();
+  await page.getByRole('listbox', { name: filter, exact: true }).getByRole('option', { name: value, exact: true }).click();
+  await expect(trigger).toContainText(value);
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+}

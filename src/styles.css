@@ -898,32 +898,18 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 .mode-options { z-index: 2; gap: 0; }
 .mode-options button { padding: 0 var(--space-3); }
 
-/* From 901px the mode, length and punctuation groups share one hairline rail instead of three
-   frames, divided by short rules. Narrower, the rail dissolves and each group keeps its own frame. */
-@media (min-width: 901px) {
-  .practice-rail {
-    padding: 3px;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-control);
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-  .practice-rail > .segmented { padding: 0; border: 0; }
-  .practice-rail > .compact-switch { height: 36px; padding: 0 var(--space-3) 0 var(--space-2); border: 0; }
-  .practice-rail > :not(:first-child) { position: relative; }
-  .practice-rail > :not(:first-child)::before {
-    content: "";
-    position: absolute;
-    z-index: 1;
-    top: 50%;
-    left: calc(var(--space-3) / -2);
-    width: 1px;
-    height: var(--space-4);
-    background: var(--hairline-strong);
-    transform: translate(-50%, -50%);
-  }
+.practice-rail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
 }
+
+.practice-rail > :is(.segmented, .compact-switch) { background: var(--raised); }
+
+@media (min-width: 1000px) {
+  .practice-rail { gap: var(--space-6); }
+}
+
 @media (max-width: 900px) {
   .practice-rail { display: contents; }
 }
@@ -1076,22 +1062,79 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
 }
 
 .quote-options {
-  margin: calc(var(--space-4) * -1) auto var(--space-10);
-  display: flex;
+  margin: 0;
+  padding-inline: var(--space-3);
+  max-width: 100%;
   flex-wrap: wrap;
   justify-content: center;
-  gap: var(--space-2) var(--space-4);
+  gap: var(--space-2) var(--space-3);
 }
 
-.quote-options label {
-  color: var(--muted);
-  font-size: 14px;
-  display: flex;
+.quote-filter { position: relative; }
+.quote-filter-trigger {
+  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+  width: max-content;
+  min-width: var(--control);
+  min-height: calc(var(--control) - var(--space-2));
+  padding-inline: var(--space-1);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font: var(--text-label)/1.4 var(--font-serif);
+  cursor: pointer;
+  white-space: nowrap;
 }
-
-.quote-options .input { width: 128px; height: 38px; font-size: 14px; }
+.quote-filter-value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text);
+}
+.quote-filter-chevron {
+  color: var(--muted);
+}
+.quote-filter-trigger:hover,
+.quote-filter-trigger[aria-expanded="true"] { background: var(--raised-2); }
+.quote-filter-menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  width: max-content;
+  min-width: 100%;
+  padding: var(--space-1);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-lg);
+  background: var(--raised);
+  box-shadow: var(--shadow-float);
+  animation: fade-in var(--dur-quick) var(--ease-out);
+}
+.quote-filter:last-child .quote-filter-menu { left: auto; right: 0; }
+.quote-filter-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--control);
+  min-width: var(--control);
+  padding-inline: var(--space-3);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: var(--text-label)/1.4 var(--font-serif);
+  cursor: pointer;
+}
+.quote-filter-option[aria-selected="true"] {
+  background: var(--raised-2);
+  outline: 1px solid var(--outline);
+  outline-offset: -1px;
+}
+.quote-filter-check { color: var(--accent); }
+.quote-filter-option:not([data-current]) .quote-filter-check { visibility: hidden; }
+@media (forced-colors: active) {
+  .quote-filter-menu { border-color: CanvasText; }
+  .quote-filter-option[aria-selected="true"] { outline-color: Highlight; }
+  .quote-filter-check { color: CanvasText; }
+}
 
 /* The standard test's fixed recipe, in the quote options' place. The lock notes live in settings. */
 .standard-options {
@@ -1345,7 +1388,6 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
 .char.wrong {
   color: var(--danger);
   background: var(--danger-soft);
-  border-radius: var(--radius-sm);
 }
 
 /* A space is a plain inline box, shorter than the letter boxes, so its own
@@ -1357,7 +1399,6 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
   inset-inline: 0;
   top: calc(50% - var(--typing-line) / 2);
   height: var(--typing-line);
-  border-radius: var(--radius-sm);
   background: var(--danger-soft);
 }
 
@@ -1370,11 +1411,11 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
   background: var(--word-highlight);
   transition: none;
 }
-:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:first-child {
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:not(.wrong):first-child {
   border-start-start-radius: var(--radius-sm);
   border-end-start-radius: var(--radius-sm);
 }
-:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:last-child {
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:not(.wrong):last-child {
   border-start-end-radius: var(--radius-sm);
   border-end-end-radius: var(--radius-sm);
 }
@@ -2231,8 +2272,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 /* The standard score's rule already divides it from the empty state, so the empty state drops its own. */
 .standard-score + .empty-state { padding-top: 0; border-top: 0; }
 
-/* Pills: the period, the test length, its condition sets and the views. Literata on a hairline,
-   the chosen one on the accent tint; a 44px target everywhere. */
 .pill-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .pill {
   min-height: var(--control);
@@ -2254,17 +2293,23 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .pill:disabled { color: var(--outline); cursor: default; }
 .pill-rule { width: 1px; height: var(--space-6); margin: 0 var(--space-2); background: var(--hairline-strong); }
 .view-pill { font-size: var(--text-body); }
-.variant-pill { font-size: var(--text-label); }
 .progress-heading { align-items: center; }
-#progress-tests { margin-bottom: var(--space-3); }
-/* The condition sets, and the full conditions line behind a small disclosure beside them. */
-.variant-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
-.variant-row { min-width: 0; }
-.conditions-disclosure { min-width: 0; }
+.progress-heading h1 { margin: 0; font-size: var(--text-display); }
+.progress-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-6); margin-bottom: var(--space-3); }
+.progress-filters > .pill-row { min-width: 0; max-width: 100%; }
+#progress-tests { flex: 1; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+#progress-tests > * { flex: none; }
+#progress-period { flex-wrap: nowrap; }
+#progress-tests:empty { display: none; }
+.variant-select { field-sizing: content; min-width: var(--control); max-width: 100%; height: var(--control); padding: 0 var(--space-2) 0 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); text-overflow: ellipsis; transition: color var(--dur-quick) var(--ease-out); }
+.variant-select:hover, .variant-select:focus-visible { color: var(--text); }
+.variant-select option { background: var(--raised); color: var(--text); }
+.conditions-disclosure { min-width: 0; max-width: 100%; margin-left: auto; }
 .conditions-disclosure > summary { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control); color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); cursor: pointer; list-style: none; transition: color var(--dur-quick) var(--ease-out); }
 .conditions-disclosure > summary::-webkit-details-marker { display: none; }
 .conditions-disclosure > summary:hover { color: var(--text); }
 .conditions-disclosure[open] { flex-basis: 100%; }
+.conditions-disclosure[open] > summary { display: flex; width: fit-content; margin-left: auto; }
 .progress-conditions { margin: 0 0 var(--space-2); }
 /* Overview and practice figures: no boxes. A label, the numeral in Literata with its unit, a line under it. */
 .progress-stats { margin: var(--space-8) 0 var(--space-4); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-6) var(--space-6); }
@@ -2272,6 +2317,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .progress-figure dt { color: var(--muted); font-size: var(--text-small); }
 .progress-figure dd { margin: 0; }
 .figure-value { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--text-display); font-weight: 300; line-height: 1.1; letter-spacing: -0.02em; white-space: nowrap; }
+#progress-stats .figure-value { font-size: var(--text-title); }
 .figure-value [data-speed-unit], .figure-unit { color: var(--muted); font-size: var(--text-body); letter-spacing: 0; }
 .figure-note { color: var(--muted); font-size: var(--text-small); }
 /* Progress opens on the filtered runs: the filters and the period's figures, then the views, ruled off
@@ -3053,8 +3099,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .segmented button, .segmented .custom-length-input { height: 40px; padding: 0 var(--space-2); }
   .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
-  .quote-options, .standard-options, .custom-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
-  .quote-options .input { width: 112px; }
+  .standard-options, .custom-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
+  .quote-filter-trigger { min-height: var(--space-10); }
 
   .measure-row { flex-direction: column; align-items: stretch; gap: var(--space-4); }
   .live-stats { justify-content: space-between; gap: var(--space-4); }
@@ -3113,6 +3159,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
    so neither the layout nor the focus ring moves. Relative position keeps that reach above the
    content after it. */
 @media (any-pointer: coarse) {
+  .quote-filter-trigger { min-height: var(--control); }
   .goal-day-picker { display: block; }
   .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control, .mode-more > summary, .range { min-height: var(--control); }
   /* A short mode ("time") among five on a 320px phone is narrower than 44px: the row still fits. */
@@ -3144,8 +3191,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .progress-screen .pill-row::-webkit-scrollbar { display: none; }
   .progress-screen .pill-row > * { flex: none; }
   /* Full width, so the fade lands on empty space when a row doesn't overflow. */
-  .progress-heading .pill-row { align-self: stretch; }
-  .variant-row { flex-basis: 100%; }
+  .progress-filters > #progress-tests, .progress-filters > #progress-period { flex-basis: 100%; }
   .progress-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* On a phone the chart comes straight after the filters, so it starts on the first screen; the
      period's figures follow it, before the standard score and the runs. */

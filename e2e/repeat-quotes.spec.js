@@ -1,5 +1,5 @@
 // Repeat quotes: off by default, a setting and a palette command, and honest labels when a seen quote returns.
-import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting } from './fixtures.js';
+import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting, chooseQuoteFilter } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -18,8 +18,8 @@ async function shot(page, name) {
 async function shortGentleQuotes(page) {
   await page.evaluate(() => { Math.random = () => 0.5; });
   await page.locator('#mode-quote').click();
-  await page.locator('#quote-length').selectOption('short');
-  await page.locator('#quote-difficulty').selectOption('gentle');
+  await chooseQuoteFilter(page, 'length', 'short');
+  await chooseQuoteFilter(page, 'difficulty', 'gentle');
   await expect(page.locator('#input-help')).toHaveText('');
   return passageText(page);
 }

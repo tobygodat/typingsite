@@ -1,3 +1,4 @@
+import { createQuoteFilters } from './quote-filters.js';
 import {
   CHARS_PER_WORD,
   CORPUS_VERSION,
@@ -677,8 +678,7 @@ function applyPreferences() {
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
   selectSetting('numbers-toggle', Boolean(prefs.numbers));
-  $('quote-length').value = prefs.quoteLength;
-  $('quote-difficulty').value = prefs.difficulty;
+  quoteFilters.refresh();
   selectSetting('word-list', prefs.wordList);
   applySpeedUnit();
   selectSetting('repeat-quotes-toggle', prefs.repeatQuotes);
@@ -792,6 +792,7 @@ function syncLockedSettings() {
 }
 
 function setModeControls() {
+  quoteFilters.dismiss();
   // Composing takes the passage's place, so Custom is never marked over it.
   const custom = !composeOpen && (customOpen || sessionKind === 'custom');
   $('mode-custom').classList.toggle('is-active', custom);
@@ -2548,6 +2549,7 @@ function restoreConditions(source) {
 }
 
 function switchView(view) {
+  quoteFilters.dismiss();
   document.body.dataset.view = view;
   document.querySelectorAll('[data-screen]').forEach((screen) => { screen.hidden = screen.dataset.screen !== view; });
   document.querySelectorAll('[data-nav]').forEach((control) => {
@@ -3110,8 +3112,8 @@ const shapeLabel = (shape) => {
   return { text: shape.mode };
 };
 
-function pill(text, { pressed = false, disabled = false, label = '', className = '' } = {}) {
-  const button = element('button', text, `pill${className ? ` ${className}` : ''}`);
+function pill(text, { pressed = false, disabled = false, label = '' } = {}) {
+  const button = element('button', text, 'pill');
   button.type = 'button';
   button.setAttribute('aria-pressed', String(pressed));
   button.disabled = disabled;
@@ -3123,7 +3125,7 @@ function pill(text, { pressed = false, disabled = false, label = '', className =
 function renderTestPills(shapes) {
   const selected = shapes.find((shape) => shape.variants.some((variant) => variant.key === progressState.key));
   // The pills are rebuilt, so a focused one hands focus to its replacement.
-  const focused = document.activeElement?.closest('#progress-tests, #progress-variants') ? { ...document.activeElement.dataset } : null;
+  const focused = document.activeElement?.closest('#progress-tests') ? { ...document.activeElement.dataset } : null;
   const row = [];
   shapes.forEach((shape, i) => {
     if (i && shape.mode !== shapes[i - 1].mode) {
@@ -3142,14 +3144,13 @@ function renderTestPills(shapes) {
   $('progress-variants').hidden = variants.length < 2;
   const labels = conditionLabels(variants.map((variant) => variant.conditions));
   $('progress-variants').replaceChildren(...(variants.length < 2 ? [] : variants.map((variant, i) => {
-    const button = pill(labels[i], { pressed: variant.key === progressState.key, className: 'variant-pill' });
-    button.dataset.key = variant.key;
-    button.addEventListener('click', () => chooseProgress({ key: variant.key }));
-    return button;
+    const option = element('option', labels[i]);
+    option.value = variant.key;
+    option.selected = variant.key === progressState.key;
+    return option;
   })));
   if (focused) {
-    const pills = [...$('progress-tests').children, ...$('progress-variants').children];
-    pills.find((node) => (focused.key ? node.dataset.key === focused.key : node.dataset.shape === focused.shape))?.focus();
+    [...$('progress-tests').children].find((node) => node.dataset.shape === focused.shape)?.focus();
   }
 }
 
@@ -3209,6 +3210,7 @@ function renderHistory() {
   const period = progressState.period;
   for (const button of $('progress-period').querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
   const siblings = shapes.find((shape) => shape.variants.some((variant) => variant.key === key))?.variants.map((variant) => variant.conditions);
+  document.querySelector('.conditions-disclosure').hidden = !source;
   $('progress-conditions').textContent = source ? describeConditions(source, siblings) : '';
   const span = periodWindow(period, date);
   const matching = source ? filterRuns(eligible, key, span) : [];
@@ -4679,6 +4681,7 @@ const DELETED_NOTICE = 'stilltype-account-deleted';
 let deletingAccount = false;
 
 function openDeleteAccount() {
+  quoteFilters.dismiss();
   if (!session) return;
   // The dialog gives focus back to whatever had it, and the menu's own button is about to be hidden.
   if ($('account').contains(document.activeElement)) $('account-trigger').focus();
@@ -4747,6 +4750,7 @@ function noticeDeletedAccount() {
 let accountMode = 'create';
 
 function openAccountDialog(mode) {
+  quoteFilters.dismiss();
   accountMode = mode;
   closeAccountMenu();
   const creating = mode === 'create';
@@ -4952,6 +4956,7 @@ async function completeAuthRedirect() {
 // Each setting brought over is applied as a pick of it here (saveChoice), so it syncs to the account and
 // outranks an older value from another device, as choosing it in settings would.
 function openImport() {
+  quoteFilters.dismiss();
   settingsView?.close();
   markInterrupted(NOTICES.importOpened);
   compose.interrupt(NOTICES.composeImport);
@@ -5043,6 +5048,7 @@ function importSettings(event) {
 let suggestToastTimer;
 
 function openSuggest() {
+  quoteFilters.dismiss();
   settingsView?.close();
   markInterrupted(NOTICES.suggestOpened);
   compose.interrupt(NOTICES.composeSuggest);
@@ -5165,8 +5171,6 @@ function bindEvents() {
     saveChoice('numbers');
     resetSession(restartKind(), { focus: true });
   });
-  $('quote-length').addEventListener('change', (event) => { prefs.quoteLength = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
-  $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   onSetting('word-list', (value) => setWordList(value));
   onSetting('repeat-quotes-toggle', (value) => setRepeatQuotes(value === 'true'));
   onSetting('daily-goal', (value) => { prefs.dailyGoal = Number(value); saveChoice('dailyGoal'); renderGoal(); });
@@ -5290,6 +5294,7 @@ function bindEvents() {
     const button = event.target.closest('[data-period]');
     if (button) chooseProgress({ period: button.dataset.period });
   });
+  $('progress-variants').addEventListener('change', (event) => chooseProgress({ key: event.target.value }));
   $('progress-tabs').addEventListener('click', (event) => {
     const tab = event.target.closest('[role="tab"]');
     if (tab) showProgressView(tab.dataset.viewTab);
@@ -5365,7 +5370,7 @@ function bindEvents() {
   });
   $('race-again').addEventListener('click', () => { $('race-leaderboard').hidden = true; $('compete-setup').hidden = false; $('player-one-name').focus(); });
 
-  $('clear-history').addEventListener('click', () => { $('confirm-clear-input').value = ''; $('confirm-clear').disabled = true; $('clear-dialog').showModal(); $('confirm-clear-input').focus(); });
+  $('clear-history').addEventListener('click', () => { quoteFilters.dismiss(); $('confirm-clear-input').value = ''; $('confirm-clear').disabled = true; $('clear-dialog').showModal(); $('confirm-clear-input').focus(); });
   $('confirm-clear-input').addEventListener('input', (event) => { $('confirm-clear').disabled = event.target.value !== 'clear'; });
   $('confirm-clear').addEventListener('click', clearHistory);
   $('cancel-clear').addEventListener('click', () => $('clear-dialog').close());
@@ -5392,6 +5397,10 @@ function bindEvents() {
     if (event.repeat && event.key === ' ' && document.activeElement === $('run-again')) {
       event.preventDefault();
       return;
+    }
+    if (event.target.closest('#quote-options [role="combobox"]')) {
+      if (!matchesAppBinding(event, prefs.keybindings.commands)) return;
+      quoteFilters.dismiss();
     }
     const typing = document.activeElement === $('typing-input') || document.activeElement === $('race-input');
     if (typing && event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key))) {
@@ -5821,6 +5830,7 @@ function bindPalette() {
     trigger: $('palette-trigger'),
     getCommands: paletteCommands,
     onOpen: () => {
+      quoteFilters.dismiss();
       settingsView?.close();
       closeAccountMenu();
       $('inbox').open = false;
@@ -5889,6 +5899,20 @@ compose = createCompose({
   },
 });
 $('speed-definition').replaceChildren(unitLabel(SPEED_DEFINITION));
+const quoteFilters = createQuoteFilters({
+  root: $('quote-options'),
+  read: () => prefs,
+  commit(key, value, { focus, trigger }) {
+    prefs[key] = value;
+    saveChoice(key);
+    resetSession('practice', { focus });
+    if (focus && $('typing-input').disabled) trigger.focus();
+  },
+});
+$('mode-more').addEventListener('toggle', () => {
+  if ($('mode-more').open) quoteFilters.dismiss();
+});
+$('quote-options').addEventListener('click', () => { $('mode-more').open = false; });
 buildKeyboard();
 applyPreferences();
 setModeControls();
