@@ -3258,7 +3258,7 @@ const PERIOD_NAMES = { 7: ['7 days', '7-day median'], 30: ['30 days', '30-day me
 function renderOverview(runs, week, period) {
   const stats = periodStats(runs);
   const runsCopy = (count) => (count ? `median of ${plural(count, 'run')}` : 'no runs');
-  const speed = (wpm) => (wpm === null ? ['—'] : [speedFigure(Math.round(wpm), { bare: true }), ' ', unitLabel()]);
+  const speed = (wpm) => (wpm === null ? ['—'] : [speedFigure(wpm, { bare: true, whole: true }), ' ', unitLabel()]);
   const figure = (label, value, note) => {
     const group = element('div', '', 'progress-figure');
     group.append(element('dt', label), element('dd', value, 'num figure-value'), element('dd', note, 'figure-note'));

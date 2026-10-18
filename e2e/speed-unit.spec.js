@@ -111,7 +111,7 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('#progress-trend figcaption').first()).toHaveText('Speed by day cpm');
   await expect(page.locator('#run-history .run-summary strong').first()).toHaveText(new RegExp(`^${second} cpm · \\d+%$`));
   // Both runs fall on one day: one point, their median, in cpm.
-  await expect(page.locator('#progress-trend .trend-dot.trend-wpm').last()).toHaveAttribute('aria-label', new RegExp(`: median ${(first * 5 + second) / 2} cpm over 2 runs, the best day\\. View the latest run\\.$`));
+  await expect(page.locator('#progress-trend .trend-dot.trend-wpm').last()).toHaveAttribute('aria-label', new RegExp(`: median ${Math.round((first * 5 + second) / 2)} cpm over 2 runs, the best day\\. View the latest run\\.$`));
   await shot(page, testInfo, 'progress-dark');
 
   // Back to wpm from the palette; nothing was re-keyed, so the same best and runs come back.

@@ -121,3 +121,9 @@ test('signed differences round to one decimal and drop a trailing zero', () => {
   assert.equal(signedNumber(-0.04), '0', 'a difference that rounds to nothing carries no sign');
   assert.equal(formatSpeed(0.1 + 0.2, { signed: true }, 'wpm'), '+0.3 wpm');
 });
+
+test('a whole figure converts first and rounds once in the unit shown', () => {
+  assert.equal(formatSpeed(65.5, { whole: true }, 'cpm'), '328 cpm', 'not 66 wpm × 5 = 330');
+  assert.equal(formatSpeed(65.5, { whole: true, bare: true }, 'wpm'), '66');
+  assert.equal(formatSpeed(65.4, { whole: true }, 'wpm'), '65 wpm');
+});

@@ -34,10 +34,11 @@ export function signedNumber(value) {
   return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded)}`;
 }
 
-// "72 wpm"; bare, "72" beside its own unit label; signed, "+3 wpm" or "−3 wpm".
-export function formatSpeed(wpm, { bare = false, signed = false } = {}, unit = shown) {
+// "72 wpm"; bare, "72" beside its own unit label; signed, "+3 wpm" or "−3 wpm"; whole, rounded once
+// after converting, so a 65.5 wpm median reads 66 wpm and 328 cpm.
+export function formatSpeed(wpm, { bare = false, signed = false, whole = false } = {}, unit = shown) {
   const value = speedValue(wpm, unit);
-  const number = signed ? signedNumber(value) : `${Number(value.toFixed(1))}`;
+  const number = signed ? signedNumber(value) : whole ? String(Math.round(value)) : `${Number(value.toFixed(1))}`;
   return bare ? number : `${number} ${normalizeSpeedUnit(unit)}`;
 }
 
@@ -50,13 +51,13 @@ export function unitText(template, unit = shown) {
   return template.replace(/\{(unit|wpm|cpm)(?::([^}]*))?\}/g, (_, key, text) => (key === 'unit' ? unit : key === unit ? text : ''));
 }
 
-// Shows a speed kept in wpm on an element in the form its data-bare and data-signed ask for, or a dash
+// Shows a speed kept in wpm on an element in the form its data-bare, data-signed and data-whole ask for, or a dash
 // for none. Text that hasn't changed isn't touched (the live speed ticks ten times a second).
 export function showSpeed(node, wpm) {
   if (wpm === null || wpm === undefined) delete node.dataset.wpm;
   else node.dataset.wpm = wpm;
   if (node.localName === 'data') node.value = wpm ?? '';
-  const text = wpm === null || wpm === undefined ? '—' : formatSpeed(wpm, { bare: 'bare' in node.dataset, signed: 'signed' in node.dataset });
+  const text = wpm === null || wpm === undefined ? '—' : formatSpeed(wpm, { bare: 'bare' in node.dataset, signed: 'signed' in node.dataset, whole: 'whole' in node.dataset });
   if (node.textContent !== text) node.textContent = text;
   return node;
 }
@@ -64,10 +65,11 @@ export function showSpeed(node, wpm) {
 // A <data> element: a value for machines (its wpm, in value) shown as text for people (the speed in the
 // unit on screen), which is what <data> is for. Not being a span also keeps the rules that style the spans
 // of a row off a figure inside one.
-export function speedFigure(wpm, { bare = false, signed = false } = {}) {
+export function speedFigure(wpm, { bare = false, signed = false, whole = false } = {}) {
   const node = document.createElement('data');
   if (bare) node.dataset.bare = '';
   if (signed) node.dataset.signed = '';
+  if (whole) node.dataset.whole = '';
   return showSpeed(node, wpm);
 }
 

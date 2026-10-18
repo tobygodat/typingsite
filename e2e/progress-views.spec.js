@@ -168,3 +168,15 @@ test('the run list opens on the newest ten, and one button lists every run', asy
   await expect(rows.last()).toHaveAttribute('open', '');
   await expect(rows.last()).toContainText('50 wpm');
 });
+
+test('in cpm the overview, the chart callout and its point all round the converted median once', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [run(0, 65, 95), run(0, 66, 95)]);
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('speed unit · cpm');
+  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('speed unit · cpm');
+  await page.keyboard.press('Enter');
+  await expect(figure(page, '30 days')).toContainText('328 cpm');
+  await expect(figure(page, 'This week')).toContainText('328 cpm');
+  await expect(page.locator('#progress-trend .trend-callout').first()).toHaveText(/^328 today/);
+  await expect(page.locator('#progress-trend .trend-dot').last()).toHaveAttribute('aria-label', /: median 328 cpm over 2 runs/);
+});

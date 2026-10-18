@@ -67,7 +67,8 @@ const dayDate = (day) => {
 const shortDate = (day) => dayDate(day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const latestRun = (runs) => runs.reduce((last, run) => ((run.at || '') >= (last.at || '') ? run : last));
 const unitName = () => unitText('{unit}');
-// Speeds on the charts read whole, like the figures above them; accuracy keeps one decimal at most.
+// Speeds on the charts read whole, like the figures above them, rounded once after converting to the
+// unit shown; accuracy keeps one decimal at most.
 const shownSpeed = (value) => Math.round(value);
 const shownAccuracy = (value) => Number(value.toFixed(1));
 
@@ -231,8 +232,7 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', today = n
   const last = days.length - 1;
   days.forEach((day, i) => {
     const [x, y] = points[i];
-    const shown = Number(values[i].toFixed(1));
-    const label = `${dayDate(day.day).toLocaleDateString()}: median ${shown} ${unit} over ${day.runs.length} ${day.runs.length === 1 ? 'run' : 'runs'}${i === best ? ', the best day' : ''}. View the latest run.`;
+    const label = `${dayDate(day.day).toLocaleDateString()}: median ${spec.shown(values[i])} ${unit} over ${day.runs.length} ${day.runs.length === 1 ? 'run' : 'runs'}${i === best ? ', the best day' : ''}. View the latest run.`;
     const marks = [i === best && 'trend-best-dot', i === last && 'trend-last-dot'].filter(Boolean).join(' ');
     const dot = svgNode('g', { tabindex: 0, role: 'button', class: `trend-dot trend-${metric}${marks ? ` ${marks}` : ''}`, 'aria-label': label });
     dot.append(svgNode('ellipse', { cx: x, cy: y, rx: Math.min(22, step / 2), ry: 22, class: 'trend-hit' }), svgNode('circle', { cx: x, cy: y, r: i === last ? 4 : 3 }));
@@ -299,7 +299,7 @@ function drawHistogram(figure, speeds, { q1, mid, q3, unit }) {
   const yOf = (count) => SPREAD_BOTTOM - (count / tallest) * (SPREAD_BOTTOM - SPREAD_TOP - 8);
   const range = (wpm) => shownSpeed(speedValue(wpm));
   const chart = svgNode('svg', { viewBox: `0 0 ${width} ${SPREAD_HEIGHT}`, role: 'img',
-    'aria-label': `${speeds.length} ${speeds.length === 1 ? 'run' : 'runs'} by speed, from ${range(Math.min(...speeds))} to ${range(Math.max(...speeds))} ${unit}. Median ${Number(speedValue(mid).toFixed(1))} ${unit}${speeds.length >= 4 ? `; half the runs between ${range(q1)} and ${range(q3)} ${unit}` : ''}.` });
+    'aria-label': `${speeds.length} ${speeds.length === 1 ? 'run' : 'runs'} by speed, from ${range(Math.min(...speeds))} to ${range(Math.max(...speeds))} ${unit}. Median ${range(mid)} ${unit}${speeds.length >= 4 ? `; half the runs between ${range(q1)} and ${range(q3)} ${unit}` : ''}.` });
   if (speeds.length >= 4) {
     chart.append(svgNode('rect', { x: xOf(q1), y: SPREAD_TOP, width: Math.max(1, xOf(q3) - xOf(q1)), height: SPREAD_BOTTOM - SPREAD_TOP, class: 'spread-band' }));
     for (const edge of [q1, q3]) chart.append(svgNode('line', { x1: xOf(edge), x2: xOf(edge), y1: SPREAD_TOP, y2: SPREAD_BOTTOM, class: 'spread-band-edge' }));
@@ -312,7 +312,7 @@ function drawHistogram(figure, speeds, { q1, mid, q3, unit }) {
   chart.append(svgNode('line', { x1: 0, x2: width, y1: SPREAD_BOTTOM, y2: SPREAD_BOTTOM, class: 'trend-rule' }));
   const midX = xOf(mid);
   chart.append(svgNode('line', { x1: midX, x2: midX, y1: SPREAD_TOP - 6, y2: SPREAD_BOTTOM, class: 'spread-median' }),
-    svgText(`median ${Number(speedValue(mid).toFixed(1))}`, { x: midX > width - 120 ? midX - 6 : midX + 6, y: SPREAD_TOP - 8, 'text-anchor': midX > width - 120 ? 'end' : 'start', class: 'trend-callout' }));
+    svgText(`median ${range(mid)}`, { x: midX > width - 120 ? midX - 6 : midX + 6, y: SPREAD_TOP - 8, 'text-anchor': midX > width - 120 ? 'end' : 'start', class: 'trend-callout' }));
   // Edges every 10 wpm from the lowest, or every bin when there are only a few, and always the last
   // edge, named with the unit; an interior edge too close to it gives way.
   const every = bins.length <= 6 ? 1 : 5;
