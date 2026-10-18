@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt, quoteCorpus } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, freshTextCheck, openView, signInWithEmail, chooseMore } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, freshTextCheck, openView, signInWithEmail, chooseMore, chooseQuoteFilter } from './fixtures.js';
 
 const translateY = (page) => page.locator('#text-display').evaluate((node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).m42);
 
@@ -254,9 +254,9 @@ test('an exhausted quote pool refuses a retest and explains why', async ({ page 
   await openApp(page);
   await page.locator('#mode-quote').click();
   await note();
-  await page.locator('#quote-length').selectOption('medium');
+  await chooseQuoteFilter(page, 'length', 'medium');
   await note();
-  await page.locator('#quote-difficulty').selectOption('gentle');
+  await chooseQuoteFilter(page, 'difficulty', 'gentle');
   // Every displayed quote is marked seen, so restarting walks the whole pool.
   for (let tries = 0; seen.size < pool.length && tries < pool.length + 3; tries += 1) {
     await note();
@@ -273,19 +273,23 @@ test('an exhausted quote pool refuses a retest and explains why', async ({ page 
 });
 
 test('an empty quote filter says so and recovers', async ({ page }) => {
+  await page.route('**/src/corpus.js', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(/^.*id: 'short-gentle-[^\n]+\n/gm, '');
+    await route.fulfill({ response, body });
+  });
   await openApp(page);
   await page.locator('#mode-quote').click();
   await expect(page.locator('#quote-options')).toBeVisible();
-  await page.locator('#quote-length').selectOption('short');
-  // All supported buckets now contain text. Exercise defensive recovery from an unsupported filter.
-  await page.locator('#quote-difficulty').evaluate((select) => select.add(new Option('Unavailable', 'unavailable')));
-  await page.locator('#quote-difficulty').selectOption('unavailable');
+  await chooseQuoteFilter(page, 'length', 'short');
+  await chooseQuoteFilter(page, 'difficulty', 'gentle');
   await expect(page.locator('#text-display')).toHaveText('No passage matches these filters.');
   await expect(page.locator('#typing-input')).toBeDisabled();
+  await expect(page.locator('#quote-difficulty')).toBeFocused();
   await expect(page.locator('#input-help')).toHaveText('Try another quote length or difficulty.');
 
-  await page.locator('#quote-difficulty').selectOption('gentle');
-  await page.locator('#quote-length').selectOption('medium');
+  await chooseQuoteFilter(page, 'difficulty', 'steady');
+  await chooseQuoteFilter(page, 'length', 'medium');
   await expect(page.locator('#typing-input')).toBeEnabled();
   const words = (await passageText(page)).split(/\s+/).length;
   expect(words).toBeGreaterThan(30);

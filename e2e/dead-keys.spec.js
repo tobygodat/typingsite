@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore, chooseQuoteFilter } from './fixtures.js';
 
 // Accent (dead) keys, as US-International and similar layouts send them. On macOS (and Linux with an
 // input method) the mark arrives as a composition that the next key commits; Chrome sends that through
@@ -72,8 +72,8 @@ async function accentKeys(page) {
 // ("Back, "Measure, "Let); restarting shows an unseen one until a quote with a mark comes up.
 async function quoteWithMarks(page) {
   await page.locator('#mode-quote').click();
-  await page.locator('#quote-length').selectOption('short');
-  await page.locator('#quote-difficulty').selectOption('precise');
+  await chooseQuoteFilter(page, 'length', 'short');
+  await chooseQuoteFilter(page, 'difficulty', 'precise');
   await expect(page.locator('#condition-line')).toContainText('precise');
   for (let tries = 0; tries < 5 && !(await passageText(page)).includes('"'); tries += 1) {
     await page.locator('#restart-button').click();

@@ -184,11 +184,8 @@ test('a condition key is compared only when this build writes it the same way', 
 });
 
 test('every key this build can write is listed, read back as the conditions it was written from', () => {
-  // The lists are the app's own: the quote filters and word lists offered in index.html are exactly these.
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const options = (id) => [...html.match(new RegExp(`<select[^>]*id="${id}"[^>]*>([^]*?)</select>`))[1].matchAll(/value="([^"]*)"/g)].map((match) => match[1]);
-  assert.deepEqual(options('quote-length'), QUOTE_LENGTHS);
-  assert.deepEqual(options('quote-difficulty'), QUOTE_DIFFICULTIES);
   assert.deepEqual(options('word-list'), wordListIds);
   const shapes = writtenShapes();
   assert.equal(new Set(shapes.map((conditions) => key(conditions))).size, shapes.length);

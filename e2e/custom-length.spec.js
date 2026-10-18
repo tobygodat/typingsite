@@ -1,6 +1,6 @@
 // Custom time and word count: the "custom" pill in the length row, its bounds and messages, its own
 // bests and retests, the palette commands, and what is remembered (guests: the tab only).
-import { test, expect, openApp, passageText, typeInto, completePassage, signInWithEmail, chooseMore, openSettings } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, completePassage, signInWithEmail, chooseMore, openSettings, chooseQuoteFilter } from './fixtures.js';
 
 // Committed docs images are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/custom-length/${name}` : testInfo.outputPath(name));
@@ -300,7 +300,7 @@ test('the palette’s custom length after a finished quote draws no quote just t
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await page.locator('#mode-quote').click();
-  await page.locator('#quote-length').selectOption('short');
+  await chooseQuoteFilter(page, 'length', 'short');
   await completePassage(page);
   const seenQuotes = () => page.evaluate(() => {
     const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-profile-v2:'));

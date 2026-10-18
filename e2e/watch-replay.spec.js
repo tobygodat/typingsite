@@ -1,5 +1,5 @@
 import { quoteCorpus } from '../src/typing.js';
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore, chooseQuoteFilter } from './fixtures.js';
 
 async function finishWithCorrectedMiss(page) {
   await openApp(page);
@@ -109,9 +109,9 @@ test('Watch replay plays the run the results show, not a drill whose retest was 
   await openView(page, 'practice');
   await page.locator('#mode-quote').click();
   await note();
-  await page.locator('#quote-length').selectOption('medium');
+  await chooseQuoteFilter(page, 'length', 'medium');
   await note();
-  await page.locator('#quote-difficulty').selectOption('gentle');
+  await chooseQuoteFilter(page, 'difficulty', 'gentle');
   for (let tries = 0; seen.size < pool.length && tries < pool.length + 3; tries += 1) {
     await note();
     if (seen.size < pool.length) await page.locator('#restart-button').click();

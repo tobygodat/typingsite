@@ -1,3 +1,4 @@
+import { createQuoteFilters } from './quote-filters.js';
 import {
   CHARS_PER_WORD,
   CORPUS_VERSION,
@@ -674,8 +675,7 @@ function applyPreferences() {
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
   $('numbers-toggle').checked = Boolean(prefs.numbers);
-  $('quote-length').value = prefs.quoteLength;
-  $('quote-difficulty').value = prefs.difficulty;
+  quoteFilters.refresh();
   $('word-list').value = prefs.wordList;
   applySpeedUnit();
   $('repeat-quotes-toggle').checked = prefs.repeatQuotes;
@@ -792,6 +792,7 @@ function syncLockedSettings() {
 }
 
 function setModeControls() {
+  quoteFilters.dismiss();
   // Composing takes the passage's place, so Custom is never marked over it.
   const custom = !composeOpen && (customOpen || sessionKind === 'custom');
   $('mode-custom').classList.toggle('is-active', custom);
@@ -2548,6 +2549,7 @@ function restoreConditions(source) {
 }
 
 function switchView(view) {
+  quoteFilters.dismiss();
   document.body.dataset.view = view;
   document.querySelectorAll('[data-screen]').forEach((screen) => { screen.hidden = screen.dataset.screen !== view; });
   document.querySelectorAll('[data-nav]').forEach((control) => {
@@ -4674,6 +4676,7 @@ const DELETED_NOTICE = 'stilltype-account-deleted';
 let deletingAccount = false;
 
 function openDeleteAccount() {
+  quoteFilters.dismiss();
   if (!session) return;
   // The dialog gives focus back to whatever had it, and the menu's own button is about to be hidden.
   if ($('account').contains(document.activeElement)) $('account-trigger').focus();
@@ -4742,6 +4745,7 @@ function noticeDeletedAccount() {
 let accountMode = 'create';
 
 function openAccountDialog(mode) {
+  quoteFilters.dismiss();
   accountMode = mode;
   closeAccountMenu();
   const creating = mode === 'create';
@@ -4947,6 +4951,7 @@ async function completeAuthRedirect() {
 // Each setting brought over is applied as a pick of it here (saveChoice), so it syncs to the account and
 // outranks an older value from another device, as choosing it in settings would.
 function openImport() {
+  quoteFilters.dismiss();
   document.querySelector('.preferences')?.removeAttribute('open');
   markInterrupted(NOTICES.importOpened);
   compose.interrupt(NOTICES.composeImport);
@@ -5038,6 +5043,7 @@ function importSettings(event) {
 let suggestToastTimer;
 
 function openSuggest() {
+  quoteFilters.dismiss();
   document.querySelector('.preferences')?.removeAttribute('open');
   markInterrupted(NOTICES.suggestOpened);
   compose.interrupt(NOTICES.composeSuggest);
@@ -5159,8 +5165,6 @@ function bindEvents() {
     saveProfile();
     resetSession(restartKind(), { focus: true });
   });
-  $('quote-length').addEventListener('change', (event) => { prefs.quoteLength = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
-  $('quote-difficulty').addEventListener('change', (event) => { prefs.difficulty = event.target.value; saveProfile(); resetSession('practice', { focus: true }); });
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('repeat-quotes-toggle').addEventListener('change', (event) => setRepeatQuotes(event.target.checked));
   $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveChoice('dailyGoal'); renderGoal(); });
@@ -5358,7 +5362,7 @@ function bindEvents() {
   });
   $('race-again').addEventListener('click', () => { $('race-leaderboard').hidden = true; $('compete-setup').hidden = false; $('player-one-name').focus(); });
 
-  $('clear-history').addEventListener('click', () => { $('confirm-clear-input').value = ''; $('confirm-clear').disabled = true; $('clear-dialog').showModal(); $('confirm-clear-input').focus(); });
+  $('clear-history').addEventListener('click', () => { quoteFilters.dismiss(); $('confirm-clear-input').value = ''; $('confirm-clear').disabled = true; $('clear-dialog').showModal(); $('confirm-clear-input').focus(); });
   $('confirm-clear-input').addEventListener('input', (event) => { $('confirm-clear').disabled = event.target.value !== 'clear'; });
   $('confirm-clear').addEventListener('click', clearHistory);
   $('cancel-clear').addEventListener('click', () => $('clear-dialog').close());
@@ -5386,6 +5390,10 @@ function bindEvents() {
     if (event.repeat && event.key === ' ' && document.activeElement === $('run-again')) {
       event.preventDefault();
       return;
+    }
+    if (event.target.closest('#quote-options [role="combobox"]')) {
+      if (!matchesAppBinding(event, prefs.keybindings.commands)) return;
+      quoteFilters.dismiss();
     }
     const typing = document.activeElement === $('typing-input') || document.activeElement === $('race-input');
     if (typing && event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key))) {
@@ -5820,6 +5828,7 @@ function bindPalette() {
     trigger: $('palette-trigger'),
     getCommands: paletteCommands,
     onOpen: () => {
+      quoteFilters.dismiss();
       document.querySelector('.preferences')?.removeAttribute('open');
       closeAccountMenu();
       $('inbox').open = false;
@@ -5888,6 +5897,20 @@ compose = createCompose({
   },
 });
 $('speed-definition').replaceChildren(unitLabel(SPEED_DEFINITION));
+const quoteFilters = createQuoteFilters({
+  root: $('quote-options'),
+  read: () => prefs,
+  commit(key, value, { focus, trigger }) {
+    prefs[key] = value;
+    saveChoice(key);
+    resetSession('practice', { focus });
+    if (focus && $('typing-input').disabled) trigger.focus();
+  },
+});
+$('mode-more').addEventListener('toggle', () => {
+  if ($('mode-more').open) quoteFilters.dismiss();
+});
+$('quote-options').addEventListener('click', () => { $('mode-more').open = false; });
 buildKeyboard();
 applyPreferences();
 setModeControls();
