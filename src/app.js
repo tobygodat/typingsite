@@ -46,7 +46,7 @@ import {
   wordHistory,
 } from './typing.js';
 import { wordListIds } from './words.js';
-import { DEFAULT_CODE_LANGUAGE, codePassage } from './code-snippets.js';
+import { codePassage } from './code-snippets.js';
 import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength } from './lengths.js';
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
@@ -423,10 +423,11 @@ function customConditions() {
 }
 
 function describeConditions(value = conditions()) {
+  const { language, length, text, ...tail } = conditionParts(value);
   // The recipe name stands for its punctuation, numbers and quote, keeping the run card's line short.
-  if (value.mode === 'standard') return `${recipeLabel(value.recipe)} · ${value.duration} s · 1k–10k mix · ${conditionTail(value)}`;
-  if (value.mode === 'code') return [`code · ${value.codeLanguage || DEFAULT_CODE_LANGUAGE}`, conditionTail(value), 'not counted toward bests'].join(' · ');
-  return Object.values(conditionParts(value)).join(' · ');
+  if (value.mode === 'standard') return [length, '1k–10k mix', ...Object.values(tail)].join(' · ');
+  if (value.mode === 'code') return [length, ...Object.values(tail), 'not counted toward bests'].join(' · ');
+  return [language, length, text, ...Object.values(tail)].join(' · ');
 }
 
 // Minimums ride along on the conditions line without joining the conditions key. The standard test
@@ -5916,7 +5917,6 @@ friendsBoard = createFriendsBoard({
   dailyKey,
   // Which shape the bests picker opens on: the one you have run most (src/friends-board.js defaultShape).
   runs: () => profile.runs,
-  conditionParts,
   signIn: () => openAccountDialog('signin'),
   // The button that asks for this disappears with the board, so focus lands on the Online selector.
   openOnline: () => { onlineRace.open(); $('challenge-online').focus(); },

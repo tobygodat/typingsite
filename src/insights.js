@@ -1,4 +1,5 @@
 import { DEFAULT_LAYOUT, isDefaultLayout, layoutLabel } from './layouts.js';
+import { DEFAULT_CODE_LANGUAGE } from './code-snippets.js';
 import { LENGTHS } from './lengths.js';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey, inputRules, printable, replayAttempt, summarizePatterns, textId } from './typing.js';
 
@@ -267,7 +268,7 @@ const LENGTH_TEXT = {
   words: (c) => `${c.count} words`,
   time: (c) => `${c.duration} s`,
   quote: (c) => `${c.quoteLength || 'any'} quote`,
-  code: (c) => `code · ${c.codeLanguage || 'js'}`,
+  code: (c) => `code · ${c.codeLanguage || DEFAULT_CODE_LANGUAGE}`,
   standard: (c) => `${(c.recipe || '').replace('-', ' ')} · ${c.duration} s`,
 };
 const CONDITION_PARTS = [
