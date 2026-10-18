@@ -3008,6 +3008,8 @@ function moveHeatFocus(event) {
 // Goal-met days carry a dot as well as the green step, and the caption under the calendar repeats the
 // focused or hovered day's label for sighted users (it is aria-hidden; the cell's own label is announced).
 let goalDay = '';
+// The day the Progress page was last drawn for (renderHistory).
+let historyDay = '';
 function captionGoalDay(cell) { $('goal-caption').textContent = cell?.dataset?.caption || ''; }
 const focusedGoalDay = () => ($('goal-calendar').contains(document.activeElement) ? document.activeElement : null);
 const narrowColumn = window.matchMedia('(max-width: 760px)');
@@ -3172,6 +3174,7 @@ function renderHistory() {
   renderStandardScore();
   // One moment for the whole page, so every figure, chart and list reads the same period window.
   const date = new Date();
+  historyDay = dayKey(date);
   const listed = profile.runs.filter(practiceRun);
   const eligible = listed.filter(trendRun);
   const hasProgress = listed.length > 0 || profile.loops.length > 0;
@@ -5945,11 +5948,13 @@ completeAuthRedirect();
 syncOnLoad();
 inbox.refresh();
 // Refresh the day label and the practice calendar when a tab returns, and across midnight without reloading.
-// On Progress the whole page moves to the new day, so its figures, charts and list keep one window.
+// On Progress the whole page moves to the new day, so its figures, charts and list keep one window. That
+// reads the day Progress was last drawn for, not the calendar's: a breakpoint or goal change redraws only
+// the calendar, and would otherwise hide the new day from this check.
 const refreshGoalDay = () => {
-  if (dayKey(new Date()) === goalDay) return;
-  if (document.body.dataset.view === 'progress') renderHistory();
-  else renderGoal();
+  const today = dayKey(new Date());
+  if (document.body.dataset.view === 'progress' && today !== historyDay) renderHistory();
+  else if (today !== goalDay) renderGoal();
 };
 setInterval(() => {
   if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); }

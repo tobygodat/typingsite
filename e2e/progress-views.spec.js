@@ -257,6 +257,17 @@ test('across midnight on 7 days, the overview and the chart move to the new day 
   expect(outside).toEqual([]);
 });
 
+test('past midnight, crossing the narrow breakpoint first still moves the overview to the new window', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [run(6, 50, 95), run(3, 60, 95), run(0, 70, 95)]);
+  await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }).click();
+  await expect(figure(page, '7 days')).toContainText('median of 3 runs');
+  await page.clock.setSystemTime(new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() + 1, 0, 1));
+  await page.setViewportSize({ width: 700, height: 900 });
+  await page.clock.runFor(30000);
+  await expect(figure(page, '7 days')).toContainText('median of 2 runs');
+  await expect(page.locator('#run-history .run-row')).toHaveCount(2);
+});
+
 test('All runs from the first run to today, like 7 and 30 days', async ({ page, supabase }) => {
   await openProgress(page, supabase, [run(12, 50, 95), run(6, 60, 95), run(3, 70, 95)]);
   await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: 'All' }).click();
