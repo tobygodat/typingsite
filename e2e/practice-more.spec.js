@@ -91,8 +91,8 @@ for (const width of [1280, 390]) {
     if (width > 900) {
       const modes = await page.locator('.mode-options').boundingBox();
       const punctuation = await page.locator('#punctuation-switch').boundingBox();
-      expect(filters.y).toBe(modes.y);
-      expect(filters.y).toBe(punctuation.y);
+      expect(filters.y + filters.height / 2).toBe(modes.y + modes.height / 2);
+      expect(filters.y + filters.height / 2).toBe(punctuation.y + punctuation.height / 2);
       expect(filters.x).toBeGreaterThanOrEqual(modes.x + modes.width);
       expect(filters.x + filters.width).toBeLessThanOrEqual(punctuation.x);
     }

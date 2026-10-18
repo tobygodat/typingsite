@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, conditionKey, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, passageText, typeInto, signInWithEmail, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, signInWithEmail, chooseMore, chooseQuoteFilter } from './fixtures.js';
 
 // Docs images are taken only on request (SCREENSHOTS=1), when the quotes are typed at a human pace
 // (~130 ms a key, a believable 70-100 wpm) so the run card beside the list looks real.
@@ -47,7 +47,7 @@ test('words missed across runs build a list in Training that starts an uncounted
   await openView(page, 'Practice');
   // Short original quotes: real sentences, where common words recur from run to run.
   await page.locator('#mode-quote').click();
-  await page.locator('#quote-length').selectOption('short');
+  await chooseQuoteFilter(page, 'length', 'short');
 
   const tally = new Map();
   let runs = 0;

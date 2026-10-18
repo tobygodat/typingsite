@@ -15,6 +15,10 @@ This document is the integration contract between the static interface in `index
 
 `html[data-theme]` is `dark` or `light`. An inline script in `<head>` resolves it before first paint from `preferences.theme` in the `stilltype-profile-v2` profile, falling back to `prefers-color-scheme`. The stored preference is `system`, `dark` or `light`; `system` follows the OS and updates when it changes. `meta[name="theme-color"]` is kept in step with the resolved theme.
 
+## Quote filters
+
+Quote filters use the select-only comboboxes `#quote-length` (labelled "length") and `#quote-difficulty` in `#quote-options`. Each label, current value and chevron is one 44px target with natural text width. Their opaque absolute listboxes do not change the rail layout. Arrow keys, Home, End and typeahead explore a draft; Enter or Space commits and focuses practice. Escape or the same trigger cancels. Tab, Shift-Tab and outside clicks commit without moving focus away from the destination. Selecting the current value closes without restarting. Only one quote or more menu opens at a time. Preference refreshes, mode/view/focus changes, resize, window blur and commands dismiss the draft. Settings selects remain native.
+
 ## Dock, settings and command palette
 
 The dock (`nav.dock` in `.dock-zone`) holds the brand link, the `.dock-nav` view buttons, the settings popover (`details.preferences`, whose `summary.dock-settings` shows an icon and the label "settings") and `#palette-trigger`. The popover is positioned against the dock: below it on desktop, above it on mobile. Restart (`#restart-button`) stays in the typing footer.
