@@ -1329,7 +1329,6 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
 .char.wrong {
   color: var(--danger);
   background: var(--danger-soft);
-  border-radius: var(--radius-sm);
 }
 
 /* A space is a plain inline box, shorter than the letter boxes, so its own
@@ -1341,7 +1340,6 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
   inset-inline: 0;
   top: calc(50% - var(--typing-line) / 2);
   height: var(--typing-line);
-  border-radius: var(--radius-sm);
   background: var(--danger-soft);
 }
 
@@ -1354,11 +1352,11 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
   background: var(--word-highlight);
   transition: none;
 }
-:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:first-child {
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:not(.wrong):first-child {
   border-start-start-radius: var(--radius-sm);
   border-end-start-radius: var(--radius-sm);
 }
-:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:last-child {
+:is(body[data-word-highlight="current"] .word.word-current, body[data-word-highlight="next"] .word.word-next) > .char:not(.wrong):last-child {
   border-start-end-radius: var(--radius-sm);
   border-end-end-radius: var(--radius-sm);
 }
