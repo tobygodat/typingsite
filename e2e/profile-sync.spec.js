@@ -472,7 +472,7 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
     await page.locator('#skip-to-retest').click();
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
 
-    await openSettings(other);
+    await openSettings(other, 'practice');
     if (mine === 'custom') {
       await expect(other.locator('#pace-select input:checked')).toHaveValue('custom');
       await other.locator('#pace-wpm').fill('120');
