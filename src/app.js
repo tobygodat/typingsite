@@ -5165,10 +5165,12 @@ function bindEvents() {
   });
   // Numbers sits beside the word list in settings and, like it, keeps a custom passage.
   onSetting('numbers-toggle', (value) => {
+    const changed = Boolean(prefs.numbers) !== (value === 'true');
     prefs.numbers = value === 'true';
+    saveChoice('numbers');
+    if (!changed) return;
     applyPreferences();
     showBest();
-    saveChoice('numbers');
     resetSession(restartKind(), { focus: true });
   });
   onSetting('word-list', (value) => setWordList(value));
@@ -5554,10 +5556,13 @@ function togglePreference(key) {
 
 function setCorrection(policy) {
   if (standardLocked()) return;
-  prefs.correction = correctionPreference({ correction: policy });
+  const next = correctionPreference({ correction: policy });
+  const changed = prefs.correction !== next;
+  prefs.correction = next;
   prefs.stopOnError = prefs.correction === 'mandatory';
-  applyPreferences();
   saveChoice('correction', 'stopOnError');
+  if (!changed) return;
+  applyPreferences();
   // A lesson stays a lesson and custom text stays custom; any other session restarts as practice.
   if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : restartKind());
 }
@@ -5698,9 +5703,11 @@ function setWordHighlight(mode) {
 
 function setWordList(id, kind = restartKind()) {
   if (!wordListIds.includes(id)) return;
+  const changed = prefs.wordList !== id;
   prefs.wordList = id;
-  applyPreferences();
   saveChoice('wordList');
+  if (!changed) return;
+  applyPreferences();
   resetSession(kind, { focus: true });
 }
 

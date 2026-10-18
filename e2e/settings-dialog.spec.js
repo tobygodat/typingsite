@@ -111,31 +111,13 @@ test('dependent controls explain their disabled states', async ({ page }) => {
   await expect(page.getByRole('slider', { name: 'volume' })).toBeEnabled();
 });
 
-test('same-value radio picks override a different preference waiting from another device', async ({ page, context, supabase }) => {
-  const user = supabase.addUser('settings@stilltype.test');
-  await openApp(page);
-  await signInWithEmail(page, user.email);
-  await chooseWords(page);
-  await typeInto(page, (await passageText(page)).slice(0, 3));
-  const other = await context.newPage();
-  await supabase.attach(other);
-  await openApp(other);
-  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  await chooseSetting(other, 'correction-select', 'no-backspace');
-  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.correction).toBe('no-backspace');
-  const remoteStamp = supabase.profileFor(user.email).preferencesAt.correction;
-  await expect(page.locator('#correction-select input:checked')).toHaveValue('relaxed');
-  await chooseSetting(page, 'correction-select', 'relaxed');
-  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.correction).toBe('relaxed');
-  expect(supabase.profileFor(user.email).preferencesAt.correction > remoteStamp).toBe(true);
-  await expect(page.locator('#condition-line')).toContainText('continue on error');
-  await other.close();
-});
-
 for (const [key, id, remote, current, query] of [
   ['minAccuracy', 'min-accuracy', 95, 0, 'minimum accuracy · off'],
   ['minWpm', 'min-wpm', 60, 0, 'minimum speed · off'],
   ['repeatQuotes', 'repeat-quotes-toggle', true, false, null],
+  ['numbers', 'numbers-toggle', true, false, null],
+  ['wordList', 'word-list', '1k', '200', 'word list · top 200'],
+  ['correction', 'correction-select', 'no-backspace', 'relaxed', 'correction · free'],
 ]) {
   for (const source of query ? ['radio', 'palette'] : ['radio']) {
     test(`same-value ${key} ${source} pick stamps over a queued remote preference without restarting`, async ({ page, context, supabase }) => {
@@ -162,7 +144,7 @@ for (const [key, id, remote, current, query] of [
         await closeSettings(page);
         await page.keyboard.press('Control+k');
         await page.locator('#palette-input').fill(query);
-        await page.keyboard.press('Enter');
+        await page.locator('#palette-list [role="option"]', { hasText: query }).click();
       }
       await expect.poll(() => supabase.profileFor(user.email)?.preferences?.[key]).toBe(current);
       expect(supabase.profileFor(user.email).preferencesAt[key] > remoteStamp).toBe(true);
@@ -176,6 +158,57 @@ for (const [key, id, remote, current, query] of [
     });
   }
 }
+
+for (const [id, value] of [['numbers-toggle', false], ['word-list', '200'], ['correction-select', 'relaxed']]) {
+  test(`picking the ${id} value already in use keeps a ready passage, a run under way and its results`, async ({ page }) => {
+    await openApp(page);
+    await chooseWords(page);
+    const text = await passageText(page);
+    await chooseSetting(page, id, value);
+    await expect(dialog(page)).toBeVisible();
+    expect(await passageText(page)).toBe(text);
+    await closeSettings(page);
+    await typeInto(page, text.slice(0, 3));
+    await chooseSetting(page, id, value);
+    await closeSettings(page);
+    await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, 3));
+    expect(await passageText(page)).toBe(text);
+    await typeInto(page, text.slice(3));
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+    await chooseSetting(page, id, value);
+    await closeSettings(page);
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  });
+}
+
+test('a binding another device saves shows in an open shortcut draft and survives saving the draft', async ({ page, context, supabase }) => {
+  const user = supabase.addUser('bindings@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openSettings(page, 'shortcuts');
+  await page.locator('#keybinding-exitFocus').fill('F8');
+  await page.getByRole('button', { name: 'Record restart test / local challenge binding', exact: true }).click();
+  const other = await context.newPage();
+  await supabase.attach(other);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openSettings(other, 'shortcuts');
+  await other.locator('#keybinding-commands').fill('F9');
+  await other.getByRole('button', { name: 'Save keybindings', exact: true }).click();
+  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.keybindings?.commands).toBe('F9');
+  await expect(page.locator('#keybinding-commands')).toHaveValue('F9');
+  await expect(page.locator('#keybinding-exitFocus')).toHaveValue('F8');
+  await page.keyboard.press('F2');
+  await expect(page.locator('#keybinding-restart')).toHaveValue('F2');
+  await closeSettings(page);
+  await openSettings(page, 'shortcuts');
+  await expect(page.locator('#keybinding-restart')).toHaveValue('F2');
+  await expect(page.locator('#keybinding-exitFocus')).toHaveValue('F8');
+  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
+  await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.keybindings).toEqual({ restart: 'F2', commands: 'F9', exitFocus: 'F8' });
+  await other.close();
+});
 
 test('palette opens shortcuts and import returns focus to a visible settings opener', async ({ page }) => {
   await openApp(page);
