@@ -64,6 +64,17 @@ const dayDate = (day) => {
   const [year, month, date] = day.split('-').map(Number);
   return new Date(year, month - 1, date);
 };
+const dayOffset = (from, day) => Math.round((dayDate(day) - dayDate(from)) / 86400000);
+
+// Where each day (oldest first) sits across a plot `plot` wide from `left`: by its offset in calendar days
+// into the window [first, last], so a two-week gap reads wider than a day's. Each point's gap is the
+// distance to its nearer neighbour (the whole plot for a lone point), which its hit area never crosses.
+export function dayPositions(days, [first, last], left, plot) {
+  const span = dayOffset(first, last);
+  const xs = days.map((day) => left + (span ? (dayOffset(first, day) / span) * plot : plot / 2));
+  const gaps = xs.map((x, i) => Math.min(i ? x - xs[i - 1] : Infinity, i < xs.length - 1 ? xs[i + 1] - x : Infinity));
+  return { xs, gaps: gaps.map((gap) => (Number.isFinite(gap) ? gap : plot)) };
+}
 const shortDate = (day) => dayDate(day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const latestRun = (runs) => runs.reduce((last, run) => ((run.at || '') >= (last.at || '') ? run : last));
 const unitName = () => unitText('{unit}');
@@ -181,8 +192,9 @@ function measureText(chart, text) {
 
 // One point per day: that day's median of the selected runs, drawn as a line over every run as a faint
 // dot. Speed is saved in wpm and drawn in the chosen display unit (wpm or cpm). A point opens the day's
-// most recent run.
-export function renderTrend(container, runs, onSelect, metric = 'wpm', today = new Date()) {
+// most recent run. Days sit by date across the period from `from` to today, or from the first run's day
+// to the last's when there is no `from`.
+export function renderTrend(container, runs, onSelect, metric = 'wpm', { from = null, today = new Date() } = {}) {
   container.replaceChildren();
   const days = runsByDay(runs);
   if (!days.length) return;
@@ -202,14 +214,14 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', today = n
   const chart = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, role: 'group',
     'aria-label': `${spec.title}: the median of each day's runs, ${days.length} ${days.length === 1 ? 'day' : 'days'} and ${runCount} ${runCount === 1 ? 'run' : 'runs'}. Select a point for that day's latest run.` });
   const plot = width - LEFT - RIGHT;
-  const step = days.length === 1 ? plot : plot / (days.length - 1);
-  const xOf = (i) => LEFT + (days.length === 1 ? plot / 2 : i * step);
+  const range = from ? [from, dayKey(today)] : [days[0].day, days.at(-1).day];
+  const { xs, gaps } = dayPositions(days.map((day) => day.day), range, LEFT, plot);
+  const xOf = (i) => xs[i];
   const yOf = (v) => (high === low ? (TOP + bottom) / 2 : bottom - ((v - low) / (high - low)) * (bottom - TOP));
-  // A point's hit area is 44px tall and no wider than the gap to its neighbours, so hit areas
-  // never overlap and a tap opens the point under it. Points closer than a 44px target are
-  // marked dense: each run is also a full-size row in the run history below.
-  chart.style.setProperty('--trend-step', `${step}px`);
-  if (step < 44) chart.classList.add('trend-dense');
+  // A point's hit area is 44px tall and no wider than the gap to its nearer neighbour, so hit areas
+  // never overlap and a tap opens the point under it. A chart with points closer than a 44px target
+  // is marked dense: each run is also a full-size row in the run history below.
+  if (Math.min(...gaps) < 44) chart.classList.add('trend-dense');
   for (const v of lines) {
     const y = yOf(v);
     chart.append(svgNode('line', { x1: LEFT, x2: width - RIGHT, y1: y, y2: y, class: 'trend-rule' }),
@@ -235,7 +247,9 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', today = n
     const label = `${dayDate(day.day).toLocaleDateString()}: median ${spec.shown(values[i])} ${unit} over ${day.runs.length} ${day.runs.length === 1 ? 'run' : 'runs'}${i === best ? ', the best day' : ''}. View the latest run.`;
     const marks = [i === best && 'trend-best-dot', i === last && 'trend-last-dot'].filter(Boolean).join(' ');
     const dot = svgNode('g', { tabindex: 0, role: 'button', class: `trend-dot trend-${metric}${marks ? ` ${marks}` : ''}`, 'aria-label': label });
-    dot.append(svgNode('ellipse', { cx: x, cy: y, rx: Math.min(22, step / 2), ry: 22, class: 'trend-hit' }), svgNode('circle', { cx: x, cy: y, r: i === last ? 4 : 3 }));
+    const hit = svgNode('ellipse', { cx: x, cy: y, rx: Math.min(22, gaps[i] / 2), ry: 22, class: 'trend-hit' });
+    hit.style.setProperty('--trend-step', `${gaps[i]}px`);
+    dot.append(hit, svgNode('circle', { cx: x, cy: y, r: i === last ? 4 : 3 }));
     const tip = svgNode('title', {});
     tip.textContent = label;
     dot.append(tip);
@@ -261,10 +275,16 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', today = n
     node.setAttribute('x', String(boxes[n].left - box.x));
     node.setAttribute('y', String(boxes[n].top - box.y));
   });
-  // The first and last days, and the middle one where the chart is wide enough to keep three dates apart.
-  const ends = days.length === 1 ? [[0, 'middle']] : [[0, 'start'], [last, 'end']];
-  if (days.length >= 5 && width >= 480) ends.push([Math.round(last / 2), 'middle']);
-  for (const [i, textAnchor] of ends) chart.append(svgText(shortDate(days[i].day), { x: textAnchor === 'start' ? LEFT : textAnchor === 'end' ? width - RIGHT : xOf(i), y: height - 6, 'text-anchor': textAnchor, class: 'trend-label' }));
+  // The dates at either end of the axis, and the one halfway where the chart is wide enough to keep three apart.
+  const span = dayOffset(...range);
+  const dateAt = (offset) => {
+    const day = dayDate(range[0]);
+    day.setDate(day.getDate() + offset);
+    return shortDate(dayKey(day));
+  };
+  const ticks = span ? [[0, LEFT, 'start'], [span, width - RIGHT, 'end']] : [[0, LEFT + plot / 2, 'middle']];
+  if (span >= 4 && width >= 480) ticks.push([Math.round(span / 2), LEFT + (Math.round(span / 2) / span) * plot, 'middle']);
+  for (const [offset, x, textAnchor] of ticks) chart.append(svgText(dateAt(offset), { x, y: height - 6, 'text-anchor': textAnchor, class: 'trend-label' }));
 }
 
 const SPREAD_HEIGHT = 200;

@@ -362,15 +362,17 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       expect(await sweep(page, 'progress, dense chart')).toEqual([]);
 
       // The exempt points: each owns its centre, is at least 44px tall and fills the gap it has.
-      const step = await page.locator('#progress-trend svg').first().evaluate((svg) => parseFloat(svg.style.getPropertyValue('--trend-step'))
-        * svg.getBoundingClientRect().width / svg.viewBox.baseVal.width);
-      expect(step).toBeLessThan(MIN);
+      const gaps = await page.locator('#progress-trend .trend-hit').evaluateAll((hits) => hits.map((hit) => {
+        const svg = hit.ownerSVGElement;
+        return parseFloat(hit.style.getPropertyValue('--trend-step')) * svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+      }));
+      expect(Math.min(...gaps)).toBeLessThan(MIN);
       const points = await page.evaluate(measure, { root: '#progress-trend', exempt: [] });
       expect(points).toHaveLength(14);
-      for (const { control, hit } of points) {
-        expect(hit[0], `${control} width`).toBeGreaterThanOrEqual(Math.floor(step) - 1);
+      points.forEach(({ control, hit }, i) => {
+        expect(hit[0], `${control} width`).toBeGreaterThanOrEqual(Math.min(MIN, Math.floor(gaps[i]) - 1));
         expect(hit[1], `${control} height`).toBeGreaterThanOrEqual(MIN);
-      }
+      });
       const dot = page.locator('#progress-trend .trend-dot.trend-wpm').nth(6).locator('circle');
       await dot.scrollIntoViewIfNeeded();
       const box = await dot.boundingBox();

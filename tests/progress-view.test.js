@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gridlines, placeCallouts } from '../src/progress-view.js';
+import { dayPositions, gridlines, placeCallouts } from '../src/progress-view.js';
 
 const bounds = { left: 0, top: 0, right: 600, bottom: 300 };
 const gap = 8;
@@ -45,4 +45,14 @@ test('gridlines leave out values that are not numbers, and always return', () =>
   assert.deepEqual(gridlines([NaN], 5, Infinity), [0, 5, 10]);
   assert.equal(gridlines([0, Infinity], 5, Infinity).length, 3);
   assert.deepEqual(gridlines([97.5, 99], 1, 100), [97, 98, 99]);
+});
+
+test('chart days sit by calendar offset across the window, and each hit area reaches halfway to its neighbours', () => {
+  const { xs, gaps } = dayPositions(['2026-10-01', '2026-10-02', '2026-10-17'], ['2026-09-18', '2026-10-17'], 8, 290);
+  assert.deepEqual(xs, [8 + 130, 8 + 140, 8 + 290]);
+  assert.ok(xs[2] - xs[1] > 10 * (xs[1] - xs[0]), 'a 15-day gap is fifteen times a 1-day gap');
+  assert.deepEqual(gaps, [10, 10, 150]);
+  const across = dayPositions(['2026-03-28', '2026-03-29', '2026-03-30'], ['2026-03-28', '2026-03-30'], 0, 100);
+  assert.deepEqual(across.xs, [0, 50, 100], 'a clock change inside the window moves nothing');
+  assert.deepEqual(dayPositions(['2026-10-17'], ['2026-10-17', '2026-10-17'], 8, 300), { xs: [158], gaps: [300] });
 });
