@@ -39,16 +39,16 @@ test('period and test pills filter the overview, and condition sets never mix', 
   await openProgress(page, supabase);
   const tests = page.getByRole('group', { name: 'Test' });
   const period = page.getByRole('group', { name: 'Period' });
-  const variants = page.getByRole('group', { name: 'Conditions' });
+  const variants = page.getByRole('combobox', { name: 'Conditions' });
+
+  await expect(page.locator('#progress-variants')).toBeHidden();
+  await page.locator('.conditions-disclosure > summary').click();
 
   // The newest run's length opens, on its most used condition set.
   await expect(tests.getByRole('button', { name: '25 words' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(variants.getByRole('button')).toHaveText(['plain', 'punctuation']);
-  await expect(variants.getByRole('button', { name: 'plain' })).toHaveAttribute('aria-pressed', 'true');
-  // The full conditions line waits behind a disclosure beside the condition sets.
+  await expect(variants.locator('option')).toHaveText(['plain', 'punctuation']);
+  await expect(variants.locator('option:checked')).toHaveText('plain');
   const conditionsLine = page.locator('#progress-conditions');
-  await expect(conditionsLine).toBeHidden();
-  await page.locator('.conditions-disclosure > summary').click();
   await expect(conditionsLine).toBeVisible();
   await expect(conditionsLine).toHaveText('english 1k · 25 words · plain · physical keyboard · continue on error · corpus v5 · metric v1');
   // A preset length with no runs stays in the row, disabled.
@@ -77,7 +77,7 @@ test('period and test pills filter the overview, and condition sets never mix', 
   await expect(page.locator('#run-history .run-row')).toHaveCount(5);
 
   // Punctuation is its own set: only its three runs, none of the plain ones.
-  await variants.getByRole('button', { name: 'punctuation', exact: true }).click();
+  await variants.selectOption({ label: 'punctuation' });
   await expect(page.locator('#progress-conditions')).toContainText('25 words · punctuation');
   await expect(figure(page, 'All')).toContainText('31 wpm');
   await expect(figure(page, 'All')).toContainText('median of 3 runs');
@@ -96,7 +96,7 @@ test('period and test pills filter the overview, and condition sets never mix', 
 
   // Back at 25 words, the length opens on its most used set again.
   await tests.getByRole('button', { name: '25 words' }).click();
-  await expect(variants.getByRole('button', { name: 'plain' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(variants.locator('option:checked')).toHaveText('plain');
   await expect(figure(page, 'All')).toContainText('median of 5 runs');
 });
 
@@ -187,7 +187,7 @@ test('Show all lasts until the period, test or condition set changes', async ({ 
   const rows = page.locator('#run-history .run-row');
   const showAll = page.locator('#show-all-runs');
   const period = page.getByRole('group', { name: 'Period' });
-  const variants = page.getByRole('group', { name: 'Conditions' });
+  const variants = page.getByRole('combobox', { name: 'Conditions' });
 
   await showAll.click();
   await expect(rows).toHaveCount(15);
@@ -196,7 +196,8 @@ test('Show all lasts until the period, test or condition set changes', async ({ 
   await expect(showAll).toHaveText('Show all 15 runs');
 
   await showAll.click();
-  await variants.getByRole('button', { name: 'punctuation', exact: true }).click();
+  await page.locator('.conditions-disclosure > summary').click();
+  await variants.selectOption({ label: 'punctuation' });
   await expect(rows).toHaveCount(10);
   await expect(showAll).toHaveText('Show all 12 runs');
 
@@ -232,17 +233,18 @@ test('Show all stays through a pill already chosen, and resets on a clear, its u
   await expect(rows).toHaveCount(10);
 });
 
-test('quote sets that differ only by the punctuation setting say so on the conditions line, as their pills do', async ({ page, supabase }) => {
+test('quote sets that differ only by the punctuation setting say so on the conditions line, as their options do', async ({ page, supabase }) => {
   const quote = { mode: 'quote', count: null, quoteLength: 'short', difficulty: 'any', wordList: null };
   await openProgress(page, supabase, [run(2, 50, 95, quote), run(1, 55, 95, quote), run(0, 60, 95, { ...quote, punctuation: true })]);
-  const variants = page.getByRole('group', { name: 'Conditions' });
-  await expect(variants.getByRole('button')).toHaveText(['punctuation setting off', 'punctuation setting on']);
+  await page.locator('.conditions-disclosure > summary').click();
+  const variants = page.getByRole('combobox', { name: 'Conditions' });
+  await expect(variants.locator('option')).toHaveText(['punctuation setting off', 'punctuation setting on']);
   await expect(page.locator('#progress-conditions')).toContainText('any · punctuation setting off · physical keyboard');
-  await variants.getByRole('button', { name: 'punctuation setting on' }).click();
+  await variants.selectOption({ label: 'punctuation setting on' });
   await expect(page.locator('#progress-conditions')).toContainText('any · punctuation setting on · physical keyboard');
 });
 
-test('activating a period, test or condition pill keeps focus on that pill', async ({ page, supabase }) => {
+test('changing a period, test or condition keeps focus on its control', async ({ page, supabase }) => {
   await openProgress(page, supabase);
   const focused = () => page.evaluate(() => {
     const node = document.activeElement;
@@ -251,9 +253,17 @@ test('activating a period, test or condition pill keeps focus on that pill', asy
   await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }).focus();
   await page.keyboard.press('Enter');
   expect(await focused()).toEqual({ text: '7 days', group: 'Period', pressed: 'true' });
-  await page.getByRole('group', { name: 'Conditions' }).getByRole('button', { name: 'punctuation', exact: true }).focus();
+  const disclosure = page.locator('.conditions-disclosure > summary');
+  await disclosure.focus();
   await page.keyboard.press('Enter');
-  expect(await focused()).toEqual({ text: 'punctuation', group: 'Conditions', pressed: 'true' });
+  await page.keyboard.press('Tab');
+  const variants = page.getByRole('combobox', { name: 'Conditions' });
+  await expect(variants).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(variants).toBeFocused();
+  await expect(variants.locator('option:checked')).toHaveText('punctuation');
+  await expect(page.locator('#progress-conditions')).toContainText('25 words · punctuation');
   await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '15 seconds' }).focus();
   await page.keyboard.press('Space');
   expect(await focused()).toEqual({ text: '15 s', group: 'Test', pressed: 'true' });
@@ -323,4 +333,93 @@ test('with only practice to show, the panel stands alone, without tab semantics'
   await expect(page.getByRole('tablist')).toHaveCount(0);
   await expect(page.getByRole('tabpanel')).toHaveCount(0);
   await expect(page.locator('#view-practice')).not.toHaveAttribute('aria-labelledby', /./);
+});
+
+test('duration and period share a row with a compact overview and conditions disclosed on demand', async ({ page, supabase }, testInfo) => {
+  const timed = { mode: 'time', count: null, duration: 15 };
+  const list = [
+    run(4, 45, 94),
+    run(3, 55, 95, { ...timed, wordList: null, corpus: 'original-en-v3' }),
+    run(2, 60, 96, { ...timed, wordList: '200' }),
+    run(1, 65, 97, { ...timed, wordList: null, corpus: 'original-en-v3', correctionPolicy: 'mandatory' }),
+    run(0, 70, 98, timed),
+  ];
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await openProgress(page, supabase, list);
+  const variants = page.locator('#progress-variants');
+  const disclosure = page.locator('.conditions-disclosure > summary');
+  await expect(variants).toBeHidden();
+  await expect(page.locator('#progress-conditions')).toBeHidden();
+  const heading = await page.locator('#progress-heading').boundingBox();
+  const duration = await page.getByRole('button', { name: '15 seconds', exact: true }).boundingBox();
+  const period = await page.locator('#progress-period').boundingBox();
+  const summary = await disclosure.boundingBox();
+  expect(Math.abs(period.y + period.height / 2 - duration.y - duration.height / 2)).toBeLessThan(1);
+  expect(period.x).toBeGreaterThan(duration.x + duration.width);
+  expect(duration.y).toBeGreaterThan(heading.y + heading.height);
+  expect(summary.y).toBe(duration.y);
+  expect(summary.x).toBeGreaterThan(duration.x + duration.width);
+  await expect(page.locator('#progress-heading')).toHaveCSS('font-size', '48px');
+  await expect(page.locator('#progress-stats .figure-value').first()).toHaveCSS('font-size', '30px');
+  await page.screenshot({ path: testInfo.outputPath('progress-desktop.png') });
+  await page.setViewportSize({ width: 1024, height: 800 });
+  const narrowDuration = await page.getByRole('button', { name: '15 seconds', exact: true }).boundingBox();
+  const narrowPeriod = await page.locator('#progress-period').boundingBox();
+  expect(Math.abs(narrowPeriod.y + narrowPeriod.height / 2 - narrowDuration.y - narrowDuration.height / 2)).toBeLessThan(1);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await disclosure.focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await expect(variants).toBeFocused();
+  await expect(variants.locator('option')).toHaveCount(4);
+  const seen = new Set();
+  for (const label of await variants.locator('option').allTextContents()) {
+    await variants.selectOption({ label });
+    await expect(variants).toBeFocused();
+    await expect(page.locator('#run-history .run-row')).toHaveCount(1);
+    const row = page.locator('#run-history .run-row');
+    const id = await row.getAttribute('data-run-id');
+    const expected = list.find((item) => item.id === id);
+    seen.add(id);
+    await expect(row).toContainText(`${expected.score.wpm} wpm`);
+    await expect(figure(page, '30 days')).toContainText(`${expected.score.wpm} wpm`);
+    await expect(page.locator('#progress-conditions')).toBeVisible();
+  }
+  expect(seen.size).toBe(4);
+  await disclosure.click();
+  for (const theme of ['dark', 'light']) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 320, height: 760 });
+    await expect(variants).toBeHidden();
+    await expect(page.locator('#progress-conditions')).toBeHidden();
+    const tests = page.locator('#progress-tests');
+    expect(await tests.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
+    await tests.evaluate((node) => { node.scrollLeft = node.scrollWidth; });
+    await expect(page.getByRole('button', { name: '120 seconds', exact: true })).toBeInViewport();
+    await disclosure.click();
+    await expect(variants).toBeVisible();
+    const bounds = await variants.boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+    await expect(page.locator('#progress-conditions')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+    await page.screenshot({ path: testInfo.outputPath(`progress-320-${theme}-open.png`) });
+    await disclosure.click();
+    await page.screenshot({ path: testInfo.outputPath(`progress-320-${theme}.png`) });
+  }
+});
+
+test('periods stay available with empty and activity-only history', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [{ ...run(1, 50, 95), kind: 'drill' }]);
+  const period = page.getByRole('group', { name: 'Period' });
+  await expect(page.locator('#practice-goal')).toBeVisible();
+  await period.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(period.getByRole('button', { name: 'All', exact: true })).toBeFocused();
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(page.locator('#progress-empty')).toBeVisible();
+  await expect(page.locator('.conditions-disclosure')).toBeHidden();
+  await period.getByRole('button', { name: '7 days' }).click();
+  await expect(period.getByRole('button', { name: '7 days' })).toHaveAttribute('aria-pressed', 'true');
 });

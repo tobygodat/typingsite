@@ -48,12 +48,12 @@ test('numbers live in test content settings, default off, and keep practice best
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 
   await openView(page, 'Progress');
-  // One length, two condition sets: each is its own pill, and each lists only its own run.
   await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '10 words' }).click();
-  const variants = page.getByRole('group', { name: 'Conditions' }).getByRole('button');
-  await expect(variants).toHaveCount(2);
-  for (const name of await variants.allTextContents()) {
-    await page.getByRole('group', { name: 'Conditions' }).getByRole('button', { name, exact: true }).click();
+  await page.locator('.conditions-disclosure > summary').click();
+  const variants = page.getByRole('combobox', { name: 'Conditions' });
+  await expect(variants.locator('option')).toHaveCount(2);
+  for (const label of await variants.locator('option').allTextContents()) {
+    await variants.selectOption({ label });
     await expect(page.locator('#run-history .run-row')).toHaveCount(1);
   }
 });

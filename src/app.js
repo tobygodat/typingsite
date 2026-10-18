@@ -3112,8 +3112,8 @@ const shapeLabel = (shape) => {
   return { text: shape.mode };
 };
 
-function pill(text, { pressed = false, disabled = false, label = '', className = '' } = {}) {
-  const button = element('button', text, `pill${className ? ` ${className}` : ''}`);
+function pill(text, { pressed = false, disabled = false, label = '' } = {}) {
+  const button = element('button', text, 'pill');
   button.type = 'button';
   button.setAttribute('aria-pressed', String(pressed));
   button.disabled = disabled;
@@ -3125,7 +3125,7 @@ function pill(text, { pressed = false, disabled = false, label = '', className =
 function renderTestPills(shapes) {
   const selected = shapes.find((shape) => shape.variants.some((variant) => variant.key === progressState.key));
   // The pills are rebuilt, so a focused one hands focus to its replacement.
-  const focused = document.activeElement?.closest('#progress-tests, #progress-variants') ? { ...document.activeElement.dataset } : null;
+  const focused = document.activeElement?.closest('#progress-tests') ? { ...document.activeElement.dataset } : null;
   const row = [];
   shapes.forEach((shape, i) => {
     if (i && shape.mode !== shapes[i - 1].mode) {
@@ -3144,14 +3144,13 @@ function renderTestPills(shapes) {
   $('progress-variants').hidden = variants.length < 2;
   const labels = conditionLabels(variants.map((variant) => variant.conditions));
   $('progress-variants').replaceChildren(...(variants.length < 2 ? [] : variants.map((variant, i) => {
-    const button = pill(labels[i], { pressed: variant.key === progressState.key, className: 'variant-pill' });
-    button.dataset.key = variant.key;
-    button.addEventListener('click', () => chooseProgress({ key: variant.key }));
-    return button;
+    const option = element('option', labels[i]);
+    option.value = variant.key;
+    option.selected = variant.key === progressState.key;
+    return option;
   })));
   if (focused) {
-    const pills = [...$('progress-tests').children, ...$('progress-variants').children];
-    pills.find((node) => (focused.key ? node.dataset.key === focused.key : node.dataset.shape === focused.shape))?.focus();
+    [...$('progress-tests').children].find((node) => node.dataset.shape === focused.shape)?.focus();
   }
 }
 
@@ -3211,6 +3210,7 @@ function renderHistory() {
   const period = progressState.period;
   for (const button of $('progress-period').querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
   const siblings = shapes.find((shape) => shape.variants.some((variant) => variant.key === key))?.variants.map((variant) => variant.conditions);
+  document.querySelector('.conditions-disclosure').hidden = !source;
   $('progress-conditions').textContent = source ? describeConditions(source, siblings) : '';
   const span = periodWindow(period, date);
   const matching = source ? filterRuns(eligible, key, span) : [];
@@ -5287,6 +5287,7 @@ function bindEvents() {
     const button = event.target.closest('[data-period]');
     if (button) chooseProgress({ period: button.dataset.period });
   });
+  $('progress-variants').addEventListener('change', (event) => chooseProgress({ key: event.target.value }));
   $('progress-tabs').addEventListener('click', (event) => {
     const tab = event.target.closest('[role="tab"]');
     if (tab) showProgressView(tab.dataset.viewTab);
