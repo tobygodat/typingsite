@@ -29,11 +29,12 @@ function chartHeight(figure, width) {
 }
 
 // Three gridlines a round step apart that hold every value: 40, 60, 80 rather than 47, 63, 79.
-// Accuracy never reads past 100%.
-function gridlines(values, minStep, ceiling) {
-  const low = Math.min(...values);
-  const high = Math.max(...values);
-  for (let scale = 1; ; scale *= 10) {
+// Accuracy never reads past 100%. Values that aren't numbers are left out.
+export function gridlines(values, minStep, ceiling) {
+  const finite = values.filter(Number.isFinite);
+  const low = finite.length ? Math.min(...finite) : 0;
+  const high = finite.length ? Math.max(...finite) : 0;
+  for (let scale = 1; scale <= 1e12; scale *= 10) {
     for (const step of [1, 2, 5].map((n) => n * scale)) {
       if (step < minStep) continue;
       let base = Math.floor(low / step) * step;
@@ -41,6 +42,7 @@ function gridlines(values, minStep, ceiling) {
       if (base <= low && base + 2 * step >= high) return [base, base + step, base + 2 * step];
     }
   }
+  return [low, (low + high) / 2, high];
 }
 
 // Round values a nice step apart (1, 2 or 5 times a power of ten), about three or four of them, from

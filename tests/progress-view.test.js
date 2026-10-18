@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { placeCallouts } from '../src/progress-view.js';
+import { gridlines, placeCallouts } from '../src/progress-view.js';
 
 const bounds = { left: 0, top: 0, right: 600, bottom: 300 };
 const gap = 8;
@@ -38,4 +38,11 @@ test('two callouts at neighbouring points keep apart', () => {
 test('a point at the top edge puts its callout below', () => {
   const [box] = placeCallouts([{ x: 300, y: 4, width: 60, height: 18 }], { dots: [{ x: 300, y: 4, r: 4 }], bounds, gap });
   assert.ok(box.top > 4, 'below the point');
+});
+
+test('gridlines leave out values that are not numbers, and always return', () => {
+  assert.deepEqual(gridlines([42, NaN, 58], 5, Infinity), [40, 50, 60]);
+  assert.deepEqual(gridlines([NaN], 5, Infinity), [0, 5, 10]);
+  assert.equal(gridlines([0, Infinity], 5, Infinity).length, 3);
+  assert.deepEqual(gridlines([97.5, 99], 1, 100), [97, 98, 99]);
 });
