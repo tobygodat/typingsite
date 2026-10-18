@@ -196,6 +196,21 @@ test.describe('touch quote filters', () => {
   });
 });
 
+for (const viewport of [{ width: 390, height: 400 }, { width: 667, height: 375 }]) {
+  test(`option navigation stays open on a ${viewport.width} by ${viewport.height} screen`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await quotes(page);
+    await combo(page).click();
+    await page.keyboard.press('End');
+    await expect(list(page)).toBeVisible();
+    expect(await active(page)).toBe('long✓');
+    await page.keyboard.press('Enter');
+    await expect(combo(page)).toContainText('long');
+    await expect(page.locator('#condition-line')).toContainText('long quote');
+    await expect(page.locator('#typing-input')).toBeFocused();
+  });
+}
+
 test('focus mode, window blur and resize discard drafts', async ({ page }) => {
   await quotes(page);
   await combo(page).click();
