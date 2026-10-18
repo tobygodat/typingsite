@@ -119,6 +119,8 @@ test('older compact history survives without full traces and offers an honest st
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
+  await expect(page.locator('#run-history .run-row')).toHaveCount(10);
+  await page.getByRole('button', { name: 'Show all 30 runs' }).click();
   await expect(page.locator('#run-history .run-row')).toHaveCount(30);
   await page.locator('.history-summary').click();
   await expect(page.locator('.history-detail')).toContainText('60 wpm · 98%');
