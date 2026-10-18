@@ -3081,6 +3081,7 @@ const progressState = { period: '30', key: '', view: 'speed', allRuns: false };
 const RECENT_RUNS = 10;
 let listedRuns = [];
 function chooseProgress(choice) {
+  if (Object.entries(choice).every(([name, value]) => progressState[name] === value)) return;
   Object.assign(progressState, choice, { allRuns: false });
   renderHistory();
 }
@@ -3200,6 +3201,7 @@ function renderHistory() {
   if (!variants.some((variant) => variant.key === progressState.key)) {
     const newest = listed.at(-1) || profile.loops.at(-1);
     progressState.key = (newest && shapes.find((shape) => shape.id === shapeOf(newest.conditions))?.variants[0].key) || variants[0]?.key || '';
+    progressState.allRuns = false;
   }
   renderTestPills(shapes);
   const source = variants.find((variant) => variant.key === progressState.key)?.conditions;
@@ -4315,7 +4317,9 @@ function absorb(data) {
   if (data?.version !== 2) return false;
   const before = account.syncSignature(profile);
   ({ merged: profile, holds: heldClears } = account.mergeAndHold(heldClears, profile, normalizeProfile(data)));
-  return account.syncSignature(profile) !== before;
+  const changed = account.syncSignature(profile) !== before;
+  if (changed) progressState.allRuns = false;
+  return changed;
 }
 
 // After a merge: preferences follow where they can't disturb a run, and only the visible history view

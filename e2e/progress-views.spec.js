@@ -206,6 +206,32 @@ test('Show all lasts until the period, test or condition set changes', async ({ 
   await expect(rows).toHaveCount(10);
 });
 
+test('Show all stays through a pill already chosen, and resets on a clear, its undo and a merged profile', async ({ page, supabase }) => {
+  const many = Array.from({ length: 14 }, (_, i) => run(14 - i, 50 + i, 95));
+  await openProgress(page, supabase, many);
+  const rows = page.locator('#run-history .run-row');
+  const showAll = page.locator('#show-all-runs');
+
+  await showAll.click();
+  await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '30 days' }).click();
+  await expect(rows).toHaveCount(14);
+
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await page.locator('#undo-clear').click();
+  await expect(rows).toHaveCount(10);
+
+  await showAll.click();
+  await expect(rows).toHaveCount(14);
+  const user = [...supabase.profiles.keys()][0];
+  const row = supabase.profiles.get(user);
+  supabase.profiles.set(user, { ...row, data: { ...row.data, runs: [...row.data.runs, run(0, 99, 99)], updatedAt: new Date(NOW.getTime() + 1000).toISOString() } });
+  await page.evaluate(() => { document.activeElement?.blur(); dispatchEvent(new Event('online')); });
+  await expect(rows.first()).toContainText('99 wpm');
+  await expect(rows).toHaveCount(10);
+});
+
 test('activating a period, test or condition pill keeps focus on that pill', async ({ page, supabase }) => {
   await openProgress(page, supabase);
   const focused = () => page.evaluate(() => {
