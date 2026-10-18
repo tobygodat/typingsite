@@ -2747,8 +2747,9 @@ function scoreFacts(items) {
 }
 
 function openHistoryRun(id) {
-  const row = [...$('run-history').children].find((item) => item.dataset.runId === id);
-  if (row?.hidden) showAllRuns();
+  const find = () => [...$('run-history').children].find((item) => item.dataset.runId === id);
+  if (!find() && listedRuns.some((run) => run.id === id)) showAllRuns();
+  const row = find();
   if (row) { row.open = true; row.scrollIntoView({ block: 'center', behavior: 'instant' }); row.querySelector('summary').focus(); }
 }
 
@@ -3089,17 +3090,21 @@ function moveGoalFocus(event) {
 // Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
 const progressState = { period: '30', key: '', view: 'speed', allRuns: false };
 
-// The run list opens on the newest few; every run stays in the list, and one button shows the rest.
+// The run list opens on the newest few, and one button builds the rest. A new period, test or
+// condition set opens on the newest few again.
 const RECENT_RUNS = 10;
-function shownRuns() {
-  const rows = [...$('run-history').children];
-  rows.forEach((row, i) => { row.hidden = !progressState.allRuns && i >= RECENT_RUNS; });
-  $('show-all-runs').hidden = progressState.allRuns || rows.length <= RECENT_RUNS;
-  $('show-all-runs').textContent = `Show all ${rows.length} runs`;
+let listedRuns = [];
+let listedFilter = '';
+function renderRunRows() {
+  const shown = progressState.allRuns ? listedRuns : listedRuns.slice(0, RECENT_RUNS);
+  $('run-history').replaceChildren(...shown.map(runRow));
+  $('show-all-runs').hidden = shown.length === listedRuns.length;
+  $('show-all-runs').textContent = `Show all ${listedRuns.length} runs`;
 }
 function showAllRuns() {
   progressState.allRuns = true;
-  shownRuns();
+  $('run-history').append(...listedRuns.slice($('run-history').children.length).map(runRow));
+  $('show-all-runs').hidden = true;
 }
 // What the width-dependent charts last drew from, so a resize, a unit change or a new view redraws them.
 let progressRuns = [];
@@ -3125,6 +3130,8 @@ function pill(text, { pressed = false, disabled = false, label = '', className =
 // One pill per test length in testShapes' order; a length without runs is disabled.
 function renderTestPills(shapes) {
   const selected = shapes.find((shape) => shape.variants.some((variant) => variant.key === progressState.key));
+  // The pills are rebuilt, so a focused one hands focus to its replacement.
+  const focused = document.activeElement?.closest('#progress-tests, #progress-variants') ? { ...document.activeElement.dataset } : null;
   const row = [];
   shapes.forEach((shape, i) => {
     if (i && shape.mode !== shapes[i - 1].mode) {
@@ -3144,9 +3151,33 @@ function renderTestPills(shapes) {
   const labels = conditionLabels(variants.map((variant) => variant.conditions));
   $('progress-variants').replaceChildren(...(variants.length < 2 ? [] : variants.map((variant, i) => {
     const button = pill(labels[i], { pressed: variant.key === progressState.key, className: 'variant-pill' });
+    button.dataset.key = variant.key;
     button.addEventListener('click', () => { progressState.key = variant.key; renderHistory(); });
     return button;
   })));
+  if (focused) {
+    const pills = [...$('progress-tests').children, ...$('progress-variants').children];
+    pills.find((node) => (focused.key ? node.dataset.key === focused.key : node.dataset.shape === focused.shape))?.focus();
+  }
+}
+
+function runRow(run) {
+  const row = element('details', '', 'run-row');
+  row.dataset.runId = run.id;
+  const summary = element('summary', '', 'run-summary');
+  summary.append(element('strong', [speedFigure(run.score.wpm), ` · ${run.score.accuracy}%`], 'num'),
+    element('span', `${dateCopy(run.at)}${run.kind === 'retest' ? ' · retest' : run.conditions?.mode === 'standard' ? ' · standard' : ''}${run.fresh === false ? ' · repeated text' : ''}`));
+  const detail = element('div', '', 'run-detail');
+  detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
+    element('p', describeRun(run)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
+  const trace = profile.attempts.find((a) => a.id === run.id);
+  if (trace) {
+    const passageDetails = document.createElement('details');
+    passageDetails.append(element('summary', 'View passage'), element('p', trace.text));
+    detail.append(passageDetails);
+  }
+  row.append(summary, detail);
+  return row;
 }
 
 function renderHistory() {
@@ -3194,25 +3225,11 @@ function renderHistory() {
     : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
   renderKeys(source ? filterRuns(profile.runs, key, period) : []);
   showProgressView(hasProgress ? progressState.view : 'practice', { remember: false, only: hasProgress ? null : 'practice' });
-  $('run-history').replaceChildren(...[...runRows].reverse().map((run) => {
-    const row = element('details', '', 'run-row');
-    row.dataset.runId = run.id;
-    const summary = element('summary', '', 'run-summary');
-    summary.append(element('strong', [speedFigure(run.score.wpm), ` · ${run.score.accuracy}%`], 'num'),
-      element('span', `${dateCopy(run.at)}${run.kind === 'retest' ? ' · retest' : run.conditions?.mode === 'standard' ? ' · standard' : ''}${run.fresh === false ? ' · repeated text' : ''}`));
-    const detail = element('div', '', 'run-detail');
-    detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
-      element('p', describeRun(run)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
-    const trace = profile.attempts.find((a) => a.id === run.id);
-    if (trace) {
-      const passageDetails = document.createElement('details');
-      passageDetails.append(element('summary', 'View passage'), element('p', trace.text));
-      detail.append(passageDetails);
-    }
-    row.append(summary, detail);
-    return row;
-  }));
-  shownRuns();
+  const filter = `${period}|${key}`;
+  if (filter !== listedFilter) progressState.allRuns = false;
+  listedFilter = filter;
+  listedRuns = [...runRows].reverse();
+  renderRunRows();
   const loops = source ? filterRuns(profile.loops, key, period).reverse() : [];
   $('history-list').hidden = !loops.length;
   $('history-empty').hidden = Boolean(loops.length);
@@ -3300,11 +3317,13 @@ function renderPracticeStats(period, date = new Date()) {
     figure('Current streak', String(current), daysWord(current), `today ${goalMinutes(byDay[dayKey(date)])}${goal ? ` of ${goal}` : ''} min`),
     figure('Time typing', goalMinutes(stats.minutes), 'min', period === 'all' ? `since ${new Date(`${days[0]}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : `in the last ${days.length} days`),
   );
+  if (shownProgressView() === 'practice') drawProgressView();
 }
 
 // Only the shown view's charts are drawn: a hidden panel has no width to draw to.
+const shownProgressView = () => $('progress-tabs').querySelector('[aria-selected="true"]')?.dataset.viewTab;
 function drawProgressView() {
-  const view = $('progress-tabs').querySelector('[aria-selected="true"]')?.dataset.viewTab;
+  const view = shownProgressView();
   const draw = {
     speed: () => renderTrend($('progress-trend'), progressRuns, openHistoryRun, 'wpm', { from: periodStart(progressState.period) }),
     accuracy: () => renderTrend($('accuracy-trend'), progressRuns, openHistoryRun, 'accuracy', { from: periodStart(progressState.period) }),
@@ -3326,7 +3345,16 @@ function showProgressView(view, { focus = false, remember = true, only = null } 
     tab.hidden = Boolean(only) && tab.dataset.viewTab !== only;
     tab.setAttribute('aria-selected', String(on));
     tab.tabIndex = on ? 0 : -1;
-    $(tab.getAttribute('aria-controls')).hidden = !on;
+    const panel = $(tab.getAttribute('aria-controls'));
+    panel.hidden = !on;
+    // With the tabs hidden, the one panel shown is plain content, not a panel of a missing tab.
+    if (only) {
+      panel.removeAttribute('role');
+      panel.removeAttribute('aria-labelledby');
+    } else {
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', tab.id);
+    }
     if (on && focus) tab.focus();
   }
   $('progress-tabs').hidden = Boolean(only);
@@ -5138,9 +5166,8 @@ function bindEvents() {
   $('repeat-quotes-toggle').addEventListener('change', (event) => setRepeatQuotes(event.target.checked));
   $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveChoice('dailyGoal'); renderGoal(); });
   $('show-all-runs').addEventListener('click', () => {
-    const next = $('run-history').children[RECENT_RUNS];
     showAllRuns();
-    next?.querySelector('summary').focus();
+    $('run-history').children[RECENT_RUNS]?.querySelector('summary').focus();
   });
   narrowColumn.addEventListener('change', () => renderGoal());
   $('goal-day-select').addEventListener('change', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));

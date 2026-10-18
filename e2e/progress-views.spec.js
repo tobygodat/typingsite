@@ -156,8 +156,8 @@ test('the run list opens on the newest ten, and one button lists every run', asy
   await openProgress(page, supabase, many);
   const rows = page.locator('#run-history .run-row');
   const showAll = page.getByRole('button', { name: 'Show all 14 runs' });
-  await expect(rows).toHaveCount(14);
-  await expect(rows.filter({ visible: true })).toHaveCount(10);
+  // The rest are built only when asked for.
+  await expect(rows).toHaveCount(10);
   await expect(rows.first()).toContainText('63 wpm');
   await showAll.click();
   await expect(rows.filter({ visible: true })).toHaveCount(14);
@@ -179,4 +179,67 @@ test('in cpm the overview, the chart callout and its point all round the convert
   await expect(figure(page, 'This week')).toContainText('328 cpm');
   await expect(page.locator('#progress-trend .trend-callout').first()).toHaveText(/^328 today/);
   await expect(page.locator('#progress-trend .trend-dot').last()).toHaveAttribute('aria-label', /: median 328 cpm over 2 runs/);
+});
+
+test('Show all lasts until the period, test or condition set changes', async ({ page, supabase }) => {
+  const many = [...Array.from({ length: 14 }, (_, i) => run(14 - i, 50 + i, 95)), ...Array.from({ length: 12 }, (_, i) => run(14 - i, 40, 99, { punctuation: true })), run(0, 64, 95)];
+  await openProgress(page, supabase, many);
+  const rows = page.locator('#run-history .run-row');
+  const showAll = page.locator('#show-all-runs');
+  const period = page.getByRole('group', { name: 'Period' });
+  const variants = page.getByRole('group', { name: 'Conditions' });
+
+  await showAll.click();
+  await expect(rows).toHaveCount(15);
+  await period.getByRole('button', { name: 'All' }).click();
+  await expect(rows).toHaveCount(10);
+  await expect(showAll).toHaveText('Show all 15 runs');
+
+  await showAll.click();
+  await variants.getByRole('button', { name: 'punctuation', exact: true }).click();
+  await expect(rows).toHaveCount(10);
+  await expect(showAll).toHaveText('Show all 12 runs');
+
+  await showAll.click();
+  await expect(rows).toHaveCount(12);
+  await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '25 words' }).click();
+  await expect(rows).toHaveCount(10);
+});
+
+test('activating a period, test or condition pill keeps focus on that pill', async ({ page, supabase }) => {
+  await openProgress(page, supabase);
+  const focused = () => page.evaluate(() => {
+    const node = document.activeElement;
+    return { text: node.textContent, group: node.parentElement?.getAttribute('aria-label') || '', pressed: node.getAttribute('aria-pressed') };
+  });
+  await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }).focus();
+  await page.keyboard.press('Enter');
+  expect(await focused()).toEqual({ text: '7 days', group: 'Period', pressed: 'true' });
+  await page.getByRole('group', { name: 'Conditions' }).getByRole('button', { name: 'punctuation', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  expect(await focused()).toEqual({ text: 'punctuation', group: 'Conditions', pressed: 'true' });
+  await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '15 seconds' }).focus();
+  await page.keyboard.press('Space');
+  expect(await focused()).toEqual({ text: '15 s', group: 'Test', pressed: 'true' });
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Enter');
+  expect(await focused()).toEqual({ text: '25 words', group: 'Test', pressed: 'true' });
+});
+
+test('the runs-per-day strip follows the calendar across midnight', async ({ page, supabase }) => {
+  await openProgress(page, supabase);
+  await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }).click();
+  await openProgressView(page, 'Practice');
+  const strip = page.locator('#practice-runs svg');
+  await expect(strip).toHaveAttribute('aria-label', /^Runs per day from Oct 11 to Oct 17:/);
+  await page.clock.fastForward('09:01:00');
+  await expect(strip).toHaveAttribute('aria-label', /^Runs per day from Oct 12 to Oct 18:/);
+});
+
+test('with only practice to show, the panel stands alone, without tab semantics', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [{ ...run(1, 50, 95), kind: 'drill' }, { ...run(0, 50, 95), kind: 'drill' }]);
+  await expect(page.locator('#practice-goal')).toBeVisible();
+  await expect(page.getByRole('tablist')).toHaveCount(0);
+  await expect(page.getByRole('tabpanel')).toHaveCount(0);
+  await expect(page.locator('#view-practice')).not.toHaveAttribute('aria-labelledby', /./);
 });
