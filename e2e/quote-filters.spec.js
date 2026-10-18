@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, chooseQuoteFilter, openView, openSettings } from './fixtures.js';
+import { test, expect, openApp, passageText, chooseQuoteFilter, openView, openSettings, chooseSetting } from './fixtures.js';
 
 const combo = (page, name = 'length') => page.getByRole('combobox', { name, exact: true });
 const list = (page, name = 'length') => page.getByRole('listbox', { name, exact: true });
@@ -131,7 +131,7 @@ test('commands cancel drafts, mode and view changes dismiss, imports refresh val
   await openView(page, 'Practice');
   await combo(page).click();
   await openSettings(page);
-  await page.getByRole('button', { name: /import from Monkeytype/ }).click();
+  await page.getByRole('button', { name: /Import Monkeytype settings/ }).click();
   await expect(list(page)).toBeHidden();
   await page.locator('#import-text').fill(JSON.stringify({ mode: 'quote', quoteLength: [0] }));
   await page.locator('#confirm-import').click();
@@ -221,8 +221,7 @@ test('focus mode, window blur and resize discard drafts', async ({ page }) => {
   await combo(page).click();
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   await expect(list(page)).toBeHidden();
-  await openSettings(page);
-  await page.locator('#focus-toggle').check();
+  await chooseSetting(page, 'focus-toggle', true);
   await expect(list(page)).toBeHidden();
 });
 

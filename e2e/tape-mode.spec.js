@@ -1,7 +1,7 @@
 // Tape mode: the passage on one line instead of three. The tape advances in
 // word-aligned steps with the ~150 ms line scroll, never letter by letter, and instantly under
 // reduced motion. Screenshots go to docs/screenshots/tape-mode only when SCREENSHOTS is set.
-import { test, expect, openApp, openSettings, passageText, typeInto, chooseWords, chooseMore, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openSettings, passageText, typeInto, chooseWords, chooseMore, signInWithEmail, chooseSetting } from './fixtures.js';
 import { wordList } from '../src/words.js';
 import { TAPE_LEAD } from '../src/tape.js';
 
@@ -12,10 +12,10 @@ const wrapHeight = async (page) => Math.round((await page.locator('#typing-wrap'
 
 async function setTape(page, on) {
   await openSettings(page);
-  await page.locator('#tape-toggle').setChecked(on);
+  await chooseSetting(page, 'tape-toggle', on);
   await expect(page.locator('body')).toHaveAttribute('data-tape', String(on));
   await page.keyboard.press('Escape');
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
 }
 
 // The tape and caret after the next frames have measured, in px from the visible left edge.
@@ -93,7 +93,7 @@ test('the settings row and the palette switch between three lines and the tape',
   await setTape(page, true);
   await page.reload();
   await expect(page.locator('body')).toHaveAttribute('data-tape', 'false');
-  await expect(page.locator('#tape-toggle')).not.toBeChecked();
+  await expect(page.locator('#tape-toggle input[value="true"]')).not.toBeChecked();
 });
 
 test('an account with no valid tape value starts on three lines and keeps the tape once chosen', async ({ page, supabase }) => {
@@ -195,7 +195,7 @@ test('trimming and remounting passed words moves nothing on the line', async ({ 
 test('word highlight tints the word under the caret, in view, after each step', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
-  await page.locator('#word-highlight').selectOption('current');
+  await chooseSetting(page, 'word-highlight', 'current');
   await page.keyboard.press('Escape');
   await setTape(page, true);
   await chooseWords(page, 50);
@@ -252,7 +252,7 @@ test('a ghost race keeps three lines with the tape on, so the friend’s caret s
   await page.locator('#challenge-toast').getByRole('button', { name: 'Race' }).click({ timeout: 12000 });
   await expect(page.locator('#session-title')).toHaveText('Race Ada’s run');
   await expect(page.locator('body')).toHaveAttribute('data-tape', 'false');
-  await expect(page.locator('#tape-toggle')).toBeChecked();
+  await expect(page.locator('#tape-toggle input[value="true"]')).toBeChecked();
   expect(await wrapHeight(page)).toBe(Math.round(line * 3));
   await expect(page.locator('#text-display')).not.toHaveCSS('white-space', 'pre');
   const ghost = page.locator('#text-display .ghost-caret');
@@ -327,7 +327,7 @@ for (const easing of [false, true]) test(`leaving a scrolled ghost race for the 
 test('the pace caret rides the tape and keeps gliding through a step', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
-  await page.locator('#pace-select').selectOption('custom');
+  await chooseSetting(page, 'pace-select', 'custom');
   await openSettings(page);
   await page.locator('#pace-wpm').fill('40');
   await page.locator('#pace-wpm').press('Tab');
@@ -364,12 +364,9 @@ test.describe('narrow phone with large text', () => {
     await page.addInitScript(([index, size]) => { Math.random = () => (index + 0.5) / size; }, [bank.indexOf(longest), bank.length]);
     await openApp(page);
     await openSettings(page);
-    await page.locator('#font-size').selectOption('36');
-    // The word list sits in the collapsed test content category.
-    const testContent = page.locator('#test-content-settings');
-    if (!(await testContent.evaluate((node) => node.open))) await testContent.locator('summary').click();
-    await page.locator('#word-list').selectOption('10k');
-    await page.locator('#tape-toggle').check();
+    await chooseSetting(page, 'font-size', '36');
+    await chooseSetting(page, 'word-list', '10k');
+    await chooseSetting(page, 'tape-toggle', true);
     await page.keyboard.press('Escape');
     await chooseWords(page, 10);
     const text = await passageText(page);
@@ -393,8 +390,8 @@ test.describe('narrow phone with large text', () => {
   test('backspacing keeps the letter before the caret clear of the left fade', async ({ page }) => {
     await openApp(page);
     await openSettings(page);
-    await page.locator('#font-size').selectOption('36');
-    await page.locator('#tape-toggle').check();
+    await chooseSetting(page, 'font-size', '36');
+    await chooseSetting(page, 'tape-toggle', true);
     await page.keyboard.press('Escape');
     await chooseWords(page, 50);
     const text = await passageText(page);
@@ -473,7 +470,7 @@ test('switching layouts mid-run keeps the run going and the caret in view', asyn
   await page.mouse.move(5, 5);
   await page.mouse.move(60, 60);
   await openSettings(page);
-  await page.locator('#font-size').selectOption('22');
+  await chooseSetting(page, 'font-size', '22');
   await page.keyboard.press('Escape');
   await expect(page.locator('#text-display > .passage-spacer')).toHaveCount(0);
   await page.locator('#typing-input').focus();
@@ -542,7 +539,7 @@ test('screenshot · the settings row', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
   await openSettings(page);
-  await page.locator('#tape-toggle').check();
+  await chooseSetting(page, 'tape-toggle', true);
   await page.locator('#tape-toggle').focus();
   await page.screenshot({ path: shotPath(testInfo, 'tape-settings') });
 });

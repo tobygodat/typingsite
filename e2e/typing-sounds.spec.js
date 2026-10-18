@@ -3,7 +3,7 @@
 // AudioContext is stubbed so each test can count what would have played. Choosing an audible sound
 // builds the context just after the change, so the next key clicks; a sound that arrives any other way
 // (a reload, an import) waits for the first key, which is silent. Never built inside an event.
-import { test, expect, openApp, openView, passageText, typeInto, chooseWords, chooseMore, completePassage, openSettings, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, chooseWords, chooseMore, completePassage, openSettings, signInWithEmail, chooseSetting } from './fixtures.js';
 
 async function stubAudio(page) {
   await page.addInitScript(() => {
@@ -60,10 +60,10 @@ async function firstKey(page, char) {
 }
 
 async function chooseSound(page, mode) {
-  await openSettings(page);
-  await page.locator('#sound-select').selectOption(mode);
+  await openSettings(page, 'sound');
+  await chooseSetting(page, 'sound-select', mode);
   await page.keyboard.press('Escape');
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
 }
 
 async function restart(page) {
@@ -72,20 +72,7 @@ async function restart(page) {
   await expect(page.locator('body')).not.toHaveAttribute('data-running', 'true');
 }
 
-// Every settings row stays inside the popover, and the sound select shows its whole label. A
-// select's scrollWidth never exceeds its clientWidth, so the label is measured in the select's own
-// font against the room left by its padding and the native chevron (about 24px).
-const settingsFit = (page) => page.evaluate(() => {
-  const popover = document.querySelector('.preferences-popover').getBoundingClientRect();
-  const select = document.getElementById('sound-select');
-  const style = getComputedStyle(select);
-  const pen = document.createElement('canvas').getContext('2d');
-  pen.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-  const label = pen.measureText(select.selectedOptions[0].textContent).width;
-  const room = select.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 24;
-  return [...document.querySelectorAll('.preferences-popover .preference-row')].every((row) => row.getBoundingClientRect().right <= popover.right + 0.5)
-    && label <= room;
-});
+const settingsFit = (page) => page.locator('#settings-dialog .settings-category:visible .setting-option span').evaluateAll((options) => options.every((option) => option.scrollWidth <= option.clientWidth));
 
 async function shot(page, testInfo, name) {
   const path = process.env.SCREENSHOTS ? `docs/screenshots/typing-sounds/${name}.png` : testInfo.outputPath(`${name}.png`);
@@ -100,8 +87,8 @@ test.afterEach(async ({ page }, testInfo) => {
 
 test('sound is off by default and no audio context is made', async ({ page }) => {
   await openApp(page);
-  await openSettings(page);
-  await expect(page.locator('#sound-select')).toHaveValue('off');
+  await openSettings(page, 'sound');
+  await expect(page.locator('#sound-select input:checked')).toHaveValue('off');
   await expect(page.locator('#sound-volume-row')).toBeVisible();
   await expect(page.locator('#sound-volume')).toBeDisabled();
   await page.keyboard.press('Escape');
@@ -162,9 +149,9 @@ test('a backspace before the first letter clicks, then the context rests again',
 
 test('stop on error: a refused key clicks, only the mistyped letter ticks', async ({ page }) => {
   await openApp(page);
-  await openSettings(page);
-  await page.locator('#correction-select').selectOption('mandatory');
-  await page.locator('#sound-select').selectOption('clicks-errors');
+  await openSettings(page, 'sound');
+  await chooseSetting(page, 'correction-select', 'mandatory');
+  await chooseSetting(page, 'sound-select', 'clicks-errors');
   await page.keyboard.press('Escape');
   const text = await passageText(page);
   await soundReady(page);
@@ -182,9 +169,9 @@ function midWord(text, from = 1) {
 test('strict space: a refused space ticks, as the wrong key it scores', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
-  await openSettings(page);
-  await page.locator('#strict-space-toggle').check();
-  await page.locator('#sound-select').selectOption('clicks-errors');
+  await openSettings(page, 'sound');
+  await chooseSetting(page, 'strict-space-toggle', true);
+  await chooseSetting(page, 'sound-select', 'clicks-errors');
   await page.keyboard.press('Escape');
   const text = await passageText(page);
   const at = midWord(text);
@@ -198,9 +185,9 @@ test('strict space: a refused space ticks, as the wrong key it scores', async ({
 test('quick end off: the space that submits a wrong last word clicks', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
-  await openSettings(page);
-  await page.locator('#quick-end-toggle').uncheck();
-  await page.locator('#sound-select').selectOption('clicks-errors');
+  await openSettings(page, 'sound');
+  await chooseSetting(page, 'quick-end-toggle', false);
+  await chooseSetting(page, 'sound-select', 'clicks-errors');
   await page.keyboard.press('Escape');
   await soundReady(page);
   const text = await passageText(page);
@@ -214,9 +201,9 @@ test('quick end off: the space that submits a wrong last word clicks', async ({ 
 test('no backspace: a refused backspace is silent; fail on any error ticks the key that ends the run', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
-  await openSettings(page);
-  await page.locator('#correction-select').selectOption('no-backspace');
-  await page.locator('#sound-select').selectOption('clicks-errors');
+  await openSettings(page, 'sound');
+  await chooseSetting(page, 'correction-select', 'no-backspace');
+  await chooseSetting(page, 'sound-select', 'clicks-errors');
   await page.keyboard.press('Escape');
   let text = await passageText(page);
   await soundReady(page);
@@ -227,8 +214,8 @@ test('no backspace: a refused backspace is silent; fail on any error ticks the k
   expect(await plays(page)).toEqual(['click', 'tick']);
 
   await restart(page);
-  await openSettings(page);
-  await page.locator('#correction-select').selectOption('fail-any');
+  await openSettings(page, 'sound');
+  await chooseSetting(page, 'correction-select', 'fail-any');
   await page.keyboard.press('Escape');
   text = await passageText(page);
   await typeInto(page, `${text[0]}${wrongFor(text[1])}`);
@@ -292,8 +279,8 @@ test('a dead-key commit with a mistyped mark ticks once, whatever its next lette
   await expect.poll(() => plays(page)).toEqual(['click', 'click', 'tick']);
 
   await restart(page);
-  await openSettings(page);
-  await page.locator('#correction-select').selectOption('mandatory');
+  await openSettings(page, 'sound');
+  await chooseSetting(page, 'correction-select', 'mandatory');
   await page.keyboard.press('Escape');
   expect(await passageText(page)).toBe('ah more words');
   await page.locator('#typing-input').focus();
@@ -318,8 +305,8 @@ test('watch replay plays no sound', async ({ page }) => {
 
 test('volume 0 is silent and a lower volume plays more quietly', async ({ page }) => {
   await openApp(page);
-  await openSettings(page);
-  await page.locator('#sound-select').selectOption('clicks');
+  await openSettings(page, 'sound');
+  await chooseSetting(page, 'sound-select', 'clicks');
   await expect(page.locator('#sound-volume')).toBeEnabled();
   await expect(page.locator('#sound-volume')).toHaveValue('50');
   await page.locator('#sound-volume').fill('0');
@@ -333,14 +320,14 @@ test('volume 0 is silent and a lower volume plays more quietly', async ({ page }
   expect(quiet.closed, 'and leaves no context open').toBe(quiet.created);
 
   await restart(page);
-  await openSettings(page);
+  await openSettings(page, 'sound');
   await page.locator('#sound-volume').fill('100');
   await page.keyboard.press('Escape');
   await soundReady(page);
   text = await passageText(page);
   await typeInto(page, text.slice(0, 2));
   await restart(page);
-  await openSettings(page);
+  await openSettings(page, 'sound');
   await page.locator('#sound-volume').fill('25');
   await page.keyboard.press('Escape');
   text = await passageText(page);
@@ -381,12 +368,12 @@ test('an import that turns sound off closes the context', async ({ page }) => {
   await openApp(page);
   await chooseSound(page, 'clicks');
   await soundReady(page);
-  await openSettings(page);
-  await page.getByRole('button', { name: /import from Monkeytype/ }).click();
+  await openSettings(page, 'sound');
+  await page.getByRole('button', { name: /Import Monkeytype settings/ }).click();
   await page.locator('#import-text').fill(JSON.stringify({ caretStyle: 'line', playSoundOnClick: 'off' }));
   await page.locator('#confirm-import').click();
   await expect(page.locator('#import-report')).toBeVisible();
-  await expect(page.locator('#sound-select')).toHaveValue('off');
+  await expect(page.locator('#sound-select input:checked')).toHaveValue('off');
   expect(await sound(page)).toMatchObject({ created: 1, closed: 1, state: 'closed' });
 });
 
@@ -424,7 +411,7 @@ test('palette commands set the sound and its volume', async ({ page }, testInfo)
   await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('sound · clicks + error tick');
   await page.keyboard.press('Enter');
   await expect(page.locator('#palette')).toBeHidden();
-  await expect(page.locator('#sound-select')).toHaveValue('clicks-errors');
+  await expect(page.locator('#sound-select input:checked')).toHaveValue('clicks-errors');
 
   await page.keyboard.press('Control+K');
   await page.locator('#palette-input').fill('sound');
@@ -445,7 +432,7 @@ test('a guest’s sound choice lasts only for the tab', async ({ page }) => {
   await chooseSound(page, 'clicks');
   await page.reload();
   await expect(page.locator('#text-display .char').first()).toBeVisible();
-  await expect(page.locator('#sound-select')).toHaveValue('off');
+  await expect(page.locator('#sound-select input:checked')).toHaveValue('off');
   await expect(page.locator('#sound-volume')).toBeDisabled();
 });
 
@@ -453,8 +440,8 @@ test('a member’s sound and volume follow the account', async ({ page, supabase
   supabase.addUser('ada@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
-  await openSettings(page);
-  await page.locator('#sound-select').selectOption('clicks-errors');
+  await openSettings(page, 'sound');
+  await chooseSetting(page, 'sound-select', 'clicks-errors');
   await page.locator('#sound-volume').fill('75');
   await page.keyboard.press('Escape');
   await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.preferences?.sound).toBe('clicks-errors');
@@ -462,7 +449,7 @@ test('a member’s sound and volume follow the account', async ({ page, supabase
 
   await page.reload();
   await expect(page.locator('#text-display .char').first()).toBeVisible();
-  await expect(page.locator('#sound-select')).toHaveValue('clicks-errors');
+  await expect(page.locator('#sound-select input:checked')).toHaveValue('clicks-errors');
   await expect(page.locator('#sound-volume')).toHaveValue('75');
   expect((await sound(page)).created, 'still no context until a key').toBe(0);
   const text = await passageText(page);
@@ -476,8 +463,8 @@ for (const theme of ['dark', 'light']) {
     test.skip(theme === 'light' && !process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
-    await openSettings(page);
-    await page.locator('#sound-select').selectOption('clicks-errors');
+    await openSettings(page, 'sound');
+    await chooseSetting(page, 'sound-select', 'clicks-errors');
     await expect(page.locator('#sound-volume')).toBeEnabled();
     expect(await settingsFit(page)).toBe(true);
     await page.locator('#sound-volume').focus();
@@ -491,27 +478,19 @@ for (const theme of ['dark', 'light']) {
   });
 }
 
-// On phones the popover grows up from the bottom dock. Choosing a sound must not move the row under
-// the finger, the popover must stay clear of the account corner at the top, and every control must be
-// reachable (scrolling inside the popover on short screens). Controls in a closed group, or in a
-// row hidden until its setting needs it, aren't rendered and are skipped.
-const phoneLayout = (page) => page.evaluate(() => {
-  window.scrollTo(0, 0);
-  const popover = document.querySelector('.preferences-popover');
-  popover.scrollTop = 0;
-  const box = popover.getBoundingClientRect();
-  const corner = document.querySelector('.corner').getBoundingClientRect();
-  const layout = { top: box.top, bottom: box.bottom, clearOfCorner: box.top >= corner.bottom, soundTop: document.getElementById('sound-select').getBoundingClientRect().top, covered: [] };
-  for (const control of popover.querySelectorAll('select, input')) {
-    if (!control.checkVisibility()) continue;
-    control.scrollIntoView({ block: 'nearest' });
+const phoneLayout = (page) => page.locator('#settings-dialog').evaluate((dialog) => {
+  const box = dialog.getBoundingClientRect();
+  const content = dialog.querySelector('.settings-content');
+  const layout = { top: box.top, bottom: box.bottom, insideViewport: box.top >= 0 && box.bottom <= innerHeight, soundTop: document.getElementById('sound-select').getBoundingClientRect().top, covered: [] };
+  for (const control of dialog.querySelectorAll('input')) {
+    if (!control.getClientRects().length) continue;
+    (control.closest('.setting-option') || control).scrollIntoView({ block: 'center', behavior: 'instant' });
     const rect = control.getBoundingClientRect();
-    const inside = rect.top >= box.top && rect.bottom <= box.bottom;
+    const area = content.getBoundingClientRect();
     const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    if (!inside || hit !== control) layout.covered.push(control.id);
+    if (rect.top < area.top || rect.bottom > area.bottom || hit !== control) layout.covered.push(control.name || control.id);
   }
-  popover.scrollTop = 0;
-  window.scrollTo(0, 0);
+  content.scrollTop = 0;
   return layout;
 });
 
@@ -520,20 +499,19 @@ for (const [width, height] of [[390, 844], [320, 844], [320, 568]]) {
     await page.setViewportSize({ width, height });
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
-    await openSettings(page);
+    await openSettings(page, 'sound');
     const before = await phoneLayout(page);
-    expect(before).toMatchObject({ clearOfCorner: true, covered: [] });
-    await page.locator('#sound-select').selectOption('clicks-errors');
+    expect(before).toMatchObject({ insideViewport: true, covered: [] });
+    await chooseSetting(page, 'sound-select', 'clicks-errors');
     const after = await phoneLayout(page);
-    expect(after, 'the popover keeps its height, clear of the account corner').toEqual(before);
+    expect(after, 'the dialog keeps its height and sound row position').toEqual(before);
     await page.locator('#sound-volume-row').scrollIntoViewIfNeeded();
     await expect(page.locator('#sound-volume-row')).toBeInViewport({ ratio: 1 });
     expect(await settingsFit(page)).toBe(true);
-    // The test content group opens inside the same popover and its controls are reachable too.
-    await page.locator('#test-content-settings > summary').click();
+    await openSettings(page, 'practice');
     await expect(page.locator('#numbers-toggle')).toBeVisible();
-    expect(await phoneLayout(page)).toMatchObject({ clearOfCorner: true, covered: [] });
-    await page.locator('#test-content-settings > summary').click();
+    expect(await phoneLayout(page)).toMatchObject({ insideViewport: true, covered: [] });
+    await openSettings(page, 'practice');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     if (width === 390) {
       await page.evaluate(() => document.activeElement.blur());
@@ -636,8 +614,8 @@ test('explicit sound reselect is recorded as a fresh preference choice', async (
     attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, updatedAt: stamp } });
   await openApp(page);
   await signInWithEmail(page, user.email);
-  await openSettings(page);
-  await page.locator('#sound-select').selectOption('off');
+  await openSettings(page, 'sound');
+  await chooseSetting(page, 'sound-select', 'off');
   await expect.poll(() => supabase.profileFor(user.email)?.preferencesAt?.sound).not.toBe(stamp);
   expect(supabase.profileFor(user.email).preferences.sound).toEqual("off");
 });

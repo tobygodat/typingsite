@@ -434,8 +434,7 @@ test('explicit duration, layout and keybindings reselects are each recorded as a
   expect(stamps().keybindings).toBe(stamp);
 
   await openSettings(page);
-  const category = page.locator('.keybindings-category');
-  if (await category.getAttribute('open') === null) await category.locator(':scope > summary').click();
+  await openSettings(page, 'shortcuts');
   await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
   await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
   await expect.poll(() => stamps()?.keybindings).not.toBe(stamp);

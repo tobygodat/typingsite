@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage, signInWithEmail, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage, signInWithEmail, chooseMore, chooseSetting } from './fixtures.js';
 
 const codeConditions = { mode: 'code', codeLanguage: 'js', duration: null, count: null, punctuation: true, numbers: false,
   quoteLength: null, difficulty: null, wordList: null, inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
@@ -37,7 +37,7 @@ test('code mode serves a python snippet and keeps the run out of bests', async (
 test('code snippets stay inside the typing area at 320px with large text', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await openApp(page);
-  await page.locator('#font-size').evaluate((select) => { select.value = '36'; select.dispatchEvent(new Event('change')); });
+  await chooseSetting(page, 'font-size', '36');
   await chooseMore(page, 'mode-code');
   for (const language of ['js', 'python', 'go', 'rust']) {
     await page.locator(`#code-options [data-language="${language}"]`).click();
@@ -81,7 +81,7 @@ test('practising a code target keeps the prose punctuation, numbers and word lis
   await openApp(page);
   await signInWithEmail(page, user.email);
   await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
-  await expect(page.locator('#numbers-toggle')).toBeChecked();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
 
   await openView(page, 'Train');
   await expect(page.locator('#training-conditions')).toContainText('code · js');
@@ -94,8 +94,8 @@ test('practising a code target keeps the prose punctuation, numbers and word lis
   await page.locator('#mode-time').click();
   await expect(page.locator('#condition-line')).toContainText('english 5k · 30 s · plain · numbers');
   await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
-  await expect(page.locator('#numbers-toggle')).toBeChecked();
-  await expect(page.locator('#word-list')).toHaveValue('5k');
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
+  await expect(page.locator('#word-list input:checked')).toHaveValue('5k');
 });
 
 test('the palette hides punctuation, numbers and word lists in code mode', async ({ page }) => {

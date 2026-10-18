@@ -55,6 +55,7 @@ import { createTypingFx } from './motion.js';
 import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, KEY_OUTCOME, SOUND_LABELS, SOUND_MODES, createSounds, keyOutcome, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
+import { createSettingsView, disableSetting, onSetting, selectSetting } from './settings.js';
 import { normalizeKeybindings, matchesBinding, bindingLabel, ariaShortcuts, createKeybindingEditor } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
@@ -182,6 +183,7 @@ let missedListWords = [];
 const ghostOn = () => prefs.paceCaret !== 'off';
 let palette = null;
 let keybindingEditor = null;
+let settingsView = null;
 let onlineRace = null;
 let inbox = null;
 let friendsBoard = null;
@@ -601,7 +603,7 @@ function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
   for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = theme === 'light' ? '#f4f1eb' : '#0f0f0e';
-  $('theme-select').value = prefs.theme;
+  selectSetting('theme-select', prefs.theme);
 }
 
 // Slides a group's pill under its selected control; used by the dock and the segmented controls.
@@ -656,29 +658,30 @@ function setSessionKind(kind) {
 function applyPreferences() {
   syncLayout();
   document.body.dataset.wordHighlight = prefs.wordHighlight;
+  document.body.dataset.tapePreference = String(prefs.tape);
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
   document.body.dataset.keyboard = String(prefs.keyboard);
   document.body.dataset.focusMode = String(prefs.focusMode);
-  $('font-size').value = prefs.fontSize;
-  $('word-highlight').value = prefs.wordHighlight;
-  $('live-toggle').checked = prefs.liveMetrics;
-  $('keyboard-toggle').checked = prefs.keyboard;
+  selectSetting('font-size', prefs.fontSize);
+  selectSetting('word-highlight', prefs.wordHighlight);
+  selectSetting('live-toggle', prefs.liveMetrics);
+  selectSetting('keyboard-toggle', prefs.keyboard);
   syncRules();
-  $('finger-toggle').checked = prefs.fingerMap;
-  $('finger-row').hidden = !prefs.keyboard;
-  $('correction-select').value = prefs.correction;
-  $('focus-toggle').checked = prefs.focusMode;
-  $('tape-toggle').checked = prefs.tape;
+  selectSetting('finger-toggle', prefs.fingerMap);
+  disableSetting('finger-toggle', !prefs.keyboard);
+  selectSetting('correction-select', prefs.correction);
+  selectSetting('focus-toggle', prefs.focusMode);
+  selectSetting('tape-toggle', prefs.tape);
   $('keyboard').hidden = !prefs.keyboard && sessionKind !== 'lesson';
   renderKeyboard();
   applySoundPreferences();
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
-  $('numbers-toggle').checked = Boolean(prefs.numbers);
+  selectSetting('numbers-toggle', Boolean(prefs.numbers));
   quoteFilters.refresh();
-  $('word-list').value = prefs.wordList;
+  selectSetting('word-list', prefs.wordList);
   applySpeedUnit();
-  $('repeat-quotes-toggle').checked = prefs.repeatQuotes;
+  selectSetting('repeat-quotes-toggle', prefs.repeatQuotes);
   keybindingEditor?.refresh();
   document.querySelectorAll('.restart-key-hint').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.restart); });
   $('restart-button').title = prefs.keybindings.restart ? `Restart test (${bindingLabel(prefs.keybindings.restart)})` : 'Restart test';
@@ -689,23 +692,20 @@ function applyPreferences() {
     else $(id).removeAttribute('aria-keyshortcuts');
   }
   document.querySelectorAll('.command-key').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.commands); });
-  $('layout-select').value = prefs.layout;
-  $('daily-goal').value = String(prefs.dailyGoal);
+  selectSetting('layout-select', prefs.layout);
+  selectSetting('daily-goal', String(prefs.dailyGoal));
   syncLockedSettings();
-  $('min-accuracy').value = String(prefs.minAccuracy);
-  $('min-wpm').value = String(prefs.minWpm);
+  selectSetting('min-accuracy', String(prefs.minAccuracy));
+  selectSetting('min-wpm', String(prefs.minWpm));
   showMinimumNote();
   armPace();
   showBest();
 }
 
-// The volume row is always there (so the popover never grows under a finger) and is disabled while
-// sound is off. Every preference change (a setting, an import, another tab, a sign-in) passes here, so
-// this is where sound turned off or to volume 0 closes the context.
 function applySoundPreferences() {
   sounds.sync();
   const volume = $('sound-volume');
-  $('sound-select').value = prefs.sound;
+  selectSetting('sound-select', prefs.sound);
   volume.value = String(prefs.soundVolume);
   volume.disabled = prefs.sound === 'off';
   volume.setAttribute('aria-valuetext', `${prefs.soundVolume}%`);
@@ -718,7 +718,7 @@ function applySoundPreferences() {
 // SVG has to be redrawn here, as the raw speed's tooltip, the words' spoken paces and the two charts are
 // (the pace field follows in showPace).
 function applySpeedUnit() {
-  $('speed-unit').value = prefs.speedUnit;
+  selectSetting('speed-unit', prefs.speedUnit);
   const changed = showSpeedUnit(prefs.speedUnit);
   $('result-raw-row').title = unitText(RAW_SPEED_DEFINITION);
   if (!changed) return;
@@ -757,9 +757,9 @@ const RULE_NOTES = {
 // tab change, and when a one-keyboard race starts or ends.
 function syncRules() {
   const limits = ruleLimits(ruleSession());
-  $('strict-space-toggle').checked = prefs.strictSpace;
-  $('quick-end-toggle').checked = prefs.quickEnd;
-  $('quick-end-toggle').disabled = Boolean(limits.quickEnd);
+  selectSetting('strict-space-toggle', prefs.strictSpace);
+  selectSetting('quick-end-toggle', prefs.quickEnd);
+  disableSetting('quick-end-toggle', Boolean(limits.quickEnd));
   for (const [id, reason] of [['quick-end-note', limits.quickEnd], ['rules-note', limits.fixed]]) {
     $(id).textContent = RULE_NOTES[reason] || '';
     $(id).hidden = !reason;
@@ -777,18 +777,18 @@ function syncLockedSettings() {
   const fixed = ['quote', 'code'].includes(prefs.mode);
   $('punctuation-toggle').disabled = fixed || standard;
   $('punctuation-toggle').checked = standard || prefs.punctuation;
-  $('numbers-toggle').disabled = fixed || standard;
-  $('numbers-toggle').checked = standard || Boolean(prefs.numbers);
-  $('word-list').disabled = fixed || standard;
-  // The recipe's value exists only while standard is selected, so type-ahead can never pick it.
-  const recipeOption = $('word-list').querySelector('option[value="standard"]');
-  if (standard && !recipeOption) $('word-list').append(new Option('1k–10k', 'standard'));
-  if (!standard) recipeOption?.remove();
-  $('word-list').value = standard ? 'standard' : prefs.wordList;
-  $('repeat-quotes-toggle').disabled = prefs.mode !== 'quote';
-  $('correction-select').disabled = standard;
-  $('correction-select').value = standard ? 'mandatory' : prefs.correction;
-  document.querySelectorAll('.preference-lock').forEach((note) => { note.hidden = !standard; });
+  disableSetting('numbers-toggle', fixed || standard);
+  selectSetting('numbers-toggle', standard || Boolean(prefs.numbers));
+  disableSetting('word-list', fixed || standard);
+  $('word-list').querySelector('[value="standard"]').closest('label').hidden = !standard;
+  selectSetting('word-list', standard ? 'standard' : prefs.wordList);
+  disableSetting('repeat-quotes-toggle', prefs.mode !== 'quote');
+  disableSetting('correction-select', standard);
+  selectSetting('correction-select', standard ? 'mandatory' : prefs.correction);
+  document.querySelectorAll('.preference-lock').forEach((note) => {
+    note.textContent = standard ? 'fixed for standard' : '';
+    note.hidden = !standard;
+  });
 }
 
 function setModeControls() {
@@ -1970,7 +1970,7 @@ function showPace() {
   const shown = on && sessionKind !== 'challenge';
   $('pace-label').hidden = !shown;
   setParts($('pace-label'), shown ? ['pace ', speedFigure(pace.wpm)] : '');
-  $('pace-select').value = prefs.paceCaret;
+  selectSetting('pace-select', prefs.paceCaret);
   // The custom pace field holds its speed in its own unit (data-unit), with its range beside it in that unit.
   // A speed being typed in (focused, and not what was last written here, data-shown) stays as typed, in the
   // unit it was typed in, when this redraws (another tab's save taken in, say): setting the field would drop
@@ -4286,6 +4286,11 @@ const SYNC_COPY = {
 function setSyncState(state) {
   $('account').dataset.sync = state;
   $('account-sync').textContent = SYNC_COPY[state];
+  $('settings-saved').textContent = !session
+    ? 'Changes apply as you choose. Guest settings last for this tab.'
+    : state === 'synced'
+      ? 'Changes apply as you choose. Settings saved to your account.'
+      : 'Changes apply as you choose. Settings saved here, waiting to sync.';
 }
 
 function renderAccount() {
@@ -4847,7 +4852,7 @@ function bindAccount() {
   });
   menu.addEventListener('toggle', () => {
     // Only one corner panel at a time; a keyboard open sends no pointerdown to close the other.
-    if (menu.open) { document.querySelector('.preferences')?.removeAttribute('open'); $('inbox').open = false; }
+    if (menu.open) { settingsView?.close(); $('inbox').open = false; }
   });
   // Unsynced changes go out when the tab is hidden (anything too large for that waits for the next
   // push or load); other devices' changes come in when it is shown again.
@@ -4952,7 +4957,7 @@ async function completeAuthRedirect() {
 // outranks an older value from another device, as choosing it in settings would.
 function openImport() {
   quoteFilters.dismiss();
-  document.querySelector('.preferences')?.removeAttribute('open');
+  settingsView?.close();
   markInterrupted(NOTICES.importOpened);
   compose.interrupt(NOTICES.composeImport);
   markRaceInterrupted();
@@ -5044,7 +5049,7 @@ let suggestToastTimer;
 
 function openSuggest() {
   quoteFilters.dismiss();
-  document.querySelector('.preferences')?.removeAttribute('open');
+  settingsView?.close();
   markInterrupted(NOTICES.suggestOpened);
   compose.interrupt(NOTICES.composeSuggest);
   markRaceInterrupted();
@@ -5159,15 +5164,18 @@ function bindEvents() {
     resetSession('practice', { focus: true });
   });
   // Numbers sits beside the word list in settings and, like it, keeps a custom passage.
-  $('numbers-toggle').addEventListener('change', (event) => {
-    prefs.numbers = event.target.checked;
+  onSetting('numbers-toggle', (value) => {
+    const changed = Boolean(prefs.numbers) !== (value === 'true');
+    prefs.numbers = value === 'true';
+    saveChoice('numbers');
+    if (!changed) return;
+    applyPreferences();
     showBest();
-    saveProfile();
     resetSession(restartKind(), { focus: true });
   });
-  $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
-  $('repeat-quotes-toggle').addEventListener('change', (event) => setRepeatQuotes(event.target.checked));
-  $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveChoice('dailyGoal'); renderGoal(); });
+  onSetting('word-list', (value) => setWordList(value));
+  onSetting('repeat-quotes-toggle', (value) => setRepeatQuotes(value === 'true'));
+  onSetting('daily-goal', (value) => { prefs.dailyGoal = Number(value); saveChoice('dailyGoal'); renderGoal(); });
   $('show-all-runs').addEventListener('click', () => {
     showAllRuns();
     $('run-history').children[RECENT_RUNS]?.querySelector('summary').focus();
@@ -5180,26 +5188,27 @@ function bindEvents() {
   $('goal-calendar').addEventListener('focusout', (event) => { if (!$('goal-calendar').contains(event.relatedTarget)) captionGoalDay(null); });
   $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()));
   $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()));
-  $('font-size').addEventListener('change', (event) => { prefs.fontSize = event.target.value; applyPreferences(); saveProfile(); });
-  $('speed-unit').addEventListener('change', (event) => setSpeedUnit(event.target.value));
-  $('word-highlight').addEventListener('change', (event) => setWordHighlight(event.target.value));
+  onSetting('font-size', (value) => { prefs.fontSize = value; applyPreferences(); saveChoice('fontSize'); });
+  onSetting('speed-unit', (value) => setSpeedUnit(value));
+  onSetting('word-highlight', (value) => setWordHighlight(value));
   keybindingEditor = createKeybindingEditor({
     form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => prefs.keybindings,
     onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
   });
   keybindingEditor.refresh();
-  $('live-toggle').addEventListener('change', (event) => { prefs.liveMetrics = event.target.checked; applyPreferences(); saveProfile(); });
-  $('keyboard-toggle').addEventListener('change', (event) => { prefs.keyboard = event.target.checked; applyPreferences(); saveProfile(); });
-  $('finger-toggle').addEventListener('change', (event) => { prefs.fingerMap = event.target.checked; applyPreferences(); saveChoice('fingerMap'); });
-  $('layout-select').addEventListener('change', (event) => setLayout(event.target.value));
-  $('correction-select').addEventListener('change', (event) => setCorrection(event.target.value));
-  $('strict-space-toggle').addEventListener('change', (event) => setInputRule('strictSpace', event.target.checked));
-  $('quick-end-toggle').addEventListener('change', (event) => setInputRule('quickEnd', event.target.checked));
-  $('min-accuracy').addEventListener('change', (event) => setMinimum('minAccuracy', Number(event.target.value)));
-  $('min-wpm').addEventListener('change', (event) => setMinimum('minWpm', Number(event.target.value)));
-  $('theme-select').addEventListener('change', (event) => { prefs.theme = event.target.value; applyTheme(); saveProfile(); });
+  settingsView = createSettingsView({ dialog: $('settings-dialog'), trigger: $('settings-trigger'), fallback: $('exit-focus'), stopRecording: () => keybindingEditor.stopRecording() });
+  onSetting('live-toggle', (value) => { prefs.liveMetrics = value === 'true'; applyPreferences(); saveChoice('liveMetrics'); });
+  onSetting('keyboard-toggle', (value) => { prefs.keyboard = value === 'true'; applyPreferences(); saveChoice('keyboard'); });
+  onSetting('finger-toggle', (value) => { prefs.fingerMap = value === 'true'; applyPreferences(); saveChoice('fingerMap'); });
+  onSetting('layout-select', (value) => setLayout(value));
+  onSetting('correction-select', (value) => setCorrection(value));
+  onSetting('strict-space-toggle', (value) => setInputRule('strictSpace', value === 'true'));
+  onSetting('quick-end-toggle', (value) => setInputRule('quickEnd', value === 'true'));
+  onSetting('min-accuracy', (value) => setMinimum('minAccuracy', Number(value)));
+  onSetting('min-wpm', (value) => setMinimum('minWpm', Number(value)));
+  onSetting('theme-select', (value) => { prefs.theme = value; applyTheme(); saveChoice('theme'); });
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
-  $('pace-select').addEventListener('change', (event) => setPaceCaret(event.target.value));
+  onSetting('pace-select', (value) => setPaceCaret(value));
   $('pace-wpm').addEventListener('change', (event) => {
     const field = event.target;
     prefs.paceWpm = clampPace(wpmFromSpeed(field.value, field.dataset.unit));
@@ -5208,9 +5217,9 @@ function bindEvents() {
   });
   // Left unsaved, it shows any speed or unit that arrived while it was being typed in (see showPace).
   $('pace-wpm').addEventListener('blur', showPace);
-  $('focus-toggle').addEventListener('change', (event) => { prefs.focusMode = event.target.checked; applyPreferences(); saveProfile(); });
-  $('tape-toggle').addEventListener('change', (event) => { prefs.tape = event.target.checked; applyPreferences(); saveChoice('tape'); });
-  $('sound-select').addEventListener('change', (event) => setSound(event.target.value));
+  onSetting('focus-toggle', (value) => { prefs.focusMode = value === 'true'; applyPreferences(); saveChoice('focusMode'); });
+  onSetting('tape-toggle', (value) => { prefs.tape = value === 'true'; applyPreferences(); saveChoice('tape'); });
+  onSetting('sound-select', (value) => setSound(value));
   // Dragging updates the level as it goes; the profile is saved once the slider settles.
   $('sound-volume').addEventListener('input', (event) => setSoundVolume(Number(event.target.value), { save: false }));
   $('sound-volume').addEventListener('change', () => saveChoice('soundVolume'));
@@ -5384,7 +5393,6 @@ function bindEvents() {
   $('import-done').addEventListener('click', () => $('import-dialog').close());
   $('import-dialog').addEventListener('click', (event) => { if (event.target === $('import-dialog')) $('import-dialog').close(); });
 
-  const preferences = document.querySelector('.preferences');
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented) return;
     // A held space that submitted a run (quick end off) must not also press Run again.
@@ -5404,7 +5412,13 @@ function bindEvents() {
     }
     if (((event.isComposing || event.keyCode === 229) && !activeAccentComposition()) || event.getModifierState?.('AltGraph')) return;
     if (document.querySelector('dialog[open]')) {
-      if (palette?.isOpen() && matchesAppBinding(event, prefs.keybindings.commands)) {
+      if ($('settings-dialog').open && event.key === 'Escape') return;
+      if ($('settings-dialog').open && !keybindingEditor.isRecording()
+        && !document.activeElement?.closest('input, textarea, select, [contenteditable]')
+        && matchesAppBinding(event, prefs.keybindings.commands)) {
+        event.preventDefault();
+        if (!event.repeat) palette.open();
+      } else if (palette?.isOpen() && matchesAppBinding(event, prefs.keybindings.commands)) {
         event.preventDefault();
         if (!event.repeat) palette.close();
       }
@@ -5416,16 +5430,8 @@ function bindEvents() {
       $('mode-more-label').focus();
       return;
     }
-    const menuOpen = preferences.open || $('account').open || $('inbox').open;
-    if (menuOpen && event.key === 'Escape') {
-      if (preferences.open && !keybindingEditor.isRecording()) {
-        event.preventDefault();
-        keybindingEditor.stopRecording();
-        preferences.open = false;
-        preferences.querySelector(':scope > summary').focus();
-      }
-      return;
-    }
+    const menuOpen = $('account').open || $('inbox').open;
+    if (menuOpen && event.key === 'Escape') return;
     const active = document.activeElement;
     const onTypingSurface = ['typing-input', 'race-input', 'online-input', 'compose-input'].includes(active?.id);
     const editable = active?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
@@ -5460,9 +5466,6 @@ function bindEvents() {
     markInterrupted(NOTICES.focusLost);
     compose.interrupt(NOTICES.composeFocusLost);
     markRaceInterrupted();
-  });
-  document.addEventListener('pointerdown', (event) => {
-    if (preferences.open && !preferences.contains(event.target)) { preferences.open = false; keybindingEditor.stopRecording(); }
   });
 
   // The chrome fades while typing; a real mouse nudge (not layout-induced jitter) brings it back.
@@ -5553,10 +5556,13 @@ function togglePreference(key) {
 
 function setCorrection(policy) {
   if (standardLocked()) return;
-  prefs.correction = correctionPreference({ correction: policy });
+  const next = correctionPreference({ correction: policy });
+  const changed = prefs.correction !== next;
+  prefs.correction = next;
   prefs.stopOnError = prefs.correction === 'mandatory';
-  applyPreferences();
   saveChoice('correction', 'stopOnError');
+  if (!changed) return;
+  applyPreferences();
   // A lesson stays a lesson and custom text stays custom; any other session restarts as practice.
   if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : restartKind());
 }
@@ -5648,10 +5654,11 @@ function restartHint() {
 
 // Repeat quotes changes only open practice's next quote, so a custom passage (or any other session) is kept.
 function setRepeatQuotes(enabled) {
-  if (prefs.repeatQuotes === enabled) return;
+  const changed = prefs.repeatQuotes !== enabled;
   prefs.repeatQuotes = enabled;
-  applyPreferences();
   saveChoice('repeatQuotes');
+  if (!changed) return;
+  applyPreferences();
   if (sessionKind !== 'practice' || passage?.fresh !== false || attempt?.status !== 'ready') return;
   // A repeated passage that hasn't been started. Off swaps it for unseen text if any remains: here on Practice,
   // otherwise when Practice next opens (staleRepeat), so the setting never changes the view. Else reword its notice.
@@ -5675,10 +5682,11 @@ function staleRepeat() {
 
 // A ready practice run takes a new minimum in place; one already under way restarts with it.
 function setMinimum(key, value) {
-  if (prefs[key] === value) return;
+  const changed = prefs[key] !== value;
   prefs[key] = value;
-  applyPreferences();
   saveChoice(key);
+  if (!changed) return;
+  applyPreferences();
   if (sessionKind !== 'practice' || !attempt) return;
   if (attempt.status === 'ready') {
     attempt.minimums = practiceMinimums();
@@ -5695,14 +5703,14 @@ function setWordHighlight(mode) {
 
 function setWordList(id, kind = restartKind()) {
   if (!wordListIds.includes(id)) return;
+  const changed = prefs.wordList !== id;
   prefs.wordList = id;
-  applyPreferences();
   saveChoice('wordList');
+  if (!changed) return;
+  applyPreferences();
   resetSession(kind, { focus: true });
 }
 
-// A palette command that changes a practice setting restarts the session the user was in, as the settings
-// popover does, even when going to Practice first has ended a finished custom run.
 function inPractice(change) {
   const kind = restartKind();
   navigate('practice');
@@ -5810,7 +5818,7 @@ function paletteCommands(query) {
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
     { group: 'display', label: 'import Monkeytype settings…', keywords: 'monkeytype import settings config json migrate', run: openImport },
-    { group: 'help', label: 'keybindings…', keywords: 'settings shortcuts restart keyboard', run: () => { const settings = document.querySelector('.preferences'); settings.open = true; document.querySelector('.keybindings-category').open = true; $('keybinding-restart').focus(); } },
+    { group: 'help', label: 'keybindings…', keywords: 'settings shortcuts restart keyboard', run: () => { settingsView.open('shortcuts', $('palette-trigger')); $('keybinding-restart').focus(); } },
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: !hasAnyHistory(), run: () => { navigate('progress'); $('clear-history').click(); } },
   ];
@@ -5830,7 +5838,7 @@ function bindPalette() {
     getCommands: paletteCommands,
     onOpen: () => {
       quoteFilters.dismiss();
-      document.querySelector('.preferences')?.removeAttribute('open');
+      settingsView?.close();
       closeAccountMenu();
       $('inbox').open = false;
       markInterrupted(NOTICES.paletteOpened);

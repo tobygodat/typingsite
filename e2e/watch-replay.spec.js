@@ -1,5 +1,5 @@
 import { quoteCorpus } from '../src/typing.js';
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore, chooseQuoteFilter } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore, chooseSetting, closeSettings, chooseQuoteFilter } from './fixtures.js';
 
 async function finishWithCorrectedMiss(page) {
   await openApp(page);
@@ -81,10 +81,10 @@ test('in focus mode, one Escape closes the replay and focus mode stays on', asyn
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
-  await page.locator('#focus-toggle').check();
-  // Clicking the passage closes the settings popover, which would otherwise take the first Escape.
+  await chooseSetting(page, 'focus-toggle', true);
+  await closeSettings(page);
   await page.locator('#typing-input').click();
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
   await completePassage(page);
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
 
@@ -375,8 +375,8 @@ test('replay live and final stats use the chosen display unit without changing t
   await finishWithCorrectedMiss(page);
   const wpm = Number(await page.locator('#result-wpm').textContent());
   await openSettings(page);
-  await page.locator('#speed-unit').selectOption('cpm');
-  await page.locator('details.preferences > summary').click();
+  await chooseSetting(page, 'speed-unit', 'cpm');
+  await closeSettings(page);
   await page.locator('#watch-replay').click();
   await expect(page.locator('#replay-dialog')).toHaveAttribute('data-state', 'done');
   await expect(page.locator('#replay-wpm')).toHaveText(String(wpm * 5));
@@ -384,8 +384,8 @@ test('replay live and final stats use the chosen display unit without changing t
   await expect(page.locator('#replay-stats-label')).toContainText(`${wpm * 5} cpm,`);
   await page.locator('#replay-close').click();
   await openSettings(page);
-  await page.locator('#speed-unit').selectOption('wpm');
-  await page.locator('details.preferences > summary').click();
+  await chooseSetting(page, 'speed-unit', 'wpm');
+  await closeSettings(page);
   await page.locator('#watch-replay').click();
   await expect(page.locator('#replay-wpm')).toHaveText(String(wpm));
   await expect(page.locator('#replay-speed-unit')).toHaveText('wpm');

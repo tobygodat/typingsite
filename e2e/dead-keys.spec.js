@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore, chooseQuoteFilter } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore, chooseSetting, chooseQuoteFilter } from './fixtures.js';
 
 // Accent (dead) keys, as US-International and similar layouts send them. On macOS (and Linux with an
 // input method) the mark arrives as a composition that the next key commits; Chrome sends that through
@@ -424,7 +424,7 @@ test('without composition (Windows), a mark and letter sent together are two key
 test('stop on error still blocks keys after a wrong accent commit', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
-  await page.locator('#correction-select').selectOption('mandatory');
+  await chooseSetting(page, 'correction-select', 'mandatory');
   await page.keyboard.press('Escape');
   const keys = await accentKeys(page);
   const text = await quoteWithMarks(page);
@@ -915,9 +915,9 @@ const leaveWithMark = {
     await page.mouse.move(5, 5);
     await page.mouse.move(40, 40);
     await page.locator('.dock-settings').click();
-    await expect(page.locator('.preferences-popover')).toBeVisible();
+    await expect(page.locator('#settings-dialog')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.locator('.preferences-popover')).toBeHidden();
+    await expect(page.locator('#settings-dialog')).toBeHidden();
   },
   blurFirst: async (page, keys) => {
     await page.evaluate(() => document.querySelector('#typing-input').dispatchEvent(new FocusEvent('blur')));
@@ -1161,7 +1161,7 @@ test('a commit on a passage’s last letter counts every key in it before the ru
   for (const [way, commit] of Object.entries(ways)) {
     if (way === 'stopOnError') {
       await openSettings(page);
-      await page.locator('#correction-select').selectOption('mandatory');
+      await chooseSetting(page, 'correction-select', 'mandatory');
       await page.keyboard.press('Escape');
       await expect(page.locator('#condition-line')).toContainText('stop on error');
     }

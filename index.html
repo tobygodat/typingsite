@@ -39,211 +39,10 @@
 
         <span class="dock-sep" aria-hidden="true"></span>
 
-        <details class="preferences">
-          <summary class="dock-command dock-settings" aria-label="Settings">
+        <button id="settings-trigger" class="dock-command dock-settings" type="button" aria-label="Settings" aria-haspopup="dialog" aria-controls="settings-dialog">
             <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
             <span class="dock-label" aria-hidden="true">settings</span>
-          </summary>
-          <div class="preferences-popover">
-            <label class="preference-row" for="theme-select">
-              <span><strong>theme</strong></span>
-              <select class="input select" id="theme-select">
-                <option value="system">system</option>
-                <option value="dark">dark</option>
-                <option value="light">light</option>
-              </select>
-            </label>
-            <label class="preference-row" for="font-size">
-              <span><strong>text size</strong></span>
-              <select class="input select" id="font-size">
-                <option value="22">small</option>
-                <option value="28" selected>medium</option>
-                <option value="36">large</option>
-              </select>
-            </label>
-            <label class="preference-row" for="word-highlight">
-              <span><strong>word highlight</strong></span>
-              <select class="input select" id="word-highlight">
-                <option value="off" selected>off</option>
-                <option value="current">this word</option>
-                <option value="next">next word</option>
-              </select>
-            </label>
-            <label class="preference-row" for="tape-toggle">
-              <span><strong>one-line tape</strong></span>
-              <input class="switch" id="tape-toggle" type="checkbox">
-            </label>
-            <label class="preference-row" for="speed-unit">
-              <span><strong>speed unit</strong></span>
-              <select class="input select" id="speed-unit">
-                <option value="wpm" selected>wpm</option>
-                <option value="cpm">cpm</option>
-              </select>
-            </label>
-            <details class="preference-category" id="test-content-settings">
-              <summary class="preference-row"><span><strong>test content</strong></span></summary>
-              <label class="preference-row" for="word-list">
-                <span><strong>word list</strong><small class="preference-lock" hidden>fixed for standard</small></span>
-                <select class="input select" id="word-list">
-                  <option value="200" selected>top 200</option>
-                  <option value="1k">top 1k</option>
-                  <option value="5k">top 5k</option>
-                  <option value="10k">top 10k</option>
-                </select>
-              </label>
-              <label class="preference-row" for="numbers-toggle">
-                <span><strong>numbers</strong><small class="preference-lock" hidden>fixed for standard</small></span>
-                <input id="numbers-toggle" class="switch" type="checkbox">
-              </label>
-              <label class="preference-row" for="repeat-quotes-toggle">
-                <span><strong>repeat quotes</strong></span>
-                <input class="switch" id="repeat-quotes-toggle" type="checkbox">
-              </label>
-            </details>
-            <label class="preference-row" for="layout-select">
-              <span><strong>keyboard layout</strong></span>
-              <select class="input select" id="layout-select">
-                <option value="qwerty" selected>qwerty</option>
-                <option value="dvorak">dvorak</option>
-                <option value="colemak">colemak</option>
-                <option value="colemak-dh">colemak-dh</option>
-                <option value="workman">workman</option>
-              </select>
-            </label>
-            <label class="preference-row" for="daily-goal">
-              <span><strong>daily goal</strong></span>
-              <select class="input select" id="daily-goal">
-                <option value="0" selected>off</option>
-                <option value="5">5 min</option>
-                <option value="10">10 min</option>
-                <option value="15">15 min</option>
-                <option value="30">30 min</option>
-              </select>
-            </label>
-            <label class="preference-row" for="live-toggle">
-              <span><strong data-speed-unit="live {unit} and accuracy">live wpm and accuracy</strong></span>
-              <input class="switch" id="live-toggle" type="checkbox">
-            </label>
-            <label class="preference-row" for="keyboard-toggle">
-              <span><strong>keyboard</strong></span>
-              <input class="switch" id="keyboard-toggle" type="checkbox">
-            </label>
-            <label id="finger-row" class="preference-row preference-sub" for="finger-toggle" hidden>
-              <span><strong>finger map</strong></span>
-              <input class="switch" id="finger-toggle" type="checkbox">
-            </label>
-            <label class="preference-row" for="correction-select">
-              <span><strong>correction</strong><small class="preference-lock" hidden>fixed for standard</small></span>
-              <select class="input select" id="correction-select">
-                <option value="relaxed" selected>free</option>
-                <option value="mandatory">stop on error</option>
-                <option value="no-backspace">no backspace</option>
-                <option value="fail-word">fail on word error</option>
-                <option value="fail-any">fail on any error</option>
-              </select>
-            </label>
-            <label class="preference-row" for="strict-space-toggle">
-              <span><strong>strict space</strong><small class="preference-note" id="rules-note" hidden></small></span>
-              <input class="switch" id="strict-space-toggle" type="checkbox" aria-describedby="rules-note">
-            </label>
-            <label class="preference-row" for="quick-end-toggle">
-              <span><strong>quick end</strong><small class="preference-note" id="quick-end-note" hidden></small></span>
-              <input class="switch" id="quick-end-toggle" type="checkbox" checked aria-describedby="quick-end-note rules-note">
-            </label>
-            <div class="preference-row" role="group" aria-labelledby="minimums-label">
-              <span><strong id="minimums-label">minimums</strong></span>
-              <span class="preference-pair">
-                <select class="input select" id="min-accuracy" aria-label="minimum accuracy">
-                  <option value="0" selected>any %</option>
-                  <option value="80">80%</option>
-                  <option value="90">90%</option>
-                  <option value="95">95%</option>
-                  <option value="98">98%</option>
-                </select>
-                <select class="input select" id="min-wpm" aria-label="minimum speed">
-                  <option value="0" data-speed-unit="any {unit}" selected>any wpm</option>
-                  <option value="20" data-wpm="20">20 wpm</option>
-                  <option value="30" data-wpm="30">30 wpm</option>
-                  <option value="40" data-wpm="40">40 wpm</option>
-                  <option value="60" data-wpm="60">60 wpm</option>
-                  <option value="80" data-wpm="80">80 wpm</option>
-                  <option value="100" data-wpm="100">100 wpm</option>
-                </select>
-              </span>
-            </div>
-            <label class="preference-row" for="pace-select">
-              <span><strong>pace caret</strong><small id="pace-note" class="pace-note"></small></span>
-              <select class="input select" id="pace-select">
-                <option value="off" selected>off</option>
-                <option value="best">personal best</option>
-                <option value="average">average</option>
-                <option value="last">last run</option>
-                <option value="custom">custom</option>
-              </select>
-            </label>
-            <label id="pace-custom" class="preference-row" for="pace-wpm" hidden>
-              <span><strong>custom pace</strong><small id="pace-range" class="pace-note">10–300 wpm</small></span>
-              <input class="input pace-wpm num" id="pace-wpm" type="number" min="10" max="300" step="1" value="80" inputmode="numeric" data-unit="wpm">
-            </label>
-            <label class="preference-row" for="focus-toggle">
-              <span><strong>focus mode</strong></span>
-              <input class="switch" id="focus-toggle" type="checkbox">
-            </label>
-            <label class="preference-row" for="sound-select">
-              <span><strong>sound</strong></span>
-              <select class="input select select-wide" id="sound-select">
-                <option value="off" selected>off</option>
-                <option value="clicks">clicks</option>
-                <option value="clicks-errors">clicks + error tick</option>
-              </select>
-            </label>
-            <label class="preference-row" id="sound-volume-row" for="sound-volume">
-              <span><strong>volume</strong></span>
-              <span class="preference-range">
-                <span id="sound-volume-value" class="preference-value num" aria-hidden="true">50%</span>
-                <input class="range" id="sound-volume" type="range" min="0" max="100" step="5" value="50" aria-valuetext="50%" disabled>
-              </span>
-            </label>
-            <details class="keybindings-category">
-              <summary>keybindings</summary>
-              <p id="keybindings-help">Enter a combination or record it. Mod means Ctrl or ⌘. Leave blank to disable. Escape still closes menus; Tab and Shift+Tab navigate controls. Restart applies to solo tests and the local challenge, not online races. Enter restarts only before or after a run.</p>
-              <form id="keybindings-form">
-                <div class="keybinding-row">
-                  <label for="keybinding-restart">restart test / local challenge</label>
-                  <div class="keybinding-controls">
-                    <input class="input" id="keybinding-restart" name="restart" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-restart-error">
-                    <button class="btn btn-secondary btn-sm" type="button" data-record="restart" aria-label="Record restart test / local challenge binding" aria-pressed="false">Record</button>
-                  </div>
-                  <p class="keybinding-error" id="keybinding-restart-error"></p>
-                </div>
-                <div class="keybinding-row">
-                  <label for="keybinding-commands">commands</label>
-                  <div class="keybinding-controls">
-                    <input class="input" id="keybinding-commands" name="commands" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-commands-error">
-                    <button class="btn btn-secondary btn-sm" type="button" data-record="commands" aria-label="Record commands binding" aria-pressed="false">Record</button>
-                  </div>
-                  <p class="keybinding-error" id="keybinding-commands-error"></p>
-                </div>
-                <div class="keybinding-row">
-                  <label for="keybinding-exitFocus">exit focus mode</label>
-                  <div class="keybinding-controls">
-                    <input class="input" id="keybinding-exitFocus" name="exitFocus" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-exitFocus-error">
-                    <button class="btn btn-secondary btn-sm" type="button" data-record="exitFocus" aria-label="Record exit focus mode binding" aria-pressed="false">Record</button>
-                  </div>
-                  <p class="keybinding-error" id="keybinding-exitFocus-error"></p>
-                </div>
-                <div class="keybinding-actions">
-                  <button class="btn btn-primary btn-sm" type="submit">Save keybindings</button>
-                  <button class="btn btn-ghost btn-sm" type="button" data-reset-bindings>Reset defaults</button>
-                </div>
-                <p id="keybindings-status" role="status" aria-live="polite"></p>
-              </form>
-            </details>
-            <button id="import-trigger" class="preference-row preference-action" type="button" aria-haspopup="dialog" aria-controls="import-dialog">
-              <span><strong>import from Monkeytype</strong><small class="pace-note">paste its exported settings</small></span>
-            </button>
-          </div>
-        </details>
+        </button>
 
         <button id="palette-trigger" class="dock-command" type="button" aria-label="Commands" aria-haspopup="dialog" aria-controls="palette" aria-keyshortcuts="Control+K Meta+K">
           <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
@@ -1135,6 +934,266 @@
         <button id="send-suggest" class="btn btn-primary" type="submit" disabled>Send suggestion</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <header class="settings-header">
+      <h2 id="settings-title">Settings</h2>
+      <button id="settings-close" type="button" aria-label="Close settings"><span>esc</span><span aria-hidden="true">×</span></button>
+    </header>
+    <div class="settings-body">
+      <nav class="settings-nav" aria-label="Settings categories">
+        <button id="settings-nav-appearance" type="button" data-settings-category="appearance" aria-controls="settings-appearance" aria-current="true">appearance</button>
+        <button id="settings-nav-practice" type="button" data-settings-category="practice" aria-controls="settings-practice">practice</button>
+        <button id="settings-nav-keyboard" type="button" data-settings-category="keyboard" aria-controls="settings-keyboard">keyboard</button>
+        <button id="settings-nav-sound" type="button" data-settings-category="sound" aria-controls="settings-sound">sound</button>
+        <button id="settings-nav-shortcuts" type="button" data-settings-category="shortcuts" aria-controls="settings-shortcuts">shortcuts</button>
+        <button id="import-trigger" class="settings-import" type="button" aria-haspopup="dialog" aria-controls="import-dialog">Import Monkeytype settings</button>
+      </nav>
+      <div class="settings-content">
+        <section id="settings-appearance" class="settings-category" aria-labelledby="settings-appearance-title">
+          <div class="settings-intro"><h3 id="settings-appearance-title">Appearance</h3><p>Make the passage comfortable to read.</p></div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="theme-select-label">theme</strong></div>
+            <fieldset class="setting-options" id="theme-select" aria-labelledby="theme-select-label">
+              <label class="setting-option"><input type="radio" name="theme-select" value="system" checked><span>system</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="dark"><span>dark</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="light"><span>light</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="font-size-label">text size</strong></div>
+            <fieldset class="setting-options" id="font-size" aria-labelledby="font-size-label">
+              <label class="setting-option"><input type="radio" name="font-size" value="22"><span>small</span></label>
+              <label class="setting-option"><input type="radio" name="font-size" value="28" checked><span>medium</span></label>
+              <label class="setting-option"><input type="radio" name="font-size" value="36"><span>large</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="word-highlight-label">word highlight</strong></div>
+            <fieldset class="setting-options" id="word-highlight" aria-labelledby="word-highlight-label">
+              <label class="setting-option"><input type="radio" name="word-highlight" value="off" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="word-highlight" value="current"><span>this word</span></label>
+              <label class="setting-option"><input type="radio" name="word-highlight" value="next"><span>next word</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="tape-toggle-label">one-line tape</strong></div>
+            <fieldset class="setting-options" id="tape-toggle" aria-labelledby="tape-toggle-label">
+              <label class="setting-option"><input type="radio" name="tape-toggle" value="false" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="tape-toggle" value="true"><span>on</span></label>
+            </fieldset>
+          </div>
+          <div class="settings-preview" aria-label="Passage preview">
+            <p class="settings-preview-label">passage preview</p>
+            <p id="settings-preview-passage"><span>Find</span> <span>a</span> <span>little</span> <span>room</span> <span>for</span> <span>thought.</span></p>
+          </div>
+        </section>
+        <section id="settings-practice" class="settings-category" aria-labelledby="settings-practice-title" hidden>
+          <div class="settings-intro"><h3 id="settings-practice-title">Practice</h3><p>Choose how you practice and what you measure.</p></div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="word-list-label">word list</strong><small id="word-list-lock" class="preference-lock" hidden>fixed for standard</small></div>
+            <fieldset class="setting-options" id="word-list" aria-labelledby="word-list-label" aria-describedby="word-list-lock">
+              <label class="setting-option"><input type="radio" name="word-list" value="200" checked><span>top 200</span></label>
+              <label class="setting-option"><input type="radio" name="word-list" value="1k"><span>top 1k</span></label>
+              <label class="setting-option"><input type="radio" name="word-list" value="5k"><span>top 5k</span></label>
+              <label class="setting-option"><input type="radio" name="word-list" value="10k"><span>top 10k</span></label>
+              <label class="setting-option" hidden><input type="radio" name="word-list" value="standard" disabled><span>1k–10k</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="numbers-toggle-label">numbers</strong><small id="numbers-toggle-lock" class="preference-lock" hidden>fixed for standard</small></div>
+            <fieldset class="setting-options" id="numbers-toggle" aria-labelledby="numbers-toggle-label" aria-describedby="numbers-toggle-lock">
+              <label class="setting-option"><input type="radio" name="numbers-toggle" value="false" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="numbers-toggle" value="true"><span>on</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="repeat-quotes-toggle-label">repeat quotes</strong></div>
+            <fieldset class="setting-options" id="repeat-quotes-toggle" aria-labelledby="repeat-quotes-toggle-label">
+              <label class="setting-option"><input type="radio" name="repeat-quotes-toggle" value="false" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="repeat-quotes-toggle" value="true"><span>on</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row preference-row-wide">
+            <div class="preference-copy"><strong id="correction-select-label">correction</strong><small id="correction-select-lock" class="preference-lock" hidden>fixed for standard</small></div>
+            <fieldset class="setting-options" id="correction-select" aria-labelledby="correction-select-label" aria-describedby="correction-select-lock">
+              <label class="setting-option"><input type="radio" name="correction-select" value="relaxed" checked><span>free</span></label>
+              <label class="setting-option"><input type="radio" name="correction-select" value="mandatory"><span>stop on error</span></label>
+              <label class="setting-option"><input type="radio" name="correction-select" value="no-backspace"><span>no backspace</span></label>
+              <label class="setting-option"><input type="radio" name="correction-select" value="fail-word"><span>fail on word error</span></label>
+              <label class="setting-option"><input type="radio" name="correction-select" value="fail-any"><span>fail on any error</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="strict-space-toggle-label">strict space</strong><small class="preference-note" id="rules-note" hidden></small></div>
+            <fieldset class="setting-options" id="strict-space-toggle" aria-labelledby="strict-space-toggle-label" aria-describedby="rules-note">
+              <label class="setting-option"><input type="radio" name="strict-space-toggle" value="false" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="strict-space-toggle" value="true"><span>on</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="quick-end-toggle-label">quick end</strong><small class="preference-note" id="quick-end-note" hidden></small></div>
+            <fieldset class="setting-options" id="quick-end-toggle" aria-labelledby="quick-end-toggle-label" aria-describedby="quick-end-note rules-note">
+              <label class="setting-option"><input type="radio" name="quick-end-toggle" value="false"><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="quick-end-toggle" value="true" checked><span>on</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="min-accuracy-label">minimum accuracy</strong></div>
+            <fieldset class="setting-options" id="min-accuracy" aria-labelledby="min-accuracy-label">
+              <label class="setting-option"><input type="radio" name="min-accuracy" value="0" checked><span>any %</span></label>
+              <label class="setting-option"><input type="radio" name="min-accuracy" value="80"><span>80%</span></label>
+              <label class="setting-option"><input type="radio" name="min-accuracy" value="90"><span>90%</span></label>
+              <label class="setting-option"><input type="radio" name="min-accuracy" value="95"><span>95%</span></label>
+              <label class="setting-option"><input type="radio" name="min-accuracy" value="98"><span>98%</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="min-wpm-label">minimum speed</strong></div>
+            <fieldset class="setting-options" id="min-wpm" aria-labelledby="min-wpm-label">
+              <label class="setting-option"><input type="radio" name="min-wpm" value="0" checked><span data-speed-unit="any {unit}">any wpm</span></label>
+              <label class="setting-option"><input type="radio" name="min-wpm" value="20"><span data-wpm="20">20 wpm</span></label>
+              <label class="setting-option"><input type="radio" name="min-wpm" value="30"><span data-wpm="30">30 wpm</span></label>
+              <label class="setting-option"><input type="radio" name="min-wpm" value="40"><span data-wpm="40">40 wpm</span></label>
+              <label class="setting-option"><input type="radio" name="min-wpm" value="60"><span data-wpm="60">60 wpm</span></label>
+              <label class="setting-option"><input type="radio" name="min-wpm" value="80"><span data-wpm="80">80 wpm</span></label>
+              <label class="setting-option"><input type="radio" name="min-wpm" value="100"><span data-wpm="100">100 wpm</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="pace-select-label">pace caret</strong><small id="pace-note" class="pace-note"></small></div>
+            <fieldset class="setting-options" id="pace-select" aria-labelledby="pace-select-label" aria-describedby="pace-note">
+              <label class="setting-option"><input type="radio" name="pace-select" value="off" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="pace-select" value="best"><span>personal best</span></label>
+              <label class="setting-option"><input type="radio" name="pace-select" value="average"><span>average</span></label>
+              <label class="setting-option"><input type="radio" name="pace-select" value="last"><span>last run</span></label>
+              <label class="setting-option"><input type="radio" name="pace-select" value="custom"><span>custom</span></label>
+            </fieldset>
+          </div>
+          <label id="pace-custom" class="preference-row" for="pace-wpm" hidden>
+            <span class="preference-copy"><strong>custom pace</strong><small id="pace-range" class="pace-note">10–300 wpm</small></span>
+            <input class="input pace-wpm num" id="pace-wpm" type="number" min="10" max="300" step="1" value="80" inputmode="numeric" data-unit="wpm" aria-describedby="pace-range">
+          </label>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="speed-unit-label">speed unit</strong></div>
+            <fieldset class="setting-options" id="speed-unit" aria-labelledby="speed-unit-label">
+              <label class="setting-option"><input type="radio" name="speed-unit" value="wpm" checked><span>wpm</span></label>
+              <label class="setting-option"><input type="radio" name="speed-unit" value="cpm"><span>cpm</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="daily-goal-label">daily goal</strong></div>
+            <fieldset class="setting-options" id="daily-goal" aria-labelledby="daily-goal-label">
+              <label class="setting-option"><input type="radio" name="daily-goal" value="0" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="daily-goal" value="5"><span>5 min</span></label>
+              <label class="setting-option"><input type="radio" name="daily-goal" value="10"><span>10 min</span></label>
+              <label class="setting-option"><input type="radio" name="daily-goal" value="15"><span>15 min</span></label>
+              <label class="setting-option"><input type="radio" name="daily-goal" value="30"><span>30 min</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="live-toggle-label" data-speed-unit="live {unit} and accuracy">live wpm and accuracy</strong></div>
+            <fieldset class="setting-options" id="live-toggle" aria-labelledby="live-toggle-label">
+              <label class="setting-option"><input type="radio" name="live-toggle" value="false" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="live-toggle" value="true"><span>on</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="focus-toggle-label">focus mode</strong></div>
+            <fieldset class="setting-options" id="focus-toggle" aria-labelledby="focus-toggle-label">
+              <label class="setting-option"><input type="radio" name="focus-toggle" value="false" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="focus-toggle" value="true"><span>on</span></label>
+            </fieldset>
+          </div>
+        </section>
+        <section id="settings-keyboard" class="settings-category" aria-labelledby="settings-keyboard-title" hidden>
+          <div class="settings-intro"><h3 id="settings-keyboard-title">Keyboard</h3><p>Make the keys familiar.</p></div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="layout-select-label">keyboard layout</strong><small id="layout-note" class="preference-note">Set your layout in your system. Stilltype shows its keys; it does not remap them.</small></div>
+            <fieldset class="setting-options" id="layout-select" aria-labelledby="layout-select-label" aria-describedby="layout-note">
+              <label class="setting-option"><input type="radio" name="layout-select" value="qwerty" checked><span>qwerty</span></label>
+              <label class="setting-option"><input type="radio" name="layout-select" value="dvorak"><span>dvorak</span></label>
+              <label class="setting-option"><input type="radio" name="layout-select" value="colemak"><span>colemak</span></label>
+              <label class="setting-option"><input type="radio" name="layout-select" value="colemak-dh"><span>colemak-dh</span></label>
+              <label class="setting-option"><input type="radio" name="layout-select" value="workman"><span>workman</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="keyboard-toggle-label">keyboard</strong></div>
+            <fieldset class="setting-options" id="keyboard-toggle" aria-labelledby="keyboard-toggle-label">
+              <label class="setting-option"><input type="radio" name="keyboard-toggle" value="false" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="keyboard-toggle" value="true"><span>on</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row" id="finger-row">
+            <div class="preference-copy"><strong id="finger-toggle-label">finger map</strong><small id="finger-note" class="preference-note">Turn on the keyboard to show its finger map.</small></div>
+            <fieldset class="setting-options" id="finger-toggle" aria-labelledby="finger-toggle-label" aria-describedby="finger-note">
+              <label class="setting-option"><input type="radio" name="finger-toggle" value="false" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="finger-toggle" value="true"><span>on</span></label>
+            </fieldset>
+          </div>
+        </section>
+        <section id="settings-sound" class="settings-category" aria-labelledby="settings-sound-title" hidden>
+          <div class="settings-intro"><h3 id="settings-sound-title">Sound</h3><p>A little feedback as you type.</p></div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="sound-select-label">sound</strong></div>
+            <fieldset class="setting-options" id="sound-select" aria-labelledby="sound-select-label">
+              <label class="setting-option"><input type="radio" name="sound-select" value="off" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="sound-select" value="clicks"><span>clicks</span></label>
+              <label class="setting-option"><input type="radio" name="sound-select" value="clicks-errors"><span>clicks + error tick</span></label>
+            </fieldset>
+          </div>
+          <label class="preference-row" id="sound-volume-row" for="sound-volume">
+            <span class="preference-copy"><strong>volume</strong></span>
+            <span class="preference-range">
+              <span id="sound-volume-value" class="preference-value num" aria-hidden="true">50%</span>
+              <input class="range" id="sound-volume" type="range" min="0" max="100" step="5" value="50" aria-valuetext="50%" disabled>
+            </span>
+          </label>
+        </section>
+        <section id="settings-shortcuts" class="settings-category keybindings-category" aria-labelledby="settings-shortcuts-title" hidden>
+          <div class="settings-intro"><h3 id="settings-shortcuts-title">Shortcuts</h3><p>Keep your next action close at hand.</p></div>
+          <p id="keybindings-help">Enter a combination or record it. Mod means Ctrl or ⌘. Leave blank to disable. Escape still closes menus; Tab and Shift+Tab navigate controls. Restart applies to solo tests and the local challenge, not online races. Enter restarts only before or after a run.</p>
+          <form id="keybindings-form">
+            <div class="keybinding-row">
+              <label for="keybinding-restart">restart test / local challenge</label>
+              <div class="keybinding-controls">
+                <input class="input" id="keybinding-restart" name="restart" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-restart-error">
+                <button class="btn btn-secondary btn-sm" type="button" data-record="restart" aria-label="Record restart test / local challenge binding" aria-pressed="false">Record</button>
+              </div>
+              <p class="keybinding-error" id="keybinding-restart-error"></p>
+            </div>
+            <div class="keybinding-row">
+              <label for="keybinding-commands">commands</label>
+              <div class="keybinding-controls">
+                <input class="input" id="keybinding-commands" name="commands" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-commands-error">
+                <button class="btn btn-secondary btn-sm" type="button" data-record="commands" aria-label="Record commands binding" aria-pressed="false">Record</button>
+              </div>
+              <p class="keybinding-error" id="keybinding-commands-error"></p>
+            </div>
+            <div class="keybinding-row">
+              <label for="keybinding-exitFocus">exit focus mode</label>
+              <div class="keybinding-controls">
+                <input class="input" id="keybinding-exitFocus" name="exitFocus" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="keybindings-help keybinding-exitFocus-error">
+                <button class="btn btn-secondary btn-sm" type="button" data-record="exitFocus" aria-label="Record exit focus mode binding" aria-pressed="false">Record</button>
+              </div>
+              <p class="keybinding-error" id="keybinding-exitFocus-error"></p>
+            </div>
+            <div class="keybinding-actions">
+              <button class="btn btn-secondary btn-sm" type="submit">Save keybindings</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-reset-bindings>Reset defaults</button>
+            </div>
+            <p id="keybindings-status" role="status" aria-live="polite"></p>
+          </form>
+
+        </section>
+      </div>
+    </div>
+    <footer class="settings-footer">
+      <p id="settings-saved">Changes apply as you choose. Guest settings last for this tab.</p>
+      <button id="settings-done" class="btn btn-primary" type="button">Done</button>
+    </footer>
   </dialog>
 
   <dialog id="import-dialog" aria-labelledby="import-dialog-title">

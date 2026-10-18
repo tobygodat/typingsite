@@ -1,12 +1,12 @@
-import { test, expect, openApp, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, openView, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, openView, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
 
 async function editBindings(page, values) {
   await openSettings(page);
-  const category = page.locator('.keybindings-category');
-  if (await category.getAttribute('open') === null) await category.locator(':scope > summary').click();
+  await openSettings(page, 'shortcuts');
   for (const [action, value] of Object.entries(values)) await page.locator(`#keybinding-${action}`).fill(value);
 }
 async function saveBindings(page) {
+  await openSettings(page, 'shortcuts');
   await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
   await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
   await page.keyboard.press('Escape');
@@ -77,7 +77,7 @@ test('recording cannot launch commands, Escape cancels it, and Tab still navigat
   await expect(page.locator('#restart-key-hint')).toHaveText('esc');
   await record.click();
   await page.keyboard.press('Escape');
-  await expect(page.locator('.preferences-popover')).toBeVisible();
+  await expect(page.locator('#settings-dialog')).toBeVisible();
   await expect(record).toHaveAttribute('aria-pressed', 'false');
   await record.click();
   await page.keyboard.press('Tab');
@@ -205,7 +205,7 @@ test('keybindings controls remain reachable at 320px', async ({ page }, testInfo
   for (const height of await page.locator('.keybindings-category .btn').evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height))) {
     expect(height).toBeGreaterThanOrEqual(44);
   }
-  const bounds = await page.locator('.preferences-popover').boundingBox();
+  const bounds = await page.locator('#settings-dialog').boundingBox();
   expect(bounds.x).toBeGreaterThanOrEqual(0);
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
   await page.screenshot({ path: testInfo.outputPath('keybindings-320.png') });
@@ -234,7 +234,8 @@ test('held printable input is ignored and a held Escape exits focus without rest
   await expect(page.locator('#input-help')).toHaveText('Key repeat ignored.');
   await page.mouse.move(5, 5); await page.mouse.move(40, 40);
   await openSettings(page);
-  await page.locator('#focus-toggle').check();
+  await chooseSetting(page, 'focus-toggle', true);
+  await closeSettings(page);
   await page.locator('#typing-input').click();
   await page.keyboard.down('Escape');
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'false');
@@ -252,8 +253,9 @@ test('test content and keybindings coexist, and resetting bindings preserves num
   await editBindings(page, { restart: 'F2', commands: 'F8' });
   await saveBindings(page);
   await openSettings(page);
-  await page.locator('#test-content-settings > summary').click();
-  await page.locator('#numbers-toggle').check();
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'numbers-toggle', true);
+  await closeSettings(page);
   await page.locator('#typing-input').click();
   await typeInto(page, (await passageText(page)).slice(0, 3));
   await page.keyboard.press('F2');
@@ -262,13 +264,13 @@ test('test content and keybindings coexist, and resetting bindings preserves num
   expect(await passageText(page)).toMatch(/\d/);
   await editBindings(page, {});
   await page.getByRole('button', { name: 'Reset defaults', exact: true }).click();
-  await expect(page.locator('#numbers-toggle')).toBeChecked();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
   await expect(page.locator('#condition-line')).toContainText('numbers');
   // Commands remain accessible from a settings category, without taking over its text fields.
-  await page.locator('.keybindings-category > summary').focus();
+  await page.locator('[data-settings-category="shortcuts"]').focus();
   await page.keyboard.press('Control+k');
   await expect(page.locator('#palette')).toBeVisible();
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
   await page.locator('#palette-input').fill('numbers');
   await page.keyboard.press('Enter');
   await expect(page.locator('#condition-line')).not.toContainText('numbers');
@@ -278,9 +280,9 @@ test('test content and keybindings coexist, and resetting bindings preserves num
 test('unsaved binding edits survive unrelated settings updates', async ({ page }) => {
   await openApp(page);
   await editBindings(page, { restart: 'Ctrl+Shift+E' });
-  await page.locator('#font-size').selectOption('36');
+  await chooseSetting(page, 'font-size', '36');
   await expect(page.locator('#keybinding-restart')).toHaveValue('Ctrl+Shift+E');
-  await page.locator('#live-toggle').check();
+  await chooseSetting(page, 'live-toggle', true);
   await expect(page.locator('#keybinding-restart')).toHaveValue('Ctrl+Shift+E');
   await saveBindings(page);
   await expect(page.locator('#restart-button')).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+E');

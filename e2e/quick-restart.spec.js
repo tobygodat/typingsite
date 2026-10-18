@@ -1,7 +1,7 @@
 import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, signInWithEmail } from './fixtures.js';
 
 async function setRestart(page, binding) {
-  await page.locator('.keybindings-category > summary').click();
+  await openSettings(page, 'shortcuts');
   await page.locator('#keybinding-restart').fill(binding);
   await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
   await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
@@ -14,7 +14,7 @@ test('tab as the restart key resets the passage once while held, and escape no l
   await setRestart(page, 'Tab');
   await expect(page.locator('#restart-key-hint')).toHaveText('tab');
   await page.keyboard.press('Escape');
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
 
   const before = await passageText(page);
   await typeInto(page, before.slice(0, 3));
@@ -103,14 +103,14 @@ test('esc, the default key, restarts from the focused run-again button', async (
   await expect(page.locator('#text-display .char.correct')).toHaveCount(0);
 });
 
-test('tab still moves focus inside the settings popover', async ({ page }) => {
+test('tab still moves focus inside the settings dialog', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
   await setRestart(page, 'Tab');
   await page.locator('#keybinding-restart').focus();
   await page.keyboard.press('Tab');
   await expect(page.locator('[data-record=restart]')).toBeFocused();
-  await expect(page.locator('.preferences-popover')).toBeVisible();
+  await expect(page.locator('#settings-dialog')).toBeVisible();
 });
 
 test('enter restarts from the result card but not mid-run, even after the chrome returns', async ({ page }) => {
@@ -153,11 +153,11 @@ test('enter restarts from the bare page while the run is ready, but not mid-run'
 
   // Enter on a control activates that control and never restarts: here it opens settings.
   const first = await passageText(page);
-  await expect(page.locator('details.preferences > summary')).toBeFocused();
+  await expect(page.locator('#settings-trigger')).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(page.locator('.preferences-popover')).toBeVisible();
+  await expect(page.locator('#settings-dialog')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
   expect(await passageText(page)).toBe(first);
 
   // As at touch startup, nothing has focus and the run is ready: enter brings a fresh passage.

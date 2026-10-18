@@ -1,4 +1,4 @@
-import { test, expect, openApp, openSettings, chooseMore, typeInto } from './fixtures.js';
+import { test, expect, openApp, chooseSetting, closeSettings, chooseMore, typeInto } from './fixtures.js';
 
 const TEXT = 'minimum errors remain readable';
 const ERROR_LENGTH = 'minimum errors'.length;
@@ -45,9 +45,8 @@ for (const colorScheme of ['dark', 'light']) {
     test(`${colorScheme}, ${reducedMotion}: adjacent errors form one flat tint and correct cleanly`, async ({ page }, testInfo) => {
       await page.emulateMedia({ colorScheme, reducedMotion });
       await openApp(page);
-      await openSettings(page);
-      await page.locator('#word-highlight').selectOption('current');
-      await page.keyboard.press('Escape');
+      await chooseSetting(page, 'word-highlight', 'current');
+      await closeSettings(page);
       await chooseMore(page, 'mode-custom');
       await page.locator('#custom-text').fill(TEXT);
       await page.locator('#custom-use').click();

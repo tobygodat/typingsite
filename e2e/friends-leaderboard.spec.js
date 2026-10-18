@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey, quoteCorpus } from '../src/typing.js';
 import { dailyPassage } from '../src/insights.js';
 import { BOARD_V, dailyVersion } from '../src/friends-board.js';
-import { test, expect, openApp, openView, openSettings, signInWithEmail, chooseWords, completePassage, passageText } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, signInWithEmail, chooseWords, completePassage, passageText, chooseSetting } from './fixtures.js';
 import { mondayOf, utcDay } from './fake-board.js';
 
 test.setTimeout(120000);
@@ -553,7 +553,7 @@ test('F1: a stale device saving after a clear brings no cleared run back, a cloc
     // clear keeps out what it removed (the fast clock's run, stamped after it, by name): the row keeps the
     // setting and no runs, and its summary describes exactly that.
     await openSettings(stale);
-    await stale.locator('#keyboard-toggle').check();
+    await chooseSetting(stale, 'keyboard-toggle', true);
     await expect.poll(() => supabase.profiles.get(ada.id).data.preferences?.keyboard).toBe(true);
     expect(supabase.profiles.get(ada.id).data.runs).toHaveLength(0);
     expect(weekRuns(supabase, ada)).toBe(0);

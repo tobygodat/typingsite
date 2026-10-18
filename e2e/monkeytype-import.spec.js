@@ -11,7 +11,7 @@ const EXPORT = {
 
 async function openImport(page) {
   await openSettings(page);
-  await page.getByRole('button', { name: /import from Monkeytype/ }).click();
+  await page.getByRole('button', { name: /Import Monkeytype settings/ }).click();
   await expect(page.locator('#import-dialog')).toBeVisible();
   await expect(page.locator('#import-text')).toBeFocused();
 }
@@ -46,11 +46,11 @@ test('a pasted Monkeytype export sets the matching settings and reports what it 
   await expect(page.locator('body')).toHaveAttribute('data-live-metrics', 'true');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await openSettings(page);
-  await expect(page.locator('#pace-select')).toHaveValue('best');
+  await expect(page.locator('#pace-select input:checked')).toHaveValue('best');
   await expect(page.locator('#punctuation-toggle')).toBeChecked();
-  await expect(page.locator('#correction-select')).toHaveValue('fail-word');
-  await expect(page.locator('#min-accuracy')).toHaveValue('95');
-  await expect(page.locator('#layout-select')).toHaveValue('qwerty');
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('fail-word');
+  await expect(page.locator('#min-accuracy input:checked')).toHaveValue('95');
+  await expect(page.locator('#layout-select input:checked')).toHaveValue('qwerty');
 });
 
 test('signed in, imported settings from a chosen file sync to the account', async ({ page, supabase }) => {

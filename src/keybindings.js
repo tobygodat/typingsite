@@ -93,6 +93,7 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
   const actions = Object.keys(DEFAULT_KEYBINDINGS);
   let recording = null;
   let renderedBindings = null;
+  const editedActions = new Set();
   const input = (action) => form.querySelector(`[name="${action}"]`);
   const feedback = (message) => { status.textContent = message; };
   function stopRecording() {
@@ -102,15 +103,19 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
   function refresh({ force = false } = {}) {
     const signature = JSON.stringify(getBindings());
     if (!force && signature === renderedBindings) return;
+    if (force) {
+      editedActions.clear();
+      stopRecording();
+    }
     renderedBindings = signature;
-    stopRecording();
-    for (const action of actions) {
+    for (const action of actions.filter((name) => !editedActions.has(name))) {
       input(action).value = getBindings()[action];
       input(action).removeAttribute('aria-invalid');
       form.querySelector(`#keybinding-${action}-error`).textContent = '';
     }
-    feedback('');
+    if (!editedActions.size && !recording) feedback('');
   }
+  form.addEventListener('input', (event) => { editedActions.add(event.target.name); });
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     stopRecording();
@@ -121,6 +126,7 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
     }
     const invalid = actions.find((action) => result.errors[action]);
     if (invalid) { feedback('Bindings were not saved. Fix the marked combinations.'); input(invalid).focus(); return; }
+    editedActions.clear();
     onSave(result.bindings);
     refresh();
     feedback('Keybindings saved.');
@@ -151,6 +157,7 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
     const result = parseBinding(value, action);
     if (result.error) { feedback(result.error); return; }
     input(action).value = result.binding;
+    editedActions.add(action);
     stopRecording();
     input(action).focus();
     feedback('Combination recorded. Save to apply it.');

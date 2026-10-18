@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto, openSettings, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto, openSettings, chooseMore, chooseSetting } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -413,7 +413,7 @@ test('with the pace caret on, a ghost race keeps the friend’s run as its ghost
   await openApp(page);
   await signInWithEmail(page, 'lin@stilltype.test');
   await openSettings(page);
-  await page.locator('#pace-select').selectOption('custom');
+  await chooseSetting(page, 'pace-select', 'custom');
   await page.keyboard.press('Escape');
   await expect(page.locator('#pace-label')).toHaveText('pace 80 wpm');
 
@@ -427,7 +427,7 @@ test('with the pace caret on, a ghost race keeps the friend’s run as its ghost
   await expect(page.locator('#condition-line')).toContainText('10 words · plain · numbers');
   // Changing the pace mid-race leaves the replay in place.
   await openSettings(page);
-  await page.locator('#pace-select').selectOption('best');
+  await chooseSetting(page, 'pace-select', 'best');
   await page.keyboard.press('Escape');
   await expect(ghost).toHaveAttribute('data-replay', '');
   await expect(page.locator('#pace-label')).toBeHidden();

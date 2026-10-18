@@ -207,7 +207,7 @@ components:
 
 **Creative North Star: "Afterimage"**
 
-The typing passage is the screen. Everything readable is set in one book face, Literata, on a warm near-black ground (or warm paper in light), so a passage reads like a page and a result reads like a print rather than a dashboard. One green carries every meaning of "act here" or "you are here": the caret, the primary button, the current selection and the timer. Content sits on hairline rules and open space. Boxes are kept for the few things that really are objects: the floating dock, the settings popover, the command palette, dialogs, toasts, and the run card.
+The typing passage is the screen. Everything readable is set in one book face, Literata, on a warm near-black ground (or warm paper in light), so a passage reads like a page and a result reads like a print rather than a dashboard. One green carries every meaning of "act here" or "you are here": the caret, the primary button, the current selection and the timer. Content sits on hairline rules and open space. Boxes are kept for the few things that really are objects: the floating dock, the settings dialog, the command palette, dialogs, toasts, and the run card.
 
 Motion is fluid. It is welcome on the typing surface during a run as well as in chrome and after it, wherever it makes speed, position or progress easier to follow: the caret is a spring-driven bar, the pace caret glides through the letters at its speed, a ghost race glides from one of a friend's keys to the next, and lines scroll in about 150 ms. Nothing is required to stay rigid or static. Letter states still change at once so the passage stays readable, and the chrome fades out after the first keystroke. After a run there are short fades, one gliding selection pill, and the run card's speed graph drawing in about 450 ms. Every duration comes from one scale that drops to zero under reduced motion.
 
@@ -238,7 +238,7 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 ### Neutral
 - **Warm Near-Black / Warm Paper** (ground): the page.
 - **Deep Ground** (ground-2): a quieter second ground.
-- **Raised Stock** (raised): opaque surfaces: dock, settings popover, palette, dialog, toasts, inputs.
+- **Raised Stock** (raised): opaque surfaces: dock, settings dialog, palette, dialog, toasts, inputs.
 - **Raised Wash** (raised-2): the translucent hover and selection wash under nav items, ghost buttons, the gliding pill and the palette highlight.
 - **Bone** (text): primary text and correctly typed letters.
 - **Pumice** (muted): untyped passage letters, secondary copy, labels and inactive navigation.
@@ -299,7 +299,7 @@ A single centred column, `min(1080px, 100% - 48px)` wide (100% - 32px under 760p
 
 ## Elevation & Depth
 
-The page is flat. Depth appears only where an object floats over the page: the dock, the settings popover, the palette, the clear-history dialog, the challenge handoff card and toasts. These are opaque raised stock with a strong hairline border and one shared soft shadow. There is no backdrop blur and no translucency on surfaces. Modal backdrops are a flat dim (black at 42–50% in dark, warm brown at 22% in light). Keycaps (`kbd`, on-screen keys) get physical depth from a thicker bottom border (2px and 3px). This is the key's own material, not a shadow style.
+The page is flat. Depth appears only where an object floats over the page: the dock, the settings dialog, the palette, the clear-history dialog, the challenge handoff card and toasts. These are opaque raised stock with a strong hairline border and one shared soft shadow. There is no backdrop blur and no translucency on surfaces. Modal backdrops are a flat dim (black at 42–50% in dark, warm brown at 22% in light). Keycaps (`kbd`, on-screen keys) get physical depth from a thicker bottom border (2px and 3px). This is the key's own material, not a shadow style.
 
 ### Shadow Vocabulary
 - **Float** (`box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35)` dark; `0 8px 24px rgba(70, 56, 30, 0.12)` light): every floating surface, and only those.
@@ -332,10 +332,10 @@ Mode and length pickers are a 14px frame with a hairline border, holding 36px Li
 - **Focus:** the border turns accent and gains a 3px accent-soft ring. The accent border is the focus cue and holds 3:1; the accent-soft ring is a supplementary tint (about 1.15:1) and is not relied on for contrast.
 - **Error:** a coral border (`aria-invalid`) and a 14px coral message below.
 - **Switch:** a 38×22 track (hairline-strong, accent when on) with a text-coloured knob that slides 16px.
-- **Range (sound volume):** 104px wide: a 4px outline-coloured track, an accent fill and a 16px accent thumb, with its value as a small muted mono percentage to its left. It is always shown, at 38% opacity and disabled while sound is off, so the settings popover never changes height.
+- **Range (sound volume):** 104px wide: a 4px outline-coloured track, an accent fill and a 16px accent thumb, with its value as a small muted Literata percentage to its left. It is always shown, at 38% opacity and disabled while sound is off, so the settings dialog never changes height.
 
 ### Navigation (the dock)
-A floating, opaque 58px bar with 18px corners, sticky at the top on desktop and fixed to the bottom under 760px (62px, full width, with safe-area padding). It holds the italic wordmark and green full stop, four lowercase nav items (muted, text colour on hover and when active, with the gliding pill), a hairline separator, a labelled settings control (icon and lowercase "settings"; icon only below 900px, so the centred dock clears the account button) and the ⌘K / Ctrl-K palette trigger, shown as a search icon at every width. The account button sits apart from the dock, top right. The settings popover is a 340px raised panel of 52px rows, anchored to the dock's right edge: below it on desktop, above it on mobile.
+A floating, opaque 58px bar with 18px corners, sticky at the top on desktop and fixed to the bottom under 760px (62px, full width, with safe-area padding). It holds the italic wordmark and green full stop, four lowercase nav items (muted, text colour on hover and when active, with the gliding pill), a hairline separator, a labelled settings control (icon and lowercase "settings"; icon only below 900px, so the centred dock clears the account button) and the ⌘K / Ctrl-K palette trigger, shown as a search icon at every width. The account button sits apart from the dock, top right. Settings opens a centred native modal dialog, up to 1080px wide and 704px tall. A persistent 216px sidebar holds appearance, practice, keyboard, sound and shortcuts, with Import Monkeytype settings below. The header and footer stay in place while the category content scrolls. Discrete preferences use native radio groups styled as inline selectors, with a green underline and soft tint on the selected option. Appearance includes a live sample passage. Changes apply as chosen; Done is the only filled-green action. Below 760px the navigation wraps across the top and preference rows stack. Escape, Close and Done restore focus to the opener; Escape cancels shortcut recording first.
 
 The footer holds the personal best, the guest note and a quiet "suggest a feature" link (mono label, hairline underline). It opens a dialog of the same raised stock as the clear-history dialog: a sentence-case heading, a note on what is stored, a textarea with a mono character count, and Cancel / Send suggestion (filled green). Success closes it and shows a toast; failure keeps the text and explains in coral below the field.
 

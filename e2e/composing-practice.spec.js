@@ -1,6 +1,6 @@
 // Composing practice: a prompt, a free-typing field, free-typing speed and backspace rate,
 // kept apart from copy tests and stored as numbers only.
-import { test, expect, openApp, openSettings, openView, passageText, signInWithEmail, storageKeys, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openSettings, openView, passageText, signInWithEmail, storageKeys, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const shot = (testInfo, name) => (process.env.SCREENSHOTS
@@ -361,11 +361,9 @@ test('keyless input, focus loss and an emptied field are never saved, and settin
 
   // A setting that would draw a new passage waits until composing ends.
   await openSettings(page);
-  // The word list sits in the collapsed test content group.
-  const content = page.locator('#test-content-settings');
-  if (!(await content.evaluate((node) => node.open))) await content.locator('summary').click();
-  await page.locator('#word-list').selectOption('1k');
-  await page.locator('details.preferences > summary').click();
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'word-list', '1k');
+  await closeSettings(page);
   await expect(page.locator('#compose-form')).toBeVisible();
   expect(await passageText(page)).toBe(hidden);
 

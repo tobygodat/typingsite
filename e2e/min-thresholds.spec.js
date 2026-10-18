@@ -1,6 +1,6 @@
 // Minimum accuracy and speed to continue: practice-only settings, judged on the timing tick after a
 // grace period, ending a run as interrupted with its reason and keeping it out of bests.
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
 
 const shot = (page, testInfo, name) => page.screenshot({
   path: process.env.SCREENSHOTS ? `docs/screenshots/min-thresholds/${name}.png` : testInfo.outputPath(`${name}.png`),
@@ -20,6 +20,7 @@ async function typeAtPace(page, text, msPerKey = 200) {
 }
 
 async function runCommand(page, query) {
+  await closeSettings(page);
   await page.keyboard.press('Control+k');
   await expect(page.locator('#palette-input')).toBeFocused();
   await page.keyboard.type(query);
@@ -31,11 +32,11 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.clock.install();
   await openApp(page);
-  await openSettings(page);
-  await expect(page.locator('#min-accuracy')).toHaveValue('0');
-  await expect(page.locator('#min-wpm')).toHaveValue('0');
+  await openSettings(page, 'practice');
+  await expect(page.locator('#min-accuracy input:checked')).toHaveValue('0');
+  await expect(page.locator('#min-wpm input:checked')).toHaveValue('0');
   await expect(page.locator('#minimum-note')).toBeHidden();
-  await page.locator('#min-accuracy').selectOption('95');
+  await chooseSetting(page, 'min-accuracy', '95');
   await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy');
   await expect(page.locator('#condition-line')).toContainText('continue on error · corpus v5 · metric v1 · min 95% accuracy');
   await page.keyboard.press('Escape');
@@ -91,8 +92,8 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
 test('the grace period forgives an early miss, and a run that ends above the minimum counts', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
-  await openSettings(page);
-  await page.locator('#min-accuracy').selectOption('90');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'min-accuracy', '90');
   await page.keyboard.press('Escape');
   const text = await passageText(page);
 
@@ -113,8 +114,8 @@ test('the grace period forgives an early miss, and a run that ends above the min
   expect(best).toMatch(/^Best · \d+ wpm$/);
 
   // The minimum is a label, not a condition: switching it off keeps the same best.
-  await openSettings(page);
-  await page.locator('#min-accuracy').selectOption('0');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'min-accuracy', '0');
   await expect(page.locator('#best')).toHaveText(best);
   await page.keyboard.press('Escape');
   await page.locator('#run-again').click();
@@ -127,7 +128,7 @@ test('the palette sets a minimum speed, which stops a slow run and resets for a 
   await openApp(page);
   await page.locator('#typing-input').focus();
   await runCommand(page, 'minimum speed · 60');
-  await expect(page.locator('#min-wpm')).toHaveValue('60');
+  await expect(page.locator('#min-wpm input:checked')).toHaveValue('60');
   await expect(page.locator('#minimum-note')).toHaveText('min 60 wpm');
   await page.keyboard.press('Control+k');
   await expect(page.locator('#palette-input')).toBeFocused();
@@ -152,16 +153,16 @@ test('the palette sets a minimum speed, which stops a slow run and resets for a 
 
   // A guest keeps settings only for the tab.
   await page.reload();
-  await expect(page.locator('#min-wpm')).toHaveValue('0');
+  await expect(page.locator('#min-wpm input:checked')).toHaveValue('0');
   await expect(page.locator('#minimum-note')).toBeHidden();
 });
 
 test('custom text has no minimums: the note stands aside and a run under them still finishes', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
-  await openSettings(page);
-  await page.locator('#min-accuracy').selectOption('95');
-  await page.locator('#min-wpm').selectOption('100');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'min-accuracy', '95');
+  await chooseSetting(page, 'min-wpm', '100');
   await page.keyboard.press('Escape');
   await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy · min 100 wpm');
   // Custom text is never counted, so it runs to the end like a drill: no note while Custom is on.
@@ -195,16 +196,16 @@ test('a retest carries its baseline’s minimums, and the daily challenge has no
   await page.clock.install();
   await openApp(page);
   await chooseWords(page, 10);
-  await openSettings(page);
-  await page.locator('#min-wpm').selectOption('20');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'min-wpm', '20');
   await page.keyboard.press('Escape');
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 
   // The retest passes the same filter as its baseline (min 20 wpm), not today's setting, so both
   // sides of the comparison were selected alike.
-  await openSettings(page);
-  await page.locator('#min-wpm').selectOption('100');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'min-wpm', '100');
   await page.keyboard.press('Escape');
   await page.locator('#skip-to-retest').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
@@ -249,8 +250,8 @@ for (const end of ['last character', 'timer']) {
     await openApp(page);
     if (end === 'timer') await page.locator('#duration-options [data-length="15"]').click();
     else await chooseWords(page, 10);
-    await openSettings(page);
-    await page.locator('#min-accuracy').selectOption('98');
+    await openSettings(page, 'practice');
+    await chooseSetting(page, 'min-accuracy', '98');
     await page.keyboard.press('Escape');
     await expect(page.locator('#condition-line')).toContainText(end === 'timer' ? '15 s' : '10 words');
 
@@ -292,8 +293,8 @@ for (const [keys, ending] of [[74, 'at the buzzer'], [66, 'a second before it']]
     await page.clock.install();
     await openApp(page);
     await page.locator('#duration-options [data-length="15"]').click();
-    await openSettings(page);
-    await page.locator('#min-wpm').selectOption('60');
+    await openSettings(page, 'practice');
+    await chooseSetting(page, 'min-wpm', '60');
     await page.keyboard.press('Escape');
     await expect(page.locator('#condition-line')).toContainText('15 s');
     const text = await passageText(page);
@@ -322,8 +323,8 @@ test('a last key that misses just past a whole second finishes the run under its
   await page.clock.install();
   await openApp(page);
   await chooseWords(page, 10);
-  await openSettings(page);
-  await page.locator('#min-accuracy').selectOption('90');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'min-accuracy', '90');
   await page.keyboard.press('Escape');
   await expect(page.locator('#condition-line')).toContainText('continue on error');
   const text = await passageText(page);
@@ -355,8 +356,8 @@ test('a retest stopped under its baseline’s minimum shows no timing for the dr
   await page.clock.install();
   await openApp(page);
   await chooseWords(page, 10);
-  await openSettings(page);
-  await page.locator('#min-wpm').selectOption('20');
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'min-wpm', '20');
   await page.keyboard.press('Escape');
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
@@ -398,25 +399,20 @@ test.describe('390px, then 320px', () => {
     const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
       await page.setViewportSize(viewport);
-      await openSettings(page);
-      await page.locator('#min-accuracy').selectOption('95');
-      await page.locator('#min-wpm').selectOption('40');
+      await openSettings(page, 'practice');
+      await chooseSetting(page, 'min-accuracy', '95');
+      await chooseSetting(page, 'min-wpm', '40');
       await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy · min 40 wpm');
       expect(await overflow()).toBeLessThanOrEqual(0);
-      const popover = await page.locator('.preferences-popover').boundingBox();
+      const dialog = await page.locator('#settings-dialog').boundingBox();
       for (const id of ['#min-accuracy', '#min-wpm']) {
         const box = await page.locator(id).boundingBox();
-        expect(box.x + box.width, id).toBeLessThanOrEqual(popover.x + popover.width);
+        expect(box.x + box.width, id).toBeLessThanOrEqual(dialog.x + dialog.width);
       }
-      // Both minimums share one row, so the popover grows by one row, not two.
-      const [accuracyBox, wpmBox] = [await page.locator('#min-accuracy').boundingBox(), await page.locator('#min-wpm').boundingBox()];
-      expect(Math.abs(accuracyBox.y - wpmBox.y)).toBeLessThanOrEqual(1);
-      // The popover scrolls on phones now that it holds the layout, correction and input-rule rows too,
-      // so focus mode only has to be reachable in it.
-      const focus = page.locator('label[for="focus-toggle"]');
+      const focus = page.locator('#focus-toggle');
       await focus.scrollIntoViewIfNeeded();
       const focusRow = await focus.boundingBox();
-      const shown = await page.locator('.preferences-popover').boundingBox();
+      const shown = await page.locator('#settings-dialog').boundingBox();
       expect(focusRow.y).toBeGreaterThanOrEqual(shown.y);
       expect(focusRow.y + focusRow.height).toBeLessThanOrEqual(shown.y + shown.height);
       // The label sits under every control, lengths included, never between the rows.
@@ -424,8 +420,8 @@ test.describe('390px, then 320px', () => {
       const note = await page.locator('#minimum-note').boundingBox();
       expect(note.y).toBeGreaterThanOrEqual(lengths.y + lengths.height);
       if (viewport.width === 390) await shot(page, testInfo, 'settings-mobile');
-      await page.locator('details.preferences > summary').click();
-      await expect(page.locator('.preferences-popover')).toBeHidden();
+      await closeSettings(page);
+      await expect(page.locator('#settings-dialog')).toBeHidden();
       expect(await overflow()).toBeLessThanOrEqual(0);
     }
   });
@@ -435,13 +431,13 @@ test('desktop settings and the practice label, dark and light', async ({ page },
   for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);
-    await openSettings(page);
-    await page.locator('#min-accuracy').selectOption('95');
-    await page.locator('#min-wpm').selectOption('40');
+    await openSettings(page, 'practice');
+    await chooseSetting(page, 'min-accuracy', '95');
+    await chooseSetting(page, 'min-wpm', '40');
     await page.locator('#min-wpm').focus();
     await shot(page, testInfo, `settings-${scheme}`);
-    await page.locator('details.preferences > summary').click();
-    await expect(page.locator('.preferences-popover')).toBeHidden();
+    await closeSettings(page);
+    await expect(page.locator('#settings-dialog')).toBeHidden();
     await expect(page.locator('#minimum-note')).toBeVisible();
     // The label takes its own line, so the controls' rail stays centred under the dock.
     const rail = await page.locator('.practice-rail').boundingBox();
