@@ -63,7 +63,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { CORRECTION_LABELS, DAILY_GOALS, conditionLabels, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { CORRECTION_LABELS, DAILY_GOALS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
 import { RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
@@ -405,24 +405,10 @@ function conditions(inputClass = 'physical-keyboard') {
 const recipeLabel = (recipe = STANDARD_VERSION) => recipe.replace('-', ' ');
 const recipeSummary = (value = standardConditions()) => `${recipeLabel(value.recipe)} · ${value.duration} s · english 1k–10k mix · punctuation, numbers, one quote`;
 
-// What every condition line ends with: input, correction rule and versions.
+// What every condition line ends with: input and layout, correction and rules, and versions.
 function conditionTail(value) {
-  const input = inputLabel(value);
-  return `${input} · ${correctionLabel(value.correctionPolicy)} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
-}
-
-// The parts of a conditions description, named and in the order it reads. The friends board's shape
-// picker names a shape by the parts that tell it apart from the others.
-function conditionParts(value = conditions()) {
-  return {
-    language: value.wordList ? `english ${value.wordList}` : 'english',
-    length: value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`,
-    text: value.mode === 'quote' ? value.difficulty || 'any difficulty' : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`,
-    input: inputLabel(value),
-    correction: `${correctionLabel(value.correctionPolicy)}${describeRules(value)}`,
-    corpus: `corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')}`,
-    metric: 'metric v1',
-  };
+  const { language, length, text, ...tail } = conditionParts(value);
+  return Object.values(tail).join(' · ');
 }
 const inputName = (value) => inputLabel(value);
 
@@ -439,10 +425,7 @@ function customConditions() {
 function describeConditions(value = conditions()) {
   // The recipe name stands for its punctuation, numbers and quote, keeping the run card's line short.
   if (value.mode === 'standard') return `${recipeLabel(value.recipe)} · ${value.duration} s · 1k–10k mix · ${conditionTail(value)}`;
-  if (value.mode === 'code') {
-    const { input, correction, corpus, metric } = conditionParts(value);
-    return [`code · ${value.codeLanguage || DEFAULT_CODE_LANGUAGE}`, input, correction, corpus, metric, 'not counted toward bests'].join(' · ');
-  }
+  if (value.mode === 'code') return [`code · ${value.codeLanguage || DEFAULT_CODE_LANGUAGE}`, conditionTail(value), 'not counted toward bests'].join(' · ');
   return Object.values(conditionParts(value)).join(' · ');
 }
 
@@ -470,9 +453,9 @@ function stopReason(stop) {
 }
 
 // Strict space and quick end appear only when they differ from the defaults, as in conditionKey.
-const RULE_LABELS = { 'strict-space': 'strict space', 'quick-end-off': 'quick end off' };
 function describeRules(value) {
-  return inputRules(value).map((rule) => ` · ${RULE_LABELS[rule]}`).join('');
+  const { strictSpace, quickEnd } = conditionParts(value);
+  return [strictSpace, quickEnd].filter(Boolean).map((rule) => ` · ${rule}`).join('');
 }
 
 // A drill is always one minute of generated text, whatever the baseline was. Its conditions record
@@ -484,8 +467,8 @@ function inputLayout(inputClass) {
 
 // The layout is named only when it isn't QWERTY; runs saved before layouts existed read as QWERTY.
 function inputLabel(value) {
-  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
-  return isDefaultLayout(value.layout) ? input : `${input} · ${layoutLabel(value.layout)}`;
+  const { input, layout } = conditionParts(value);
+  return layout ? `${input} · ${layout}` : input;
 }
 
 function describeRun(run) {

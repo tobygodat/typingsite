@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, conditionLabels, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
-import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
+import { CODE_LANGUAGES } from '../src/code-snippets.js';
+import { layoutIds, layoutLabel } from '../src/layouts.js';
+import { wordListIds } from '../src/words.js';
 
 
 test('missed and slowest words come from first tries and per-word speed', () => {
@@ -948,15 +951,65 @@ test('test shapes keep a mode\'s preset lengths in place, without runs, between 
     'a mode never run gets no placeholders');
 });
 
-test('condition sets at one length are named by every feature they disagree on, absent ones included', () => {
+test('condition sets at one length are named by every part they disagree on, in the conditions line\'s words', () => {
   const base = { mode: 'words', count: 25, punctuation: false, numbers: false, wordList: '1k', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
   const labels = (...sets) => conditionLabels(sets.map((extra) => ({ ...base, ...extra })));
-  assert.deepEqual(labels({}, { numbers: true }), ['no numbers', 'numbers']);
-  assert.deepEqual(labels({ punctuation: true }, {}), ['punctuation', 'no punctuation']);
-  assert.deepEqual(labels({}, { layout: 'dvorak' }), ['qwerty', 'dvorak'], 'a set saved before layouts reads as qwerty');
+  assert.deepEqual(labels({}, { numbers: true }), ['plain', 'plain · numbers']);
+  assert.deepEqual(labels({ punctuation: true }, {}), ['punctuation', 'plain']);
+  assert.deepEqual(labels({}, { layout: 'dvorak' }), [layoutLabel('qwerty'), layoutLabel('dvorak')], 'a set saved before layouts reads as qwerty');
   assert.deepEqual(labels({}, { correctionPolicy: 'mandatory' }, { correctionPolicy: 'fail-any' }), ['continue on error', 'stop on error', 'fail on any error']);
-  assert.deepEqual(labels({}, { metricVersion: 'stilltype-metrics-v2' }), ['metric v1', 'metric v2']);
-  assert.deepEqual(labels({ numbers: true }, {}, { layout: 'dvorak' }), ['numbers · qwerty', 'no numbers · qwerty', 'no numbers · dvorak']);
+  assert.deepEqual(labels({}, { metricVersion: 'stilltype-metrics-v2' }), ['metric v1', 'metric v2'], 'the real metric version, not a fixed one');
   assert.deepEqual(labels({}, { numbers: true }).reverse(), labels({ numbers: true }, {}), 'a set keeps its name whichever is most used');
-  for (const label of labels({}, { strictSpace: true }, { inputClass: 'touch' }, { wordList: '5k' })) assert.doesNotMatch(label, /conditions \d/);
+  const quote = { ...base, mode: 'quote', count: null, quoteLength: 'short', difficulty: 'any', wordList: null };
+  assert.deepEqual(conditionLabels([quote, { ...quote, punctuation: true }]), ['punctuation setting off', 'punctuation setting on']);
+});
+
+test('the conditions line reads every part shown, in the same words the condition sets are named by', () => {
+  const words = { mode: 'words', count: 25, punctuation: false, numbers: true, wordList: '1k', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION, layout: 'dvorak', strictSpace: true };
+  assert.equal(Object.values(conditionParts(words)).join(' · '),
+    `english 1k · 25 words · plain · numbers · physical keyboard · ${layoutLabel('dvorak')} · continue on error · strict space · corpus v5 · metric v1`);
+  const quote = { mode: 'quote', quoteLength: 'short', difficulty: 'gentle', punctuation: true, correctionPolicy: 'mandatory' };
+  assert.equal(Object.values(conditionParts(quote)).join(' · '), 'english · short quote · gentle · physical keyboard · stop on error · corpus v5 · metric v1',
+    'a quote ignores the punctuation setting, so the line leaves it out');
+});
+
+test('two condition sets with different keys never share a name, whichever key part they differ by', () => {
+  const words = { mode: 'words', count: 25, duration: null, punctuation: false, numbers: false, quoteLength: null, difficulty: null, wordList: '1k',
+    inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, strictSpace: false, quickEnd: true };
+  const bases = [
+    words,
+    { ...words, mode: 'time', count: null, duration: 60 },
+    { ...words, mode: 'quote', count: null, quoteLength: 'short', difficulty: 'any', wordList: null },
+    { ...words, mode: 'code', count: null, codeLanguage: 'js', punctuation: true, wordList: null },
+    { ...words, mode: 'standard', count: null, duration: 60, recipe: 'standard-v1', correctionPolicy: 'mandatory' },
+  ];
+  const changes = [
+    { punctuation: true }, { punctuation: false }, { numbers: true },
+    ...QUOTE_DIFFICULTIES.map((difficulty) => ({ difficulty })),
+    ...QUOTE_LENGTHS.map((quoteLength) => ({ quoteLength })),
+    ...TEST_DURATIONS.map((duration) => ({ duration })), ...TEST_COUNTS.map((count) => ({ count })),
+    ...wordListIds.map((wordList) => ({ wordList })), { wordList: null },
+    ...INPUT_CLASSES.map((inputClass) => ({ inputClass })),
+    ...Object.keys(CORRECTION_LABELS).map((correctionPolicy) => ({ correctionPolicy })),
+    { corpus: 'original-en-v4' }, { metricVersion: 'stilltype-metrics-v2' },
+    { strictSpace: true }, { quickEnd: false }, { quickEnd: false, correctionPolicy: 'relaxed' },
+    ...layoutIds.map((layout) => ({ layout })),
+    ...CODE_LANGUAGES.map((codeLanguage) => ({ codeLanguage })), { recipe: 'standard-v2' },
+  ];
+  // Only the parts a mode writes (src/app.js settingsConditions): a quote has no word count, a words test no difficulty.
+  const written = { count: ['words'], duration: ['time'], quoteLength: ['quote'], difficulty: ['quote'], numbers: ['words', 'time'],
+    wordList: ['words', 'time'], codeLanguage: ['code'], recipe: ['standard'] };
+  for (const base of bases) {
+    const applies = (change) => Object.keys(change).every((part) => !written[part] || written[part].includes(base.mode));
+    const sets = [base, ...changes.filter(applies).map((change) => ({ ...base, ...change }))];
+    const names = conditionLabels(sets);
+    for (let i = 0; i < sets.length; i += 1) {
+      for (let j = i + 1; j < sets.length; j += 1) {
+        if (conditionKey(sets[i]) === conditionKey(sets[j])) continue;
+        assert.notEqual(names[i], names[j], `${base.mode}: ${conditionKey(sets[i])} and ${conditionKey(sets[j])} named alike`);
+        const [a, b] = conditionLabels([sets[i], sets[j]]);
+        assert.ok(a && b && a !== b, `${base.mode} alone: ${conditionKey(sets[i])} "${a}" and ${conditionKey(sets[j])} "${b}"`);
+      }
+    }
+  }
 });

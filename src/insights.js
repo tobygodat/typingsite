@@ -1,4 +1,4 @@
-import { DEFAULT_LAYOUT } from './layouts.js';
+import { DEFAULT_LAYOUT, isDefaultLayout, layoutLabel } from './layouts.js';
 import { LENGTHS } from './lengths.js';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey, inputRules, printable, replayAttempt, summarizePatterns, textId } from './typing.js';
 
@@ -258,27 +258,44 @@ export function correctionLabel(policy) {
   return CORRECTION_LABELS[policy || 'mandatory'] || 'stop on error';
 }
 
-// Every feature beside the length that enters a condition key, named as it reads in either state.
+// Every part of a condition key (conditionKey), named as people read it, in the order a conditions line
+// reads. Some parts are on the line only away from their default (`shown`), but name a condition set in
+// either state when sets differ by them. A quote ignores the punctuation setting its key keeps, so the
+// line never names it; it still tells two quote sets apart.
 const version = (id) => id.replace(/^.*-(v\d+)$/, '$1');
-const CONDITION_FEATURES = [
-  (c) => (c.mode === 'quote' ? c.difficulty || 'any difficulty' : c.punctuation ? 'punctuation' : 'no punctuation'),
-  (c) => (c.mode === 'quote' ? '' : c.numbers ? 'numbers' : 'no numbers'),
-  (c) => (c.wordList ? `english ${c.wordList}` : 'english'),
-  (c) => (c.inputClass === 'touch' ? 'touch input' : 'physical keyboard'),
-  (c) => c.layout || DEFAULT_LAYOUT,
-  (c) => correctionLabel(c.correctionPolicy),
-  (c) => (c.strictSpace === true ? 'strict space' : 'no strict space'),
-  (c) => (inputRules(c).includes('quick-end-off') ? 'quick end off' : 'quick end'),
-  (c) => `corpus ${version(c.corpus || CORPUS_VERSION)}`,
-  (c) => `metric ${version(c.metricVersion || METRIC_VERSION)}`,
+const LENGTH_TEXT = {
+  words: (c) => `${c.count} words`,
+  time: (c) => `${c.duration} s`,
+  quote: (c) => `${c.quoteLength || 'any'} quote`,
+  code: (c) => `code · ${c.codeLanguage || 'js'}`,
+  standard: (c) => `${(c.recipe || '').replace('-', ' ')} · ${c.duration} s`,
+};
+const CONDITION_PARTS = [
+  { name: 'language', text: (c) => (c.wordList ? `english ${c.wordList}` : 'english') },
+  { name: 'length', text: (c) => LENGTH_TEXT[c.mode]?.(c) ?? c.mode },
+  { name: 'text', text: (c) => (c.mode === 'quote' ? c.difficulty || 'any difficulty' : `${c.punctuation ? 'punctuation' : 'plain'}${c.numbers ? ' · numbers' : ''}`) },
+  { name: 'setting', text: (c) => (c.mode === 'quote' ? `punctuation setting ${c.punctuation ? 'on' : 'off'}` : ''), shown: () => false },
+  { name: 'input', text: (c) => (c.inputClass === 'touch' ? 'touch input' : 'physical keyboard') },
+  { name: 'layout', text: (c) => layoutLabel(c.layout || DEFAULT_LAYOUT), shown: (c) => !isDefaultLayout(c.layout) },
+  { name: 'correction', text: (c) => correctionLabel(c.correctionPolicy) },
+  { name: 'strictSpace', text: (c) => (inputRules(c).includes('strict-space') ? 'strict space' : 'no strict space'), shown: (c) => inputRules(c).includes('strict-space') },
+  { name: 'quickEnd', text: (c) => (inputRules(c).includes('quick-end-off') ? 'quick end off' : 'quick end'), shown: (c) => inputRules(c).includes('quick-end-off') },
+  { name: 'corpus', text: (c) => `corpus ${version(c.corpus || CORPUS_VERSION)}` },
+  { name: 'metric', text: (c) => `metric ${version(c.metricVersion || METRIC_VERSION)}` },
 ];
 
-// Names for the condition sets at one length: each set's value of every feature the sets disagree on
-// ("no numbers · qwerty", "numbers · dvorak"), so a set's name never depends on how often it was run.
+// The parts a conditions line shows, by name, in reading order.
+export function conditionParts(conditions) {
+  return Object.fromEntries(CONDITION_PARTS.filter((part) => (part.shown ? part.shown(conditions) : part.text(conditions)))
+    .map((part) => [part.name, part.text(conditions)]));
+}
+
+// Names for the condition sets at one length: each set's reading of every part the sets disagree on
+// ("plain", "plain · numbers"), so a set's name never depends on how often it was run.
 export function conditionLabels(sets) {
-  const features = sets.map((conditions) => CONDITION_FEATURES.map((feature) => feature(conditions)));
-  const differs = CONDITION_FEATURES.map((_, f) => new Set(features.map((values) => values[f])).size > 1);
-  return features.map((values, i) => values.filter((_, f) => differs[f]).join(' · ') || `conditions ${i + 1}`);
+  const texts = sets.map((conditions) => CONDITION_PARTS.map((part) => part.text(conditions)));
+  const differs = CONDITION_PARTS.map((_, i) => new Set(texts.map((values) => values[i])).size > 1);
+  return texts.map((values) => values.filter((_, i) => differs[i]).join(' · '));
 }
 
 // The first and last local calendar days of a Progress period, inclusive: "7 days" is today and the six
