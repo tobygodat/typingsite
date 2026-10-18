@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { CORPUS_VERSION, CORRECTION_POLICIES, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS,
   conditionKey } from '../src/typing.js';
 import { wordListIds } from '../src/words.js';
+import { layoutLabel } from '../src/layouts.js';
+import { conditionParts } from '../src/insights.js';
 import { BOARD_V, MAX_SHAPES, bestsOrder, boardColumn, boardCurrent, boardShapes, boardSummary, defaultShape, shapeBests, shapeDescription, shapeLabels,
   shapeOf, shareableBest } from '../src/friends-board.js';
 import { boardBests } from '../e2e/fake-board.js';
@@ -19,16 +21,6 @@ const key = conditionKey;
 const run = (id, overrides = {}) => ({ id, at: '2026-10-09T12:00:00Z', status: 'complete', kind: 'test', interrupted: false,
   conditions: time60, score: { wpm: 70, accuracy: 97 }, elapsedMs: 60000, challengeDate: null, ...overrides });
 const score = (wpm, accuracy) => ({ score: { wpm, accuracy } });
-// The app's own description of conditions, in parts (as src/app.js conditionParts gives them).
-const parts = (value) => ({
-  language: value.wordList ? `english ${value.wordList}` : 'english',
-  length: value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength} quote`,
-  text: value.mode === 'quote' ? value.difficulty : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`,
-  input: value.inputClass === 'touch' ? 'touch input' : 'physical keyboard',
-  correction: value.correctionPolicy === 'relaxed' ? 'continue on error' : 'stop on error',
-  corpus: 'corpus v5',
-  metric: 'metric v1',
-});
 // Every test shape this build can write, as src/app.js conditions() writes them from the app's own
 // option lists: each mode with its own fields, and none of the others'. Numbers apply to generated
 // tests only; a quote always records them off.
@@ -252,20 +244,20 @@ test('the picker lists comparable shapes in order and names each by what tells i
   const shapes = boardShapes(rows);
   assert.deepEqual(shapes.map((shape) => shape.key), [key(time30), key(time60), key(words25), key(quote)]);
   // Length and text first, then what differs: a quote's missing word list is not a difference.
-  assert.deepEqual(shapeLabels(shapes, parts), ['30 s · plain · stop on error', '60 s · plain · stop on error',
+  assert.deepEqual(shapeLabels(shapes), ['30 s · plain · stop on error', '60 s · plain · stop on error',
     '25 words · plain · continue on error', 'medium quote · any · stop on error']);
   const relaxedQuote = { ...quote, correctionPolicy: 'relaxed' };
-  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key({ ...time60, correctionPolicy: 'relaxed' })]: {}, [key(relaxedQuote)]: {} } }]), parts),
+  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key({ ...time60, correctionPolicy: 'relaxed' })]: {}, [key(relaxedQuote)]: {} } }])),
     ['60 s · plain · stop on error', '60 s · plain · continue on error', 'medium quote · any · continue on error']);
   // Word lists are compared between the shapes that have one.
-  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key({ ...time60, wordList: '1k' })]: {}, [key(quote)]: {} } }]), parts),
+  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key({ ...time60, wordList: '1k' })]: {}, [key(quote)]: {} } }])),
     ['60 s · plain · english 1k', '60 s · plain · english 200', 'medium quote · any']);
   // When the shapes differ only in length and text, that is all the picker says.
-  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time30)]: {}, [key(time60)]: {} } }]), parts), ['30 s · plain', '60 s · plain']);
-  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key(touch60)]: {} } }]), parts), ['60 s · plain · physical keyboard', '60 s · plain · touch input']);
+  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time30)]: {}, [key(time60)]: {} } }])), ['30 s · plain', '60 s · plain']);
+  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key(touch60)]: {} } }])), ['60 s · plain · physical keyboard', '60 s · plain · touch input']);
   // A numbers test is told apart by its text part, as the app describes it.
   const numbers60 = { ...time60, numbers: true };
-  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key(numbers60)]: {} } }]), parts), ['60 s · plain', '60 s · plain · numbers']);
+  assert.deepEqual(shapeLabels(boardShapes([{ bests: { [key(time60)]: {}, [key(numbers60)]: {} } }])), ['60 s · plain', '60 s · plain · numbers']);
   assert.deepEqual(boardShapes([{ bests: {} }, { bests: undefined }]), []);
 });
 
@@ -273,14 +265,24 @@ test('two quote shapes that differ only by the punctuation setting their keys ke
   const withSetting = { ...quote, punctuation: true };
   const shapes = boardShapes([{ bests: { [key(quote)]: {} } }, { bests: { [key(withSetting)]: {}, [key(time60)]: {} } }]);
   assert.deepEqual(shapes.map((shape) => shape.key), [key(time60), key(quote), key(withSetting)]);
-  assert.deepEqual(shapeLabels(shapes, parts), ['60 s · plain', 'medium quote · any · punctuation off', 'medium quote · any · punctuation on']);
-  assert.equal(shapeDescription(shapes, key(withSetting), parts),
+  assert.deepEqual(shapeLabels(shapes), ['60 s · plain', 'medium quote · any · punctuation off', 'medium quote · any · punctuation on']);
+  assert.equal(shapeDescription(shapes, key(withSetting)),
     'english · medium quote · any · punctuation setting on · physical keyboard · stop on error · corpus v5 · metric v1');
   // When the setting tells nothing apart, neither the name nor the description mentions it.
   const one = boardShapes([{ bests: { [key(withSetting)]: {}, [key(time60)]: {} } }]);
-  assert.deepEqual(shapeLabels(one, parts), ['60 s · plain', 'medium quote · any']);
-  assert.equal(shapeDescription(one, key(withSetting), parts), 'english · medium quote · any · physical keyboard · stop on error · corpus v5 · metric v1');
-  assert.equal(shapeDescription(one, key(time60), parts), 'english 200 · 60 s · plain · physical keyboard · stop on error · corpus v5 · metric v1');
+  assert.deepEqual(shapeLabels(one), ['60 s · plain', 'medium quote · any']);
+  assert.equal(shapeDescription(one, key(withSetting)), 'english · medium quote · any · physical keyboard · stop on error · corpus v5 · metric v1');
+  assert.equal(shapeDescription(one, key(time60)), 'english 200 · 60 s · plain · physical keyboard · stop on error · corpus v5 · metric v1');
+});
+
+test('a Dvorak or strict-space shape is told apart by the app\'s own words for it, in the name and the description', () => {
+  for (const [other, words] of [[{ ...time60, layout: 'dvorak' }, layoutLabel('dvorak')], [{ ...time60, strictSpace: true }, 'strict space']]) {
+    const shapes = boardShapes([{ bests: { [key(time60)]: {}, [key(other)]: {} } }]);
+    assert.deepEqual(shapes.map((shape) => shape.key), [key(time60), key(other)]);
+    assert.deepEqual(shapeLabels(shapes), ['60 s · plain', `60 s · plain · ${words}`]);
+    assert.equal(shapeDescription(shapes, key(other)), Object.values(conditionParts(other)).join(' · '));
+    assert.ok(shapeDescription(shapes, key(other)).includes(words));
+  }
 });
 
 test('the picker opens on the shape you have the most runs on, then the one most people have a best on', () => {

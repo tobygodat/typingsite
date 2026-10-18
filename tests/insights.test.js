@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, practiceLevel, practiceStreak, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from '../src/insights.js';
-import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
+import { CODE_LANGUAGES } from '../src/code-snippets.js';
+import { layoutIds, layoutLabel } from '../src/layouts.js';
+import { wordListIds } from '../src/words.js';
 
 
 test('missed and slowest words come from first tries and per-word speed', () => {
@@ -207,8 +210,8 @@ test('weekly medians require evidence in both weeks, and do not invent dates for
   const change = weeklyChange([recent, previous, old], conditionKey(conditions), date);
   assert.equal(change.wpm, 10);
   assert.equal(change.accuracy, -2);
-  assert.equal(filterRuns([old], conditionKey(conditions), 30, date).length, 0);
-  assert.equal(filterRuns([old], conditionKey(conditions), 'all', date).length, 1);
+  assert.equal(filterRuns([old], conditionKey(conditions), periodWindow(30, date)).length, 0);
+  assert.equal(filterRuns([old], conditionKey(conditions), periodWindow('all', date)).length, 1);
 });
 
 test('recurring targets need multiple runs, and revisit evidence starts after the immediate retest', () => {
@@ -821,4 +824,200 @@ test('touch runs are never pooled with physical-keyboard runs: the newest run pi
   assert.deepEqual(tally([...keys, missedRun('t1', ['the'], { conditions: touch }), missedRun('t2', ['the', 'of'], { conditions: touch })]), ['touch', 2, [['the', 2]]]);
   // Back on a keyboard, the keyboard runs count again, without the touch misses.
   assert.deepEqual(tally([...keys, missedRun('t1', ['the'], { conditions: touch }), missedRun('k4', ['of'], { conditions: keyboard })]), ['physical-keyboard', 4, [['and', 2], ['the', 2]]]);
+});
+
+test('runs group by local day, oldest first, with each day\'s medians', () => {
+  const run = (id, day, wpm, accuracy, at = `${day}T12:00:00`) => ({ id, day, at, score: { wpm, accuracy } });
+  const runs = [
+    run('b1', '2026-10-03', 60, 95),
+    run('a1', '2026-10-01', 50, 90),
+    run('b2', '2026-10-03', 70, 97),
+    run('b3', '2026-10-03', 64, 99),
+    { id: 'c1', at: '2026-10-05T09:00:00', score: { wpm: 72, accuracy: 96 } },
+    { id: 'undated', score: { wpm: 99, accuracy: 100 } },
+  ];
+  const days = runsByDay(runs);
+  assert.deepEqual(days.map((d) => d.day), ['2026-10-01', '2026-10-03', '2026-10-05'], 'a run without a day falls back to its timestamp; one without either is left out');
+  assert.deepEqual(days[1].runs.map((r) => r.id), ['b1', 'b2', 'b3']);
+  assert.equal(days[1].wpm, 64);
+  assert.equal(days[1].accuracy, 97);
+  assert.deepEqual(runsByDay([]), []);
+});
+
+test('period stats are medians over the selected runs, with the fastest run as best', () => {
+  assert.deepEqual(periodStats([]), { count: 0, wpm: null, accuracy: null, best: null });
+  const runs = [
+    { id: 'old', at: '2026-10-01T10:00:00', score: { wpm: 70, accuracy: 94 } },
+    { id: 'mid', at: '2026-10-02T10:00:00', score: { wpm: 60, accuracy: 98 } },
+    { id: 'new', at: '2026-10-03T10:00:00', score: { wpm: 70, accuracy: 96 } },
+    { id: 'low', at: '2026-10-04T10:00:00', score: { wpm: 50, accuracy: 90 } },
+  ];
+  const stats = periodStats(runs);
+  assert.equal(stats.count, 4);
+  assert.equal(stats.wpm, 65);
+  assert.equal(stats.accuracy, 95);
+  assert.equal(stats.best.id, 'new', 'a tie for fastest goes to the most recent run');
+  assert.equal(periodStats([...runs].reverse()).best.id, 'new', 'whatever order the runs arrive in');
+});
+
+test('quantiles interpolate between sorted values', () => {
+  assert.equal(quantile([], 0.5), null);
+  assert.equal(quantile([70, 60, 80, 50], 0.5), 65, 'the middle quantile is the median');
+  assert.equal(quantile([50, 60, 70, 80, 90], 0.25), 60);
+  assert.equal(quantile([50, 60, 70, 80], 0.75), 72.5);
+  assert.equal(quantile([42], 0.75), 42);
+});
+
+test('a histogram counts values into round bins, keeping the empty ones between', () => {
+  assert.deepEqual(histogram([], 2), []);
+  assert.deepEqual(histogram([61, 60.5, 64, 65.9], 2), [{ from: 60, count: 2 }, { from: 62, count: 0 }, { from: 64, count: 2 }]);
+});
+
+test('test shapes group exact conditions by length, most used variant first', () => {
+  const base = { mode: 'words', count: 25, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' };
+  const run = (conditions) => ({ conditions: { ...base, ...conditions } });
+  const shapes = testShapes([
+    run({ mode: 'time', duration: 60, count: null }),
+    run({ punctuation: true }),
+    run({}),
+    run({ count: 10 }),
+    run({}),
+    run({ mode: 'time', duration: 15, count: null }),
+    run({ mode: 'quote', count: null, quoteLength: 'short' }),
+  ]);
+  assert.deepEqual(shapes.filter((s) => s.variants.length).map((s) => s.id), ['words:10', 'words:25', 'time:15', 'time:60', 'quote:short']);
+  const words25 = shapes.find((s) => s.id === 'words:25');
+  assert.equal(words25.variants.length, 2, 'punctuation is its own condition set, never pooled');
+  assert.deepEqual(words25.variants.map((v) => [v.conditions.punctuation, v.count]), [[false, 2], [true, 1]]);
+  assert.equal(new Set(words25.variants.map((v) => v.key)).size, 2);
+  assert.equal(words25.variants[0].key, conditionKey(base));
+});
+
+test('period days end today and cover the period, or every day since the first run', () => {
+  const today = new Date(2026, 9, 17, 15);
+  assert.deepEqual(periodDays(7, today), ['2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17']);
+  assert.equal(periodDays(30, today).length, 30);
+  assert.deepEqual(periodDays('all', today, '2026-10-15'), ['2026-10-15', '2026-10-16', '2026-10-17']);
+  assert.deepEqual(periodDays('all', today), ['2026-10-17']);
+});
+
+test('practice stats count active days, the longest streak, minutes and runs per day', () => {
+  const days = ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16'];
+  const byDay = { '2026-10-11': 30, '2026-10-12': 3, '2026-10-13': 12, '2026-10-14': 6, '2026-10-16': 11 };
+  const run = (day, status = 'complete') => ({ day, status });
+  const runs = [run('2026-10-12'), run('2026-10-12'), run('2026-10-13'), run('2026-10-13', 'abandoned'), run('2026-10-11')];
+  const stats = practiceStats(byDay, runs, days);
+  assert.equal(stats.active, 4);
+  assert.equal(stats.longest, 3, 'the day before the period does not extend a streak inside it');
+  assert.equal(stats.minutes, 32);
+  assert.deepEqual(stats.runsPerDay.map((d) => d.runs), [2, 1, 0, 0, 0], 'only completed runs, only inside the period');
+  assert.equal(practiceStats(byDay, runs, days, 10).longest, 1, 'with a goal, only days meeting it count');
+});
+
+test('a period is whole local calendar days: 7 days is today and the six before, for runs and practice alike', () => {
+  const today = new Date(2026, 9, 17, 15);
+  const at = (day, hour) => new Date(2026, 9, day, hour).toISOString();
+  const runs = [run('before', { at: at(10, 20) }), run('first', { at: at(11, 0) }), run('today', { at: at(17, 14) })];
+  assert.deepEqual(periodWindow(7, today), { from: '2026-10-11', to: '2026-10-17' });
+  assert.deepEqual(periodWindow('all', today), { from: null, to: '2026-10-17' });
+  assert.deepEqual(filterRuns(runs, conditionKey(conditions), periodWindow(7, today)).map((r) => r.id), ['first', 'today'],
+    'a run on the evening seven days back is outside, though it is less than 7 × 24 hours old');
+  assert.equal(periodDays(7, today)[0], periodWindow(7, today).from);
+  assert.deepEqual(filterRuns(runs, conditionKey(conditions), periodWindow(1, today)).map((r) => r.id), ['today']);
+});
+
+test('every period ends today: a run saved on a day still ahead here waits for its day, in charts and practice alike', () => {
+  const today = new Date(2026, 9, 17, 15);
+  const runs = [run('today', { day: '2026-10-17' }), run('tomorrow', { day: '2026-10-18' }), run('undated', { at: null })];
+  for (const days of [7, 30]) {
+    assert.deepEqual(filterRuns(runs, conditionKey(conditions), periodWindow(days, today)).map((r) => r.id), ['today'], `${days} days`);
+  }
+  assert.deepEqual(filterRuns(runs, conditionKey(conditions), periodWindow('all', today)).map((r) => r.id), ['today', 'undated'],
+    'All has no first day, so an undated run stays, but it still ends today');
+  assert.deepEqual(filterRuns(runs, conditionKey(conditions)).map((r) => r.id), ['today', 'tomorrow', 'undated'],
+    'outside Progress (the pace caret\'s last and average) no period applies, so a run dated ahead still counts');
+  assert.deepEqual(periodWindow('all', today, '2026-10-18'), { from: '2026-10-17', to: '2026-10-17' }, 'All never starts after today');
+  assert.deepEqual(periodDays('all', today, '2026-10-18'), ['2026-10-17']);
+  const stats = practiceStats({ '2026-10-17': 5, '2026-10-18': 5 }, runs.map((r) => ({ ...r, status: 'complete' })), periodDays(7, today));
+  assert.equal(stats.runsPerDay.reduce((sum, d) => sum + d.runs, 0), 1, 'practice counts the same runs the charts do');
+  assert.equal(stats.minutes, 5);
+});
+
+test('test shapes keep a mode\'s preset lengths in place, without runs, between the lengths that have them', () => {
+  const run = (conditions) => ({ conditions: { mode: 'words', punctuation: false, ...conditions } });
+  const shapes = testShapes([run({ count: 25 }), run({ count: 40 }), run({ mode: 'quote', quoteLength: 'short' }), run({ mode: 'time', duration: 45 })]);
+  assert.deepEqual(shapes.map((s) => s.id), ['words:10', 'words:25', 'words:40', 'words:50', 'words:100',
+    'time:15', 'time:30', 'time:45', 'time:60', 'time:120', 'quote:short']);
+  assert.deepEqual(shapes.filter((s) => s.variants.length).map((s) => s.id), ['words:25', 'words:40', 'time:45', 'quote:short']);
+  assert.deepEqual(testShapes([run({ count: 25 })]).map((s) => s.id), ['words:10', 'words:25', 'words:50', 'words:100'],
+    'a mode never run gets no placeholders');
+});
+
+test('condition sets at one length are named by every part they disagree on, in the conditions line\'s words', () => {
+  const base = { mode: 'words', count: 25, punctuation: false, numbers: false, wordList: '1k', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
+  const labels = (...sets) => conditionLabels(sets.map((extra) => ({ ...base, ...extra })));
+  assert.deepEqual(labels({}, { numbers: true }), ['plain', 'plain · numbers']);
+  assert.deepEqual(labels({ punctuation: true }, {}), ['punctuation', 'plain']);
+  assert.deepEqual(labels({}, { layout: 'dvorak' }), [layoutLabel('qwerty'), layoutLabel('dvorak')], 'a set saved before layouts reads as qwerty');
+  assert.deepEqual(labels({}, { correctionPolicy: 'mandatory' }, { correctionPolicy: 'fail-any' }), ['continue on error', 'stop on error', 'fail on any error']);
+  assert.deepEqual(labels({}, { metricVersion: 'stilltype-metrics-v2' }), ['metric v1', 'metric v2'], 'the real metric version, not a fixed one');
+  assert.deepEqual(labels({}, { numbers: true }).reverse(), labels({ numbers: true }, {}), 'a set keeps its name whichever is most used');
+  const quote = { ...base, mode: 'quote', count: null, quoteLength: 'short', difficulty: 'any', wordList: null };
+  assert.deepEqual(conditionLabels([quote, { ...quote, punctuation: true }]), ['punctuation setting off', 'punctuation setting on']);
+});
+
+test('the conditions line reads every part shown, in the same words the condition sets are named by', () => {
+  const words = { mode: 'words', count: 25, punctuation: false, numbers: true, wordList: '1k', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION, layout: 'dvorak', strictSpace: true };
+  assert.equal(Object.values(conditionParts(words)).join(' · '),
+    `english 1k · 25 words · plain · numbers · physical keyboard · ${layoutLabel('dvorak')} · continue on error · strict space · corpus v5 · metric v1`);
+  const quote = { mode: 'quote', quoteLength: 'short', difficulty: 'gentle', punctuation: true, correctionPolicy: 'mandatory' };
+  assert.equal(Object.values(conditionParts(quote)).join(' · '), 'english · short quote · gentle · physical keyboard · stop on error · corpus v5 · metric v1',
+    'a quote ignores the punctuation setting, so the line leaves it out');
+  const off = { ...quote, punctuation: false };
+  const line = (value, sets) => Object.values(conditionParts(value, sets)).join(' · ');
+  assert.equal(line(quote, [off, quote]), 'english · short quote · gentle · punctuation setting on · physical keyboard · stop on error · corpus v5 · metric v1',
+    'beside a quote set that differs only by the setting, the line names it, as the pills do');
+  assert.equal(line(off, [off, quote]), 'english · short quote · gentle · punctuation setting off · physical keyboard · stop on error · corpus v5 · metric v1');
+  assert.equal(line(quote, [quote]), Object.values(conditionParts(quote)).join(' · '), 'with nothing to tell apart, it stays out');
+});
+
+test('two condition sets with different keys never share a name, whichever key part they differ by', () => {
+  const words = { mode: 'words', count: 25, duration: null, punctuation: false, numbers: false, quoteLength: null, difficulty: null, wordList: '1k',
+    inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, strictSpace: false, quickEnd: true };
+  const bases = [
+    words,
+    { ...words, mode: 'time', count: null, duration: 60 },
+    { ...words, mode: 'quote', count: null, quoteLength: 'short', difficulty: 'any', wordList: null },
+    { ...words, mode: 'code', count: null, codeLanguage: 'js', punctuation: true, wordList: null },
+    { ...words, mode: 'standard', count: null, duration: 60, recipe: 'standard-v1', correctionPolicy: 'mandatory' },
+  ];
+  const changes = [
+    { punctuation: true }, { punctuation: false }, { numbers: true },
+    ...QUOTE_DIFFICULTIES.map((difficulty) => ({ difficulty })),
+    ...QUOTE_LENGTHS.map((quoteLength) => ({ quoteLength })),
+    ...TEST_DURATIONS.map((duration) => ({ duration })), ...TEST_COUNTS.map((count) => ({ count })),
+    ...wordListIds.map((wordList) => ({ wordList })), { wordList: null },
+    ...INPUT_CLASSES.map((inputClass) => ({ inputClass })),
+    ...Object.keys(CORRECTION_LABELS).map((correctionPolicy) => ({ correctionPolicy })),
+    { corpus: 'original-en-v4' }, { metricVersion: 'stilltype-metrics-v2' },
+    { strictSpace: true }, { quickEnd: false }, { quickEnd: false, correctionPolicy: 'relaxed' },
+    ...layoutIds.map((layout) => ({ layout })),
+    ...CODE_LANGUAGES.map((codeLanguage) => ({ codeLanguage })), { recipe: 'standard-v2' },
+  ];
+  // Only the parts a mode writes (src/app.js settingsConditions): a quote has no word count, a words test no difficulty.
+  const written = { count: ['words'], duration: ['time'], quoteLength: ['quote'], difficulty: ['quote'], numbers: ['words', 'time'],
+    wordList: ['words', 'time'], codeLanguage: ['code'], recipe: ['standard'] };
+  for (const base of bases) {
+    const applies = (change) => Object.keys(change).every((part) => !written[part] || written[part].includes(base.mode));
+    const sets = [base, ...changes.filter(applies).map((change) => ({ ...base, ...change }))];
+    const names = conditionLabels(sets);
+    for (let i = 0; i < sets.length; i += 1) {
+      for (let j = i + 1; j < sets.length; j += 1) {
+        if (conditionKey(sets[i]) === conditionKey(sets[j])) continue;
+        assert.notEqual(names[i], names[j], `${base.mode}: ${conditionKey(sets[i])} and ${conditionKey(sets[j])} named alike`);
+        const [a, b] = conditionLabels([sets[i], sets[j]]);
+        assert.ok(a && b && a !== b, `${base.mode} alone: ${conditionKey(sets[i])} "${a}" and ${conditionKey(sets[j])} "${b}"`);
+      }
+    }
+  }
 });

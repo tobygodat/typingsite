@@ -58,7 +58,7 @@ for (const [from, to] of [[{ width: 1280, height: 800 }, { width: 320, height: 5
 
     // Progress opened at the desktop width, then narrowed: its trend charts follow the window down.
     await openView(page, 'Progress');
-    await expect(page.locator('#progress-trend svg')).toHaveCount(2);
+    await expect(page.locator('#progress-trend svg')).toHaveCount(1);
     await resize(page, to);
     expect(await overflow(page), 'Progress').toBeLessThanOrEqual(0);
     const trends = await page.locator('#progress-trend .trend-figure').evaluateAll((figures) => figures.map((figure) => ({
@@ -92,7 +92,7 @@ test('screenshots', async ({ page }, testInfo) => {
   await resize(page, { width: 1280, height: 800 });
   await page.emulateMedia({ colorScheme: 'dark' });
   await openView(page, 'Progress');
-  await expect(page.locator('#progress-trend svg')).toHaveCount(2);
+  await expect(page.locator('#progress-trend svg')).toHaveCount(1);
   await resize(page, { width: 320, height: 568 });
   expect(await overflow(page), 'Progress').toBeLessThanOrEqual(0);
   const trends = await page.locator('#progress-trend .trend-figure').evaluateAll((figures) => figures.map((figure) => ({

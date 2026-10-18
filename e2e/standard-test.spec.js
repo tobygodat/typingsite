@@ -144,9 +144,9 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await expect(page.locator('#standard-median')).toHaveText('—');
   await expect(page.locator('#standard-median + span')).toBeHidden();
   await expect(page.locator('#standard-median-label')).toHaveText('median');
-  await expect(page.locator('#standard-score-note')).toHaveText('1 standard run kept. The median appears after 3, so a single fast or slow run can’t set your score.');
+  await expect(page.locator('#standard-score-note')).toHaveText('1 standard run kept. The median appears after 3.');
   await expect(page.locator('#standard-score-conditions')).toHaveText(`${RECIPE} · physical keyboard · stop on error · corpus v5 · metric v1`);
-  expect((await page.locator('#progress-conditions option').allTextContents()).filter((label) => label.startsWith('standard v1'))).toHaveLength(1);
+  await expect(page.getByRole('group', { name: 'Test' }).getByRole('button', { name: 'standard', exact: true })).toHaveCount(1);
   await expect(page.locator('#run-history .run-row').first()).toContainText('standard');
   await page.screenshot({ path: shot(testInfo, 'progress-first-run-dark.png') });
 });
@@ -212,12 +212,12 @@ test('Progress shows the standard best and the median of recent runs with its co
   await expect(page.locator('#standard-best')).toHaveText('66');
   await expect(page.locator('#standard-median')).toHaveText('63');
   await expect(page.locator('#standard-median-label')).toHaveText('median of last 5 runs');
-  await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs kept. Interrupted runs don’t count. Your touch best is 41 wpm.');
+  await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs kept. Your touch best is 41 wpm.');
   await expect(page.locator('#standard-score-conditions')).toContainText('physical keyboard');
-  // With history, the standard score still heads the page, above the filters.
+  // With history, the filtered figures and charts head the page and the standard score follows them.
   await expect(page.locator('#progress-empty')).toBeHidden();
-  const standard = await page.locator('#standard-score').boundingBox();
-  expect(standard.y + standard.height).toBeLessThanOrEqual((await page.locator('.progress-filters').boundingBox()).y);
+  const trend = await page.locator('#progress-trend').boundingBox();
+  expect(trend.y + trend.height).toBeLessThanOrEqual((await page.locator('#standard-score').boundingBox()).y);
 
   await page.locator('#take-standard').click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
@@ -226,7 +226,7 @@ test('Progress shows the standard best and the median of recent runs with its co
   await expect(page.locator('#best')).toHaveText('Best · 66 wpm');
 });
 
-const NO_STANDARD_RUNS = 'No standard runs yet. Every one is fresh text from the same fixed recipe, so the scores stay comparable.';
+const NO_STANDARD_RUNS = 'No standard runs yet.';
 
 // The standard score heads Progress on its own: with no practice history it sits above the empty state.
 async function expectStandardAboveEmptyState(page) {
@@ -349,7 +349,7 @@ test('when only some standard runs are kept, the note counts kept runs and says 
   await expect(page.locator('#standard-best')).toHaveText('66');
   await expect(page.locator('#standard-median')).toHaveText('—');
   await expect(page.locator('#standard-score-note')).not.toContainText('so far');
-  await expect(page.locator('#standard-score-note')).toHaveText(`1 standard run kept. ${OLDER_BEST} The median appears after 3, so a single fast or slow run can’t set your score.`);
+  await expect(page.locator('#standard-score-note')).toHaveText(`1 standard run kept. ${OLDER_BEST} The median appears after 3.`);
   // The longest note still wraps inside a 320px screen.
   await page.setViewportSize({ width: 320, height: 640 });
   expect(await overflow(page)).toBeLessThanOrEqual(0);
@@ -391,7 +391,7 @@ test('a settled touch score with more kept runs heads Progress, and the keyboard
   await expect(page.locator('#standard-median')).toHaveText('46');
   await expect(page.locator('#standard-median-label')).toHaveText('median of last 3 runs');
   await expect(page.locator('#standard-score-conditions')).toContainText('touch input');
-  await expect(page.locator('#standard-score-note')).toHaveText('3 completed standard runs kept. Interrupted runs don’t count. Your physical keyboard best is 82 wpm.');
+  await expect(page.locator('#standard-score-note')).toHaveText('3 completed standard runs kept. Your physical keyboard best is 82 wpm.');
 });
 
 test('the palette starts the standard test and leaves out the settings it locks', async ({ page }) => {

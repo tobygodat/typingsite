@@ -668,26 +668,100 @@
       </section>
 
       <section id="progress-screen" class="screen progress-screen" data-screen="progress" aria-labelledby="progress-heading" hidden>
-        <header class="section-heading page-heading">
+        <header class="section-heading page-heading progress-heading">
           <div>
             <h1 id="progress-heading">Progress</h1>
           </div>
-          <button id="clear-history" class="btn btn-ghost btn-sm danger-text" type="button" disabled>Clear history</button>
+          <div id="progress-period" class="pill-row" role="group" aria-label="Period">
+            <button class="pill" type="button" data-period="7" aria-pressed="false">7 days</button>
+            <button class="pill" type="button" data-period="30" aria-pressed="true">30 days</button>
+            <button class="pill" type="button" data-period="all" aria-pressed="false">All</button>
+          </div>
         </header>
 
-        <section id="practice-goal" class="practice-goal" aria-label="Daily practice" hidden>
-          <p id="goal-line" class="goal-line"></p>
-          <div id="goal-calendar" class="goal-calendar" role="group"></div>
-          <div class="goal-day-picker"><label class="sr-only" for="goal-day-select">Practice day</label><select id="goal-day-select" class="input select"></select></div>
-          <p id="goal-caption" class="goal-caption" aria-hidden="true"></p>
-        </section>
+        <div id="progress-content" hidden>
+          <div id="progress-tests" class="pill-row" role="group" aria-label="Test"></div>
+          <div class="variant-line">
+            <div id="progress-variants" class="pill-row variant-row" role="group" aria-label="Conditions" hidden></div>
+            <details class="conditions-disclosure">
+              <summary>conditions</summary>
+              <p id="progress-conditions" class="condition-copy progress-conditions"></p>
+            </details>
+          </div>
+          <dl id="progress-stats" class="progress-stats"></dl>
+          <p id="progress-trend-note" class="result-note"></p>
+        </div>
+
+        <div id="progress-views" class="progress-views" hidden>
+          <div id="progress-tabs" class="pill-row view-tabs" role="tablist" aria-label="View">
+            <button id="tab-speed" class="pill view-pill" type="button" role="tab" data-view-tab="speed" aria-controls="view-speed" aria-selected="true">Speed</button>
+            <button id="tab-accuracy" class="pill view-pill" type="button" role="tab" data-view-tab="accuracy" aria-controls="view-accuracy" aria-selected="false" tabindex="-1">Accuracy</button>
+            <button id="tab-consistency" class="pill view-pill" type="button" role="tab" data-view-tab="consistency" aria-controls="view-consistency" aria-selected="false" tabindex="-1">Consistency</button>
+            <button id="tab-practice" class="pill view-pill" type="button" role="tab" data-view-tab="practice" aria-controls="view-practice" aria-selected="false" tabindex="-1">Practice</button>
+            <button id="tab-keys" class="pill view-pill" type="button" role="tab" data-view-tab="keys" aria-controls="view-keys" aria-selected="false" tabindex="-1">Keys</button>
+          </div>
+          <div class="view-panels">
+            <div id="view-speed" class="view-panel" role="tabpanel" aria-labelledby="tab-speed">
+              <div id="progress-trend" class="progress-trend"></div>
+            </div>
+            <div id="view-accuracy" class="view-panel" role="tabpanel" aria-labelledby="tab-accuracy" hidden>
+              <div id="accuracy-trend" class="progress-trend"></div>
+            </div>
+            <div id="view-consistency" class="view-panel" role="tabpanel" aria-labelledby="tab-consistency" tabindex="0" hidden>
+              <div id="progress-spread" class="progress-spread"></div>
+            </div>
+            <div id="view-practice" class="view-panel" role="tabpanel" aria-labelledby="tab-practice" hidden>
+              <section id="practice-goal" class="practice-goal" aria-label="Daily practice" hidden>
+                <div class="practice-layout">
+                  <div class="practice-calendar">
+                    <h2 class="view-heading">Days you practised</h2>
+                    <div class="goal-chart">
+                      <div id="goal-months" class="goal-months" aria-hidden="true"></div>
+                      <div class="goal-weekdays" aria-hidden="true"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span></div>
+                      <div id="goal-calendar" class="goal-calendar" role="group"></div>
+                    </div>
+                    <p class="goal-legend" aria-hidden="true">less <span data-level="0"></span><span data-level="1"></span><span data-level="2"></span><span data-level="3"></span><span data-level="4"></span> more practice</p>
+                    <div class="goal-day-picker"><label class="sr-only" for="goal-day-select">Practice day</label><select id="goal-day-select" class="input select"></select></div>
+                    <p id="goal-caption" class="goal-caption" aria-hidden="true"></p>
+                  </div>
+                  <dl id="practice-stats" class="progress-stats practice-stats"></dl>
+                </div>
+                <div id="practice-runs" class="practice-runs"></div>
+              </section>
+            </div>
+            <div id="view-keys" class="view-panel" role="tabpanel" aria-labelledby="tab-keys" hidden>
+              <section class="keys-section" aria-labelledby="keys-heading">
+                <h2 id="keys-heading" class="view-heading">Keys</h2>
+                <p id="key-note" class="result-note"></p>
+                <div id="keys-layout" class="keys-layout">
+                  <div class="keys-map">
+                    <div id="key-heatmap" class="keyboard key-heatmap" role="grid" aria-label="Miss rate by key. Arrow keys move between keys."></div>
+                    <ul id="heat-legend" class="heat-legend" aria-hidden="true"></ul>
+                    <label id="key-select-field" class="filter-field key-select-field" for="key-select" hidden>Key
+                      <select id="key-select" class="input"></select>
+                    </label>
+                    <p id="key-detail" class="result-note key-detail"></p>
+                  </div>
+                  <div class="keys-pairs">
+                    <h3 class="pairs-heading">Pairs to watch</h3>
+                    <p id="pairs-empty" class="result-note" hidden>Not enough data yet.</p>
+                    <table id="pairs-table" class="pairs-table" hidden>
+                      <thead><tr><th scope="col">pair</th><th scope="col">error rate</th><th scope="col">slow runs</th><th scope="col">samples</th></tr></thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
 
         <section id="standard-score" class="standard-score" aria-labelledby="standard-score-heading">
           <div class="standard-score-heading">
             <h2 id="standard-score-heading">Standard score</h2>
             <button id="take-standard" class="btn btn-secondary btn-sm" type="button">Take the standard test</button>
           </div>
-          <dl class="standard-figures">
+          <dl id="standard-figures" class="standard-figures">
             <div><dt>best</dt><dd><strong id="standard-best" class="num" data-bare>—</strong><span data-speed-unit>wpm</span></dd></div>
             <div><dt id="standard-median-label">median</dt><dd><strong id="standard-median" class="num" data-bare>—</strong><span data-speed-unit>wpm</span></dd></div>
           </dl>
@@ -697,54 +771,20 @@
 
         <div id="progress-empty" class="empty-state">
           <h2 id="progress-empty-title">No practice runs yet.</h2>
-          <p id="progress-empty-copy">Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.</p>
+          <p id="progress-empty-copy">Finish a practice run to begin your history.</p>
           <button class="btn btn-primary" type="button" data-action="go-practice">Start practicing</button>
           <p class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button> a few keys at a time first.</p>
         </div>
 
-        <div id="progress-content" hidden>
-          <div class="progress-filters">
-            <label class="filter-field" for="progress-conditions">Test conditions
-              <select id="progress-conditions" class="input"></select>
-            </label>
-            <label class="filter-field" for="progress-period">Period
-              <select id="progress-period" class="input">
-                <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="all">All saved runs</option>
-              </select>
-            </label>
-          </div>
-          <p id="progress-week" class="result-note"></p>
-          <div id="progress-trend" class="progress-trend"></div>
-          <p id="progress-trend-note" class="result-note"></p>
-          <section class="progress-section" aria-labelledby="keys-heading">
-            <h2 id="keys-heading">Keys</h2>
-            <p id="key-note" class="result-note"></p>
-            <div class="keys-layout">
-              <div class="keys-map">
-                <div id="key-heatmap" class="keyboard key-heatmap" role="grid" aria-label="Miss rate by key. Arrow keys move between keys."></div>
-                <ul id="heat-legend" class="heat-legend" aria-hidden="true"></ul>
-                <label id="key-select-field" class="filter-field key-select-field" for="key-select" hidden>Key
-                  <select id="key-select" class="input"></select>
-                </label>
-                <p id="key-detail" class="result-note key-detail"></p>
-              </div>
-              <div class="keys-pairs">
-                <h3 class="pairs-heading">Pairs to watch</h3>
-                <p id="pairs-empty" class="result-note" hidden>No pair has enough samples with misses or slow intervals yet.</p>
-                <table id="pairs-table" class="pairs-table" hidden>
-                  <thead><tr><th scope="col">pair</th><th scope="col">error rate</th><th scope="col">slow runs</th><th scope="col">samples</th></tr></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </div>
-          </section>
+        <div id="progress-history" hidden>
           <section class="progress-section" aria-labelledby="run-history-heading">
             <h2 id="run-history-heading">Runs</h2>
             <div id="run-history"></div>
+            <button id="show-all-runs" class="btn btn-secondary btn-sm show-all-runs" type="button" hidden>Show all runs</button>
           </section>
           <section class="progress-section" aria-labelledby="comparison-history-heading">
             <h2 id="comparison-history-heading">Drills and retests</h2>
-            <p id="history-empty" class="result-note" hidden>No comparisons in this period at these conditions.</p>
+            <p id="history-empty" class="result-note" hidden>None in this period.</p>
             <div id="history-list" class="history-list" aria-live="polite" hidden></div>
           </section>
         </div>
@@ -753,6 +793,9 @@
           <p id="compose-history-note" class="result-note"></p>
           <div id="compose-history-list"></div>
         </section>
+        <div class="progress-danger">
+          <button id="clear-history" class="btn btn-ghost btn-sm danger-text" type="button" disabled>Clear history</button>
+        </div>
         <template id="history-row-template">
           <details class="history-row">
             <summary class="history-summary">

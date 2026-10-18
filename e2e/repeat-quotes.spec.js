@@ -182,9 +182,9 @@ test('on: a seen quote can return to chase its score, but never sets a best, a b
 
   await openView(page, 'Progress');
   await expect(page.locator('#run-history .run-row')).toHaveCount(2);
-  await expect(page.locator('#run-history .run-row').first()).toContainText('practice · repeated text');
-  await expect(page.locator('#progress-trend .trend-dot')).toHaveCount(2); // one fresh run, in each of the two charts
-  await expect(page.locator('#progress-trend-note')).toContainText('1 repeated-text run is listed below but left out of the chart and weekly medians.');
+  await expect(page.locator('#run-history .run-row').first()).toContainText(' · repeated text');
+  await expect(page.locator('#progress-trend .trend-dot')).toHaveCount(1); // one fresh run on the speed chart
+  await expect(page.locator('#progress-trend-note')).toContainText('1 repeated-text run not charted.');
   await page.emulateMedia({ colorScheme: 'light' });
   // The conditions, the week line and the trend note sit below the dock, with both runs in view.
   await page.locator('#progress-conditions').evaluate((node) => window.scrollTo(0, node.getBoundingClientRect().top + window.scrollY - 100));

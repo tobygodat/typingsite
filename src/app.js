@@ -46,7 +46,7 @@ import {
   wordHistory,
 } from './typing.js';
 import { wordListIds } from './words.js';
-import { DEFAULT_CODE_LANGUAGE, codePassage } from './code-snippets.js';
+import { codePassage } from './code-snippets.js';
 import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength } from './lengths.js';
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
@@ -63,9 +63,9 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { DAILY_GOALS, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, practiceRun, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
-import { renderTrend } from './progress-view.js';
-import { RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, showSpeed, showSpeedUnit, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
+import { CORRECTION_LABELS, DAILY_GOALS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
+import { RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
 import { readMonkeytypeSettings } from './monkeytype.js';
@@ -400,33 +400,15 @@ function conditions(inputClass = 'physical-keyboard') {
   return prefs.mode === 'standard' ? { ...standardConditions(inputClass), layout: inputLayout(inputClass) } : settingsConditions(inputClass);
 }
 
-const CORRECTION_LABELS = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
-function correctionLabel(policy) {
-  return CORRECTION_LABELS[policy || 'mandatory'] || 'stop on error';
-}
 
 // "standard v1": the recipe name as people read it, then what the recipe fixes.
 const recipeLabel = (recipe = STANDARD_VERSION) => recipe.replace('-', ' ');
 const recipeSummary = (value = standardConditions()) => `${recipeLabel(value.recipe)} · ${value.duration} s · english 1k–10k mix · punctuation, numbers, one quote`;
 
-// What every condition line ends with: input, correction rule and versions.
+// What every condition line ends with: input and layout, correction and rules, and versions.
 function conditionTail(value) {
-  const input = inputLabel(value);
-  return `${input} · ${correctionLabel(value.correctionPolicy)} · corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')} · metric v1`;
-}
-
-// The parts of a conditions description, named and in the order it reads. The friends board's shape
-// picker names a shape by the parts that tell it apart from the others.
-function conditionParts(value = conditions()) {
-  return {
-    language: value.wordList ? `english ${value.wordList}` : 'english',
-    length: value.mode === 'time' ? `${value.duration} s` : value.mode === 'words' ? `${value.count} words` : `${value.quoteLength || 'any'} quote`,
-    text: value.mode === 'quote' ? value.difficulty || 'any difficulty' : `${value.punctuation ? 'punctuation' : 'plain'}${value.numbers ? ' · numbers' : ''}`,
-    input: inputLabel(value),
-    correction: `${correctionLabel(value.correctionPolicy)}${describeRules(value)}`,
-    corpus: `corpus ${(value.corpus || CORPUS_VERSION).replace(/^.*-(v\d+)$/, '$1')}`,
-    metric: 'metric v1',
-  };
+  const { language, length, text, ...tail } = conditionParts(value);
+  return Object.values(tail).join(' · ');
 }
 const inputName = (value) => inputLabel(value);
 
@@ -440,14 +422,12 @@ function customConditions() {
     quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, strictSpace: false, quickEnd: true, customOrder: prefs.customOrder };
 }
 
-function describeConditions(value = conditions()) {
+function describeConditions(value = conditions(), sets = []) {
+  const { language, length, text, ...tail } = conditionParts(value, sets);
   // The recipe name stands for its punctuation, numbers and quote, keeping the run card's line short.
-  if (value.mode === 'standard') return `${recipeLabel(value.recipe)} · ${value.duration} s · 1k–10k mix · ${conditionTail(value)}`;
-  if (value.mode === 'code') {
-    const { input, correction, corpus, metric } = conditionParts(value);
-    return [`code · ${value.codeLanguage || DEFAULT_CODE_LANGUAGE}`, input, correction, corpus, metric, 'not counted toward bests'].join(' · ');
-  }
-  return Object.values(conditionParts(value)).join(' · ');
+  if (value.mode === 'standard') return [length, '1k–10k mix', ...Object.values(tail)].join(' · ');
+  if (value.mode === 'code') return [length, ...Object.values(tail), 'not counted toward bests'].join(' · ');
+  return [language, length, text, ...Object.values(tail)].join(' · ');
 }
 
 // Minimums ride along on the conditions line without joining the conditions key. The standard test
@@ -474,9 +454,9 @@ function stopReason(stop) {
 }
 
 // Strict space and quick end appear only when they differ from the defaults, as in conditionKey.
-const RULE_LABELS = { 'strict-space': 'strict space', 'quick-end-off': 'quick end off' };
 function describeRules(value) {
-  return inputRules(value).map((rule) => ` · ${RULE_LABELS[rule]}`).join('');
+  const { strictSpace, quickEnd } = conditionParts(value);
+  return [strictSpace, quickEnd].filter(Boolean).map((rule) => ` · ${rule}`).join('');
 }
 
 // A drill is always one minute of generated text, whatever the baseline was. Its conditions record
@@ -488,8 +468,8 @@ function inputLayout(inputClass) {
 
 // The layout is named only when it isn't QWERTY; runs saved before layouts existed read as QWERTY.
 function inputLabel(value) {
-  const input = value.inputClass === 'touch' ? 'touch input' : 'physical keyboard';
-  return isDefaultLayout(value.layout) ? input : `${input} · ${layoutLabel(value.layout)}`;
+  const { input, layout } = conditionParts(value);
+  return layout ? `${input} · ${layout}` : input;
 }
 
 function describeRun(run) {
@@ -531,8 +511,7 @@ let activationInput = 'physical-keyboard';
 const TEXT_FIELDS = 'textarea, input:not([type="checkbox"])';
 
 function signed(value, unit) {
-  const sign = value > 0 ? '+' : value < 0 ? '−' : '';
-  return `${sign}${Math.abs(value)} ${unit}`;
+  return `${signedNumber(value)} ${unit}`;
 }
 
 // Copy that holds a speed is a list of parts, each speed a figure that re-texts with the unit (src/units.js).
@@ -745,7 +724,7 @@ function applySpeedUnit() {
   if (!changed) return;
   labelWords();
   if (shownResult && rateShown(shownResult)) renderSpeedGraph($('speed-graph'), shownResult, { animate: false });
-  if ($('progress-trend').childElementCount) redrawTrend();
+  if (!$('progress-views').hidden) drawProgressView();
 }
 
 // Minimums decide which practice runs count, and custom text never counts, so a custom run has none and
@@ -2752,7 +2731,9 @@ function scoreFacts(items) {
 }
 
 function openHistoryRun(id) {
-  const row = [...$('run-history').children].find((item) => item.dataset.runId === id);
+  const find = () => [...$('run-history').children].find((item) => item.dataset.runId === id);
+  if (!find() && listedRuns.some((run) => run.id === id)) showAllRuns();
+  const row = find();
   if (row) { row.open = true; row.scrollIntoView({ block: 'center', behavior: 'instant' }); row.querySelector('summary').focus(); }
 }
 
@@ -2877,10 +2858,16 @@ function renderStandardScore() {
   const kept = MAX_RUN_SUMMARIES.toLocaleString('en-US');
   const keptBest = standardScore(profile.runs, conditionKey(source)).best;
   const olderBest = score.total && score.best > keptBest ? ` Your best comes from a run older than the newest ${kept} runs that Progress keeps.` : '';
-  let note = `${plural(score.total, 'completed standard run')} kept.${olderBest} Interrupted runs don’t count.`;
+  let note = `${plural(score.total, 'completed standard run')} kept.${olderBest}`;
   if (!score.total && score.best !== null) note = `Your best is kept, but your standard runs are older than the newest ${kept} runs that Progress keeps, so the median waits for ${STANDARD_MIN_RUNS} new ones.`;
-  else if (!score.total) note = 'No standard runs yet. Every one is fresh text from the same fixed recipe, so the scores stay comparable.';
-  else if (!score.settled) note = `${plural(score.total, 'standard run')} kept.${olderBest} The median appears after ${STANDARD_MIN_RUNS}, so a single fast or slow run can’t set your score.`;
+  else if (!score.total) note = 'No standard runs yet.';
+  else if (!score.settled) note = `${plural(score.total, 'standard run')} kept.${olderBest} The median appears after ${STANDARD_MIN_RUNS}.`;
+  // With nothing scored yet, the recipe is what Take the standard test sets up, so it isn't repeated here.
+  const empty = !score.total && score.best === null;
+  $('standard-score-conditions').hidden = empty;
+  // Nothing scored: the section is one line, the note beside the action, with no blank figures.
+  $('standard-score').classList.toggle('is-empty', empty);
+  $('standard-figures').hidden = empty;
   setParts($('standard-score-note'), [note, other.best === null ? '' : [` Your ${onTouch ? 'physical keyboard' : 'touch'} best is `, speedFigure(other.best), '.']]);
 }
 
@@ -2910,8 +2897,11 @@ function renderKeys(runs) {
   const analysis = keyAnalysis(runs);
   const pct = (v) => `${(v * 100).toFixed(1)}%`;
   const older = analysis.pairDerivedRuns;
-  $('key-note').textContent = `First-try misses per key from ${analysis.runs} saved ${analysis.runs === 1 ? 'run' : 'runs'} at these conditions. Keys with fewer than ${MIN_PATTERN_SAMPLES} samples stay neutral.${older
-    ? ` ${older} older ${older === 1 ? 'run counts' : 'runs count'} only letters typed after another letter, not the first letter of a word.` : ''}`;
+  // With no per-key detail in these runs there is nothing to draw: one line says why instead of an empty map.
+  $('keys-layout').hidden = !analysis.runs;
+  $('key-note').textContent = analysis.runs
+    ? `First-try misses per key · ${plural(analysis.runs, 'run')}${older ? ` · ${older} older ${older === 1 ? 'run skips' : 'runs skip'} first letters` : ''}`
+    : runs.length ? `No keystroke detail in ${runs.length === 1 ? 'this run' : `these ${runs.length} runs`} yet. Fresh-text runs from now on fill in the map.` : 'No runs at these conditions in this period.';
   heatDetails = {};
   const grid = $('key-heatmap');
   const hadFocus = grid.contains(document.activeElement);
@@ -2989,7 +2979,7 @@ function selectHeatKey(letter, { focus = false } = {}) {
   }
   heatKey = letter ? target.dataset.letter : null;
   $('key-select').value = heatKey || '';
-  $('key-detail').textContent = heatKey ? heatDetails[heatKey] : 'Select a key to see its miss rate and sample count.';
+  $('key-detail').textContent = heatKey ? heatDetails[heatKey] : '';
   if (focus && !picture) target.focus();
 }
 
@@ -3014,13 +3004,17 @@ function moveHeatFocus(event) {
   if (letter) selectHeatKey(letter, { focus: true });
 }
 
-// Daily goal line and an 18-week practice calendar (Sunday-first columns), static by design.
+// The practice calendar (Sunday-first columns), static by design: 26 weeks across the column, fewer on a phone.
 // The calendar is one tab stop: each day is a labelled cell, and the arrow keys move between them as drawn.
 // Goal-met days carry a dot as well as the green step, and the caption under the calendar repeats the
 // focused or hovered day's label for sighted users (it is aria-hidden; the cell's own label is announced).
 let goalDay = '';
+// The day the Progress page was last drawn for (renderHistory).
+let historyDay = '';
 function captionGoalDay(cell) { $('goal-caption').textContent = cell?.dataset?.caption || ''; }
 const focusedGoalDay = () => ($('goal-calendar').contains(document.activeElement) ? document.activeElement : null);
+const narrowColumn = window.matchMedia('(max-width: 760px)');
+const calendarWeeks = () => (narrowColumn.matches ? 17 : 26);
 function renderGoal(date = new Date()) {
   goalDay = dayKey(date);
   const byDay = minutesByDay(profile.runs, profile.practiceDays);
@@ -3029,9 +3023,8 @@ function renderGoal(date = new Date()) {
   const selectedDay = picker.value || goalDay;
   $('practice-goal').hidden = Object.keys(byDay).length === 0;
   const goal = prefs.dailyGoal;
-  const streak = practiceStreak(byDay, goal, date);
-  $('goal-line').replaceChildren(element('span', 'Today', 'goal-label'), ` ${goalMinutes(byDay[goalDay])}${goal ? ` / ${goal}` : ''} min · ${streak}-day streak`);
-  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - 17 * 7 - date.getDay());
+  const weeks = calendarWeeks();
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - (weeks - 1) * 7 - date.getDay());
   const cells = [];
   for (const day = new Date(start); day <= date; day.setDate(day.getDate() + 1)) {
     const minutes = byDay[dayKey(day)] || 0;
@@ -3054,11 +3047,15 @@ function renderGoal(date = new Date()) {
   picker.value = cells.some((cell) => cell.dataset.day === selectedDay) ? selectedDay : goalDay;
   const practised = cells.filter((cell) => cell.dataset.level !== '0').length;
   const hadFocus = Boolean(focusedGoalDay());
-  $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last 18 weeks: ${practised} days with practice. Arrow keys move between days.`);
+  $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last ${weeks} weeks: ${practised} days with practice. Arrow keys move between days.`);
   captionGoalDay(null);
+  $('goal-calendar').style.setProperty('--weeks', String(weeks));
+  $('goal-months').style.setProperty('--weeks', String(weeks));
   $('goal-calendar').replaceChildren(...cells);
+  $('goal-months').replaceChildren(...monthLabels(cells.map((cell) => cell.dataset.day)).map((month) => element('span', month)));
   if (hadFocus && !coarse) cells.at(-1).focus();
   if (document.activeElement === picker) captionGoalDay(cells.find((cell) => cell.dataset.day === picker.value));
+  renderPracticeStats(progressState.period, date);
 }
 
 function moveGoalFocus(event) {
@@ -3076,60 +3073,160 @@ function moveGoalFocus(event) {
   to.focus();
 }
 
+// Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
+const progressState = { period: '30', key: '', view: 'speed', allRuns: false };
+
+// The run list opens on the newest few, and one button builds the rest. Choosing a period, test or
+// condition set, or another profile, opens it on the newest few again.
+const RECENT_RUNS = 10;
+let listedRuns = [];
+function chooseProgress(choice) {
+  if (Object.entries(choice).every(([name, value]) => progressState[name] === value)) return;
+  Object.assign(progressState, choice, { allRuns: false });
+  renderHistory();
+}
+function renderRunRows() {
+  const shown = progressState.allRuns ? listedRuns : listedRuns.slice(0, RECENT_RUNS);
+  $('run-history').replaceChildren(...shown.map(runRow));
+  $('show-all-runs').hidden = shown.length === listedRuns.length;
+  $('show-all-runs').textContent = `Show all ${listedRuns.length} runs`;
+}
+function showAllRuns() {
+  progressState.allRuns = true;
+  $('run-history').append(...listedRuns.slice($('run-history').children.length).map(runRow));
+  $('show-all-runs').hidden = true;
+}
+// What the width-dependent charts last drew from, so a resize, a unit change or a new view redraws them:
+// the runs and the period window they were selected from, taken on the same day.
+let progressRuns = [];
+let progressWindow = null;
+let practicePerDay = [];
+
+const shapeLabel = (shape) => {
+  if (shape.mode === 'words') return { text: `${shape.size} words` };
+  if (shape.mode === 'time') return { text: `${shape.size} s`, label: `${shape.size} seconds` };
+  if (shape.mode === 'quote') return { text: `${shape.size} quote` };
+  if (shape.mode === 'code') return { text: `code · ${shape.size}` };
+  return { text: shape.mode };
+};
+
+function pill(text, { pressed = false, disabled = false, label = '', className = '' } = {}) {
+  const button = element('button', text, `pill${className ? ` ${className}` : ''}`);
+  button.type = 'button';
+  button.setAttribute('aria-pressed', String(pressed));
+  button.disabled = disabled;
+  if (label) button.setAttribute('aria-label', label);
+  return button;
+}
+
+// One pill per test length in testShapes' order; a length without runs is disabled.
+function renderTestPills(shapes) {
+  const selected = shapes.find((shape) => shape.variants.some((variant) => variant.key === progressState.key));
+  // The pills are rebuilt, so a focused one hands focus to its replacement.
+  const focused = document.activeElement?.closest('#progress-tests, #progress-variants') ? { ...document.activeElement.dataset } : null;
+  const row = [];
+  shapes.forEach((shape, i) => {
+    if (i && shape.mode !== shapes[i - 1].mode) {
+      const rule = element('span', '', 'pill-rule');
+      rule.setAttribute('aria-hidden', 'true');
+      row.push(rule);
+    }
+    const { text, label } = shapeLabel(shape);
+    const button = pill(text, { pressed: shape === selected, disabled: !shape.variants.length, label });
+    button.dataset.shape = shape.id;
+    button.addEventListener('click', () => chooseProgress({ key: shape.variants[0].key }));
+    row.push(button);
+  });
+  $('progress-tests').replaceChildren(...row);
+  const variants = selected?.variants || [];
+  $('progress-variants').hidden = variants.length < 2;
+  const labels = conditionLabels(variants.map((variant) => variant.conditions));
+  $('progress-variants').replaceChildren(...(variants.length < 2 ? [] : variants.map((variant, i) => {
+    const button = pill(labels[i], { pressed: variant.key === progressState.key, className: 'variant-pill' });
+    button.dataset.key = variant.key;
+    button.addEventListener('click', () => chooseProgress({ key: variant.key }));
+    return button;
+  })));
+  if (focused) {
+    const pills = [...$('progress-tests').children, ...$('progress-variants').children];
+    pills.find((node) => (focused.key ? node.dataset.key === focused.key : node.dataset.shape === focused.shape))?.focus();
+  }
+}
+
+function runRow(run) {
+  const row = element('details', '', 'run-row');
+  row.dataset.runId = run.id;
+  const summary = element('summary', '', 'run-summary');
+  summary.append(element('strong', [speedFigure(run.score.wpm), ` · ${run.score.accuracy}%`], 'num'),
+    element('span', `${dateCopy(run.at)}${run.kind === 'retest' ? ' · retest' : run.conditions?.mode === 'standard' ? ' · standard' : ''}${run.fresh === false ? ' · repeated text' : ''}`));
+  const detail = element('div', '', 'run-detail');
+  detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
+    element('p', describeRun(run)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
+  const trace = profile.attempts.find((a) => a.id === run.id);
+  if (trace) {
+    const passageDetails = document.createElement('details');
+    passageDetails.append(element('summary', 'View passage'), element('p', trace.text));
+    detail.append(passageDetails);
+  }
+  row.append(summary, detail);
+  return row;
+}
+
 function renderHistory() {
   renderStandardScore();
+  // One moment for the whole page, so every figure, chart and list reads the same period window.
+  const date = new Date();
+  historyDay = dayKey(date);
   const listed = profile.runs.filter(practiceRun);
   const eligible = listed.filter(trendRun);
   const hasProgress = listed.length > 0 || profile.loops.length > 0;
-  renderGoal();
+  renderGoal(date);
   $('progress-empty').hidden = hasProgress;
   // Drills, daily and custom runs count toward the goal but not the trend, so the empty copy names what is missing.
   const goalOnly = !hasProgress && !$('practice-goal').hidden;
   $('progress-empty-title').textContent = goalOnly ? 'No speed trend yet.' : 'No practice runs yet.';
   $('progress-empty-copy').textContent = goalOnly
-    ? 'Drills, daily and custom runs count toward your daily practice. Recorded lessons and composing active time count too. Finish a practice run to chart speed and accuracy. Daily results are in Challenge.'
-    : 'Finish a practice run to begin your history. Drill and retest to save a comparison. Daily results are in Challenge.';
+    ? 'Drills, daily and custom runs count toward your daily practice. Finish a practice run to chart speed and accuracy.'
+    : 'Finish a practice run to begin your history.';
   $('progress-content').hidden = !hasProgress;
+  $('progress-views').hidden = !hasProgress && !goalOnly;
+  $('progress-history').hidden = !hasProgress;
   const hasHistory = hasAnyHistory();
   $('clear-history').hidden = !hasHistory;
   $('clear-history').disabled = !hasHistory;
-  const source = conditionOptions($('progress-conditions'), [...listed, ...profile.loops]);
-  const key = source ? conditionKey(source) : '';
-  const period = $('progress-period').value;
-  const matching = source ? filterRuns(eligible, key, period) : [];
-  const runRows = source ? filterRuns(listed, key, period) : [];
+  // Conditions never mix: every figure, chart and list below reads one exact condition set. A length
+  // opens on its most used set; with no choice yet, on the length of the newest run.
+  const shapes = testShapes([...listed, ...profile.loops]);
+  const variants = shapes.flatMap((shape) => shape.variants);
+  if (!variants.some((variant) => variant.key === progressState.key)) {
+    const newest = listed.at(-1) || profile.loops.at(-1);
+    progressState.key = (newest && shapes.find((shape) => shape.id === shapeOf(newest.conditions))?.variants[0].key) || variants[0]?.key || '';
+    progressState.allRuns = false;
+  }
+  renderTestPills(shapes);
+  const source = variants.find((variant) => variant.key === progressState.key)?.conditions;
+  const key = source ? progressState.key : '';
+  const period = progressState.period;
+  for (const button of $('progress-period').querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
+  const siblings = shapes.find((shape) => shape.variants.some((variant) => variant.key === key))?.variants.map((variant) => variant.conditions);
+  $('progress-conditions').textContent = source ? describeConditions(source, siblings) : '';
+  const span = periodWindow(period, date);
+  const matching = source ? filterRuns(eligible, key, span) : [];
+  const runRows = source ? filterRuns(listed, key, span) : [];
   const repeats = runRows.length - matching.length;
-  const repeatCopy = repeats ? ` ${repeats} repeated-text ${repeats === 1 ? 'run is' : 'runs are'} listed below but left out of the chart and weekly medians.` : '';
-  const week = weeklyChange(eligible, key);
-  setParts($('progress-week'), week.wpm === null
-    ? `This week: ${week.current.length} matching runs. A week-to-week change needs runs in both this week and the preceding week.`
-    : ['Weekly median: ', speedFigure(week.wpm, { signed: true }), ` · ${signed(week.accuracy, 'pp accuracy')} · ${week.current.length} runs this week / ${week.previous.length} last week. This describes your runs, not a proven learning effect.`]);
-  renderTrend($('progress-trend'), matching, openHistoryRun);
+  const repeatCopy = repeats ? `${repeats} repeated-text ${repeats === 1 ? 'run' : 'runs'} not charted.` : '';
+  renderOverview(matching, source ? weeklyChange(eligible, key, date) : null, period);
+  progressRuns = matching;
+  progressWindow = periodWindow(period, date, matching.map(runDay).filter(Boolean).sort()[0]);
+  // Only what the charts can't show: an empty period, or runs listed below that aren't drawn.
   $('progress-trend-note').textContent = matching.length
-    ? `${matching.length} completed practice runs and retests on fresh text, oldest to newest. Select a point or open a run below. Daily scores are in Challenge.${matching.some((r) => !r.at) ? ' Earlier undated runs appear only in All saved runs.' : ''}${repeatCopy}`
-    : runRows.length
-      ? `No fresh-text practice runs at these conditions in this period, so there is no chart.${repeatCopy}`
-      : 'No completed practice runs at these conditions in this period. Try a longer period or different conditions.';
-  renderKeys(source ? filterRuns(profile.runs, key, period) : []);
-  $('run-history').replaceChildren(...[...runRows].reverse().map((run) => {
-    const row = element('details', '', 'run-row');
-    row.dataset.runId = run.id;
-    const summary = element('summary', '', 'run-summary');
-    summary.append(element('strong', [speedFigure(run.score.wpm), ` · ${run.score.accuracy}%`], 'num'),
-      element('span', `${dateCopy(run.at)} · ${run.kind === 'retest' ? 'retest' : run.conditions?.mode === 'standard' ? 'standard' : 'practice'}${run.fresh === false ? ' · repeated text' : ''} · view details`));
-    const detail = element('div', '', 'run-detail');
-    detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
-      element('p', describeRun(run)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
-    const trace = profile.attempts.find((a) => a.id === run.id);
-    if (trace) {
-      const passageDetails = document.createElement('details');
-      passageDetails.append(element('summary', 'View passage'), element('p', trace.text));
-      detail.append(passageDetails);
-    }
-    row.append(summary, detail);
-    return row;
-  }));
-  const loops = source ? filterRuns(profile.loops, key, period).reverse() : [];
+    ? [matching.some((r) => !r.at) ? 'Undated runs not charted.' : '', repeatCopy].filter(Boolean).join(' ')
+    : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
+  renderKeys(source ? filterRuns(profile.runs, key, span) : []);
+  showProgressView(hasProgress ? progressState.view : 'practice', { remember: false, only: hasProgress ? null : 'practice' });
+  listedRuns = [...runRows].reverse();
+  renderRunRows();
+  const loops = source ? filterRuns(profile.loops, key, span).reverse() : [];
   $('history-list').hidden = !loops.length;
   $('history-empty').hidden = Boolean(loops.length);
   const template = $('history-row-template');
@@ -3168,6 +3265,106 @@ function renderHistory() {
   renderComposeHistory();
 }
 
+// The overview: this week's and last week's medians with their run counts, the period's median speed and
+// accuracy, and its fastest run, all at the selected conditions. Speeds read whole, like the run card.
+const PERIOD_NAMES = { 7: ['7 days', '7-day median'], 30: ['30 days', '30-day median'], all: ['All', 'all-time median'] };
+function renderOverview(runs, week, period) {
+  const stats = periodStats(runs);
+  const runsCopy = (count) => (count ? `median of ${plural(count, 'run')}` : 'no runs');
+  const speed = (wpm) => (wpm === null ? ['—'] : [speedFigure(wpm, { bare: true, whole: true }), ' ', unitLabel()]);
+  const figure = (label, value, note) => {
+    const group = element('div', '', 'progress-figure');
+    group.append(element('dt', label), element('dd', value, 'num figure-value'), element('dd', note, 'figure-note'));
+    return group;
+  };
+  const weekStats = (list) => periodStats(list || []);
+  const [thisWeek, lastWeek] = [weekStats(week?.current), weekStats(week?.previous)];
+  const [periodName, accuracyNote] = PERIOD_NAMES[period];
+  $('progress-stats').replaceChildren(
+    figure('This week', speed(thisWeek.wpm), runsCopy(thisWeek.count)),
+    figure('Last week', speed(lastWeek.wpm), runsCopy(lastWeek.count)),
+    figure(periodName, speed(stats.wpm), runsCopy(stats.count)),
+    figure('Accuracy', stats.count ? `${Number(stats.accuracy.toFixed(1))}%` : '—', stats.count ? accuracyNote : 'no runs'),
+    figure('Best run', stats.count ? speed(stats.best.score.wpm) : '—', stats.best?.at ? new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : stats.count ? 'date unavailable' : 'no runs'),
+  );
+}
+
+// Practice over the period, whatever the test: days practised, the longest and current streaks (days meeting
+// the goal, or with any practice when it's off) and minutes typed, from the same minutes the calendar draws.
+function renderPracticeStats(period, date = new Date()) {
+  const byDay = minutesByDay(profile.runs, profile.practiceDays);
+  const first = Object.keys(byDay).sort()[0] || null;
+  const days = periodDays(period, date, first);
+  const goal = prefs.dailyGoal;
+  const stats = practiceStats(byDay, profile.runs, days, goal);
+  practicePerDay = stats.runsPerDay;
+  const runs = stats.runsPerDay.reduce((sum, d) => sum + d.runs, 0);
+  const current = practiceStreak(byDay, goal, date);
+  const figure = (label, value, unit, note) => {
+    const group = element('div', '', 'progress-figure');
+    group.append(element('dt', label), element('dd', [element('span', value), ' ', element('span', unit, 'figure-unit')], 'num figure-value'), element('dd', note, 'figure-note'));
+    return group;
+  };
+  const daysWord = (n) => (n === 1 ? 'day' : 'days');
+  const runDays = stats.runsPerDay.filter((d) => d.runs).length;
+  $('practice-stats').replaceChildren(
+    figure('Active days', String(stats.active), `of ${days.length}`, runDays ? `${Number((runs / runDays).toFixed(1))} runs a day when you practise` : 'no runs in this period'),
+    figure('Longest streak', String(stats.longest), daysWord(stats.longest), goal ? `at ${goal} min a day` : 'in this period'),
+    figure('Current streak', String(current), daysWord(current), `today ${goalMinutes(byDay[dayKey(date)])}${goal ? ` of ${goal}` : ''} min`),
+    figure('Time typing', goalMinutes(stats.minutes), 'min', period === 'all' ? `since ${new Date(`${days[0]}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : `in the last ${days.length} days`),
+  );
+}
+
+// Only the shown view's charts are drawn: a hidden panel has no width to draw to.
+const shownProgressView = () => $('progress-tabs').querySelector('[aria-selected="true"]')?.dataset.viewTab;
+function drawProgressView() {
+  const view = shownProgressView();
+  const draw = {
+    speed: () => renderTrend($('progress-trend'), progressRuns, openHistoryRun, 'wpm', { period: progressWindow }),
+    accuracy: () => renderTrend($('accuracy-trend'), progressRuns, openHistoryRun, 'accuracy', { period: progressWindow }),
+    consistency: () => renderSpread($('progress-spread'), progressRuns),
+    practice: () => renderRunsPerDay($('practice-runs'), practicePerDay),
+  };
+  for (const [name, container] of [['speed', 'progress-trend'], ['accuracy', 'accuracy-trend'], ['consistency', 'progress-spread'], ['practice', 'practice-runs']]) {
+    if (name !== view) $(container).replaceChildren();
+  }
+  if (!$('progress-views').hidden && draw[view]) draw[view]();
+}
+
+// The views are tabs: one panel at a time, arrow keys move between tabs and show each as they go.
+// With no practice runs yet, Practice is the only view.
+function showProgressView(view, { focus = false, remember = true, only = null } = {}) {
+  if (remember) progressState.view = view;
+  for (const tab of $('progress-tabs').querySelectorAll('[role="tab"]')) {
+    const on = tab.dataset.viewTab === view;
+    tab.hidden = Boolean(only) && tab.dataset.viewTab !== only;
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+    const panel = $(tab.getAttribute('aria-controls'));
+    panel.hidden = !on;
+    // With the tabs hidden, the one panel shown is plain content, not a panel of a missing tab.
+    if (only) {
+      panel.removeAttribute('role');
+      panel.removeAttribute('aria-labelledby');
+    } else {
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', tab.id);
+    }
+    if (on && focus) tab.focus();
+  }
+  $('progress-tabs').hidden = Boolean(only);
+  drawProgressView();
+}
+
+function moveProgressTab(event) {
+  const tabs = [...$('progress-tabs').querySelectorAll('[role="tab"]:not([hidden])')];
+  const from = tabs.indexOf(event.target);
+  const to = { ArrowRight: from + 1, ArrowLeft: from - 1, Home: 0, End: tabs.length - 1 }[event.key];
+  if (from < 0 || to === undefined) return;
+  event.preventDefault();
+  showProgressView(tabs[(to + tabs.length) % tabs.length].dataset.viewTab, { focus: true });
+}
+
 function hasAnyHistory() {
   return profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0 || profile.compositions.length > 0
     || lessonsStarted(profile.lessons) || Object.keys(profile.practiceDays).length > 0;
@@ -3179,9 +3376,8 @@ function renderComposeHistory() {
   $('compose-history').hidden = !list.length;
   if (!list.length) return;
   const shown = [...list].reverse().slice(0, 10);
-  setParts($('compose-history-note'), [unitLabel('Free-typing {unit} is characters in your text{wpm: ÷ 5} per minute of active typing, a pause over 2\u00a0s counting as your average gap. '),
-    `Kept apart from copy-test charts and never a best. ${list.length} ${list.length === 1 ? 'session' : 'sessions'} saved`
-    + `${list.length > shown.length ? `; the newest ${shown.length} are shown` : ''}. Only these numbers are kept, never your words.`]);
+  $('compose-history-note').textContent = `${list.length} ${list.length === 1 ? 'session' : 'sessions'} saved`
+    + `${list.length > shown.length ? ` · newest ${shown.length} shown` : ''} · never a best`;
   $('compose-history-list').replaceChildren(...shown.map((item) => {
     const row = element('article', '', 'compose-row');
     const main = element('div', '', 'compose-row-main');
@@ -3983,6 +4179,7 @@ function forgetTraining() {
 // nothing left to save to (clear history keeps its marker and Undo; see clearHistory).
 function wipeHistory() {
   profile = emptyProfile();
+  progressState.allRuns = false;
   forgetTraining();
 }
 
@@ -4121,7 +4318,9 @@ function absorb(data) {
   if (data?.version !== 2) return false;
   const before = account.syncSignature(profile);
   ({ merged: profile, holds: heldClears } = account.mergeAndHold(heldClears, profile, normalizeProfile(data)));
-  return account.syncSignature(profile) !== before;
+  const changed = account.syncSignature(profile) !== before;
+  if (changed) progressState.allRuns = false;
+  return changed;
 }
 
 // After a merge: preferences follow where they can't disturb a run, and only the visible history view
@@ -4311,6 +4510,7 @@ async function pullProfile({ force = false } = {}) {
 
 function adoptProfile(data) {
   profile = normalizeProfile(data);
+  progressState.allRuns = false;
   prefs = preferencesInUse(profile.preferences);
   livePreferences = JSON.stringify(prefs);
   storeLocally();
@@ -4964,6 +5164,11 @@ function bindEvents() {
   $('word-list').addEventListener('change', (event) => setWordList(event.target.value));
   $('repeat-quotes-toggle').addEventListener('change', (event) => setRepeatQuotes(event.target.checked));
   $('daily-goal').addEventListener('change', (event) => { prefs.dailyGoal = Number(event.target.value); saveChoice('dailyGoal'); renderGoal(); });
+  $('show-all-runs').addEventListener('click', () => {
+    showAllRuns();
+    $('run-history').children[RECENT_RUNS]?.querySelector('summary').focus();
+  });
+  narrowColumn.addEventListener('change', () => renderGoal());
   $('goal-day-select').addEventListener('change', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
   $('goal-day-select').addEventListener('focus', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
   $('goal-calendar').addEventListener('keydown', moveGoalFocus);
@@ -5074,9 +5279,16 @@ function bindEvents() {
     const word = event.target.closest('[role="option"]');
     if (word) selectWord(Number(word.dataset.index), { focus: true });
   });
-  $('progress-conditions').addEventListener('change', renderHistory);
+  $('progress-period').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-period]');
+    if (button) chooseProgress({ period: button.dataset.period });
+  });
+  $('progress-tabs').addEventListener('click', (event) => {
+    const tab = event.target.closest('[role="tab"]');
+    if (tab) showProgressView(tab.dataset.viewTab);
+  });
+  $('progress-tabs').addEventListener('keydown', moveProgressTab);
   $('take-standard').addEventListener('click', () => setTestShape('standard'));
-  $('progress-period').addEventListener('change', renderHistory);
   $('key-heatmap').addEventListener('keydown', moveHeatFocus);
   $('key-heatmap').addEventListener('focusin', (event) => {
     const cell = event.target.closest('.key');
@@ -5655,17 +5867,14 @@ new ResizeObserver(() => {
   if (!shownResult || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
   renderSpeedGraph(graph, shownResult, { animate: false });
 }).observe($('speed-graph'));
-// The trend as Progress last drew it, drawn again (at a new width, or in a new unit).
-function redrawTrend() {
-  renderTrend($('progress-trend'), filterRuns(profile.runs.filter(trendRun), $('progress-conditions').value, $('progress-period').value), openHistoryRun);
-}
-let trendWidth = 0;
+// The shown view's charts, drawn again at a new width.
+let viewsWidth = 0;
 new ResizeObserver(() => {
-  const container = $('progress-trend');
-  if (!container.clientWidth || trendWidth === container.clientWidth) return;
-  trendWidth = container.clientWidth;
-  redrawTrend();
-}).observe($('progress-trend'));
+  const panels = document.querySelector('.view-panels');
+  if (!panels.clientWidth || viewsWidth === panels.clientWidth) return;
+  viewsWidth = panels.clientWidth;
+  drawProgressView();
+}).observe(document.querySelector('.view-panels'));
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
 compose = createCompose({
@@ -5713,7 +5922,6 @@ friendsBoard = createFriendsBoard({
   dailyKey,
   // Which shape the bests picker opens on: the one you have run most (src/friends-board.js defaultShape).
   runs: () => profile.runs,
-  conditionParts,
   signIn: () => openAccountDialog('signin'),
   // The button that asks for this disappears with the board, so focus lands on the Online selector.
   openOnline: () => { onlineRace.open(); $('challenge-online').focus(); },
@@ -5745,7 +5953,14 @@ completeAuthRedirect();
 syncOnLoad();
 inbox.refresh();
 // Refresh the day label and the practice calendar when a tab returns, and across midnight without reloading.
-const refreshGoalDay = () => { if (dayKey(new Date()) !== goalDay) renderGoal(); };
+// On Progress the whole page moves to the new day, so its figures, charts and list keep one window. That
+// reads the day Progress was last drawn for, not the calendar's: a breakpoint or goal change redraws only
+// the calendar, and would otherwise hide the new day from this check.
+const refreshGoalDay = () => {
+  const today = dayKey(new Date());
+  if (document.body.dataset.view === 'progress' && today !== historyDay) renderHistory();
+  else if (today !== goalDay) renderGoal();
+};
 setInterval(() => {
   if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); }
   if (document.body.dataset.view === 'progress') refreshGoalDay();
