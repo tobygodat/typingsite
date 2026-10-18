@@ -3090,11 +3090,14 @@ function moveGoalFocus(event) {
 // Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
 const progressState = { period: '30', key: '', view: 'speed', allRuns: false };
 
-// The run list opens on the newest few, and one button builds the rest. A new period, test or
-// condition set opens on the newest few again.
+// The run list opens on the newest few, and one button builds the rest. Choosing a period, test or
+// condition set, or another profile, opens it on the newest few again.
 const RECENT_RUNS = 10;
 let listedRuns = [];
-let listedFilter = '';
+function chooseProgress(choice) {
+  Object.assign(progressState, choice, { allRuns: false });
+  renderHistory();
+}
 function renderRunRows() {
   const shown = progressState.allRuns ? listedRuns : listedRuns.slice(0, RECENT_RUNS);
   $('run-history').replaceChildren(...shown.map(runRow));
@@ -3144,7 +3147,7 @@ function renderTestPills(shapes) {
     const { text, label } = shapeLabel(shape);
     const button = pill(text, { pressed: shape === selected, disabled: !shape.variants.length, label });
     button.dataset.shape = shape.id;
-    button.addEventListener('click', () => { progressState.key = shape.variants[0].key; renderHistory(); });
+    button.addEventListener('click', () => chooseProgress({ key: shape.variants[0].key }));
     row.push(button);
   });
   $('progress-tests').replaceChildren(...row);
@@ -3154,7 +3157,7 @@ function renderTestPills(shapes) {
   $('progress-variants').replaceChildren(...(variants.length < 2 ? [] : variants.map((variant, i) => {
     const button = pill(labels[i], { pressed: variant.key === progressState.key, className: 'variant-pill' });
     button.dataset.key = variant.key;
-    button.addEventListener('click', () => { progressState.key = variant.key; renderHistory(); });
+    button.addEventListener('click', () => chooseProgress({ key: variant.key }));
     return button;
   })));
   if (focused) {
@@ -3230,9 +3233,6 @@ function renderHistory() {
     : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
   renderKeys(source ? filterRuns(profile.runs, key, period, date) : []);
   showProgressView(hasProgress ? progressState.view : 'practice', { remember: false, only: hasProgress ? null : 'practice' });
-  const filter = `${period}|${key}`;
-  if (filter !== listedFilter) progressState.allRuns = false;
-  listedFilter = filter;
   listedRuns = [...runRows].reverse();
   renderRunRows();
   const loops = source ? filterRuns(profile.loops, key, period, date).reverse() : [];
@@ -4188,6 +4188,7 @@ function forgetTraining() {
 // nothing left to save to (clear history keeps its marker and Undo; see clearHistory).
 function wipeHistory() {
   profile = emptyProfile();
+  progressState.allRuns = false;
   forgetTraining();
 }
 
@@ -4516,6 +4517,7 @@ async function pullProfile({ force = false } = {}) {
 
 function adoptProfile(data) {
   profile = normalizeProfile(data);
+  progressState.allRuns = false;
   prefs = preferencesInUse(profile.preferences);
   livePreferences = JSON.stringify(prefs);
   storeLocally();
@@ -5286,7 +5288,7 @@ function bindEvents() {
   });
   $('progress-period').addEventListener('click', (event) => {
     const button = event.target.closest('[data-period]');
-    if (button) { progressState.period = button.dataset.period; renderHistory(); }
+    if (button) chooseProgress({ period: button.dataset.period });
   });
   $('progress-tabs').addEventListener('click', (event) => {
     const tab = event.target.closest('[role="tab"]');
