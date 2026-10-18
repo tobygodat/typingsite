@@ -257,6 +257,19 @@ test('across midnight on 7 days, the overview and the chart move to the new day 
   expect(outside).toEqual([]);
 });
 
+test('All runs from the first run to today, like 7 and 30 days', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [run(12, 50, 95), run(6, 60, 95), run(3, 70, 95)]);
+  await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: 'All' }).click();
+  await expect(page.locator('#progress-trend .trend-dot')).toHaveCount(3);
+  const share = await page.locator('#progress-trend svg').evaluate((svg) => {
+    const rule = svg.querySelector('.trend-rule');
+    const [left, right] = [Number(rule.getAttribute('x1')), Number(rule.getAttribute('x2'))];
+    const xs = [...svg.querySelectorAll('.trend-runs circle')].map((dot) => Number(dot.getAttribute('cx')));
+    return (Math.max(...xs) - left) / (right - left);
+  });
+  expect(share).toBeCloseTo(9 / 12, 2);
+});
+
 test('with only practice to show, the panel stands alone, without tab semantics', async ({ page, supabase }) => {
   await openProgress(page, supabase, [{ ...run(1, 50, 95), kind: 'drill' }, { ...run(0, 50, 95), kind: 'drill' }]);
   await expect(page.locator('#practice-goal')).toBeVisible();
