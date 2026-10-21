@@ -1,6 +1,6 @@
-import { test, expect, openApp, openSettings } from './fixtures.js';
+import { test, expect, openApp, openSettings, phone } from './fixtures.js';
 
-test.use({ viewport: { width: 375, height: 553 }, hasTouch: true, isMobile: true });
+test.use({ viewport: { width: 375, height: 553 }, ...phone });
 
 test('short-phone settings keep every category reachable and scroll only the content', async ({ page }, testInfo) => {
   await openApp(page);

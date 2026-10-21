@@ -31,9 +31,10 @@ function midWord(text, from = 1) {
 // Let switch slides and hover fades settle so a screenshot shows the resting state.
 async function settle(page) {
   await page.mouse.move(1, 799);
-  // The idle caret breathes forever, so only finite animations are awaited.
+  // The idle caret breathes forever, so only finite animations are awaited. Animations inside a closed
+  // <details> never tick in Firefox, so only visible targets count.
   await page.evaluate(() => Promise.all(document.getAnimations()
-    .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+    .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity && animation.effect?.target?.checkVisibility?.())
     .map((animation) => animation.finished.catch(() => {}))));
 }
 

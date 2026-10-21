@@ -1,8 +1,10 @@
 // Composing practice: a prompt, a free-typing field, free-typing speed and backspace rate,
 // kept apart from copy tests and stored as numbers only.
-import { test, expect, openApp, openSettings, openView, passageText, signInWithEmail, storageKeys, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, openApp, openSettings, openView, passageText, signInWithEmail, storageKeys, chooseMore, chooseSetting, closeSettings, insertPlainText, phone } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+// Whether the engine has `caret-animation` at all (caretSupport further down fakes only the app's check).
+const caretAnimationParses = (page) => page.evaluate(() => 'caretAnimation' in document.body.style);
 const shot = (testInfo, name) => (process.env.SCREENSHOTS
   ? `docs/screenshots/composing-practice/${name}.png`
   : testInfo.outputPath(`${name}.png`));
@@ -232,7 +234,8 @@ test('paste, key repeat and too-short writing are handled honestly', async ({ pa
   await expect(page.locator('#clear-history')).toBeHidden();
 });
 
-test('cut, line deletes and keys over a selection change nothing and count nothing', async ({ page }) => {
+test('cut, line deletes and keys over a selection change nothing and count nothing', async ({ page, browserName }) => {
+  test.skip(browserName === 'webkit' && process.platform !== 'darwin', 'WebKit has no word or line delete keys in Playwright outside macOS');
   await startPausedClock(page);
   await openCompose(page);
   const input = page.locator('#compose-input');
@@ -315,7 +318,7 @@ test('Tab reaches Done first, the finished field leaves the tab order and the cl
   await openCompose(page);
   // No scrollbar beside the writing, and the caret holds still.
   await expect(page.locator('#compose-input')).toHaveCSS('scrollbar-width', 'none');
-  await expect(page.locator('#compose-input')).toHaveCSS('caret-animation', 'manual');
+  if (await caretAnimationParses(page)) await expect(page.locator('#compose-input')).toHaveCSS('caret-animation', 'manual');
 
   // 49 keys and one 2.6 s pause: 13.87 s from the first key to Done.
   await typePaced(page, [...'First line of my answer, and then a little more.'], 230, { 20: 2600 });
@@ -347,7 +350,7 @@ test('Tab reaches Done first, the finished field leaves the tab order and the cl
   await expect(page.locator('#compose-input')).toHaveJSProperty('tabIndex', 0);
 });
 
-test('keyless input, focus loss and an emptied field are never saved, and settings wait', async ({ page }) => {
+test('keyless input, focus loss and an emptied field are never saved, and settings wait', async ({ page, browserName }) => {
   await startPausedClock(page);
   // A copy test in progress is dropped on the way in, and its hidden passage is left alone.
   await page.locator('#typing-input').focus();
@@ -368,9 +371,8 @@ test('keyless input, focus loss and an emptied field are never saved, and settin
   expect(await passageText(page)).toBe(hidden);
 
   // Several characters in one go and undo are refused.
-  const cdp = await page.context().newCDPSession(page);
   await page.locator('#compose-input').focus();
-  await cdp.send('Input.insertText', { text: 'a whole sentence' });
+  await insertPlainText(page, 'a whole sentence');
   await expect(page.locator('#compose-input')).toHaveValue('');
   await expect(page.locator('#compose-help')).toHaveText('One key at a time.');
   await typePaced(page, [...'abc'], 200);
@@ -379,18 +381,26 @@ test('keyless input, focus loss and an emptied field are never saved, and settin
   await expect(page.locator('#compose-help')).toHaveText('Only typed keys count, so cut, drop and undo are off.');
   await page.keyboard.press('Escape');
 
-  // IME text is never keyed, so no rate is shown for it.
-  await typePaced(page, [...'Tea first, then the news. '], 200);
-  await cdp.send('Input.imeSetComposition', { text: 'にほ', selectionStart: 2, selectionEnd: 2 });
-  await cdp.send('Input.insertText', { text: '日本' });
-  await expect(page.locator('#compose-help')).toHaveText('IME input isn’t measured. Esc to start over.');
-  await page.keyboard.press('Control+Enter');
-  await expect(page.locator('#compose-result-heading')).toHaveText('IME input · not measured or saved');
-  await expect(page.locator('#compose-wpm')).toHaveText('—');
-  await expect(page.locator('#compose-backspace')).toHaveText('—');
+  // IME text is never keyed, so no rate is shown for it. Chromium composes through CDP and Firefox
+  // through Playwright's own text insert (see insertPlainText); WebKit can't compose in Playwright.
+  if (browserName !== 'webkit') {
+    await typePaced(page, [...'Tea first, then the news. '], 200);
+    if (browserName === 'chromium') {
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Input.imeSetComposition', { text: 'にほ', selectionStart: 2, selectionEnd: 2 });
+      await cdp.send('Input.insertText', { text: '日本' });
+    } else {
+      await page.keyboard.insertText('日本');
+    }
+    await expect(page.locator('#compose-help')).toHaveText('IME input isn’t measured. Esc to start over.');
+    await page.keyboard.press('Control+Enter');
+    await expect(page.locator('#compose-result-heading')).toHaveText('IME input · not measured or saved');
+    await expect(page.locator('#compose-wpm')).toHaveText('—');
+    await expect(page.locator('#compose-backspace')).toHaveText('—');
+    await page.locator('#compose-retry').click();
+  }
 
   // Focus leaving the window mid-way means it won't be saved.
-  await page.locator('#compose-retry').click();
   await typePaced(page, [...'The kettle clicked off. '], 200);
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   await expect(page.locator('#compose-help')).toHaveText('Focus lost, so this one won’t be saved. Esc to start over.');
@@ -499,7 +509,7 @@ test('letters, Enter, Backspace, Delete and word deletes at any caret, emoji inc
       for (let index = 0; index < Number(times); index += 1) await page.keyboard.press(key);
       continue;
     }
-    if (step.startsWith('insert:')) await page.keyboard.insertText(step.slice(7));
+    if (step.startsWith('insert:')) await insertPlainText(page, step.slice(7));
     else if (step.length === 1) await page.keyboard.type(step);
     else await page.keyboard.press(step);
     keystrokes += 1;
@@ -690,7 +700,7 @@ const caretMotion = (page) => page.locator('.compose-caret').evaluate((node) => 
 test.describe('without caret-animation', () => {
   test.beforeEach(async ({ page }) => { await caretSupport(page, false); });
 
-  test('the field draws a solid caret at the selection instead of a blinking one', async ({ page }) => {
+  test('the field draws a solid caret at the selection instead of a blinking one', async ({ page, browserName }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await startPausedClock(page);
     expect(await page.evaluate(() => CSS.supports('caret-animation', 'manual'))).toBe(false);
@@ -773,14 +783,17 @@ test.describe('without caret-animation', () => {
     await expectCaretAt(page, text.length - 1, 'right');
 
     // IME still composes in the real field (it just isn't measured); the caret follows the composition.
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Input.imeSetComposition', { text: 'にほ', selectionStart: 2, selectionEnd: 2 });
-    await expect(input).toHaveValue(`${text}にほ`);
-    await expect(caret).toBeVisible();
-    await expectCaretAt(page, text.length + 1, 'right');
-    await cdp.send('Input.insertText', { text: '日本' });
-    await expect(input).toHaveValue(`${text}日本`);
-    await expect(page.locator('#compose-help')).toHaveText('IME input isn’t measured. Esc to start over.');
+    // A real composition needs CDP, which only Chromium has.
+    if (browserName === 'chromium') {
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Input.imeSetComposition', { text: 'にほ', selectionStart: 2, selectionEnd: 2 });
+      await expect(input).toHaveValue(`${text}にほ`);
+      await expect(caret).toBeVisible();
+      await expectCaretAt(page, text.length + 1, 'right');
+      await cdp.send('Input.insertText', { text: '日本' });
+      await expect(input).toHaveValue(`${text}日本`);
+      await expect(page.locator('#compose-help')).toHaveText('IME input isn’t measured. Esc to start over.');
+    }
 
     // Finished, the field is read-only and shows no caret, even with focus put back on it.
     await page.keyboard.press('Control+Enter');
@@ -837,7 +850,7 @@ test.describe('without caret-animation', () => {
     expect(Math.abs((await caretBox(page)).x - (right - 1))).toBeLessThanOrEqual(1);
   });
 
-  test('at a wrapped line the caret shows on the line the key or click left it on', async ({ page }) => {
+  test('at a wrapped line the caret shows on the line the key or click left it on', async ({ page, browserName }) => {
     await startPausedClock(page);
     await openCompose(page);
     const input = page.locator('#compose-input');
@@ -862,10 +875,19 @@ test.describe('without caret-animation', () => {
     await page.keyboard.press('End');
     await expectCaretAt(page, second - 1, 'right');
 
-    // Right and back again, or Home, keep it at the start of the next line.
+    // Right and back again, or Home, keep it at the start of the next line. Firefox's Right first
+    // takes it there at the same offset, and its Left back to the end of the first line.
     await page.keyboard.press('ArrowRight');
-    await expectCaretAt(page, second, 'right');
-    await page.keyboard.press('ArrowLeft');
+    if (browserName === 'firefox') {
+      await expectCaretAt(page, second, 'left');
+      await page.keyboard.press('ArrowLeft');
+      await expect.poll(at).toBe(second);
+      await expectCaretAt(page, second - 1, 'right');
+      await page.keyboard.press('ArrowRight');
+    } else {
+      await expectCaretAt(page, second, 'right');
+      await page.keyboard.press('ArrowLeft');
+    }
     await expect.poll(at).toBe(second);
     await expectCaretAt(page, second, 'left');
 
@@ -940,7 +962,7 @@ test('where the caret can be held solid, the field keeps its own and draws none'
   await openCompose(page);
   const input = page.locator('#compose-input');
   await expect(input).toHaveCSS('caret-color', 'rgb(143, 209, 138)');
-  await expect(input).toHaveCSS('caret-animation', 'manual');
+  if (await caretAnimationParses(page)) await expect(input).toHaveCSS('caret-animation', 'manual');
   await typePaced(page, [...'Toast and the radio'], 210);
   await expect(page.locator('.compose-caret, .compose-caret-layer')).toHaveCount(0);
   await expect(page.locator('.compose-wrap')).not.toHaveAttribute('data-caret', /./);
@@ -982,7 +1004,7 @@ test.describe('touchscreen laptop', () => {
 
 for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow phone', { width: 320, height: 640 }]]) {
   test.describe(`${name} ${viewport.width}px`, () => {
-    test.use({ viewport, hasTouch: true, isMobile: true });
+    test.use({ viewport, ...phone });
 
     test('composing fits without sideways scroll and keeps 44px targets', async ({ page }, testInfo) => {
       // The narrow phone checks the layout; the phone only takes the docs screenshot.

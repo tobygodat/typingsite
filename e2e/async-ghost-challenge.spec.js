@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto, openSettings, chooseMore, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto, openSettings, chooseMore, chooseSetting, insertPlainText, phone } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -285,7 +285,7 @@ test('a custom run is never offered as a ghost, and racing a ghost closes the cu
 });
 
 test.describe('on a touch screen', () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 390, height: 844 }, ...phone });
 
   // Tapping Race again focuses the input, which can reopen the software keyboard with no tap on the
   // input itself; the retry is still a touch run.
@@ -362,7 +362,7 @@ test('at 320 px a long sender name wraps, a corrected slip onto ö is still sent
   await expect(page.locator('#text-display .ghost-caret')).toHaveCSS('opacity', '1');
 
   await typeInto(page, passage.slice(0, 3), '#typing-input', { delay: 160 });
-  await page.keyboard.insertText('ö');
+  await insertPlainText(page, 'ö');
   await page.keyboard.press('Backspace');
   await page.keyboard.type(passage.slice(3), { delay: 160 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');

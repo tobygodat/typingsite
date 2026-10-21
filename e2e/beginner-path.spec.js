@@ -3,7 +3,7 @@
 import { LESSONS } from '../src/lessons.js';
 import { conditionKey } from '../src/typing.js';
 import { DEFAULT_WORD_LIST } from '../src/words.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting, insertPlainText } from './fixtures.js';
 
 const body = (page) => page.locator('body');
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -33,8 +33,10 @@ async function typeLesson(page, options = {}) {
   return text;
 }
 
-// A stylus press (pointerType pen), as a tablet pen sends it.
+// A stylus press (pointerType pen), as a tablet pen sends it. Only Chromium's CDP can send a pen in
+// Playwright; Firefox and WebKit have mouse and touch alone.
 async function penPress(page, selector) {
+  test.skip(page.context().browser().browserType().name() !== 'chromium', 'a pen press needs CDP, which only Chromium has');
   const box = await page.locator(selector).boundingBox();
   const point = { x: box.x + box.width / 2, y: box.y + box.height / 2, button: 'left', clickCount: 1, pointerType: 'pen' };
   const client = await page.context().newCDPSession(page);
@@ -490,13 +492,13 @@ test.describe('on a touch screen', () => {
     await page.locator('#lesson-primary').tap();
     await expect(page.locator('#typing-input')).toBeFocused();
     await expect(page.locator('#condition-line')).toContainText('touch input');
-    await page.keyboard.insertText('f');
-    await page.keyboard.insertText('j');
+    await insertPlainText(page, 'f');
+    await insertPlainText(page, 'j');
     await expect(page.locator('#typing-input')).toHaveValue('fj');
     await page.keyboard.press('Escape');
     await expect(page.locator('#typing-input')).toHaveValue('');
     await expect(page.locator('#condition-line')).toContainText('touch input');
-    for (const char of await passageText(page)) await page.keyboard.insertText(char);
+    for (const char of await passageText(page)) await insertPlainText(page, char);
     await expect(body(page)).toHaveAttribute('data-view', 'learn');
     await expect(page.locator('#lesson-status')).toHaveText('touch input');
     await expect(page.locator('#lesson-list .lesson-row').nth(1)).toHaveAttribute('data-state', 'locked');

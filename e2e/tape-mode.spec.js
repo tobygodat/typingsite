@@ -1,7 +1,7 @@
 // Tape mode: the passage on one line instead of three. The tape advances in
 // word-aligned steps with the ~150 ms line scroll, never letter by letter, and instantly under
 // reduced motion. Screenshots go to docs/screenshots/tape-mode only when SCREENSHOTS is set.
-import { test, expect, openApp, openSettings, passageText, typeInto, chooseWords, chooseMore, signInWithEmail, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, openSettings, passageText, typeInto, chooseWords, chooseMore, signInWithEmail, chooseSetting, phone } from './fixtures.js';
 import { wordList } from '../src/words.js';
 import { TAPE_LEAD } from '../src/tape.js';
 
@@ -41,15 +41,23 @@ const tapeState = (page) => page.evaluate(() => new Promise((resolve) => request
   });
 }))));
 
-// Every mounted word's x along the line (untransformed), the scroll, and where the trim spacer ends.
+// The x along the line (untransformed) of every mounted word in view or a line-width behind it, the
+// scroll, and where the trim spacer ends. Words past the right edge are left out: WebKit rounds each
+// letter's width to its layout unit, so a word ahead of the view can shift by a pixel or two as
+// letters before it change, while nothing in view moves.
 const lineState = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
   const display = document.getElementById('text-display');
   const origin = display.getBoundingClientRect().left;
   const match = /translateX\((-?[\d.]+)px\)/.exec(display.style.transform);
+  const offset = match ? -Number(match[1]) : 0;
+  const view = display.parentElement.clientWidth;
   const words = {};
-  for (const word of display.querySelectorAll('.word')) words[word.dataset.wordIndex] = word.getBoundingClientRect().left - origin;
+  for (const word of display.querySelectorAll('.word')) {
+    const x = word.getBoundingClientRect().left - origin;
+    if (x >= offset - view && x <= offset + view) words[word.dataset.wordIndex] = x;
+  }
   const spacer = display.querySelector('.passage-spacer');
-  resolve({ typed: document.getElementById('typing-input').value.length, offset: match ? -Number(match[1]) : 0, spacerEnd: spacer ? spacer.getBoundingClientRect().right - origin : null, words });
+  resolve({ typed: document.getElementById('typing-input').value.length, offset, spacerEnd: spacer ? spacer.getBoundingClientRect().right - origin : null, words });
 }))));
 
 // The largest move of any word mounted in both states.
@@ -355,7 +363,7 @@ test('the pace caret rides the tape and keeps gliding through a step', async ({ 
 });
 
 test.describe('narrow phone with large text', () => {
-  test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 320, height: 640 }, ...phone });
 
   test('a word longer than the line steps inside the word and the caret stays in view', async ({ page }, testInfo) => {
     // Every generated word becomes the longest word in the 10k list.
@@ -522,7 +530,7 @@ for (const scheme of ['dark', 'light']) {
 }
 
 test.describe('phone', () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 390, height: 844 }, ...phone });
 
   test('390px mid-run has no sideways overflow', async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme: 'dark' });

@@ -50,6 +50,10 @@ export function drawCaret(input) {
   // The side a move settled on, kept while the caret stays at that offset (so scrolling never flips it).
   let settled = null;
   let lastX = 0;
+  // At a wrapped line Firefox's Right first moves the caret from the end of the line to the start of
+  // the next, and Left back, without changing the offset, so no selectionchange follows: an arrow
+  // that leaves the offset where it was has crossed the break, and its release shows where it went.
+  let arrow = null;
 
   function moved(next) {
     move = next;
@@ -154,6 +158,12 @@ export function drawCaret(input) {
       moved({ x: 'x' in move ? move.x : lastX });
     }
     else if (event.key.length === 1 || AT_CARET.has(event.key)) moved({ side: 'start' });
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') arrow = { key: event.key, at: input.selectionStart };
+  });
+  input.addEventListener('keyup', (event) => {
+    if (event.key === arrow?.key && input.selectionStart === arrow.at) moved({ side: arrow.key === 'ArrowLeft' ? 'end' : 'start' });
+    arrow = null;
+    if (focused) update();
   });
   input.addEventListener('pointerdown', (event) => moved({ y: event.clientY }));
   input.addEventListener('input', (event) => {

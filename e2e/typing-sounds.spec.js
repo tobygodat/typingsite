@@ -238,7 +238,9 @@ test('code mode clicks and ticks through the same path as practice', async ({ pa
 
 // An accent key opens a composition that the next key commits (src/app.js scores it after
 // compositionend), as US-International sends a quotation mark.
+// The composition comes through CDP, which only Chromium has.
 async function accentKey(page) {
+  test.skip(page.context().browser().browserType().name() !== 'chromium', 'a real composition needs CDP, which only Chromium has');
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
   await cdp.send('Input.imeSetComposition', { text: '"', selectionStart: 1, selectionEnd: 1 });

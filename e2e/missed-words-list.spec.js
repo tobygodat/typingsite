@@ -81,7 +81,8 @@ test('words missed across runs build a list in Training that starts an uncounted
   // One hairline and 32px between the two sections, not the column's grid gap on top.
   const patternsEnd = await page.locator('section.training-memory').first().evaluate((node) => node.getBoundingClientRect().bottom);
   const listTop = await page.locator('section.missed-words').evaluate((node) => node.getBoundingClientRect().top);
-  expect(listTop - patternsEnd).toBe(0);
+  // Within 1/100 px: Firefox's layout units leave a remainder in the 1e-4 px range.
+  expect(Math.abs(listTop - patternsEnd)).toBeLessThan(0.01);
 
   if (process.env.SCREENSHOTS) {
     // The whole list down to its button, 32px above the fold, with the drill beside it.

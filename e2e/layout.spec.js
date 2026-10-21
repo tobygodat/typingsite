@@ -1,11 +1,11 @@
 // Responsive layout, self-hosted fonts and exactly what the server hands out.
-import { test, expect, openApp, openView, chooseWords, chooseMore, passageText, typeInto, freshTextCheck } from './fixtures.js';
+import { test, expect, openApp, openView, chooseWords, chooseMore, passageText, typeInto, freshTextCheck, phone } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
 for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow phone', { width: 320, height: 640 }]]) {
   test.describe(`${name} ${viewport.width}px`, () => {
-    test.use({ viewport, hasTouch: true, isMobile: true });
+    test.use({ viewport, ...phone });
 
     test('fits without sideways scroll and keeps 44px targets', async ({ page }) => {
       await openApp(page);
@@ -33,7 +33,8 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
       for (const view of ['Train', 'Progress', 'Challenge']) {
         await openView(page, view);
         expect(await overflow(page), view).toBeLessThanOrEqual(0);
-        if (learnLinks[view]) expect((await page.locator(learnLinks[view]).boundingBox()).height, view).toBeGreaterThanOrEqual(44);
+        // To 1/100 px: Firefox lays out in 1/60 px units, so a 44px box can measure 43.99999.
+        if (learnLinks[view]) expect(Math.round((await page.locator(learnLinks[view]).boundingBox()).height * 100) / 100, view).toBeGreaterThanOrEqual(44);
       }
 
       // At the narrowest width, the same views with a run, a comparison and the daily in them.
@@ -51,7 +52,7 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
 }
 
 test.describe('narrow run card', () => {
-  test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 320, height: 640 }, ...phone });
 
   test('a three-digit score and its unit fit inside the run card at 320px', async ({ page }) => {
     await openApp(page);
@@ -99,8 +100,7 @@ test.describe('narrow run card', () => {
 // keep the passage's first line where it was.
 for (const [width, height] of [[1280, 800], [390, 844], [320, 568]]) {
   test.describe(`modes at ${width}x${height}`, () => {
-    const phone = width < 760;
-    test.use({ viewport: { width, height }, hasTouch: phone, isMobile: phone });
+    test.use({ viewport: { width, height }, ...(width < 760 ? phone : {}) });
 
     test('switching modes moves neither the rail nor the passage', async ({ page }) => {
       await openApp(page);
@@ -130,7 +130,7 @@ for (const [width, height] of [[1280, 800], [390, 844], [320, 568]]) {
 }
 
 test.describe('lesson on a 320x568 phone', () => {
-  test.use({ viewport: { width: 320, height: 568 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 320, height: 568 }, ...phone });
 
   test('the passage starts above the bottom dock without scrolling', async ({ page }) => {
     await openApp(page);

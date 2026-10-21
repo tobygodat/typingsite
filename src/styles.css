@@ -470,6 +470,8 @@ h1, h2, h3 { text-wrap: balance; font-weight: 400; }
 p { text-wrap: pretty; }
 
 button, input, select, textarea { font: inherit; color: inherit; }
+/* WebKit counts a select's whole longest option as page overflow, however narrow the select. */
+select { contain: paint; }
 button, summary, a { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
 

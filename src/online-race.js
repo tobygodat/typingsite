@@ -636,6 +636,11 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   $('online-input').addEventListener('input', () => { if (attempt) $('online-input').value = replayAttempt(attempt).typed; });
   $('online-input').addEventListener('keydown', (event) => {
     if (event.repeat || ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
+    // WebKit sends no beforeinput for a Backspace in an empty field, so it is taken from its keydown, everywhere.
+    if (event.key === 'Backspace' && !event.isComposing && !$('online-input').value && !event.defaultPrevented) {
+      event.preventDefault();
+      input({ inputType: 'deleteContentBackward', isComposing: false, preventDefault() {} });
+    }
   });
   $('online-input').addEventListener('paste', (event) => { event.preventDefault(); $('online-help').textContent = 'Paste is off. Type the passage.'; });
   $('online-input').addEventListener('drop', (event) => event.preventDefault());

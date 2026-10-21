@@ -6,7 +6,11 @@ import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings
 // CI can only simulate these events; physical layouts still need a device check.
 const IME_NOTICE = 'IME input isn’t scored. Esc to restart.';
 
+// These drive the browser's own composition through CDP, which only Chromium has; Firefox and WebKit
+// can't open a real composition in Playwright, so the tests below that dispatch each engine's event
+// order (safariOrder, dispatchEvents) are what run there.
 async function accentKeys(page) {
+  test.skip(page.context().browser().browserType().name() !== 'chromium', 'a real composition needs CDP, which only Chromium has');
   const cdp = await page.context().newCDPSession(page);
   return {
     // The dead key shows its mark as composition text.

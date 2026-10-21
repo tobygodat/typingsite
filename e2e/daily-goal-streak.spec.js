@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { dayKey, goalMinutes } from '../src/insights.js';
-import { test, expect, openApp, chooseWords, completePassage, openView, openProgressView, openSettings, signInWithEmail, typeInto, chooseMore, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, chooseWords, completePassage, openView, openProgressView, openSettings, signInWithEmail, typeInto, chooseMore, chooseSetting, phone } from './fixtures.js';
 
 // The current streak and today's minutes, in the practice figures under the calendar.
 const streakFigure = (page) => page.locator('#practice-stats .progress-figure').filter({ has: page.locator('dt', { hasText: /^Current streak$/ }) });
@@ -332,7 +332,7 @@ test('recorded lessons and composing active time increase the daily practice goa
 
 
 test.describe('calendar on a touch device', () => {
-  test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 320, height: 640 }, ...phone });
   test('the native day picker owns selection and keeps the dense picture out of the tab order', async ({ page }) => {
     await openApp(page);
     await openView(page, 'Progress');

@@ -1,6 +1,6 @@
 // The Train view after a run: on a wide screen the score and the trace print side by side with the
 // drill below; on a phone the drill comes straight after the score, before the trace.
-import { test, expect, openApp, openView, chooseWords, completePassage } from './fixtures.js';
+import { test, expect, openApp, openView, chooseWords, completePassage, phone } from './fixtures.js';
 
 const box = (page, selector) => page.locator(selector).boundingBox();
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
@@ -115,7 +115,7 @@ test('after a run Run again takes focus when it fits under the score, and the he
 });
 
 test.describe('phone', () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 390, height: 844 }, ...phone });
 
   test('at 390px the result heading takes focus and the score stays in view', async ({ page }) => {
     await openApp(page);

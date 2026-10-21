@@ -1,6 +1,6 @@
 // Audit TYP-97 P1-1 to P1-3: one challenge tab looks selected, the dock's visible words are in its
 // accessible names at every width, and key hints stay off touch-only devices.
-import { test, expect, openApp, openView, openSettings } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, phone } from './fixtures.js';
 
 const MODES = ['challenge-online', 'challenge-daily', 'challenge-friends', 'challenge-local'];
 
@@ -48,7 +48,7 @@ test.describe('challenge tabs', () => {
 });
 
 test.describe('dock labels at 320px', () => {
-  test.use({ viewport: { width: 320, height: 568 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 320, height: 568 }, ...phone });
 
   test('each visible word is in its accessible name, and none clips', async ({ page }) => {
     await openApp(page);
@@ -81,7 +81,7 @@ test('dock names are the visible words at 1280px', async ({ page }) => {
 });
 
 test.describe('key hints on a touch-only phone', () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 390, height: 844 }, ...phone });
 
   test('no esc hints in the one-keyboard race or on settings close', async ({ page }) => {
     await openApp(page);

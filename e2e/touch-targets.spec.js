@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, openProgressView, openSettings, chooseWords, passageText, typeInto, completePassage, freshTextCheck, signInWithEmail, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, openApp, openView, openProgressView, openSettings, chooseWords, passageText, typeInto, completePassage, freshTextCheck, signInWithEmail, chooseMore, chooseSetting, closeSettings, phone } from './fixtures.js';
 
 const MIN = 44;
 
@@ -129,7 +129,7 @@ async function typeRun(page, delay) {
 
 for (const theme of ['dark', 'light']) {
   test.describe(`touch screenshots, ${theme}`, () => {
-    test.use({ colorScheme: theme, viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    test.use({ colorScheme: theme, viewport: { width: 390, height: 844 }, ...phone });
     test.setTimeout(120000);
 
     test(`the run card and the enlarged text controls look unchanged, ${theme}`, async ({ page }, testInfo) => {
@@ -179,7 +179,7 @@ for (const theme of ['dark', 'light']) {
 // 390px is the common phone; 320px is the narrowest width the layout supports.
 for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }]) {
   test.describe(`touch targets on a ${viewport.width}px phone`, () => {
-    test.use({ viewport, hasTouch: true, isMobile: true });
+    test.use({ viewport, ...phone });
     test.setTimeout(120000);
 
     test('practice, a run, results, settings, palette, account and challenge controls are 44px targets', async ({ page }) => {

@@ -2,7 +2,8 @@ import { test as base, expect } from '@playwright/test';
 import { FakeSupabase } from './fake-supabase.js';
 
 // Every test gets a fake Supabase (so nothing reaches the real project) and fails on any page error
-// or console error. Expected 4xx replies from the fake are the only console noise allowed.
+// or console error. Expected 4xx replies and dropped requests from the fake are the only console noise
+// allowed; Firefox logs a dropped one as a blocked cross-origin request from the page, naming the fake's URL.
 export const test = base.extend({
   supabase: [async ({ page }, use) => {
     const fake = new FakeSupabase();
@@ -14,7 +15,8 @@ export const test = base.extend({
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => {
-      if (message.type() === 'error' && !/supabase\.co/.test(message.location().url)) errors.push(message.text());
+      const fromFake = /supabase\.co/.test(message.location().url) || /^\[JavaScript Error: "Cross-Origin Request Blocked: .* https:\/\/\w+\.supabase\.co\//.test(message.text());
+      if (message.type() === 'error' && !fromFake) errors.push(message.text());
     });
     await use(errors);
     expect(errors, 'browser errors').toEqual([]);
@@ -22,6 +24,10 @@ export const test = base.extend({
 });
 
 export { expect };
+
+// A phone: touch, in the engine's mobile mode. Playwright has no mobile mode for Firefox (isMobile is
+// unsupported there), and asking for one stops its mouse sending pointer events, so Firefox gets touch alone.
+export const phone = { hasTouch: true, isMobile: async ({ browserName }, use) => use(browserName !== 'firefox') };
 
 export async function openApp(page, path = '/') {
   await page.goto(path);
@@ -35,6 +41,19 @@ export async function typeInto(page, text, selector = '#typing-input', options =
   await closeSettings(page);
   await page.locator(selector).focus();
   await page.keyboard.type(text, options);
+}
+
+// Text that arrives with no key press, as a soft keyboard or an emoji panel commits it. Playwright sends
+// it as one plain insert in Chromium and WebKit, but as a composition (IME text) in Firefox, so there
+// the plain insert's events are dispatched instead.
+export async function insertPlainText(page, text) {
+  if (page.context().browser().browserType().name() !== 'firefox') return page.keyboard.insertText(text);
+  await page.evaluate((data) => {
+    const field = document.activeElement;
+    if (!field.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data }))) return;
+    field.setRangeText(data, field.selectionStart, field.selectionEnd, 'end');
+    field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data }));
+  }, text);
 }
 
 // Picks a test shape from the practice controls, as a person would.

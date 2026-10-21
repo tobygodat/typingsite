@@ -1,7 +1,7 @@
 // Progress › Keys: per-key miss-rate heatmap and the "Pairs to watch" table from saved pattern memory.
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, openProgressView, signInWithEmail, typeInto, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, openProgressView, signInWithEmail, typeInto, chooseMore, phone } from './fixtures.js';
 
 const conditions = { mode: 'words', count: 25, duration: null, punctuation: false, quoteLength: null,
   difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
@@ -162,7 +162,7 @@ test('a custom text run never reaches the key heatmap or pairs', async ({ page, 
 // select gives the same numbers. Tall enough that the section screenshot fits the viewport: a
 // capture beyond it briefly drops touch emulation, and the page would re-render for a fine pointer.
 test.describe('coarse pointer at 320px', () => {
-  test.use({ viewport: { width: 320, height: 960 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 320, height: 960 }, ...phone });
 
   test('keeps every Keys target at 44px with no sideways scroll', async ({ page, supabase }, testInfo) => {
     await openKeys(page, supabase);

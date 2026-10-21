@@ -408,7 +408,12 @@ test('a pressed race control keeps keyboard focus while its request is out, and 
   await arrived(supabase, 'friends');
   const challenge = page.getByRole('button', { name: 'Challenge lin' });
   const releaseCreate = supabase.races.hold('create');
+  // Reached by keyboard, as a keyboard user does: after a click, Firefox shows no ring for a focus()
+  // even once a key is pressed.
   await challenge.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(challenge).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(challenge).toHaveAttribute('aria-disabled', 'true');
   // The list's answer draws the rows again while the race is being created; the pressed Challenge keeps focus.
