@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HISTORY, MAX_STORED_ATTEMPTS, capHistory, clearProfile, insertCloudProfile, joinHolds, mergeAndHold, mergeSynced, revokeClear,
-  sameProfile, stampAfter, undoClearHere, updateCloudProfile,
+  HISTORY, MAX_STORED_ATTEMPTS, cacheProfile, capHistory, clearProfile, insertCloudProfile, joinHolds, mergeAndHold, mergeSynced,
+  profileKey, revokeClear, sameProfile, stampAfter, storedCopy, undoClearHere, updateCloudProfile,
 } from '../src/account.js';
 import { recordPracticeTime, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
 import { MAX_COMPOSITIONS } from '../src/compose.js';
 import { normalizeProfile, preferencesInUse } from '../src/profile.js';
-import { conditionKey } from '../src/typing.js';
+import { completeAttempt, conditionKey, createAttempt } from '../src/typing.js';
 
 const minute = (n) => new Date(Date.UTC(2026, 9, 1, 12, 0) + n * 60000).toISOString();
 const profile = (over = {}) => ({
@@ -1279,6 +1279,88 @@ test('profile writes are conditional: an update names the version it replaces, a
     assert.equal(JSON.parse(insert.init.body).user_id, 'u1');
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+// A finished trace as storeAttempt keeps it: every key an event, now and then a slip fixed with a backspace.
+function finishedTrace(id, n, { keys = 120, kind = 'test' } = {}) {
+  const text = 'the quiet harbour kept its boats in rows while the tide went out and came back again '.repeat(3);
+  const attempt = createAttempt({ id, text, textId: `generated-${id}`, kind, conditions: { mode: 'time', duration: 30, correctionPolicy: 'relaxed' } });
+  let offsetMs = 0;
+  for (let position = 0; position < keys; position += 1) {
+    offsetMs += 90 + ((position * 37) % 70);
+    if (position % 17 === 5) {
+      attempt.events.push({ type: 'insert', text: 'q', position, accepted: true, offsetMs });
+      attempt.events.push({ type: 'delete', count: 1, offsetMs: offsetMs += 140 });
+      offsetMs += 90;
+    }
+    attempt.events.push({ type: 'insert', text: text[position], position, accepted: true, offsetMs });
+  }
+  attempt.startedAt = 0;
+  return { ...completeAttempt(attempt, { endedAt: offsetMs }), interrupted: false, unsupportedInput: false, fresh: true, at: minute(n) };
+}
+const viaRow = (copy) => normalizeProfile(JSON.parse(JSON.stringify(storedCopy(copy))));
+
+test('stored copies leave out each trace’s summary, and loading rebuilds it exactly', () => {
+  const traces = Array.from({ length: 6 }, (_, n) => finishedTrace(`t${n}`, n, { keys: 60 + n * 30, kind: n === 2 ? 'retest' : 'test' }));
+  const copy = normalizeProfile(profile({ attempts: traces, runs: traces.map((trace) => item(trace.id, 0)) }));
+  const stored = storedCopy(copy);
+  assert.ok(stored.attempts.every((trace) => !('summary' in trace)));
+  assert.deepEqual(stored.attempts, copy.attempts.map(({ summary, ...trace }) => trace));
+  assert.deepEqual({ ...stored, attempts: [] }, { ...copy, attempts: [] });
+  assert.ok(copy.attempts.every((trace) => trace.summary), 'the copy in use keeps its summaries');
+  assert.ok(JSON.stringify(stored).length < JSON.stringify(copy).length * 0.6, 'well under the full size');
+  // Rebuilt from the events exactly as completeAttempt made it, so the trace budget weighs it the same.
+  const loaded = viaRow(copy);
+  assert.deepEqual(loaded.attempts, copy.attempts);
+  for (const [n, trace] of loaded.attempts.entries()) assert.equal(JSON.stringify(trace).length, JSON.stringify(traces[n]).length);
+  assert.deepEqual(storedCopy(profile()), profile());
+  assert.deepEqual(storedCopy({ version: 2 }), { version: 2 });
+});
+
+test('copies holding compact traces settle with each other and with a full copy from an older build', () => {
+  const shared = Array.from({ length: 22 }, (_, n) => finishedTrace(`s${n}`, n));
+  const laptop = normalizeProfile(profile({ attempts: [...shared, finishedTrace('laptop', 30)], updatedAt: minute(30), mergeStamp: minute(30) }));
+  const phone = profile({ attempts: [...shared, finishedTrace('phone', 31), finishedTrace('phone-2', 32)], updatedAt: minute(32), mergeStamp: minute(32) });
+  const whole = mergeSynced(laptop, normalizeProfile(phone));
+  // The phone's copy came through the row; an older build wrote its summaries in, and both merge the same.
+  for (const row of [viaRow(phone), normalizeProfile(JSON.parse(JSON.stringify(phone)))]) {
+    const merged = mergeSynced(laptop, row);
+    assert.deepEqual(ids(merged.attempts), ids(whole.attempts));
+    assert.equal(merged.attempts.length, MAX_STORED_ATTEMPTS);
+    assert.deepEqual(merged.attempts, whole.attempts);
+    assert.ok(sameProfile(merged, mergeSynced(row, laptop)));
+    // Written back and read again on either device, the row holds nothing either copy lacks: no write follows.
+    const back = viaRow(merged);
+    assert.ok(sameProfile(mergeSynced(laptop, back), back));
+    assert.ok(sameProfile(mergeSynced(back, row), back));
+    assert.deepEqual(mergeSynced(laptop, back).attempts, merged.attempts);
+    assert.ok(storedCopy(merged).attempts.every((trace) => !('summary' in trace)));
+  }
+});
+
+test('the account row and the device cache are sent compact traces', async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies = [];
+  globalThis.fetch = async (url, init) => {
+    bodies.push(JSON.parse(init.body));
+    return { ok: true, status: 200, text: async () => JSON.stringify([{ updated_at: '2026-10-01T12:00:01+00:00' }]) };
+  };
+  const store = new Map();
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, String(value)), removeItem: (key) => store.delete(key) };
+  try {
+    const session = { access_token: 't', user: { id: 'u1' } };
+    const copy = normalizeProfile(profile({ attempts: [finishedTrace('a', 1)] }));
+    await updateCloudProfile(session, copy, '2026-10-01T12:00:00+00:00');
+    await insertCloudProfile(session, copy);
+    assert.ok(cacheProfile('u1', copy));
+    for (const data of [...bodies.map((body) => body.data), JSON.parse(store.get(profileKey('u1')))]) {
+      assert.deepEqual(data, storedCopy(copy));
+    }
+    assert.ok(copy.attempts[0].summary, 'nothing is taken from the copy in use');
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete globalThis.localStorage;
   }
 });
 

@@ -298,7 +298,7 @@ export function restoreUnsent(userId, removedText, sent, savedText) {
   const copy = unsentCopy(removedText, sent, savedText);
   if (!copy) return false;
   const stored = storedProfile(loadCachedProfileText(userId));
-  return cacheProfileText(userId, JSON.stringify(stored ? mergeSynced(stored, copy) : copy));
+  return cacheProfileText(userId, JSON.stringify(storedCopy(stored ? mergeSynced(stored, copy) : copy)));
 }
 
 // Deleting an account is one server step: the delete-account Edge Function
@@ -440,7 +440,7 @@ export async function updateCloudProfile(session, data, seenAt, { keepalive = fa
     token: session.access_token,
     keepalive,
     headers: { Prefer: 'return=representation' },
-    body: { data, updated_at: at, ...column },
+    body: { data: storedCopy(data), updated_at: at, ...column },
   }));
   return rows?.[0]?.updated_at || null;
 }
@@ -452,7 +452,7 @@ export async function insertCloudProfile(session, data, { board } = {}) {
     method: 'POST',
     token: session.access_token,
     headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
-    body: { user_id: session.user.id, data, updated_at: at, ...column },
+    body: { user_id: session.user.id, data: storedCopy(data), updated_at: at, ...column },
   }));
   return rows?.[0]?.updated_at || null;
 }
@@ -477,12 +477,18 @@ export async function repairBoard(session, board, at) {
   }
 }
 
+// The copy written to the account row and the device cache. A trace's summary is the replay of its own
+// events (completeAttempt) and over half its size, so it is left out and rebuilt on load (normalizeProfile).
+const withoutSummary = ({ summary, ...trace }) => trace;
+export const storedCopy = (profile) => (Array.isArray(profile?.attempts)
+  ? { ...profile, attempts: profile.attempts.map((trace) => (trace?.summary ? withoutSummary(trace) : trace)) } : profile);
+
 export function loadCachedProfile(userId) {
   return readJson(profileKey(userId));
 }
 
 export function cacheProfile(userId, data) {
-  return writeJson(profileKey(userId), data);
+  return writeJson(profileKey(userId), storedCopy(data));
 }
 
 // The device cache as text, so a tab can tell whether another tab has written it since.

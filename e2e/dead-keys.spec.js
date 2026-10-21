@@ -219,10 +219,10 @@ test('a quote with \' and " typed on accent keys completes as a counted run', as
   expect(inserts).toHaveLength(text.length);
   expect(inserts[at].text + inserts[at + 1].text).toBe(text.slice(at, at + 2));
   expect(inserts[at + 1].offsetMs).toBe(inserts[at].offsetMs);
-  // Deterministic replay, and the card shows the replayed speed.
+  // The cache keeps no summary: replay rebuilds it from the events, and the card shows the replayed speed.
+  expect(stored.summary).toBeUndefined();
   const replayed = await page.evaluate(async (attempt) => (await import('/src/typing.js')).replayAttempt(attempt).score, stored);
-  expect(replayed).toEqual(stored.summary.score);
-  await expect(page.locator('#result-wpm')).toHaveText(String(stored.summary.score.wpm));
+  await expect(page.locator('#result-wpm')).toHaveText(String(replayed.wpm));
 });
 
 test('a composed vowel where the mark belongs is a coral mistake, not an interruption', async ({ page }) => {

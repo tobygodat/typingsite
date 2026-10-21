@@ -295,7 +295,7 @@ function storeLocally() {
       setTimeout(showMerged);
     } catch {}
   }
-  const text = JSON.stringify(profile);
+  const text = JSON.stringify(account.storedCopy(profile));
   const saved = account.cacheProfileText(userId, text);
   if (saved) cacheText = text;
   return saved;
