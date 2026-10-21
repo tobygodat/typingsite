@@ -91,6 +91,7 @@ $V drive .claude/skills/verify-stilltype/flows/palette-theme.mjs
 $V drive .claude/skills/verify-stilltype/flows/code-run.mjs --scheme light
 $V drive .claude/skills/verify-stilltype/flows/challenge-chrome.mjs --width 320 --height 568 --mobile
 $V drive .claude/skills/verify-stilltype/flows/book-run.mjs --width 390 --height 844 --mobile
+$V drive .claude/skills/verify-stilltype/flows/themes.mjs        # every theme: settings, mid-run, results
 ```
 
 ```js
