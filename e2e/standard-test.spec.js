@@ -123,7 +123,6 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await expect(page.locator('#result-conditions')).toHaveText(CONDITIONS);
   // Two lines, like other conditions, so the sticky run card grows no taller.
   expect((await page.locator('#result-conditions').boundingBox()).height).toBeLessThanOrEqual(36.5);
-  await expect(page.locator('#run-card-stamp')).toContainText('standard');
   await expect(page.locator('#best')).toHaveText('Best · 60 wpm');
   await expect(page.locator('#recommendation-meta')).toContainText('fresh standard retest');
 
@@ -436,7 +435,6 @@ test('a custom passage over standard keeps its own condition and never reaches t
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-conditions')).toContainText('custom text');
   await expect(page.locator('#result-conditions')).not.toContainText('standard');
-  await expect(page.locator('#run-card-stamp')).toContainText('custom');
 
   await openView(page, 'Progress');
   await expect(page.locator('#standard-best')).toHaveText('—');

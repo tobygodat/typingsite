@@ -26,7 +26,7 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   await page.locator('#apply-manual-target').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#session-title')).toHaveText('Practice “br”');
-  await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
+  await expect(page.locator('#best')).toHaveText('Not counted');
   await expect(page.locator('.practice-controls')).toBeHidden();
   const drill = await passageText(page);
   expect(drill.split(' ').every((word) => word.includes('br'))).toBe(true);

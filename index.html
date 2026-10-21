@@ -58,7 +58,7 @@
         </summary>
         <div class="corner-popover inbox-popover">
           <div class="inbox-heading"><p class="account-kicker">inbox</p><button id="inbox-clear" class="btn btn-ghost btn-sm" type="button" hidden>Clear</button></div>
-          <p id="inbox-empty" class="account-lede">Race challenges, ghost races, rematches and results arrive here.</p>
+          <p id="inbox-empty" class="account-lede">Nothing here yet.</p>
           <ul id="inbox-list" class="inbox-list"></ul>
         </div>
       </details>
@@ -68,8 +68,7 @@
         </summary>
         <div class="corner-popover account-popover">
           <div id="account-guest" class="account-section">
-            <p class="account-kicker">guest mode</p>
-            <p class="account-lede">Default settings, and nothing is kept once you leave.</p>
+            <p class="account-lede">Guest mode: nothing is kept once you leave.</p>
             <div class="account-actions">
               <button id="account-create" class="btn btn-primary" type="button">Create account</button>
               <button id="account-google" class="btn btn-secondary" type="button">Sign in with Google</button>
@@ -77,7 +76,6 @@
             </div>
           </div>
           <div id="account-member" class="account-section" hidden>
-            <p class="account-kicker">signed in</p>
             <p id="account-email" class="account-email"></p>
             <p class="account-sync status" role="status"><span class="status-dot" aria-hidden="true"></span><span id="account-sync"></span></p>
             <div class="account-actions account-member-actions">
@@ -283,13 +281,10 @@
           <header class="section-heading">
             <h1 id="results-heading"><span id="result-delta">No run yet.</span></h1>
             <p id="result-comparison-note" class="result-note"></p>
-            <p id="train-learn" class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button> a few keys at a time first.</p>
+            <p id="train-learn" class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button>.</p>
           </header>
 
           <article id="run-card" class="run-card" aria-label="Run summary" hidden>
-            <header class="run-card-head">
-              <span id="run-card-stamp" class="run-card-stamp">no run yet</span>
-            </header>
             <div class="run-card-score">
               <strong id="result-wpm" class="num" data-bare>—</strong>
               <span class="run-card-unit" data-speed-unit>wpm</span>
@@ -415,10 +410,7 @@
 
       <section id="learn-screen" class="screen learn-screen" data-screen="learn" aria-labelledby="learn-heading" hidden>
         <header class="section-heading page-heading">
-          <div>
-            <h1 id="learn-heading">Learn to type</h1>
-            <p>A few keys at a time, fingers resting on the home row, typing real words made only of keys you’ve learned. Until such words exist, the first home-row lessons use key pairs instead. One run at 95% accuracy and a gentle speed unlocks the next keys.</p>
-          </div>
+          <h1 id="learn-heading">Learn to type</h1>
         </header>
 
         <div class="learn-layout">
@@ -437,7 +429,6 @@
           <figure class="finger-figure">
             <div id="lesson-keyboard" class="keyboard"></div>
             <figcaption class="finger-caption">
-              <span>finger map · each column is one finger</span>
               <span id="finger-caption-keys"></span>
             </figcaption>
           </figure>
@@ -553,9 +544,9 @@
 
         <div id="progress-empty" class="empty-state">
           <h2 id="progress-empty-title">No practice runs yet.</h2>
-          <p id="progress-empty-copy">Finish a practice run to begin your history.</p>
+          <p id="progress-empty-copy" hidden></p>
           <button class="btn btn-primary" type="button" data-action="go-practice">Start practicing</button>
-          <p class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button> a few keys at a time first.</p>
+          <p class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button>.</p>
         </div>
 
         <div id="progress-history" hidden>
@@ -906,7 +897,7 @@
     <form id="suggest-form" class="dialog-content" novalidate>
       <div>
         <h2 id="suggest-dialog-title">Suggest a feature</h2>
-        <p>What would make practice better? Only your words and the screen you sent them from are saved: no name, account or scores.</p>
+        <p>Only your words and the screen you sent them from are saved.</p>
       </div>
       <label for="suggest-text">Your suggestion
         <textarea id="suggest-text" class="input textarea" rows="5" maxlength="1000" aria-describedby="suggest-count suggest-error"></textarea>
@@ -942,7 +933,7 @@
       </nav>
       <div class="settings-content">
         <section id="settings-appearance" class="settings-category" aria-labelledby="settings-appearance-title">
-          <div class="settings-intro"><h3 id="settings-appearance-title">Appearance</h3><p>Make the passage comfortable to read.</p></div>
+          <div class="settings-intro"><h3 id="settings-appearance-title">Appearance</h3></div>
           <div class="preference-row">
             <div class="preference-copy"><strong id="theme-select-label">theme</strong></div>
             <fieldset class="setting-options" id="theme-select" aria-labelledby="theme-select-label">
@@ -975,12 +966,11 @@
             </fieldset>
           </div>
           <div class="settings-preview" aria-label="Passage preview">
-            <p class="settings-preview-label">passage preview</p>
             <p id="settings-preview-passage"><span>Find</span> <span>a</span> <span>little</span> <span>room</span> <span>for</span> <span>thought.</span></p>
           </div>
         </section>
         <section id="settings-practice" class="settings-category" aria-labelledby="settings-practice-title" hidden>
-          <div class="settings-intro"><h3 id="settings-practice-title">Practice</h3><p>Choose how you practice and what you measure.</p></div>
+          <div class="settings-intro"><h3 id="settings-practice-title">Practice</h3></div>
           <div class="preference-row">
             <div class="preference-copy"><strong id="word-list-label">word list</strong><small id="word-list-lock" class="preference-lock" hidden>fixed for standard</small></div>
             <fieldset class="setting-options" id="word-list" aria-labelledby="word-list-label" aria-describedby="word-list-lock">
@@ -1098,9 +1088,9 @@
           </div>
         </section>
         <section id="settings-keyboard" class="settings-category" aria-labelledby="settings-keyboard-title" hidden>
-          <div class="settings-intro"><h3 id="settings-keyboard-title">Keyboard</h3><p>Make the keys familiar.</p></div>
+          <div class="settings-intro"><h3 id="settings-keyboard-title">Keyboard</h3></div>
           <div class="preference-row">
-            <div class="preference-copy"><strong id="layout-select-label">keyboard layout</strong><small id="layout-note" class="preference-note">Set your layout in your system. Stilltype shows its keys; it does not remap them.</small></div>
+            <div class="preference-copy"><strong id="layout-select-label">keyboard layout</strong><small id="layout-note" class="preference-note">Doesn’t remap keys; set the layout in your system.</small></div>
             <fieldset class="setting-options" id="layout-select" aria-labelledby="layout-select-label" aria-describedby="layout-note">
               <label class="setting-option"><input type="radio" name="layout-select" value="qwerty" checked><span>qwerty</span></label>
               <label class="setting-option"><input type="radio" name="layout-select" value="dvorak"><span>dvorak</span></label>
@@ -1125,7 +1115,7 @@
           </div>
         </section>
         <section id="settings-sound" class="settings-category" aria-labelledby="settings-sound-title" hidden>
-          <div class="settings-intro"><h3 id="settings-sound-title">Sound</h3><p>A little feedback as you type.</p></div>
+          <div class="settings-intro"><h3 id="settings-sound-title">Sound</h3></div>
           <div class="preference-row">
             <div class="preference-copy"><strong id="sound-select-label">sound</strong></div>
             <fieldset class="setting-options" id="sound-select" aria-labelledby="sound-select-label">
@@ -1143,8 +1133,8 @@
           </label>
         </section>
         <section id="settings-shortcuts" class="settings-category keybindings-category" aria-labelledby="settings-shortcuts-title" hidden>
-          <div class="settings-intro"><h3 id="settings-shortcuts-title">Shortcuts</h3><p>Keep your next action close at hand.</p></div>
-          <p id="keybindings-help">Enter a combination or record it. Mod means Ctrl or ⌘. Leave blank to disable. Escape still closes menus; Tab and Shift+Tab navigate controls. Restart applies to solo tests and the local challenge, not online races. Enter restarts only before or after a run.</p>
+          <div class="settings-intro"><h3 id="settings-shortcuts-title">Shortcuts</h3></div>
+          <p id="keybindings-help">Mod means Ctrl or ⌘. Leave blank to disable.</p>
           <form id="keybindings-form">
             <div class="keybinding-row">
               <label for="keybinding-restart">restart test / local challenge</label>
@@ -1181,7 +1171,7 @@
       </div>
     </div>
     <footer class="settings-footer">
-      <p id="settings-saved">Changes apply as you choose. Guest settings last for this tab.</p>
+      <p id="settings-saved">Guest settings last for this tab.</p>
       <button id="settings-done" class="btn btn-primary" type="button">Done</button>
     </footer>
   </dialog>
@@ -1190,7 +1180,7 @@
     <form id="import-form" class="dialog-content" novalidate>
       <div>
         <h2 id="import-dialog-title">Import Monkeytype settings</h2>
-        <p>In Monkeytype, open settings, go to danger zone and choose import/export settings, then export. Paste what it gives you here, or choose a file you saved it in.</p>
+        <p>In Monkeytype: settings → danger zone → import/export settings → export. Paste it here or choose its file.</p>
       </div>
       <label for="import-text">Monkeytype settings
         <textarea id="import-text" class="input textarea import-text" rows="6" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder='{ "mode": "time", "time": 30, … }' aria-describedby="import-error"></textarea>

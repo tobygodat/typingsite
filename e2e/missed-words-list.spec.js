@@ -65,7 +65,7 @@ test('words missed across runs build a list in Training that starts an uncounted
   // Training is the results screen: the list sits below the recurring patterns.
   await openView(page, 'Train');
   const note = page.locator('#missed-words-note');
-  await expect(note).toHaveText(`First-try misses in your last ${runs} complete tests, retests and new daily passages on a physical keyboard, all other test conditions together, up to 12 words a run. Word practice, custom text and drills aren’t counted.`);
+  await expect(note).toHaveText(`First-try misses in your last ${runs} runs on a physical keyboard.`);
   const rows = await listRows(page);
   expect(rows.length).toBe(Math.min(8, recurring().length));
   for (const [word, copy] of rows) expect(copy).toBe(`missed in ${tally.get(word)} of the last ${runs} runs`);

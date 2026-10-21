@@ -65,7 +65,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { CORRECTION_LABELS, DAILY_GOALS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_MISSED_WORDS, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { CORRECTION_LABELS, DAILY_GOALS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
 import { RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
@@ -1269,13 +1269,13 @@ function sessionConditions(kind, run = conditions()) {
 function configureSessionCopy() {
   const copy = {
     practice: ['practice', 'Practice', ''],
-    drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
-    custom: ['custom text', 'Your text', 'Doesn’t count toward your best.'],
+    drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', ''],
+    custom: ['custom text', 'Your text', ''],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
-    missed: ['missed words', wordsPassage?.recurring ? 'Practice words you keep missing' : 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
+    missed: ['missed words', wordsPassage?.recurring ? 'Practice words you keep missing' : 'Practice missed and slowest words', ''],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
     lesson: ['lesson', `Lesson ${lessonIndex + 1} · ${keysLabel(LESSONS[lessonIndex].keys)}`, lessonCopy(lessonIndex, passage)],
-    challenge: ['ghost race', `Race ${ghostRace?.name}’s run`, `The ghost caret replays ${ghostRace?.name}’s keystrokes from your first key. Your first finish without a break is sent. Not counted toward your best.`],
+    challenge: ['ghost race', `Race ${ghostRace?.name}’s run`, 'Your first finish without a break is sent.'],
   }[sessionKind];
   $('session-kicker').textContent = copy[0];
   $('session-title').textContent = copy[1];
@@ -2224,14 +2224,8 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
   stopHold = completed.stopped ? now() : null;
 }
 
-const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-
 // Draw after the results view is shown so the graph has its size.
 function renderCard(completed) {
-  const kind = completed.kind === 'challenge' ? 'ghost race' : completed.kind !== 'test' ? completed.kind : completed.conditions.mode === 'standard' ? 'standard' : 'practice';
-  const at = new Date();
-  const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
-  $('run-card-stamp').textContent = `${MONTHS[at.getMonth()]} ${at.getDate()} · ${time} · ${kind}${completed.failed ? ` · failed · ${completed.failed}` : ''}`;
   $('run-card').hidden = false;
   const graph = $('speed-graph').closest('figure');
   graph.hidden = !rateShown(completed);
@@ -2246,7 +2240,7 @@ function renderCard(completed) {
 // passage shown before, a repeated quote), custom text or word practice itself. Run again repeats a word-practice passage.
 function renderPracticeWords(completed) {
   const mined = evidenceRun(completed);
-  const { missed, slow, timedCount, medianWpm } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
+  const { missed, slow } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
   const words = [...missed, ...slow.map((item) => item.word)];
   const button = $('practice-words');
   const evidence = $('practice-words-evidence');
@@ -2257,8 +2251,7 @@ function renderPracticeWords(completed) {
   const figure = (value) => element('span', value, 'num');
   const lines = [
     missed.length && [`missed first try: ${missed.map(wordCopy).join(', ')}`],
-    slow.length && ['slowest in this run: ', ...slow.flatMap((item, index) => [`${index ? ', ' : ''}${item.word} `, figure(speedFigure(item.wpm, { bare: true })), ' ', unitLabel()]),
-      ' · median ', figure(speedFigure(medianWpm, { bare: true })), ' ', unitLabel(), ' over ', figure(timedCount), ' clean words'],
+    slow.length && ['slowest in this run: ', ...slow.flatMap((item, index) => [`${index ? ', ' : ''}${item.word} `, figure(speedFigure(item.wpm, { bare: true })), ' ', unitLabel()])],
   ].filter(Boolean);
   evidence.replaceChildren(...lines.flatMap((parts, index) => (index ? ['\n', ...parts] : parts)));
   button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
@@ -2408,8 +2401,8 @@ function renderRecommendation(counted = true, compared = true, completed = null)
     ? `About 1 min, then a fresh ${retestLength(baselineAttempt.conditions)} retest.`
     : completed?.conditions?.mode === 'code' ? CODE_DRILL_NOTE
     : repeatedResult(completed)
-      ? 'A standalone drill. Repeated text stays out of your best, trends and retests; finish a run on fresh text for a comparable retest.'
-      : 'A standalone drill. Finish a practice run to establish a fresh-text retest baseline.';
+      ? 'A standalone drill. Repeated text has no retest.'
+      : 'A standalone drill.';
   $('start-drill').disabled = !counted;
   $('start-drill').textContent = completed && failedDrill(completed) ? 'Try drill again' : 'Start drill';
   $('skip-to-retest').disabled = !counted || baselineAttempt?.status !== 'complete';
@@ -2701,10 +2694,10 @@ function labelWords() {
 // Before any choice the first word is the tab stop and the line names the fastest and slowest words.
 function wordSummary() {
   const paced = wordItems.filter((item) => item.wpm !== null);
-  if (paced.length < 2) return wordItems.length ? 'select a word for its pace' : '';
+  if (paced.length < 2) return '';
   const fastest = paced.reduce((best, item) => (item.wpm > best.wpm ? item : best));
   const slowest = paced.reduce((low, item) => (item.wpm < low.wpm ? item : low));
-  return [`fastest “${fastest.word}” `, speedFigure(fastest.wpm), ` · slowest “${slowest.word}” `, speedFigure(slowest.wpm), ' · select a word for its pace'];
+  return [`fastest “${fastest.word}” `, speedFigure(fastest.wpm), ` · slowest “${slowest.word}” `, speedFigure(slowest.wpm)];
 }
 
 function selectWord(index, { focus = false } = {}) {
@@ -2787,7 +2780,7 @@ function practiceTarget(target, source) {
         : `You chose “${target}”. Finish a new practice run afterward to establish a retest baseline.`,
     evidence: summarizePatterns(profile.attempts, 20, source) };
   startDrill();
-  if (!baselineAttempt) $('session-description').textContent = code ? CODE_DRILL_NOTE : 'Standalone drill. Finish a new practice run afterward for a comparable retest.';
+  if (!baselineAttempt) $('session-description').textContent = code ? CODE_DRILL_NOTE : 'Standalone drill.';
 }
 
 // The run just finished always counts toward its own recommendation, even when its trace was too large to keep.
@@ -2808,9 +2801,7 @@ function renderTraining() {
   const source = conditionOptions($('training-conditions'), profile.runs.filter((r) => validRun(r)
     && ['test', 'retest', 'daily'].includes(r.kind)), conditions());
   const targets = recurringTargets(profile.runs, profile.loops, source);
-  $('training-memory-note').textContent = targets.length
-    ? 'Counts come from up to 120 recent matching runs. Revisit checks use fresh text; one retest does not establish lasting improvement.'
-    : 'No recurring pattern has enough evidence yet. Finish more runs at these conditions, or choose a manual drill above.';
+  $('training-memory-note').textContent = targets.length ? '' : 'Not enough evidence yet.';
   $('training-targets').replaceChildren(...targets.slice(0, 8).map((target) => {
     const row = element('article', '', 'training-target');
     const copy = document.createElement('div');
@@ -2832,10 +2823,10 @@ function renderMissedWords() {
   const hadFocus = document.activeElement === $('practice-missed-list');
   const input = inputClass === 'touch' ? 'touch input' : 'a physical keyboard';
   $('missed-words-note').textContent = enough
-    ? `First-try misses in your last ${runs} complete tests, retests and new daily passages on ${input}, all other test conditions together, up to ${MAX_MISSED_WORDS} words a run. Word practice, custom text and drills aren’t counted.`
+    ? `First-try misses in your last ${runs} runs on ${input}.`
     : runs < 2
-      ? `Not enough evidence yet: ${runs ? `one run on ${input}` : 'no runs'} counted so far. A word shows here once you miss it on the first try in two complete tests, retests or new daily passages.`
-      : `Not enough evidence yet: ${recurring ? `only ${wordCopy(words[0].word)} was missed on the first try in more than one of your last ${runs} runs on ${input} (in ${words[0].runs})` : `no word was missed on the first try in more than one of your last ${runs} runs on ${input}`}. The list starts at two such words.`;
+      ? `Not enough evidence yet: ${runs ? `one run on ${input}` : 'no runs'} counted so far.`
+      : `Not enough evidence yet: ${recurring ? `only ${wordCopy(words[0].word)} was missed on the first try in more than one of your last ${runs} runs on ${input} (in ${words[0].runs})` : `no word was missed on the first try in more than one of your last ${runs} runs on ${input}`}.`;
   $('missed-words-list').replaceChildren(...(enough ? words : []).map((item) => {
     const row = element('li', '', 'missed-word');
     row.append(element('span', wordCopy(item.word), 'missed-word-text'), element('span', `missed in ${item.runs} of the last ${runs} runs`, 'num'));
@@ -3204,9 +3195,8 @@ function renderHistory() {
   // Drills, daily and custom runs count toward the goal but not the trend, so the empty copy names what is missing.
   const goalOnly = !hasProgress && !$('practice-goal').hidden;
   $('progress-empty-title').textContent = goalOnly ? 'No speed trend yet.' : 'No practice runs yet.';
-  $('progress-empty-copy').textContent = goalOnly
-    ? 'Drills, daily and custom runs count toward your daily practice. Finish a practice run to chart speed and accuracy.'
-    : 'Finish a practice run to begin your history.';
+  $('progress-empty-copy').textContent = goalOnly ? 'Finish a practice run to chart speed and accuracy.' : '';
+  $('progress-empty-copy').hidden = !goalOnly;
   $('progress-content').hidden = !hasProgress;
   $('progress-views').hidden = !hasProgress && !goalOnly;
   $('progress-history').hidden = !hasProgress;
@@ -3399,8 +3389,7 @@ function renderComposeHistory() {
   $('compose-history').hidden = !list.length;
   if (!list.length) return;
   const shown = [...list].reverse().slice(0, 10);
-  $('compose-history-note').textContent = `${list.length} ${list.length === 1 ? 'session' : 'sessions'} saved`
-    + `${list.length > shown.length ? ` · newest ${shown.length} shown` : ''} · never a best`;
+  $('compose-history-note').textContent = list.length > shown.length ? `newest ${shown.length} of ${list.length}` : '';
   $('compose-history-list').replaceChildren(...shown.map((item) => {
     const row = element('article', '', 'compose-row');
     const main = element('div', '', 'compose-row-main');
@@ -3657,7 +3646,7 @@ function renderLessons() {
   const fresh = complete ? [] : LESSONS[next].keys;
   renderFingerMap($('lesson-keyboard'), { known: lessonKeys(complete ? LESSONS.length - 1 : next - 1), fresh });
   $('finger-caption-keys').textContent = complete ? 'every key learned' : `green edge: lesson ${next + 1}’s keys`;
-  $('lesson-save-note').textContent = `${isDefaultLayout(prefs.layout) ? '' : 'Lessons teach QWERTY finger positions. Use QWERTY in your operating system for these lessons; your practice layout setting is kept. '}${session ? 'Lesson progress saves to your account.' : 'Lesson progress lasts for this tab; sign in to save future lessons.'} Lessons stay out of your bests, progress charts and retests.`;
+  $('lesson-save-note').textContent = isDefaultLayout(prefs.layout) ? '' : 'Lessons teach QWERTY finger positions. Use QWERTY in your operating system for these lessons.';
 
   $('lesson-list').replaceChildren(...LESSONS.map((lesson, index) => {
     const entry = progress[lesson.id];
@@ -4187,7 +4176,6 @@ function forgetTraining() {
   selectWord(null);
   $('result-delta').textContent = 'No run yet.';
   $('result-comparison-note').textContent = '';
-  $('run-card-stamp').textContent = 'no run yet';
   $('run-card').hidden = true;
   showResult(null);
   $('speed-graph').replaceChildren();
@@ -4312,10 +4300,10 @@ function setSyncState(state) {
   $('account').dataset.sync = state;
   $('account-sync').textContent = SYNC_COPY[state];
   $('settings-saved').textContent = !session
-    ? 'Changes apply as you choose. Guest settings last for this tab.'
+    ? 'Guest settings last for this tab.'
     : state === 'synced'
-      ? 'Changes apply as you choose. Settings saved to your account.'
-      : 'Changes apply as you choose. Settings saved here, waiting to sync.';
+      ? 'Settings saved to your account.'
+      : 'Settings saved here, waiting to sync.';
 }
 
 function renderAccount() {
@@ -4780,9 +4768,8 @@ function openAccountDialog(mode) {
   closeAccountMenu();
   const creating = mode === 'create';
   $('account-dialog-title').textContent = creating ? 'Create an account' : 'Sign in';
-  $('account-dialog-copy').textContent = creating
-    ? 'Your settings, runs and progress are kept and follow you to any device.'
-    : 'Pick up your settings, runs and progress where you left them.';
+  $('account-dialog-copy').textContent = creating ? 'Keep your settings and runs on any device.' : '';
+  $('account-dialog-copy').hidden = !creating;
   $('account-password').autocomplete = creating ? 'new-password' : 'current-password';
   $('account-submit').textContent = creating ? 'Create account' : 'Sign in';
   $('account-switch').textContent = creating ? 'Sign in instead' : 'Create one instead';

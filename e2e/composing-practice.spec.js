@@ -75,7 +75,7 @@ test('composing reports free-typing speed and backspace rate, never a best', asy
   await expect(page.locator('#duration-options')).toBeHidden();
   await expect(page.locator('#punctuation-switch')).toBeHidden();
   await expect(page.locator('#best')).toHaveCSS('visibility', 'hidden');
-  await expect(page.locator('#compose-conditions')).toHaveText('composing · up to 60 s · physical keyboard · not compared with copy tests');
+  await expect(page.locator('#compose-conditions')).toHaveText('composing · up to 60 s · physical keyboard');
   await expect(page.locator('#compose-privacy')).toHaveText('Your words are never saved. Only the numbers are kept, for this tab.');
   await expect(page.locator('#compose-timer')).toHaveText('60');
   await expect(page.locator('#compose-done')).toBeDisabled();
@@ -120,8 +120,7 @@ test('composing reports free-typing speed and backspace rate, never a best', asy
   await expect(page.locator('#compose-history .compose-row-main')).toContainText(`${want.backspaceRate}% backspace rate`);
   await expect(page.locator('#compose-history .compose-row')).toContainText(`“${prompt}”`);
   await expect(page.locator('#compose-history .compose-row')).toContainText(`${want.text.length} characters · ${want.backspaces} backspaces in ${want.keys} keystrokes`);
-  await expect(page.locator('#compose-history-note')).toContainText('1 session saved');
-  await expect(page.locator('#compose-history-note')).toContainText('never a best');
+  await expect(page.locator('#compose-history .compose-row')).toHaveCount(1);
   await expect(page.locator('#compose-history')).not.toContainText('quiet, so I read');
   await expect(page.locator('#clear-history')).toBeVisible();
 

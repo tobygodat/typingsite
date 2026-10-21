@@ -201,7 +201,7 @@ test('drills and a custom text run count toward daily practice but not the trend
   await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '0');
   await expect(page.locator('#progress-empty')).toBeVisible();
   await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');
-  await expect(page.locator('#progress-empty-copy')).toContainText('Drills, daily and custom runs count toward your daily practice.');
+  await expect(page.locator('#progress-empty-copy')).toHaveText('Finish a practice run to chart speed and accuracy.');
   await openView(page, 'Practice');
   await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);

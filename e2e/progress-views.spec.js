@@ -134,7 +134,6 @@ test('view tabs show one panel at a time, by arrow keys or a click, and stay cho
   expect(await shown()).toEqual(['consistency']);
   await expect(page.locator('#progress-spread')).toContainText('Half your runs fall between 58 and 73 wpm.');
   await expect(page.locator('#progress-spread svg[role="img"]').first()).toHaveAttribute('aria-label', /^4 runs by speed, from 50 to 80 wpm\. Median 65 wpm; half the runs between 58 and 73 wpm\.$/);
-  await expect(page.locator('#progress-spread')).toContainText('Each dot is a run.');
 
   await tab('Practice').click();
   expect(await shown()).toEqual(['practice']);

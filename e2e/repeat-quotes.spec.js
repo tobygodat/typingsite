@@ -330,7 +330,7 @@ test('a daily repeat attempt is repeated text too, so it is never a retest basel
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete · repeat attempt');
   await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#recommendation-meta')).toHaveText('A standalone drill. Finish a practice run to establish a fresh-text retest baseline.');
+  await expect(page.locator('#recommendation-meta')).toHaveText('A standalone drill.');
 });
 
 test('stop on error: a blocked letter swaps the notice for its hint without moving restart', async ({ page }) => {
