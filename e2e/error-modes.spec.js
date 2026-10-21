@@ -97,12 +97,12 @@ test('a drill failed by fail-word shows its result, then retries or goes on to t
   await expect(page.locator('#announcement')).toHaveText(/^Drill failed, word error\. \d+ wpm, \d+% accuracy\.$/);
   await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 10-word retest.');
   await expect(page.locator('#start-drill')).toHaveText('Try drill again');
-  await expect(page.locator('#start-drill')).toBeFocused();
+  await expect(page.locator('#results-heading')).toBeFocused();
   await expect(page.locator('#skip-to-retest')).toBeEnabled();
 
   // Trying again starts the drill afresh under the same policy.
   await failDrill(page, 'fail-word', 'word error');
-  await expect(page.locator('#start-drill')).toBeFocused();
+  await expect(page.locator('#results-heading')).toBeFocused();
 
   await page.locator('#skip-to-retest').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
@@ -142,7 +142,7 @@ async function showFailedDrill(page, viewport) {
   await typeInto(page, await passageText(page), '#typing-input', { delay: 120 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await failDrill(page, 'fail-any', 'wrong key', { delay: 110 });
-  await expect(page.locator('#start-drill')).toBeFocused();
+  await expect(page.locator('#results-heading')).toBeFocused();
   // The run card's graph draws in about 450 ms.
   await page.waitForTimeout(600);
 }

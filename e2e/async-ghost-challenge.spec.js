@@ -83,7 +83,7 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
   const text = await passageText(page);
   await typeInto(page, text, '#typing-input', { delay: 130 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#run-again')).toBeFocused();
+  await expect(page.locator('#results-heading')).toBeFocused();
 
   // After the run: pick a friend and send it.
   const offer = page.locator('#ghost-offer');
@@ -131,7 +131,7 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
     await lightShot(linPage, testInfo, 'racing-light');
     await linPage.keyboard.type(text.slice(half), { delay: 110 });
     await expect(linPage.locator('body')).toHaveAttribute('data-view', 'results');
-    await expect(linPage.locator('#run-again')).toBeFocused();
+    await expect(linPage.locator('#results-heading')).toBeFocused();
 
     const result = linPage.locator('#ghost-result');
     await expect(result).toBeVisible();
@@ -801,7 +801,7 @@ test('a Race reply that lands after a practice run began neither interrupts that
   await expect(page.locator('#ghost-result')).toBeHidden();
   await expect(page.locator('#ghost-offer')).toBeVisible();
   await expectOffer(page, 'Ada');
-  await expect(page.locator('#run-again')).toBeFocused();
+  await expect(page.locator('#results-heading')).toBeFocused();
   // The run's end announces both the offer that waited for it and the run's own result.
   await expect(page.locator('#announcement')).toHaveText(/^Ada’s race is ready\. \d+ wpm, \d+% accuracy\.$/);
   expect(ada.result).toBeNull();
@@ -1022,7 +1022,7 @@ test('a Race that fails while Lin types a run says so once the run ends', async 
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#account-toast')).toBeVisible();
   await expect(page.locator('#account-feedback')).toHaveText('The ghost race didn’t start. Request failed (503).');
-  await expect(page.locator('#run-again')).toBeFocused();
+  await expect(page.locator('#results-heading')).toBeFocused();
 });
 
 test('a toast that goes while its Race button has focus hands focus to the inbox and says why', async ({ page, supabase }) => {

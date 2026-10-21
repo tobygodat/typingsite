@@ -37,7 +37,7 @@ test('an account hosts a guest across separate contexts, shares progress, resume
   await chooseSetting(page, 'word-highlight', 'current');
   await openSettings(page, 'shortcuts');
   await page.locator('#keybinding-restart').fill('F2');
-  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
+  await page.locator('#keybinding-restart').press('Enter');
   await page.keyboard.press('Escape');
   await expect.poll(() => supabase.profileFor('host@stilltype.test')?.preferences.wordHighlight, { timeout: 8000 }).toBe('current');
   const link = await page.locator('#online-guest-link').inputValue();

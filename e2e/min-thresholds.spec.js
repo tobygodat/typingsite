@@ -69,7 +69,7 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
   await expect(page.locator('#result-time')).toHaveText('8.0 s');
   await expect(page.locator('#start-drill')).toBeDisabled();
   await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#run-again')).toBeFocused();
+  await expect(page.locator('#results-heading')).toBeFocused();
   await expect(page.locator('#best')).toHaveText('No best yet');
   await expect(page.locator('#typing-status')).toHaveText('Interrupted');
   await expect(page.locator('#typing-status')).toHaveClass(/badge-warning/);
@@ -82,8 +82,8 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
   await page.waitForTimeout(450);
   await shot(page, testInfo, 'stopped-light');
 
-  // Once the typist has paused, Enter on Run again starts a fresh run that still carries the minimum.
-  await expect(page.locator('#run-again')).toBeFocused();
+  // Once the typist has paused, Enter on the result heading starts a fresh run that still carries the minimum.
+  await expect(page.locator('#results-heading')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('#typing-status')).toHaveText('Ready');
   await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy');
@@ -246,6 +246,8 @@ test('a retest carries its baseline’s minimums, and the daily challenge has no
 // way can't discard the result: Space and Enter on Run again wait until the typist pauses.
 for (const end of ['last character', 'timer']) {
   test(`a run that ends under the minimum on its ${end} holds Run again until the typist pauses`, async ({ page }) => {
+    // Tall enough for Run again to take focus below the score.
+    await page.setViewportSize({ width: 1280, height: 1100 });
     await page.clock.install();
     await openApp(page);
     if (end === 'timer') await page.locator('#duration-options [data-length="15"]').click();

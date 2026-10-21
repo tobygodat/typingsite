@@ -466,7 +466,7 @@ test.describe('on a touch screen', () => {
     await chooseWords(page, 10);
     await expect(page.locator('#condition-line')).toContainText('physical keyboard');
     await completePassage(page);
-    await expect(page.locator('#run-again')).toBeFocused();
+    await expect(page.locator('#results-heading')).toBeFocused();
     await page.locator('#run-again').tap();
     await expect(page.locator('#typing-input')).toBeFocused();
     await expect(page.locator('#condition-line')).toContainText('touch input');
@@ -475,9 +475,9 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await completePassage(page);
     await expect(page.locator('#result-conditions')).toContainText('touch input');
-    // A key outside a text field can only be a hardware keyboard.
-    await expect(page.locator('#run-again')).toBeFocused();
-    await page.keyboard.press('Enter');
+    // A key outside a text field can only be a hardware keyboard: here the restart key on the result heading.
+    await expect(page.locator('#results-heading')).toBeFocused();
+    await page.keyboard.press('Escape');
     await expect(page.locator('#condition-line')).toContainText('physical keyboard');
     await page.locator('#restart-button').tap();
     await expect(page.locator('#condition-line')).toContainText('touch input');

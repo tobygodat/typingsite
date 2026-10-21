@@ -7,8 +7,8 @@ async function editBindings(page, values) {
 }
 async function saveBindings(page) {
   await openSettings(page, 'shortcuts');
-  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
-  await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
+  await page.locator('#keybinding-restart').press('Enter');
+  await expect(page.locator('#keybindings-form [aria-invalid=\"true\"]')).toHaveCount(0);
   await page.keyboard.press('Escape');
 }
 
@@ -49,7 +49,7 @@ test('conflicts and invalid combinations leave saved bindings untouched, and can
   for (const [action, value, message] of [['restart', 'Ctrl+K', 'Already used'], ['restart', 'Shift+Tab', 'reserved'], ['restart', 'a', 'Printable keys'],
     ['restart', 'Ctrl+R', 'reserved'], ['restart', 'Ctrl+Alt+E', 'AltGr'], ['commands', 'Mod+Alt+K', 'AltGr']]) {
     await editBindings(page, { [action]: value });
-    await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
+    await page.locator('#keybinding-restart').press('Enter');
     await expect(page.locator(`#keybinding-${action}`)).toHaveAttribute('aria-invalid', 'true');
     await expect(page.locator(`#keybinding-${action}-error`)).toContainText(message);
     await expect(page.locator('#restart-key-hint')).toHaveText('esc');
@@ -303,4 +303,25 @@ test('composing keeps its finish command and configured restart hint', async ({ 
   await typeInto(page, 'more words', '#compose-input');
   await page.keyboard.press('Control+Enter');
   await expect(page.locator('#compose-result')).toBeVisible();
+});
+
+test('a valid binding applies as it is chosen, with no save step, and a conflict stays marked without applying', async ({ page }) => {
+  await openApp(page);
+  await openSettings(page, 'shortcuts');
+  await expect(page.locator('#settings-shortcuts').getByRole('button', { name: /save/i })).toHaveCount(0);
+  await page.locator('#keybinding-restart').fill('F2');
+  await page.locator('#keybinding-commands').focus();
+  await expect(page.locator('#restart-key-hint')).toHaveText('f2');
+
+  await page.locator('#keybinding-commands').fill('F2');
+  await page.locator('#keybinding-commands').press('Enter');
+  await expect(page.locator('#keybinding-commands')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#keybinding-commands-error')).toHaveText('Already used by restart test / local challenge.');
+  await expect(page.locator('#palette-trigger')).toHaveAttribute('aria-keyshortcuts', 'Control+K Meta+K');
+
+  // A recorded combination applies at once, even while another field waits to be fixed.
+  await page.getByRole('button', { name: 'Record exit focus mode binding', exact: true }).click();
+  await page.keyboard.press('F8');
+  await expect(page.locator('#exit-focus')).toHaveAttribute('aria-keyshortcuts', 'F8');
+  await expect(page.locator('#restart-key-hint')).toHaveText('f2');
 });

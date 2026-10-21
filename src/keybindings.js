@@ -115,22 +115,25 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
     }
     if (!editedActions.size && !recording) feedback('');
   }
-  form.addEventListener('input', (event) => { editedActions.add(event.target.name); });
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    stopRecording();
+  // Valid bindings apply as they are chosen; a marked one keeps its text and waits to be fixed. Enter and
+  // a recording save even an unchanged binding, as a click on a selected option does.
+  function apply({ reselect = false } = {}) {
     const result = validateKeybindings(Object.fromEntries(actions.map((action) => [action, input(action).value])));
     for (const action of actions) {
       input(action).setAttribute('aria-invalid', String(Boolean(result.errors[action])));
       form.querySelector(`#keybinding-${action}-error`).textContent = result.errors[action] || '';
     }
-    const invalid = actions.find((action) => result.errors[action]);
-    if (invalid) { feedback('Bindings were not saved. Fix the marked combinations.'); input(invalid).focus(); return; }
-    editedActions.clear();
-    onSave(result.bindings);
-    refresh();
-    feedback('Keybindings saved.');
-  });
+    const valid = actions.filter((action) => !result.errors[action]);
+    const next = { ...getBindings(), ...Object.fromEntries(valid.map((action) => [action, result.bindings[action]])) };
+    if (!Object.keys(validateKeybindings(next).errors).length) {
+      valid.forEach((action) => editedActions.delete(action));
+      if (reselect || JSON.stringify(next) !== JSON.stringify(getBindings())) onSave(next);
+      refresh();
+    }
+    feedback(valid.length === actions.length ? '' : 'Fix the marked combinations.');
+  }
+  form.addEventListener('input', (event) => { editedActions.add(event.target.name); });
+  form.addEventListener('change', (event) => { if (event.target.matches('input')) apply(); });
   form.querySelector('[data-reset-bindings]').addEventListener('click', () => {
     onSave({ ...DEFAULT_KEYBINDINGS });
     refresh({ force: true });
@@ -146,6 +149,7 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
     feedback('Press a combination. Escape cancels; Tab moves focus. Enter Escape or Tab in the field to bind them.');
   }));
   form.addEventListener('keydown', (event) => {
+    if (!recording && event.key === 'Enter' && event.target.matches('input')) { event.preventDefault(); apply({ reselect: true }); return; }
     if (!recording || event.isComposing || event.keyCode === 229) return;
     if (event.key === 'Tab') { stopRecording(); feedback('Recording cancelled.'); return; }
     event.preventDefault();
@@ -160,7 +164,7 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
     editedActions.add(action);
     stopRecording();
     input(action).focus();
-    feedback('Combination recorded. Save to apply it.');
+    apply({ reselect: true });
   });
   form.addEventListener('focusout', (event) => { if (event.target.matches('[data-record]')) stopRecording(); });
   return { refresh, stopRecording, isRecording: () => recording !== null };

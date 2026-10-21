@@ -47,8 +47,9 @@ async function typeForAMinute(page, text) {
 }
 
 // Waits out finite animations and transitions (the graph drawing in, a theme change's background fade).
+// Scroll-driven ones (the Progress pill-row fades) follow a scroll position, not time, so they never end.
 const settle = (page) => page.waitForFunction(() => document.getAnimations()
-  .every((animation) => animation.playState !== 'running' || animation.effect?.getTiming().iterations === Infinity));
+  .every((animation) => animation.playState !== 'running' || animation.effect?.getTiming().iterations === Infinity || animation.timeline !== document.timeline));
 
 test('standard mode shows its recipe, locks the settings that would change it, and draws fresh text', async ({ page }) => {
   await openApp(page);

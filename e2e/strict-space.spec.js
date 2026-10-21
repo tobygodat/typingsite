@@ -134,7 +134,7 @@ test('quick end off waits on a wrong last word until space submits it or the wor
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-errors')).toHaveText('1');
   await expect(page.locator('#result-conditions')).toContainText(/continue on error · quick end off$/);
-  await expect(page.locator('#run-again')).toBeFocused();
+  await expect(page.locator('#results-heading')).toBeFocused();
 
   // Fixing the last word finishes the run as soon as it is right.
   await page.locator('#run-again').click();
@@ -149,6 +149,8 @@ test('quick end off waits on a wrong last word until space submits it or the wor
 });
 
 test('a held space that submits the run doesn’t also press Run again', async ({ page }) => {
+  // Tall enough for Run again to take focus below the score.
+  await page.setViewportSize({ width: 1280, height: 1100 });
   await openApp(page);
   await chooseWords(page, 10);
   await setSwitch(page, 'quick-end-toggle', false);
