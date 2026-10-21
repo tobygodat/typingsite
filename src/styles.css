@@ -3229,3 +3229,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 @media (max-width: 1000px) and (min-width: 761px) {
   .progress-stats:not(.practice-stats) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* All five practice figures in one row from 1001 px. A unit too wide for its column ("412 finished" beside
+   999) drops under its numeral instead of running into the next column. */
+.practice-stats .figure-value { flex-wrap: wrap; }
+@media (min-width: 1001px) {
+  .practice-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}

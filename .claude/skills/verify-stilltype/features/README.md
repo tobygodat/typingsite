@@ -54,3 +54,4 @@ proof.
 - [Theme and settings](./theme-and-settings.md): the settings dialog, the theme radios, and following the system theme.
 - [Command palette](./command-palette.md): Ctrl+K, filtering, and running a command such as `theme · light`.
 - [Accounts](./accounts.md): guest mode, signing in with email against the fake Supabase, and the account menu.
+- [Progress practice figures](./progress-practice.md): the Practice tab's figures, runs started included.
