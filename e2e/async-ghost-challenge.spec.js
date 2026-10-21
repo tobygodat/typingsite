@@ -149,7 +149,9 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
     // kept, so ghost races never take the place of practice traces.
     await expect.poll(() => supabase.profileFor('lin@stilltype.test')?.runs?.map((run) => run.kind)).toEqual(['challenge']);
     expect(supabase.profileFor('lin@stilltype.test').bests).toEqual({});
-    expect(supabase.profileFor('lin@stilltype.test').attempts).toEqual([]);
+    // Recordings stay on the device, and this run keeps none there either.
+    expect(supabase.profileFor('lin@stilltype.test')).not.toHaveProperty('attempts');
+    expect((await linPage.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find((key) => key.startsWith('stilltype-profile-v2:')))).attempts))).toEqual([]);
     expect('patterns' in supabase.profileFor('lin@stilltype.test').runs[0]).toBe(false);
     await shot(linPage, testInfo, 'result-dark');
     await lightShot(linPage, testInfo, 'result-light');

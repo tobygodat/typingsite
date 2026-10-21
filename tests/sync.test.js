@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HISTORY, MAX_STORED_ATTEMPTS, capHistory, clearProfile, insertCloudProfile, joinHolds, mergeAndHold, mergeSynced, revokeClear,
-  sameProfile, stampAfter, undoClearHere, updateCloudProfile,
+  HISTORY, MAX_STORED_ATTEMPTS, cacheProfile, capHistory, clearProfile, fetchCloudProfile, insertCloudProfile, joinHolds, mergeAndHold,
+  mergeSynced, profileKey, revokeClear, rowCopy, sameProfile, sameRow, stampAfter, storedCopy, undoClearHere, updateCloudProfile,
 } from '../src/account.js';
 import { recordPracticeTime, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
 import { MAX_COMPOSITIONS } from '../src/compose.js';
 import { normalizeProfile, preferencesInUse } from '../src/profile.js';
-import { conditionKey } from '../src/typing.js';
+import { completeAttempt, conditionKey, createAttempt } from '../src/typing.js';
 
 const minute = (n) => new Date(Date.UTC(2026, 9, 1, 12, 0) + n * 60000).toISOString();
 const profile = (over = {}) => ({
@@ -1277,6 +1277,162 @@ test('profile writes are conditional: an update names the version it replaces, a
     assert.equal(insert.init.method, 'POST');
     assert.equal(insert.init.headers.Prefer, 'resolution=ignore-duplicates,return=representation');
     assert.equal(JSON.parse(insert.init.body).user_id, 'u1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// A finished trace as storeAttempt keeps it: every key an event, now and then a slip fixed with a backspace.
+function finishedTrace(id, n, { keys = 120, kind = 'test' } = {}) {
+  const text = 'the quiet harbour kept its boats in rows while the tide went out and came back again '.repeat(3);
+  const attempt = createAttempt({ id, text, textId: `generated-${id}`, kind, conditions: { mode: 'time', duration: 30, correctionPolicy: 'relaxed' } });
+  let offsetMs = 0;
+  for (let position = 0; position < keys; position += 1) {
+    offsetMs += 90 + ((position * 37) % 70);
+    if (position % 17 === 5) {
+      attempt.events.push({ type: 'insert', text: 'q', position, accepted: true, offsetMs });
+      attempt.events.push({ type: 'delete', count: 1, offsetMs: offsetMs += 140 });
+      offsetMs += 90;
+    }
+    attempt.events.push({ type: 'insert', text: text[position], position, accepted: true, offsetMs });
+  }
+  attempt.startedAt = 0;
+  return { ...completeAttempt(attempt, { endedAt: offsetMs }), interrupted: false, unsupportedInput: false, fresh: true, at: minute(n) };
+}
+const viaRow = (copy) => normalizeProfile(JSON.parse(JSON.stringify(storedCopy(copy))));
+
+test('stored copies leave out each trace’s summary, and loading rebuilds it exactly', () => {
+  const traces = Array.from({ length: 6 }, (_, n) => finishedTrace(`t${n}`, n, { keys: 60 + n * 30, kind: n === 2 ? 'retest' : 'test' }));
+  const copy = normalizeProfile(profile({ attempts: traces, runs: traces.map((trace) => item(trace.id, 0)) }));
+  const stored = storedCopy(copy);
+  assert.ok(stored.attempts.every((trace) => !('summary' in trace)));
+  assert.deepEqual(stored.attempts, copy.attempts.map(({ summary, ...trace }) => trace));
+  assert.deepEqual({ ...stored, attempts: [] }, { ...copy, attempts: [] });
+  assert.ok(copy.attempts.every((trace) => trace.summary), 'the copy in use keeps its summaries');
+  assert.ok(JSON.stringify(stored).length < JSON.stringify(copy).length * 0.6, 'well under the full size');
+  // Rebuilt from the events exactly as completeAttempt made it, so the trace budget weighs it the same.
+  const loaded = viaRow(copy);
+  assert.deepEqual(loaded.attempts, copy.attempts);
+  for (const [n, trace] of loaded.attempts.entries()) assert.equal(JSON.stringify(trace).length, JSON.stringify(traces[n]).length);
+  assert.deepEqual(storedCopy(profile()), profile());
+  assert.deepEqual(storedCopy({ version: 2 }), { version: 2 });
+});
+
+test('copies holding compact traces settle with each other and with a full copy from an older build', () => {
+  const shared = Array.from({ length: 22 }, (_, n) => finishedTrace(`s${n}`, n));
+  const laptop = normalizeProfile(profile({ attempts: [...shared, finishedTrace('laptop', 30)], updatedAt: minute(30), mergeStamp: minute(30) }));
+  const phone = profile({ attempts: [...shared, finishedTrace('phone', 31), finishedTrace('phone-2', 32)], updatedAt: minute(32), mergeStamp: minute(32) });
+  const whole = mergeSynced(laptop, normalizeProfile(phone));
+  // The phone's copy came through the device cache; an older build wrote its summaries in, and both merge the same.
+  for (const row of [viaRow(phone), normalizeProfile(JSON.parse(JSON.stringify(phone)))]) {
+    const merged = mergeSynced(laptop, row);
+    assert.deepEqual(ids(merged.attempts), ids(whole.attempts));
+    assert.equal(merged.attempts.length, MAX_STORED_ATTEMPTS);
+    assert.deepEqual(merged.attempts, whole.attempts);
+    assert.ok(sameProfile(merged, mergeSynced(row, laptop)));
+    // Written back and read again on either device, the row holds nothing either copy lacks: no write follows.
+    const back = viaRow(merged);
+    assert.ok(sameProfile(mergeSynced(laptop, back), back));
+    assert.ok(sameProfile(mergeSynced(back, row), back));
+    assert.deepEqual(mergeSynced(laptop, back).attempts, merged.attempts);
+    assert.ok(storedCopy(merged).attempts.every((trace) => !('summary' in trace)));
+  }
+});
+
+// A fake account service holding one row, as PostgREST answers the calls src/account.js makes.
+function fakeRow(row = null) {
+  const service = { row, writes: 0 };
+  globalThis.fetch = async (url, init = {}) => {
+    const reply = (value) => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
+    if (!init.method || init.method === 'GET') return reply(service.row ? [service.row] : []);
+    const body = JSON.parse(init.body);
+    service.writes += 1;
+    service.row = { ...service.row, data: body.data, updated_at: body.updated_at };
+    return reply([{ updated_at: body.updated_at }]);
+  };
+  return service;
+}
+
+// pushOnce in src/app.js: read the row, merge it in, write only what the row lacks.
+async function push(session, local) {
+  const cloud = await fetchCloudProfile(session);
+  const theirs = cloud ? normalizeProfile(cloud.data) : null;
+  const merged = theirs ? mergeSynced(local, theirs) : local;
+  if (!theirs) await insertCloudProfile(session, merged);
+  else if (!sameRow(merged, theirs)) await updateCloudProfile(session, merged, cloud.updated_at);
+  return merged;
+}
+
+test('the account row is sent no recordings; the device cache keeps them, compact', async () => {
+  const originalFetch = globalThis.fetch;
+  const store = new Map();
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, String(value)), removeItem: (key) => store.delete(key) };
+  try {
+    const service = fakeRow();
+    const session = { access_token: 't', user: { id: 'u1' } };
+    const copy = normalizeProfile(profile({ attempts: [finishedTrace('a', 1)], runs: [item('a', 1)] }));
+    await insertCloudProfile(session, copy);
+    assert.deepEqual(service.row.data, rowCopy(copy));
+    assert.ok(!('attempts' in service.row.data));
+    await updateCloudProfile(session, copy, service.row.updated_at);
+    assert.deepEqual(service.row.data, rowCopy(copy));
+    assert.ok(cacheProfile('u1', copy));
+    assert.deepEqual(JSON.parse(store.get(profileKey('u1'))), storedCopy(copy));
+    assert.equal(copy.attempts.length, 1, 'nothing is taken from the copy in use');
+    assert.ok(copy.attempts[0].summary);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete globalThis.localStorage;
+  }
+});
+
+test('recordings stay on each device: copies settle through the row, and a row synced with recordings keeps merging', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    const session = { access_token: 't', user: { id: 'u1' } };
+    // A row an older build wrote, recordings and all.
+    const shared = [finishedTrace('s1', 1), finishedTrace('s2', 2)];
+    const runOf = (trace) => ({ id: trace.id, at: trace.at, kind: 'test', status: 'complete' });
+    const service = fakeRow({ data: profile({ attempts: shared, runs: shared.map(runOf), updatedAt: minute(2), mergeStamp: minute(2) }), updated_at: '2026-10-01T12:02:00+00:00' });
+    const laptopTrace = finishedTrace('laptop', 10);
+    const phoneTrace = finishedTrace('phone', 11);
+    let laptop = normalizeProfile(profile({ attempts: [...shared, laptopTrace], runs: [...shared, laptopTrace].map(runOf) }));
+    let phone = normalizeProfile(profile({ attempts: [phoneTrace], runs: [runOf(phoneTrace)] }));
+
+    // Read here, the old row's recordings are left out, and holding none of them calls for no write.
+    assert.equal((await fetchCloudProfile(session)).data.attempts, undefined);
+    assert.equal(service.writes, 0);
+    laptop = await push(session, laptop);
+    phone = await push(session, phone);
+    laptop = await push(session, laptop);
+    assert.equal(service.writes, 2);
+    assert.ok(!('attempts' in service.row.data), 'the row holds no recordings once rewritten');
+    // Every run summary is everywhere; each device keeps the recordings it holds.
+    for (const [name, copy] of Object.entries({ laptop, phone, row: normalizeProfile(service.row.data) })) assert.deepEqual(ids(copy.runs).sort(), ['laptop', 'phone', 's1', 's2'], name);
+    assert.deepEqual(ids(laptop.attempts), ['s1', 's2', 'laptop']);
+    assert.deepEqual(ids(phone.attempts), ['phone']);
+    // Settled: more pulls and pushes write nothing.
+    for (let round = 0; round < 3; round += 1) {
+      laptop = await push(session, laptop);
+      phone = await push(session, phone);
+    }
+    assert.equal(service.writes, 2);
+    assert.ok(sameRow(laptop, phone));
+    assert.ok(!sameProfile(laptop, phone), 'their recordings differ, and stay apart');
+
+    // A clear on the phone reaches the laptop through the row and takes its recordings with it.
+    phone = clearProfile(phone);
+    phone = await push(session, phone);
+    laptop = await push(session, laptop);
+    assert.deepEqual(laptop.attempts, []);
+    assert.deepEqual(laptop.runs, []);
+
+    // A row so old it has no summaries keeps its recordings, which make them.
+    const legacy = fakeRow({ data: { version: 2, preferences: {}, attempts: shared, loops: [], seenTextIds: [], bests: {} }, updated_at: '2026-10-01T12:02:00+00:00' });
+    const read = await fetchCloudProfile(session);
+    assert.deepEqual(ids(read.data.attempts), ['s1', 's2']);
+    assert.deepEqual(ids(normalizeProfile(read.data).runs), ['s1', 's2']);
+    assert.equal(legacy.writes, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

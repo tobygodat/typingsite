@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, conditionKey, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, passageText, typeInto, signInWithEmail, chooseMore, chooseQuoteFilter } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere } from './fixtures.js';
 
 // Docs images are taken only on request (SCREENSHOTS=1), when the quotes are typed at a human pace
 // (~130 ms a key, a believable 70-100 wpm) so the run card beside the list looks real.
@@ -155,14 +155,17 @@ test('signed in, the list rides the synced run summaries, starts from the palett
   // Settings and a best that match the seeded 25-word runs, as that person's account would hold.
   const top = traces.map((t) => runRecord(t)).reduce((a, b) => (b.score.wpm > a.score.wpm ? b : a));
   const bests = { [conditionKey(conditions)]: { wpm: top.score.wpm, attemptId: top.id, at: top.at } };
-  supabase.profiles.set(user.id, { data: { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: traces,
+  const data = { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: traces,
     runs: [legacy, ...traces.map((t) => runRecord(t)), practice], loops: [], seenTextIds: traces.map((t) => t.textId), bests,
-    updatedAt: new Date(Date.now() - 60000).toISOString() } });
+    updatedAt: new Date(Date.now() - 60000).toISOString() };
+  supabase.profiles.set(user.id, { data });
   expect(missedWords).toEqual(['their', 'house']);
   expect(top.score.wpm).toBeGreaterThanOrEqual(40);
   expect(top.score.wpm).toBeLessThanOrEqual(110);
 
   await openApp(page);
+  // Recorded on this device, so the newest recording is here to be the retest baseline.
+  await recordedHere(page, user.id, data);
   await signInWithEmail(page, user.email);
   await openView(page, 'Train');
   const expected = [['their', 'missed in 3 of the last 3 runs'], ['because', 'missed in 2 of the last 3 runs'], ['river', 'missed in 2 of the last 3 runs']];
@@ -294,6 +297,8 @@ test('a list left stale by a sync is checked when pressed, and a clear elsewhere
   const shownWords = async () => (await listRows(page)).map(([word]) => word).sort();
   supabase.profiles.set(user.id, row([trace('a', day(4), ['their', 'because']), trace('b', day(3), ['their', 'because'])], day(3)));
   await openApp(page);
+  // Recorded on this device (the runs saved meanwhile below come from another, recordings left there).
+  await recordedHere(page, user.id, supabase.profiles.get(user.id).data);
   await signInWithEmail(page, user.email);
 
   // Reloads with the account row held back and draws Train from the device copy. Someone practises

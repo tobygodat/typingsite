@@ -123,6 +123,12 @@ export async function signInWithEmail(page, email, password = 'correct horse bat
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
 }
 
+// Keystroke recordings stay on the device that made them, never in the account row: a profile whose runs
+// were recorded on this device is seeded into its cache, as that device's own copy, before signing in.
+export async function recordedHere(page, userId, data) {
+  await page.evaluate(([key, text]) => localStorage.setItem(key, text), [`stilltype-profile-v2:${userId}`, JSON.stringify(data)]);
+}
+
 export const storageKeys = (page) => page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('stilltype')));
 
 export async function chooseQuoteFilter(page, filter, value) {

@@ -3,7 +3,7 @@
 import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { DEFAULT_SPEED_UNIT, normalizeSpeedUnit } from './units.js';
 import { normalizeLengthPreferences } from './lengths.js';
-import { correctionPreference, customTextProblem, normalizeCustomText } from './typing.js';
+import { correctionPreference, customTextProblem, normalizeCustomText, replayAttempt } from './typing.js';
 import { normalizeKeybindings } from './keybindings.js';
 import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
@@ -136,6 +136,10 @@ function storedPreferences(raw) {
   return normalized;
 }
 
+// Stored traces leave out their summary (account.storedCopy); it is rebuilt from the events, as it was made.
+const withSummary = (trace) => (trace && !trace.summary && Array.isArray(trace.events) && typeof trace.text === 'string'
+  ? { ...trace, summary: replayAttempt(trace) } : trace);
+
 export function normalizeProfile(parsed) {
   if (parsed?.version !== 2) return emptyProfile();
   const rawPreferences = { ...(parsed.preferences || {}) };
@@ -146,7 +150,7 @@ export function normalizeProfile(parsed) {
     rawPreferences.correction = correctionPreference({ stopOnError: rawPreferences.stopOnError });
     if (oldChoice) preferencesAt.correction = oldChoice;
   }
-  const traces = Array.isArray(parsed.attempts) ? parsed.attempts : [];
+  const traces = Array.isArray(parsed.attempts) ? parsed.attempts.map(withSummary) : [];
   const records = Array.isArray(parsed.runs) ? parsed.runs : traces.map((trace) => {
     // Older traces did not have wall-clock dates. Preserve unknown dates rather than invent them.
     const loop = parsed.loops?.find((l) => l.afterAttemptId === trace.id);

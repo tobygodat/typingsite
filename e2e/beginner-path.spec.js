@@ -662,7 +662,8 @@ test('a signed-in learner’s lesson progress syncs to the account, outside runs
   await expect.poll(() => supabase.profileFor(user.email)?.lessons?.fj?.passed?.accuracy).toBe(100);
   const saved = supabase.profileFor(user.email);
   expect(saved.runs).toEqual([]);
-  expect(saved.attempts).toEqual([]);
+  expect(saved).not.toHaveProperty('attempts');
+  expect((await page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find((key) => key.startsWith('stilltype-profile-v2:')))).attempts))).toEqual([]);
   expect(saved.bests).toEqual({});
   expect(saved.seenTextIds).toEqual(expect.not.arrayContaining([expect.stringMatching(/^lesson-/)]));
 

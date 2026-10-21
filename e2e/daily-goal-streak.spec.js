@@ -324,7 +324,8 @@ test('recorded lessons and composing active time increase the daily practice goa
   const saved = supabase.profiles.get(user.id).data;
   expect(totals()).toBe(lessonMs + saved.compositions[0].activeMs);
   expect(saved.runs).toEqual([]);
-  expect(saved.attempts).toEqual([]);
+  expect(saved).not.toHaveProperty('attempts');
+  expect((await page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find((key) => key.startsWith('stilltype-profile-v2:')))).attempts))).toEqual([]);
   expect(saved.bests).toEqual({});
   await openView(page, 'Progress');
   await expectStreak(page, 0, `today ${goalMinutes(totals() / 60000)} of 5 min`);

@@ -129,7 +129,8 @@ test('two devices: a stale device’s push keeps the other device’s run, highe
     await expect.poll(() => cloud(supabase).preferences.theme).toBe('light');
     const after = cloud(supabase);
     expect(runIds(after)).toEqual(runIds(before));
-    expect(after.attempts.map((attempt) => attempt.id)).toEqual(before.attempts.map((attempt) => attempt.id));
+    // Recordings stay on the device that made them: the row holds none.
+    expect(after).not.toHaveProperty('attempts');
     expect(after.bests).toEqual(before.bests);
     expect(after.seenTextIds).toEqual(expect.arrayContaining(before.seenTextIds));
     await expectBothRuns(phone, { runs: 3, best: Math.max(fast, third) });
@@ -165,7 +166,8 @@ test('a clear on one device is not undone by a stale device’s next push', asyn
     await expect.poll(() => runIds(cloud(supabase)).length, { timeout: 15000 }).toBe(1);
     const data = cloud(supabase);
     expect(runIds(data)).not.toContain(cleared);
-    expect(data.attempts.map((attempt) => attempt.id)).not.toContain(cleared);
+    // Recordings stay on the device that made them: the row holds none.
+    expect(data).not.toHaveProperty('attempts');
     expect(bestWpms(data)).toEqual([wpm]);
 
     await expectBothRuns(phone, { runs: 1, best: wpm });
@@ -826,6 +828,37 @@ test('a run another tab saved but could not send goes up with this tab’s next 
   expect(errors).toEqual([]);
 });
 
+test('hiding a tab sends nothing; a run it could not send waits in the device cache for the next load', async ({ page, supabase }) => {
+  supabase.addUser(EMAIL);
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  const writes = [];
+  await page.route(/\/rest\/v1\/profiles/, (route) => {
+    if (route.request().method() === 'GET') return route.fallback();
+    writes.push(route.request().method());
+    return route.abort();
+  });
+  // Hidden straight after the run, while its push is still waiting: hiding itself writes nothing.
+  await finishRun(page);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForTimeout(300);
+  expect(writes).toEqual([]);
+  // The waiting push still goes, and fails here: the run stays in the device cache only.
+  await expect.poll(() => writes.length).toBeGreaterThan(0);
+  const [run] = runIds(await cachedProfile(page));
+  expect(run).toBeTruthy();
+  expect(runIds(cloud(supabase))).toEqual([]);
+
+  await page.unroute(/\/rest\/v1\/profiles/);
+  await page.reload();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  expect(runIds(cloud(supabase))).toEqual([run]);
+});
+
 test('a tab puts back a run that another tab’s write from an older read left out of the device cache', async ({ page, context, supabase }) => {
   supabase.addUser(EMAIL);
   const errors = [];
@@ -982,7 +1015,7 @@ test('an older clear that names the run on show withdraws its drill and retest u
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
   const row = supabase.profiles.get(user.id);
   const [run] = row.data.runs;
-  const stamps = [...row.data.runs, ...row.data.attempts].map((record) => Date.parse(record.at)).filter(Number.isFinite);
+  const stamps = row.data.runs.map((record) => Date.parse(record.at)).filter(Number.isFinite);
   const newer = new Date(Math.min(...stamps) - 5000).toISOString();
   const older = new Date(Math.min(...stamps) - 60000).toISOString();
   const pull = async (data) => {
@@ -1002,7 +1035,6 @@ test('an older clear that names the run on show withdraws its drill and retest u
   await pull({
     ...row.data,
     runs: row.data.runs.filter((record) => !named(record)),
-    attempts: row.data.attempts.filter((record) => !named(record)),
     bests: Object.fromEntries(Object.entries(row.data.bests).filter(([, best]) => best.attemptId !== run.id)),
     historyClearedIds: [[older, run.id]],
   });

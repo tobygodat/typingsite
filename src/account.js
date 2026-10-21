@@ -98,20 +98,18 @@ function storeSession(session) {
 const storeSignIn = (data) => storeSession(sessionFrom(data, base64url(crypto.getRandomValues(new Uint8Array(9)))));
 
 // A request that hasn't finished by then fails as unreachable, so nothing waiting behind it (the push
-// queue, sign-out) can hang on a stalled connection; edits stay on the device, as offline. A keepalive
-// request (a page being hidden) is left to the browser. A caller's own signal (a queue's deadline)
-// aborts it as well.
+// queue, sign-out) can hang on a stalled connection; edits stay on the device, as offline. A caller's own
+// signal (a queue's deadline) aborts it as well.
 export const REQUEST_TIMEOUT_MS = 15000;
 
-export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false, signal: callerSignal } = {}) {
-  const timeout = !keepalive && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
+export async function request(path, { method = 'GET', body, token, headers = {}, signal: callerSignal } = {}) {
+  const timeout = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
   const signal = timeout && callerSignal && typeof AbortSignal.any === 'function' ? AbortSignal.any([timeout, callerSignal]) : callerSignal || timeout;
   let response;
   let text;
   try {
     response = await fetch(`${SUPABASE_URL}${path}`, {
       method,
-      keepalive,
       signal,
       headers: {
         apikey: SUPABASE_KEY,
@@ -298,7 +296,7 @@ export function restoreUnsent(userId, removedText, sent, savedText) {
   const copy = unsentCopy(removedText, sent, savedText);
   if (!copy) return false;
   const stored = storedProfile(loadCachedProfileText(userId));
-  return cacheProfileText(userId, JSON.stringify(stored ? mergeSynced(stored, copy) : copy));
+  return cacheProfileText(userId, JSON.stringify(storedCopy(stored ? mergeSynced(stored, copy) : copy)));
 }
 
 // Deleting an account is one server step: the delete-account Edge Function
@@ -393,9 +391,13 @@ export function forgetAccount(session) {
 
 // The whole row: `data`, `updated_at`, and the friends board's `board` once that column exists (`*`
 // never names a column the project lacks, so this works before the board's migration too).
+// Keystroke recordings (attempts) stay on the device that made them: a row written before that still
+// holds some, and they are left out here. A row so old it has no run summaries keeps them, as they are
+// what normalizeProfile makes its summaries from.
 export async function fetchCloudProfile(session) {
   const rows = await request(`/rest/v1/profiles?select=*&user_id=eq.${session.user.id}`, { token: session.access_token });
-  return rows?.[0] || null;
+  const row = rows?.[0] || null;
+  return row && Array.isArray(row.data?.runs) ? { ...row, data: rowCopy(row.data) } : row;
 }
 
 // An ISO time later than now and than every given stamp, so a device whose clock runs behind still
@@ -433,14 +435,13 @@ async function withBoard(board, at, send) {
 
 // Writes only if the row is still the version read at `seenAt` (owners may update their own row, see
 // supabase/migrations). Resolves to the new updated_at, or null when another writer got there first.
-export async function updateCloudProfile(session, data, seenAt, { keepalive = false, board } = {}) {
+export async function updateCloudProfile(session, data, seenAt, { board } = {}) {
   const at = stampAfter(seenAt);
   const rows = await withBoard(board, at, (column) => request(`/rest/v1/profiles?user_id=eq.${session.user.id}&updated_at=eq.${encodeURIComponent(seenAt)}&select=updated_at`, {
     method: 'PATCH',
     token: session.access_token,
-    keepalive,
     headers: { Prefer: 'return=representation' },
-    body: { data, updated_at: at, ...column },
+    body: { data: rowCopy(data), updated_at: at, ...column },
   }));
   return rows?.[0]?.updated_at || null;
 }
@@ -452,7 +453,7 @@ export async function insertCloudProfile(session, data, { board } = {}) {
     method: 'POST',
     token: session.access_token,
     headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
-    body: { user_id: session.user.id, data, updated_at: at, ...column },
+    body: { user_id: session.user.id, data: rowCopy(data), updated_at: at, ...column },
   }));
   return rows?.[0]?.updated_at || null;
 }
@@ -477,12 +478,18 @@ export async function repairBoard(session, board, at) {
   }
 }
 
+// The copy written to the device cache. A trace's summary is the replay of its own events (completeAttempt)
+// and over half its size, so it is left out and rebuilt on load (normalizeProfile).
+const withoutSummary = ({ summary, ...trace }) => trace;
+export const storedCopy = (profile) => (Array.isArray(profile?.attempts)
+  ? { ...profile, attempts: profile.attempts.map((trace) => (trace?.summary ? withoutSummary(trace) : trace)) } : profile);
+
 export function loadCachedProfile(userId) {
   return readJson(profileKey(userId));
 }
 
 export function cacheProfile(userId, data) {
-  return writeJson(profileKey(userId), data);
+  return writeJson(profileKey(userId), storedCopy(data));
 }
 
 // The device cache as text, so a tab can tell whether another tab has written it since.
@@ -956,6 +963,14 @@ export function syncSignature(profile) {
 }
 
 export const sameProfile = (a, b) => syncSignature(a) === syncSignature(b);
+
+// The account row: everything but the keystroke recordings, which stay on the device (fetchCloudProfile).
+// A copy is compared with the row by what the row holds, so recordings held here never call for a write.
+export const rowCopy = (profile) => {
+  const { attempts, ...rest } = profile || {};
+  return rest;
+};
+export const sameRow = (a, b) => sameProfile(rowCopy(a), rowCopy(b));
 
 // Folds a one-off import (the pre-accounts profile) into a profile: runs and loops by id, the higher best.
 // The base keeps its preferences unless it has no history of its own yet.
