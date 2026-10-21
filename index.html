@@ -15,7 +15,8 @@
     try {
       const user = JSON.parse(localStorage.getItem('stilltype-session-v1'))?.user?.id;
       const saved = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences?.theme : null;
-      const theme = saved === 'light' || saved === 'dark' ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      const themes = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
+      const theme = themes.includes(saved) ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
       document.documentElement.dataset.theme = theme;
     } catch {}
   </script>
@@ -960,6 +961,14 @@
               <label class="setting-option"><input type="radio" name="theme-select" value="system" checked><span>system</span></label>
               <label class="setting-option"><input type="radio" name="theme-select" value="dark"><span>dark</span></label>
               <label class="setting-option"><input type="radio" name="theme-select" value="light"><span>light</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="paper"><span>paper</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="shadcn"><span>shadcn</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="terminal"><span>terminal</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="soft"><span>soft</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="midnight"><span>midnight</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="swiss"><span>swiss</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="e-ink"><span>e-ink</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="nord"><span>nord</span></label>
             </fieldset>
           </div>
           <div class="preference-row">
