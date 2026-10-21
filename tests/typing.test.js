@@ -507,6 +507,24 @@ test('every code snippet unindents to a non-empty single line the engine accepts
   assert.deepEqual(missed({ mode: 'time', duration: 30, correctionPolicy: 'relaxed' }), ['const']);
 });
 
+test('each code language has at least 24 distinct snippets of 30 to 60 seconds at 100 wpm', async () => {
+  const { CODE_LANGUAGES, CODE_SNIPPETS, MIN_CODE_CHARS, MAX_CODE_CHARS, codePassage, unindent } = await import('../src/code-snippets.js');
+  const charsAt100Wpm = (seconds) => (100 * 5 * seconds) / 60;
+  assert.deepEqual([MIN_CODE_CHARS, MAX_CODE_CHARS], [charsAt100Wpm(30), charsAt100Wpm(60)]);
+  for (const language of CODE_LANGUAGES) {
+    const texts = CODE_SNIPPETS[language].map(unindent);
+    assert.ok(texts.length >= 24, `${language} has ${texts.length} snippets`);
+    assert.equal(new Set(texts).size, texts.length, `${language} repeats a snippet`);
+    for (const text of texts) {
+      assert.ok(text.length >= MIN_CODE_CHARS && text.length <= MAX_CODE_CHARS, `${language}, ${text.length} characters: ${text}`);
+    }
+    // Fresh snippets come first, so a run of tests repeats none until the pool is spent.
+    const seenIds = [];
+    for (let i = 0; i < 24; i += 1) seenIds.push(codePassage(language, { seenIds }).id);
+    assert.equal(new Set(seenIds).size, 24, language);
+  }
+});
+
 test('minimums wait out a five-second, twenty-character grace and judge the shown numbers', () => {
   assert.equal(MINIMUM_GRACE_MS, 5000);
   assert.equal(MINIMUM_GRACE_CHARACTERS, 20);

@@ -81,6 +81,7 @@ The latency pass separately verified 900 individual practice keys, corrected-err
 - `src/words.js`: the 200 (Monkeytype's default english, verbatim apart from "I" stored as "i") / 1k / 5k / 10k common-word lists for generated passages and drills. The 5k and 10k lists are cleaned web-frequency lists (see the file header); keep them filtered.
 - `src/typing.js`: corpus, metric/event versions, replay, comparison and transparent pattern baseline (engine; unchanged in behaviour by the redesign).
 - `src/corpus.js`: additional original quotes and real-word drill vocabulary (corpus v5).
+- `src/code-snippets.js`: code mode's original snippets, at least 24 per language. A code test is one snippet, so each joins to 250–500 characters (30–60 s at 100 wpm); `tests/typing.test.js` guards the pool size and lengths. Snippets are not part of `CORPUS_VERSION`: code runs are never bests or retest baselines, so changing them needs no corpus bump.
 - `src/lengths.js`: preset and custom test lengths — bounds, input parsing and preference normalisation.
 - `src/lessons.js`: the beginner path — lesson order and speed targets, finger zones, real-word passage selection with labelled key pairs, and lesson progress (`profile.lessons`).
 - `src/insights.js`: compact run summaries, bounded pattern memory, condition/period filters, weekly medians, recurring targets and frozen daily text selection.
