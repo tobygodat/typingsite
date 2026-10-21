@@ -1,4 +1,4 @@
-import { createQuoteFilters } from './quote-filters.js';
+import { QUOTE_FILTERS, createQuoteFilters } from './quote-filters.js';
 import {
   CHARS_PER_WORD,
   CORPUS_VERSION,
@@ -48,6 +48,7 @@ import {
 } from './typing.js';
 import { wordListIds } from './words.js';
 import { codePassage } from './code-snippets.js';
+import { BOOKS, BOOK_VERSION, bookIds, bookName, bookPage, bookPlace, openBook } from './books.js';
 import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength } from './lengths.js';
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
@@ -393,18 +394,19 @@ function settingsConditions(inputClass = 'physical-keyboard') {
     duration: prefs.mode === 'time' ? prefs.duration : null,
     count: prefs.mode === 'words' ? prefs.count : null,
     punctuation: prefs.punctuation,
-    numbers: ['quote', 'code'].includes(prefs.mode) ? false : Boolean(prefs.numbers),
+    numbers: ['quote', 'code', 'book'].includes(prefs.mode) ? false : Boolean(prefs.numbers),
     quoteLength: prefs.mode === 'quote' ? prefs.quoteLength : null,
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
-    wordList: ['quote', 'code'].includes(prefs.mode) ? null : prefs.wordList,
+    wordList: ['quote', 'code', 'book'].includes(prefs.mode) ? null : prefs.wordList,
     ...(prefs.mode === 'code' ? { codeLanguage: prefs.codeLanguage, punctuation: true } : {}),
+    ...(prefs.mode === 'book' ? { book: prefs.book, punctuation: true } : {}),
     inputClass,
     layout: inputLayout(inputClass),
     correctionPolicy: prefs.correction,
     strictSpace: prefs.strictSpace,
     quickEnd: prefs.quickEnd,
     language: 'en',
-    corpus: CORPUS_VERSION,
+    corpus: prefs.mode === 'book' ? BOOK_VERSION : CORPUS_VERSION,
     metricVersion: METRIC_VERSION,
   };
 }
@@ -428,10 +430,10 @@ const inputName = (value) => inputLabel(value);
 // Custom text has its own condition key, so it can never share a best, trend or retest with a test.
 // It builds on the person's own settings, never the standard recipe: with standard selected underneath,
 // a custom run keeps its own correction rule and gets no recipe, so its key is the same as in any mode.
-// Settings add a language only in code mode, so it is dropped too.
+// Settings add a language only in code mode and a book and its text version only in book mode, so they are dropped too.
 function customConditions() {
-  const { codeLanguage, ...base } = settingsConditions();
-  return { ...base, mode: 'custom', duration: null, count: null, punctuation: false, numbers: false,
+  const { codeLanguage, book, ...base } = settingsConditions();
+  return { ...base, mode: 'custom', duration: null, count: null, punctuation: false, numbers: false, corpus: CORPUS_VERSION,
     quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, strictSpace: false, quickEnd: true, customOrder: prefs.customOrder };
 }
 
@@ -440,6 +442,7 @@ function describeConditions(value = conditions(), sets = []) {
   // The recipe name stands for its punctuation, numbers and quote, keeping the run card's line short.
   if (value.mode === 'standard') return [length, '1k–10k mix', ...Object.values(tail)].join(' · ');
   if (value.mode === 'code') return [length, ...Object.values(tail), 'not counted toward bests'].join(' · ');
+  if (value.mode === 'book') return [length, ...Object.values(tail)].join(' · ');
   return [language, length, text, ...Object.values(tail)].join(' · ');
 }
 
@@ -493,7 +496,8 @@ function describeRun(run) {
   if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
   if (run.kind !== 'drill') {
     const minimums = describeMinimums(run.minimums);
-    return [`${run.fresh === false ? 'repeated text · ' : ''}${describeConditions(run.conditions)}`, ...(minimums.length ? [' · ', ...minimums] : [])];
+    const page = run.conditions?.mode === 'book' && bookPage(run.textId);
+    return [`${run.fresh === false ? 'repeated text · ' : ''}${page ? `page ${page} · ` : ''}${describeConditions(run.conditions)}`, ...(minimums.length ? [' · ', ...minimums] : [])];
   }
   return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}${describeRules(run.conditions)}`;
 }
@@ -784,8 +788,8 @@ const standardLocked = () => prefs.mode === 'standard' && sessionKind !== 'custo
 
 function syncLockedSettings() {
   const standard = standardLocked();
-  // Quotes and code snippets are fixed text, so these settings don't apply to them.
-  const fixed = ['quote', 'code'].includes(prefs.mode);
+  // Quotes, code snippets and book pages are fixed text, so these settings don't apply to them.
+  const fixed = ['quote', 'code', 'book'].includes(prefs.mode);
   $('punctuation-toggle').disabled = fixed || standard;
   $('punctuation-toggle').checked = standard || prefs.punctuation;
   disableSetting('numbers-toggle', fixed || standard);
@@ -821,7 +825,8 @@ function setModeControls() {
   $('standard-options').hidden = custom || composeOpen || prefs.mode !== 'standard';
   $('standard-recipe').textContent = `${recipeSummary()} · ${correctionLabel(standardConditions().correctionPolicy)}`;
   syncLockedSettings();
-  $('duration-options').hidden = custom || composeOpen || ['quote', 'standard', 'code'].includes(prefs.mode);
+  $('duration-options').hidden = custom || composeOpen || ['quote', 'standard', 'code', 'book'].includes(prefs.mode);
+  $('book-options').hidden = custom || composeOpen || prefs.mode !== 'book';
   // Custom text and composing hide the code language row, as they do the lengths.
   $('code-options').hidden = custom || composeOpen || prefs.mode !== 'code';
   $('code-options').querySelectorAll('[data-language]').forEach((button) => {
@@ -1179,6 +1184,7 @@ function updateCharacterStates(characters, typed, target, start = 0) {
 // come round again once each has been shown, marked not fresh, whatever the repeat setting.
 function choosePassage(extraSeen = [], { allowRepeats = false } = {}) {
   if (prefs.mode === 'code') return { ...codePassage(prefs.codeLanguage, { seenIds: [...profile.seenTextIds, ...extraSeen] }), corpus: CORPUS_VERSION };
+  if (prefs.mode === 'book') return bookPassage(extraSeen);
   return selectPassage({
     mode: prefs.mode,
     count: prefs.count,
@@ -1191,6 +1197,15 @@ function choosePassage(extraSeen = [], { allowRepeats = false } = {}) {
     seenIds: [...profile.seenTextIds, ...extraSeen],
     allowRepeats,
   });
+}
+
+// The page after the last one typed in the chosen book. It is fresh until it has been typed: a book
+// page is marked seen when a run on it ends (storeAttempt), not when shown, because showing it again
+// is the only way on. A typed page is the only one there is, so it is never swapped for unseen text.
+function bookPassage(extraSeen = []) {
+  const page = openBook(prefs.book)[bookPlace(profile.runs, prefs.book)];
+  const seen = [...profile.seenTextIds, ...extraSeen].includes(page.id);
+  return { ...page, textVersion: `${page.id}@1`, corpus: BOOK_VERSION, difficulty: 'book', fresh: !seen, exhausted: seen };
 }
 
 // Custom text is never fresh, but it is its own session, not a repeat: it gets no repeated-text notice.
@@ -1288,6 +1303,7 @@ function configureSessionCopy() {
   if (setup) setup.hidden = sessionKind !== 'practice' && sessionKind !== 'custom';
   $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote' || composeOpen;
   $('standard-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'standard' || composeOpen;
+  $('book-page').textContent = `page ${bookPlace(profile.runs, prefs.book) + 1}`;
   // Every new run (resetSession) brings its own settings and input class to the footer best.
   showBest();
 }
@@ -1368,9 +1384,9 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   }
   // Drills, word practice and lessons are generated practice text, never a passage to keep fresh for a retest.
   // Generated text records nothing, but still replaces a passage set up earlier in the same task.
-  recordSeenOnDisplay(['drill', 'missed', 'lesson'].includes(kind) ? [] : [passage.id, kind === 'daily' ? passage.challengeId : null]);
+  recordSeenOnDisplay(['drill', 'missed', 'lesson'].includes(kind) || passage.book ? [] : [passage.id, kind === 'daily' ? passage.challengeId : null]);
   // The one place a run gets its input class: from the press that started it, never a default or the last run's.
-  const runConditions = kind === 'daily' ? dailyConditions() : kind === 'lesson' ? lessonConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, ...practiceTextConditions(passage.text), quoteLength: null, difficulty: null, wordList: null } : kind === 'challenge' ? ghostConditions() : kind === 'custom' ? customConditions() : conditions();
+  const runConditions = kind === 'daily' ? dailyConditions() : kind === 'lesson' ? lessonConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, ...practiceTextConditions(passage.text), quoteLength: null, difficulty: null, wordList: null, corpus: CORPUS_VERSION } : kind === 'challenge' ? ghostConditions() : kind === 'custom' ? customConditions() : conditions();
   attempt = createAttempt({
     id: uid(),
     text: passage.text,
@@ -2383,7 +2399,9 @@ function renderResults(completed, saved) {
   // the recommendation would come from other runs and the retest would measure a different text. Word
   // practice isn't compared either, but like a drill it leads on to a retest of the run its words came from.
   renderRecommendation(counted || failedDrill(completed), comparableKind(completed.kind) || completed.kind === 'missed', completed);
-  $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again' : 'Run again';
+  // A counted book page moves the place on, so running again types the next page.
+  $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again'
+    : counted && completed.conditions?.mode === 'book' && completed.kind !== 'drill' ? 'Next page' : 'Run again';
   renderTraining();
   renderDaily();
   $('comparison-panel').hidden = true;
@@ -2544,12 +2562,12 @@ function layoutMismatch(source) {
 // A drill or retest runs at its baseline's conditions without recording them as a settings edit: the
 // saved settings, including a pick from another tab or device made meanwhile, apply again once it ends
 // (resetSession leaves them waiting), and a restore never outranks a choice someone made.
-// Only what the source's mode varies is restored: fields a mode fixes in conditions() (code's punctuation,
-// numbers and word list; quote's numbers) keep the person's own prose settings.
+// Only what the source's mode varies is restored: fields a mode fixes in conditions() (code's and a book's
+// punctuation, numbers and word list; quote's numbers) keep the person's own prose settings.
 function restoreConditions(source) {
   commitPreferences();
-  const code = source.mode === 'code';
-  const prose = !['quote', 'code'].includes(source.mode);
+  const fixedPunctuation = ['code', 'book'].includes(source.mode);
+  const prose = !['quote', 'code', 'book'].includes(source.mode);
   // The standard recipe carries its own settings; restoring it must not overwrite the person's.
   if (source.mode === 'standard') prefs = { ...prefs, mode: 'standard' };
   else prefs = {
@@ -2557,12 +2575,13 @@ function restoreConditions(source) {
     mode: source.mode,
     duration: source.duration || prefs.duration,
     count: source.count || prefs.count,
-    punctuation: code ? prefs.punctuation : Boolean(source.punctuation),
+    punctuation: fixedPunctuation ? prefs.punctuation : Boolean(source.punctuation),
     numbers: prose ? Boolean(source.numbers) : prefs.numbers,
     quoteLength: source.quoteLength || prefs.quoteLength,
     difficulty: source.difficulty || prefs.difficulty,
     wordList: source.wordList || prefs.wordList,
     codeLanguage: source.codeLanguage || prefs.codeLanguage,
+    book: source.book || prefs.book,
     correction: correctionPreference({ correction: source.correctionPolicy, stopOnError: source.correctionPolicy !== 'relaxed' }),
     stopOnError: source.correctionPolicy === 'mandatory',
   };
@@ -3130,6 +3149,7 @@ const shapeLabel = (shape) => {
   if (shape.mode === 'time') return { text: `${shape.size} s`, label: `${shape.size} seconds` };
   if (shape.mode === 'quote') return { text: `${shape.size} quote` };
   if (shape.mode === 'code') return { text: `code · ${shape.size}` };
+  if (shape.mode === 'book') return { text: bookName(shape.size) };
   return { text: shape.mode };
 };
 
@@ -4044,7 +4064,7 @@ function renderKeyboard() {
 
 // A one-keyboard race is a quote under the current settings, whatever the practice test shape.
 function raceConditions() {
-  return { ...conditions(), mode: 'quote', wordList: null, localRace: true };
+  return { ...conditions(), mode: 'quote', wordList: null, localRace: true, corpus: CORPUS_VERSION };
 }
 
 // From its start until the second player finishes. Both turns are built from race.conditions.
@@ -5814,9 +5834,9 @@ function paletteCommands(query) {
   // The friends board's switch: on, off, or null (no hint) before this device has read the board.
   const shared = friendsBoard?.sharing ?? null;
   // During a custom session, a ghost race or composing no test shape is current (a custom session marks "custom text").
-  const shape = (mode, length) => !composeOpen && comparableKind(sessionKind) && prefs.mode === mode && (mode === 'quote' || mode === 'standard' || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  const shape = (mode, length) => !composeOpen && comparableKind(sessionKind) && prefs.mode === mode && (['quote', 'standard', 'book'].includes(mode) || (mode === 'time' ? prefs.duration : prefs.count) === length);
   // The standard recipe fixes these; like quote mode, the palette leaves out what can't change.
-  const fixedText = ['quote', 'code'].includes(prefs.mode) || standardLocked();
+  const fixedText = ['quote', 'code', 'book'].includes(prefs.mode) || standardLocked();
   const commands = [
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => jumpTo(view),
@@ -5834,6 +5854,7 @@ function paletteCommands(query) {
     customLengthCommand('words'),
     { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: sessionKind === 'custom' ? 'current' : '', on: sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
+    { group: 'test', label: 'book', keywords: `novel page read ${BOOKS.map((book) => book.name).join(' ')}`, hint: shape('book') ? 'current' : '', on: shape('book'), run: () => setTestShape('book') },
     { group: 'test', label: 'composing practice', keywords: 'compose write writing free typing prompt own words', hint: composeOpen ? 'current' : '', on: composeOpen, run: openCompose },
     { group: 'test', label: 'another prompt', keywords: 'compose composing writing new different prompt skip', disabled: !composeOpen, run: () => { switchView('practice'); compose.another(); } },
     { group: 'test', label: 'standard test · 60 seconds', keywords: `standard score real world fixed recipe benchmark ${recipeLabel()}`, hint: shape('standard') ? 'current' : recipeLabel(), on: shape('standard'), run: () => setTestShape('standard') },
@@ -5961,7 +5982,10 @@ compose = createCompose({
 });
 $('speed-definition').replaceChildren(unitLabel(SPEED_DEFINITION));
 const quoteFilters = createQuoteFilters({
-  root: $('quote-options'),
+  filters: [
+    ...QUOTE_FILTERS.map((filter) => ({ ...filter, root: $('quote-options') })),
+    { root: $('book-options'), key: 'book', id: 'book-select', label: 'book', values: bookIds, names: Object.fromEntries(BOOKS.map((book) => [book.id, book.name])) },
+  ],
   read: () => prefs,
   commit(key, value, { focus, trigger }) {
     prefs[key] = value;
@@ -5974,6 +5998,8 @@ $('mode-more').addEventListener('toggle', () => {
   if ($('mode-more').open) quoteFilters.dismiss();
 });
 $('quote-options').addEventListener('click', () => { $('mode-more').open = false; });
+$('book-options').addEventListener('click', () => { $('mode-more').open = false; });
+$('book-options').append($('book-page'));
 buildKeyboard();
 applyPreferences();
 setModeControls();

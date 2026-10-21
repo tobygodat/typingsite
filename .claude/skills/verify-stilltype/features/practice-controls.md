@@ -1,8 +1,9 @@
 # Practice controls
 
 One short rail above the passage holds the mode (time, words, quote, and "more"), the length pills
-(including custom) and the punctuation switch. "more" opens a small menu with code, standard, compose,
-custom and learn to type; picking one renames "more" to that mode and slides the pill under it.
+(including custom) and the punctuation switch. "more" opens a small menu with code, standard, book,
+compose, custom and learn to type; picking one renames "more" to that mode and slides the pill under it.
+Book mode puts a book dropdown and the page number where the lengths go.
 
 ## Sub-features
 
@@ -10,7 +11,8 @@ custom and learn to type; picking one renames "more" to that mode and slides the
 - `rail-lengths` picks a length in `#duration-options [data-length="N"]`, or "custom" for any 5–600 s or 5–500 words.
 - `rail-punctuation` toggles `#punctuation-switch`; the condition line says plain or punctuation.
 - `more-open` opens `.mode-more-menu` from `#mode-more-label`; Escape or a click elsewhere closes it without restarting.
-- `more-choose` picks code, standard, compose or custom; `#mode-more-label` reads the chosen mode and `#mode-more[data-active]` is set.
+- `more-choose` picks code, standard, book, compose or custom; `#mode-more-label` reads the chosen mode and `#mode-more[data-active]` is set.
+- `book-pick` chooses a book from the combobox named "book" in `#book-options`; `#book-page` reads that book's next page ("page 1").
 - `more-lessons` opens the learn-to-type path from "learn to type" (`#open-lessons`).
 - `rail-phone` keeps the rail and the open menu on screen at 390 and 320 px with no sideways scroll.
 
@@ -18,7 +20,7 @@ custom and learn to type; picking one renames "more" to that mode and slides the
 
 - Click the rail controls above the passage on the practice view.
 - Ctrl+K → `time · N seconds`, `words · N words`, `quote`, `punctuation`, `custom time…` / `custom words…`,
-  `standard test · 60 seconds`, `composing practice`, `custom text`, `learn to type`.
+  `standard test · 60 seconds`, `book`, `composing practice`, `custom text`, `learn to type`.
 
 ## Driving it with verify.mjs
 
@@ -29,12 +31,16 @@ Preconditions:
 
 - **Menu open, desktop.** Click "more". Run `$V shot more`. `rail.png` shows "more" with a chevron;
   `more-open.png` shows the menu below it. `run.json` notes the menu as
-  `["code","standard","compose","custom","learn to type"]` and checks it stays on screen.
+  `["code","standard","book","compose","custom","learn to type"]` and checks it stays on screen.
 - **Menu open, phones.** Run `$V shot phone`. Four runs (idle and more at 390×844 and 320×568, touch); every
   `more` run passes "menu stays on screen" and "no horizontal scroll".
 - **Choose a mode from more.** Run `$V drive .claude/skills/verify-stilltype/flows/code-run.mjs`. Checks
   "more" is renamed to "code", the condition line reads `code · python`, and the run card conditions name
   python after the snippet is typed.
+- **Book mode.** Run `$V drive .claude/skills/verify-stilltype/flows/book-run.mjs` (and again with
+  `--width 390 --height 844 --mobile`). Checks "more" is renamed to "book", the page reads page 1, Pride and
+  Prejudice starts at its first line, the run card conditions start `page 1 · pride and prejudice`, and
+  "Next page" moves on to page 2.
 - **Words and lengths.** In a flow file, `await h.chooseWords(25)` clicks words, then the 25 pill, and waits
   for the condition line to read `25 words`. Shoot before and after.
 - **Escape closes without restarting.** In a flow file: note `await h.passage()`, click `#mode-more-label`,

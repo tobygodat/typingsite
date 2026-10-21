@@ -1,5 +1,6 @@
 import { DEFAULT_LAYOUT, isDefaultLayout, layoutLabel } from './layouts.js';
 import { DEFAULT_CODE_LANGUAGE } from './code-snippets.js';
+import { bookName } from './books.js';
 import { LENGTHS } from './lengths.js';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey, inputRules, printable, replayAttempt, summarizePatterns, textId } from './typing.js';
 
@@ -221,13 +222,13 @@ export function histogram(values, width) {
 // run at that length, most used first. A length is the mode and its size; everything else that
 // enters the key (text, word list, input, correction, corpus, metric) tells its variants apart, and
 // runs are only ever compared within one variant. Word counts first, then times, shortest first,
-// then quotes, the standard test, code and anything else. Where someone has run a word count or a
+// then quotes, the standard test, code, books and anything else. Where someone has run a word count or a
 // time, that mode's preset lengths without runs stay in place with no variants, so the row keeps its shape.
-const SHAPE_ORDER = ['words', 'time', 'quote', 'standard', 'code'];
+const SHAPE_ORDER = ['words', 'time', 'quote', 'standard', 'code', 'book'];
 export function shapeOf(conditions = {}) {
   const size = conditions.mode === 'words' ? conditions.count : conditions.mode === 'time' ? conditions.duration
     : conditions.mode === 'quote' ? conditions.quoteLength || 'any' : conditions.mode === 'code' ? conditions.codeLanguage || 'js'
-      : conditions.mode === 'standard' ? conditions.recipe || '' : '';
+      : conditions.mode === 'standard' ? conditions.recipe || '' : conditions.mode === 'book' ? conditions.book || '' : '';
   return `${conditions.mode}:${size}`;
 }
 
@@ -269,6 +270,7 @@ const LENGTH_TEXT = {
   time: (c) => `${c.duration} s`,
   quote: (c) => `${c.quoteLength || 'any'} quote`,
   code: (c) => `code · ${c.codeLanguage || DEFAULT_CODE_LANGUAGE}`,
+  book: (c) => bookName(c.book),
   standard: (c) => `${(c.recipe || '').replace('-', ' ')} · ${c.duration} s`,
 };
 const CONDITION_PARTS = [

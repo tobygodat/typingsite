@@ -231,7 +231,7 @@ function helpers(page, { delay }) {
       await page.locator(`#duration-options [data-length="${count}"]`).click();
       await page.waitForFunction((c) => document.querySelector('#condition-line')?.textContent.includes(`${c} words`), count);
     },
-    // Code, standard, compose, custom and learn to type sit behind "more".
+    // Code, standard, book, compose, custom and learn to type sit behind "more".
     async chooseMore(id) {
       if ((await page.locator('#mode-more').getAttribute('open')) === null) await page.locator('#mode-more-label').click();
       await page.locator(`#${id}`).click();
