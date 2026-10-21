@@ -4520,27 +4520,6 @@ async function pushOnce({ cloud: known } = {}) {
   }
 }
 
-// A hidden page may never run again, so it gets one conditional write of what this tab holds, made only
-// if the account row is still the version last merged here (which this tab's copy contains). If that
-// loses, the edits wait in the device cache for the pending push, the next return or the next load.
-async function pushOnHide() {
-  if (!session || !syncTimer || !lastCloudAt) return;
-  const userId = session.user.id;
-  const edits = localEdits;
-  if (!signedInAs(userId)) return;
-  try {
-    session = await account.freshSession(session);
-    if (!signedInAs(userId)) return;
-    const written = await account.updateCloudProfile(session, profile, lastCloudAt, { keepalive: true, board: boardFor(profile) });
-    if (!written || !signedInAs(userId)) return;
-    noteCloudAt(written);
-    if (edits === localEdits) {
-      unsynced = false;
-      setSyncState('synced');
-    }
-  } catch {}
-}
-
 // Brings in what other devices saved: when the tab comes back into view (at most every 15 s) and when
 // the connection returns. With edits pending here it pushes instead, which reads and merges first.
 async function pullProfile({ force = false } = {}) {
@@ -4913,13 +4892,11 @@ function bindAccount() {
     // Only one corner panel at a time; a keyboard open sends no pointerdown to close the other.
     if (menu.open) { settingsView?.close(); $('inbox').open = false; }
   });
-  // Unsynced changes go out when the tab is hidden (anything too large for that waits for the next
-  // push or load); other devices' changes come in when it is shown again.
+  // Hiding sends nothing: unsent changes wait in the device cache for the pending push or the next return
+  // or load (a hidden page's keepalive write is capped at 64 KiB, far below a profile). Other devices'
+  // changes come in when it is shown again.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      saveRunCounts();
-      pushOnHide();
-    }
+    if (document.visibilityState === 'hidden') saveRunCounts();
     else pullProfile();
   });
   addEventListener('online', () => {

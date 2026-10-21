@@ -826,6 +826,37 @@ test('a run another tab saved but could not send goes up with this tab’s next 
   expect(errors).toEqual([]);
 });
 
+test('hiding a tab sends nothing; a run it could not send waits in the device cache for the next load', async ({ page, supabase }) => {
+  supabase.addUser(EMAIL);
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  const writes = [];
+  await page.route(/\/rest\/v1\/profiles/, (route) => {
+    if (route.request().method() === 'GET') return route.fallback();
+    writes.push(route.request().method());
+    return route.abort();
+  });
+  // Hidden straight after the run, while its push is still waiting: hiding itself writes nothing.
+  await finishRun(page);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForTimeout(300);
+  expect(writes).toEqual([]);
+  // The waiting push still goes, and fails here: the run stays in the device cache only.
+  await expect.poll(() => writes.length).toBeGreaterThan(0);
+  const [run] = runIds(await cachedProfile(page));
+  expect(run).toBeTruthy();
+  expect(runIds(cloud(supabase))).toEqual([]);
+
+  await page.unroute(/\/rest\/v1\/profiles/);
+  await page.reload();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  expect(runIds(cloud(supabase))).toEqual([run]);
+});
+
 test('a tab puts back a run that another tab’s write from an older read left out of the device cache', async ({ page, context, supabase }) => {
   supabase.addUser(EMAIL);
   const errors = [];

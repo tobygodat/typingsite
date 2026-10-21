@@ -98,20 +98,18 @@ function storeSession(session) {
 const storeSignIn = (data) => storeSession(sessionFrom(data, base64url(crypto.getRandomValues(new Uint8Array(9)))));
 
 // A request that hasn't finished by then fails as unreachable, so nothing waiting behind it (the push
-// queue, sign-out) can hang on a stalled connection; edits stay on the device, as offline. A keepalive
-// request (a page being hidden) is left to the browser. A caller's own signal (a queue's deadline)
-// aborts it as well.
+// queue, sign-out) can hang on a stalled connection; edits stay on the device, as offline. A caller's own
+// signal (a queue's deadline) aborts it as well.
 export const REQUEST_TIMEOUT_MS = 15000;
 
-export async function request(path, { method = 'GET', body, token, headers = {}, keepalive = false, signal: callerSignal } = {}) {
-  const timeout = !keepalive && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
+export async function request(path, { method = 'GET', body, token, headers = {}, signal: callerSignal } = {}) {
+  const timeout = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
   const signal = timeout && callerSignal && typeof AbortSignal.any === 'function' ? AbortSignal.any([timeout, callerSignal]) : callerSignal || timeout;
   let response;
   let text;
   try {
     response = await fetch(`${SUPABASE_URL}${path}`, {
       method,
-      keepalive,
       signal,
       headers: {
         apikey: SUPABASE_KEY,
@@ -433,12 +431,11 @@ async function withBoard(board, at, send) {
 
 // Writes only if the row is still the version read at `seenAt` (owners may update their own row, see
 // supabase/migrations). Resolves to the new updated_at, or null when another writer got there first.
-export async function updateCloudProfile(session, data, seenAt, { keepalive = false, board } = {}) {
+export async function updateCloudProfile(session, data, seenAt, { board } = {}) {
   const at = stampAfter(seenAt);
   const rows = await withBoard(board, at, (column) => request(`/rest/v1/profiles?user_id=eq.${session.user.id}&updated_at=eq.${encodeURIComponent(seenAt)}&select=updated_at`, {
     method: 'PATCH',
     token: session.access_token,
-    keepalive,
     headers: { Prefer: 'return=representation' },
     body: { data: storedCopy(data), updated_at: at, ...column },
   }));
