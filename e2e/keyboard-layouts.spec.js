@@ -238,7 +238,7 @@ test.describe('on a touch screen', () => {
     await page.locator('#manual-target-input').fill('th');
     await page.locator('#apply-manual-target').click();
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-    await expect(page.locator('#best')).toHaveText('Not counted');
+    await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
 
     // The retest starts, and on touch it compares with the touch baseline.
     await openView(page, 'Train');
@@ -256,7 +256,7 @@ test.describe('on a touch screen', () => {
     await page.locator('#history-list details summary').first().click();
     await page.getByRole('button', { name: 'Practice “th” again' }).click();
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-    await expect(page.locator('#best')).toHaveText('Not counted');
+    await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
   });
 });
 
