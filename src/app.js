@@ -4486,7 +4486,7 @@ async function pushOnce({ cloud: known } = {}) {
       const theirs = cloud?.data?.version === 2 ? normalizeProfile(cloud.data) : null;
       const { merged, holds: pushHolds } = theirs ? account.mergeAndHold(heldClears, profile, theirs) : { merged: profile, holds: heldClears };
       let written;
-      if (theirs && account.sameProfile(merged, theirs)) written = cloud.updated_at;
+      if (theirs && account.sameRow(merged, theirs)) written = cloud.updated_at;
       else if (cloud) written = await account.updateCloudProfile(session, merged, cloud.updated_at, { board: boardFor(merged) });
       else written = await account.insertCloudProfile(session, merged, { board: boardFor(merged) });
       if (!signedInAs(userId)) return false;
@@ -4544,7 +4544,7 @@ async function pullProfile({ force = false } = {}) {
     noteCloudAt(cloud.updated_at);
     // A tab can hold what the row lacks without saving anything itself: another tab's save taken in from
     // the device cache, whose own push failed or never ran. It goes up from here, as on load.
-    if (unsynced || !account.sameProfile(profile, normalizeProfile(cloud.data))) {
+    if (unsynced || !account.sameRow(profile, normalizeProfile(cloud.data))) {
       unsynced = true;
       await pushProfile({ cloud });
     } else setSyncState('synced');
@@ -4610,7 +4610,7 @@ async function syncOnLoad() {
       showMerged();
       // Edits made here before the check (usually the passage marked seen), or kept on this device
       // since an earlier visit, go up; otherwise the row already holds everything.
-      if (unsynced || !account.sameProfile(profile, normalizeProfile(cloud.data))) {
+      if (unsynced || !account.sameRow(profile, normalizeProfile(cloud.data))) {
         unsynced = true;
         await pushProfile({ cloud });
       } else {

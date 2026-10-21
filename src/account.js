@@ -391,9 +391,13 @@ export function forgetAccount(session) {
 
 // The whole row: `data`, `updated_at`, and the friends board's `board` once that column exists (`*`
 // never names a column the project lacks, so this works before the board's migration too).
+// Keystroke recordings (attempts) stay on the device that made them: a row written before that still
+// holds some, and they are left out here. A row so old it has no run summaries keeps them, as they are
+// what normalizeProfile makes its summaries from.
 export async function fetchCloudProfile(session) {
   const rows = await request(`/rest/v1/profiles?select=*&user_id=eq.${session.user.id}`, { token: session.access_token });
-  return rows?.[0] || null;
+  const row = rows?.[0] || null;
+  return row && Array.isArray(row.data?.runs) ? { ...row, data: rowCopy(row.data) } : row;
 }
 
 // An ISO time later than now and than every given stamp, so a device whose clock runs behind still
@@ -437,7 +441,7 @@ export async function updateCloudProfile(session, data, seenAt, { board } = {}) 
     method: 'PATCH',
     token: session.access_token,
     headers: { Prefer: 'return=representation' },
-    body: { data: storedCopy(data), updated_at: at, ...column },
+    body: { data: rowCopy(data), updated_at: at, ...column },
   }));
   return rows?.[0]?.updated_at || null;
 }
@@ -449,7 +453,7 @@ export async function insertCloudProfile(session, data, { board } = {}) {
     method: 'POST',
     token: session.access_token,
     headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
-    body: { user_id: session.user.id, data: storedCopy(data), updated_at: at, ...column },
+    body: { user_id: session.user.id, data: rowCopy(data), updated_at: at, ...column },
   }));
   return rows?.[0]?.updated_at || null;
 }
@@ -474,8 +478,8 @@ export async function repairBoard(session, board, at) {
   }
 }
 
-// The copy written to the account row and the device cache. A trace's summary is the replay of its own
-// events (completeAttempt) and over half its size, so it is left out and rebuilt on load (normalizeProfile).
+// The copy written to the device cache. A trace's summary is the replay of its own events (completeAttempt)
+// and over half its size, so it is left out and rebuilt on load (normalizeProfile).
 const withoutSummary = ({ summary, ...trace }) => trace;
 export const storedCopy = (profile) => (Array.isArray(profile?.attempts)
   ? { ...profile, attempts: profile.attempts.map((trace) => (trace?.summary ? withoutSummary(trace) : trace)) } : profile);
@@ -959,6 +963,14 @@ export function syncSignature(profile) {
 }
 
 export const sameProfile = (a, b) => syncSignature(a) === syncSignature(b);
+
+// The account row: everything but the keystroke recordings, which stay on the device (fetchCloudProfile).
+// A copy is compared with the row by what the row holds, so recordings held here never call for a write.
+export const rowCopy = (profile) => {
+  const { attempts, ...rest } = profile || {};
+  return rest;
+};
+export const sameRow = (a, b) => sameProfile(rowCopy(a), rowCopy(b));
 
 // Folds a one-off import (the pre-accounts profile) into a profile: runs and loops by id, the higher best.
 // The base keeps its preferences unless it has no history of its own yet.

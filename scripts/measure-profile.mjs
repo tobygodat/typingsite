@@ -1,10 +1,10 @@
 // Account profile size and sync cost at retention's limits: builds worst-case profiles with the app's own
-// engine and retention, then measures the JSON, a push's merge, signature and stringify work, and the
-// request a push sends. Seeded, so reruns build the same profiles. Run: node scripts/measure-profile.mjs
-// (add --json for machine-readable output).
+// engine and retention, then measures the row (which keeps no recordings) and the device cache, a push's
+// merge, signature and stringify work, and the request a push sends. Seeded, so reruns build the same
+// profiles. Run: node scripts/measure-profile.mjs (add --json for machine-readable output).
 import { performance } from 'node:perf_hooks';
 import { gzipSync } from 'node:zlib';
-import { mergeAndHold, mergeSynced, sameProfile, stampProfile, storedCopy, syncSignature } from '../src/account.js';
+import { mergeAndHold, mergeSynced, rowCopy, sameProfile, sameRow, stampProfile, storedCopy, syncSignature } from '../src/account.js';
 import { boardColumn } from '../src/friends-board.js';
 import { MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_PRACTICE_DAYS, MAX_RUN_SUMMARIES, MAX_TRACES, TRACE_BUDGET, dayKey, runRecord } from '../src/insights.js';
 import { MAX_COMPOSITIONS, compositionRecord } from '../src/compose.js';
@@ -210,21 +210,22 @@ function measure(name, options, runs) {
   const { local, cloudData } = divergentCopies(profile);
   const at = iso(END + 600000);
   const dailyKey = conditionKey(baseConditions({ mode: 'quote', duration: null, wordList: null, punctuation: true, quoteLength: 'medium', difficulty: 'any' }));
-  const row = { user_id: uid(), data: storedCopy(cloudData), updated_at: at, board: boardColumn(cloudData.runs, dailyKey, at) };
+  const row = { user_id: uid(), data: rowCopy(cloudData), updated_at: at, board: boardColumn(cloudData.runs, dailyKey, at) };
   const response = JSON.stringify([row]);
   const theirs = normalizeProfile(JSON.parse(response)[0].data);
   const merged = mergeSynced(local, theirs);
-  const stored = storedCopy(merged);
+  const stored = rowCopy(merged);
   const body = JSON.stringify({ data: stored, updated_at: at, board: boardColumn(merged.runs, dailyKey, at) });
   const json = JSON.stringify(stored);
+  const cache = JSON.stringify(storedCopy(merged));
   const trace = merged.attempts.at(-1);
   const { summary, events, ...rest } = trace;
   // pushOnce in src/app.js: read the row, merge it in, compare, write, then take the merged copy in and cache it.
   const push = () => {
     const data = normalizeProfile(JSON.parse(response)[0].data);
     const { merged: copy } = mergeAndHold({}, local, data);
-    sameProfile(copy, data);
-    JSON.stringify({ data: storedCopy(copy), updated_at: at, board: boardColumn(copy.runs, dailyKey, at) });
+    sameRow(copy, data);
+    JSON.stringify({ data: rowCopy(copy), updated_at: at, board: boardColumn(copy.runs, dailyKey, at) });
     const before = syncSignature(local);
     const { merged: absorbed } = mergeAndHold({}, local, copy);
     syncSignature(absorbed) !== before;
@@ -242,6 +243,7 @@ function measure(name, options, runs) {
     sizes: {
       profile: bytes(json),
       profileGzip: gzipSync(json).length,
+      deviceCache: bytes(cache),
       pushRequestBody: bytes(body),
       pushResponseBody: bytes(response),
       pushResponseGzip: gzipSync(response).length,
@@ -255,7 +257,7 @@ function measure(name, options, runs) {
       mergeSynced: time(() => mergeSynced(local, theirs), runs),
       mergeAndHold: time(() => mergeAndHold({}, local, theirs), runs),
       syncSignature: time(() => syncSignature(merged), runs),
-      stringify: time(() => JSON.stringify(storedCopy(merged)), runs),
+      stringify: time(() => JSON.stringify(rowCopy(merged)), runs),
       push: time(push, runs),
     },
   };
@@ -277,7 +279,7 @@ if (process.argv.includes('--json')) {
   for (const result of results) {
     console.log(`\n${result.name}`);
     console.log(`  counts   ${Object.entries(result.counts).map(([key, n]) => `${key} ${n}`).join(', ')}`);
-    console.log(`  profile  ${kb(result.sizes.profile)} (gzip ${kb(result.sizes.profileGzip)}); push sends ${kb(result.sizes.pushRequestBody)}, reads ${kb(result.sizes.pushResponseBody)} (gzip ${kb(result.sizes.pushResponseGzip)})`);
+    console.log(`  row      ${kb(result.sizes.profile)} (gzip ${kb(result.sizes.profileGzip)}), device cache ${kb(result.sizes.deviceCache)}; push sends ${kb(result.sizes.pushRequestBody)}, reads ${kb(result.sizes.pushResponseBody)} (gzip ${kb(result.sizes.pushResponseGzip)})`);
     console.log(`  fields   ${Object.entries(result.sizes.fields).filter(([, n]) => n > 1024).map(([key, n]) => `${key} ${kb(n)}`).join(', ')}`);
     const t = result.sizes.newestTrace;
     console.log(`  trace    ${kb(t.total)} for ${t.keys} events: events ${kb(t.events)}, summary ${kb(t.summary)}, rest ${kb(t.rest)}`);

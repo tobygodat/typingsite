@@ -129,7 +129,8 @@ test('two devices: a stale device’s push keeps the other device’s run, highe
     await expect.poll(() => cloud(supabase).preferences.theme).toBe('light');
     const after = cloud(supabase);
     expect(runIds(after)).toEqual(runIds(before));
-    expect(after.attempts.map((attempt) => attempt.id)).toEqual(before.attempts.map((attempt) => attempt.id));
+    // Recordings stay on the device that made them: the row holds none.
+    expect(after).not.toHaveProperty('attempts');
     expect(after.bests).toEqual(before.bests);
     expect(after.seenTextIds).toEqual(expect.arrayContaining(before.seenTextIds));
     await expectBothRuns(phone, { runs: 3, best: Math.max(fast, third) });
@@ -165,7 +166,8 @@ test('a clear on one device is not undone by a stale device’s next push', asyn
     await expect.poll(() => runIds(cloud(supabase)).length, { timeout: 15000 }).toBe(1);
     const data = cloud(supabase);
     expect(runIds(data)).not.toContain(cleared);
-    expect(data.attempts.map((attempt) => attempt.id)).not.toContain(cleared);
+    // Recordings stay on the device that made them: the row holds none.
+    expect(data).not.toHaveProperty('attempts');
     expect(bestWpms(data)).toEqual([wpm]);
 
     await expectBothRuns(phone, { runs: 1, best: wpm });
@@ -1013,7 +1015,7 @@ test('an older clear that names the run on show withdraws its drill and retest u
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
   const row = supabase.profiles.get(user.id);
   const [run] = row.data.runs;
-  const stamps = [...row.data.runs, ...row.data.attempts].map((record) => Date.parse(record.at)).filter(Number.isFinite);
+  const stamps = row.data.runs.map((record) => Date.parse(record.at)).filter(Number.isFinite);
   const newer = new Date(Math.min(...stamps) - 5000).toISOString();
   const older = new Date(Math.min(...stamps) - 60000).toISOString();
   const pull = async (data) => {
@@ -1033,7 +1035,6 @@ test('an older clear that names the run on show withdraws its drill and retest u
   await pull({
     ...row.data,
     runs: row.data.runs.filter((record) => !named(record)),
-    attempts: row.data.attempts.filter((record) => !named(record)),
     bests: Object.fromEntries(Object.entries(row.data.bests).filter(([, best]) => best.attemptId !== run.id)),
     historyClearedIds: [[older, run.id]],
   });

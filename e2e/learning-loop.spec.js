@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt, quoteCorpus } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, freshTextCheck, openView, signInWithEmail, chooseMore, chooseQuoteFilter } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, freshTextCheck, openView, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere } from './fixtures.js';
 
 const translateY = (page) => page.locator('#text-display').evaluate((node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).m42);
 
@@ -147,14 +147,36 @@ function savedTrace(id, at) {
   return { ...completeAttempt(attempt, { endedAt: text.length * 100 }), at, fresh: true };
 }
 
+test('runs recorded on another device are no baseline: their drill stands alone, quietly', async ({ page, supabase }) => {
+  const user = supabase.addUser('elsewhere@stilltype.test');
+  const traces = [savedTrace('away-a', '2026-09-28T12:00:00Z'), savedTrace('away-b', '2026-09-29T12:00:00Z')];
+  // The row as a device that recorded them left it before recordings stopped syncing.
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: traces,
+    runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt: '2026-09-29T12:00:00Z' } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  // The summaries arrive, so the recurring target does too; the recordings stay where they were made.
+  await openView(page, 'Train');
+  await expect(page.locator('#training-targets')).toContainText('observed in 2 runs');
+  await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#session-description')).toHaveText('Standalone drill. Finish a new practice run afterward for a comparable retest.');
+  await openView(page, 'Progress');
+  await expect(page.locator('#run-history .run-row')).toHaveCount(2);
+  await expect(page.locator('#run-history')).not.toContainText('View passage');
+});
+
 test('a drill started from saved history keeps its retest on Train when left', async ({ page, supabase }) => {
   const user = supabase.addUser('saved@stilltype.test');
   const traces = [savedTrace('saved-a', '2026-09-28T12:00:00Z'), savedTrace('saved-b', '2026-09-29T12:00:00Z')];
-  supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: traces,
-    runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt: '2026-09-29T12:00:00Z' } });
+  const data = { version: 2, preferences: {}, attempts: traces,
+    runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt: '2026-09-29T12:00:00Z' };
+  supabase.profiles.set(user.id, { data });
   const profile = () => supabase.profileFor(user.email);
   const beforeIds = () => profile()?.loops?.map((loop) => loop.beforeAttemptId);
   await openApp(page);
+  // Recorded on this device, so its recordings are here to be baselines.
+  await recordedHere(page, user.id, data);
   // Signing in reloads the page, so no run has been shown in this tab: only the saved runs can be the baseline.
   await signInWithEmail(page, user.email);
   await openView(page, 'Train');

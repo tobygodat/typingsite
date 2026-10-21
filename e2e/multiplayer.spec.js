@@ -85,7 +85,8 @@ test('an account hosts a guest across separate contexts, shares progress, resume
     await expect(page.locator('#online-result-rows .race-result-row')).toHaveCount(2);
     expect(await guest.locator('#online-result-rows').textContent()).toBe(await page.locator('#online-result-rows').textContent());
     await expect(page.locator('#best')).toHaveText('No best yet');
-    expect(supabase.profileFor('host@stilltype.test').attempts).toHaveLength(0);
+    expect(supabase.profileFor('host@stilltype.test')).not.toHaveProperty('attempts');
+    expect((await page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find((key) => key.startsWith('stilltype-profile-v2:')))).attempts))).toHaveLength(0);
     expect(await guest.evaluate(() => Object.keys(localStorage))).toEqual([]);
     expect(errors).toEqual([]);
   } finally { await context.close(); }

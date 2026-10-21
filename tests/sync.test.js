@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HISTORY, MAX_STORED_ATTEMPTS, cacheProfile, capHistory, clearProfile, insertCloudProfile, joinHolds, mergeAndHold, mergeSynced,
-  profileKey, revokeClear, sameProfile, stampAfter, storedCopy, undoClearHere, updateCloudProfile,
+  HISTORY, MAX_STORED_ATTEMPTS, cacheProfile, capHistory, clearProfile, fetchCloudProfile, insertCloudProfile, joinHolds, mergeAndHold,
+  mergeSynced, profileKey, revokeClear, rowCopy, sameProfile, sameRow, stampAfter, storedCopy, undoClearHere, updateCloudProfile,
 } from '../src/account.js';
 import { recordPracticeTime, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
 import { MAX_COMPOSITIONS } from '../src/compose.js';
@@ -1323,7 +1323,7 @@ test('copies holding compact traces settle with each other and with a full copy 
   const laptop = normalizeProfile(profile({ attempts: [...shared, finishedTrace('laptop', 30)], updatedAt: minute(30), mergeStamp: minute(30) }));
   const phone = profile({ attempts: [...shared, finishedTrace('phone', 31), finishedTrace('phone-2', 32)], updatedAt: minute(32), mergeStamp: minute(32) });
   const whole = mergeSynced(laptop, normalizeProfile(phone));
-  // The phone's copy came through the row; an older build wrote its summaries in, and both merge the same.
+  // The phone's copy came through the device cache; an older build wrote its summaries in, and both merge the same.
   for (const row of [viaRow(phone), normalizeProfile(JSON.parse(JSON.stringify(phone)))]) {
     const merged = mergeSynced(laptop, row);
     assert.deepEqual(ids(merged.attempts), ids(whole.attempts));
@@ -1339,28 +1339,102 @@ test('copies holding compact traces settle with each other and with a full copy 
   }
 });
 
-test('the account row and the device cache are sent compact traces', async () => {
-  const originalFetch = globalThis.fetch;
-  const bodies = [];
-  globalThis.fetch = async (url, init) => {
-    bodies.push(JSON.parse(init.body));
-    return { ok: true, status: 200, text: async () => JSON.stringify([{ updated_at: '2026-10-01T12:00:01+00:00' }]) };
+// A fake account service holding one row, as PostgREST answers the calls src/account.js makes.
+function fakeRow(row = null) {
+  const service = { row, writes: 0 };
+  globalThis.fetch = async (url, init = {}) => {
+    const reply = (value) => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
+    if (!init.method || init.method === 'GET') return reply(service.row ? [service.row] : []);
+    const body = JSON.parse(init.body);
+    service.writes += 1;
+    service.row = { ...service.row, data: body.data, updated_at: body.updated_at };
+    return reply([{ updated_at: body.updated_at }]);
   };
+  return service;
+}
+
+// pushOnce in src/app.js: read the row, merge it in, write only what the row lacks.
+async function push(session, local) {
+  const cloud = await fetchCloudProfile(session);
+  const theirs = cloud ? normalizeProfile(cloud.data) : null;
+  const merged = theirs ? mergeSynced(local, theirs) : local;
+  if (!theirs) await insertCloudProfile(session, merged);
+  else if (!sameRow(merged, theirs)) await updateCloudProfile(session, merged, cloud.updated_at);
+  return merged;
+}
+
+test('the account row is sent no recordings; the device cache keeps them, compact', async () => {
+  const originalFetch = globalThis.fetch;
   const store = new Map();
   globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, String(value)), removeItem: (key) => store.delete(key) };
   try {
+    const service = fakeRow();
     const session = { access_token: 't', user: { id: 'u1' } };
-    const copy = normalizeProfile(profile({ attempts: [finishedTrace('a', 1)] }));
-    await updateCloudProfile(session, copy, '2026-10-01T12:00:00+00:00');
+    const copy = normalizeProfile(profile({ attempts: [finishedTrace('a', 1)], runs: [item('a', 1)] }));
     await insertCloudProfile(session, copy);
+    assert.deepEqual(service.row.data, rowCopy(copy));
+    assert.ok(!('attempts' in service.row.data));
+    await updateCloudProfile(session, copy, service.row.updated_at);
+    assert.deepEqual(service.row.data, rowCopy(copy));
     assert.ok(cacheProfile('u1', copy));
-    for (const data of [...bodies.map((body) => body.data), JSON.parse(store.get(profileKey('u1')))]) {
-      assert.deepEqual(data, storedCopy(copy));
-    }
-    assert.ok(copy.attempts[0].summary, 'nothing is taken from the copy in use');
+    assert.deepEqual(JSON.parse(store.get(profileKey('u1'))), storedCopy(copy));
+    assert.equal(copy.attempts.length, 1, 'nothing is taken from the copy in use');
+    assert.ok(copy.attempts[0].summary);
   } finally {
     globalThis.fetch = originalFetch;
     delete globalThis.localStorage;
+  }
+});
+
+test('recordings stay on each device: copies settle through the row, and a row synced with recordings keeps merging', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    const session = { access_token: 't', user: { id: 'u1' } };
+    // A row an older build wrote, recordings and all.
+    const shared = [finishedTrace('s1', 1), finishedTrace('s2', 2)];
+    const runOf = (trace) => ({ id: trace.id, at: trace.at, kind: 'test', status: 'complete' });
+    const service = fakeRow({ data: profile({ attempts: shared, runs: shared.map(runOf), updatedAt: minute(2), mergeStamp: minute(2) }), updated_at: '2026-10-01T12:02:00+00:00' });
+    const laptopTrace = finishedTrace('laptop', 10);
+    const phoneTrace = finishedTrace('phone', 11);
+    let laptop = normalizeProfile(profile({ attempts: [...shared, laptopTrace], runs: [...shared, laptopTrace].map(runOf) }));
+    let phone = normalizeProfile(profile({ attempts: [phoneTrace], runs: [runOf(phoneTrace)] }));
+
+    // Read here, the old row's recordings are left out, and holding none of them calls for no write.
+    assert.equal((await fetchCloudProfile(session)).data.attempts, undefined);
+    assert.equal(service.writes, 0);
+    laptop = await push(session, laptop);
+    phone = await push(session, phone);
+    laptop = await push(session, laptop);
+    assert.equal(service.writes, 2);
+    assert.ok(!('attempts' in service.row.data), 'the row holds no recordings once rewritten');
+    // Every run summary is everywhere; each device keeps the recordings it holds.
+    for (const [name, copy] of Object.entries({ laptop, phone, row: normalizeProfile(service.row.data) })) assert.deepEqual(ids(copy.runs).sort(), ['laptop', 'phone', 's1', 's2'], name);
+    assert.deepEqual(ids(laptop.attempts), ['s1', 's2', 'laptop']);
+    assert.deepEqual(ids(phone.attempts), ['phone']);
+    // Settled: more pulls and pushes write nothing.
+    for (let round = 0; round < 3; round += 1) {
+      laptop = await push(session, laptop);
+      phone = await push(session, phone);
+    }
+    assert.equal(service.writes, 2);
+    assert.ok(sameRow(laptop, phone));
+    assert.ok(!sameProfile(laptop, phone), 'their recordings differ, and stay apart');
+
+    // A clear on the phone reaches the laptop through the row and takes its recordings with it.
+    phone = clearProfile(phone);
+    phone = await push(session, phone);
+    laptop = await push(session, laptop);
+    assert.deepEqual(laptop.attempts, []);
+    assert.deepEqual(laptop.runs, []);
+
+    // A row so old it has no summaries keeps its recordings, which make them.
+    const legacy = fakeRow({ data: { version: 2, preferences: {}, attempts: shared, loops: [], seenTextIds: [], bests: {} }, updated_at: '2026-10-01T12:02:00+00:00' });
+    const read = await fetchCloudProfile(session);
+    assert.deepEqual(ids(read.data.attempts), ['s1', 's2']);
+    assert.deepEqual(ids(normalizeProfile(read.data).runs), ['s1', 's2']);
+    assert.equal(legacy.writes, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 
