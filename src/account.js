@@ -4,6 +4,7 @@
 import { retainTraces } from './insights.js';
 import { retainCompositions } from './compose.js';
 import { mergePracticeDays, retainHistory, validPracticeDays, dayKey, dailyChallengeId, retainRuns, settleDailyFirsts, trendRun } from './insights.js';
+import { keepDays, mergeRunCounts, retainRunCounts, validRunCounts } from './run-counts.js';
 import { conditionKey } from './typing.js';
 
 const SUPABASE_URL = 'https://bicbyljexprkaedakofa.supabase.co';
@@ -516,6 +517,7 @@ const recordId = (item) => String(item.id ?? JSON.stringify(item));
 
 export function capHistory(profile) {
   Object.assign(profile, retainHistory(list(profile.runs), validPracticeDays(profile.practiceDays)));
+  profile.runCounts = retainRunCounts(profile.runCounts);
   for (const [name, { keep }] of Object.entries(HISTORY)) if (name !== 'runs') profile[name] = keep(list(profile[name]));
   return profile;
 }
@@ -599,7 +601,7 @@ export function clearProfile(profile) {
   }
   for (const best of Object.values(profile.bests || {})) if ((best?.at || '') > marker && best.attemptId) ahead.add(String(best.attemptId));
   const named = liveNamed([...known, ...[...ahead].map((id) => [marker, id])], undone);
-  const cleared = setClears({ ...profile, bests: {}, seenTextIds: [], practiceDays: {}, ...(profile.lessons ? { lessons: {} } : {}) }, marker, heard, heard);
+  const cleared = setClears({ ...profile, bests: {}, seenTextIds: [], practiceDays: {}, runCounts: {}, ...(profile.lessons ? { lessons: {} } : {}) }, marker, heard, heard);
   for (const name of Object.keys(HISTORY)) cleared[name] = [];
   if (named.length) cleared.historyClearedIds = named;
   else delete cleared.historyClearedIds;
@@ -687,7 +689,7 @@ const legacyStart = (side) => (savedByOlderBuild(side) ? historyStart(side) : st
 // doesn't know) are passed through.
 const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt',
   'historyClearedAt', 'appliedClears', 'heardClears', 'historyClearedIds', 'undoneClears', 'legacyClearedAt', 'updatedAt',
-  'mergeStamp', 'profileId', 'practiceDays']);
+  'mergeStamp', 'profileId', 'practiceDays', 'runCounts']);
 
 // Lesson progress (src/lessons.js): { [lesson id]: { tries, last, passed } }, where last and passed are
 // results dated `at`. A side judged by a clear it hadn't applied keeps only what is dated after it: a lesson
@@ -727,6 +729,9 @@ export function mergeLessons(mine = {}, theirs = {}) {
 //   earliest daily attempt keeps its first-attempt label (settleDailyFirsts), and a repeat stays one.
 // - bests: per condition key the best by beatsBest (the higher wpm), so a merge never lowers a best.
 // - seenTextIds: union, so a passage once shown is never offered as fresh again.
+// - runCounts: each tab counter's day by day, the larger started and finished (mergeRunCounts in
+//   src/run-counts.js), after a side judged by a clear it hadn't applied drops the days through the clear's
+//   own, as for practiceDays. Only one tab writes a counter and its numbers only grow, so this is exact.
 // - lessons: lesson by lesson (mergeLessons above), after each side drops what a clear it hadn't applied
 //   removed (survivingLessons), as for bests; clearProfile empties it and Undo gives it back.
 // - preferences and preferencesAt: setting by setting, from mergePreferences above.
@@ -804,6 +809,7 @@ export function mergeSynced(local, cloud) {
     const cutoff = [stale ? clearedAt : null, behind ? legacyAt : null].filter(Boolean).sort().at(-1);
     const cutoffDay = cutoff ? dayKey(cutoff.slice(0, 24)) : null;
     kept.practiceDays = Object.fromEntries(Object.entries(validPracticeDays(side.practiceDays)).filter(([day]) => !cutoffDay || day > cutoffDay));
+    kept.runCounts = keepDays(side.runCounts, (day) => !cutoffDay || day > cutoffDay);
     kept.stale = stale;
     return kept;
   };
@@ -840,6 +846,7 @@ export function mergeSynced(local, cloud) {
     if (trendRun(run) && Number.isFinite(best.wpm) && beatsBest(best, merged.bests[key])) merged.bests[key] = best;
   }
   merged.seenTextIds = [...new Set([...mine.seenTextIds, ...theirs.seenTextIds])];
+  merged.runCounts = mergeRunCounts(mine.runCounts, theirs.runCounts);
   if (local.lessons !== undefined || cloud.lessons !== undefined) merged.lessons = mergeLessons(mine.lessons, theirs.lessons);
 
   const { preferences, preferencesAt } = mergePreferences(local, cloud);
@@ -934,7 +941,7 @@ export function undoClearHere(holds, current, marker, before) {
 export function syncSignature(profile) {
   const sorted = (object) => Object.keys(object || {}).sort().map((key) => [key, object[key]]);
   const rest = Object.keys(profile).filter((key) => profile[key] !== undefined && !(key in HISTORY)
-    && !['bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt', 'practiceDays'].includes(key)).sort();
+    && !['bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt', 'practiceDays', 'runCounts'].includes(key)).sort();
   return JSON.stringify([
     Object.keys(HISTORY).map((name) => list(profile[name]).map((item) => [item.id, item.patterns?.length ?? null, item.firstDailyAttempt ?? null])),
     sorted(profile.bests).map(([key, best]) => [key, best?.wpm, best?.at, best?.attemptId]),
@@ -943,6 +950,7 @@ export function syncSignature(profile) {
     sorted(stampsOf(profile)),
     sorted(profile.lessons),
     sorted(validPracticeDays(profile.practiceDays)),
+    sorted(validRunCounts(profile.runCounts)).map(([counter, days]) => [counter, sorted(days)]),
     rest.map((key) => [key, profile[key]]),
   ]);
 }

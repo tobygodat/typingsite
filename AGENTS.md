@@ -15,15 +15,17 @@ unless asked.
 
 ## Design system: Afterimage
 The redesign shipped on 22 September 2026 is the binding visual system. Follow DESIGN.md and the
-shipped app: the tokens at the top of src/styles.css (dark and light sets; there are no separate
-token files) and PRODUCT.md "Brand Commitments". Never invent colours, type sizes, radii,
-durations or easings — use the CSS variables, and add a token before using a new value.
+shipped app: the tokens at the top of src/styles.css (one set per theme: dark, light and eight more;
+there are no separate token files) and PRODUCT.md "Brand Commitments". Never invent colours, type
+sizes, radii, durations or easings — use the CSS variables, and add a token before using a new value.
 
 - Literata for everything readable, including the passage and numerals. Geist Mono only for small
   measurement labels, conditions and keys.
 - Warm near-black (dark) and warm paper (light). The theme follows the system until the user picks
   one. One green accent for action, current state and the caret; the primary button is filled green.
   Coral marks mistyped letters (always with a coral tint behind them) and regressions.
+  The eight other themes keep these roles in their own tokens; soft, midnight, swiss and e-ink use
+  their own accent colour, and swiss and e-ink their own mistake colour (always with its tint).
 - Rules and space, not boxes. Dock, settings, palette and toasts are opaque raised surfaces:
   no glass, no glow.
 

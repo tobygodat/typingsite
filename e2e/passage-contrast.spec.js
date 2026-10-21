@@ -1,7 +1,8 @@
 // The passage itself stays readable: untyped, typed and mistyped letters are drawn, uncovered, and keep
-// 4.5:1 against what is painted behind them, in both themes, on desktop and phone. tests/contrast.test.js
-// checks the token pairs; e2e/light-contrast.spec.js the caret and ghost; this one the letters as painted.
-import { test, expect, openApp, chooseWords, passageText } from './fixtures.js';
+// 4.5:1 against what is painted behind them, and the caret 3:1, in every theme, on desktop and phone.
+// tests/contrast.test.js checks the token pairs; e2e/light-contrast.spec.js the ghost caret; this one the
+// passage as painted.
+import { test, expect, openApp, chooseWords, passageText, chooseSetting, closeSettings } from './fixtures.js';
 
 const rgba = (value) => {
   const parts = value.match(/rgba?\(([^)]+)\)/)[1].split(/[\s,/]+/).filter(Boolean).map(Number);
@@ -48,6 +49,7 @@ const sample = (page) => page.evaluate(() => {
     typed: read(letters.find((char) => char.classList.contains('correct'))),
     wrong: read(letters.find((char) => char.classList.contains('wrong'))),
     untyped: read(letters.filter((char) => !char.matches('.correct, .wrong, .current'))[2]),
+    caret: getComputedStyle(display.querySelector('.caret-bar')).backgroundColor,
   };
 });
 
@@ -62,13 +64,19 @@ const seedRandom = () => {
   Math.random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 };
 
-for (const theme of ['dark', 'light']) {
+const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
+
+for (const theme of THEMES) {
   for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['phone', { width: 390, height: 844 }]]) {
-    test(`${theme} theme, ${label}: untyped, typed and mistyped letters stay readable`, async ({ page }) => {
+    test(`${theme} theme, ${label}: untyped, typed and mistyped letters and the caret stay readable`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await page.addInitScript(seedRandom);
-      await page.emulateMedia({ colorScheme: theme });
+      await page.emulateMedia({ colorScheme: theme === 'light' ? 'light' : 'dark' });
       await openApp(page);
+      if (theme !== 'dark' && theme !== 'light') {
+        await chooseSetting(page, 'theme-select', theme);
+        await closeSettings(page);
+      }
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await chooseWords(page, 25);
       const text = await passageText(page);
@@ -92,6 +100,10 @@ for (const theme of ['dark', 'light']) {
         expect(letter.hit, `${state} letter is on screen`).toBe(true);
         expect(letter.covers, `nothing covers the ${state} letter`).toEqual([]);
         expect(contrast(letter), `${state} letter "${letter.text}" contrast`).toBeGreaterThanOrEqual(4.5);
+      }
+      // The caret crosses the bare passage and mistyped letters' tint.
+      for (const letter of [running.untyped, running.wrong]) {
+        expect(contrast({ ...letter, fill: running.caret }), `caret over the ${letter === running.wrong ? 'mistyped' : 'untyped'} letter`).toBeGreaterThanOrEqual(3);
       }
     });
   }

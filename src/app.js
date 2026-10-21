@@ -76,6 +76,7 @@ import {
   FINGER_ZONES, LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, normalizeLessonProgress, recordLessonRun,
 } from './lessons.js';
+import { createRunCounter, runCountTotals } from './run-counts.js';
 import { CUSTOM_ORDERS, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 const $ = (id) => document.getElementById(id);
@@ -172,6 +173,7 @@ const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('ra
 // Key sounds read the current preferences on each key; the AudioContext waits for an audible choice or key.
 const sounds = createSounds({ settings: () => ({ mode: prefs.sound, volume: prefs.soundVolume }), running: () => runInProgress() });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
+const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // The completed run the results view shows: its numbers, run card graph and Watch replay. Only
 // showResult sets it. `attempt` moves on without it (a drill whose retest is unavailable, the
@@ -249,9 +251,17 @@ let race = {
   notice: '',
 };
 
+// Runs started and finished (src/run-counts.js). A start is counted at the first key but written with the
+// next save (the run's end, a restart, leaving the page), never on the keystroke itself.
+const runCounter = createRunCounter();
+let runTicket = null;
+let countsUnsaved = false;
+const saveRunCounts = () => countsUnsaved && saveProfile();
+
 // Signed in, the profile is cached on this device and synced to the account shortly after.
 // A guest's profile lives only in memory, so there is nothing to fail.
 function saveProfile() {
+  countsUnsaved = false;
   commitPreferences();
   account.capHistory(profile);
   if (!session || signedOutElsewhere) return true;
@@ -595,14 +605,15 @@ function showBest() {
 }
 
 function resolvedTheme() {
-  if (prefs.theme === 'light' || prefs.theme === 'dark') return prefs.theme;
+  if (THEMES.includes(prefs.theme)) return prefs.theme;
   return prefersLight.matches ? 'light' : 'dark';
 }
 
 function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
-  for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = theme === 'light' ? '#f4f1eb' : '#0f0f0e';
+  const ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
+  for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = ground;
   selectSetting('theme-select', prefs.theme);
 }
 
@@ -1301,6 +1312,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
+  saveRunCounts();
   // The next passage is prepared with the newest stored preferences, including any from elsewhere. A
   // retest or drill keeps its baseline's conditions (restoreConditions), through a restart too; newer
   // ones from elsewhere wait until it is over.
@@ -1481,6 +1493,8 @@ function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
     attempt.startedAt = 0;
     ticker = setInterval(() => updateLive(), 100);
     primaryFx.ghost.run(stamp);
+    ({ counts: profile.runCounts, ticket: runTicket } = runCounter.start(profile.runCounts, dayKey(new Date())));
+    countsUnsaved = true;
     setRunning(true);
     // A message left by an abandoned custom length belongs to the row, not to the run.
     setCustomLengthError('');
@@ -1932,7 +1946,10 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   } else {
     const help = $('race-help');
     if (rule) help.textContent = withRule(race.notice, rule);
-    else if ([NOTICES.strictSpace, NOTICES.submit].some((notice) => help.textContent.endsWith(notice))) help.textContent = race.notice || (prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.');
+    else if ([NOTICES.strictSpace, NOTICES.submit].some((notice) => help.textContent.endsWith(notice))) {
+      if (race.notice) help.textContent = race.notice;
+      else showRaceRestartHint();
+    }
     updateRaceProgress(replay);
     if (passageComplete(targetAttempt, replay.typed)) finishRacePlayer();
   }
@@ -2150,6 +2167,8 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
   completed.unsupportedInput = attempt.unsupportedInput;
   completed.fresh = attempt.fresh;
   if (attempt.failed) completed.failed = attempt.failed;
+  if (valid && runTicket) profile.runCounts = runCounter.finish(profile.runCounts, runTicket);
+  runTicket = null;
   attempt = completed;
   $('typing-input').disabled = true;
   primaryFx.finish();
@@ -2159,6 +2178,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
   // Lessons keep their own progress and never enter runs, traces or bests.
   if (sessionKind === 'lesson') {
     finishLesson(completed, valid);
+    saveRunCounts();
     return;
   }
   const saved = storeAttempt(completed);
@@ -3304,16 +3324,19 @@ function renderPracticeStats(period, date = new Date()) {
   const current = practiceStreak(byDay, goal, date);
   const figure = (label, value, unit, note) => {
     const group = element('div', '', 'progress-figure');
-    group.append(element('dt', label), element('dd', [element('span', value), ' ', element('span', unit, 'figure-unit')], 'num figure-value'), element('dd', note, 'figure-note'));
+    group.append(element('dt', label), element('dd', [element('span', value), ' ', element('span', unit, 'figure-unit')], 'num figure-value'));
+    if (note) group.append(element('dd', note, 'figure-note'));
     return group;
   };
   const daysWord = (n) => (n === 1 ? 'day' : 'days');
   const runDays = stats.runsPerDay.filter((d) => d.runs).length;
+  const counted = runCountTotals(profile.runCounts, { from: period === 'all' ? null : days[0], to: days.at(-1) });
   $('practice-stats').replaceChildren(
     figure('Active days', String(stats.active), `of ${days.length}`, runDays ? `${Number((runs / runDays).toFixed(1))} runs a day when you practise` : 'no runs in this period'),
     figure('Longest streak', String(stats.longest), daysWord(stats.longest), goal ? `at ${goal} min a day` : 'in this period'),
     figure('Current streak', String(current), daysWord(current), `today ${goalMinutes(byDay[dayKey(date)])}${goal ? ` of ${goal}` : ''} min`),
     figure('Time typing', goalMinutes(stats.minutes), 'min', period === 'all' ? `since ${new Date(`${days[0]}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : `in the last ${days.length} days`),
+    figure('Runs started', String(counted.started), `${counted.finished} finished`),
   );
 }
 
@@ -3369,7 +3392,7 @@ function moveProgressTab(event) {
 
 function hasAnyHistory() {
   return profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0 || profile.compositions.length > 0
-    || lessonsStarted(profile.lessons) || Object.keys(profile.practiceDays).length > 0;
+    || lessonsStarted(profile.lessons) || Object.keys(profile.practiceDays).length > 0 || Object.keys(profile.runCounts).length > 0;
 }
 
 // Composing numbers get their own list: no chart, no trend, no best, nothing shared with copy tests.
@@ -4073,8 +4096,14 @@ function setupRacePlayer() {
   raceFx.reset(race.characters);
   $('race-accessible-passage').textContent = race.passage.text;
   updateRaceProgress(replayAttempt(race.attempt));
-  $('race-help').textContent = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.';
+  showRaceRestartHint();
   $('race-input').focus({ preventScroll: true });
+}
+
+// A key hint: hidden on touch-only devices (.key-hint in styles.css), where there is no restart key.
+function showRaceRestartHint() {
+  const hint = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.';
+  $('race-help').replaceChildren(element('span', hint, 'key-hint'));
 }
 
 function updateRaceProgress(replay) {
@@ -4857,7 +4886,10 @@ function bindAccount() {
   // Unsynced changes go out when the tab is hidden (anything too large for that waits for the next
   // push or load); other devices' changes come in when it is shown again.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') pushOnHide();
+    if (document.visibilityState === 'hidden') {
+      saveRunCounts();
+      pushOnHide();
+    }
     else pullProfile();
   });
   addEventListener('online', () => {
@@ -5804,7 +5836,7 @@ function paletteCommands(query) {
     { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: prefs.minAccuracy === value ? 'current' : '', on: prefs.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
     ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? formatSpeed(value) : 'off'}`, keywords: 'min wpm cpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
-    ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
+    ...['system', ...THEMES].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     // Named "this word" / "next word" so no mode reads like the palette's "current" hint.
     ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),

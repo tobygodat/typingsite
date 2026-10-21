@@ -15,7 +15,8 @@
     try {
       const user = JSON.parse(localStorage.getItem('stilltype-session-v1'))?.user?.id;
       const saved = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences?.theme : null;
-      const theme = saved === 'light' || saved === 'dark' ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      const themes = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
+      const theme = themes.includes(saved) ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
       document.documentElement.dataset.theme = theme;
     } catch {}
   </script>
@@ -31,10 +32,10 @@
 
         <div class="dock-nav glide" data-glide="current">
           <span class="glide-pill" aria-hidden="true"></span>
-          <button class="nav-item is-active" type="button" data-nav="practice" aria-current="page" aria-label="Practice"><span class="nav-label-full">practice</span><span class="nav-label-short" aria-hidden="true">type</span></button>
-          <button class="nav-item" type="button" data-nav="results" aria-label="Train"><span class="nav-label-full">train</span><span class="nav-label-short" aria-hidden="true">train</span></button>
-          <button class="nav-item" type="button" data-nav="progress" aria-label="Progress"><span class="nav-label-full">progress</span><span class="nav-label-short" aria-hidden="true">track</span></button>
-          <button class="nav-item" type="button" data-nav="compete" aria-label="Challenge"><span class="nav-label-full">challenge</span><span class="nav-label-short" aria-hidden="true">race</span></button>
+          <button class="nav-item is-active" type="button" data-nav="practice" aria-current="page"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
+          <button class="nav-item" type="button" data-nav="results">train</button>
+          <button class="nav-item" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
+          <button class="nav-item" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
         </div>
 
         <span class="dock-sep" aria-hidden="true"></span>
@@ -109,23 +110,28 @@
                 </div>
               </details>
             </div>
-            <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
-              <button type="button" data-length="15" aria-pressed="false" aria-label="15 seconds">15</button>
-              <button type="button" data-length="30" aria-pressed="true" aria-label="30 seconds" class="is-active">30</button>
-              <button type="button" data-length="60" aria-pressed="false" aria-label="60 seconds">60</button>
-              <button type="button" data-length="120" aria-pressed="false" aria-label="120 seconds">120</button>
-              <button id="custom-length" type="button" aria-pressed="false" aria-label="custom time">custom</button>
-              <form id="custom-length-form" class="custom-length" novalidate hidden>
-                <input id="custom-length-input" class="custom-length-input" type="text" inputmode="numeric" enterkeyhint="done" maxlength="12" autocomplete="off" spellcheck="false" placeholder="5–600" aria-label="custom time in seconds, 5 to 600" aria-describedby="custom-length-error">
-              </form>
-            </div>
-            <div id="quote-options" class="segmented quote-options" role="group" aria-label="Quote filters" hidden>
-            </div>
-            <div id="code-options" class="segmented compact glide" role="group" aria-label="Code language" data-glide="pressed" hidden>
-              <button type="button" data-language="js" aria-pressed="true" class="is-active">js</button>
-              <button type="button" data-language="python" aria-pressed="false">python</button>
-              <button type="button" data-language="go" aria-pressed="false">go</button>
-              <button type="button" data-language="rust" aria-pressed="false">rust</button>
+            <div class="practice-options">
+              <div id="standard-options" class="standard-options" hidden>
+                <p id="standard-recipe" class="condition-copy"></p>
+              </div>
+              <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
+                <button type="button" data-length="15" aria-pressed="false" aria-label="15 seconds">15</button>
+                <button type="button" data-length="30" aria-pressed="true" aria-label="30 seconds" class="is-active">30</button>
+                <button type="button" data-length="60" aria-pressed="false" aria-label="60 seconds">60</button>
+                <button type="button" data-length="120" aria-pressed="false" aria-label="120 seconds">120</button>
+                <button id="custom-length" type="button" aria-pressed="false" aria-label="custom time">custom</button>
+                <form id="custom-length-form" class="custom-length" novalidate hidden>
+                  <input id="custom-length-input" class="custom-length-input" type="text" inputmode="numeric" enterkeyhint="done" maxlength="12" autocomplete="off" spellcheck="false" placeholder="5–600" aria-label="custom time in seconds, 5 to 600" aria-describedby="custom-length-error">
+                </form>
+              </div>
+              <div id="quote-options" class="segmented quote-options" role="group" aria-label="Quote filters" hidden>
+              </div>
+              <div id="code-options" class="segmented compact glide" role="group" aria-label="Code language" data-glide="pressed" hidden>
+                <button type="button" data-language="js" aria-pressed="true" class="is-active">js</button>
+                <button type="button" data-language="python" aria-pressed="false">python</button>
+                <button type="button" data-language="go" aria-pressed="false">go</button>
+                <button type="button" data-language="rust" aria-pressed="false">rust</button>
+              </div>
             </div>
             <label id="punctuation-switch" class="compact-switch" for="punctuation-toggle">
               <input id="punctuation-toggle" class="switch" type="checkbox">
@@ -134,10 +140,6 @@
           </div>
           <p id="custom-length-error" class="field-error custom-length-error" role="alert"></p>
           <span id="minimum-note" class="minimum-note" hidden></span>
-        </div>
-
-        <div id="standard-options" class="standard-options" hidden>
-          <p id="standard-recipe" class="condition-copy"></p>
         </div>
 
         <div id="custom-options" class="custom-options" role="group" aria-label="Custom text" hidden>
@@ -269,7 +271,7 @@
           </section>
         </form>
 
-        <div class="shortcut-row" aria-hidden="true">
+        <div class="shortcut-row key-hint" aria-hidden="true">
           <span class="compose-shortcut"><kbd class="mod-key">ctrl</kbd><kbd>enter</kbd> done</span>
           <span class="practice-shortcut"><kbd id="restart-key-hint" class="restart-key-hint">esc</kbd> restart</span>
           <span class="compose-shortcut"><kbd class="restart-key-hint">esc</kbd> start over</span>
@@ -602,7 +604,7 @@
         </header>
 
         <div class="challenge-modes" role="group" aria-label="Challenge type">
-          <button id="challenge-online" class="btn btn-secondary btn-sm" type="button" aria-pressed="true">Online</button>
+          <button id="challenge-online" class="btn btn-ghost btn-sm" type="button" aria-pressed="true">Online</button>
           <button id="challenge-daily" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">Daily</button>
           <button id="challenge-friends" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">Friends</button>
           <button id="challenge-local" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">One keyboard</button>
@@ -771,7 +773,7 @@
             <textarea id="race-input" aria-label="Challenge typing input" aria-describedby="race-help race-accessible-passage" rows="1" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
             <span id="race-accessible-passage" class="sr-only"></span>
           </div>
-          <p id="race-help">Esc restarts.</p>
+          <p id="race-help"><span class="key-hint">esc restarts.</span></p>
         </div>
 
         <div id="race-handoff" class="handoff-panel" hidden>
@@ -804,14 +806,14 @@
     </footer>
   </div>
 
-  <button id="exit-focus" class="btn btn-secondary exit-focus" type="button"><kbd id="exit-focus-hint">esc</kbd> exit focus</button>
+  <button id="exit-focus" class="btn btn-secondary exit-focus" type="button"><kbd id="exit-focus-hint" class="key-hint">esc</kbd> exit focus</button>
 
   <dialog id="palette" class="palette" aria-label="Command palette">
     <div class="palette-box">
       <div class="palette-search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
         <input id="palette-input" type="text" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Search commands">
-        <kbd>esc</kbd>
+        <kbd class="key-hint">esc</kbd>
       </div>
       <div class="palette-scroll">
         <span class="palette-highlight" aria-hidden="true"></span>
@@ -957,7 +959,7 @@
   <dialog id="settings-dialog" aria-labelledby="settings-title">
     <header class="settings-header">
       <h2 id="settings-title">Settings</h2>
-      <button id="settings-close" type="button" aria-label="Close settings"><span>esc</span><span aria-hidden="true">×</span></button>
+      <button id="settings-close" type="button" aria-label="Close settings"><span class="key-hint">esc</span><span aria-hidden="true">×</span></button>
     </header>
     <div class="settings-body">
       <nav class="settings-nav" aria-label="Settings categories">
@@ -977,6 +979,14 @@
               <label class="setting-option"><input type="radio" name="theme-select" value="system" checked><span>system</span></label>
               <label class="setting-option"><input type="radio" name="theme-select" value="dark"><span>dark</span></label>
               <label class="setting-option"><input type="radio" name="theme-select" value="light"><span>light</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="paper"><span>paper</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="shadcn"><span>shadcn</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="terminal"><span>terminal</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="soft"><span>soft</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="midnight"><span>midnight</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="swiss"><span>swiss</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="e-ink"><span>e-ink</span></label>
+              <label class="setting-option"><input type="radio" name="theme-select" value="nord"><span>nord</span></label>
             </fieldset>
           </div>
           <div class="preference-row">
