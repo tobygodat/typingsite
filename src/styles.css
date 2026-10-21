@@ -486,6 +486,7 @@ button { cursor: pointer; }
 .num { font-variant-numeric: tabular-nums lining-nums; }
 
 .sr-only,
+#book-options .quote-filter-trigger > :first-child,
 #typing-status.badge-info {
   position: absolute;
   width: 1px;
@@ -1344,7 +1345,9 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
   text-align: center;
 }
 
+/* Raised over the switch after it, so a filter's menu opens above it when the row wraps below. */
 .quote-options {
+  z-index: 1;
   margin: 0;
   padding-inline: var(--space-3);
   max-width: 100%;
@@ -1412,6 +1415,12 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
   outline-offset: -1px;
 }
 .quote-filter-check { color: var(--accent); }
+/* Book mode: the book's name needs no visible label, and the page number sits beside it. */
+.book-page {
+  color: var(--muted);
+  font: var(--text-label)/1.4 var(--font-serif);
+  white-space: nowrap;
+}
 .quote-filter-option:not([data-current]) .quote-filter-check { visibility: hidden; }
 @media (forced-colors: active) {
   .quote-filter-menu { border-color: CanvasText; }

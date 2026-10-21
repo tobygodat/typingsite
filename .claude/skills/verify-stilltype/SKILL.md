@@ -90,6 +90,7 @@ handling:
 $V drive .claude/skills/verify-stilltype/flows/palette-theme.mjs
 $V drive .claude/skills/verify-stilltype/flows/code-run.mjs --scheme light
 $V drive .claude/skills/verify-stilltype/flows/challenge-chrome.mjs --width 320 --height 568 --mobile
+$V drive .claude/skills/verify-stilltype/flows/book-run.mjs --width 390 --height 844 --mobile
 $V drive .claude/skills/verify-stilltype/flows/themes.mjs        # every theme: settings, mid-run, results
 ```
 
@@ -117,7 +118,8 @@ Train, Progress, Challenge, Commands (below 360px the names are "type practice",
 "race challenge"; the default substring match on the full word finds them at every width); the challenge
 tabs are `.challenge-modes` with `#challenge-online`, `#challenge-daily`, `#challenge-friends`,
 `#challenge-local` (`aria-pressed`); key hints carry `.key-hint` and hide under `--mobile`; the practice rail is `.practice-rail` with `#mode-time`, `#mode-words`,
-`#mode-quote`, `#mode-more` / `#mode-more-label`, `#duration-options [data-length="N"]` and
+`#mode-quote`, `#mode-more` / `#mode-more-label`, `#duration-options [data-length="N"]`, the book mode's
+`#book-options` (its dropdown is the combobox named "book", the page number `#book-page`) and
 `#punctuation-switch`; the passage is `#accessible-passage` and input `#typing-input`; the view is
 `body[data-view]` (practice, results, progress, compete), a run in progress sets `body[data-running]`; theme is
 `html[data-theme]`; account is `#account[data-state]` (guest, member) and `[data-sync]`; the palette is
