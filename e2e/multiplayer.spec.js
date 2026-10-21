@@ -1,4 +1,4 @@
-import { test, expect, openApp, openView, signInWithEmail, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto, openSettings, chooseSetting } from './fixtures.js';
 
 test.setTimeout(60000);
 
@@ -26,8 +26,20 @@ async function guestPage(browser, supabase, link) {
   return { context, guest, errors };
 }
 
-test('an account hosts a guest across separate contexts, shares progress and finishes', async ({ page, browser, supabase }) => {
+test('an account hosts a guest across separate contexts, shares progress, resumes with the word highlight in step, and finishes', async ({ page, browser, supabase }) => {
+  test.setTimeout(120_000);
+  // The online passage marks words through its own input handler and its resume path.
+  const tinted = () => page.locator('#online-text-display .word').evaluateAll((nodes) => nodes
+    .filter((node) => [...node.children].some((char) => !char.classList.contains('wrong') && getComputedStyle(char).backgroundColor !== 'rgba(0, 0, 0, 0)'))
+    .map((node) => Number(node.dataset.wordIndex)));
   const room = await hostRace(page, supabase);
+  await openSettings(page);
+  await chooseSetting(page, 'word-highlight', 'current');
+  await openSettings(page, 'shortcuts');
+  await page.locator('#keybinding-restart').fill('F2');
+  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect.poll(() => supabase.profileFor('host@stilltype.test')?.preferences.wordHighlight, { timeout: 8000 }).toBe('current');
   const link = await page.locator('#online-guest-link').inputValue();
   expect(link).toContain(room.id);
   const { context, guest, errors } = await guestPage(browser, supabase, link);
@@ -43,15 +55,30 @@ test('an account hosts a guest across separate contexts, shares progress and fin
     await expect(guest.locator('#online-input')).toBeEnabled();
     const passage = await page.locator('#online-accessible-passage').textContent();
     await expect(guest.locator('#online-accessible-passage')).toHaveText(passage);
+    expect(await tinted()).toEqual([0]);
+    // The word the caret is in: as many words in as there are spaces before it.
+    const word = passage.slice(0, 20).split(' ').length - 1;
+    expect(word).toBeGreaterThan(0);
     await typeInto(page, passage.slice(0, 20), '#online-input', { delay: 15 });
+    expect(await tinted()).toEqual([word]);
     await expect.poll(() => room.players[0].progress).toBeGreaterThan(0);
     await expect.poll(() => room.players[0].typed).toBe(passage.slice(0, 20));
+    // Solo/local restart bindings must never reset a live online room or move its focus.
+    await page.keyboard.press('F2');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#online-input')).toHaveValue(passage.slice(0, 20));
+    await expect(page.locator('#online-input')).toBeFocused();
     // Reload must restore the acknowledged prefix and advance the server sequence.
     await page.reload();
     await expect(page.locator('#online-input')).toBeEnabled();
     await expect(page.locator('#online-input')).toHaveValue(passage.slice(0, 20));
+    // The acknowledged prefix is redrawn, and the highlight resumes where it was, then moves on.
+    expect(await tinted()).toEqual([word]);
+    const next = passage.indexOf(' ', 20) + 1;
+    await typeInto(page, passage.slice(20, next), '#online-input', { delay: 15 });
+    expect(await tinted()).toEqual([word + 1]);
     // A complete passage finishes early; both clients observe the same final scores.
-    await typeInto(page, passage.slice(20), '#online-input', { delay: 15 });
+    await typeInto(page, passage.slice(next), '#online-input', { delay: 15 });
     await typeInto(guest, passage, '#online-input', { delay: 15 });
     await expect(page.locator('#online-results')).toBeVisible({ timeout: 10000 });
     await expect(guest.locator('#online-results')).toBeVisible();

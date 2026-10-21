@@ -1,10 +1,10 @@
-import { test, expect, openApp, openView, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, typeInto, chooseSetting, closeSettings } from './fixtures.js';
 
 test('two players type the same hidden-then-revealed passage', async ({ page }) => {
   await openApp(page);
   // Stop on error is captured when the challenge starts, so a wrong last letter must be fixed.
-  await page.locator('details.preferences > summary').click();
-  await page.locator('#stop-on-error-toggle').check();
+  await closeSettings(page);
+  await chooseSetting(page, 'correction-select', 'mandatory');
   await openView(page, 'Challenge');
   await page.locator('#challenge-local').click();
 

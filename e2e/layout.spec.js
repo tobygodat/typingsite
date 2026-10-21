@@ -1,5 +1,5 @@
 // Responsive layout, self-hosted fonts and exactly what the server hands out.
-import { test, expect, openApp, openView, chooseWords, passageText, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, chooseWords, chooseMore, passageText, typeInto, freshTextCheck } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -10,6 +10,12 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
     test('fits without sideways scroll and keeps 44px targets', async ({ page }) => {
       await openApp(page);
       expect(await overflow(page)).toBeLessThanOrEqual(0);
+      // The practice column itself never widens past its gutters (the document can't show that).
+      const columnOverflow = () => page.locator('#typing-screen').evaluate((node) => node.scrollWidth - node.clientWidth);
+      expect(await columnOverflow(), 'time').toBeLessThanOrEqual(0);
+      await chooseMore(page, 'mode-standard');
+      expect(await columnOverflow(), 'standard').toBeLessThanOrEqual(0);
+      await page.locator('#mode-time').click();
 
       // The dock moves to the bottom and spans the viewport.
       const dock = await page.locator('nav.dock').boundingBox();
@@ -22,24 +28,72 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
         for (const height of boxes) expect(height, selector).toBeGreaterThanOrEqual(44);
       }
 
+      // The first-run "Learn to type" links sit inside a sentence and still give a finger 44px.
+      const learnLinks = { Train: '#train-learn [data-action="open-lessons"]', Progress: '#progress-empty [data-action="open-lessons"]' };
       for (const view of ['Train', 'Progress', 'Challenge']) {
         await openView(page, view);
         expect(await overflow(page), view).toBeLessThanOrEqual(0);
+        if (learnLinks[view]) expect((await page.locator(learnLinks[view]).boundingBox()).height, view).toBeGreaterThanOrEqual(44);
       }
-    });
 
-    test('results fit after a run at a human pace', async ({ page }) => {
-      await openApp(page);
-      await chooseWords(page, 10);
-      // About 60 wpm. Automation's instant typing scores in the hundreds, and below ~354px some
-      // three-digit scores overflow the run card (112px numeral plus its unit): a known defect.
-      await typeInto(page, await passageText(page), '#typing-input', { delay: 200 });
-      await expect(page.locator('#run-card')).toBeVisible();
-      expect(Number(await page.locator('#result-wpm').textContent())).toBeLessThan(100);
-      expect(await overflow(page)).toBeLessThanOrEqual(0);
+      // At the narrowest width, the same views with a run, a comparison and the daily in them.
+      if (viewport.width === 320) {
+        await openView(page, 'Practice');
+        await freshTextCheck(page);
+        for (const view of ['Progress', 'Train', 'Challenge']) {
+          await openView(page, view);
+          if (view === 'Challenge') await page.locator('#challenge-daily').click();
+          expect(await overflow(page), `${view} with a run`).toBeLessThanOrEqual(0);
+        }
+      }
     });
   });
 }
+
+test.describe('narrow run card', () => {
+  test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+
+  test('a three-digit score and its unit fit inside the run card at 320px', async ({ page }) => {
+    await openApp(page);
+    await chooseWords(page, 10);
+    await typeInto(page, await passageText(page));
+    await expect(page.locator('#run-card')).toBeVisible();
+    // Figures are tabular, so any three digits are as wide as 188. Under 360px the numeral steps
+    // down to --text-numeral-narrow; 361 and 360 sit either side of that step. Narrowing from 390
+    // also checks that the speed graph, drawn at its old width, gives the trace back.
+    await page.locator('#result-wpm').evaluate((node) => { node.textContent = '188'; });
+    for (const width of [390, 361, 360, 320]) {
+      await page.setViewportSize({ width, height: 640 });
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${width}px page`).toBe(0);
+      const fit = await page.evaluate(() => {
+        const card = document.querySelector('#run-card');
+        const style = getComputedStyle(card);
+        const box = card.getBoundingClientRect();
+        const inner = { left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight) };
+        const rect = (selector) => { const r = document.querySelector(selector).getBoundingClientRect(); return { left: r.left, right: r.right }; };
+        const score = document.querySelector('.run-card-score');
+        return { page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          overflow: card.scrollWidth - card.clientWidth, score: score.scrollWidth - score.clientWidth,
+          inner, numeral: rect('#result-wpm'), unit: rect('.run-card-unit'), card: { left: box.left, right: box.right },
+          trace: rect('.run-trace'), traceOverflow: document.querySelector('.run-trace').scrollWidth - document.querySelector('.run-trace').clientWidth,
+          shell: rect('.app-shell') };
+      });
+      expect(fit.page, `${width}px page`).toBe(0);
+      expect(fit.overflow, `${width}px card`).toBe(0);
+      expect(fit.score, `${width}px score row`).toBe(0);
+      // The card and the trace keep inside the page gutters, give or take a sub-pixel.
+      expect(fit.card.left, `${width}px card left`).toBeGreaterThanOrEqual(fit.shell.left - 0.5);
+      expect(fit.card.right, `${width}px card right`).toBeLessThanOrEqual(fit.shell.right + 0.5);
+      expect(fit.traceOverflow, `${width}px trace`).toBe(0);
+      expect(fit.trace.left, `${width}px trace left`).toBeGreaterThanOrEqual(fit.shell.left - 0.5);
+      expect(fit.trace.right, `${width}px trace right`).toBeLessThanOrEqual(fit.shell.right + 0.5);
+      for (const part of ['numeral', 'unit']) {
+        expect(fit[part].left, `${width}px ${part} left`).toBeGreaterThanOrEqual(fit.inner.left);
+        expect(fit[part].right, `${width}px ${part} right`).toBeLessThanOrEqual(fit.inner.right);
+      }
+    }
+  });
+});
 
 test('desktop keeps the dock at the top and the passage at three lines', async ({ page }) => {
   await openApp(page);

@@ -1,9 +1,14 @@
 // Afterimage chrome: theme, settings, command palette, ghost pacer, the still-run fade and reduced motion.
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, storageKeys, chooseSetting, closeSettings } from './fixtures.js';
 
 const html = (page) => page.locator('html');
 // index.html carries a light and a dark theme-color meta; the app sets both to the resolved theme.
 const themeColor = (page) => page.locator('meta[name="theme-color"]').first();
+async function pressSequence(page) {
+  for (const key of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a']) {
+    await page.keyboard.press(key);
+  }
+}
 
 test.describe('theme', () => {
   test('follows the system until the user picks one', async ({ page }) => {
@@ -19,12 +24,12 @@ test.describe('theme', () => {
     await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
 
     await openSettings(page);
-    await page.locator('#theme-select').selectOption('light');
+    await chooseSetting(page, 'theme-select', 'light');
     await expect(html(page)).toHaveAttribute('data-theme', 'light');
     await page.emulateMedia({ colorScheme: 'dark' });
     await expect(html(page)).toHaveAttribute('data-theme', 'light');
 
-    await page.locator('#theme-select').selectOption('system');
+    await chooseSetting(page, 'theme-select', 'system');
     await expect(html(page)).toHaveAttribute('data-theme', 'dark');
   });
 
@@ -32,13 +37,18 @@ test.describe('theme', () => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
     await openSettings(page);
-    await page.locator('#theme-select').selectOption('light');
-    await page.locator('#font-size').selectOption('36');
+    await chooseSetting(page, 'theme-select', 'light');
+    await chooseSetting(page, 'font-size', '36');
     await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
+    await chooseSetting(page, 'word-highlight', 'next');
+    await expect(page.locator('body')).toHaveAttribute('data-word-highlight', 'next');
+    expect(await storageKeys(page)).toEqual([]);
     await page.reload();
     await expect(html(page)).toHaveAttribute('data-theme', 'dark');
     await expect(page.locator('body')).toHaveAttribute('data-font-size', '28');
-    await expect(page.locator('#theme-select')).toHaveValue('system');
+    await expect(page.locator('#theme-select input:checked')).toHaveValue('system');
+    await expect(page.locator('body')).toHaveAttribute('data-word-highlight', 'off');
+    await expect(page.locator('#word-highlight input:checked')).toHaveValue('off');
   });
 });
 
@@ -46,42 +56,43 @@ test('settings apply their display preferences', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
   for (const [size, px] of [['22', '29px'], ['36', '44px'], ['28', '36px']]) {
-    await page.locator('#font-size').selectOption(size);
+    await chooseSetting(page, 'font-size', size);
     await expect(page.locator('#text-display')).toHaveCSS('font-size', px);
   }
-  await page.locator('#live-toggle').check();
+  await chooseSetting(page, 'live-toggle', true);
   await expect(page.locator('body')).toHaveAttribute('data-live-metrics', 'true');
-  await page.locator('#keyboard-toggle').check();
+  await chooseSetting(page, 'keyboard-toggle', true);
   await expect(page.locator('#keyboard')).toBeVisible();
-  await expect(page.locator('#keyboard .key')).toHaveCount(27);
+  await expect(page.locator('#keyboard .key')).toHaveCount(31);
 
-  // Escape closes the popover and returns focus to its toggle.
   await page.keyboard.press('Escape');
-  await expect(page.locator('.preferences-popover')).toBeHidden();
-  await expect(page.locator('details.preferences > summary')).toBeFocused();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
+  await expect(page.locator('#settings-trigger')).toBeFocused();
 });
 
 test('focus mode has an explicit exit and answers Escape', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
-  await page.locator('#focus-toggle').check();
+  await chooseSetting(page, 'focus-toggle', true);
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
   await expect(page.locator('#exit-focus')).toBeVisible();
+  await closeSettings(page);
   await page.locator('#exit-focus').click();
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'false');
   await expect(page.locator('#typing-input')).toBeFocused();
 
   await openSettings(page);
-  await page.locator('#focus-toggle').check();
-  // Clicking the passage closes the settings popover, which would otherwise take the first Escape.
+  await chooseSetting(page, 'focus-toggle', true);
+  await closeSettings(page);
   await page.locator('#typing-input').click();
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
   await page.keyboard.press('Escape');
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'false');
 });
 
 test.describe('command palette', () => {
-  test('opens with Ctrl-K, filters, runs a command and returns focus', async ({ page }) => {
+  test('opens with Ctrl-K, filters, runs commands, returns focus and shows current state in its hints', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
     await page.locator('#typing-input').focus();
     await page.keyboard.press('Control+k');
@@ -104,11 +115,7 @@ test.describe('command palette', () => {
     await expect(page.locator('#mode-words')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('#condition-line')).toContainText('10 words');
     await expect(page.locator('#typing-input')).toBeFocused();
-  });
 
-  test('switches theme and shows current state in its hints', async ({ page }) => {
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await openApp(page);
     await page.keyboard.press('Control+k');
     await page.keyboard.type('theme · light');
     await page.keyboard.press('Enter');
@@ -129,16 +136,29 @@ test.describe('command palette', () => {
 });
 
 test.describe('ghost pacer', () => {
-  test('the key sequence toggles a moving pace caret that is never scored', async ({ page }) => {
+  test('the key sequence and the palette toggle a moving pace caret that is never scored', async ({ page }) => {
     await openApp(page);
     await page.locator('#typing-input').blur();
-    for (const key of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a']) {
-      await page.keyboard.press(key);
-    }
+    await pressSequence(page);
     await expect(page.locator('body')).toHaveAttribute('data-ghost', 'on');
     await expect(page.locator('#egg-toast')).toBeVisible();
     await expect(page.locator('#egg-feedback')).toHaveText('Ghost pacer · 60 wpm');
     await expect(page.locator('#typing-input')).toHaveValue('');
+
+    // With the input focused, the sequence restarts the same passage without the stray "b".
+    const passage = await passageText(page);
+    await page.locator('#typing-input').focus();
+    await pressSequence(page);
+    await expect(page.locator('body')).toHaveAttribute('data-ghost', 'off');
+    await expect(page.locator('#typing-input')).toHaveValue('');
+    await expect(page.locator('#typing-status')).toHaveText('Ready');
+    expect(await passageText(page)).toBe(passage);
+
+    await page.keyboard.press('Control+k');
+    await page.keyboard.type('ghost');
+    await expect(page.locator('#palette-list [role="option"]').first()).toContainText('ghost pacer');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('body')).toHaveAttribute('data-ghost', 'on');
 
     const ghost = page.locator('#text-display .ghost-caret');
     await expect(ghost).not.toHaveClass(/is-hidden/);
@@ -147,15 +167,7 @@ test.describe('ghost pacer', () => {
     const start = await ghost.evaluate((node) => node.style.transform);
     await expect.poll(() => ghost.evaluate((node) => node.style.transform), { timeout: 3000 }).not.toBe(start);
     await expect(page.locator('#typing-input')).toHaveValue(text[0]);
-  });
 
-  test('typing "ghost" in the palette offers the same toggle', async ({ page }) => {
-    await openApp(page);
-    await page.keyboard.press('Control+k');
-    await page.keyboard.type('ghost');
-    await expect(page.locator('#palette-list [role="option"]').first()).toContainText('ghost pacer');
-    await page.keyboard.press('Enter');
-    await expect(page.locator('body')).toHaveAttribute('data-ghost', 'on');
     await page.keyboard.press('Control+k');
     await page.keyboard.type('ghost');
     await page.keyboard.press('Enter');

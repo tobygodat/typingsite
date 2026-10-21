@@ -1,41 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { stat } from 'node:fs/promises';
-import { BOOKS, BOOK_CREDIT, BOOK_VERSION, PAGE_WORDS, bookPlace, chapterName, chapterSpeeds, loadBookTexts, openBook, paginate, placeAt } from '../src/books.js';
-import { CORPUS_VERSION, METRIC_VERSION, comparable, conditionKey, recommendTarget, summarizePatterns } from '../src/typing.js';
-import { MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, recurringTargets, retainRuns, runRecord, trendRun } from '../src/insights.js';
+import { BOOKS, BOOK_VERSION, PAGE_WORDS, bookName, bookPage, bookPlace, openBook, paginate } from '../src/books.js';
+import { BOOK_TEXTS } from '../src/book-texts.js';
+import { CORPUS_VERSION, METRIC_VERSION, conditionKey } from '../src/typing.js';
+import { conditionParts, shapeOf, trendRun } from '../src/insights.js';
+import { preferencesInUse } from '../src/profile.js';
 import { normalise } from '../scripts/build-book-texts.mjs';
 
-const texts = await loadBookTexts();
-const bookConditions = { mode: 'book', duration: null, count: null, punctuation: true, quoteLength: null, difficulty: null, wordList: null,
+const bookConditions = { mode: 'book', duration: null, count: null, punctuation: true, numbers: false, quoteLength: null, difficulty: null, wordList: null,
   book: 'alice', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: BOOK_VERSION, metricVersion: METRIC_VERSION };
 
-test('four Gutenberg books, credited, with their first two sections and no more than 150 KB of text', async () => {
-  assert.deepEqual(BOOKS.map((book) => book.gutenberg), [11, 1342, 1661, 84]);
-  assert.equal(BOOK_CREDIT, 'Text from Project Gutenberg; public domain in the US');
-  for (const book of BOOKS) assert.equal(texts[book.id].length, 2, book.id);
-  assert.deepEqual(texts.alice.map((section) => `${section.label} · ${section.title}`), ['Chapter I · Down the Rabbit-Hole', 'Chapter II · The Pool of Tears']);
-  assert.match(texts.pride[0].paragraphs[0], /^It is a truth universally acknowledged, that a single man in possession of a good fortune must be in want of a wife\.$/);
+test('four books with their first two sections and no more than 150 KB of text', async () => {
+  assert.deepEqual(BOOKS.map((book) => book.id), ['alice', 'pride', 'sherlock', 'frankenstein']);
+  for (const book of BOOKS) assert.equal(BOOK_TEXTS[book.id].length, 2, book.id);
+  assert.match(BOOK_TEXTS.pride[0].paragraphs[0], /^It is a truth universally acknowledged, that a single man in possession of a good fortune must be in want of a wife\.$/);
   assert.ok((await stat(new URL('../src/book-texts.js', import.meta.url))).size < 150_000);
+  assert.equal(bookName('sherlock'), 'sherlock holmes');
 });
 
 test('every page is plain printable ASCII the engine can type, and pages keep every word in order', () => {
   const ids = new Set();
-  for (const meta of BOOKS) {
-    const book = openBook(meta.id);
-    assert.ok(book.pages.length > 20, meta.id);
-    for (const page of book.pages) {
+  for (const { id } of BOOKS) {
+    const pages = openBook(id);
+    assert.ok(pages.length > 20, id);
+    pages.forEach((page, index) => {
+      assert.equal(page.page, index);
       assert.match(page.text, /^[\x21-\x7e]+(?: [\x21-\x7e]+)*$/, page.id);
       const words = page.text.split(' ').length;
       assert.ok(words >= PAGE_WORDS.min && words <= PAGE_WORDS.max, `${page.id}: ${words} words`);
       assert.ok(!ids.has(page.id), page.id);
       ids.add(page.id);
-    }
-    book.chapters.forEach((chapter, index) => {
-      const pages = book.pages.slice(chapter.firstPage, chapter.firstPage + chapter.pageCount);
-      assert.ok(pages.every((page) => page.chapter === index && page.pagesInChapter === chapter.pageCount));
-      assert.equal(pages.map((page) => page.text).join(' '), texts[meta.id][index].paragraphs.join(' '));
     });
+    assert.equal(pages.map((page) => page.text).join(' '), BOOK_TEXTS[id].flatMap((section) => section.paragraphs).join(' '));
+    // Each section starts on a new page.
+    assert.ok(pages.some((page) => page.text.startsWith(BOOK_TEXTS[id][1].paragraphs[0].split(' ').slice(0, 8).join(' '))), id);
   }
 });
 
@@ -54,115 +53,50 @@ test('pagination is deterministic and prefers paragraph and sentence ends', () =
   assert.ok(bennet[0].endsWith('said Mr. Bennet.'));
 });
 
-test('the place in a book is clamped, and starts at page 1 for anything unknown or from another text version', () => {
-  assert.deepEqual(placeAt(3), { page: 3, version: BOOK_VERSION });
-  assert.equal(bookPlace({}, 'alice', 10), 0);
-  assert.equal(bookPlace({ alice: placeAt(3) }, 'alice', 10), 3);
-  assert.equal(bookPlace({ alice: placeAt(30) }, 'alice', 10), 10);
-  assert.equal(bookPlace({ alice: placeAt(-2) }, 'alice', 10), 0);
-  assert.equal(bookPlace({ alice: placeAt(1.5) }, 'alice', 10), 0);
-  assert.equal(bookPlace({ alice: placeAt('4') }, 'alice', 10), 0);
-  assert.equal(bookPlace(undefined, 'alice', 10), 0);
-  // A re-paginated text would put the same index in a different passage.
-  assert.equal(bookPlace({ alice: { page: 3 } }, 'alice', 10), 0);
-  assert.equal(bookPlace({ alice: { page: 3, version: 'gutenberg-en-v0' } }, 'alice', 10), 0);
+test('the place in a book follows the latest counted run on one of its pages, and wraps after the last', () => {
+  const pages = openBook('alice');
+  const run = (page, overrides = {}) => ({ kind: 'test', status: 'complete', interrupted: false, conditions: bookConditions, textId: pages[page].id, ...overrides });
+  assert.equal(bookPlace([], 'alice'), 0);
+  assert.equal(bookPlace([run(0)], 'alice'), 1);
+  assert.equal(bookPlace([run(0), run(4), run(2)], 'alice'), 3);
+  // Interrupted runs, other books and other modes don't move it.
+  assert.equal(bookPlace([run(2), run(5, { status: 'interrupted', interrupted: true })], 'alice'), 3);
+  assert.equal(bookPlace([run(2), { ...run(5), conditions: { ...bookConditions, book: 'pride' } }], 'alice'), 3);
+  assert.equal(bookPlace([run(2), { ...run(5), conditions: { ...bookConditions, mode: 'quote' } }], 'alice'), 3);
+  // A retest at book conditions moves it like a test; a drill at book conditions types no page.
+  assert.equal(bookPlace([run(2), run(3, { kind: 'retest' })], 'alice'), 4);
+  assert.equal(bookPlace([run(2), run(0, { kind: 'drill', textId: 'drill-th-123' })], 'alice'), 3);
+  // After the last page, page 1; a page from another text version isn't found, so page 1 too.
+  assert.equal(bookPlace([run(pages.length - 1)], 'alice'), 0);
+  assert.equal(bookPlace([run(3, { textId: 'book-alice-c1p4-oldhash' })], 'alice'), 0);
 });
 
-test('page and chapter labels only break after a separator', () => {
-  assert.equal(chapterName({ label: 'Chapter I', title: 'Down the Rabbit-Hole' }), 'Chapter I\u00a0· Down the Rabbit-Hole');
-  assert.equal(chapterName({ label: 'Letter 1', title: '' }), 'Letter 1');
+test('a page number is read back from the page id', () => {
+  const pages = openBook('frankenstein');
+  assert.equal(bookPage(pages[0].id), 1);
+  assert.equal(bookPage(pages[11].id), 12);
+  assert.equal(bookPage('book-frankenstein-c1p1-oldhash'), null);
+  assert.equal(bookPage('quote-12'), null);
+  assert.equal(bookPage(undefined), null);
 });
 
-test('chapter speed is the median of the latest counted run on each page, at one exact condition', () => {
-  const book = openBook('alice');
-  const second = book.chapters[1].firstPage;
-  const run = (page, wpm, overrides = {}) => ({ id: `${page}-${wpm}`, kind: 'book', status: 'complete', interrupted: false, conditions: bookConditions,
-    book: { id: 'alice', chapter: book.pages[page].chapter, page }, score: { wpm, accuracy: 97 }, ...overrides });
-  const runs = [
-    run(0, 40), run(0, 50), run(1, 61), run(2, 70),
-    run(3, 200, { status: 'interrupted', interrupted: true }),
-    run(4, 200, { conditions: { ...bookConditions, inputClass: 'touch' } }),
-    run(5, 200, { conditions: { ...bookConditions, correctionPolicy: 'mandatory' } }),
-    run(6, 200, { book: { id: 'pride', chapter: 0, page: 6 } }),
-    run(7, 200, { kind: 'test' }),
-    run(second, 55),
-  ];
-  const [first, next] = chapterSpeeds(runs, book, bookConditions);
-  assert.deepEqual([first.pagesTyped, first.medianWpm], [3, 61]);
-  assert.deepEqual([next.pagesTyped, next.medianWpm], [1, 55]);
-  assert.equal(first.pageCount, book.chapters[0].pageCount);
-  const touch = chapterSpeeds(runs, book, { ...bookConditions, inputClass: 'touch' });
-  assert.deepEqual([touch[0].pagesTyped, touch[0].medianWpm, touch[1].medianWpm], [1, 200, null]);
-});
-
-test('a book page is its own condition: never a best key, a trend, a comparison or training evidence', () => {
-  // The practice default key is unchanged; the book key matches no practice key.
+test('book pages key by book and text version, apart from every other mode', () => {
   const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
     inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
   assert.equal(conditionKey(practice), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
-  assert.equal(conditionKey(bookConditions), 'book:::punctuation::::physical-keyboard:relaxed:gutenberg-en-v1:stilltype-metrics-v1');
-  assert.equal(conditionKey({ ...bookConditions, book: 'pride' }), conditionKey(bookConditions));
-
-  const text = 'the then there these';
-  const events = [...text].map((char, i) => ({ type: 'insert', text: i === 1 ? 'x' : char, position: i, accepted: true, offsetMs: i * 150 }));
-  const attempt = (id, kind, textId) => ({ id, kind, text, textId, status: 'complete', interrupted: false, fresh: true, metricVersion: METRIC_VERSION,
-    conditions: bookConditions, events, startedAt: 0, endedAt: 3000, book: kind === 'book' ? { id: 'alice', chapter: 0, page: 0 } : undefined });
-  const pages = Array.from({ length: 6 }, (_, i) => attempt(`p${i}`, 'book', `page-${i}`));
-  assert.equal(summarizePatterns(pages, 20, bookConditions).attemptCount, 0);
-  assert.equal(recommendTarget(pages, bookConditions).kind, 'general');
-  assert.equal(comparable(pages[0], pages[1]), false);
-  assert.equal(comparable(attempt('t', 'test', 'a'), attempt('r', 'retest', 'b')), true);
-
-  const records = pages.map((page) => ({ ...runRecord(page), at: '2026-10-01T12:00:00Z' }));
-  assert.deepEqual(records[0].book, { id: 'alice', chapter: 0, page: 0 });
-  assert.equal(records.some(trendRun), false);
-  assert.deepEqual(recurringTargets(records, [], bookConditions), []);
-  assert.equal('book' in runRecord(attempt('t', 'test', 'a')), false);
+  assert.equal(conditionKey(bookConditions), 'book-alice:::punctuation::::physical-keyboard:relaxed:gutenberg-en-v1:stilltype-metrics-v1');
+  assert.notEqual(conditionKey({ ...bookConditions, book: 'pride' }), conditionKey(bookConditions));
+  assert.notEqual(conditionKey({ ...bookConditions, corpus: 'gutenberg-en-v2' }), conditionKey(bookConditions));
+  assert.equal(shapeOf(bookConditions), 'book:alice');
+  assert.equal(conditionParts(bookConditions).length, 'alice in wonderland');
+  // A completed, fresh book page is a practice run like any other.
+  assert.equal(trendRun({ kind: 'test', status: 'complete', interrupted: false, fresh: true, conditions: bookConditions }), true);
 });
 
-test('a long read never pushes practice evidence out of the bounded pattern memory', () => {
-  const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
-    inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
-  const test = (i) => ({ id: `t${i}`, at: `2026-10-01T12:${String(i).padStart(2, '0')}:00Z`, kind: 'test', status: 'complete', interrupted: false,
-    conditions: practice, score: { wpm: 60, accuracy: 97 }, patterns: [['th', 8, 1, 10, 140, 20]] });
-  const page = (i) => ({ id: `b${i}`, at: '2026-10-02T12:00:00Z', kind: 'book', status: 'complete', interrupted: false,
-    conditions: bookConditions, book: { id: 'alice', chapter: 0, page: i }, score: { wpm: 70, accuracy: 98 }, patterns: [] });
-  let runs = [];
-  for (let i = 0; i < 10; i += 1) runs = retainRuns([...runs, test(i)]);
-  const before = recurringTargets(runs, [], practice);
-  assert.equal(before[0].pair, 'th');
-  // Every page saves through retainRuns, as saveProfile does.
-  for (let i = 0; i < MAX_PATTERN_RUNS + 30; i += 1) runs = retainRuns([...runs, page(i)]);
-  assert.equal(runs.filter((run) => run.kind === 'test' && run.patterns.length).length, 10);
-  assert.deepEqual(recurringTargets(runs, [], practice), before);
-  // Practice runs still share the window with each other: the oldest beyond it lose their counts.
-  for (let i = 10; i < MAX_PATTERN_RUNS + 5; i += 1) runs = retainRuns([...runs, test(i)]);
-  assert.equal(runs.filter((run) => run.kind === 'test' && run.patterns.length).length, MAX_PATTERN_RUNS);
-  assert.deepEqual(runs.filter((run) => run.kind === 'test' && !run.patterns.length).map((run) => run.id), ['t0', 't1', 't2', 't3', 't4']);
-});
-
-test('custom runs never reach chapter speeds, and book pages and custom runs keep their own budgets', () => {
-  const book = openBook('alice');
-  const page = (i, overrides = {}) => ({ id: `b${i}`, at: '2026-10-02T12:00:00Z', kind: 'book', status: 'complete', interrupted: false,
-    conditions: bookConditions, book: { id: 'alice', chapter: book.pages[i].chapter, page: i }, score: { wpm: 50, accuracy: 98 }, patterns: [], ...overrides });
-  // A custom run that somehow carried a book reference and the book's conditions is still never a chapter speed.
-  const [first] = chapterSpeeds([page(0), page(1, { kind: 'custom', id: 'c1', score: { wpm: 300, accuracy: 100 } })], book, bookConditions);
-  assert.deepEqual([first.pagesTyped, first.medianWpm], [1, 50]);
-
-  const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
-    inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
-  const test = (i) => ({ id: `t${i}`, at: '2026-10-01T12:00:00Z', kind: 'test', status: 'complete', interrupted: false,
-    conditions: practice, score: { wpm: 60, accuracy: 97 }, patterns: [['th', 8, 1, 10, 140, 20]] });
-  const custom = (i) => ({ id: `c${i}`, at: '2026-10-03T12:00:00Z', kind: 'custom', status: 'complete', interrupted: false,
-    conditions: { ...practice, mode: 'custom', duration: null, wordList: null, customOrder: 'as-written' }, score: { wpm: 80, accuracy: 99 } });
-  let runs = [];
-  for (let i = 0; i < 10; i += 1) runs = retainRuns([...runs, test(i)]);
-  for (let i = 0; i < MAX_PATTERN_RUNS + 30; i += 1) runs = retainRuns([...runs, page(i % book.pages.length, { id: `b${i}` }), custom(i)]);
-  // Practice keeps its counts, book pages stay in the comparable window, custom keeps only its newest 50.
-  assert.equal(runs.filter((run) => run.kind === 'test' && run.patterns.length).length, 10);
-  assert.equal(runs.filter((run) => run.kind === 'book').length, MAX_PATTERN_RUNS + 30);
-  assert.equal(runs.filter((run) => run.kind === 'custom').length, MAX_NON_COMPARABLE_RUNS);
-  assert.equal(runs.some((run) => run.kind === 'custom' && 'patterns' in run), false);
+test('the chosen book is a preference, and an unknown one reads as the first book', () => {
+  assert.equal(preferencesInUse({}).book, 'alice');
+  assert.equal(preferencesInUse({ book: 'pride' }).book, 'pride');
+  assert.equal(preferencesInUse({ book: 'ulysses' }).book, 'alice');
 });
 
 test('normalising Gutenberg text keeps the words and makes them typable', () => {

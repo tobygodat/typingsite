@@ -1,37 +1,21 @@
-// Book mode: the opening chapters of four public-domain books, typed a page at a time.
-// Titles, pagination and per-chapter speed live here; the text is in book-texts.js and is
-// fetched the first time book mode opens. A book page is its own condition: it never becomes
-// a best, a retest baseline, a trend point or training evidence (see summarizePatterns).
-import { conditionKey, textId } from './typing.js';
-import { median, validRun } from './insights.js';
+// Book mode: the opening sections of four public-domain books, typed a page at a time.
+// The text is in book-texts.js (generated); pagination and the place in each book live here.
+import { BOOK_TEXTS } from './book-texts.js';
+import { textId } from './typing.js';
 
-// Part of every book page's conditions and stored with every remembered place. Bump it if the
-// text or the pagination changes, so places and chapter speeds never mix two different sets of pages.
+// Part of every book page's conditions, so bests and trends never mix two different sets of pages.
+// Bump it if the text or the pagination changes.
 export const BOOK_VERSION = 'gutenberg-en-v1';
-export const BOOK_CREDIT = 'Text from Project Gutenberg; public domain in the US';
 export const DEFAULT_BOOK = 'alice';
 
 export const BOOKS = [
-  { id: 'alice', title: 'Alice’s Adventures in Wonderland', short: 'Alice in Wonderland', author: 'Lewis Carroll', gutenberg: 11 },
-  { id: 'pride', title: 'Pride and Prejudice', short: 'Pride and Prejudice', author: 'Jane Austen', gutenberg: 1342 },
-  { id: 'sherlock', title: 'The Adventures of Sherlock Holmes', short: 'Sherlock Holmes', author: 'Arthur Conan Doyle', gutenberg: 1661 },
-  { id: 'frankenstein', title: 'Frankenstein', short: 'Frankenstein', author: 'Mary Wollstonecraft Shelley', gutenberg: 84 },
+  { id: 'alice', name: 'alice in wonderland' },
+  { id: 'pride', name: 'pride and prejudice' },
+  { id: 'sherlock', name: 'sherlock holmes' },
+  { id: 'frankenstein', name: 'frankenstein' },
 ];
 export const bookIds = BOOKS.map((book) => book.id);
-export const findBook = (id) => BOOKS.find((book) => book.id === id) || null;
-
-let texts = null;
-let loading = null;
-let failures = 0;
-
-// The text is about 90 KB, so it only loads when someone opens book mode. A failed module fetch
-// stays failed for that URL for the life of the page, so each retry asks under a new one.
-export function loadBookTexts() {
-  loading ||= import(failures ? `./book-texts.js?retry=${failures}` : './book-texts.js')
-    .then((module) => { texts = module.BOOK_TEXTS; return texts; })
-    .catch((error) => { loading = null; failures += 1; throw error; });
-  return loading;
-}
+export const bookName = (id) => BOOKS.find((book) => book.id === id)?.name || 'book';
 
 // A page is about one passage: roughly 55 words, never more than 80.
 export const PAGE_WORDS = { min: 30, target: 55, max: 80 };
@@ -77,7 +61,7 @@ export function paginate(paragraphs, { min, target, max } = PAGE_WORDS) {
   while (start < words.length) {
     let end = words.length;
     if (end - start > max) {
-      // Leave at least a minimum page behind, so a chapter never ends on a scrap.
+      // Leave at least a minimum page behind, so a section never ends on a scrap.
       let best = Infinity;
       for (let candidate = start + min; candidate <= Math.min(start + max, words.length - min); candidate += 1) {
         const cost = words[candidate - 1].cost + Math.abs(candidate - start - target);
@@ -92,57 +76,38 @@ export function paginate(paragraphs, { min, target, max } = PAGE_WORDS) {
 
 const opened = new Map();
 
-// Every page of a book's included chapters, in order. Null until the text has loaded.
+// Every page of a book, in order. Each section starts on a new page. A page's id carries a hash of
+// its text, so a change to the text or the pagination gives new ids.
 export function openBook(id) {
-  const book = findBook(id);
-  if (!book || !texts?.[id]) return null;
-  if (opened.has(id)) return opened.get(id);
-  const pages = [];
-  const chapters = texts[id].map((section, chapter) => {
-    const chapterPages = paginate(section.paragraphs);
-    const first = pages.length;
-    chapterPages.forEach((text, index) => {
-      pages.push({
-        id: `book-${id}-c${chapter + 1}p${index + 1}-${textId(text).replace(/^generated-/, '')}`,
-        book: id, chapter, page: pages.length, pageInChapter: index, pagesInChapter: chapterPages.length, text,
-      });
-    });
-    return { index: chapter, label: section.label, title: section.title, firstPage: first, pageCount: chapterPages.length };
-  });
-  const result = { ...book, chapters, pages };
-  opened.set(id, result);
-  return result;
-}
-
-// A remembered place: the next page to type, in this version's pagination.
-export const placeAt = (page) => ({ page, version: BOOK_VERSION });
-
-// The next page to type: a stored index, clamped. Equal to pages.length once every page is done.
-// A place saved under another text version points at different pages, so it starts again at page 1.
-export function bookPlace(places, id, total) {
-  const place = places?.[id];
-  if (place?.version !== BOOK_VERSION) return 0;
-  return Number.isInteger(place.page) && place.page > 0 ? Math.min(place.page, total) : 0;
-}
-
-// "Chapter I · Down the Rabbit-Hole": a line may break after the "·", never before it.
-export function chapterName(chapter) {
-  return chapter.title ? `${chapter.label}\u00a0· ${chapter.title}` : chapter.label;
-}
-
-// Per chapter: the median wpm of the latest completed run on each page, at one exact condition
-// key (so touch and keyboard, or the two correction rules, never mix), with the page count behind it.
-export function chapterSpeeds(runs, book, conditions) {
-  const key = conditionKey(conditions);
-  const latest = new Map();
-  for (const run of runs) {
-    if (run.kind !== 'book' || !validRun(run) || run.book?.id !== book.id || conditionKey(run.conditions) !== key) continue;
-    if (!Number.isInteger(run.book.page) || run.book.page >= book.pages.length) continue;
-    latest.set(run.book.page, run);
+  if (!BOOK_TEXTS[id]) return null;
+  if (!opened.has(id)) {
+    const pages = BOOK_TEXTS[id].flatMap((section, s) => paginate(section.paragraphs).map((text, p) => ({
+      id: `book-${id}-c${s + 1}p${p + 1}-${textId(text).replace(/^generated-/, '')}`, book: id, text,
+    })));
+    pages.forEach((page, index) => { page.page = index; });
+    opened.set(id, pages);
   }
-  return book.chapters.map((chapter) => {
-    const typed = [...latest.values()].filter((run) => book.pages[run.book.page].chapter === chapter.index);
-    const wpm = median(typed.map((run) => run.score.wpm));
-    return { ...chapter, pagesTyped: typed.length, medianWpm: wpm === null ? null : Math.round(wpm) };
-  });
+  return opened.get(id);
+}
+
+// The next page to type: the one after the latest completed, uninterrupted run on a page of this
+// book, from the run history (so it syncs and clears with it). A drill at book conditions types no
+// page, and a page from another text version isn't found, so neither counts. After the last page
+// the book starts again at page 1.
+export function bookPlace(runs, id) {
+  const pages = openBook(id);
+  for (let i = runs.length - 1; i >= 0; i -= 1) {
+    const run = runs[i];
+    if (run.conditions?.mode !== 'book' || run.conditions.book !== id || run.status !== 'complete' || run.interrupted) continue;
+    const index = pages.findIndex((page) => page.id === run.textId);
+    if (index >= 0) return (index + 1) % pages.length;
+  }
+  return 0;
+}
+
+// "page 12": a page's place in its book, or null for a text that isn't a current book page.
+export function bookPage(textId) {
+  const id = /^book-([a-z]+)-/.exec(textId || '')?.[1];
+  const index = id && openBook(id) ? openBook(id).findIndex((page) => page.id === textId) : -1;
+  return index < 0 ? null : index + 1;
 }
