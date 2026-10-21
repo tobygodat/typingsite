@@ -11,6 +11,7 @@ import { CODE_LANGUAGES, DEFAULT_CODE_LANGUAGE } from './code-snippets.js';
 import { DEFAULT_WORD_HIGHLIGHT, normalizeWordHighlight } from './word-highlight.js';
 import { DEFAULT_BOOK, bookIds } from './books.js';
 import { DAILY_GOALS, retainTraces, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
+import { retainRunCounts } from './run-counts.js';
 import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
 
@@ -76,6 +77,8 @@ export function emptyProfile() {
     attempts: [],
     runs: [],
     practiceDays: {},
+    // Runs started and finished, per tab counter and day (src/run-counts.js).
+    runCounts: {},
     loops: [],
     seenTextIds: [],
     bests: {},
@@ -157,6 +160,7 @@ export function normalizeProfile(parsed) {
     ...(Object.keys(preferencesAt).length ? { preferencesAt } : {}),
     attempts: retainTraces(settleDailyFirsts(traces)),
     ...retainHistory(settleDailyFirsts(records), validPracticeDays(parsed.practiceDays)),
+    runCounts: retainRunCounts(parsed.runCounts),
     loops: Array.isArray(parsed.loops) ? parsed.loops : [],
     seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
     // Stored bests are kept exactly as saved, including any an exhausted quote pool set before repeat quotes:
