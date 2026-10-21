@@ -89,6 +89,7 @@ handling:
 ```sh
 $V drive .claude/skills/verify-stilltype/flows/palette-theme.mjs
 $V drive .claude/skills/verify-stilltype/flows/code-run.mjs --scheme light
+$V drive .claude/skills/verify-stilltype/flows/challenge-chrome.mjs --width 320 --height 568 --mobile
 $V drive .claude/skills/verify-stilltype/flows/themes.mjs        # every theme: settings, mid-run, results
 ```
 
@@ -112,7 +113,10 @@ for finite animations, at most 2 s) and `text(selector)`. Keep a flow worth repe
 `.claude/skills/verify-stilltype/flows/` and add it to the feature map.
 
 Stable handles: the dock is `getByRole('navigation', { name: 'Main navigation' })` with buttons Practice,
-Train, Progress, Challenge, Commands; the practice rail is `.practice-rail` with `#mode-time`, `#mode-words`,
+Train, Progress, Challenge, Commands (below 360px the names are "type practice", "train", "track progress",
+"race challenge"; the default substring match on the full word finds them at every width); the challenge
+tabs are `.challenge-modes` with `#challenge-online`, `#challenge-daily`, `#challenge-friends`,
+`#challenge-local` (`aria-pressed`); key hints carry `.key-hint` and hide under `--mobile`; the practice rail is `.practice-rail` with `#mode-time`, `#mode-words`,
 `#mode-quote`, `#mode-more` / `#mode-more-label`, `#duration-options [data-length="N"]` and
 `#punctuation-switch`; the passage is `#accessible-passage` and input `#typing-input`; the view is
 `body[data-view]` (practice, results, progress, compete), a run in progress sets `body[data-running]`; theme is
