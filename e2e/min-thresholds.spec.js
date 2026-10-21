@@ -38,7 +38,7 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
   await expect(page.locator('#minimum-note')).toBeHidden();
   await chooseSetting(page, 'min-accuracy', '95');
   await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy');
-  await expect(page.locator('#condition-line')).toContainText('continue on error · corpus v5 · metric v1 · min 95% accuracy');
+  await expect(page.locator('#condition-line')).toContainText('continue on error · min 95% accuracy');
   await page.keyboard.press('Escape');
 
   // Thirty-nine keys in 7.8 s: past five seconds, but a 95% minimum waits for 40 characters, so

@@ -166,7 +166,7 @@
               </div>
               <h1 id="session-title">Practice</h1>
               <p id="session-description"></p>
-              <p id="condition-line">english · common words · 30 s · corpus v3 · metric v1</p>
+              <p id="condition-line">english · common words · 30 s</p>
             </div>
             <div id="live-stats" class="live-stats">
               <div class="live-stat timer-stat">
@@ -300,7 +300,7 @@
               <div title="The finished text: correct / still wrong / extra / missed characters. Slips you fixed count as first-try errors"><dt>final c/i/e/m</dt><dd id="result-chars" class="num">—</dd></div>
             </dl>
             <p class="metric-note"><span id="speed-definition"></span> · accuracy counts every character typed, corrected ones included</p>
-            <p class="condition-copy" id="result-conditions">english · common words · corpus v3 · metric v1</p>
+            <p class="condition-copy" id="result-conditions">english · common words</p>
             <details class="manual-panel metric-more">
               <summary>How raw, consistency and c/i/e/m are counted</summary>
               <p class="metric-note">raw counts every character typed, mistakes included · consistency is 100 minus the variation of per-second speed · final c/i/e/m: correct, still wrong, extra past the end, missed; fixed slips are first-try errors</p>
@@ -392,9 +392,9 @@
           <div class="results-history">
             <section class="training-memory" aria-labelledby="training-memory-heading">
               <h2 id="training-memory-heading">Patterns across runs</h2>
-              <label class="filter-field" for="training-conditions">Test conditions
-                <select id="training-conditions" class="input"></select>
-              </label>
+              <div class="filter-field">
+                <select id="training-conditions" class="input" aria-label="Test conditions"></select>
+              </div>
               <p id="training-memory-note" class="result-note"></p>
               <div id="training-targets"></div>
             </section>

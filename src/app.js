@@ -2640,7 +2640,7 @@ function conditionOptions(select, sources, fallback = null) {
   select.replaceChildren(...[...groups].map(([key, value]) => {
     const option = document.createElement('option');
     option.value = key;
-    option.textContent = describeConditions(value);
+    option.textContent = describeConditions(value, [...groups.values()]);
     return option;
   }));
   if (groups.has(prior)) select.value = prior;

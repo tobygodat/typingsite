@@ -50,7 +50,7 @@ test('period and test pills filter the overview, and condition sets never mix', 
   await expect(variants.locator('option:checked')).toHaveText('plain');
   const conditionsLine = page.locator('#progress-conditions');
   await expect(conditionsLine).toBeVisible();
-  await expect(conditionsLine).toHaveText('english 1k · 25 words · plain · physical keyboard · continue on error · corpus v5 · metric v1');
+  await expect(conditionsLine).toHaveText('english 1k · 25 words · plain · physical keyboard · continue on error');
   // A preset length with no runs stays in the row, disabled.
   await expect(tests.getByRole('button', { name: '100 words' })).toBeDisabled();
   await expect(tests.getByRole('button', { name: '15 seconds' })).toBeEnabled();
