@@ -95,6 +95,59 @@ test.describe('narrow run card', () => {
   });
 });
 
+// The typing surface does not shift: switching modes never moves the rail, and the copy-test modes
+// keep the passage's first line where it was.
+for (const [width, height] of [[1280, 800], [390, 844], [320, 568]]) {
+  test.describe(`modes at ${width}x${height}`, () => {
+    const phone = width < 760;
+    test.use({ viewport: { width, height }, hasTouch: phone, isMobile: phone });
+
+    test('switching modes moves neither the rail nor the passage', async ({ page }) => {
+      await openApp(page);
+      const place = () => page.evaluate(() => ({
+        rail: document.querySelector('.mode-options').getBoundingClientRect().top,
+        line: document.querySelector('#compose-form').hidden ? document.querySelector('#text-display .char').getBoundingClientRect().top : null,
+      }));
+      const start = await place();
+      const modes = [
+        ['words', () => page.locator('#mode-words').click()],
+        ['quote', () => page.locator('#mode-quote').click()],
+        ['code', () => chooseMore(page, 'mode-code')],
+        ['standard', () => chooseMore(page, 'mode-standard')],
+        ['compose', () => chooseMore(page, 'mode-compose')],
+        ['custom text', () => chooseMore(page, 'mode-custom')],
+        ['time', () => page.locator('#mode-time').click()],
+      ];
+      for (const [mode, choose] of modes) {
+        await choose();
+        await page.evaluate(() => window.scrollTo(0, 0));
+        const now = await place();
+        expect(Math.abs(now.rail - start.rail), `${mode} rail`).toBeLessThanOrEqual(1);
+        if (['words', 'quote', 'code', 'standard', 'time'].includes(mode)) expect(Math.abs(now.line - start.line), `${mode} passage`).toBeLessThanOrEqual(1);
+      }
+    });
+  });
+}
+
+test.describe('lesson on a 320x568 phone', () => {
+  test.use({ viewport: { width: 320, height: 568 }, hasTouch: true, isMobile: true });
+
+  test('the passage starts above the bottom dock without scrolling', async ({ page }) => {
+    await openApp(page);
+    await chooseMore(page, 'open-lessons');
+    await page.locator('#lesson-primary').click();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+    const { line, dock, scrolled } = await page.evaluate(() => ({
+      line: document.querySelector('#text-display .char').getBoundingClientRect().toJSON(),
+      dock: document.querySelector('nav.dock').getBoundingClientRect().top,
+      scrolled: window.scrollY,
+    }));
+    expect(scrolled).toBe(0);
+    expect(line.top).toBeGreaterThanOrEqual(0);
+    expect(line.bottom).toBeLessThanOrEqual(dock);
+  });
+});
+
 test('desktop keeps the dock at the top and the passage at three lines', async ({ page }) => {
   await openApp(page);
   const dock = await page.locator('nav.dock').boundingBox();
