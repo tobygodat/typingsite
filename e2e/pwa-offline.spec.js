@@ -34,6 +34,34 @@ test('the app installs, reloads offline and still types', async ({ page, context
   await context.setOffline(false);
 });
 
+// A deploy changes the scripts and stylesheet under the same paths. The worker that already controls the
+// page must hand over the deployed files, not its cached copies: cached app.js under a newer index.html
+// crashed before drawing the passage, so the text vanished on the first visit after a deploy.
+test('a deploy reaches a page the worker already controls', async ({ page, context }) => {
+  await openApp(page);
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await page.reload();
+  expect(await page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  // context.route also sees the worker's own fetches, so this stands in for the next deploy.
+  const deploy = (path, extra) => context.route(path, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: `${await response.text()}\n${extra}\n` });
+  });
+  await deploy('**/src/styles.css', ':root { --deployed: next; }');
+  await deploy('**/src/app.js', "document.documentElement.dataset.deployed = 'next';");
+  const response = await page.reload();
+  expect(response.fromServiceWorker()).toBe(true);
+  await expect(page.locator('html')).toHaveAttribute('data-deployed', 'next');
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--deployed').trim())).toBe('next');
+  await expect(page.locator('#text-display .char').first()).toBeVisible();
+  // Offline, the copies this visit fetched answer instead.
+  await context.setOffline(true);
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-deployed', 'next');
+  await expect(page.locator('#text-display .char').first()).toBeVisible();
+  await context.setOffline(false);
+});
+
 // Committed docs are only rewritten on purpose (SCREENSHOTS=1); a normal run writes to the test output dir.
 const shot = (testInfo, name) =>
   process.env.SCREENSHOTS ? `docs/screenshots/pwa-offline/${name}.png` : testInfo.outputPath(`${name}.png`);
