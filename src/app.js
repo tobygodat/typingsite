@@ -166,6 +166,9 @@ let heldDeadKey = null;
 // are scored together: { type, attempt, key (that key), mark (its first input, once it came), at,
 // repeated (the accent key was held: what the key types to commit its pending mark is repeat too) }.
 let accentPair = null;
+// An online race's typing surface (src/online-race.js), which takes keys through this same path as type
+// 'online': { attempt, origin (the shared start), view, accepting(at), notice(message), changed(), finish() }.
+let online = null;
 // Whether the practice passage is on one line. Read from the body, as the stylesheet does, so trimming and
 // measuring always follow the layout on screen (see tapeLayout).
 const onTape = () => document.body.dataset.tape === 'true';
@@ -1515,6 +1518,9 @@ function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
     // A message left by an abandoned custom length belongs to the row, not to the run.
     setCustomLengthError('');
     $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>In progress';
+  } else if (type === 'online') {
+    // The race clock started at the shared start.
+    targetAttempt.status = 'running';
   } else {
     if (race.startTime !== null) return;
     race.startTime = stamp;
@@ -1525,19 +1531,19 @@ function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
 }
 
 function offsetFor(type = 'primary', at = now()) {
-  const origin = type === 'primary' ? startTime : race.startTime;
+  const origin = type === 'primary' ? startTime : type === 'online' ? online.origin : race.startTime;
   return origin === null ? 0 : Math.max(0, at - origin);
 }
 
 function currentReplay(type = 'primary') {
-  return replayAttempt(type === 'primary' ? attempt : race.attempt);
+  return replayAttempt(inputAttempt(type));
 }
 
 // carried: a later key of an accent commit (the h of "h). One the passage has no place left for was pressed
 // while its last letter was still to come, so it is a mistake against that letter, or nothing if it is that
 // letter (carriedKey).
 function pushInsert(char, type = 'primary', at = now(), carried = false) {
-  const targetAttempt = type === 'primary' ? attempt : race.attempt;
+  const targetAttempt = inputAttempt(type);
   startAttempt(targetAttempt, type, at);
   const replay = replayAttempt(targetAttempt);
   const offsetMs = offsetFor(type, at);
@@ -1568,22 +1574,23 @@ function pushInsert(char, type = 'primary', at = now(), carried = false) {
 }
 
 function pushDelete(type = 'primary') {
-  const targetAttempt = type === 'primary' ? attempt : race.attempt;
+  const targetAttempt = inputAttempt(type);
   const replay = replayAttempt(targetAttempt);
   if (!replay.typed.length) return replay.typed.length;
   targetAttempt.events.push({ type: 'delete', count: 1, offsetMs: offsetFor(type) });
   return replay.typed.length;
 }
 
-const inputAttempt = (type) => (type === 'primary' ? attempt : race.attempt);
+const inputAttempt = (type) => (type === 'primary' ? attempt : type === 'online' ? online.attempt : race.attempt);
 
 // A timed run's clock has run out by this time (by default, now).
 const timeUp = (at = now()) => startTime !== null && Boolean(sessionDurationMs()) && at - startTime >= sessionDurationMs();
+const inTime = (type, at) => (type === 'online' ? online.accepting(at) : !timeUp(at));
 // An accent commit made before the limit and still waiting for the key that ended it, or (Windows) a mark
 // typed before the limit and waiting for its key's input.
-const commitInTime = () => (composition?.type === 'primary' && composition.commit !== null
-  && composition.attempt === attempt && !timeUp(composition.at))
-  || (accentPair?.type === 'primary' && accentPair.mark !== null && accentPair.attempt === attempt && !timeUp(accentPair.at));
+const commitInTime = (type = 'primary') => (composition?.type === type && composition.commit !== null
+  && composition.attempt === inputAttempt(type) && inTime(type, composition.at))
+  || (accentPair?.type === type && accentPair.mark !== null && accentPair.attempt === inputAttempt(type) && inTime(type, accentPair.at));
 
 // A timed run ends at its limit, once nothing typed before the limit is still to be scored.
 function finishIfTimeUp(at = now()) {
@@ -1595,6 +1602,7 @@ function finishIfTimeUp(at = now()) {
 function acceptingInput(type, at = now()) {
   const target = inputAttempt(type);
   if (!target || ['complete', 'interrupted'].includes(target.status)) return false;
+  if (type === 'online') return online.accepting(at);
   if (type === 'primary' && timeUp(at)) {
     finishPrimary(sessionDurationMs());
     return false;
@@ -1602,8 +1610,12 @@ function acceptingInput(type, at = now()) {
   return true;
 }
 
-// IME text isn't keyboard input: the run stops counting, as before.
+// IME text isn't keyboard input: the run stops counting, as before. An online race goes on without it.
 function refuseComposition(type) {
+  if (type === 'online') {
+    showInputNotice(type, NOTICES.onlineComposition);
+    return;
+  }
   const target = inputAttempt(type);
   if (type === 'primary' && target.status === 'ready') startAttempt(target);
   target.unsupportedInput = true;
@@ -1624,17 +1636,15 @@ function typeKeys(keys, type, at = now()) {
   sounds.play(keyOutcome(changes));
   const failure = changes.find((change) => change.failed)?.failed;
   if (changes.some((change) => change.submit)) {
-    if (type === 'primary') finishPrimary();
-    else finishRacePlayer();
+    finishTyping(type);
     return;
   }
   if (failure) { target.interrupted = true; target.failed = failure; }
   refreshAfterInput(type, changes[0].previousLength, changes.at(-1).blocked, at);
-  if (failure && target.status === 'running') {
-    if (type === 'primary') finishPrimary();
-    else finishRacePlayer();
-  }
+  if (failure && target.status === 'running') finishTyping(type);
 }
+
+const finishTyping = (type) => (type === 'primary' ? finishPrimary() : type === 'online' ? online.finish() : finishRacePlayer());
 
 // What a composition committed, scored once the key that ended it is known. A mark pending when focus
 // leaves is dropped, and browsers commit it on the way out: Chrome and Firefox send that key (Tab)
@@ -1753,6 +1763,7 @@ function beforeTypingInput(event, type = 'primary') {
   // One key, or an accent mark and the letter it couldn't combine with (Windows sends both).
   const keys = [...event.data].length === 1 ? [event.data] : composedKeys(event.data);
   if (!keys) {
+    if (type === 'online') return;
     const targetAttempt = inputAttempt(type);
     targetAttempt.unsupportedInput = true;
     targetAttempt.interrupted = true;
@@ -1876,6 +1887,19 @@ function wireComposition(input, type) {
   });
 }
 
+// An online race types through the practice path (see online). pending: a commit typed before the race's
+// limit is still to be scored, so the race waits for it before it finishes.
+function wireOnlineTyping(input, surface) {
+  online = surface;
+  input.addEventListener('beforeinput', (event) => beforeTypingInput(event, 'online'));
+  input.addEventListener('input', (event) => {
+    if (!online.attempt || event.isComposing || composition?.type === 'online') return;
+    input.value = replayAttempt(online.attempt).typed;
+  });
+  wireComposition(input, 'online');
+  return { pending: () => commitInTime('online') };
+}
+
 // Everything the typing surface says, kept short. The focus-lost and composition
 // notices stay until restart because the run no longer counts. Accent (dead) keys are
 // typed characters; only IME text (any composition no accent key opened) is refused.
@@ -1899,6 +1923,8 @@ const NOTICES = {
   composeImport: 'Settings import opened mid-way, so this one won’t be saved.',
   deleteOpened: 'Account deletion opened mid-run, so it won’t count.',
   raceFocusLost: 'Focus lost. Esc to restart this turn.',
+  onlineBlocked: 'Correct the mistyped letter before continuing.',
+  onlineComposition: 'IME input isn’t supported in races. Use direct keyboard input.',
 };
 
 function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
@@ -1909,7 +1935,8 @@ function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
   if (type === 'primary') {
     $('input-help').textContent = message;
     if (sticky) primaryNotice = message;
-  } else {
+  } else if (type === 'online') online.notice(message);
+  else {
     $('race-help').textContent = message;
     if (sticky) race.notice = message;
   }
@@ -1929,11 +1956,11 @@ function refusePaste(type) {
 // its mark and its letter (scoreCommit ends it once both are in).
 function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   const isPrimary = type === 'primary';
-  const targetAttempt = isPrimary ? attempt : race.attempt;
+  const targetAttempt = inputAttempt(type);
   const replay = replayAttempt(targetAttempt);
-  const input = isPrimary ? $('typing-input') : $('race-input');
-  const characters = isPrimary ? primaryCharacters : race.characters;
-  const textView = isPrimary ? primaryTextView : race.textView;
+  const { input, characters, textView, fx } = type === 'online' ? online.view
+    : isPrimary ? { input: $('typing-input'), characters: primaryCharacters, textView: primaryTextView, fx: primaryFx }
+      : { input: $('race-input'), characters: race.characters, textView: race.textView, fx: raceFx };
   input.value = replay.typed;
   input.setSelectionRange(replay.typed.length, replay.typed.length);
   textView.ensureAhead(replay.typed.length);
@@ -1946,7 +1973,7 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   // A refused space is a miss at the letter it skipped: that letter is tinted until the next key,
   // so the coral caret always sits beside a tinted letter.
   if (blocked === 'space') characters[length].className = 'char wrong';
-  (isPrimary ? primaryFx : raceFx).update(length, outcome, (length > 0 && !lastCorrect) || blocked === 'space');
+  fx.update(length, outcome, (length > 0 && !lastCorrect) || blocked === 'space');
   textView.trimBehind(length);
   const waiting = awaitingSubmit(targetAttempt, replay.typed);
   const rule = blocked === 'space' ? NOTICES.strictSpace : waiting ? NOTICES.submit : '';
@@ -1959,6 +1986,10 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
     $('input-help').textContent = rule ? withRule(primaryNotice, rule) : blocked ? NOTICES.blocked : primaryNotice;
     updateLive(false, at);
     if (sessionDurationMs() === null && passageComplete(targetAttempt, replay.typed)) finishPrimary();
+  } else if (type === 'online') {
+    online.notice(rule || (blocked ? NOTICES.onlineBlocked : ''));
+    online.changed();
+    if (passageComplete(targetAttempt, replay.typed)) online.finish();
   } else {
     const help = $('race-help');
     if (rule) help.textContent = withRule(race.notice, rule);
@@ -6045,7 +6076,7 @@ onlineRace = createOnlineRace({
   board: friendsBoard,
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
-  playKeySound: (outcome) => sounds.play(outcome),
+  wireTyping: wireOnlineTyping,
   // The one-keyboard tab makes the race the session the rule switches act on.
   onModeChange: syncRules,
   onPassageSeen(id) {

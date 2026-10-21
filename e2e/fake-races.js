@@ -37,7 +37,8 @@ export class FakeRaces {
     const now = Date.now();
     if (now >= Date.parse(room.expiresAt) && !['finished', 'cancelled'].includes(room.status)) room.status = 'expired';
     if (room.status === 'countdown' && now >= Date.parse(room.startAt)) room.status = 'racing';
-    if (room.status === 'racing' && (room.players.every((p) => p.finished) || now >= Date.parse(room.startAt) + room.duration * 1000)) room.status = 'finished';
+    // As race_action: ten seconds' grace after the clock for the last progress.
+    if (room.status === 'racing' && (room.players.every((p) => p.finished) || now >= Date.parse(room.startAt) + (room.duration + 10) * 1000)) room.status = 'finished';
     return {
       id: room.id, status: room.status, passage: room.passage, conditions: room.conditions,
       duration: room.duration, startAt: room.startAt, expiresAt: room.expiresAt,
@@ -161,16 +162,20 @@ export class FakeRaces {
       }
     }
     if (action === 'progress' && room.status === 'racing' && !player.finished && data.sequence > player.sequence) {
+      // As race_action checks them: printable ASCII text, and counters that match it.
+      const correct = [...data.typed].filter((char, i) => char === room.passage[i]).length;
+      if (/[^ -~]/.test(data.typed) || data.typed.length > room.passage.length || data.keystrokes < data.typed.length
+        || data.errors > data.keystrokes) return failure('Typing progress is outside the race limits.');
+      if (data.errors < data.typed.length - correct || correct > data.keystrokes - data.errors) return failure('Typing counters do not match the submitted text.');
       player.sequence = data.sequence;
       player.typed = data.typed;
-      const correct = [...data.typed].filter((char, i) => char === room.passage[i]).length;
       player.progress = Math.round(correct / room.passage.length * 100);
       player.keystrokes = data.keystrokes;
       player.errors = data.errors;
-      player.elapsed = Math.max(0.001, (Date.now() - Date.parse(room.startAt)) / 1000);
+      player.elapsed = Math.min(room.duration, Math.max(0.001, (Date.now() - Date.parse(room.startAt)) / 1000));
       player.wpm = Math.round(correct / 5 / (player.elapsed / 60));
       player.accuracy = data.keystrokes ? Math.round((data.keystrokes - data.errors) / data.keystrokes * 100) : 100;
-      player.finished = Boolean(data.finished && data.typed === room.passage);
+      player.finished = Boolean(data.finished && data.typed === room.passage) || player.elapsed >= room.duration;
     }
     return reply(200, this.snapshot(room, player.slot));
   }

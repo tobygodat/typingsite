@@ -22,7 +22,7 @@ const CHARS_PER_SECOND = 400 * 5 / 60;
 
 // A character outside printable ASCII never matches a challenge passage, so it is sent as an ASCII
 // stand-in that differs from the letter expected there: the replay keeps the same length and errors.
-const standIn = (expected) => (expected === '~' ? '^' : '~');
+export const standIn = (expected) => (expected === '~' ? '^' : '~');
 // An emoji or other astral character fills two places in the replay, which one key can't stand for.
 const ASTRAL = /[\u{10000}-\u{10FFFF}]/u;
 
