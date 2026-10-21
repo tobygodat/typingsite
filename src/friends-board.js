@@ -223,12 +223,18 @@ export function shapeLabels(shapes) {
     .map((name) => named(name, part[name])).join(' · '));
 }
 
-// The full description of the picked shape: the app's own, with the punctuation setting when it tells
-// this quote apart from another listed.
+// What the picker's name for the picked shape leaves out, and only where it isn't the usual: a word list
+// other than the top 200, touch input, a correction rule other than continue on error. The layout and
+// rules are already in the app's parts only away from their defaults. Versions never differ on the
+// board (boardShapes keeps the current ones), so they aren't named.
+const USUAL = { language: ['english 200', 'english'], input: ['physical keyboard'], correction: ['continue on error'] };
 export function shapeDescription(shapes, key) {
   const { described, differs } = tellApart(shapes);
-  const part = described[shapes.findIndex((shape) => shape.key === key)] || {};
-  return Object.entries(part).filter(([name]) => name !== 'setting' || differs.has(name)).map(([name, value]) => named(name, value, true)).join(' · ');
+  const index = shapes.findIndex((shape) => shape.key === key);
+  const part = described[index] || {};
+  const shown = ['length', 'text', 'setting', ...differs].filter((name) => name === 'length' || name === 'text' || differs.has(name));
+  return Object.entries(part).filter(([name, value]) => !shown.includes(name) && !['setting', 'corpus', 'metric'].includes(name)
+    && !USUAL[name]?.includes(value)).map(([name, value]) => named(name, value, true)).join(' · ');
 }
 
 // The shape the picker opens on: the one you have the most best-eligible runs on, then the one the most
@@ -584,8 +590,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     $('friends-board-lists').hidden = !rows;
     $('friends-board-empty').hidden = !rows || rows.some((entry) => !entry.self);
     if (!rows) return;
-    $('board-daily-meta').textContent = `${board.date} · best completed attempt · physical keyboard`;
-    $('board-week-meta').textContent = `since monday ${board.weekStart}, 00:00 utc · completed runs`;
+    $('board-daily-meta').textContent = board.date;
     $('board-daily').replaceChildren(...dailyOrder(rows).map((entry) => (entry.daily
       ? row(entry, speedFigure(entry.daily.wpm, { bare: true }), unitLabel(), `${entry.daily.accuracy}% accuracy · ${entry.daily.attempts === 1 ? '1 attempt' : `best of ${entry.daily.attempts}`}`)
       : row(entry, '—', '', entry.otherVersion ? 'another version of the daily · not compared' : 'no completed attempt yet'))));
@@ -622,7 +627,8 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
       }));
     }
     if (select.value !== key) select.value = key;
-    $('board-bests-meta').textContent = `${shapeDescription(shapes, key)} · best completed test or retest · dates in utc`;
+    $('board-bests-meta').textContent = shapeDescription(shapes, key);
+    $('board-bests-meta').hidden = !$('board-bests-meta').textContent;
     $('board-bests').replaceChildren(...bestsOrder(rows, key).map((entry) => (entry.best
       ? row(entry, speedFigure(entry.best.wpm, { bare: true }), unitLabel(), `${entry.best.accuracy}% accuracy · ${entry.best.date}`)
       : row(entry, '—', '', entry.otherVersion ? 'another version of this shape · not compared' : 'no best on this shape yet'))));

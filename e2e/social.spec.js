@@ -37,7 +37,7 @@ test('a saved friend is challenged without retyping their email, and the challen
   await openApp(page);
   await signInWithEmail(page, 'host@stilltype.test');
   await openView(page, 'Challenge');
-  await expect(page.locator('#online-friends')).toContainText('Save someone');
+  await expect(page.locator('#online-friends')).toContainText('Save a friend');
   await page.locator('#online-name').fill('Ada');
   await page.locator('#online-invite-email').fill('lin@stilltype.test');
   await expect(page.locator('#online-save-friend')).toBeChecked();
@@ -421,7 +421,7 @@ test('a pressed race control keeps keyboard focus while its request is out, and 
   }
   // Removing a friend is not a race request, so it doesn't wait for one.
   for (const button of await page.locator('[data-remove-friend]').all()) await expect(button).not.toHaveAttribute('aria-disabled');
-  await page.evaluate(() => scrollTo(0, document.getElementById('online-invite-note').getBoundingClientRect().top + scrollY - 100));
+  await page.evaluate(() => scrollTo(0, document.getElementById('online-invite-email').getBoundingClientRect().top + scrollY - 100));
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await settleTransitions(page);
@@ -549,7 +549,7 @@ test('a friend list that failed to load, then loads empty, shows its usual copy 
   await arrived(supabase, 'friends');
   // It answers: no friends yet.
   releaseRead();
-  await expect(empty).toHaveText(/^Save someone when you invite them by email/);
+  await expect(empty).toHaveText(/^Save a friend when you invite them/);
 });
 
 test('the inbox sits beside the account button without touching the dock', async ({ page, supabase }) => {

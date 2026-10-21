@@ -2854,7 +2854,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .online-copy { color: var(--muted); font-size: var(--text-small); }
 .online-optional { font-size: var(--text-fine); }
 .online-setup { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-6); }
-.online-setup > .online-copy { grid-column: 1 / -1; margin: 0; }
 .online-setup-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
 .online-section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .online-section-heading h2, .online-join h2 { margin: 0; font-size: var(--text-title); }
@@ -2889,7 +2888,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 /* Friends board: two ruled lists, today's daily and this week's practice. Nothing on the board is
    coloured: your row is marked by the word "You". */
 .friends-board { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
-.friends-board-copy { max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
 .friends-board-guest { display: grid; justify-items: start; gap: var(--space-4); margin: var(--space-6) 0; }
 .friends-board-guest p { margin: 0; max-width: 60ch; }
 .friends-board-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); margin: var(--space-6) 0; }
@@ -2924,7 +2922,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   padding-top: var(--space-8);
   border-top: 1px solid var(--hairline);
   display: grid;
-  grid-template-columns: 1fr auto 1fr auto;
+  grid-template-columns: 1fr 1fr auto;
   align-items: end;
   gap: var(--space-6);
 }
@@ -2938,8 +2936,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   align-items: center;
   gap: var(--space-2);
 }
-
-.versus { padding-bottom: 12px; color: var(--muted); font-style: italic; }
 
 .race-stage,
 .handoff-panel,
@@ -3341,7 +3337,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .history-summary { grid-template-columns: minmax(0, 1fr) 120px 120px; }
   .history-status { grid-column: 1 / -1; justify-self: start; }
   .challenge-setup { grid-template-columns: 1fr; }
-  .versus { padding: 0; }
   .race-result-row { grid-template-columns: 1fr 1fr; }
 }
 

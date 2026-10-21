@@ -13,12 +13,6 @@ const RESULT_RETAINED_MS = 23 * 60 * 60 * 1000;
 const rematchAsked = (room) => Boolean(room?.rematchId && room.rematchOpen && room.rematchSlot && room.rematchSlot !== room.selfSlot);
 const terminal = (room) => ['finished', 'cancelled', 'expired'].includes(room?.status);
 const PENDING_INVITE = 'stilltype-race-invite-tab-v1';
-const HEADINGS = {
-  online: 'A passage shared. A race together.',
-  daily: 'A passage for today.',
-  friends: 'Among friends, today and this week.',
-  local: 'Same passage. One keyboard.',
-};
 
 function pendingInvite() {
   try {
@@ -84,7 +78,6 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('challenge-local').setAttribute('aria-pressed', String(value === 'local'));
     $('challenge-daily').setAttribute('aria-pressed', String(value === 'daily'));
     $('challenge-friends').setAttribute('aria-pressed', String(value === 'friends'));
-    $('compete-heading').textContent = HEADINGS[value];
     setRunning(false);
     if (value === 'online') { fx.relayout(); refreshInvites(); }
     onModeChange?.();
@@ -389,13 +382,13 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const me = self();
     const opponent = opponentOf(room);
     const copy = {
-      waiting: room.players.length < 2 ? 'Waiting for your opponent. Share the link or wait for them to accept the account invitation.'
-        : room.rematchOf && !opponent?.connected && !opponent?.ready ? `Rematch sent. Waiting for ${opponent.name} to join.` : 'Both players are here. Ready up to start together.',
-      countdown: 'Both players are ready. The race starts together after the countdown.',
-      racing: finishRequested || me?.finished ? 'Your run is finished. Waiting for the other player.' : 'The race is on. The clock keeps running if you leave the typing surface.',
-      finished: 'Race complete. Two observed runs, with one shared start.',
-      cancelled: 'This race ended because a player left. Create a new race to try again.',
-      expired: 'This invitation has expired. Create a new race to try again.',
+      waiting: room.players.length < 2 ? 'Waiting for your opponent.'
+        : room.rematchOf && !opponent?.connected && !opponent?.ready ? `Rematch sent. Waiting for ${opponent.name} to join.` : 'Both players are here.',
+      countdown: 'Both players are ready.',
+      racing: finishRequested || me?.finished ? 'Waiting for the other player.' : 'The clock keeps running if you leave the passage.',
+      finished: 'Race complete.',
+      cancelled: 'This race ended because a player left.',
+      expired: 'This invitation has expired.',
     };
     $('online-room-status').textContent = copy[room.status] || 'Connecting to the race…';
     $('online-ready').hidden = room.status !== 'waiting';
@@ -591,7 +584,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       }
       $('online-account-invite-status').hidden = !inviteEmail;
       $('online-account-invite-status').textContent = inviteEmail ? 'If that account exists, its invitation is waiting in their inbox.' : '';
-      $('online-invite-sent').textContent = 'Anyone with this link can join the second seat. This room expires in 15 minutes.';
+      $('online-invite-sent').textContent = 'Anyone with the link can join. It expires in 15 minutes.';
     });
   });
   $('online-guest-join').addEventListener('submit', (event) => {
@@ -629,7 +622,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   $('online-invite-email').addEventListener('input', () => { $('online-save-friend-row').hidden = !$('online-invite-email').value.trim(); });
   inbox.subscribe(renderInvites);
   $('copy-race-link').addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText($('online-guest-link').value); $('online-invite-sent').textContent = 'Guest link copied. Share it with your opponent.'; }
+    try { await navigator.clipboard.writeText($('online-guest-link').value); $('online-invite-sent').textContent = 'Link copied.'; }
     catch { $('online-guest-link').focus(); $('online-guest-link').select(); $('online-invite-sent').textContent = 'Select and copy the guest link above.'; }
   });
   $('online-input').addEventListener('beforeinput', input);

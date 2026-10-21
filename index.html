@@ -362,9 +362,9 @@
             </details>
             <details id="ghost-offer" class="manual-panel ghost-offer" hidden>
               <summary>Challenge a friend with this run</summary>
-              <p class="ghost-offer-copy">They race this exact text within 7 days, against a ghost caret that replays your keystrokes. Their race doesn’t count toward their best, and sending leaves your run as it is.</p>
+              <p class="ghost-offer-copy">They race your keystrokes on this text within 7 days.</p>
               <div id="ghost-offer-empty" hidden>
-                <p class="ghost-offer-copy">Your friend list is empty. Save a friend from an online race, then send them this run.</p>
+                <p class="ghost-offer-copy">Your friend list is empty.</p>
                 <button id="ghost-offer-friends" class="btn btn-ghost btn-sm" type="button">Open online races</button>
               </div>
               <form id="ghost-offer-form" class="ghost-offer-form" novalidate>
@@ -603,7 +603,7 @@
       <section id="compete-screen" class="screen compete-screen" data-screen="compete" aria-labelledby="compete-heading" hidden>
         <header class="section-heading page-heading challenge-heading">
           <div>
-            <h1 id="compete-heading" tabindex="-1">A passage shared. A race together.</h1>
+            <h1 id="compete-heading" tabindex="-1">Challenge</h1>
           </div>
         </header>
 
@@ -617,9 +617,7 @@
         <div id="online-challenge">
           <p id="online-error" class="field-error" role="alert"></p>
           <div id="online-host">
-            <p class="online-copy">Race on the same passage, starting together. Invite an account or share a guest link. Each race lasts up to one minute.</p>
             <div id="online-account-required">
-              <p>Sign in to host a race. An invited guest can join without an account.</p>
               <button id="online-signin" class="btn btn-primary" type="button">Sign in to host</button>
             </div>
             <form id="online-setup" class="online-setup" hidden>
@@ -629,9 +627,8 @@
               </div>
               <div class="player-field">
                 <label for="online-invite-email">Account to invite <span class="online-optional">optional</span></label>
-                <input id="online-invite-email" class="input" type="email" maxlength="254" autocomplete="off" placeholder="Their account email" aria-describedby="online-invite-note">
+                <input id="online-invite-email" class="input" type="email" maxlength="254" autocomplete="off" placeholder="Their account email">
               </div>
-              <p id="online-invite-note" class="online-copy">Account invitations appear in their inbox and challenge screen. Leave the email empty to share a guest link.</p>
               <div class="online-setup-actions">
                 <button id="create-online-race" class="btn btn-primary" type="submit">Create race</button>
                 <label id="online-save-friend-row" class="compact-switch" for="online-save-friend" hidden>
@@ -642,7 +639,7 @@
             </form>
             <section id="online-friends" class="online-friends" aria-labelledby="online-friends-heading" hidden>
               <div class="online-section-heading"><h2 id="online-friends-heading">Friends</h2></div>
-              <p id="online-friends-empty" class="online-copy">Save someone when you invite them by email, or add them after a race. Then challenge them here without typing their email again.</p>
+              <p id="online-friends-empty" class="online-copy">Save a friend when you invite them or after a race.</p>
               <ul id="online-friend-list" class="online-friend-list"></ul>
             </section>
             <section id="online-inbox" class="online-inbox" aria-labelledby="online-inbox-heading" hidden>
@@ -653,7 +650,6 @@
           </div>
           <form id="online-guest-join" class="online-join" hidden>
             <h2>You’re invited to race.</h2>
-            <p class="online-copy">Choose a name to join. You don’t need an account, and this race won’t enter your personal progress.</p>
             <div class="player-field"><label for="online-guest-name">Your race name</label><input id="online-guest-name" class="input" type="text" maxlength="24" required autocomplete="nickname" placeholder="Name"></div>
             <div class="online-actions"><button id="join-online-race" class="btn btn-primary" type="submit">Join race</button><button id="dismiss-race-invite" class="btn btn-ghost" type="button">Cancel</button></div>
           </form>
@@ -677,12 +673,12 @@
                 <textarea id="online-input" aria-label="Online race typing input" aria-describedby="online-help online-accessible-passage" rows="1" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" disabled></textarea>
                 <span id="online-accessible-passage" class="sr-only"></span>
               </div>
-              <p id="online-help" class="online-copy">Type when the countdown ends. Paste and key repeat are off.</p>
+              <p id="online-help" class="online-copy">Paste and key repeat are off.</p>
             </div>
             <section id="online-results" class="race-leaderboard" hidden aria-labelledby="online-winner">
               <div class="race-result-heading"><h2 id="online-winner">Race results</h2><button id="online-again" class="btn btn-secondary" type="button">New race</button></div>
               <div id="online-result-rows" class="race-results"></div>
-              <p><span data-speed-unit="Corrected {unit}">Corrected wpm</span> uses matching characters and elapsed race time. Accuracy includes corrected mistakes. Online scores are unranked and don’t count in your progress.</p>
+              <p>Not counted in your progress.</p>
             </section>
             <div id="online-after" class="online-after" hidden>
               <p id="online-rematch-note" class="online-copy" role="status"></p>
@@ -699,7 +695,6 @@
             <div><h2 id="daily-heading">Daily passage</h2><p id="daily-date" class="condition-copy"></p></div>
             <button id="start-daily" class="btn btn-primary" type="button">Start daily challenge</button>
           </div>
-          <p>A shared passage, new each day at midnight UTC. Finish at your own pace; repeat attempts are labelled.</p>
           <p id="daily-status" class="result-note" aria-live="polite"></p>
           <details id="daily-history-panel" hidden><summary>Your daily results</summary><div id="daily-history"></div></details>
         </section>
@@ -709,9 +704,7 @@
             <h2 id="friends-board-heading">Friends board</h2>
             <button id="refresh-friends-board" class="btn btn-ghost btn-sm" type="button" hidden>Refresh</button>
           </div>
-          <p class="friends-board-copy">You and the friends who have added you back, when both of you share. They see your row; nobody else does.</p>
           <div id="friends-board-guest" class="friends-board-guest">
-            <p>Sign in to compare today’s daily passage, this week’s practice and your bests with the friends you choose.</p>
             <button id="friends-board-signin" class="btn btn-primary" type="button">Sign in</button>
           </div>
           <div id="friends-board-share" class="friends-board-share" hidden>
@@ -719,7 +712,7 @@
               <input id="share-board" class="switch" type="checkbox">
               <span>share on friends board</span>
             </label>
-            <p id="friends-board-off" class="friends-board-off">You aren’t sharing, so friends’ rows are hidden too. Share to show them today’s daily, this week’s practice and your bests, and to see theirs.</p>
+            <p id="friends-board-off" class="friends-board-off">Share to see friends’ rows. Only friends who added you back see yours.</p>
           </div>
           <p id="friends-board-status" class="online-copy" role="status"></p>
           <div id="friends-board-lists" class="friends-board-lists" hidden>
@@ -730,24 +723,22 @@
             </section>
             <section class="board-column" aria-labelledby="board-week-heading">
               <h3 id="board-week-heading">This week’s practice</h3>
-              <p id="board-week-meta" class="condition-copy"></p>
               <ol id="board-week" class="board-list" role="list"></ol>
             </section>
             <section class="board-column board-bests" aria-labelledby="board-bests-heading">
               <h3 id="board-bests-heading">Bests</h3>
-              <label id="board-shape-field" class="filter-field board-shape" for="board-shape">Test conditions
-                <select id="board-shape" class="input select"></select>
-              </label>
+              <div id="board-shape-field" class="filter-field board-shape">
+                <select id="board-shape" class="input select" aria-label="Test conditions"></select>
+              </div>
               <p id="board-bests-meta" class="condition-copy"></p>
               <ol id="board-bests" class="board-list" role="list"></ol>
-              <p id="board-bests-none" class="friends-board-note" hidden>No bests here yet. A completed practice test or retest sets one.</p>
+              <p id="board-bests-none" class="friends-board-note" hidden>No bests yet.</p>
             </section>
           </div>
           <div id="friends-board-empty" class="friends-board-empty" hidden>
-            <p>Nobody else here yet. A friend appears once you’re on each other’s friend lists: save them when you invite them to a race, or add them after one.</p>
+            <p>Nobody else yet. Friends appear once you’ve added each other.</p>
             <button id="friends-board-online" class="btn btn-secondary btn-sm" type="button">Go to online races</button>
           </div>
-          <p class="friends-board-copy">Each person’s browser reports their own numbers, so they aren’t verified. Interrupted runs don’t count. Only today’s daily, this week’s practice and your best on each of up to 16 test shapes (speed, accuracy and date, from completed tests and retests) are kept. Each new day or week replaces the last; bests come from your newest 1,000 runs, and clearing your history takes them off. Turning sharing off, or deleting your account, removes your row.</p>
         </section>
 
         <div id="local-challenge" hidden>
@@ -756,7 +747,6 @@
             <label for="player-one-name">Player 1</label>
             <input id="player-one-name" class="input" type="text" maxlength="24" placeholder="Name" autocomplete="off">
           </div>
-          <div class="versus" aria-hidden="true">then</div>
           <div class="player-field">
             <label for="player-two-name">Player 2</label>
             <input id="player-two-name" class="input" type="text" maxlength="24" placeholder="Name" autocomplete="off">
@@ -767,7 +757,6 @@
         <div id="race-stage" class="race-stage" hidden>
           <div class="race-stage-heading">
             <div>
-              <span id="race-status" class="panel-label">Player 1 of 2</span>
               <h2><span id="race-player">Player one</span>’s turn</h2>
             </div>
           </div>

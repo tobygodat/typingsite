@@ -5,7 +5,6 @@ import { CORPUS_VERSION, CORRECTION_POLICIES, INPUT_CLASSES, METRIC_VERSION, QUO
   conditionKey } from '../src/typing.js';
 import { wordListIds } from '../src/words.js';
 import { layoutLabel } from '../src/layouts.js';
-import { conditionParts } from '../src/insights.js';
 import { BOARD_V, MAX_SHAPES, bestsOrder, boardColumn, boardCurrent, boardShapes, boardSummary, defaultShape, shapeBests, shapeDescription, shapeLabels,
   shapeOf, shareableBest } from '../src/friends-board.js';
 import { boardBests } from '../e2e/fake-board.js';
@@ -265,13 +264,17 @@ test('two quote shapes that differ only by the punctuation setting their keys ke
   const shapes = boardShapes([{ bests: { [key(quote)]: {} } }, { bests: { [key(withSetting)]: {}, [key(time60)]: {} } }]);
   assert.deepEqual(shapes.map((shape) => shape.key), [key(time60), key(quote), key(withSetting)]);
   assert.deepEqual(shapeLabels(shapes), ['60 s · plain', 'medium quote · any · punctuation off', 'medium quote · any · punctuation on']);
-  assert.equal(shapeDescription(shapes, key(withSetting)),
-    'english · medium quote · any · punctuation setting on · physical keyboard · stop on error · corpus v5 · metric v1');
+  // The description names only what the picker's name leaves out and isn't the usual: here, the correction rule.
+  assert.equal(shapeDescription(shapes, key(withSetting)), 'stop on error');
   // When the setting tells nothing apart, neither the name nor the description mentions it.
   const one = boardShapes([{ bests: { [key(withSetting)]: {}, [key(time60)]: {} } }]);
   assert.deepEqual(shapeLabels(one), ['60 s · plain', 'medium quote · any']);
-  assert.equal(shapeDescription(one, key(withSetting)), 'english · medium quote · any · physical keyboard · stop on error · corpus v5 · metric v1');
-  assert.equal(shapeDescription(one, key(time60)), 'english 200 · 60 s · plain · physical keyboard · stop on error · corpus v5 · metric v1');
+  assert.equal(shapeDescription(one, key(withSetting)), 'stop on error');
+  assert.equal(shapeDescription(one, key(time60)), 'stop on error');
+  // At the usual word list, input and correction there is nothing to add.
+  assert.equal(shapeDescription(boardShapes([{ bests: { [key({ ...time60, correctionPolicy: 'relaxed' })]: {} } }]), key({ ...time60, correctionPolicy: 'relaxed' })), '');
+  const touch1k = { ...time60, wordList: '1k', inputClass: 'touch' };
+  assert.equal(shapeDescription(boardShapes([{ bests: { [key(touch1k)]: {} } }]), key(touch1k)), 'english 1k · touch input · stop on error');
 });
 
 test('a Dvorak or strict-space shape is told apart by the app\'s own words for it, in the name and the description', () => {
@@ -279,8 +282,9 @@ test('a Dvorak or strict-space shape is told apart by the app\'s own words for i
     const shapes = boardShapes([{ bests: { [key(time60)]: {}, [key(other)]: {} } }]);
     assert.deepEqual(shapes.map((shape) => shape.key), [key(time60), key(other)]);
     assert.deepEqual(shapeLabels(shapes), ['60 s · plain', `60 s · plain · ${words}`]);
-    assert.equal(shapeDescription(shapes, key(other)), Object.values(conditionParts(other)).join(' · '));
-    assert.ok(shapeDescription(shapes, key(other)).includes(words));
+    // The name already says it, so the description doesn't repeat it.
+    assert.equal(shapeDescription(shapes, key(other)), 'stop on error');
+    assert.ok(!shapeDescription(shapes, key(other)).includes(words));
   }
 });
 

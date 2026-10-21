@@ -283,7 +283,7 @@ Where a theme's accent is not green (soft, midnight, swiss, e-ink) it still mean
 - **Passage** (400, 36px at the default "medium" setting, line height 1.75, -0.004em, ligatures off): the typing text. The settings give 29px, 36px or 44px on desktop, and 22px, 26px or 32px under 760px. Three lines are visible (one with the one-line tape), with the top and bottom edges faded by a mask (side fades on the tape).
 - **Title** (400, 30px, 1.2, -0.015em): section headings (comparison, recommendation, empty states, challenge panels).
 - **Body** (400, 17px, 1.6): running copy, capped at 56–60ch.
-- **Small** (400, 15px): notes, help lines, toasts, and settings labels. Italic Literata marks quiet asides (input help, metric note, "versus", empty palette).
+- **Small** (400, 15px): notes, help lines, toasts, and settings labels. Italic Literata marks quiet asides (input help, metric note, empty palette).
 - **Label** (Geist Mono 500 or 400, 12px, 0.02–0.04em, lowercase): measurement units, conditions lines, facts labels, dates, palette group names, key legends, the footer.
 
 Weights in use are 300 (large numerals), 400 (headings and text), 500 (buttons, wordmark) and 600 (primary button, settings row labels). Headings are regular weight, never bold.
@@ -406,6 +406,7 @@ Opaque raised pills of 16px radius at the bottom centre, with a status dot and 1
 - **Don't** reintroduce the effects removed after the critique: a streak glow or caret aura, a letter ink trail (letters landing lit and cooling), an error shake, digit pop-ins or number reels, a word underline or lens sweeping through the glyphs, run-card tilt, glare or foil, glass surfaces, a live rhythm strip, or blur reveals on restart and results.
 - **Don't** use backdrop-filter, translucent surfaces or coloured glows. Floating surfaces are opaque raised stock with the one float shadow. (The challenge handoff's blurred passage veil is a concealment device that hides the next player's text. It is not a reveal effect and must not spread elsewhere.)
 - **Don't** add kickers or eyebrows above headings, and don't use uppercase tracked labels.
+- **Don't** add taglines or descriptions under headings, helper sentences, notes that restate what's on screen, or fine print. A page heading names the page (Challenge, like Progress); a line of copy stays only when someone needs it to act or to stay safe, in the fewest words, at the point of decision (the friends board's share switch says who sees your row).
 - **Don't** add a second accent. Periwinkle belongs to ghost carets alone, and amber to interrupted and mixed results alone.
 - **Don't** box ordinary sections as cards. The run card is the one card.
 - **Don't** move the app back toward the retired Ash system: no blue call to action, no Geist sans, no dark-only rule, no mono status pills.

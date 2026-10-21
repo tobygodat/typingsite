@@ -358,7 +358,7 @@ test('changes another tab saved during a one-keyboard race apply once the race i
   await expect(page.locator('#race-handoff')).toBeVisible();
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   await page.locator('#start-next-player').click();
-  await expect(page.locator('#race-status')).toHaveText('Player 2 of 2');
+  await expect(page.locator('#race-player')).toHaveText('Player two');
   await expect(page.locator('#race-input')).toBeFocused();
   await typeInto(page, text, '#race-input');
   await expect(page.locator('#race-leaderboard')).toBeVisible();

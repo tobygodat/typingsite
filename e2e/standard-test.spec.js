@@ -467,7 +467,8 @@ test('the daily challenge keeps its own conditions while standard is selected', 
   await completePassage(page);
   await openView(page, 'Challenge');
   await page.locator('#challenge-daily').click();
-  await expect(page.locator('#daily-status')).toContainText('1 attempt');
+  await expect(page.locator('#daily-status')).toContainText('Today’s best');
+  await expect(page.locator('.daily-result')).toHaveCount(1);
 });
 
 test('screenshots', async ({ page, supabase }, testInfo) => {

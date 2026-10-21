@@ -62,7 +62,8 @@ test('daily passage ignores practice settings, labels repeats, and saves scores 
   await expect(page.locator('#best')).toHaveText('No best yet');
   await openView(page, 'Challenge');
   await page.locator('#challenge-daily').click();
-  await expect(page.locator('#daily-status')).toContainText('1 attempt');
+  await expect(page.locator('#daily-status')).toContainText('Today’s best');
+  await expect(page.locator('.daily-result')).toHaveCount(1);
   await page.locator('#start-daily').click();
   await expect(page.locator('#session-description')).toContainText('repeat attempt');
   expect(await passageText(page)).toBe(daily);
@@ -74,7 +75,6 @@ test('daily passage ignores practice settings, labels repeats, and saves scores 
   await page.reload();
   await openView(page, 'Challenge');
   await page.locator('#challenge-daily').click();
-  await expect(page.locator('#daily-status')).toContainText('2 attempts');
   await page.locator('#daily-history-panel summary').click();
   await expect(page.locator('.daily-result')).toHaveCount(2);
   await expect(page.locator('.daily-result').first()).toContainText('repeat attempt');
@@ -145,7 +145,8 @@ test('clear and undo include daily history, which guests do not retain after rel
   await page.locator('#challenge-daily').click();
   await expect(page.locator('#daily-status')).toContainText('No completed');
   await page.locator('#undo-clear').click();
-  await expect(page.locator('#daily-status')).toContainText('1 attempt');
+  await expect(page.locator('#daily-status')).toContainText('Today’s best');
+  await expect(page.locator('.daily-result')).toHaveCount(1);
   await page.reload();
   await openView(page, 'Challenge');
   await page.locator('#challenge-daily').click();
