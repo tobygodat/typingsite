@@ -128,6 +128,7 @@ test('a book page runs with tape mode, the word highlight, the pace caret and so
 });
 
 test('the rail and passage sit where quote mode puts them, at desktop and phone widths', async ({ page }, testInfo) => {
+  test.setTimeout(240_000);
   for (const [width, height] of [[1280, 800], [390, 844], [320, 568]]) {
     await page.setViewportSize({ width, height });
     await openApp(page);
@@ -153,7 +154,9 @@ test('the rail and passage sit where quote mode puts them, at desktop and phone 
       await page.locator('#book-select-list').evaluate((menu) => Promise.all(menu.getAnimations().map((animation) => animation.finished)));
       await page.screenshot({ path: shot(testInfo, `picker-${name}-${scheme}`) });
       await page.keyboard.press('Escape');
-      await completePassage(page);
+      // Committed captures type at a person's pace, so the run card shows a believable speed.
+      await typeInto(page, await passageText(page), '#typing-input', { delay: process.env.SCREENSHOTS ? 80 : 0 });
+      await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
       await page.screenshot({ path: shot(testInfo, `results-${name}-${scheme}`) });
     }
   }
