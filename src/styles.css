@@ -202,12 +202,12 @@
   --hairline: #e4e4e7;
   --hairline-strong: #d4d4d8;
   --outline: #71717a;
-  --accent: #15803d;
+  --accent: #166534;
   --accent-ink: #ffffff;
-  --accent-soft: rgba(21, 128, 61, 0.06);
-  --practice-level-1: rgba(21, 128, 61, 0.3);
-  --practice-level-2: rgba(21, 128, 61, 0.55);
-  --practice-level-3: rgba(21, 128, 61, 0.8);
+  --accent-soft: rgba(22, 101, 52, 0.06);
+  --practice-level-1: rgba(22, 101, 52, 0.3);
+  --practice-level-2: rgba(22, 101, 52, 0.55);
+  --practice-level-3: rgba(22, 101, 52, 0.8);
   --danger: #b91c1c;
   --danger-soft: rgba(220, 38, 38, 0.1);
   --heat-1: rgba(220, 38, 38, 0.08);
