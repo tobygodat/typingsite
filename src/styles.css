@@ -67,6 +67,8 @@
   --heat-key: 52px;
   --heat-gap: 6px;
   --content-max: 1080px;
+  /* Open practice from the rail to the shortcut row at the default text size: the practice screen's anchor. */
+  --practice-block: 510px;
   /* Progress charts: about 2.5 wide to 1 tall, between these heights. */
   --chart-height: 400px;
   --chart-height-min: 240px;
@@ -1121,11 +1123,13 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 
 /* ── Practice ───────────────────────────────────────────────────────────── */
 
+/* The screen sits where open practice's block, centred under the dock, would start, and every mode
+   and session keeps that top: what a mode puts under the rail never moves the rail or the passage. */
 .typing-screen {
   display: grid;
-  align-content: center;
+  align-content: start;
   min-height: calc(100svh - 170px);
-  padding-top: var(--space-10);
+  padding-top: max(var(--space-10), calc((100svh - 170px - var(--practice-block)) / 2));
 }
 
 /* The row paints above what follows it: the "more" menu over the passage, and its controls over the
@@ -1178,7 +1182,10 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   gap: var(--space-4);
 }
 
-.practice-rail > :is(.segmented, .compact-switch) { background: var(--raised); }
+.practice-rail :is(.segmented, .compact-switch) { background: var(--raised); }
+
+/* Lengths, quote filters, code languages and the standard recipe take turns in one place. */
+.practice-options { display: contents; }
 
 @media (min-width: 1000px) {
   .practice-rail { gap: var(--space-6); }
@@ -1410,15 +1417,20 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
   .quote-filter-check { color: CanvasText; }
 }
 
-/* The standard test's fixed recipe, in the quote options' place. The lock notes live in settings. */
+/* The standard test's fixed recipe. The lock notes live in settings. It hangs in the space under the
+   controls, so the numbers and the passage sit where every other mode puts them. */
 .standard-options {
-  margin: calc(var(--space-4) * -1) auto var(--space-10);
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: max-content;
+  height: var(--space-8);
   display: grid;
-  justify-items: center;
-  gap: var(--space-1);
+  align-content: center;
   color: var(--muted);
   font-size: var(--text-label);
   text-align: center;
+  transform: translateX(-50%);
 }
 
 .standard-options p { margin: 0; }
@@ -1612,6 +1624,12 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
 @media (min-width: 901px) {
   body[data-session="lesson"] .typing-wrap { height: calc(var(--typing-line) * 2); margin-bottom: var(--space-6); }
   body[data-session="lesson"] #keyboard { margin-top: var(--space-4); }
+}
+
+/* On the narrowest phones the lesson's name steps down to the learn screen's heading size, one line
+   instead of two, so the passage's first line clears the bottom dock without scrolling. */
+@media (max-width: 360px) {
+  body[data-session="lesson"] #session-title { font-size: var(--text-title); }
 }
 
 #text-display,
@@ -3370,7 +3388,14 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .segmented button, .segmented .custom-length-input { height: 40px; padding: 0 var(--space-2); }
   .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
-  .standard-options, .custom-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
+  .custom-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
+  /* On a phone the recipe takes the lengths' row, which stays laid out (unseen) so the row keeps its
+     height; it wraps within the lengths' width. */
+  .practice-options { display: grid; }
+  .practice-options > * { grid-area: 1 / 1; }
+  .standard-options { position: static; width: auto; height: auto; transform: none; contain: inline-size; }
+  .standard-options p { line-height: 1.4; }
+  .standard-options:not([hidden]) ~ #duration-options[hidden] { display: flex !important; visibility: hidden; }
   .quote-filter-trigger { min-height: var(--space-10); }
 
   .measure-row { flex-direction: column; align-items: stretch; gap: var(--space-4); }
@@ -3499,4 +3524,11 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 @media (max-width: 1000px) and (min-width: 761px) {
   .progress-stats:not(.practice-stats) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* All five practice figures in one row from 1001 px. A unit too wide for its column ("412 finished" beside
+   999) drops under its numeral instead of running into the next column. */
+.practice-stats .figure-value { flex-wrap: wrap; }
+@media (min-width: 1001px) {
+  .practice-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }

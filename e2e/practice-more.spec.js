@@ -100,9 +100,16 @@ for (const width of [1280, 390]) {
       await page.locator('#mode-more-label').click();
       await page.locator(`#mode-${mode}`).click();
       await expect(page.locator(panel)).toBeVisible();
-      const controls = await page.locator('.practice-controls').boundingBox();
-      const options = await page.locator(panel).boundingBox();
-      expect(options.y, `${mode} options clear the controls`).toBeGreaterThanOrEqual(controls.y + controls.height);
+      // The standard recipe may sit inside the controls' box (on a phone it takes the lengths' row);
+      // it still clears every visible control.
+      const overlaps = await page.locator(panel).evaluate((node) => {
+        const a = node.getBoundingClientRect();
+        return [...document.querySelectorAll('.practice-controls :is(.segmented, .compact-switch)')]
+          .filter((control) => control !== node && control.checkVisibility({ visibilityProperty: true }))
+          .filter((control) => { const b = control.getBoundingClientRect(); return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom; })
+          .map((control) => control.id || control.className);
+      });
+      expect(overlaps, `${mode} options clear the controls`).toEqual([]);
     }
   });
 }
