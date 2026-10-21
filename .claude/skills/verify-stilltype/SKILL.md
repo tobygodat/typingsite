@@ -1,6 +1,6 @@
 ---
 name: verify-stilltype
-description: Drive the real Stilltype typing-practice web app (index.html + src/, served by server.mjs) in headless system Chromium and capture screenshots, ARIA snapshots and a run.json as proof. Use to confirm a UI or behaviour change in the browser, to take the usual screenshots (idle practice page, a finished run's results, the "more" menu open, phone 390/320, light theme, settings, signed in), or to script a one-off flow instead of writing a throwaway Playwright file in /tmp. Points at desktop-test for anything bigger than one e2e spec.
+description: Drive the real Stilltype typing-practice web app (index.html + src/, served by server.mjs) in headless Chromium and capture screenshots, ARIA snapshots and a run.json as proof. Use to confirm a UI or behaviour change in the browser, to take the usual screenshots (idle practice page, a finished run's results, the "more" menu open, phone 390/320, light theme, settings, signed in), or to script a one-off flow instead of writing a throwaway Playwright file in /tmp. Points at desktop-test for anything bigger than one e2e spec.
 ---
 
 # Verify Stilltype
@@ -14,7 +14,7 @@ $V                                                     # usage
 ```
 
 It loads Playwright from this checkout's `node_modules`, or the main checkout's when this is a worktree
-without one, drives `/usr/bin/chromium` (override with `CHROMIUM=`), and always attaches the in-memory
+without one, drives the first Chromium that runs (see Chromium below), and always attaches the in-memory
 Supabase from `e2e/fake-supabase.js`, so nothing reaches the real project.
 
 ## Launch
@@ -36,13 +36,27 @@ managed server automatically while it runs. Edits to the checkout are live on th
 Don't drive someone else's server. `npm run dev` (5173) and other worktrees' servers (5175, …) may be
 running and serving other code; `--url` is only accepted when doctor passes for it.
 
+## Chromium
+
+`$V` uses the first of these whose `--version` runs, so it works on the desktop and on cloud machines with
+nothing set:
+
+1. `CHROMIUM`, when set (a path that doesn't run is skipped, and doctor names it).
+2. `/usr/bin/chromium` (the desktop).
+3. `/usr/local/bin/chromium` (cloud machines, where it links to Google Chrome).
+4. Playwright's own download, after `npx playwright install chromium`.
+
+`$V doctor` prints which one it picked and what it skipped; `run.json` records it as `chromium`. If none
+runs, `shot` and `drive` stop and say so.
+
 ## Doctor
 
 ```sh
 $V doctor                 # or: $V doctor --url http://127.0.0.1:5173/
 ```
 
-Read-only. Reports node, the Playwright version and where it came from, Chromium, the checkout's branch,
+Read-only. Reports node, the Playwright version and where it came from, the Chromium it picked (and any it
+skipped), the checkout's branch,
 commit and dirty state, whether the server (managed, or `--url`) serves this checkout's exact bytes, and
 that the evidence folder is writable. Exit 0 means it's worth driving. Run it first whenever something looks
 off. A `FAIL server … serves different index.html` means another checkout's server: stop using that URL.
@@ -56,7 +70,7 @@ Built-in flows, one command each. Options combine with any flow.
 | `$V shot idle` | Practice page at rest. Notes the condition line. |
 | `$V shot results` | words → 10, screenshot, types half the passage (checks `body[data-running]`), screenshot, finishes, waits for `body[data-view=results]`, screenshot the run card. Checks wpm is a number and accuracy is 100. |
 | `$V shot more` | Practice rail, then the "more" menu open. Checks the menu fits the viewport and nothing scrolls sideways. |
-| `$V shot settings` | Opens settings, then switches `#theme-select` to the other theme and checks `html[data-theme]` follows. |
+| `$V shot settings` | Opens the settings dialog (`#settings-trigger` → `#settings-dialog[open]`) on appearance, clicks the other theme's radio in `#theme-select`, checks `html[data-theme]` follows, then closes with Escape and checks focus returns to the dock button. |
 | `$V shot signin` | Guest → account dialog → Sign in with email (fake user `verify@stilltype.test`) → checks member/synced and that the fake backend stored a profile row. Screenshots the account menu. |
 | `$V shot phone` | idle + more at 390×844 and 320×568, touch, 2× pixels. |
 | `$V shot light` | idle + results with the system theme light. |
@@ -91,7 +105,8 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
 ```
 
 `h` also has `openView('Practice' | 'Train' | 'Progress' | 'Challenge')` (nudges the mouse first, since the
-dock fades during a run), `openSettings()`, `signIn(email)` (after `fake.addUser(email)`), `settle()` (waits
+dock fades during a run), `openSettings(category?)` (opens the settings dialog and, if given, shows one of
+appearance, practice, keyboard, sound or shortcuts), `signIn(email)` (after `fake.addUser(email)`), `settle()` (waits
 for finite animations, at most 2 s) and `text(selector)`. Keep a flow worth repeating in
 `.claude/skills/verify-stilltype/flows/` and add it to the feature map.
 
@@ -101,10 +116,13 @@ Train, Progress, Challenge, Commands; the practice rail is `.practice-rail` with
 `#punctuation-switch`; the passage is `#accessible-passage` and input `#typing-input`; the view is
 `body[data-view]` (practice, results, progress, compete), a run in progress sets `body[data-running]`; theme is
 `html[data-theme]`; account is `#account[data-state]` (guest, member) and `[data-sync]`; the palette is
-`#palette` / `#palette-input` / `#palette-list [role=option]`.
+`#palette` / `#palette-input` / `#palette-list [role=option]`; settings is the modal `#settings-dialog`
+(opened by `#settings-trigger`) with category buttons `[data-settings-category]`, sections `#settings-<category>`,
+and radio-group fieldsets such as `#theme-select input[value=…]`.
 
 Running tests is separate from driving the app. One spec locally:
-`CHROMIUM=/usr/bin/chromium npx playwright test e2e/practice-more.spec.js` (a worktree needs `npm ci` first;
+`CHROMIUM=/usr/bin/chromium npx playwright test e2e/practice-more.spec.js` (`/usr/local/bin/chromium` on a cloud
+machine; the suite reads only `CHROMIUM` and otherwise needs `npx playwright install chromium`; a worktree needs `npm ci` first;
 the specs import `@playwright/test` from the checkout). Anything bigger goes to the desktop, which syncs this
 checkout and runs 12 workers: `desktop-test quick`, `desktop-test e2e [files] [-g pattern]`,
 `desktop-test unit|build|all`. Before asking to merge, AGENTS.md wants `npm test`, `npm run build` and the
@@ -178,7 +196,8 @@ verifying a change, and cover every entry point it lists.
   variety matters.
 - Escape restarts a run by default, and Enter restarts before or after one (settings → keybindings). Don't
   press them mid-run unless that's the point.
-- ARIA snapshots render `<details>` (account, settings, "more") as a bare `group`; read the account state
-  from `run.json` steps.
+- ARIA snapshots render `<details>` (account, "more") as a bare `group`; read the account state from
+  `run.json` steps. Settings is a modal `<dialog>`, not a `<details>`, and makes the page behind it inert
+  until it closes.
 - `/usr/bin/chromium` is a wrapper that adds the desktop's flags (Wayland, extensions); headless runs are fine
   with it.
