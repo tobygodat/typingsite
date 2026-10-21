@@ -117,5 +117,5 @@ test('a finished words run announces its score once', async ({ page }) => {
   const wpm = await page.locator('#result-wpm').textContent();
   await expect(page.locator('#announcement')).toHaveText(`${wpm} wpm, ${await page.locator('#result-accuracy').textContent()}% accuracy.`);
   await expect(page.locator('#live-stats')).not.toHaveAttribute('aria-live', /.+/);
-  await expect(page.locator('#run-again')).toBeFocused();
+  await expect(page.locator('#results-heading')).toBeFocused();
 });

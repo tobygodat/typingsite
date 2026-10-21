@@ -230,3 +230,16 @@ test.describe('reduced motion', () => {
     await expect(page.locator('#speed-graph')).toHaveAttribute('aria-label', /Speed over time/);
   });
 });
+
+test('a palette jump puts focus on the new screen’s heading, or in the passage on Practice', async ({ page }) => {
+  await openApp(page);
+  await page.locator('#account-trigger').focus();
+  for (const [query, label, target] of [['challenge', 'challenge', '#compete-heading'], ['progress', 'progress', '#progress-heading'],
+    ['train', 'train', '#results-heading'], ['practice', 'practice', '#typing-input']]) {
+    await page.keyboard.press('Control+k');
+    await page.locator('#palette-input').fill(query);
+    await expect(page.locator('#palette-list [aria-selected="true"] .opt-label')).toHaveText(label);
+    await page.keyboard.press('Enter');
+    await expect(page.locator(target)).toBeFocused();
+  }
+});

@@ -11,7 +11,8 @@ async function tabIntoTrace(page) {
   const inWords = () => page.evaluate(() => !!document.activeElement.closest('#result-words'));
   for (let presses = 0; presses < 6 && !(await inWords()); presses++) await page.keyboard.press('Tab');
   expect(await inWords(), 'a trace word has focus').toBe(true);
-  expect(await page.evaluate(() => scrollY), 'focus scrolled the page').toBeGreaterThan(before);
+  // Run again's focus brought it into view below the score, so the trace word lies above it.
+  expect(await page.evaluate(() => scrollY), 'focus scrolled the page').not.toBe(before);
   return page.evaluate(() => document.activeElement.getBoundingClientRect().top);
 }
 
@@ -89,8 +90,40 @@ test('at 1440px tabbing from Run again into the trace stops below the dock', asy
   expect(top).toBeGreaterThanOrEqual(dock.y + dock.height);
 });
 
+// Focus goes to the next step only when it fits on screen with the score; otherwise to the result heading,
+// so the score never scrolls away. The restart key works from either.
+test('after a run Run again takes focus when it fits under the score, and the heading does when it can’t', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect(page.locator('#results-heading')).toBeFocused();
+  await expect(page.locator('#results-heading')).toBeInViewport({ ratio: 1 });
+  await expect(page.locator('#result-wpm')).toBeInViewport({ ratio: 1 });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await completePassage(page);
+  await expect(page.locator('#results-heading')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+
+  await page.setViewportSize({ width: 1280, height: 1100 });
+  await completePassage(page);
+  await expect(page.locator('#run-again')).toBeFocused();
+  await expect(page.locator('#run-again')).toBeInViewport({ ratio: 1 });
+  await expect(page.locator('#result-wpm')).toBeInViewport({ ratio: 1 });
+});
+
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('at 390px the result heading takes focus and the score stays in view', async ({ page }) => {
+    await openApp(page);
+    await chooseWords(page, 10);
+    await completePassage(page);
+    await expect(page.locator('#results-heading')).toBeFocused();
+    await expect(page.locator('#result-wpm')).toBeInViewport({ ratio: 1 });
+  });
 
   test('at 390px the drill comes after the score and before the speed graph', async ({ page }, testInfo) => {
     await openApp(page);
