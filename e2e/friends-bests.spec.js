@@ -171,7 +171,7 @@ test('each mutual friend’s best on the picked shape, ranked, with a keyboard p
   const picker = page.locator('#friends-board').getByLabel('Test conditions');
   await expect(picker).toHaveValue(K60);
   await expect(picker.locator('option')).toHaveText(['30 s · plain', '60 s · plain', '25 words · plain']);
-  await expect(page.locator('#board-bests-meta')).toHaveText('english 200 · 60 s · plain · physical keyboard · continue on error · corpus v5 · metric v1 · best completed test or retest · dates in utc');
+  await expect(page.locator('#board-bests-meta')).toHaveText('english 200 · 60 s · plain · physical keyboard · continue on error · corpus v5 · metric v1');
   await expect.poll(() => rowTexts(page)).toEqual([
     `Mara 91 wpm 98% accuracy · ${day(5)}`,
     `You ${own60.score.wpm} wpm ${own60.score.accuracy}% accuracy · ${own60.at.slice(0, 10)}`,

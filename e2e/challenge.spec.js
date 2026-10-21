@@ -13,7 +13,6 @@ test('two players type the same hidden-then-revealed passage', async ({ page }) 
   await page.locator('#start-local-race').click();
   await expect(page.locator('#race-stage')).toBeVisible();
   await expect(page.locator('#race-player')).toHaveText('Ada');
-  await expect(page.locator('#race-status')).toHaveText('Player 1 of 2');
   await expect(page.locator('#race-input')).toBeFocused();
   const text = await page.locator('#race-accessible-passage').textContent();
   expect(text.length).toBeGreaterThan(100);

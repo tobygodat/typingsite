@@ -3443,8 +3443,8 @@ function renderDaily() {
   const best = [...today].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
   const layout = isDefaultLayout(prefs.layout) ? '' : ` in ${layoutLabel(prefs.layout)}`;
   setParts($('daily-status'), best
-    ? ['Today’s best: ', speedFigure(best.score.wpm), ` · ${best.score.accuracy}% accuracy · ${today.length} ${today.length === 1 ? 'attempt' : 'attempts'} on a physical keyboard${layout}.${session ? '' : ' Sign in to save future results beyond this tab.'}`]
-    : `No completed physical-keyboard attempt${layout} today.${session ? ' Your results save to your account.' : ' Results last in this tab; sign in to save future attempts.'}`);
+    ? ['Today’s best: ', speedFigure(best.score.wpm), ` · ${best.score.accuracy}% accuracy${layout}.`]
+    : `No completed physical-keyboard attempt${layout} today.`);
   $('daily-history-panel').hidden = !completed.length;
   $('daily-history').replaceChildren(...[...completed].reverse().slice(0, 30).map((run) => {
     const row = element('div', '', 'daily-result');
@@ -3814,17 +3814,16 @@ function renderGhostResult() {
     for (const value of [speedFigure(score.wpm), `${score.accuracy}% accuracy`, `${(score.elapsedMs / 1000).toFixed(1)} s`]) row.append(element('span', value, 'num'));
     return row;
   }));
-  setParts($('ghost-result-rule'), [`${outcomeRule(ghost)} `, unitLabel(SPEED_DEFINITION), '.']);
+  $('ghost-result-rule').textContent = outcomeRule(ghost);
   const retry = ghost.state === 'failed' && (!ghost.error?.status || ghost.error.status >= 500);
   $('ghost-result-status').textContent = {
     sending: `Sending your run to ${ghost.name}…`,
-    sent: `Sent. ${ghost.name} sees this result in their inbox too.`,
-    kept: `Your first finish was already sent and stands, so this run wasn’t. ${ghost.name} sees the result shown here.`,
+    sent: `Sent to ${ghost.name}.`,
+    kept: 'Your first finish stands, so this run wasn’t sent.',
     failed: `Not sent. ${ghost.error?.message || ''}`,
-    interrupted: 'Focus or input changed during the run. Race again to send a finished run.',
-    unsendable: 'A run of more than 6,000 keys can’t be sent. Race again with fewer corrections.',
-    unreplayable: 'This run included an emoji or a similar character, which a ghost race can’t replay. Race again to send a run.',
-    'other-input': `${ghost.name} typed on ${ghostInputLabel(ghost.conditions)} and this run used ${ghostInputLabel(ghost.run.conditions)}; the two are never compared. Race again on ${ghostInputLabel(ghost.conditions)} to send a run.`,
+    unsendable: 'Race again with fewer corrections.',
+    unreplayable: 'Race again without emoji.',
+    'other-input': `Race again on ${ghostInputLabel(ghost.conditions)} to send a run.`,
   }[ghost.state] || '';
   const again = RACE_AGAIN.includes(ghost.state);
   const action = $('ghost-result-action');
@@ -4086,7 +4085,6 @@ function setupRacePlayer() {
   raceRunChanged();
   $('race-stage').hidden = false;
   $('race-player').textContent = race.names[race.player];
-  $('race-status').textContent = `Player ${race.player + 1} of 2`;
   $('race-input').value = '';
   $('race-input').disabled = false;
   race.textView = renderText($('race-text-display'), race.passage.text);

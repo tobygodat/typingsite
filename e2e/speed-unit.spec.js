@@ -322,7 +322,7 @@ test('the daily challenge and a one-keyboard race read in cpm', async ({ page })
   await expect(page.locator('.run-card-unit')).toHaveText('cpm');
   await openView(page, 'Challenge');
   await page.locator('#challenge-daily').click();
-  await expect(page.locator('#daily-status')).toContainText(/^Today’s best: \d+ cpm · \d+% accuracy · 1 attempt/);
+  await expect(page.locator('#daily-status')).toHaveText(/^Today’s best: \d+ cpm · \d+% accuracy\.$/);
   await page.locator('#daily-history-panel summary').click();
   await expect(page.locator('.daily-result strong')).toHaveText(/^\d+ cpm · \d+%$/);
 
@@ -419,7 +419,6 @@ test('an online race’s results and its inbox entry read in the chosen unit', a
     await page.mouse.move(40, 40);
     await command(page, 'speed unit · cpm');
     await expect(speeds).toHaveText(before.map((value) => `${Number(value.split(' ')[0]) * 5} cpm`));
-    await expect(page.locator('#online-results')).toContainText('Corrected cpm uses matching characters');
     await page.locator('#inbox-trigger').click();
     await expect(page.locator('#inbox-list [data-kind="result"]')).toContainText(/Lin: \d+ cpm to \d+\./);
     // Each player's own setting: Lin still reads wpm.

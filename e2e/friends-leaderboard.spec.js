@@ -168,7 +168,6 @@ test('guests see a sign-in prompt, and the board is in the palette', async ({ pa
   await openView(page, 'Challenge');
   await page.locator('#challenge-friends').click();
   await expect(page.locator('#challenge-friends')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#compete-heading')).toHaveText('Among friends, today and this week.');
   await expect(page.locator('#friends-board-guest')).toBeVisible();
   await expect(page.locator('#friends-board-lists')).toBeHidden();
   await expect(page.locator('#refresh-friends-board')).toBeHidden();
@@ -256,7 +255,7 @@ test('a daily run reaches the board with the profile save, and only mutual frien
 
   await openBoard(page);
   await expect(page.locator('#friends-board-lists')).toBeVisible();
-  await expect(page.locator('#board-daily-meta')).toHaveText(`${utcDay()} · best completed attempt · physical keyboard`);
+  await expect(page.locator('#board-daily-meta')).toHaveText(`${utcDay()}`);
   await expect(page.locator('#board-daily')).toContainText(`You ${wpm} wpm`);
   // The board itself only ever reads.
   expect(actions.filter((action) => action !== 'board')).toEqual(['share']);
@@ -468,7 +467,7 @@ test('a board left open reads the new day after 00:00 UTC, and the new week on M
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await openBoard(page);
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03');
   expect(await rowTexts(page, 'board-daily')).toEqual(['Lin 78 wpm 97% accuracy · 1 attempt', 'You — no completed attempt yet', 'Mara — no completed attempt yet']);
   const actions = boardActions(page);
 
@@ -476,9 +475,9 @@ test('a board left open reads the new day after 00:00 UTC, and the new week on M
   now = '2026-10-04T00:00:30Z';
   shares(supabase, mara, { daily: result('2026-10-04', 91), week: lastWeek(1250, 21) });
   await page.clock.fastForward('10:30');
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04 · best completed attempt · physical keyboard');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04');
   expect(await rowTexts(page, 'board-daily')).toEqual(['Mara 91 wpm 97% accuracy · 1 attempt', 'You — no completed attempt yet', 'Lin — no completed attempt yet']);
-  await expect(page.locator('#board-week-meta')).toHaveText('since monday 2026-09-28, 00:00 utc · completed runs');
+  await expect(page.locator('#board-week-meta')).toHaveText('since 2026-09-28');
   expect((await rowTexts(page, 'board-week')).slice(0, 2)).toEqual(['Lin 41 min 37 runs', 'Mara 20 min 21 runs']);
   await expect(page.locator('#friends-board-status')).toHaveText('');
   // The rollover only read.
@@ -496,14 +495,14 @@ test('a board left open reads the new day after 00:00 UTC, and the new week on M
   await page.clock.fastForward('24:00:00');
   await page.waitForTimeout(500);
   expect(boardRequests(supabase)).toBe(before);
-  await expect(page.locator('#board-week-meta')).toHaveText('since monday 2026-09-28, 00:00 utc · completed runs');
+  await expect(page.locator('#board-week-meta')).toHaveText('since 2026-09-28');
   await page.evaluate(() => {
     delete document.hidden;
     delete document.visibilityState;
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  await expect(page.locator('#board-week-meta')).toHaveText('since monday 2026-10-05, 00:00 utc · completed runs');
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-05 · best completed attempt · physical keyboard');
+  await expect(page.locator('#board-week-meta')).toHaveText('since 2026-10-05');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-05');
   expect(await rowTexts(page, 'board-daily')).toEqual(['You — no completed attempt yet', 'Lin — no completed attempt yet', 'Mara — no completed attempt yet']);
   // Nobody has practised this week yet, Ada included: her row's summary is last week's.
   expect(await rowTexts(page, 'board-week')).toEqual(['You — nothing yet this week', 'Lin — nothing yet this week', 'Mara — nothing yet this week']);
@@ -1147,16 +1146,16 @@ test('a board left open reads the new day by the service’s clock, not this dev
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await openBoard(page);
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03');
   // Past midnight here, not yet on the service: still Saturday's board.
   now = '2026-10-03T23:58:30Z';
   await page.clock.fastForward('10:30');
   await page.clock.fastForward(30_000);
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03');
   // Past midnight on the service too: the next check reads Sunday's.
   now = '2026-10-04T00:00:30Z';
   await page.clock.fastForward('02:00');
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04 · best completed attempt · physical keyboard');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04');
 });
 
 test('a device whose clock is behind, saving just after 00:00 UTC, still shows the new day’s daily and week', async ({ page, supabase }) => {
@@ -1183,7 +1182,7 @@ test('a device whose clock is behind, saving just after 00:00 UTC, still shows t
   expect(row.board.weeks[monday]).toEqual({ seconds: 41, runs: 1 });
   // The service, on Monday, shows both: to her, and to any friend reading her row.
   await openBoard(page);
-  await expect(page.locator('#board-daily-meta')).toHaveText(`${monday} · best completed attempt · physical keyboard`);
+  await expect(page.locator('#board-daily-meta')).toHaveText(`${monday}`);
   expect(await rowTexts(page, 'board-daily')).toEqual(['You 82 wpm 97% accuracy · 1 attempt']);
   expect(await rowTexts(page, 'board-week')).toEqual(['You 41 s 1 run']);
 });
@@ -1218,7 +1217,7 @@ test('a board that can’t be read says so once, and the checks after it retry w
   supabase.board.missing = false;
   await refreshBoard(page);
   await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03');
   // The first read after midnight fails, quietly; the next 30-second check reads Sunday's board.
   now = '2026-10-04T00:00:30Z';
   supabase.board.missing = true;
@@ -1226,10 +1225,10 @@ test('a board that can’t be read says so once, and the checks after it retry w
   await page.clock.fastForward('10:30');
   await expect.poll(() => boardRequests(supabase)).toBeGreaterThan(reads);
   await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03');
   supabase.board.missing = false;
   await page.clock.fastForward(30_000);
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04 · best completed attempt · physical keyboard');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04');
   await expect(page.locator('#friends-board-status')).toHaveText('');
 });
 

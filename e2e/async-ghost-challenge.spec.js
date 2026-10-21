@@ -137,7 +137,7 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
     await expect(result).toBeVisible();
     await expect(linPage.locator('#ghost-result-heading')).toHaveText(/^(You finished first\.|Ada finished first\.|A tie\.)$/);
     await expect(linPage.locator('#ghost-result-rows .race-result-row')).toHaveCount(2);
-    await expect(linPage.locator('#ghost-result-status')).toHaveText('Sent. Ada sees this result in their inbox too.');
+    await expect(linPage.locator('#ghost-result-status')).toHaveText('Sent to Ada.');
     await expect(linPage.locator('#result-delta')).toHaveText('Ghost race complete · not counted toward your best');
     await expect(linPage.locator('#run-card-stamp')).toContainText('ghost race');
     await expect(linPage.locator('#ghost-offer')).toBeHidden();
@@ -213,12 +213,12 @@ test('an interrupted or touch ghost race is not sent and can be raced again; the
   await expect(page.locator('#condition-line')).toContainText('touch input');
   await page.keyboard.type(passage, { delay: 60 });
   await expect(page.locator('#ghost-result-heading')).toHaveText('A different kind of input, so not sent.');
-  await expect(page.locator('#ghost-result-status')).toHaveText('Ada typed on a physical keyboard and this run used touch input; the two are never compared. Race again on a physical keyboard to send a run.');
+  await expect(page.locator('#ghost-result-status')).toHaveText('Race again on a physical keyboard to send a run.');
   expect(challenge.result).toBeNull();
   await again.click();
   await expect(page.locator('#typing-input')).toBeFocused();
   await page.keyboard.type(passage, { delay: 110 });
-  await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Ada sees this result in their inbox too.');
+  await expect(page.locator('#ghost-result-status')).toHaveText('Sent to Ada.');
   expect(challenge.result.wpm).toBeGreaterThan(30);
   expect(challenge.result.wpm).toBeLessThan(140);
   // Nothing on the page is wider than the narrowest phone, and the rows stay inside it as it widens.
@@ -314,7 +314,7 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#typing-input')).toBeFocused();
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await page.keyboard.type(passage, { delay: 110 });
-    await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Ada sees this result in their inbox too.');
+    await expect(page.locator('#ghost-result-status')).toHaveText('Sent to Ada.');
     await expect(page.locator('#result-conditions')).toContainText('touch input');
     expect(challenge.result.wpm).toBeGreaterThan(30);
 
@@ -367,7 +367,7 @@ test('at 320 px a long sender name wraps, a corrected slip onto ö is still sent
   await page.keyboard.type(passage.slice(3), { delay: 160 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#ghost-result-heading')).toHaveText(`${name} finished first.`);
-  await expect(page.locator('#ghost-result-status')).toHaveText(`Sent. ${name} sees this result in their inbox too.`);
+  await expect(page.locator('#ghost-result-status')).toHaveText(`Sent to ${name}.`);
   expect(challenge.result.correct).toBe(passage.length);
   expect(challenge.result.accuracy).toBeLessThan(100);
   await expect(page.locator('#skip-to-retest')).toBeDisabled();
@@ -398,9 +398,9 @@ test('a timed ghost race runs on the sender’s clock and is led by the text kep
   await page.keyboard.type(passage.slice(20, 100), { delay: 90 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results', { timeout: 15000 });
   await expect(page.locator('#ghost-result-heading')).toHaveText(/^(You typed further\.|Ada typed further\.|A tie\.)$/);
-  await expect(page.locator('#ghost-result-rule')).toHaveText('Same 15 s clock: more correct text kept leads. wpm counts correct characters kept.');
+  await expect(page.locator('#ghost-result-rule')).toHaveText('Same 15 s clock: more correct text kept leads.');
   await expect(page.locator('#ghost-result-rows')).toContainText('15.0 s');
-  await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Ada sees this result in their inbox too.');
+  await expect(page.locator('#ghost-result-status')).toHaveText('Sent to Ada.');
 });
 
 test('with the pace caret on, a ghost race keeps the friend’s run as its ghost and their numbers in its conditions', async ({ page, supabase }) => {
@@ -555,7 +555,7 @@ test('a finish whose reply was lost after it was stored gets the stored result b
   const action = page.locator('#ghost-result-action');
   await expect(action).toHaveText('Send again');
   await action.click();
-  await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Ada sees this result in their inbox too.');
+  await expect(page.locator('#ghost-result-status')).toHaveText('Sent to Ada.');
   await expect(action).toBeHidden();
   await expect(page.locator('#ghost-result-rows')).toContainText(`${stored.wpm} wpm`);
   expect(challenge.result).toEqual(stored);
@@ -572,7 +572,7 @@ test('a finish whose reply was lost after it was stored gets the stored result b
   const first = { wpm: 41, accuracy: 100, elapsedMs: 13000, correct: passage.length };
   Object.assign(second, { result: first, completedAt: new Date().toISOString() });
   await typeInto(page, passage, '#typing-input', { delay: 110 });
-  await expect(page.locator('#ghost-result-status')).toHaveText('Your first finish was already sent and stands, so this run wasn’t. Ada sees the result shown here.');
+  await expect(page.locator('#ghost-result-status')).toHaveText('Your first finish stands, so this run wasn’t sent.');
   await expect(page.locator('#ghost-result-rows')).toContainText('41 wpm');
   await expect(action).toBeHidden();
   expect(second.result).toEqual(first);
@@ -652,7 +652,7 @@ test('a Race reply that lands after a later Race click leaves the later race in 
   await expect(page.locator('#session-title')).toHaveText('Race Bo’s run');
   await expect(page.locator('#accessible-passage')).toHaveText(bo.passage);
   await typeInto(page, bo.passage, '#typing-input', { delay: 110 });
-  await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Bo sees this result in their inbox too.');
+  await expect(page.locator('#ghost-result-status')).toHaveText('Sent to Bo.');
   expect(bo.result).toBeTruthy();
   expect(ada.result).toBeNull();
 });
@@ -1091,7 +1091,7 @@ test('an inbox listing read before a ghost race was sent never offers that race 
   // Later polls stay held, so only that late listing can reach the inbox.
   supabase.challenges.held = [];
   await typeInto(page, ada.passage, '#typing-input', { delay: 110 });
-  await expect(page.locator('#ghost-result-status')).toHaveText('Sent. Ada sees this result in their inbox too.');
+  await expect(page.locator('#ghost-result-status')).toHaveText('Sent to Ada.');
   await letGo(page, reply, 'list');
   await page.locator('#inbox-trigger').click();
   await expect(page.locator('#inbox-list [data-kind="challenge-result"]')).toContainText(/^Ada’s 8-word run: /);

@@ -584,8 +584,8 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     $('friends-board-lists').hidden = !rows;
     $('friends-board-empty').hidden = !rows || rows.some((entry) => !entry.self);
     if (!rows) return;
-    $('board-daily-meta').textContent = `${board.date} · best completed attempt · physical keyboard`;
-    $('board-week-meta').textContent = `since monday ${board.weekStart}, 00:00 utc · completed runs`;
+    $('board-daily-meta').textContent = board.date;
+    $('board-week-meta').textContent = `since ${board.weekStart}`;
     $('board-daily').replaceChildren(...dailyOrder(rows).map((entry) => (entry.daily
       ? row(entry, speedFigure(entry.daily.wpm, { bare: true }), unitLabel(), `${entry.daily.accuracy}% accuracy · ${entry.daily.attempts === 1 ? '1 attempt' : `best of ${entry.daily.attempts}`}`)
       : row(entry, '—', '', entry.otherVersion ? 'another version of the daily · not compared' : 'no completed attempt yet'))));
@@ -622,7 +622,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
       }));
     }
     if (select.value !== key) select.value = key;
-    $('board-bests-meta').textContent = `${shapeDescription(shapes, key)} · best completed test or retest · dates in utc`;
+    $('board-bests-meta').textContent = shapeDescription(shapes, key);
     $('board-bests').replaceChildren(...bestsOrder(rows, key).map((entry) => (entry.best
       ? row(entry, speedFigure(entry.best.wpm, { bare: true }), unitLabel(), `${entry.best.accuracy}% accuracy · ${entry.best.date}`)
       : row(entry, '—', '', entry.otherVersion ? 'another version of this shape · not compared' : 'no best on this shape yet'))));
