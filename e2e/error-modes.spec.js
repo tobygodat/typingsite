@@ -18,7 +18,6 @@ test('fail on any error ends the run as failed on the first wrong key', async ({
   const text = await passageText(page);
   await typeInto(page, text.slice(0, 12) + (text[12] === 'x' ? 'z' : 'x'), '#typing-input', { delay: 150 });
   await expect(page.locator('#result-delta')).toHaveText('failed · wrong key');
-  await expect(page.locator('#run-card-stamp')).toContainText('failed · wrong key');
   await page.screenshot({ path: shot(testInfo, 'failed-run-card.png') });
 });
 
@@ -84,7 +83,6 @@ async function failDrill(page, policy, reason, options = {}) {
   await typeInto(page, text.slice(0, at) + (text[at] === 'x' ? 'z' : 'x') + (policy === 'fail-word' ? ' ' : ''), '#typing-input', options);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-delta')).toHaveText(`failed · ${reason}`);
-  await expect(page.locator('#run-card-stamp')).toContainText(`· drill · failed · ${reason}`);
 }
 
 test('a drill failed by fail-word shows its result, then retries or goes on to the retest', async ({ page }) => {

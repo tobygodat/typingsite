@@ -487,7 +487,7 @@ button { cursor: pointer; }
 
 .sr-only,
 #book-options .quote-filter-trigger > :first-child,
-#typing-status.badge-info {
+#typing-status {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -699,7 +699,6 @@ kbd {
 .settings-content { flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-4) var(--space-8); }
 .settings-intro { display: grid; gap: var(--space-1); padding-block: var(--space-2); }
 .settings-intro h3 { font-size: var(--text-lead); font-weight: 400; line-height: 1.6; margin: 0; }
-.settings-intro p { color: var(--muted); font-size: var(--text-label); line-height: 1.7; margin: 0; }
 .preference-row { display: flex; align-items: center; gap: var(--space-6); min-height: var(--settings-row); padding-block: var(--space-3); border-bottom: 1px solid var(--hairline); }
 .preference-copy { display: flex; flex-direction: column; flex: none; width: var(--settings-label); gap: var(--space-1); }
 .preference-copy strong { font-size: var(--text-small); font-weight: 600; line-height: 1.6; }
@@ -721,7 +720,6 @@ kbd {
 .pace-note:empty { display: none; }
 .preference-row .pace-wpm { width: var(--settings-label); }
 .settings-preview { padding-top: var(--space-4); display: grid; gap: var(--space-2); }
-.settings-preview-label { margin: 0; color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
 #settings-preview-passage { margin: 0; border-left: var(--settings-selection-line) solid var(--accent); padding-left: var(--space-3); font-size: var(--settings-preview-medium); line-height: var(--settings-preview-line); }
 body[data-font-size="22"] #settings-preview-passage { font-size: var(--settings-preview-small); }
 body[data-font-size="36"] #settings-preview-passage { font-size: var(--settings-preview-large); }
@@ -2255,8 +2253,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .results-layout:has(> .run-card[hidden])::before { display: none; }
 }
 
-.run-card-head { display: flex; align-items: baseline; }
-.run-card-stamp { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.04em; }
 
 .run-card-graph { margin: 0; display: grid; gap: var(--space-2); }
 
@@ -2770,7 +2766,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 
 /* ── Learn to type ──────────────────────────────────────────────────────── */
 
-.learn-screen .page-heading p { max-width: 60ch; margin: var(--space-3) 0 0; color: var(--muted); }
 
 .learn-layout {
   padding-top: var(--space-8);

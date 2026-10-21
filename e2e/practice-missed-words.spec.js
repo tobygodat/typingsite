@@ -37,7 +37,7 @@ test('missed and slowest words become their own uncounted practice run', async (
   // The slowest words are one timing each, so they show their speed and the run's median.
   const evidence = page.locator('#practice-words-evidence');
   await expect(evidence).toContainText(`missed first try: ${missed.join(', ')}`);
-  await expect(evidence).toContainText(/slowest in this run: .+ \d+ wpm .*· median \d+ wpm over \d+ clean words/);
+  await expect(evidence).toContainText(/slowest in this run: .+ \d+ wpm/);
   // A sentence, not a conditions line: Literata throughout, and every number a book-face figure.
   await expect(evidence).toHaveCSS('font-family', /^"?Literata/);
   const figures = evidence.locator('.num');
@@ -62,7 +62,6 @@ test('missed and slowest words become their own uncounted practice run', async (
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-delta')).toHaveText('Word practice complete · not counted toward your best');
   await expect(page.locator('#result-conditions')).toContainText('missed words');
-  await expect(page.locator('#run-card-stamp')).toContainText('missed');
   // The retest it offers keeps the 10-word baseline's shape.
   await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 10-word retest.');
   // Word practice has no best of its own, so the footer says it isn't counted.

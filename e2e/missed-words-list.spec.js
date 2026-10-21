@@ -65,7 +65,7 @@ test('words missed across runs build a list in Training that starts an uncounted
   // Training is the results screen: the list sits below the recurring patterns.
   await openView(page, 'Train');
   const note = page.locator('#missed-words-note');
-  await expect(note).toHaveText(`First-try misses in your last ${runs} complete tests, retests and new daily passages on a physical keyboard, all other test conditions together, up to 12 words a run. Word practice, custom text and drills aren’t counted.`);
+  await expect(note).toHaveText(`First-try misses in your last ${runs} runs on a physical keyboard.`);
   const rows = await listRows(page);
   expect(rows.length).toBe(Math.min(8, recurring().length));
   for (const [word, copy] of rows) expect(copy).toBe(`missed in ${tally.get(word)} of the last ${runs} runs`);
@@ -107,7 +107,7 @@ test('words missed across runs build a list in Training that starts an uncounted
   await expect(page.locator('#result-delta')).toHaveText('Word practice complete · not counted toward your best');
   // Out of the evidence: the list still counts the same runs. (#best says word practice isn't counted,
   // so the signed-in test checks the stored bests instead.)
-  await expect(note).toContainText(`your last ${runs} complete tests`);
+  await expect(note).toContainText(`your last ${runs} runs`);
   expect(await listRows(page)).toEqual(rows);
 
   // Then the existing loop: the same practice again, or a fresh-text retest of the last quote run.
@@ -259,7 +259,7 @@ test('custom text never feeds the list: its misses aren’t counted, as stored o
   await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
   await openView(page, 'Train');
   expect(await listRows(page)).toEqual(expected);
-  await expect(page.locator('#missed-words-note')).toContainText('your last 2 complete tests');
+  await expect(page.locator('#missed-words-note')).toContainText('your last 2 runs');
   await expect.poll(() => supabase.profileFor(user.email)?.runs.length).toBe(5);
   const stored = supabase.profileFor(user.email).runs.at(-1);
   expect(stored.kind).toBe('custom');

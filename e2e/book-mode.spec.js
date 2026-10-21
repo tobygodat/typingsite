@@ -43,7 +43,7 @@ test('a finished page counts like any practice run and the next page follows', a
   await chooseQuoteFilter(page, 'book', 'pride and prejudice');
   const first = await completePassage(page);
   expect(first).toMatch(/^It is a truth universally acknowledged/);
-  await expect(page.locator('#result-conditions')).toHaveText(/^page 1 · pride and prejudice · physical keyboard · (continue|stop) on error · corpus v1 · metric v1$/);
+  await expect(page.locator('#result-conditions')).toHaveText(/^page 1 · pride and prejudice · physical keyboard · (continue|stop) on error$/);
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
   await expect(page.locator('#run-again')).toHaveText('Next page');
   await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);

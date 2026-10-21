@@ -22,7 +22,7 @@ Success for milestone 1: a guest completes run → explained recommendation → 
 
 ## Positioning
 
-The explained race-to-drill-to-fresh-text loop, held to honest measurement. Every recommendation shows the evidence behind it — error counts, timing against the user's own median, sample size. Every comparison names its text, rule and metric version. Improvement is only ever claimed on text the profile has not seen before.
+The explained race-to-drill-to-fresh-text loop, held to honest measurement. Every recommendation shows the evidence behind it — error counts, timing against the user's own median, sample size. Every comparison names its text and rule, and its corpus and metric version wherever the runs beside it differ by one. Improvement is only ever claimed on text the profile has not seen before.
 
 This is stated in the research as a hypothesis about usability and learning, not a proven outcome and not a claim of novelty. Monkeytype, keybr, TypeRacer and TypeGG are influences and prior art, not features this product claims to have invented; Monkeytype already offers missed-word practice and TypeGG already offers competitive progression. Integration and demonstrable learning are what have to justify the product.
 

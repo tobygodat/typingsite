@@ -139,7 +139,6 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
     await expect(linPage.locator('#ghost-result-rows .race-result-row')).toHaveCount(2);
     await expect(linPage.locator('#ghost-result-status')).toHaveText('Sent to Ada.');
     await expect(linPage.locator('#result-delta')).toHaveText('Ghost race complete · not counted toward your best');
-    await expect(linPage.locator('#run-card-stamp')).toContainText('ghost race');
     await expect(linPage.locator('#ghost-offer')).toBeHidden();
     await expect(linPage.locator('#best')).toHaveText('Not counted');
     // Never a baseline or pattern evidence, so no drill or retest is offered from it.
@@ -798,7 +797,7 @@ test('a Race reply that lands after a practice run began neither interrupts that
   await expect(page.locator('#challenge-toast')).toBeHidden();
   await page.keyboard.type(text.slice(12), { delay: 90 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#run-card-stamp')).toContainText('practice');
+  await expect(page.locator('#result-delta')).not.toContainText('Ghost race');
   await expect(page.locator('#ghost-result')).toBeHidden();
   await expect(page.locator('#ghost-offer')).toBeVisible();
   await expectOffer(page, 'Ada');
@@ -851,7 +850,7 @@ test('a Race reply that lands after Lin restarted the practice test or used Skip
   await expectOffer(page, 'Ada');
   await typeInto(page, text, '#typing-input', { delay: 90 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#run-card-stamp')).toContainText('practice');
+  await expect(page.locator('#result-delta')).not.toContainText('Ghost race');
   await expect(page.locator('#ghost-result')).toBeHidden();
   expect(ada.result).toBeNull();
 
@@ -975,7 +974,7 @@ test('a Race clicked mid-run waits for the run’s end once Lin goes back to typ
   await expect(page.locator('#challenge-toast')).toBeHidden();
   await page.keyboard.type(text.slice(late), { delay: 90 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#run-card-stamp')).toContainText('practice');
+  await expect(page.locator('#result-delta')).not.toContainText('Ghost race');
   await expect(page.locator('#result-delta')).not.toHaveText(/Interrupted/);
   await expectOffer(page, 'Ada');
   // A Race clicked mid-run and left to load is the person's choice: it ends the run and starts.

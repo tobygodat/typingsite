@@ -283,8 +283,8 @@ const CONDITION_PARTS = [
   { name: 'correction', text: (c) => correctionLabel(c.correctionPolicy) },
   { name: 'strictSpace', text: (c) => (inputRules(c).includes('strict-space') ? 'strict space' : 'no strict space'), shown: (c) => inputRules(c).includes('strict-space') },
   { name: 'quickEnd', text: (c) => (inputRules(c).includes('quick-end-off') ? 'quick end off' : 'quick end'), shown: (c) => inputRules(c).includes('quick-end-off') },
-  { name: 'corpus', text: (c) => `corpus ${version(c.corpus || CORPUS_VERSION)}` },
-  { name: 'metric', text: (c) => `metric ${version(c.metricVersion || METRIC_VERSION)}` },
+  { name: 'corpus', text: (c) => `corpus ${version(c.corpus || CORPUS_VERSION)}`, shown: () => false },
+  { name: 'metric', text: (c) => `metric ${version(c.metricVersion || METRIC_VERSION)}`, shown: () => false },
 ];
 
 // The parts a conditions line shows, by name, in reading order. Beside other condition sets (`sets`, as

@@ -28,7 +28,7 @@ test('code mode serves a python snippet and keeps the run out of bests', async (
 
   await typeInto(page, text);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-conditions')).toHaveText(/^code · python · physical keyboard · (stop|continue) on error · corpus v\d+ · metric v1 · not counted toward bests$/);
+  await expect(page.locator('#result-conditions')).toHaveText(/^code · python · physical keyboard · (stop|continue) on error · not counted toward bests$/);
   await expect(page.locator('#result-delta')).toHaveText('Code run complete · not counted toward your best');
   await expect(page.locator('#skip-to-retest')).toBeDisabled();
   await expect(page.locator('#best')).toHaveText('Code runs aren’t ranked');

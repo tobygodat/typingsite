@@ -70,7 +70,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
   }
 
   function renderConditions() {
-    setText($('compose-conditions'), `composing · up to ${LIMIT_S} s · ${inputLabel()} · not compared with copy tests`);
+    setText($('compose-conditions'), `composing · up to ${LIMIT_S} s · ${inputLabel()}`);
   }
 
   function renderPrivacy() {

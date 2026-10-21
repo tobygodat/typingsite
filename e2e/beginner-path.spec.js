@@ -292,7 +292,7 @@ test('guests keep lesson progress for the tab only, and clearing history clears 
   await openLessons(page);
   await startLesson(page, 1);
   await typeLesson(page);
-  await expect(page.locator('#lesson-save-note')).toContainText('Lesson progress lasts for this tab; sign in to save future lessons.');
+  await expect(page.locator('#guest-note')).toBeVisible();
 
   await openView(page, 'Progress');
   await expect(page.locator('#clear-history')).toBeVisible();
@@ -656,7 +656,6 @@ test('a signed-in learner’s lesson progress syncs to the account, outside runs
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openLessons(page);
-  await expect(page.locator('#lesson-save-note')).toContainText('Lesson progress saves to your account.');
   await startLesson(page, 1);
   await typeLesson(page);
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');

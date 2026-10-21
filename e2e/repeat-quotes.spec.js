@@ -173,7 +173,7 @@ test('on: a seen quote can return to chase its score, but never sets a best, a b
   await expect(page.locator('#result-conditions')).toContainText('repeated text · english · short quote · gentle');
   await expect(page.locator('#best')).toHaveText(best);
   await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#recommendation-meta')).toContainText('Repeated text stays out of your best, trends and retests');
+  await expect(page.locator('#recommendation-meta')).toContainText('Repeated text has no retest.');
   await shot(page, 'results-repeated-light');
   await page.emulateMedia({ colorScheme: 'dark' });
   await shot(page, 'results-repeated-dark');
@@ -330,7 +330,7 @@ test('a daily repeat attempt is repeated text too, so it is never a retest basel
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete · repeat attempt');
   await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#recommendation-meta')).toHaveText('A standalone drill. Finish a practice run to establish a fresh-text retest baseline.');
+  await expect(page.locator('#recommendation-meta')).toHaveText('A standalone drill.');
 });
 
 test('stop on error: a blocked letter swaps the notice for its hint without moving restart', async ({ page }) => {

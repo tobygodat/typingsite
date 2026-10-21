@@ -969,15 +969,18 @@ test('condition sets at one length are named by every part they disagree on, in 
 test('the conditions line reads every part shown, in the same words the condition sets are named by', () => {
   const words = { mode: 'words', count: 25, punctuation: false, numbers: true, wordList: '1k', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION, layout: 'dvorak', strictSpace: true };
   assert.equal(Object.values(conditionParts(words)).join(' · '),
-    `english 1k · 25 words · plain · numbers · physical keyboard · ${layoutLabel('dvorak')} · continue on error · strict space · corpus v5 · metric v1`);
+    `english 1k · 25 words · plain · numbers · physical keyboard · ${layoutLabel('dvorak')} · continue on error · strict space`);
   const quote = { mode: 'quote', quoteLength: 'short', difficulty: 'gentle', punctuation: true, correctionPolicy: 'mandatory' };
-  assert.equal(Object.values(conditionParts(quote)).join(' · '), 'english · short quote · gentle · physical keyboard · stop on error · corpus v5 · metric v1',
+  assert.equal(Object.values(conditionParts(quote)).join(' · '), 'english · short quote · gentle · physical keyboard · stop on error',
     'a quote ignores the punctuation setting, so the line leaves it out');
   const off = { ...quote, punctuation: false };
   const line = (value, sets) => Object.values(conditionParts(value, sets)).join(' · ');
-  assert.equal(line(quote, [off, quote]), 'english · short quote · gentle · punctuation setting on · physical keyboard · stop on error · corpus v5 · metric v1',
+  assert.equal(line(quote, [off, quote]), 'english · short quote · gentle · punctuation setting on · physical keyboard · stop on error',
     'beside a quote set that differs only by the setting, the line names it, as the pills do');
-  assert.equal(line(off, [off, quote]), 'english · short quote · gentle · punctuation setting off · physical keyboard · stop on error · corpus v5 · metric v1');
+  assert.equal(line(off, [off, quote]), 'english · short quote · gentle · punctuation setting off · physical keyboard · stop on error');
+  const v2 = { ...off, metricVersion: 'stilltype-metrics-v2' };
+  assert.equal(line(off, [off, v2]), 'english · short quote · gentle · physical keyboard · stop on error · metric v1',
+    'beside a set from another metric version, the line names its own');
   assert.equal(line(quote, [quote]), Object.values(conditionParts(quote)).join(' · '), 'with nothing to tell apart, it stays out');
 });
 

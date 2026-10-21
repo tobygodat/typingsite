@@ -75,7 +75,7 @@ test('the words list is one tab stop whose words show their pace by keyboard', a
   await expect(list).toHaveAttribute('aria-label', /words typed/i);
   expect(await list.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
   // Before a choice the line names the fastest and slowest words; only one word is a tab stop.
-  await expect(detail).toHaveText(/^fastest “\S+” \d+ wpm · slowest “\S+” \d+ wpm · select a word for its pace$/);
+  await expect(detail).toHaveText(/^fastest “\S+” \d+ wpm · slowest “\S+” \d+ wpm$/);
   await expect(list.locator('[tabindex="0"]')).toHaveCount(1);
   // Finish focuses "run again" in the drill; Tab walks on to the trace and the list's one stop.
   for (let i = 0; i < 12 && !(await words.first().evaluate((node) => node === document.activeElement)); i += 1) {

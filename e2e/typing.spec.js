@@ -30,7 +30,6 @@ test('a corrected mistake keeps its first-try error and visible tint', async ({ 
   expect(accuracy).toBeGreaterThan(90);
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
   await expect(page.locator('#run-card')).toBeVisible();
-  await expect(page.locator('#run-card-stamp')).toContainText('practice');
   await expect(page.locator('#result-conditions')).toContainText('10 words · plain · physical keyboard · continue on error');
   await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
 });

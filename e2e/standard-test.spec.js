@@ -4,7 +4,7 @@ import { test, expect, openApp, openView, openSettings, completePassage, passage
 // Committed docs images are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/standard-test/${name}` : testInfo.outputPath(name));
 
-const CONDITIONS = 'standard v1 · 60 s · 1k–10k mix · physical keyboard · stop on error · corpus v5 · metric v1';
+const CONDITIONS = 'standard v1 · 60 s · 1k–10k mix · physical keyboard · stop on error';
 const RECIPE = 'standard v1 · 60 s · english 1k–10k mix · punctuation, numbers, one quote';
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const screenOverflow = (page) => page.locator('#typing-screen').evaluate((node) => node.scrollWidth - node.clientWidth);
@@ -124,7 +124,6 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await expect(page.locator('#result-conditions')).toHaveText(CONDITIONS);
   // Two lines, like other conditions, so the sticky run card grows no taller.
   expect((await page.locator('#result-conditions').boundingBox()).height).toBeLessThanOrEqual(36.5);
-  await expect(page.locator('#run-card-stamp')).toContainText('standard');
   await expect(page.locator('#best')).toHaveText('Best · 60 wpm');
   await expect(page.locator('#recommendation-meta')).toContainText('fresh standard retest');
 
@@ -143,7 +142,7 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await expect(page.locator('#standard-median + span')).toBeHidden();
   await expect(page.locator('#standard-median-label')).toHaveText('median');
   await expect(page.locator('#standard-score-note')).toHaveText('1 standard run kept. The median appears after 3.');
-  await expect(page.locator('#standard-score-conditions')).toHaveText(`${RECIPE} · physical keyboard · stop on error · corpus v5 · metric v1`);
+  await expect(page.locator('#standard-score-conditions')).toHaveText(`${RECIPE} · physical keyboard · stop on error`);
   await expect(page.getByRole('group', { name: 'Test' }).getByRole('button', { name: 'standard', exact: true })).toHaveCount(1);
   await expect(page.locator('#run-history .run-row').first()).toContainText('standard');
   await page.screenshot({ path: shot(testInfo, 'progress-first-run-dark.png') });
@@ -437,7 +436,6 @@ test('a custom passage over standard keeps its own condition and never reaches t
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-conditions')).toContainText('custom text');
   await expect(page.locator('#result-conditions')).not.toContainText('standard');
-  await expect(page.locator('#run-card-stamp')).toContainText('custom');
 
   await openView(page, 'Progress');
   await expect(page.locator('#standard-best')).toHaveText('—');

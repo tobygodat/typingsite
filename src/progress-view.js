@@ -302,9 +302,9 @@ export function renderSpread(container, runs) {
   const [q1, mid, q3] = [0.25, 0.5, 0.75].map((p) => quantile(speeds, p));
   const spread = speeds.length >= 4
     ? `Half your runs fall between ${shownSpeed(speedValue(q1))} and ${shownSpeed(speedValue(q3))} ${unit}.`
-    : `${speeds.length} ${speeds.length === 1 ? 'run' : 'runs'} so far; the middle half shows from 4.`;
+    : '';
   const left = chartFigure(container, 'How your runs spread', { subline: spread });
-  const right = chartFigure(container, 'Speed against accuracy', { subline: 'Each dot is a run.' });
+  const right = chartFigure(container, 'Speed against accuracy');
   drawHistogram(left, speeds, { q1, mid, q3, unit });
   drawScatter(right, runs, unit);
 }
