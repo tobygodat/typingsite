@@ -1,16 +1,18 @@
 import { QUOTE_LENGTHS, QUOTE_DIFFICULTIES } from './typing.js';
 
-const FILTERS = [
-  { key: 'quoteLength', id: 'quote-length', label: 'length' },
-  { key: 'difficulty', id: 'quote-difficulty', label: 'difficulty' },
+export const QUOTE_FILTERS = [
+  { key: 'quoteLength', id: 'quote-length', label: 'length', values: QUOTE_LENGTHS },
+  { key: 'difficulty', id: 'quote-difficulty', label: 'difficulty', values: QUOTE_DIFFICULTIES },
 ];
 
-export function createQuoteFilters({ root, read, commit }) {
+// Each filter is a compact dropdown in its own root: { root, key, id, label, values, names? }. `names`
+// gives a value's visible text where it isn't the value itself.
+export function createQuoteFilters({ filters, read, commit }) {
   let draft = null;
   let search = '';
   let searchAt = 0;
-  const widgets = FILTERS.map(({ key, id, label }) => {
-    const values = key === 'quoteLength' ? QUOTE_LENGTHS : QUOTE_DIFFICULTIES;
+  const widgets = filters.map(({ root, key, id, label, values, names = {} }) => {
+    const name = (value) => names[value] || value;
     const host = document.createElement('div');
     host.className = 'quote-filter';
     host.innerHTML = `
@@ -24,7 +26,7 @@ export function createQuoteFilters({ root, read, commit }) {
       option.id = `${id}-${value}`;
       option.className = 'quote-filter-option';
       option.setAttribute('role', 'option');
-      option.innerHTML = `<span>${value}</span><span class="quote-filter-check" aria-hidden="true">✓</span>`;
+      option.innerHTML = `<span>${name(value)}</span><span class="quote-filter-check" aria-hidden="true">✓</span>`;
       menu.append(option);
       option.addEventListener('pointerdown', (event) => event.preventDefault());
       option.addEventListener('click', () => {
@@ -34,7 +36,7 @@ export function createQuoteFilters({ root, read, commit }) {
       });
       return option;
     });
-    const widget = { key, values, trigger, menu, options };
+    const widget = { key, values, name, trigger, menu, options };
     trigger.addEventListener('click', () => {
       if (draft?.widget === widget) dismiss();
       else open(widget);
@@ -58,9 +60,9 @@ export function createQuoteFilters({ root, read, commit }) {
 
   function refresh() {
     dismiss();
-    for (const { key, values, trigger, options } of widgets) {
+    for (const { key, values, name, trigger, options } of widgets) {
       const current = read()[key];
-      trigger.querySelector('.quote-filter-current').textContent = current;
+      trigger.querySelector('.quote-filter-current').textContent = name(current);
       options.forEach((option, index) => {
         option.toggleAttribute('data-current', values[index] === current);
         option.setAttribute('aria-selected', String(values[index] === current));
@@ -124,7 +126,7 @@ export function createQuoteFilters({ root, read, commit }) {
       const start = repeated ? draft.index + 1 : 0;
       for (let i = 0; i < widget.values.length; i += 1) {
         const index = (start + i) % widget.values.length;
-        if (widget.values[index].startsWith(prefix)) { highlight(index); break; }
+        if (widget.name(widget.values[index]).startsWith(prefix)) { highlight(index); break; }
       }
     } else if (wasOpen && (key === 'Enter' || key === ' ' || (key === 'ArrowUp' && event.altKey))) finish(true);
     else if (key === 'Home' || (!wasOpen && key === 'ArrowUp')) highlight(0);
