@@ -109,23 +109,28 @@
                 </div>
               </details>
             </div>
-            <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
-              <button type="button" data-length="15" aria-pressed="false" aria-label="15 seconds">15</button>
-              <button type="button" data-length="30" aria-pressed="true" aria-label="30 seconds" class="is-active">30</button>
-              <button type="button" data-length="60" aria-pressed="false" aria-label="60 seconds">60</button>
-              <button type="button" data-length="120" aria-pressed="false" aria-label="120 seconds">120</button>
-              <button id="custom-length" type="button" aria-pressed="false" aria-label="custom time">custom</button>
-              <form id="custom-length-form" class="custom-length" novalidate hidden>
-                <input id="custom-length-input" class="custom-length-input" type="text" inputmode="numeric" enterkeyhint="done" maxlength="12" autocomplete="off" spellcheck="false" placeholder="5–600" aria-label="custom time in seconds, 5 to 600" aria-describedby="custom-length-error">
-              </form>
-            </div>
-            <div id="quote-options" class="segmented quote-options" role="group" aria-label="Quote filters" hidden>
-            </div>
-            <div id="code-options" class="segmented compact glide" role="group" aria-label="Code language" data-glide="pressed" hidden>
-              <button type="button" data-language="js" aria-pressed="true" class="is-active">js</button>
-              <button type="button" data-language="python" aria-pressed="false">python</button>
-              <button type="button" data-language="go" aria-pressed="false">go</button>
-              <button type="button" data-language="rust" aria-pressed="false">rust</button>
+            <div class="practice-options">
+              <div id="standard-options" class="standard-options" hidden>
+                <p id="standard-recipe" class="condition-copy"></p>
+              </div>
+              <div id="duration-options" class="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed">
+                <button type="button" data-length="15" aria-pressed="false" aria-label="15 seconds">15</button>
+                <button type="button" data-length="30" aria-pressed="true" aria-label="30 seconds" class="is-active">30</button>
+                <button type="button" data-length="60" aria-pressed="false" aria-label="60 seconds">60</button>
+                <button type="button" data-length="120" aria-pressed="false" aria-label="120 seconds">120</button>
+                <button id="custom-length" type="button" aria-pressed="false" aria-label="custom time">custom</button>
+                <form id="custom-length-form" class="custom-length" novalidate hidden>
+                  <input id="custom-length-input" class="custom-length-input" type="text" inputmode="numeric" enterkeyhint="done" maxlength="12" autocomplete="off" spellcheck="false" placeholder="5–600" aria-label="custom time in seconds, 5 to 600" aria-describedby="custom-length-error">
+                </form>
+              </div>
+              <div id="quote-options" class="segmented quote-options" role="group" aria-label="Quote filters" hidden>
+              </div>
+              <div id="code-options" class="segmented compact glide" role="group" aria-label="Code language" data-glide="pressed" hidden>
+                <button type="button" data-language="js" aria-pressed="true" class="is-active">js</button>
+                <button type="button" data-language="python" aria-pressed="false">python</button>
+                <button type="button" data-language="go" aria-pressed="false">go</button>
+                <button type="button" data-language="rust" aria-pressed="false">rust</button>
+              </div>
             </div>
             <label id="punctuation-switch" class="compact-switch" for="punctuation-toggle">
               <input id="punctuation-toggle" class="switch" type="checkbox">
@@ -134,10 +139,6 @@
           </div>
           <p id="custom-length-error" class="field-error custom-length-error" role="alert"></p>
           <span id="minimum-note" class="minimum-note" hidden></span>
-        </div>
-
-        <div id="standard-options" class="standard-options" hidden>
-          <p id="standard-recipe" class="condition-copy"></p>
         </div>
 
         <div id="custom-options" class="custom-options" role="group" aria-label="Custom text" hidden>
