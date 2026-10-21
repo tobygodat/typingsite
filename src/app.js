@@ -173,6 +173,7 @@ const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('ra
 // Key sounds read the current preferences on each key; the AudioContext waits for an audible choice or key.
 const sounds = createSounds({ settings: () => ({ mode: prefs.sound, volume: prefs.soundVolume }), running: () => runInProgress() });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
+const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // The completed run the results view shows: its numbers, run card graph and Watch replay. Only
 // showResult sets it. `attempt` moves on without it (a drill whose retest is unavailable, the
@@ -604,14 +605,15 @@ function showBest() {
 }
 
 function resolvedTheme() {
-  if (prefs.theme === 'light' || prefs.theme === 'dark') return prefs.theme;
+  if (THEMES.includes(prefs.theme)) return prefs.theme;
   return prefersLight.matches ? 'light' : 'dark';
 }
 
 function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
-  for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = theme === 'light' ? '#f4f1eb' : '#0f0f0e';
+  const ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
+  for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = ground;
   selectSetting('theme-select', prefs.theme);
 }
 
@@ -2218,10 +2220,20 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
   }
   switchView('results');
   renderCard(completed);
-  $(failedDrill(completed) ? 'start-drill' : 'run-again').focus({ preventScroll: true });
+  focusResult($(failedDrill(completed) ? 'start-drill' : 'run-again'));
   // Every run a minimum ends gets the hold, wherever it was caught: the tick, the last character or
   // the timer.
   stopHold = completed.stopped ? now() : null;
+}
+
+// The next step takes focus when it fits on screen below the score, clear of the dock; otherwise the
+// heading does, so the score never scrolls away.
+function focusResult(control) {
+  const root = getComputedStyle(document.documentElement);
+  const room = innerHeight - (parseFloat(root.scrollPaddingTop) || 0) - (parseFloat(root.scrollPaddingBottom) || 0);
+  const target = control.getBoundingClientRect().bottom - $('result-wpm').getBoundingClientRect().top <= room ? control : $('results-heading');
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ block: 'nearest' });
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -3067,7 +3079,7 @@ function renderGoal(date = new Date()) {
   picker.value = cells.some((cell) => cell.dataset.day === selectedDay) ? selectedDay : goalDay;
   const practised = cells.filter((cell) => cell.dataset.level !== '0').length;
   const hadFocus = Boolean(focusedGoalDay());
-  $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last ${weeks} weeks: ${practised} days with practice. Arrow keys move between days.`);
+  $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last ${weeks} weeks: ${plural(practised, 'day')} with practice. Arrow keys move between days.`);
   captionGoalDay(null);
   $('goal-calendar').style.setProperty('--weeks', String(weeks));
   $('goal-months').style.setProperty('--weeks', String(weeks));
@@ -3330,7 +3342,7 @@ function renderPracticeStats(period, date = new Date()) {
   const runDays = stats.runsPerDay.filter((d) => d.runs).length;
   const counted = runCountTotals(profile.runCounts, { from: period === 'all' ? null : days[0], to: days.at(-1) });
   $('practice-stats').replaceChildren(
-    figure('Active days', String(stats.active), `of ${days.length}`, runDays ? `${Number((runs / runDays).toFixed(1))} runs a day when you practise` : 'no runs in this period'),
+    figure('Active days', String(stats.active), `of ${days.length}`, runDays ? `${plural(Number((runs / runDays).toFixed(1)), 'run')} a day when you practise` : 'no runs in this period'),
     figure('Longest streak', String(stats.longest), daysWord(stats.longest), goal ? `at ${goal} min a day` : 'in this period'),
     figure('Current streak', String(current), daysWord(current), `today ${goalMinutes(byDay[dayKey(date)])}${goal ? ` of ${goal}` : ''} min`),
     figure('Time typing', goalMinutes(stats.minutes), 'min', period === 'all' ? `since ${new Date(`${days[0]}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : `in the last ${days.length} days`),
@@ -5302,12 +5314,22 @@ function bindEvents() {
   // When a minimum ends a run (on the tick, its last character or its timer), the typist is mid-stride
   // and focus lands here. Until they pause, Space and Enter do nothing, so the keys already on their
   // way can't discard the result and start a new run.
-  $('run-again').addEventListener('keydown', (event) => {
-    if (stopHold === null) return;
+  const heldAfterStop = () => {
+    if (stopHold === null) return false;
     const stamp = now();
-    if (stamp - stopHold >= STOP_HOLD_MS) { stopHold = null; return; }
+    if (stamp - stopHold >= STOP_HOLD_MS) { stopHold = null; return false; }
     stopHold = stamp;
-    if (event.key === ' ' || event.key === 'Enter') event.preventDefault();
+    return true;
+  };
+  $('run-again').addEventListener('keydown', (event) => {
+    if (heldAfterStop() && (event.key === ' ' || event.key === 'Enter')) event.preventDefault();
+  });
+  // Where Run again can't fit beside the score, the heading takes focus and Enter runs again from there.
+  $('results-heading').addEventListener('keydown', (event) => {
+    const held = heldAfterStop();
+    if (event.key !== 'Enter' || matchesAppBinding(event, prefs.keybindings.restart)) return;
+    event.preventDefault();
+    if (!held && !event.repeat) runAgain();
   });
   $('run-again').addEventListener('keyup', (event) => { if (stopHold !== null && event.key === ' ') event.preventDefault(); });
   $('result-words').addEventListener('keydown', moveWordFocus);
@@ -5411,6 +5433,15 @@ function bindEvents() {
   $('suggest-form').addEventListener('submit', sendSuggestion);
   $('cancel-suggest').addEventListener('click', () => $('suggest-dialog').close());
   $('suggest-dialog').addEventListener('click', (event) => { if (event.target === $('suggest-dialog')) $('suggest-dialog').close(); });
+  $('release-trigger').addEventListener('click', () => {
+    markInterrupted(NOTICES.focusLost);
+    compose.interrupt(NOTICES.composeFocusLost);
+    markRaceInterrupted();
+    $('release-dialog').showModal();
+  });
+  $('release-close').addEventListener('click', () => $('release-dialog').close());
+  $('release-dialog').addEventListener('click', (event) => { if (event.target === $('release-dialog')) $('release-dialog').close(); });
+  $('release-dialog').addEventListener('close', () => $('release-trigger').focus({ preventScroll: true }));
 
   $('import-trigger').addEventListener('click', openImport);
   $('import-text').addEventListener('input', () => { $('import-error').textContent = ''; updateImportButton(); });
@@ -5641,7 +5672,7 @@ function matchesAppBinding(event, binding) {
   return matchesBinding(event, binding, { allowAccentComposition: activeAccentComposition() });
 }
 
-// Restart only owns the typing surfaces, bare practice/results page, and run-again.
+// Restart only owns the typing surfaces, bare practice/results page, run-again and the result heading.
 // Controls retain their native activation and Tab navigation; online rooms cannot restart.
 function quickRestart(event) {
   if (!matchesAppBinding(event, prefs.keybindings.restart)) return false;
@@ -5650,8 +5681,8 @@ function quickRestart(event) {
   const onInput = active === $('typing-input');
   const onLocalRace = active === $('race-input');
   const onPage = !active || active === document.body || active === document.documentElement;
-  const onRunAgain = event.key !== 'Tab' && view === 'results' && active === $('run-again');
-  if (!onInput && !onLocalRace && !onRunAgain && !(onPage && (view === 'practice' || view === 'results'))) return false;
+  const onResult = event.key !== 'Tab' && view === 'results' && (active === $('run-again') || active === $('results-heading'));
+  if (!onInput && !onLocalRace && !onResult && !(onPage && (view === 'practice' || view === 'results'))) return false;
   if (event.key === 'Enter' && (onLocalRace ? race.attempt : attempt)?.status === 'running') return false;
   event.preventDefault();
   if (!event.repeat) {
@@ -5782,6 +5813,14 @@ function toggleFingerMap() {
   if (document.body.dataset.view === 'practice') $('typing-input').focus({ preventScroll: true });
 }
 
+// A jump from the palette lands where the screen starts: the passage on Practice, the heading elsewhere.
+function jumpTo(view) {
+  navigate(view);
+  if (view !== 'practice') $(`${view}-heading`).focus();
+  else if (composeOpen) compose.focus();
+  else $('typing-input').focus({ preventScroll: true });
+}
+
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
   const missedWords = recurringMissedWords(profile.runs).words.length;
@@ -5793,9 +5832,9 @@ function paletteCommands(query) {
   const fixedText = ['quote', 'code'].includes(prefs.mode) || standardLocked();
   const commands = [
     ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
-      group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => navigate(view),
+      group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => jumpTo(view),
     })),
-    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => onlineRace.openBoard() },
+    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); $('compete-heading').focus(); } },
     { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartHint(), run: restartTest },
@@ -5823,7 +5862,7 @@ function paletteCommands(query) {
     { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: prefs.minAccuracy === value ? 'current' : '', on: prefs.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
     ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? formatSpeed(value) : 'off'}`, keywords: 'min wpm cpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
-    ...['dark', 'light', 'system'].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
+    ...['system', ...THEMES].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     // Named "this word" / "next word" so no mode reads like the palette's "current" hint.
     ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),

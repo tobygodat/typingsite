@@ -58,8 +58,8 @@ test('Escape dismisses Settings before its commands binding and cancels recordin
   for (const [action, value] of Object.entries({ restart: 'F2', commands: 'Escape', exitFocus: 'F8' })) {
     await page.locator(`#keybinding-${action}`).fill(value);
   }
-  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
-  await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
+  await page.locator('#keybinding-restart').press('Enter');
+  await expect(page.locator('#keybindings-form [aria-invalid=\"true\"]')).toHaveCount(0);
   await page.getByRole('button', { name: 'Record commands binding', exact: true }).click();
   await page.keyboard.press('Escape');
   await expect(page.locator('#keybindings-status')).toHaveText('Recording cancelled.');
@@ -194,7 +194,7 @@ test('a binding another device saves shows in an open shortcut draft and survive
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
   await openSettings(other, 'shortcuts');
   await other.locator('#keybinding-commands').fill('F9');
-  await other.getByRole('button', { name: 'Save keybindings', exact: true }).click();
+  await other.locator('#keybinding-restart').press('Enter');
   await expect.poll(() => supabase.profileFor(user.email)?.preferences?.keybindings?.commands).toBe('F9');
   await expect(page.locator('#keybinding-commands')).toHaveValue('F9');
   await expect(page.locator('#keybinding-exitFocus')).toHaveValue('F8');
@@ -204,8 +204,8 @@ test('a binding another device saves shows in an open shortcut draft and survive
   await openSettings(page, 'shortcuts');
   await expect(page.locator('#keybinding-restart')).toHaveValue('F2');
   await expect(page.locator('#keybinding-exitFocus')).toHaveValue('F8');
-  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
-  await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
+  await page.locator('#keybinding-restart').press('Enter');
+  await expect(page.locator('#keybindings-form [aria-invalid=\"true\"]')).toHaveCount(0);
   await expect.poll(() => supabase.profileFor(user.email)?.preferences?.keybindings).toEqual({ restart: 'F2', commands: 'F9', exitFocus: 'F8' });
   await other.close();
 });

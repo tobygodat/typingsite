@@ -3,9 +3,9 @@
 The settings control in the dock opens a centred, opaque modal dialog. A sidebar lists the categories
 (appearance, practice, keyboard, sound, shortcuts, then "Import Monkeytype settings"); each category is a
 column of preference rows whose options are native radio groups styled as inline selectors. Appearance holds
-theme (system, dark, light), text size, word highlight, one-line tape and a sample passage. Changes apply as
+theme (system, dark, light, paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord), text size, word highlight, one-line tape and a sample passage. Changes apply as
 they are chosen; Done, the close button and Escape all close it. The theme follows the system until the
-person picks dark or light; a guest's pick lasts for the tab, a signed-in pick persists.
+person picks a theme; a guest's pick lasts for the tab, a signed-in pick persists.
 
 ## Sub-features
 
@@ -13,7 +13,7 @@ person picks dark or light; a guest's pick lasts for the tab, a signed-in pick p
   `#settings-trigger` (accessible name "Settings"), with focus on the current category button.
 - `settings-category` switches the visible `#settings-<category>` section from the sidebar's
   `[data-settings-category="<category>"]` buttons; the current one has `aria-current="true"`.
-- `theme-pick` checks a radio in the `#theme-select` fieldset (`#theme-select input[value="dark"|"light"]`);
+- `theme-pick` checks a radio in the `#theme-select` fieldset (`#theme-select input[value="dark"|"light"|"paper"|…|"e-ink"|"nord"]`);
   `html[data-theme]` and the page colours follow at once.
 - `theme-system` follows the system's light or dark preference while `#theme-select input[value="system"]`
   is checked.
@@ -24,7 +24,7 @@ person picks dark or light; a guest's pick lasts for the tab, a signed-in pick p
 ## How to get to it (user POV)
 
 - Click "settings" in the dock (the sliders icon only, below 900 px and on phones).
-- Ctrl+K → `theme · dark`, `theme · light` or `theme · system` (see [Command palette](./command-palette.md)).
+- Ctrl+K → `theme · <name>` for any of the ten, or `theme · system` (see [Command palette](./command-palette.md)).
 - Change the operating system's appearance while the theme is "system".
 
 ## Driving it with verify.mjs
@@ -39,6 +39,10 @@ Preconditions:
   set with "light" selected. `run.json` notes `theme: {before: "dark", after: "light"}`, and the checks
   cover the radio being checked, `html[data-theme]` following, Escape closing the dialog with focus back on
   `#settings-trigger`, and the theme staying after the close.
+- **Every theme.** Run `$V drive .claude/skills/verify-stilltype/flows/themes.mjs`. For each of the ten it
+  picks the theme in settings (shot `<theme>-settings`), checks `meta[name=theme-color]` follows `--ground`,
+  then runs 10 words with one slip (shot `<theme>-mid-run`) and finishes (shot `<theme>-results`). Below
+  761 px wide it shoots mid-run only.
 - **Phone.** `$V shot settings --width 390 --height 844 --mobile` (add `--scheme light` to switch towards
   dark). Below 760 px the category nav wraps across the top of the dialog.
 - **Other categories.** In a flow, `await h.openSettings('practice')` opens the dialog (if closed) and shows
@@ -60,4 +64,5 @@ Preconditions:
 - The modal makes the page inert: close the dialog (Escape) before driving anything behind it. Escape first
   cancels a shortcut recording in the shortcuts category, and only a second Escape closes the dialog.
 - During a run the dock fades and ignores the pointer; `h.openSettings()` nudges the mouse first.
-- Light-theme contrast has its own spec (`e2e/light-contrast.spec.js`); a screenshot isn't a contrast check.
+- Contrast has its own checks: `tests/contrast.test.js` (every theme's token pairs), `e2e/passage-contrast.spec.js`
+  (every theme's passage letters and caret as painted) and `e2e/light-contrast.spec.js`. A screenshot isn't a contrast check.

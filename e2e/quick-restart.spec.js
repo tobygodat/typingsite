@@ -3,8 +3,8 @@ import { test, expect, openApp, passageText, typeInto, chooseWords, completePass
 async function setRestart(page, binding) {
   await openSettings(page, 'shortcuts');
   await page.locator('#keybinding-restart').fill(binding);
-  await page.getByRole('button', { name: 'Save keybindings', exact: true }).click();
-  await expect(page.locator('#keybindings-status')).toHaveText('Keybindings saved.');
+  await page.locator('#keybinding-restart').press('Enter');
+  await expect(page.locator('#keybindings-form [aria-invalid=\"true\"]')).toHaveCount(0);
 }
 
 test('tab as the restart key resets the passage once while held, and escape no longer restarts', async ({ page }) => {
@@ -49,6 +49,8 @@ test('tab as the restart key resets the passage once while held, and escape no l
 });
 
 test('with tab as the key, tab from run again moves focus on and enter runs again', async ({ page }) => {
+  // Tall enough for Run again to take focus below the score.
+  await page.setViewportSize({ width: 1280, height: 1100 });
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
@@ -91,6 +93,7 @@ test('with tab as the key, tab from run again moves focus on and enter runs agai
 });
 
 test('esc, the default key, restarts from the focused run-again button', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1100 });
   await openApp(page);
   await chooseWords(page, 10);
   await expect(page.locator('#restart-key-hint')).toHaveText('esc');
@@ -137,7 +140,8 @@ test('enter restarts from the result card but not mid-run, even after the chrome
 
   await page.locator('#restart-button').click({ force: true });
   await completePassage(page);
-  await expect(page.locator('#run-again')).toBeFocused();
+  // Run again is below the fold at 1280×800, so the result heading has focus, and the restart key works there too.
+  await expect(page.locator('#results-heading')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
   await expect(page.locator('#text-display .char.correct')).toHaveCount(0);

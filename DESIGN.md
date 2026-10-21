@@ -215,7 +215,7 @@ Density is low and deliberate. The practice screen centres the passage with the 
 
 **Key Characteristics:**
 - Literata for everything readable, including the passage and every numeral; Geist Mono only for small measurement labels, conditions and keys.
-- Dark (default) and light theme sets; the theme follows the system until the user picks one.
+- Dark (default) and light theme sets, plus eight more a person can pick (paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord); the theme follows the system until the user picks one.
 - One green accent; coral for mistyped letters and regressions; amber for interrupted and mixed results.
 - Rules and space instead of boxes; opaque raised surfaces with a single soft float shadow; no glass, no glow.
 - Fluid motion: carets glide, lines scroll, and motion may live on the typing surface when it helps someone follow the run.
@@ -223,7 +223,7 @@ Density is low and deliberate. The practice screen centres the passage with the 
 
 ## Colors
 
-A warm, low-chroma neutral ramp with one green and one coral. The palette is defined twice, once for dark (`:root`, `[data-theme="dark"]`) and once for light (`[data-theme="light"]`), with identical token names. Frontmatter keys ending in `-light` are the light-theme values of the same token. Both themes hold a contrast floor against what is behind it, translucent washes and mistyped-letter tints included (`tests/contrast.test.js`): text at least 4.5:1, and the caret, the ghost caret, the text-coloured focus ring, the accent border of a focused input and input outlines at least 3:1. Disabled controls, the blurred challenge-handoff veil and the dimmed idle and unfocused caret are deliberate exceptions.
+A warm, low-chroma neutral ramp with one green and one coral. The palette is defined once per theme, with identical token names: dark (`:root`, `[data-theme="dark"]`), light (`[data-theme="light"]`) and the eight others (`[data-theme="paper"]` … `[data-theme="nord"]`). Frontmatter keys ending in `-light` are the light-theme values of the same token; the other themes' values live only in `src/styles.css`. Every theme holds a contrast floor against what is behind it, translucent washes and mistyped-letter tints included (`tests/contrast.test.js`): text at least 4.5:1, and the caret, the ghost caret, the text-coloured focus ring, the accent border of a focused input and input outlines at least 3:1. Disabled controls, the blurred challenge-handoff veil and the dimmed idle and unfocused caret are deliberate exceptions.
 
 ### Primary
 - **Afterimage Green** (accent): the only action and current-state colour. It fills the primary button, colours the caret, the timer, the progress line, the selected palette dot, the pressed on-screen key, improved comparison figures and the evidence counts on the recommendation. Focus rings on inputs use its soft tint (accent-soft). Text on a green fill uses accent-ink. The practice calendar on Progress steps it at 30%, 55% and 80% (practice-level-1 to 3) and then full accent; days without practice sit on the hairline, and days that met the goal also carry a small accent-ink centre dot so they never rest on colour alone.
@@ -253,7 +253,20 @@ A warm, low-chroma neutral ramp with one green and one coral. The palette is def
 
 **The Two-Cue Rule.** Coral never carries meaning alone. A mistyped letter is coral text with a coral tint behind it; a mistyped space shows the tint at full line height.
 
-**The Tokens-Only Rule.** Every colour comes from a CSS variable defined in both theme blocks. Add a token to both themes before using a new value.
+**The Tokens-Only Rule.** Every colour comes from a CSS variable defined in every theme block. Add a token to every theme before using a new value; `tests/contrast.test.js` fails when one theme sets a token the others don't.
+
+### Other themes
+Eight more token sets, same names, same roles, same type, radii and motion. Each changes colour only.
+- **paper**: bright warm paper, ink text, a deeper letterpress green.
+- **shadcn**: white and zinc neutrals with a green-700 accent.
+- **terminal**: green-black ground, phosphor-green text, a bright green caret.
+- **soft**: lavender ground with a violet accent.
+- **midnight**: near-black with dimmed text and an amber accent, for late sessions.
+- **swiss**: black on white; the accent is black and red is kept for mistakes.
+- **e-ink**: greyscale; the accent is dark grey, and a mistake is marked by its grey tint rather than a hue.
+- **nord**: Nord's blue-grey polar night with its aurora green as the accent.
+
+Where a theme's accent is not green (soft, midnight, swiss, e-ink) it still means only "act here" or "you are here", and the One Green Rule applies to it.
 
 ## Typography
 
@@ -350,7 +363,7 @@ The training memory section sits below the existing drill actions. Pair headings
 
 Challenge opens with a row of small ghost-button tabs (Online, Daily, Friends, One keyboard); only the pressed one takes the green text and outline, on every challenge screen including the one-keyboard results. Challenge opens with the daily passage and its one filled-green action, followed by the shared-keyboard section with a neutral Start button. The daily date/reset uses the existing condition label; result history uses hairline-separated rows. First and repeat attempts, previously displayed passages and input classes are written explicitly.
 
-The optional on-screen keyboard shows the thirty main keys with a real row stagger (home a quarter key in, bottom three quarters) and a space bar, labelled for the chosen layout. Its finger map puts a small mono initial (i, m, r, p) in the corner of each key for the finger that types it, so it reads without telling shades apart and survives forced colours; a faint neutral band (`--finger-band`, never a hue) sits behind alternate fingers (index, ring) so neighbouring fingers stay apart. Letters keep their muted/text colours, so drill targets still stand out, and muted text on the band stays at 4.5:1 or more in both themes. The two hands sit a little apart, and a mono legend repeats the initials. Screen readers hear each key as one phrase ("f, left index") from visually hidden text, only while the map is on. Colemak-DH follows its ANSI angle mod. Below 760px the keyboard and both of its settings rows are hidden.
+The optional on-screen keyboard shows the thirty main keys with a real row stagger (home a quarter key in, bottom three quarters) and a space bar, labelled for the chosen layout. Its finger map puts a small mono initial (i, m, r, p) in the corner of each key for the finger that types it, so it reads without telling shades apart and survives forced colours; a faint neutral band (`--finger-band`, never a hue) sits behind alternate fingers (index, ring) so neighbouring fingers stay apart. Letters keep their muted/text colours, so drill targets still stand out, and muted text on the band stays at 4.5:1 or more in every theme. The two hands sit a little apart, and a mono legend repeats the initials. Screen readers hear each key as one phrase ("f, left index") from visually hidden text, only while the map is on. Colemak-DH follows its ANSI angle mod. Below 760px the keyboard and both of its settings rows are hidden.
 
 Below 360px, the run-card WPM uses `--text-numeral-narrow` (80px); the existing mobile size is now `--text-numeral-mobile` (112px).
 
@@ -368,7 +381,7 @@ A static print: 22px corners, 22px padding, a strong hairline border, and the ca
 ### Learn to type and the finger map
 The learn screen is an editorial column like Progress: the page heading, then the current lesson (or the last lesson result) beside the finger map, then hairline-separated lesson rows with keys as `kbd` caps, the fingers in words, a status word (passed in green, next in green, locked muted) and Literata numbers. The current block holds the screen's one filled-green action. A lesson result lists accuracy, wpm, first-try errors and time as Literata numbers under mono labels; each target sits under its number with a status word, "met" (green) or "not met" (muted). Nothing about a missed target is coral: it isn't an error or a regression.
 
-The finger map is the on-screen keyboard split into two hands, with each column labelled underneath by its finger (pinky, ring, middle, index) over a strong hairline rule, and the space bar labelled "thumbs". Learned keys read in the text colour, keys not yet learned stay muted, and the current lesson's keys get a full green edge (the caption points at it, so it keeps 3:1 against the ground in both themes). Finger names wider than their column overflow evenly on both sides. It shows on the learn screen and under the passage for the whole of a lesson, whatever the keyboard setting; from 901px wide a lesson reserves two passage lines (its passage is about 60 characters), so the finger names and thumbs row stay above the fold at 721px tall, and the lesson's description keeps only the short key-pair label; under 760px the keys shrink to the column and the finger names shorten to a letter, with a one-line legend. Its accessible name lists every finger's keys. The entry point is "learn to type" at the foot of the practice controls' "more" menu, plus first-run links on Train and Progress; there is no banner.
+The finger map is the on-screen keyboard split into two hands, with each column labelled underneath by its finger (pinky, ring, middle, index) over a strong hairline rule, and the space bar labelled "thumbs". Learned keys read in the text colour, keys not yet learned stay muted, and the current lesson's keys get a full green edge (the caption points at it, so it keeps 3:1 against the ground in every theme). Finger names wider than their column overflow evenly on both sides. It shows on the learn screen and under the passage for the whole of a lesson, whatever the keyboard setting; from 901px wide a lesson reserves two passage lines (its passage is about 60 characters), so the finger names and thumbs row stay above the fold at 721px tall, and the lesson's description keeps only the short key-pair label; under 760px the keys shrink to the column and the finger names shorten to a letter, with a one-line legend. Its accessible name lists every finger's keys. The entry point is "learn to type" at the foot of the practice controls' "more" menu, plus first-run links on Train and Progress; there is no banner.
 
 ### Command palette
 A 600px opaque raised panel with 22px corners over a flat dim. It has a 62px search row (19px input) and 46px option rows with a 6px state dot (accent when selected). Mono group labels and mono hints sit on the right. It enters and exits with a 4px lift and fade over 150ms.
@@ -379,7 +392,7 @@ Opaque raised pills of 16px radius at the bottom centre, with a status dot and 1
 ## Do's and Don'ts
 
 ### Do:
-- **Do** take every colour, size, radius, duration and easing from the CSS variables at the top of `src/styles.css`, and define new colour tokens in both the dark and light blocks.
+- **Do** take every colour, size, radius, duration and easing from the CSS variables at the top of `src/styles.css`, and define new colour tokens in every theme block.
 - **Do** set every readable word and every number in Literata, with tabular lining figures on metrics. Keep Geist Mono to 12–13px labels, conditions and keys.
 - **Do** keep exactly one filled-green primary action per view. All other actions are secondary, ghost or danger.
 - **Do** separate sections with a 1px hairline and 32px of space.
