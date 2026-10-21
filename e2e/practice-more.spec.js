@@ -1,7 +1,7 @@
 // The practice controls' "more" menu: the rarer modes and the way into lessons, behind one disclosure.
 import { test, expect, openApp, passageText } from './fixtures.js';
 
-const MORE = ['code', 'standard', 'compose', 'custom', 'learn to type'];
+const MORE = ['code', 'standard', 'book', 'compose', 'custom', 'learn to type'];
 
 test('modes, lengths and punctuation float in separate groups; "more" names the mode chosen inside it', async ({ page }) => {
   await openApp(page);

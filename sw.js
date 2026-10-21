@@ -16,6 +16,8 @@ const SHELL = [
   '/src/styles.css',
   '/src/account.js',
   '/src/app.js',
+  '/src/book-texts.js',
+  '/src/books.js',
   '/src/code-snippets.js',
   '/src/compose-caret.js',
   '/src/compose-view.js',

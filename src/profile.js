@@ -9,6 +9,7 @@ import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { CODE_LANGUAGES, DEFAULT_CODE_LANGUAGE } from './code-snippets.js';
 import { DEFAULT_WORD_HIGHLIGHT, normalizeWordHighlight } from './word-highlight.js';
+import { DEFAULT_BOOK, bookIds } from './books.js';
 import { DAILY_GOALS, retainTraces, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
 import { retainRunCounts } from './run-counts.js';
 import { normalizeLessonProgress } from './lessons.js';
@@ -29,6 +30,7 @@ export const defaultPreferences = {
   wordList: DEFAULT_WORD_LIST,
   speedUnit: DEFAULT_SPEED_UNIT,
   codeLanguage: DEFAULT_CODE_LANGUAGE,
+  book: DEFAULT_BOOK,
   // Off: quotes the profile has seen wait until every matching quote has been shown.
   repeatQuotes: false,
   layout: DEFAULT_LAYOUT,
@@ -99,6 +101,7 @@ export function validPreferences(value) {
   value.soundVolume = normalizeSoundVolume(value.soundVolume);
   value.speedUnit = normalizeSpeedUnit(value.speedUnit);
   if (!CODE_LANGUAGES.includes(value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
+  if (!bookIds.includes(value.book)) value.book = DEFAULT_BOOK;
   value.wordHighlight = normalizeWordHighlight(value.wordHighlight);
   value.tape = value.tape === true;
   value.repeatQuotes = value.repeatQuotes === true;
