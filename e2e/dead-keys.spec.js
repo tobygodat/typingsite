@@ -1292,3 +1292,142 @@ test('both one-keyboard race players can type with accent keys', async ({ page }
   await expect(rows).toContainText(['100% accuracy', '100% accuracy']);
   await expect(page.locator('#race-help')).not.toHaveText(IME_NOTICE);
 });
+
+// A passage whose marks take each browser's order in turn, ending on a mark.
+const RACE_TEXT = 'We read "Check the dates," and then "the order" twice, as she said: "Measure it."';
+
+// Ada hosts an online race against a guest, Lin, on RACE_TEXT (the fake service's room, set before the
+// start), and both are ready; the race clock lasts duration seconds.
+async function onlineRace(page, browser, supabase, duration = 60) {
+  supabase.addUser('host@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'host@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#online-name').fill('Ada');
+  await page.locator('#create-online-race').click();
+  await expect(page.locator('#online-room')).toBeVisible();
+  const room = [...supabase.races.rooms.values()][0];
+  Object.assign(room, { passage: RACE_TEXT, duration });
+  const context = await browser.newContext();
+  const guest = await context.newPage();
+  await supabase.attach(guest);
+  await guest.goto(await page.locator('#online-guest-link').inputValue());
+  await guest.locator('#online-guest-name').fill('Lin');
+  await guest.locator('#join-online-race').click();
+  await expect(page.locator('#online-players')).toContainText('Lin');
+  await page.locator('#online-ready').click();
+  await guest.locator('#online-ready').click();
+  await expect(page.locator('#online-input')).toBeEnabled({ timeout: 12000 });
+  await expect(page.locator('#online-accessible-passage')).toHaveText(RACE_TEXT);
+  return { room, host: () => room.players.find((player) => player.slot === 1), context, guest };
+}
+
+test('an online race scores accent keys as practice does, in the Chromium, Firefox, Safari and Windows orders', async ({ page, browser, supabase }) => {
+  test.setTimeout(120_000);
+  const text = RACE_TEXT;
+  const { host, context, guest } = await onlineRace(page, browser, supabase);
+  try {
+    const keys = await accentKeys(page);
+    const score = () => readScore(page, COMMIT_KEY_WAIT_MS + 50, '#online-text-display', '#online-input');
+    const upTo = (at) => ({ correct: at, wrong: 0, value: text.slice(0, at) });
+    const typeTo = async (at) => typeInto(page, text.slice((await page.locator('#online-input').inputValue()).length, at), '#online-input');
+    const [first, second, third, fourth, fifth] = [...text.matchAll(/"/g)].map((match) => match.index);
+
+    // An accent key's é where the passage has e is a coral mistake; the service, which takes printable
+    // ASCII, gets a stand-in for it, with counters that match.
+    await typeTo(1);
+    await keys.deadKey("'");
+    await keys.commit('é');
+    expect(await score()).toEqual({ correct: 1, wrong: 1, value: 'Wé' });
+    await expect.poll(() => host().typed).toBe('W~');
+    expect([host().keystrokes, host().errors]).toEqual([2, 1]);
+    await page.keyboard.press('Backspace');
+    // IME text is still refused, and the race goes on.
+    await keys.preview('に');
+    await keys.commit('日');
+    await expect(page.locator('#online-help')).toHaveText('IME input isn’t supported in races. Use direct keyboard input.');
+    expect(await score()).toEqual(upTo(1));
+
+    // Chromium: the mark shows unscored until the next key commits it with its letter ("C).
+    await typeTo(first);
+    await keys.deadKey('"');
+    await expect(page.locator('#online-input')).toHaveValue(`${text.slice(0, first)}"`);
+    await keys.commit('"C');
+    expect(await score()).toEqual(upTo(first + 2));
+
+    // Firefox: beforeinput and input while composing, compositionend, then a trailing input; space comes next.
+    await typeTo(second);
+    await page.evaluate((before) => {
+      const input = document.querySelector('#online-input');
+      const composing = { inputType: 'insertCompositionText', data: '"', isComposing: true };
+      input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+      input.dispatchEvent(new CompositionEvent('compositionupdate', { bubbles: true, data: '"' }));
+      input.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, ...composing }));
+      input.value = `${before}"`;
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, ...composing }));
+      input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '"' }));
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, ...composing, isComposing: false }));
+    }, text.slice(0, second));
+    expect(await score()).toEqual(upTo(second + 1));
+
+    // Windows: no composition; the t's keydown types the mark and the t as two inputs, and the mark waits for the t.
+    await typeTo(third);
+    await keys.windowsPair('t', 'KeyT', '"', 't');
+    expect(await score()).toEqual(upTo(third + 2));
+
+    // Safari: the mark, then the accent key's keydown; the commit, then the key that made it.
+    await typeTo(fourth);
+    await safariOrder(page, { field: '#online-input', commit: '"', key: ' ' });
+    expect(await score()).toEqual(upTo(fourth + 1));
+
+    // On the last letter, "h counts the h as a mistake against it before the passage ends, as in practice.
+    await typeTo(fifth);
+    await keys.deadKey('"');
+    await keys.commit('"M');
+    expect(await score()).toEqual(upTo(fifth + 2));
+    await typeTo(text.length - 1);
+    await keys.deadKey('"');
+    await keys.commit('"h');
+    await expect(page.locator('#online-help')).toHaveText('Passage complete. Sending your result…');
+    await expect(page.locator('#online-input')).toHaveValue(text);
+    await expect.poll(() => host().finished).toBe(true);
+    expect([host().typed, host().keystrokes, host().errors]).toEqual([text, text.length + 2, 2]);
+
+    await typeInto(guest, text, '#online-input', { delay: 15 });
+    await expect(page.locator('#online-results')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#online-result-rows .race-result-row').filter({ hasText: 'Ada' }))
+      .toContainText(`${Math.round((text.length / (text.length + 2)) * 100)}% accuracy`);
+  } finally { await context.close(); }
+});
+
+test('an online race scores a mark typed before its limit with the key that comes after it (Windows)', async ({ page, browser, supabase }) => {
+  test.setTimeout(60_000);
+  const { room, host, context, guest } = await onlineRace(page, browser, supabase, 8);
+  try {
+    const at = RACE_TEXT.indexOf('"');
+    await typeInto(page, RACE_TEXT.slice(0, at), '#online-input');
+    // The guest stops asking, so the service's room stays open for the host's last progress.
+    await guest.close();
+    // The accent key and the C's keydown, the mark 30 ms before the limit and the C's own input 30 ms after
+    // it: the race clock waits for the C, which is scored with the mark, at the mark's time.
+    const limit = Date.parse(room.startAt) + room.duration * 1000;
+    await page.evaluate(async (end) => {
+      const input = document.querySelector('#online-input');
+      const key = (type, value) => input.dispatchEvent(new KeyboardEvent(type, { bubbles: true, cancelable: true, key: value }));
+      const type = (data) => input.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data }));
+      const until = async (time) => { while (Date.now() < time) await new Promise((resolve) => setTimeout(resolve, 2)); };
+      await until(end - 30);
+      key('keydown', 'Dead');
+      key('keyup', 'Dead');
+      key('keydown', 'C');
+      type('"');
+      await until(end + 30);
+      type('C');
+      key('keyup', 'C');
+    }, limit);
+    await expect.poll(() => host().finished).toBe(true);
+    expect([host().typed, host().keystrokes, host().errors]).toEqual([RACE_TEXT.slice(0, at + 2), at + 2, 0]);
+    await expect(page.locator('#online-input')).toBeDisabled();
+    await expect(page.locator('#online-help')).toHaveText('Time’s up. Sending your result…');
+  } finally { await context.close(); }
+});

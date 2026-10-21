@@ -1,6 +1,6 @@
-import { blocksOnError, createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
+import { createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 import { createTypingFx } from './motion.js';
-import { KEY_OUTCOME, keyOutcome } from './sound.js';
+import { standIn } from './ghost-race.js';
 import * as multiplayer from './multiplayer.js';
 import { speedFigure } from './units.js';
 import { raceResultText } from './race-result.js';
@@ -33,7 +33,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, playKeySound = () => {} }) {
+export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -67,6 +67,27 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     { load: (signal) => multiplayer.listFriends(getSession(), signal) });
   let befriended = false;
   const fx = createTypingFx($('online-stage').querySelector('.online-typing-wrap'), $('online-text-display'), { ensureCharacters: (index) => textView?.ensureForward(index) });
+  // Keys take practice's path (src/app.js), accent keys included; this race keeps the clock, draws and sends.
+  const typing = wireTyping($('online-input'), {
+    get attempt() { return attempt; },
+    get origin() { return startPerf; },
+    get view() { return { input: $('online-input'), characters: textView.characters, textView, fx }; },
+    // From the shared start to the limit, while this player is still racing.
+    accepting: (at) => room?.status === 'racing' && !finishRequested && !self()?.finished
+      && at >= startPerf && at - startPerf < (room.duration || 60) * 1000,
+    notice(message) { $('online-help').textContent = message; },
+    changed() {
+      dirty = true;
+      if (attempt.status === 'running' && document.body.dataset.view === 'compete') setRunning(true);
+    },
+    finish() {
+      finishRequested = true;
+      $('online-input').disabled = true;
+      $('online-help').textContent = 'Passage complete. Sending your result…';
+      setRunning(false);
+      poll();
+    },
+  });
 
   function error(message = '') { $('online-error').textContent = message; }
   function say(message) {
@@ -306,7 +327,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     baseErrors = me?.errors || 0;
     // A resumed race keeps its authoritative counters. The synthetic prefix is only for drawing
     // and editing; it never contributes to the server's insertion or error totals.
-    if (baseTyped) attempt.events.push({ type: 'insert', text: baseTyped, accepted: true, offsetMs: 0 });
+    if (baseTyped) {
+      attempt.events.push({ type: 'insert', text: baseTyped, accepted: true, offsetMs: 0 });
+      attempt.status = 'running';
+    }
     textView = renderText($('online-text-display'), attempt.text);
     textView.ensureAhead(baseTyped.length);
     updateCharacterStates(textView.characters, baseTyped, attempt.text, 0);
@@ -443,7 +467,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     if (countdown !== lastClock) { $('online-countdown').textContent = countdown; lastClock = countdown; }
     $('online-timer').textContent = delta < 0 ? '60 s race' : `${Math.ceil(remaining / 1000)} s remaining`;
     const me = self();
-    const canType = room.status === 'racing' && delta >= 0 && remaining > 0 && !finishRequested && !me?.finished;
+    // An accent commit typed before the limit is scored first, though the key that ended it comes after.
+    const pending = typing.pending();
+    const canType = room.status === 'racing' && delta >= 0 && (remaining > 0 || pending) && !finishRequested && !me?.finished;
     const wasDisabled = $('online-input').disabled;
     $('online-input').disabled = !canType;
     if (canType && wasDisabled && document.body.dataset.view === 'compete' && mode === 'online') {
@@ -451,7 +477,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       $('online-input').focus({ preventScroll: true });
       say('The race has started. Type the passage.');
     }
-    if (delta >= 0 && remaining === 0 && !finishRequested && attempt) {
+    if (delta >= 0 && remaining === 0 && !finishRequested && attempt && !pending) {
       finishRequested = true;
       dirty = true;
       setRunning(false);
@@ -474,7 +500,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       if (dirty && attempt && room.status === 'racing') {
         const replay = replayAttempt(attempt);
         const prefixErrors = [...baseTyped].filter((char, index) => char !== attempt.text[index]).length;
-        const payload = { typed: replay.typed, keystrokes: baseKeystrokes + replay.insertions - baseTyped.length, errors: baseErrors + replay.mistakes - prefixErrors, finished: finishRequested };
+        // The service takes printable ASCII, as passages are: any other letter (an accent key's é) is a
+        // mistake, sent as a stand-in that differs from the letter expected there.
+        const typed = replay.typed.replace(/[^ -~]/g, (char, index) => standIn(attempt.text[index]));
+        const payload = { typed, keystrokes: baseKeystrokes + replay.insertions - baseTyped.length, errors: baseErrors + replay.mistakes - prefixErrors, finished: finishRequested };
         dirty = false;
         next = await multiplayer.updateRaceProgress(getSession(), currentCredentials, payload);
       } else next = await multiplayer.getRace(getSession(), currentCredentials);
@@ -510,48 +539,6 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       }
       return row;
     }));
-  }
-  function input(event) {
-    if (!attempt || $('online-input').disabled) { event.preventDefault(); return; }
-    event.preventDefault();
-    if (event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop') { $('online-help').textContent = 'Paste is off. Type the passage.'; return; }
-    if (event.isComposing || event.inputType?.includes('Composition')) { $('online-help').textContent = 'IME input isn’t supported in races. Use direct keyboard input.'; return; }
-    updateClock();
-    if ($('online-input').disabled) return;
-    const replay = replayAttempt(attempt);
-    const offsetMs = Math.max(0, performance.now() - startPerf);
-    const position = replay.typed.length;
-    if (event.inputType?.startsWith('delete')) {
-      playKeySound(KEY_OUTCOME.delete);
-      if (!position) return;
-      attempt.events.push({ type: 'delete', count: 1, offsetMs });
-    } else if (event.inputType === 'insertText' && event.data && [...event.data].length === 1 && !/[\r\n]/u.test(event.data)) {
-      if (position >= attempt.text.length) return;
-      const mustCorrect = blocksOnError(attempt.conditions.correctionPolicy) && position > 0 && replay.typed.at(-1) !== attempt.text[position - 1];
-      playKeySound(keyOutcome([mustCorrect ? { blocked: true } : { correct: event.data === attempt.text[position] }]));
-      if (mustCorrect) { $('online-help').textContent = 'Correct the mistyped letter before continuing.'; return; }
-      attempt.events.push({ type: 'insert', text: event.data, position, accepted: true, offsetMs });
-    } else return;
-    attempt.status = 'running';
-    const next = replayAttempt(attempt);
-    const previousLength = replay.typed.length;
-    textView.ensureAhead(next.typed.length);
-    updateCharacterStates(textView.characters, next.typed, attempt.text, previousLength);
-    const correct = next.typed.at(-1) === attempt.text[next.typed.length - 1];
-    fx.update(next.typed.length, next.typed.length <= previousLength ? 'delete' : correct ? 'correct' : 'wrong', next.typed.length > 0 && !correct);
-    textView.trimBehind(next.typed.length);
-    $('online-input').value = next.typed;
-    $('online-input').setSelectionRange(next.typed.length, next.typed.length);
-    $('online-help').textContent = '';
-    dirty = true;
-    if (document.body.dataset.view === 'compete') setRunning(true);
-    if (next.typed === attempt.text) {
-      finishRequested = true;
-      $('online-input').disabled = true;
-      $('online-help').textContent = 'Passage complete. Sending your result…';
-      setRunning(false);
-      poll();
-    }
   }
   async function leave() {
     const previous = credentials;
@@ -632,15 +619,12 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     try { await navigator.clipboard.writeText($('online-guest-link').value); $('online-invite-sent').textContent = 'Guest link copied. Share it with your opponent.'; }
     catch { $('online-guest-link').focus(); $('online-guest-link').select(); $('online-invite-sent').textContent = 'Select and copy the guest link above.'; }
   });
-  $('online-input').addEventListener('beforeinput', input);
-  $('online-input').addEventListener('input', () => { if (attempt) $('online-input').value = replayAttempt(attempt).typed; });
   $('online-input').addEventListener('keydown', (event) => {
     if (event.repeat || ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
   });
   $('online-input').addEventListener('paste', (event) => { event.preventDefault(); $('online-help').textContent = 'Paste is off. Type the passage.'; });
   $('online-input').addEventListener('drop', (event) => event.preventDefault());
-  $('online-input').addEventListener('blur', () => { if (room?.status === 'racing') $('online-help').textContent = 'Click the passage to continue. The race clock is still running.'; });
-  $('online-input').addEventListener('compositionstart', () => { $('online-help').textContent = 'IME input isn’t supported in races. Use direct keyboard input.'; });
+  $('online-input').addEventListener('blur', () => { if (room?.status === 'racing' && !finishRequested) $('online-help').textContent = 'Click the passage to continue. The race clock is still running.'; });
   addEventListener('online', poll);
   addEventListener('resize', () => fx.relayout());
   document.fonts?.ready.then(() => fx.relayout());
