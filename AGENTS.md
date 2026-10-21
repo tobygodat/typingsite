@@ -5,8 +5,10 @@ PRODUCT.md holds durable product truth (users, purpose, metric contract, accessi
 ## Before asking to merge
 CI runs only unit tests and the build on each push; the browser suite does not run automatically,
 to save GitHub Actions minutes. Run it locally and report the result in the PR:
-`npm test`, `npm run build`, then `npm run test:e2e` (`CHROMIUM=/usr/bin/chromium` if Playwright's
-own browser isn't installed). While iterating, `npm run test:e2e:quick` runs the core practice
+`npm test`, `npm run build`, then `npm run test:e2e`. The suite uses `CHROMIUM` when set and
+Playwright's own browser otherwise, so without `npx playwright install chromium` point it at a system
+build: `CHROMIUM=/usr/bin/chromium` on the desktop, `CHROMIUM=/usr/local/bin/chromium` on cloud
+machines (which have no `/usr/bin/chromium`). While iterating, `npm run test:e2e:quick` runs the core practice
 loop, layout and chrome specs in a few minutes; it does not replace the full run. On GitHub it
 runs only on request (Actions → Browser checks → Run workflow), so do not trigger it yourself
 unless asked.

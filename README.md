@@ -13,7 +13,7 @@ npm run build   # static build in dist/, served by Cloudflare (wrangler.jsonc)
 npm run test:e2e   # Playwright browser verification (e2e/), after npm install
 ```
 
-The browser tests need a Chromium: run `npx playwright install chromium` once, or point `CHROMIUM` at a system build (`CHROMIUM=/usr/bin/chromium npm run test:e2e`). They serve the app on `127.0.0.1:4173` and fake Supabase, so no account or network is touched.
+The browser tests need a Chromium: run `npx playwright install chromium` once, or point `CHROMIUM` at a system build (`CHROMIUM=/usr/bin/chromium npm run test:e2e`, or `/usr/local/bin/chromium` on a cloud machine). They serve the app on `127.0.0.1:4173` and fake Supabase, so no account or network is touched.
 
 Open [localhost:5173](http://localhost:5173). The interface and solo practice run in the browser. Accounts and online races use Supabase. Fonts are bundled: Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono.
 
