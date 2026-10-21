@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openView } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openView, chooseSetting, closeSettings } from './fixtures.js';
 
 test('a corrected mistake keeps its first-try error and visible tint', async ({ page }) => {
   await openApp(page);
@@ -37,8 +37,8 @@ test('a corrected mistake keeps its first-try error and visible tint', async ({ 
 
 test('stop on error blocks the next letter until the miss is fixed', async ({ page }) => {
   await openApp(page);
-  await page.locator('details.preferences > summary').click();
-  await page.locator('#stop-on-error-toggle').check();
+  await closeSettings(page);
+  await chooseSetting(page, 'correction-select', 'mandatory');
   await expect(page.locator('#condition-line')).toContainText('stop on error');
   const text = await passageText(page);
   const miss = text[0] === 'x' ? 'z' : 'x';

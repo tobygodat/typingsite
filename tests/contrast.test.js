@@ -1,4 +1,4 @@
-// Contrast floor for the shipped tokens: text ≥ 4.5:1 and non-text ≥ 3:1 in both themes.
+// Contrast floor for the shipped tokens: text ≥ 4.5:1 and non-text ≥ 3:1 in every theme.
 // Reads the token blocks straight from src/styles.css, follows the cascade (plain :root first, then
 // :root[data-theme="…"]), composites translucent tokens over the surface they sit on, and checks the
 // pairs the app renders. The browser-side check of the same pairs is e2e/light-contrast.spec.js.
@@ -27,7 +27,7 @@ function parseRules(css) {
   return rules;
 }
 
-const themeOf = (selector) => selector.match(/^:root\[data-theme=["']?(\w+)["']?\]$/)?.[1];
+const themeOf = (selector) => selector.match(/^:root\[data-theme=["']?([\w-]+)["']?\]$/)?.[1];
 
 // The custom properties each theme resolves to: every plain :root rule, then that theme's own rules,
 // which win on specificity whatever their source order.
@@ -104,7 +104,7 @@ function pairs(tokens) {
   const text = (label, fg, bg) => list.push({ label, value: ratio(over(fg, bg), bg), min: 4.5 });
   const nonText = (label, fg, bg) => list.push({ label, value: ratio(over(fg, bg), bg), min: 3 });
 
-  for (const name of ['--text', '--muted', '--accent', '--danger']) {
+  for (const name of ['--text', '--muted', '--accent', '--danger', '--warning']) {
     for (const [surface, bg] of Object.entries(surfaces)) text(`${name} on ${surface}`, colour(name), bg);
   }
   // A mistyped letter on its own tint, in the passage and on a hovered danger button in a dialog.
@@ -112,12 +112,16 @@ function pairs(tokens) {
   text('--danger on --danger-soft over raised', colour('--danger'), over(colour('--danger-soft'), raised));
   // The selected palette row and hovered rows in raised surfaces.
   text('--accent on --raised-2 over raised', colour('--accent'), washOverRaised);
+  // The checked option in a settings radio group, on the raised dialog.
+  text('--accent on --accent-soft over raised', colour('--accent'), over(colour('--accent-soft'), raised));
   text('--muted on --raised-2 over raised', colour('--muted'), washOverRaised);
   text('--text on --raised-2 over raised', colour('--text'), washOverRaised);
   text('--ghost on --raised-2 over raised (palette ghost row)', colour('--ghost'), washOverRaised);
   // A pressed challenge-mode button under the pointer.
   text('--accent on --raised-2 over ground', colour('--accent'), washOverGround);
   text('--accent-ink on --accent (primary button)', colour('--accent-ink'), colour('--accent'));
+  // A key's letter on the hottest heatmap fill.
+  text('--text on --heat-3 over ground', colour('--text'), over(colour('--heat-3'), ground));
   // Placeholders as the stylesheet paints them: the rule's colour, faded by the rule's opacity. Fields
   // are raised stock, and the palette's search field sits on the raised palette box.
   assert.ok(placeholderRules.some((r) => r.selectors.includes('.input::placeholder')), '.input::placeholder rule not found');
@@ -143,8 +147,11 @@ function pairs(tokens) {
 
 const themes = themeTokens(stylesheet);
 
-test('the stylesheet defines a dark and a light token set', () => {
-  assert.deepEqual(Object.keys(themes).sort(), ['dark', 'eink', 'light', 'midnight', 'nord', 'paper', 'shadcn', 'soft', 'swiss', 'terminal']);
+test('the stylesheet defines ten theme token sets of the same shape', () => {
+  assert.deepEqual(Object.keys(themes).sort(), ['dark', 'e-ink', 'light', 'midnight', 'nord', 'paper', 'shadcn', 'soft', 'swiss', 'terminal']);
+  // Every theme is the same token set: one that leaves a token out would inherit dark's value for it.
+  const own = (name) => [...new Set(rules.filter((rule) => rule.selectors.some((selector) => themeOf(selector) === name)).flatMap((rule) => Object.keys(rule.declarations)))].sort();
+  for (const name of Object.keys(themes)) assert.deepEqual(own(name), own('dark'), `${name} sets exactly the tokens dark sets`);
   for (const [name, tokens] of Object.entries(themes)) {
     for (const token of ['--ground', '--ground-2', '--raised', '--raised-2', '--text', '--muted', '--accent', '--danger', '--danger-soft', '--ghost', '--outline', '--placeholder']) {
       assert.ok(tokens[token], `${name} theme is missing ${token}`);

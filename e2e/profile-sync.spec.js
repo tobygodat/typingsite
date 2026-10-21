@@ -1,6 +1,6 @@
 // One account in two tabs or on two devices, against the fake Supabase in e2e/fake-supabase.js: a save
 // from a copy that is out of date merges with the other copy instead of replacing it.
-import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting } from './fixtures.js';
 import { textStamp } from '../src/account.js';
 
 test.setTimeout(90000);
@@ -64,7 +64,7 @@ test('two tabs: a tab that missed the other’s saves keeps its run and settings
 
   const fast = await finishRun(other);
   await openSettings(other);
-  await other.locator('#font-size').selectOption('36');
+  await chooseSetting(other, 'font-size', '36');
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
   await expect.poll(() => cloud(supabase).preferences.fontSize).toBe('36');
   const seenByOther = cloud(supabase).seenTextIds;
@@ -90,16 +90,18 @@ test('two tabs: a tab that missed the other’s saves keeps its run and settings
   expect(errors).toEqual([]);
 });
 
-test('two devices: a stale device’s push keeps the other device’s run, higher best and settings', async ({ page, browser, supabase }) => {
+test('two devices: a stale device’s push keeps the other device’s run, higher best and settings, and its settings change wins as the newest', async ({ page, browser, supabase }) => {
   supabase.addUser(EMAIL);
   const errors = [];
+  await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
   await signInWithEmail(page, EMAIL);
   const { context, page: phone } = await device(browser, supabase, errors);
   try {
+    await phone.emulateMedia({ colorScheme: 'dark' });
     const fast = await finishRun(phone);
     await openSettings(phone);
-    await phone.locator('#font-size').selectOption('22');
+    await chooseSetting(phone, 'font-size', '22');
     await expect.poll(() => cloud(supabase)?.preferences.fontSize).toBe('22');
     await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
     const seenOnPhone = cloud(supabase).seenTextIds;
@@ -117,35 +119,20 @@ test('two devices: a stale device’s push keeps the other device’s run, highe
     await expect(phone.locator('body')).toHaveAttribute('data-font-size', '22');
     await expectBothRuns(page, { runs: 2, best: fast });
     await expect(page.locator('body')).toHaveAttribute('data-font-size', '22');
-    expect(errors).toEqual([]);
-  } finally {
-    await context.close();
-  }
-});
 
-test('a settings change from a stale device keeps the history saved elsewhere and wins as the newest change', async ({ page, browser, supabase }) => {
-  supabase.addUser(EMAIL);
-  const errors = [];
-  await page.emulateMedia({ colorScheme: 'dark' });
-  await openApp(page);
-  await signInWithEmail(page, EMAIL);
-  const { context, page: phone } = await device(browser, supabase, errors);
-  try {
-    await phone.emulateMedia({ colorScheme: 'dark' });
-    const wpm = await finishRun(phone);
-    await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
+    // A settings change from the laptop, stale again after another phone run, keeps the history and wins.
+    const third = await finishRun(phone);
+    await expect.poll(() => runIds(cloud(supabase)).length).toBe(3);
     const before = cloud(supabase);
-
     await openSettings(page);
-    await page.locator('#theme-select').selectOption('light');
+    await chooseSetting(page, 'theme-select', 'light');
     await expect.poll(() => cloud(supabase).preferences.theme).toBe('light');
-    const data = cloud(supabase);
-    expect(runIds(data)).toEqual(runIds(before));
-    expect(data.attempts.map((attempt) => attempt.id)).toEqual(before.attempts.map((attempt) => attempt.id));
-    expect(data.bests).toEqual(before.bests);
-    expect(data.seenTextIds).toEqual(expect.arrayContaining(before.seenTextIds));
-
-    await expectBothRuns(phone, { runs: 1, best: wpm });
+    const after = cloud(supabase);
+    expect(runIds(after)).toEqual(runIds(before));
+    expect(after.attempts.map((attempt) => attempt.id)).toEqual(before.attempts.map((attempt) => attempt.id));
+    expect(after.bests).toEqual(before.bests);
+    expect(after.seenTextIds).toEqual(expect.arrayContaining(before.seenTextIds));
+    await expectBothRuns(phone, { runs: 3, best: Math.max(fast, third) });
     await expect(phone.locator('html')).toHaveAttribute('data-theme', 'light');
     expect(errors).toEqual([]);
   } finally {
@@ -218,7 +205,7 @@ test('undo brings history back after the clear has synced, even on a device that
 
     // The phone still holds the clear; its next save must not apply it again.
     await openSettings(phone);
-    await phone.locator('#theme-select').selectOption('light');
+    await chooseSetting(phone, 'theme-select', 'light');
     await expect.poll(() => cloud(supabase).preferences.theme).toBe('light');
     expect(runIds(cloud(supabase))).toEqual([kept]);
     await phone.reload();
@@ -360,7 +347,7 @@ test('changes another tab saved during a one-keyboard race apply once the race i
   await typeInto(page, text.slice(0, 5), '#race-input');
 
   await openSettings(other);
-  await other.locator('#font-size').selectOption('36');
+  await chooseSetting(other, 'font-size', '36');
   await finishRun(other);
   // Every write the other tab makes lands while this tab's race is still running.
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
@@ -442,7 +429,7 @@ test('a custom pace being typed is kept when another tab saves before it is left
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
   await openSettings(other);
-  await other.locator('#pace-select').selectOption('custom');
+  await chooseSetting(other, 'pace-select', 'custom');
   await expect.poll(() => cloud(supabase)?.preferences.paceCaret, { timeout: 15000 }).toBe('custom');
   await other.locator('#pace-wpm').fill('120');
 
@@ -473,7 +460,7 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
     await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
     if (mine === 'custom') {
       await openSettings(page);
-      await page.locator('#pace-select').selectOption('custom');
+      await chooseSetting(page, 'pace-select', 'custom');
       await expect(page.locator('#pace-label')).toHaveText('pace 80 wpm');
       await page.keyboard.press('Escape');
       await expect.poll(() => cloud(supabase)?.preferences.paceCaret, { timeout: 15000 }).toBe('custom');
@@ -485,17 +472,17 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
     await page.locator('#skip-to-retest').click();
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
 
-    await openSettings(other);
+    await openSettings(other, 'practice');
     if (mine === 'custom') {
-      await expect(other.locator('#pace-select')).toHaveValue('custom');
+      await expect(other.locator('#pace-select input:checked')).toHaveValue('custom');
       await other.locator('#pace-wpm').fill('120');
       await other.locator('#pace-wpm').press('Tab');
       await expect.poll(() => cloud(supabase)?.preferences.paceWpm, { timeout: 15000 }).toBe(120);
     } else {
-      await other.locator('#pace-select').selectOption('best');
+      await chooseSetting(other, 'pace-select', 'best');
       await expect.poll(() => cloud(supabase)?.preferences.paceCaret, { timeout: 15000 }).toBe('best');
     }
-    await expect(page.locator('#pace-select')).toHaveValue(mine);
+    await expect(page.locator('#pace-select input:checked')).toHaveValue(mine);
 
     await page.keyboard.press('Control+k');
     await page.keyboard.type(`pace caret: ${mine}`);
@@ -505,11 +492,11 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
     await typeInto(page, await passageText(page));
     await expect(page.locator('#comparison-panel')).toBeVisible();
 
-    await expect(page.locator('#pace-select')).toHaveValue(mine);
+    await expect(page.locator('#pace-select input:checked')).toHaveValue(mine);
     if (mine === 'custom') await expect(page.locator('#pace-label')).toHaveText('pace 80 wpm');
     const expected = mine === 'custom' ? { paceCaret: 'custom', paceWpm: 80 } : { paceCaret: 'off' };
     await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 }).toMatchObject(expected);
-    await expect(other.locator('#pace-select')).toHaveValue(mine);
+    await expect(other.locator('#pace-select input:checked')).toHaveValue(mine);
     expect(errors).toEqual([]);
   });
 }
@@ -532,11 +519,11 @@ test('picking pace caret custom (from off) during a retest keeps the custom spee
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
 
   await openSettings(other);
-  await other.locator('#pace-select').selectOption('custom');
+  await chooseSetting(other, 'pace-select', 'custom');
   await other.locator('#pace-wpm').fill('120');
   await other.locator('#pace-wpm').press('Tab');
   await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 }).toMatchObject({ paceCaret: 'custom', paceWpm: 120 });
-  await expect(page.locator('#pace-select')).toHaveValue('off');
+  await expect(page.locator('#pace-select input:checked')).toHaveValue('off');
 
   await page.keyboard.press('Control+k');
   await page.keyboard.type('pace caret: custom');
@@ -546,7 +533,7 @@ test('picking pace caret custom (from off) during a retest keeps the custom spee
   await typeInto(page, await passageText(page));
   await expect(page.locator('#comparison-panel')).toBeVisible();
 
-  await expect(page.locator('#pace-select')).toHaveValue('custom');
+  await expect(page.locator('#pace-select input:checked')).toHaveValue('custom');
   await expect(page.locator('#pace-label')).toHaveText('pace 120 wpm');
   await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 }).toMatchObject({ paceCaret: 'custom', paceWpm: 120 });
   await expect(other.locator('#pace-wpm')).toHaveValue('120');
@@ -564,21 +551,21 @@ test('using the custom text already shown keeps it over different text waiting f
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
 
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(MINE);
   await page.locator('#custom-use').click();
   expect(await passageText(page)).toBe(MINE);
   await expect.poll(() => cloud(supabase)?.preferences.customText, { timeout: 15000 }).toBe(MINE);
 
   // The other tab uses its own text. This tab's custom passage is ready, so that text waits here.
-  await other.locator('#mode-custom').click();
+  await chooseMore(other, 'mode-custom');
   await other.locator('#custom-text').fill(THEIRS);
   await other.locator('#custom-use').click();
   await expect.poll(() => cloud(supabase)?.preferences.customText, { timeout: 15000 }).toBe(THEIRS);
   expect(await passageText(page)).toBe(MINE);
 
   // Using the text shown here again is a choice: it stays, and reaches the account.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-text')).toHaveValue(MINE);
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');
@@ -607,7 +594,7 @@ test('a row an older build saved later keeps the settings it lacks from the copy
 
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   await expect(page.locator('#condition-line')).toContainText('numbers');
-  await expect(page.locator('#pace-select')).toHaveValue('custom');
+  await expect(page.locator('#pace-select input:checked')).toHaveValue('custom');
   await expect(page.locator('#pace-label')).toHaveText('pace 120 wpm');
   await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 })
     .toMatchObject({ fontSize: '36', numbers: true, paceCaret: 'custom', paceWpm: 120 });
@@ -974,7 +961,7 @@ test('a run another tab finishes moves a last-run pace caret here', async ({ pag
   await signInWithEmail(page, EMAIL);
   await chooseWords(page, 10);
   await openSettings(page);
-  await page.locator('#pace-select').selectOption('last');
+  await chooseSetting(page, 'pace-select', 'last');
   await page.keyboard.press('Escape');
   await expect(page.locator('#pace-label')).toHaveText('pace 60 wpm');
   const other = await extraPage(context, supabase, errors);
@@ -1139,6 +1126,7 @@ test('undo right after a clear keeps a run saved while an earlier write was stil
 
 test('signing out while the account service never answers still finishes and keeps this device’s runs', async ({ page, supabase }) => {
   supabase.addUser(EMAIL);
+  await page.clock.install();
   await openApp(page);
   await signInWithEmail(page, EMAIL);
   let release;
@@ -1151,9 +1139,22 @@ test('signing out while the account service never answers still finishes and kee
     await finishRun(page);
     const userId = (await storageKeys(page)).find((key) => key.startsWith('stilltype-profile-v2:'));
     await page.locator('#account-trigger').click();
-    const started = Date.now();
-    await Promise.all([page.waitForEvent('load', { timeout: 45000 }), page.locator('#account-signout').click()]);
-    expect(Date.now() - started).toBeLessThan(40000);
+    // The page's own clock when it gives up on the account and ends the sign-in.
+    let abandoned;
+    await page.route(/\/auth\/v1\/logout/, async (route) => {
+      abandoned = await page.evaluate(() => Date.now());
+      await route.fallback();
+    });
+    const started = await page.evaluate(() => Date.now());
+    const signedOut = page.waitForEvent('load');
+    await page.locator('#account-signout').click();
+    // Its requests time out on the page's clock, moved on a second at a time until it gives up on them.
+    await expect.poll(async () => {
+      if (abandoned === undefined) await page.clock.runFor(1000);
+      return abandoned !== undefined;
+    }, { intervals: [100], timeout: 20000 }).toBe(true);
+    await signedOut;
+    expect(abandoned - started).toBeLessThan(40000);
     await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
     // Nothing reached the account, so the run stays on the device for the next sign-in.
     expect(await storageKeys(page)).toContain(userId);
@@ -1217,28 +1218,6 @@ async function expectNoMemberCalls(page, calls) {
   expect(await storageKeys(page)).toEqual([]);
 }
 
-test('a tab open when another signs out having sent everything starts again as a guest', async ({ page, context, supabase }) => {
-  supabase.addUser(EMAIL);
-  const errors = [];
-  await openApp(page);
-  await signInWithEmail(page, EMAIL);
-  const other = await extraPage(context, supabase, errors);
-  const calls = memberCalls(other);
-  await openApp(other);
-  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  expect(calls.length).toBeGreaterThan(0);
-
-  await page.locator('#account-trigger').click();
-  await Promise.all([page.waitForEvent('load'), page.locator('#account-signout').click()]);
-  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
-  // Everything had reached the account, so the sign-out left no marker, only a removed cache.
-  expect(await storageKeys(page)).toEqual([]);
-  await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
-  await expectNoMemberCalls(other, calls);
-  expect(runIds(cloud(supabase))).toEqual([]);
-  expect(errors).toEqual([]);
-});
-
 for (const next of [null, EMAIL, 'second@stilltype.test']) {
   const then = !next ? 'as a guest' : next === EMAIL ? 'as the same account, signed in again' : 'as the account signed in since';
   test(`a tab mid-run when another signs out having sent everything finishes the run, then starts again ${then}`, async ({ page, context, supabase }) => {
@@ -1254,6 +1233,7 @@ for (const next of [null, EMAIL, 'second@stilltype.test']) {
     await chooseWords(other, 10);
     await expect.poll(() => cloud(supabase)?.preferences.count).toBe(10);
     await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    expect(calls.length).toBeGreaterThan(0);
     const text = await passageText(other);
     await typeInto(other, text.slice(0, 3));
 

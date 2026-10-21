@@ -1,5 +1,5 @@
 import { quoteCorpus } from '../src/typing.js';
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore, chooseSetting, closeSettings, chooseQuoteFilter } from './fixtures.js';
 
 async function finishWithCorrectedMiss(page) {
   await openApp(page);
@@ -81,10 +81,10 @@ test('in focus mode, one Escape closes the replay and focus mode stays on', asyn
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
-  await page.locator('#focus-toggle').check();
-  // Clicking the passage closes the settings popover, which would otherwise take the first Escape.
+  await chooseSetting(page, 'focus-toggle', true);
+  await closeSettings(page);
   await page.locator('#typing-input').click();
-  await expect(page.locator('.preferences-popover')).toBeHidden();
+  await expect(page.locator('#settings-dialog')).toBeHidden();
   await completePassage(page);
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
 
@@ -109,9 +109,9 @@ test('Watch replay plays the run the results show, not a drill whose retest was 
   await openView(page, 'practice');
   await page.locator('#mode-quote').click();
   await note();
-  await page.locator('#quote-length').selectOption('medium');
+  await chooseQuoteFilter(page, 'length', 'medium');
   await note();
-  await page.locator('#quote-difficulty').selectOption('gentle');
+  await chooseQuoteFilter(page, 'difficulty', 'gentle');
   for (let tries = 0; seen.size < pool.length && tries < pool.length + 3; tries += 1) {
     await note();
     if (seen.size < pool.length) await page.locator('#restart-button').click();
@@ -137,7 +137,7 @@ test('Watch replay plays the run the results show, not a drill whose retest was 
 test('a custom run keeps no trace, so it offers no replay; the next counted run does again', async ({ page }) => {
   const custom = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(custom);
   await page.locator('#custom-use').click();
   await typeInto(page, custom);
@@ -149,21 +149,6 @@ test('a custom run keeps no trace, so it offers no replay; the next counted run 
   await chooseWords(page, 10);
   await completePassage(page);
   await expect(page.locator('#watch-replay')).toBeVisible();
-});
-
-test('replay controls wrap inside the dialog at phone width', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 640 });
-  await finishWithCorrectedMiss(page);
-  await page.locator('#watch-replay').click();
-  const dialog = page.locator('#replay-dialog');
-  await expect(dialog).toBeVisible();
-  const box = await dialog.boundingBox();
-  for (const id of ['replay-toggle', 'replay-speed', 'replay-restart', 'replay-close', 'replay-wpm', 'replay-errors-unit', 'replay-clock']) {
-    const button = await page.locator(`#${id}`).boundingBox();
-    expect(button.x).toBeGreaterThanOrEqual(box.x);
-    expect(button.x + button.width).toBeLessThanOrEqual(box.x + box.width);
-  }
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
 });
 
 // The mounted letters, the caret's place among them, and whether the caret sits on one of the
@@ -351,6 +336,7 @@ test('the replay ends on the run card even when its last frame falls mid-second'
 
 for (const theme of ['dark', 'light']) {
   test(`screenshot: replay mid-playback (${theme})`, async ({ page }, testInfo) => {
+    test.skip(theme === 'light' && !process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.emulateMedia({ colorScheme: theme });
@@ -369,10 +355,38 @@ for (const theme of ['dark', 'light']) {
     expect(view.lines).toBe(3);
     expect(view.caretShown).toBe(true);
     await page.screenshot({ path: shotPath(testInfo, `replay-${theme}.png`) });
-    // At phone width the stats wrap below the title.
+    // At phone width the stats wrap below the title and the controls wrap inside the dialog.
     await page.setViewportSize({ width: 320, height: 640 });
     await expect(page.locator('#replay-wpm')).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+    const box = await dialog.boundingBox();
+    for (const id of ['replay-toggle', 'replay-speed', 'replay-restart', 'replay-close', 'replay-wpm', 'replay-errors-unit', 'replay-clock']) {
+      const control = await page.locator(`#${id}`).boundingBox();
+      expect(control.x).toBeGreaterThanOrEqual(box.x);
+      expect(control.x + control.width).toBeLessThanOrEqual(box.x + box.width);
+    }
     await page.screenshot({ path: shotPath(testInfo, `replay-phone-${theme}.png`) });
   });
 }
+
+
+test('replay live and final stats use the chosen display unit without changing the saved score', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await finishWithCorrectedMiss(page);
+  const wpm = Number(await page.locator('#result-wpm').textContent());
+  await openSettings(page);
+  await chooseSetting(page, 'speed-unit', 'cpm');
+  await closeSettings(page);
+  await page.locator('#watch-replay').click();
+  await expect(page.locator('#replay-dialog')).toHaveAttribute('data-state', 'done');
+  await expect(page.locator('#replay-wpm')).toHaveText(String(wpm * 5));
+  await expect(page.locator('#replay-speed-unit')).toHaveText('cpm');
+  await expect(page.locator('#replay-stats-label')).toContainText(`${wpm * 5} cpm,`);
+  await page.locator('#replay-close').click();
+  await openSettings(page);
+  await chooseSetting(page, 'speed-unit', 'wpm');
+  await closeSettings(page);
+  await page.locator('#watch-replay').click();
+  await expect(page.locator('#replay-wpm')).toHaveText(String(wpm));
+  await expect(page.locator('#replay-speed-unit')).toHaveText('wpm');
+});

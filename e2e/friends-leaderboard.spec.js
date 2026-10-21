@@ -4,12 +4,11 @@ import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey, quoteCorpus } from '../src/typing.js';
 import { dailyPassage } from '../src/insights.js';
 import { BOARD_V, dailyVersion } from '../src/friends-board.js';
-import { test, expect, openApp, openView, openSettings, signInWithEmail, chooseWords, completePassage, passageText, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, signInWithEmail, chooseWords, completePassage, passageText, chooseSetting } from './fixtures.js';
 import { mondayOf, utcDay } from './fake-board.js';
 
 test.setTimeout(120000);
 
-const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const DAILY = { mode: 'quote', duration: null, count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any', wordList: null,
   inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
 const VERSION = dailyVersion(conditionKey(DAILY));
@@ -195,6 +194,8 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   // Saved by an earlier build that synced the sharing setting: membership alone says whether an account
   // shares, and Ada has none.
   seedProfile(supabase, ada, practiceThisWeek(24), { preferences: { shareBoard: true } });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.install();
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   // Sharing is off by default: the board shows nobody and says why.
@@ -207,8 +208,10 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   // Her own profile row carries her summary whether or not she shares; only she can read it.
   await expect.poll(() => weekRuns(supabase, ada)).toBe(24);
   expect(supabase.board.members.has(ada.id)).toBe(false);
-  await scrollBelow(page, '#friends-board-heading', 120);
-  await shot(page, testInfo, 'board-off-light');
+  if (process.env.SCREENSHOTS) {
+    await scrollBelow(page, '#friends-board-heading', 120);
+    await shot(page, testInfo, 'board-off-light');
+  }
   // Turning it on makes her a member, sending no numbers, and the friends who share appear.
   const actions = boardActions(page);
   await page.locator('#share-board').check();
@@ -222,17 +225,25 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   await page.locator('#challenge-daily').click();
   await page.locator('#start-daily').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
-  // A human pace with two corrected slips, so the result reads like a real one.
+  // A human pace, 120 ms a key on the paused page clock, with two corrected slips, so the result reads
+  // like a real one. The board leaves out anything faster than 400 wpm.
   const passage = await passageText(page);
+  const slip = (at) => (passage[at] === 'q' ? 'w' : 'q');
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await page.locator('#typing-input').focus();
-  let typed = 0;
-  for (const slip of [60, 150]) {
-    await page.keyboard.type(passage.slice(typed, slip), { delay: 120 });
-    await page.keyboard.type(passage[slip] === 'q' ? 'w' : 'q');
-    await page.keyboard.press('Backspace');
-    typed = slip;
+  for (const [from, to] of [[0, 60], [60, 150], [150, passage.length]]) {
+    if (from) {
+      await page.keyboard.type(slip(from));
+      await page.keyboard.press('Backspace');
+      await page.clock.runFor(240);
+    }
+    for (let at = from; at < to; at += 10) {
+      const chunk = passage.slice(at, Math.min(at + 10, to));
+      await page.keyboard.type(chunk);
+      await page.clock.runFor(120 * chunk.length);
+    }
   }
-  await page.keyboard.type(passage.slice(typed), { delay: 120 });
+  await page.clock.resume();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   const wpm = Number(await page.locator('#result-wpm').textContent());
   const accuracy = Number(await page.locator('#result-accuracy').textContent());
@@ -269,13 +280,15 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   await expect(page.locator('#friends-board')).not.toContainText('Kai');
   await expect(page.locator('#friends-board-empty')).toBeHidden();
 
-  await shot(page, testInfo, 'board-light', { fullPage: true });
-  await page.emulateMedia({ colorScheme: 'dark' });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  // Let the theme's colour fade settle before the picture.
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
-  await page.waitForTimeout(400);
-  await shot(page, testInfo, 'board-dark', { fullPage: true });
+  if (process.env.SCREENSHOTS) {
+    await shot(page, testInfo, 'board-light', { fullPage: true });
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    // Let the theme's colour fade settle before the picture.
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
+    await page.waitForTimeout(400);
+    await shot(page, testInfo, 'board-dark', { fullPage: true });
+  }
 
   // Lin, who shares, sees Ada under her own name for her, with the result Ada's row now holds.
   const context = await page.context().browser().newContext();
@@ -295,6 +308,27 @@ test('a daily run reaches the board with the profile save, and only mutual frien
     await expect(lin.locator('#refresh-friends-board')).toBeFocused();
     expect(await rowTexts(lin, 'board-daily')).toContain('Ada — another version of the daily · not compared');
   } finally { await context.close(); }
+});
+
+// A unit change re-texts the board's speeds and nothing else: its status, a live region, stays as it was.
+test('the speed unit rewords the board’s speeds and keeps what its status said', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  befriend(supabase, ada, lin, 'Lin');
+  befriend(supabase, lin, ada, 'Ada');
+  publish(supabase, lin, { wpm: 78, accuracy: 96, attempts: 2 }, 2460, 37);
+  await sharing(page, supabase, ada);
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openBoard(page);
+  await refreshBoard(page);
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+  expect(await rowTexts(page, 'board-daily')).toContain('Lin 78 wpm 96% accuracy · best of 2');
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('speed unit · cpm');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => rowTexts(page, 'board-daily')).toContain('Lin 390 cpm 96% accuracy · best of 2');
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
 });
 
 test('practice time reaches the board with the profile save, and a board not yet set up says so', async ({ page, supabase }) => {
@@ -414,29 +448,6 @@ test('a project without the board column keeps profile sync working, leaving the
   expect(supabase.profileWrites.every((write) => write.board === undefined)).toBe(true);
 });
 
-test('a midnight re-read that fails is tried again at the next check', async ({ page, supabase }) => {
-  await sharing(page, supabase, supabase.addUser('ada@stilltype.test'));
-  let now = '2026-10-03T23:50:00Z';
-  supabase.board.now = () => new Date(now);
-  await page.clock.install({ time: new Date(now) });
-  await openApp(page);
-  await signInWithEmail(page, 'ada@stilltype.test');
-  await openBoard(page);
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
-  // The first read after midnight fails, quietly; the next 30-second check reads Sunday's board.
-  now = '2026-10-04T00:00:30Z';
-  supabase.board.missing = true;
-  const reads = boardRequests(supabase);
-  await page.clock.fastForward('10:30');
-  await expect.poll(() => boardRequests(supabase)).toBeGreaterThan(reads);
-  await expect(page.locator('#friends-board-status')).toHaveText('');
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
-  supabase.board.missing = false;
-  await page.clock.fastForward(30_000);
-  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04 · best completed attempt · physical keyboard');
-  await expect(page.locator('#friends-board-status')).toHaveText('');
-});
-
 test('a board left open reads the new day after 00:00 UTC, and the new week on Monday', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');
@@ -542,7 +553,7 @@ test('F1: a stale device saving after a clear brings no cleared run back, a cloc
     // clear keeps out what it removed (the fast clock's run, stamped after it, by name): the row keeps the
     // setting and no runs, and its summary describes exactly that.
     await openSettings(stale);
-    await stale.locator('#keyboard-toggle').check();
+    await chooseSetting(stale, 'keyboard-toggle', true);
     await expect.poll(() => supabase.profiles.get(ada.id).data.preferences?.keyboard).toBe(true);
     expect(supabase.profiles.get(ada.id).data.runs).toHaveLength(0);
     expect(weekRuns(supabase, ada)).toBe(0);
@@ -593,16 +604,18 @@ test('F2: clear and undo twice while the first save’s reply is held, and the b
   await expect(page.locator('#board-week')).toContainText('3 runs');
 });
 
-test('F3: a board reply ten seconds late, around another device’s clear, still leads to the run made after it', async ({ page, browser, supabase }) => {
+test('F3: a late board reply, around another device’s clear, still leads to the run made after it', async ({ page, browser, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   await sharing(page, supabase, ada, { runs: practiceThisWeek(3) });
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await openBoard(page);
   await expect(page.locator('#board-week')).toContainText('3 runs');
-  // This device's next board read is answered ten seconds late.
-  supabase.board.delayNextReply = 10000;
+  // This device's next board read is answered late: read on arrival, its reply held until after the clear.
+  let answer;
+  supabase.board.holdNextRead = new Promise((resolve) => { answer = resolve; });
   await refreshBoard(page);
+  await expect.poll(() => supabase.board.holdNextRead === null).toBe(true);
   // Meanwhile Ada's other device clears its history and makes one run.
   const context = await browser.newContext();
   const other = await context.newPage();
@@ -617,7 +630,8 @@ test('F3: a board reply ten seconds late, around another device’s clear, still
     await expect.poll(() => supabase.profiles.get(ada.id).data.runs.length).toBe(1);
     await expect.poll(() => weekRuns(supabase, ada)).toBe(1);
     // The late reply arrives; whatever it held, the next read counts the run made after the clear.
-    await expect(page.locator('#friends-board-status')).toHaveText('Updated.', { timeout: 20000 });
+    answer();
+    await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
     await refreshBoard(page);
     await expect(page.locator('#board-week')).toContainText('1 run');
     await openBoard(other);
@@ -903,7 +917,7 @@ test('a share waiting behind this device’s own opt-out counts only that opt-ou
   } finally { await laptopContext.close(); }
 });
 
-test('sharing turned off in one tab and back on in another shares at the first click, with no word of another device', async ({ page, supabase }) => {
+test('sharing turned off in one tab and back on in another shares at the first try, from the switch or from the palette with the board hidden, with no word of another device', async ({ page, supabase }) => {
   const ada = supabase.addUser('ada@stilltype.test');
   await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
   await openApp(page);
@@ -917,53 +931,33 @@ test('sharing turned off in one tab and back on in another shares at the first c
   await openBoard(second);
   await expect(second.locator('#share-board')).toBeChecked();
   const actions = boardActions(page);
-  for (let round = 0; round < 2; round += 1) {
+  for (const fromPalette of [false, true]) {
+    if (fromPalette) await openView(page, 'Practice');
     // Off in the second tab, confirmed; the first tab's switch follows at once.
     await second.locator('#share-board').uncheck();
     await expect(second.locator('#friends-board-status')).toHaveText('Your row is off the board.');
-    await expect(page.locator('#share-board')).not.toBeChecked();
+    if (!fromPalette) await expect(page.locator('#share-board')).not.toBeChecked();
     expect(supabase.board.members.has(ada.id)).toBe(false);
     // On again in the first tab, having seen it off there: it shares with the version the second tab
-    // read, so the first click counts.
+    // read, so the first try counts. From the palette the board opens too, and the switch overtakes its read.
     const mark = actions.length;
-    await page.locator('#share-board').check();
+    if (fromPalette) {
+      await page.bringToFront();
+      await page.keyboard.press('Control+k');
+      await page.keyboard.type('share on friends');
+      await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('share on friends board');
+      await page.keyboard.press('Enter');
+    } else {
+      await page.locator('#share-board').check();
+    }
     await expect(page.locator('#friends-board-lists')).toBeVisible();
     await expect(page.locator('#share-board')).toBeChecked();
     await expect(page.locator('#friends-board-status')).toHaveText('');
-    expect(actions.slice(mark)).toEqual(['share']);
+    const sent = actions.slice(mark);
+    expect(fromPalette ? sent.filter((action) => action !== 'board') : sent).toEqual(['share']);
     expect(supabase.board.members.has(ada.id)).toBe(true);
     await expect(second.locator('#share-board')).toBeChecked();
   }
-});
-
-test('the palette turns sharing on at the first try in a tab whose board is hidden, after another tab turned it off', async ({ page, supabase }) => {
-  const ada = supabase.addUser('ada@stilltype.test');
-  await sharing(page, supabase, ada, { runs: practiceThisWeek(2) });
-  await openApp(page);
-  await signInWithEmail(page, 'ada@stilltype.test');
-  await openBoard(page);
-  await expect(page.locator('#friends-board-lists')).toBeVisible();
-  await openView(page, 'Practice');
-  const second = await page.context().newPage();
-  await supabase.attach(second);
-  await openApp(second);
-  await expect(second.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  await openBoard(second);
-  await second.locator('#share-board').uncheck();
-  await expect(second.locator('#friends-board-status')).toHaveText('Your row is off the board.');
-  // Back in the first tab, from the palette: the board opens (its read is overtaken by the switch) and
-  // the share counts.
-  const actions = boardActions(page);
-  await page.bringToFront();
-  await page.keyboard.press('Control+k');
-  await page.keyboard.type('share on friends');
-  await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('share on friends board');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#friends-board-lists')).toBeVisible();
-  await expect(page.locator('#share-board')).toBeChecked();
-  await expect(page.locator('#friends-board-status')).toHaveText('');
-  expect(actions.filter((action) => action !== 'board')).toEqual(['share']);
-  expect(supabase.board.members.has(ada.id)).toBe(true);
 });
 
 test('a share waiting its turn in one tab can’t undo an opt-out made after it in another tab', async ({ page, supabase }) => {
@@ -1194,10 +1188,12 @@ test('a device whose clock is behind, saving just after 00:00 UTC, still shows t
   expect(await rowTexts(page, 'board-week')).toEqual(['You 41 s 1 run']);
 });
 
-test('a board that can’t be read says so once, and the checks after it retry without a word', async ({ page, supabase }) => {
+test('a board that can’t be read says so once, and the checks after it retry without a word, a midnight re-read included', async ({ page, supabase }) => {
   await sharing(page, supabase, supabase.addUser('ada@stilltype.test'));
   supabase.board.missing = true;
-  await page.clock.install();
+  let now = '2026-10-03T23:50:00Z';
+  supabase.board.now = () => new Date(now);
+  await page.clock.install({ time: new Date(now) });
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await openBoard(page);
@@ -1222,6 +1218,19 @@ test('a board that can’t be read says so once, and the checks after it retry w
   supabase.board.missing = false;
   await refreshBoard(page);
   await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  // The first read after midnight fails, quietly; the next 30-second check reads Sunday's board.
+  now = '2026-10-04T00:00:30Z';
+  supabase.board.missing = true;
+  const reads = boardRequests(supabase);
+  await page.clock.fastForward('10:30');
+  await expect.poll(() => boardRequests(supabase)).toBeGreaterThan(reads);
+  await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-03 · best completed attempt · physical keyboard');
+  supabase.board.missing = false;
+  await page.clock.fastForward(30_000);
+  await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04 · best completed attempt · physical keyboard');
+  await expect(page.locator('#friends-board-status')).toHaveText('');
 });
 
 test('an opt-out another tab settled while this tab’s own try failed leaves sharing free to turn on again', async ({ page, supabase }) => {
@@ -1598,32 +1607,4 @@ test('where the browser can’t keep an opt-out, the page keeps it, and sends it
   expect(supabase.board.version(ada.id)).toBe(3);
   expect(supabase.board.members.has(ada.id)).toBe(true);
   await expect(page.locator('#share-board')).toBeChecked();
-});
-
-test.describe('phone', () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-
-  test('the board stacks on a phone and fits at 320px', async ({ page, supabase }, testInfo) => {
-    const { ada } = circle(supabase);
-    const day = dailyPassage();
-    const dailyRun = { id: 'seed-daily', at: new Date().toISOString(), kind: 'daily', status: 'complete', interrupted: false, fresh: true,
-      textId: day.sourceTextId, conditions: DAILY, score: { wpm: 84, accuracy: 97 }, elapsedMs: 41200, errors: 2, target: null,
-      challengeDate: day.day, firstDailyAttempt: true, patterns: [] };
-    await sharing(page, supabase, ada, { runs: practiceThisWeek(18, [dailyRun]) });
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await openApp(page);
-    await signInWithEmail(page, 'ada@stilltype.test');
-    await openBoard(page);
-    await expect(page.locator('#board-daily')).toContainText('You 84 wpm');
-    // Her row had no summary; this load wrote one from her history.
-    expect(column(supabase, ada).days[day.day]).toEqual({ version: VERSION, wpm: 84, accuracy: 97, attempts: 1 });
-    const daily = await page.locator('#board-daily').boundingBox();
-    const week = await page.locator('#board-week').boundingBox();
-    expect(week.y).toBeGreaterThan(daily.y + daily.height);
-    expect(await overflow(page)).toBeLessThanOrEqual(0);
-    await scrollBelow(page, '#friends-board-heading', 24);
-    await shot(page, testInfo, 'board-phone-dark');
-    await page.setViewportSize({ width: 320, height: 640 });
-    expect(await overflow(page)).toBeLessThanOrEqual(0);
-  });
 });

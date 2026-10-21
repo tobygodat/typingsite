@@ -1,6 +1,9 @@
-import { createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
+import { blocksOnError, createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 import { createTypingFx } from './motion.js';
+import { KEY_OUTCOME, keyOutcome } from './sound.js';
 import * as multiplayer from './multiplayer.js';
+import { speedFigure } from './units.js';
+import { raceResultText } from './race-result.js';
 import { redrawList } from './inbox.js';
 
 const $ = (id) => document.getElementById(id);
@@ -30,7 +33,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board }) {
+export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, playKeySound = () => {} }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -84,6 +87,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('compete-heading').textContent = HEADINGS[value];
     setRunning(false);
     if (value === 'online') { fx.relayout(); refreshInvites(); }
+    onModeChange?.();
     if (value === 'friends') board?.show(); else board?.hide();
   }
   function renderHome() {
@@ -359,9 +363,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       const lead = ahead === 0 ? 'You tied with' : ahead > 0 ? 'You beat' : 'You raced';
       // Finished rooms are deleted a day after they expire, so Race again lapses a little before.
       const until = new Date(Date.parse(room.expiresAt || new Date().toISOString()) + RESULT_RETAINED_MS).toISOString();
+      // Saved in wpm, like every speed; the inbox words it in the unit chosen when it is shown.
+      const race = { lead, opponent: opponent.name, wpm: [me.wpm || 0, opponent.wpm || 0] };
       inbox.notify({ id: `result:${room.id}`, kind: 'result', roomId: room.id, until,
-        conditions: room.conditions,
-        text: `${lead} ${opponent.name}: ${me.wpm || 0} wpm to ${opponent.wpm || 0}.` }, { toast: justFinished && away() });
+        conditions: room.conditions, race, text: raceResultText(race) }, { toast: justFinished && away() });
     }
   }
   function renderAfter() {
@@ -497,10 +502,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       const name = document.createElement('strong');
       name.textContent = player.name;
       row.append(name);
-      for (const value of [`${player.wpm || 0} wpm`, `${player.accuracy ?? 100}% accuracy`, `${(player.elapsed || 0).toFixed(1)} s`]) {
+      for (const value of [speedFigure(player.wpm || 0), `${player.accuracy ?? 100}% accuracy`, `${(player.elapsed || 0).toFixed(1)} s`]) {
         const span = document.createElement('span');
         span.className = 'num';
-        span.textContent = value;
+        span.append(value);
         row.append(span);
       }
       return row;
@@ -515,14 +520,17 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     if ($('online-input').disabled) return;
     const replay = replayAttempt(attempt);
     const offsetMs = Math.max(0, performance.now() - startPerf);
+    const position = replay.typed.length;
     if (event.inputType?.startsWith('delete')) {
-      if (!replay.typed.length) return;
+      playKeySound(KEY_OUTCOME.delete);
+      if (!position) return;
       attempt.events.push({ type: 'delete', count: 1, offsetMs });
     } else if (event.inputType === 'insertText' && event.data && [...event.data].length === 1 && !/[\r\n]/u.test(event.data)) {
-      if (replay.typed.length >= attempt.text.length) return;
-      const mustCorrect = attempt.conditions.correctionPolicy !== 'relaxed' && replay.typed.length > 0 && replay.typed.at(-1) !== attempt.text[replay.typed.length - 1];
+      if (position >= attempt.text.length) return;
+      const mustCorrect = blocksOnError(attempt.conditions.correctionPolicy) && position > 0 && replay.typed.at(-1) !== attempt.text[position - 1];
+      playKeySound(keyOutcome([mustCorrect ? { blocked: true } : { correct: event.data === attempt.text[position] }]));
       if (mustCorrect) { $('online-help').textContent = 'Correct the mistyped letter before continuing.'; return; }
-      attempt.events.push({ type: 'insert', text: event.data, position: replay.typed.length, accepted: true, offsetMs });
+      attempt.events.push({ type: 'insert', text: event.data, position, accepted: true, offsetMs });
     } else return;
     attempt.status = 'running';
     const next = replayAttempt(attempt);
@@ -656,12 +664,13 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     rematchRoom: (roomId, conditions) => rematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions),
     // The race this tab is seated in and still waiting or racing, if any.
     get liveRoomId() { return room && !terminal(room) ? room.id : null; },
+    // Which Challenge tab shows: online, daily or local (one keyboard).
+    get mode() { return mode; },
     // A request made from this screen is still in flight (a room being created, joined or rematched, or a
     // seat, friend or readiness change), or this tab's room is being restored. A room either opens moves
     // the person to it.
     get pending() { return busy || restoring; },
     open() { navigate('compete'); setMode('online'); },
-    relayout: () => fx.relayout(),
     // A live race keeps the Online view; the board waits until it closes.
     openBoard() { navigate('compete'); if (!room || terminal(room)) setMode('friends'); },
     onViewChange(view) {

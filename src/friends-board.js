@@ -11,8 +11,11 @@
 import { request, freshSession, loadSession, AuthError } from './account.js';
 import { CORPUS_VERSION, CORRECTION_POLICIES, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS,
   conditionKey } from './typing.js';
+import { isValidLength } from './lengths.js';
+import { layoutIds, isDefaultLayout } from './layouts.js';
 import { wordListIds } from './words.js';
-import { comparableKind, dailyPassage, trendRun, validRun } from './insights.js';
+import { comparableKind, conditionParts, dailyPassage, trendRun, validRun } from './insights.js';
+import { speedFigure, unitLabel } from './units.js';
 
 const DAY_MS = 86400000;
 // The service shows nothing outside these, so they are never written.
@@ -146,18 +149,24 @@ export const boardCurrent = (row) => Boolean(row?.board?.at) && Date.parse(row.b
 // null: a key from another build, or one no copy of this build writes, which the board never lists or compares.
 export function shapeOf(key) {
   const parts = typeof key === 'string' ? key.split(':') : [];
-  if (parts.length !== 11) return null;
+  const suffix = parts.splice(11);
+  const layoutPart = suffix.at(-1)?.startsWith('layout-') ? suffix.pop() : null;
+  const layout = layoutPart?.startsWith('layout-') ? layoutPart.slice(7) : null;
+  if (suffix.some((part) => !['strict-space', 'quick-end-off'].includes(part))) return null;
+  if (parts.length !== 11 || (layoutPart && (!layoutIds.includes(layout) || isDefaultLayout(layout)))) return null;
   const [mode, duration, count, text, quoteLength, difficulty, wordList, inputClass, correctionPolicy, corpus, metricVersion] = parts;
   // Numbers ride on the text part (`plain+numbers`), and only on generated tests; a quote ignores them.
   const numbers = text.endsWith('+numbers');
   const punctuation = numbers ? text.slice(0, -'+numbers'.length) : text;
   const conditions = { mode, duration: Number(duration) || null, count: Number(count) || null, punctuation: punctuation === 'punctuation',
     numbers, quoteLength: quoteLength || null, difficulty: difficulty || null, wordList: wordList || null, inputClass, correctionPolicy,
-    language: 'en', corpus, metricVersion };
+    language: 'en', corpus, metricVersion, ...(layout ? { layout } : {}),
+    ...(suffix.includes('strict-space') ? { strictSpace: true } : {}),
+    ...(suffix.includes('quick-end-off') ? { quickEnd: false } : {}) };
   const quote = mode === 'quote';
   const written = SHAPE_MODES.includes(mode)
-    && (mode === 'time' ? TEST_DURATIONS.includes(conditions.duration) : !duration)
-    && (mode === 'words' ? TEST_COUNTS.includes(conditions.count) : !count)
+    && (mode === 'time' ? isValidLength('time', conditions.duration) : !duration)
+    && (mode === 'words' ? isValidLength('words', conditions.count) : !count)
     && (quote ? QUOTE_LENGTHS.includes(quoteLength) && QUOTE_DIFFICULTIES.includes(difficulty) && !wordList && !numbers
       : !quoteLength && !difficulty && wordListIds.includes(wordList))
     && INPUT_CLASSES.includes(inputClass) && CORRECTION_POLICIES.includes(correctionPolicy)
@@ -165,7 +174,10 @@ export function shapeOf(key) {
   return written && conditionKey(conditions) === key ? conditions : null;
 }
 // A key's shape without its corpus and metric version, to tell "another version of this shape".
-const shapePart = (key) => String(key).split(':').slice(0, 9).join(':');
+const shapePart = (key) => {
+  const parts = String(key).split(':');
+  return [...parts.slice(0, 9), ...parts.slice(11)].join(':');
+};
 
 // The shapes the board can compare: every key this build writes that anyone on the board has a best
 // on. Timed tests first, then word counts, then quotes, shortest first, and without numbers before with.
@@ -177,11 +189,11 @@ export function boardShapes(rows) {
     || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
-// A shape's description in parts: the app's own (`parts`), and for a quote the punctuation setting its
+// A shape's description in parts: the app's own (conditionParts), and for a quote the punctuation setting its
 // key keeps ('on' or 'off'). A quote ignores that setting, so the app doesn't describe it, but two quote
 // keys can differ by it alone.
-function describedParts(conditions, parts) {
-  const part = parts(conditions);
+function describedParts(conditions) {
+  const part = conditionParts(conditions);
   if (conditions.mode !== 'quote') return part;
   const { language, length, text, ...rest } = part;
   return { language, length, text, setting: conditions.punctuation ? 'on' : 'off', ...rest };
@@ -192,8 +204,8 @@ const named = (name, value, full = false) => (name === 'setting' ? `punctuation 
 // each is compared, and named, only between the shapes it belongs to.
 const belongs = (name, conditions) => (name === 'language' ? conditions.mode !== 'quote' : name !== 'setting' || conditions.mode === 'quote');
 // Each listed shape's parts, and which parts tell the listed shapes apart.
-function tellApart(shapes, parts) {
-  const described = shapes.map((shape) => describedParts(shape.conditions, parts));
+function tellApart(shapes) {
+  const described = shapes.map((shape) => describedParts(shape.conditions));
   const names = [...new Set(described.flatMap((part) => Object.keys(part)))];
   const differs = new Set(names.filter((name) => new Set(described.filter((part, index) => belongs(name, shapes[index].conditions))
     .map((part) => part[name])).size > 1));
@@ -203,8 +215,8 @@ function tellApart(shapes, parts) {
 // Each shape's name in the picker: its length and text first, then whichever other parts of its
 // description (a quote's punctuation setting, word list, input, correction policy) differ between the
 // shapes listed, so what tells two apart comes before a narrow picker cuts the rest off.
-export function shapeLabels(shapes, parts) {
-  const { described, names, differs } = tellApart(shapes, parts);
+export function shapeLabels(shapes) {
+  const { described, names, differs } = tellApart(shapes);
   const order = ['length', 'text', 'setting', ...names].filter((name, index, all) => all.indexOf(name) === index
     && (name === 'length' || name === 'text' || differs.has(name)));
   return described.map((part, index) => order.filter((name) => belongs(name, shapes[index].conditions) && part[name] !== undefined)
@@ -213,8 +225,8 @@ export function shapeLabels(shapes, parts) {
 
 // The full description of the picked shape: the app's own, with the punctuation setting when it tells
 // this quote apart from another listed.
-export function shapeDescription(shapes, key, parts) {
-  const { described, differs } = tellApart(shapes, parts);
+export function shapeDescription(shapes, key) {
+  const { described, differs } = tellApart(shapes);
   const part = described[shapes.findIndex((shape) => shape.key === key)] || {};
   return Object.entries(part).filter(([name]) => name !== 'setting' || differs.has(name)).map(([name, value]) => named(name, value, true)).join(' · ');
 }
@@ -360,7 +372,7 @@ export const readBoard = (session) => call(session, 'board');
 export const startSharing = (session, version) => call(session, 'share', { version });
 export const stopSharing = (session, id = null) => call(session, 'unshare', id ? { id } : {});
 
-export function createFriendsBoard({ getSession, dailyKey, runs, conditionParts, signIn, openOnline, onShared = () => {} }) {
+export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnline, onShared = () => {} }) {
   let visible = false;
   // Whether this account shares, as this device last knew it (see knownSharing); null until it knows.
   const known = getSession() ? knownSharing(getSession()) : { sharing: null, version: null };
@@ -529,12 +541,12 @@ export function createFriendsBoard({ getSession, dailyKey, runs, conditionParts,
     measure.className = 'board-value';
     const number = document.createElement('strong');
     number.className = 'num';
-    number.textContent = value;
+    number.append(value);
     measure.append(number);
     if (unit) {
       const suffix = document.createElement('span');
       suffix.className = 'board-unit';
-      suffix.textContent = unit;
+      suffix.append(unit);
       measure.append(' ', suffix);
     }
     const note = document.createElement('span');
@@ -575,7 +587,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, conditionParts,
     $('board-daily-meta').textContent = `${board.date} · best completed attempt · physical keyboard`;
     $('board-week-meta').textContent = `since monday ${board.weekStart}, 00:00 utc · completed runs`;
     $('board-daily').replaceChildren(...dailyOrder(rows).map((entry) => (entry.daily
-      ? row(entry, String(entry.daily.wpm), 'wpm', `${entry.daily.accuracy}% accuracy · ${entry.daily.attempts === 1 ? '1 attempt' : `best of ${entry.daily.attempts}`}`)
+      ? row(entry, speedFigure(entry.daily.wpm, { bare: true }), unitLabel(), `${entry.daily.accuracy}% accuracy · ${entry.daily.attempts === 1 ? '1 attempt' : `best of ${entry.daily.attempts}`}`)
       : row(entry, '—', '', entry.otherVersion ? 'another version of the daily · not compared' : 'no completed attempt yet'))));
     $('board-week').replaceChildren(...weekOrder(rows).map((entry) => {
       if (!entry.week) return row(entry, '—', '', 'nothing yet this week');
@@ -597,7 +609,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, conditionParts,
     const select = $('board-shape');
     if (!shapes.length) { select.replaceChildren(); $('board-bests').replaceChildren(); listed = ''; return; }
     const key = shapes.some((shape) => shape.key === picked) ? picked : defaultShape(shapes, runs(), rows);
-    const labels = shapeLabels(shapes, conditionParts);
+    const labels = shapeLabels(shapes);
     // Rebuilt only when the shapes or their names change, so a re-read never disturbs the picker.
     const signature = JSON.stringify(shapes.map((shape, index) => [shape.key, labels[index]]));
     if (signature !== listed) {
@@ -610,9 +622,9 @@ export function createFriendsBoard({ getSession, dailyKey, runs, conditionParts,
       }));
     }
     if (select.value !== key) select.value = key;
-    $('board-bests-meta').textContent = `${shapeDescription(shapes, key, conditionParts)} · best completed test or retest · dates in utc`;
+    $('board-bests-meta').textContent = `${shapeDescription(shapes, key)} · best completed test or retest · dates in utc`;
     $('board-bests').replaceChildren(...bestsOrder(rows, key).map((entry) => (entry.best
-      ? row(entry, String(entry.best.wpm), 'wpm', `${entry.best.accuracy}% accuracy · ${entry.best.date}`)
+      ? row(entry, speedFigure(entry.best.wpm, { bare: true }), unitLabel(), `${entry.best.accuracy}% accuracy · ${entry.best.date}`)
       : row(entry, '—', '', entry.otherVersion ? 'another version of this shape · not compared' : 'no best on this shape yet'))));
   }
 

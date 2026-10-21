@@ -1,6 +1,6 @@
 // Composing practice: a prompt, a free-typing field, free-typing speed and backspace rate,
 // kept apart from copy tests and stored as numbers only.
-import { test, expect, openApp, openSettings, openView, passageText, signInWithEmail, storageKeys } from './fixtures.js';
+import { test, expect, openApp, openSettings, openView, passageText, signInWithEmail, storageKeys, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const shot = (testInfo, name) => (process.env.SCREENSHOTS
@@ -52,7 +52,7 @@ async function startPausedClock(page) {
 }
 
 async function openCompose(page) {
-  await page.locator('#mode-compose').click();
+  await chooseMore(page, 'mode-compose');
   await page.clock.runFor(50);
   await expect(page.locator('#compose-form')).toBeVisible();
   await expect(page.locator('#compose-input')).toBeFocused();
@@ -177,7 +177,7 @@ test('the minute ends it on its own and the field stops taking keys', async ({ p
 
 test('paste, key repeat and too-short writing are handled honestly', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-compose').click();
+  await chooseMore(page, 'mode-compose');
   await expect(page.locator('#compose-input')).toBeFocused();
 
   await page.locator('#compose-input').evaluate((input) => {
@@ -361,11 +361,9 @@ test('keyless input, focus loss and an emptied field are never saved, and settin
 
   // A setting that would draw a new passage waits until composing ends.
   await openSettings(page);
-  // The word list sits in the collapsed test content group.
-  const content = page.locator('#test-content-settings');
-  if (!(await content.evaluate((node) => node.open))) await content.locator('summary').click();
-  await page.locator('#word-list').selectOption('1k');
-  await page.locator('details.preferences > summary').click();
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'word-list', '1k');
+  await closeSettings(page);
   await expect(page.locator('#compose-form')).toBeVisible();
   expect(await passageText(page)).toBe(hidden);
 
@@ -443,71 +441,43 @@ async function finishUnsupported(page) {
   await expect(page.locator('#compose-saved')).toHaveText('IME input isn’t measured. Esc to start over.');
 }
 
-test('text no counted key typed, such as an autocorrection, marks it unsupported and is never saved', async ({ page }) => {
+test('text no counted key typed, an edit a refusal could not cancel or unlike its key, or a delete of more than one character marks it unsupported and is never saved', async ({ page }) => {
+  // Nine sessions of about forty keys each.
+  test.setTimeout(90_000);
   await startPausedClock(page);
   await openCompose(page);
   const input = page.locator('#compose-input');
-  const typed = 'I made teh tea and sat by the window. ';
-  // Input with no cancellable beforeinput first: a replacement, and a type nothing here knows.
-  for (const inputType of ['insertReplacementText', 'insertFromAssistiveText']) {
+  const autocorrected = 'I made teh tea and sat by the window. ';
+  const bus = 'The bus came early, so I walked the last bit';
+  const sentence = `${bus}. `;
+  const phrase = 'and then a little more';
+  const edits = [
+    // Input with no cancellable beforeinput first: a replacement, and a type nothing here knows.
+    [autocorrected, autocorrected.replace('teh', 'the'), { after: { inputType: 'insertReplacementText', data: 'the' } }],
+    [autocorrected, autocorrected.replace('teh', 'the'), { after: { inputType: 'insertFromAssistiveText', data: 'the' } }],
+    // A refused replacement whose beforeinput can't be cancelled, which the browser then applies.
+    [sentence, sentence.replace('bit', 'part'), { before: { inputType: 'insertReplacementText', data: 'part' }, after: { inputType: 'insertReplacementText', data: 'part' } }],
+    // Several characters at once, refused but not cancellable: a counted type, but not one key.
+    [sentence, sentence + phrase, { before: { inputType: 'insertText', data: phrase }, after: { inputType: 'insertText', data: phrase } }],
+    // A counted key whose change isn't that key: the field no longer matches the recorded text.
+    [sentence, `${sentence.replace('bus', 'tram')}x`, { after: { inputType: 'insertText', data: 'x' } }],
+    // One character reported as typed but with no character to check it against.
+    [sentence, `${sentence}x`, { before: { inputType: 'insertText', data: null }, after: { inputType: 'insertText', data: null } }],
+    // An ordinary Backspace at the caret, as the browser reports it, that took a whole word.
+    [bus, bus.slice(0, -'bit'.length), { before: { inputType: 'deleteContentBackward' }, after: { inputType: 'deleteContentBackward' } }],
+    // A Delete with no beforeinput at all that took a selection's worth of letters.
+    [bus, bus.replace('early', 'e'), { after: { inputType: 'deleteContentForward' } }],
+  ];
+  for (const [typed, value, events] of edits) {
     await typePaced(page, [...typed], 230);
-    await browserEdit(input, typed.replace('teh', 'the'), { after: { inputType, data: 'the' } });
+    await browserEdit(input, value, events);
     await finishUnsupported(page);
     await page.locator('#compose-retry').click();
   }
   // A change with no event at all is caught at the end: the field no longer matches the keys.
-  await typePaced(page, [...typed], 230);
+  await typePaced(page, [...autocorrected], 230);
   await input.evaluate((node) => { node.value += 'and a line no key typed'; });
   await finishUnsupported(page);
-
-  await openView(page, 'Progress');
-  await expect(page.locator('#compose-history')).toBeHidden();
-});
-
-test('an edit a refusal could not cancel, or one unlike its key, is never saved', async ({ page }) => {
-  await startPausedClock(page);
-  await openCompose(page);
-  const input = page.locator('#compose-input');
-  const typed = 'The bus came early, so I walked the last bit. ';
-  const phrase = 'and then a little more';
-  const edits = [
-    // A refused replacement whose beforeinput can't be cancelled, which the browser then applies.
-    [typed.replace('bit', 'part'), { before: { inputType: 'insertReplacementText', data: 'part' }, after: { inputType: 'insertReplacementText', data: 'part' } }],
-    // Several characters at once, refused but not cancellable: a counted type, but not one key.
-    [typed + phrase, { before: { inputType: 'insertText', data: phrase }, after: { inputType: 'insertText', data: phrase } }],
-    // A counted key whose change isn't that key: the field no longer matches the recorded text.
-    [`${typed.replace('bus', 'tram')}x`, { after: { inputType: 'insertText', data: 'x' } }],
-    // One character reported as typed but with no character to check it against.
-    [`${typed}x`, { before: { inputType: 'insertText', data: null }, after: { inputType: 'insertText', data: null } }],
-  ];
-  for (const [value, events] of edits) {
-    await typePaced(page, [...typed], 230);
-    await browserEdit(input, value, events);
-    await finishUnsupported(page);
-    await page.locator('#compose-retry').click();
-  }
-
-  await openView(page, 'Progress');
-  await expect(page.locator('#compose-history')).toBeHidden();
-});
-
-test('a Backspace or Delete that removes more than one character is never saved', async ({ page }) => {
-  await startPausedClock(page);
-  await openCompose(page);
-  const input = page.locator('#compose-input');
-  const typed = 'The bus came early, so I walked the last bit';
-  const edits = [
-    // An ordinary Backspace at the caret, as the browser reports it, that took a whole word.
-    [typed.slice(0, -'bit'.length), { before: { inputType: 'deleteContentBackward' }, after: { inputType: 'deleteContentBackward' } }],
-    // A Delete with no beforeinput at all that took a selection's worth of letters.
-    [typed.replace('early', 'e'), { after: { inputType: 'deleteContentForward' } }],
-  ];
-  for (const [value, events] of edits) {
-    await typePaced(page, [...typed], 230);
-    await browserEdit(input, value, events);
-    await finishUnsupported(page);
-    await page.locator('#compose-retry').click();
-  }
 
   await openView(page, 'Progress');
   await expect(page.locator('#compose-history')).toBeHidden();
@@ -552,7 +522,7 @@ test('composing and custom text replace each other in the mode row', async ({ pa
   const text = 'the quick brown fox jumps over the lazy dog';
   await startPausedClock(page);
   // A custom passage, then composing: Custom is no longer marked and its editor stays shut.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'true');
@@ -562,7 +532,7 @@ test('composing and custom text replace each other in the mode row', async ({ pa
   await expect(page.locator('#custom-options')).toBeHidden();
 
   // Custom from composing leaves it: the passage is back, under the open editor.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('body')).toHaveAttribute('data-compose', 'false');
   await expect(page.locator('#compose-form')).toBeHidden();
   await expect(page.locator('#typing-form')).toBeVisible();
@@ -583,7 +553,7 @@ test('composing and custom text replace each other in the mode row', async ({ pa
   await expect(page.locator('#palette')).toBeHidden();
 
   // Using the text from composing starts the custom passage and ends composing.
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-use').click();
   await expect(page.locator('body')).toHaveAttribute('data-compose', 'false');
   await expect(page.locator('#condition-line')).toContainText('custom text');
@@ -594,7 +564,7 @@ test('signed in, only the numbers reach the account', async ({ page, supabase })
   supabase.addUser('ada@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
-  await page.locator('#mode-compose').click();
+  await chooseMore(page, 'mode-compose');
   await expect(page.locator('#compose-privacy')).toHaveText('Your words are never saved. Only the numbers go to your history.');
   const phrase = 'Zebra marmalade on toast, then a walk along the canal path.';
   await page.locator('#compose-input').focus();
@@ -614,6 +584,7 @@ test('signed in, only the numbers reach the account', async ({ page, supabase })
 });
 
 test('composing screenshots, dark and light', async ({ page }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.emulateMedia({ colorScheme: 'dark' });
   await startPausedClock(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
@@ -1014,9 +985,11 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
     test.use({ viewport, hasTouch: true, isMobile: true });
 
     test('composing fits without sideways scroll and keeps 44px targets', async ({ page }, testInfo) => {
+      // The narrow phone checks the layout; the phone only takes the docs screenshot.
+      test.skip(viewport.width === 390 && !process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
       await page.emulateMedia({ colorScheme: 'dark' });
       await startPausedClock(page);
-      await page.locator('#mode-compose').click();
+      await chooseMore(page, 'mode-compose');
       await page.clock.runFor(50);
       await expect(page.locator('#compose-form')).toBeVisible();
       expect(await overflow(page)).toBeLessThanOrEqual(0);

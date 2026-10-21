@@ -190,7 +190,11 @@ export function challengePayload(attempt) {
   if (passage.length < 10 || passage.length > MAX_CHALLENGE_TEXT || !/^[ -~]+$/.test(passage)) return null;
   const duration = challengeDuration(attempt.conditions);
   // Only conditions the service accepts and a friend's app can set up again.
-  const conditions = challengeConditions({ ...attempt.conditions, textId: attempt.textId, sourceKind: attempt.kind }, duration);
+  const source = { ...attempt.conditions, textId: attempt.textId, sourceKind: attempt.kind };
+  if (source.strictSpace === false) delete source.strictSpace;
+  if (source.quickEnd === true) delete source.quickEnd;
+  if (source.layout === 'qwerty') delete source.layout;
+  const conditions = challengeConditions(source, duration);
   if (!conditions) return null;
   const relaxed = attempt.conditions?.correctionPolicy === 'relaxed';
   const score = scoreTrace(trace, passage, { relaxed });
@@ -260,6 +264,15 @@ export function resultText(challenge) {
   const who = leader === 'tie' ? 'a tie' : leader === self ? `you ${verb}` : `${them} ${verb}`;
   const subject = self === 'recipient' ? `${them}’s ${shape}run` : `${them} raced your ${shape}run`;
   return `${subject}: ${who} · you ${mine} wpm, ${them} ${theirs} wpm.`;
+}
+
+// A saved resultText sentence with its two speeds made by `figure` (speedFigure, to show them in the
+// chosen unit), or null for text that isn't one. The name can hold anything, "60 wpm" included; it opens
+// the sentence and comes again before the last speed, so the two must agree.
+const RESULT_SPEEDS = /^((.+?)(?:’s | raced your ).* · you )(0|[1-9]\d*) wpm, \2 (0|[1-9]\d*) wpm\.$/s;
+export function resultParts(text, figure) {
+  const match = RESULT_SPEEDS.exec(text);
+  return match && [match[1], figure(Number(match[3])), `, ${match[2]} `, figure(Number(match[4])), '.'];
 }
 
 async function call(session, action, id = null, data = {}) {

@@ -1,6 +1,6 @@
 // Accounts against the fake Supabase in e2e/fake-supabase.js: guest mode, sign-up, sign-in, Google (PKCE),
 // sync, sign-out and the one-off import of the pre-accounts profile.
-import { test, expect, openApp, freshTextCheck, openView, openSettings, signInWithEmail, storageKeys } from './fixtures.js';
+import { test, expect, openApp, freshTextCheck, openView, openSettings, signInWithEmail, storageKeys, chooseSetting, closeSettings } from './fixtures.js';
 
 const account = (page) => page.locator('#account');
 
@@ -101,8 +101,9 @@ test('a member’s progress and settings survive reload and follow the account',
   await signInWithEmail(page, 'ada@stilltype.test');
 
   await openSettings(page);
-  await page.locator('#theme-select').selectOption('light');
-  await page.locator('#font-size').selectOption('36');
+  await chooseSetting(page, 'theme-select', 'light');
+  await chooseSetting(page, 'font-size', '36');
+  await closeSettings(page);
   await page.locator('#typing-input').click();
   await freshTextCheck(page);
   await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.loops?.length).toBe(1);
@@ -177,7 +178,7 @@ test('an offline account keeps edits on the device and syncs when back online', 
   supabase.offline = true;
   await context.setOffline(true);
   await openSettings(page);
-  await page.locator('#font-size').selectOption('22');
+  await chooseSetting(page, 'font-size', '22');
   await expect(account(page)).toHaveAttribute('data-sync', 'offline');
   // The account stores only settings chosen, and this one hasn't reached it.
   expect(supabase.profileFor('ada@stilltype.test').preferences.fontSize).toBeUndefined();

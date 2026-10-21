@@ -1,7 +1,14 @@
-import { conditionKey, printable, replayAttempt, summarizePatterns, textId } from './typing.js';
+import { DEFAULT_LAYOUT, isDefaultLayout, layoutLabel } from './layouts.js';
+import { DEFAULT_CODE_LANGUAGE } from './code-snippets.js';
+import { LENGTHS } from './lengths.js';
+import { CORPUS_VERSION, METRIC_VERSION, conditionKey, inputRules, printable, replayAttempt, summarizePatterns, textId } from './typing.js';
 
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
+export const MAX_TRACES = 24;
+// Characters of JSON for the full traces together. One 600 s trace at 130 wpm is about 1.5 million,
+// and a browser allows about 5 million per site, so long custom-time runs keep fewer traces than 24.
+export const TRACE_BUDGET = 2_500_000;
 // Per-letter first-attempt counts saved with each run. Summaries without this version predate
 // them and fall back to pair-derived counts, which miss letters at the start of a word.
 export const KEY_COUNTS_VERSION = 1;
@@ -43,7 +50,10 @@ export function runRecord(attempt, at = attempt.at || null) {
     // The calendar day where the run happened, so a later reader in another zone keeps the same day.
     day: at ? dayKey(at) : null,
     conditions: attempt.conditions, textId: attempt.textId, fresh: attempt.fresh,
-    interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput),
+    interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput || attempt.stopped),
+    // Practice minimums are labelled on the run, not keyed into its conditions.
+    ...(attempt.minimums ? { minimums: attempt.minimums } : {}),
+    ...(attempt.stopped ? { stopped: attempt.stopped } : {}),
     score: replay.score, elapsedMs: replay.elapsedMs,
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
@@ -58,8 +68,9 @@ export function runRecord(attempt, at = attempt.at || null) {
   record.keys = evidence.attemptCount ? keyCounts(replay) : [];
   record.keysVersion = KEY_COUNTS_VERSION;
   // The words missed on the first try, for "words you keep missing": only from runs pattern memory
-  // reads, so a run without the field (older, trimmed or not eligible) is no evidence either way.
-  if (evidenceRun(record)) record.missedWords = missedAndSlowWords(attempt, 0).missed.slice(0, MAX_MISSED_WORDS);
+  // reads, so a run without the field (older, trimmed or not eligible) is no evidence either way. A code
+  // snippet's tokens are not words to practise, so code runs record none.
+  if (evidenceRun(record) && record.conditions?.mode !== 'code') record.missedWords = missedAndSlowWords(attempt, 0).missed.slice(0, MAX_MISSED_WORDS);
   return record;
 }
 
@@ -84,21 +95,63 @@ export function retainRuns(runs) {
   });
 }
 
+const traceSizes = new WeakMap();
+function traceSize(trace) {
+  if (!trace || typeof trace !== 'object') return JSON.stringify(trace ?? null).length;
+  if (!traceSizes.has(trace)) traceSizes.set(trace, JSON.stringify(trace).length);
+  return traceSizes.get(trace);
+}
+
+// The newest full traces, at most MAX_TRACES and within TRACE_BUDGET. A run loses only its trace: bests,
+// trends and recurring evidence read the compact summaries. A trace over the whole budget on its own (ten
+// minutes past ~215 wpm, or a key held down) is never kept, even the newest, so the cache stays bounded.
+export function retainTraces(traces, { max = MAX_TRACES, budget = TRACE_BUDGET } = {}) {
+  const kept = [];
+  let total = 0;
+  for (let i = traces.length - 1; i >= 0 && kept.length < max; i -= 1) {
+    const size = traceSize(traces[i]);
+    if (size > budget) continue;
+    if (total + size > budget) break;
+    total += size;
+    kept.push(traces[i]);
+  }
+  return kept.reverse();
+}
+
 export const validRun = (run) => run.status === 'complete' && !run.interrupted;
-export const trendRun = (run) => validRun(run) && ['test', 'retest'].includes(run.kind);
+// Completed practice runs and retests, listed in Progress whatever their text. A non-comparable kind (custom
+// text) is never one, whatever kind list it might later share.
+export const practiceRun = (run) => validRun(run) && comparableKind(run.kind) && ['test', 'retest'].includes(run.kind);
+// Two exclusions meet here: by kind (comparableKind, above) and by text, since only fresh text counts toward
+// bests, trends and weekly medians: repeated text (fresh: false) flatters a score. Bests are judged only as
+// they are set: one stored before repeat quotes (perhaps by an exhausted pool's fallback) stays as it is.
+export const trendRun = (run) => practiceRun(run) && run.fresh !== false;
+
+// The best earlier completed run on this exact passage and conditions: the score a repeat chases.
+// It is derived from saved summaries and never becomes a personal best.
+export function passageBest(runs, run) {
+  const key = conditionKey(run.conditions);
+  return runs.filter((r) => r.id !== run.id && r.textId === run.textId && practiceRun(r) && conditionKey(r.conditions) === key)
+    .reduce((best, r) => (!best || r.score.wpm > best.score.wpm ? r : best), null);
+}
+
 // A run that counts as evidence about the person's typing: complete, uninterrupted and of a measured kind, and
-// never a daily passage shown before (a repeat attempt types known text). Recurring patterns, missed words to
-// practise and the words you keep missing all read only these; drills, races, word practice and custom text never
-// count. Works on a stored run summary or a just-finished attempt.
-export const evidenceRun = (run) => validRun(run) && measuredKind(run.kind) && (run.kind !== 'daily' || run.fresh !== false);
+// never on repeated text (a daily passage shown before, a repeated quote or an exhausted pool's fallback: known
+// text counts its pairs and words again). Recurring patterns, missed words to practise and the words you keep
+// missing all read only these; drills, races, word practice and custom text never count. Works on a stored run
+// summary or a just-finished attempt.
+export const evidenceRun = (run) => validRun(run) && measuredKind(run.kind) && run.fresh !== false;
 // The runs "words you keep missing" counts: those pattern memory reads that recorded missed words.
 const missedWordsRun = (run) => evidenceRun(run) && Array.isArray(run.missedWords);
 const inputClassOf = (run) => run?.conditions?.inputClass || 'physical-keyboard';
 
-export function filterRuns(runs, key, days = 'all', date = new Date()) {
-  const cutoff = days === 'all' ? null : date.getTime() - Number(days) * 86400000;
-  return runs.filter((run) => (!key || conditionKey(run.conditions) === key)
-    && (cutoff === null || (run.at && new Date(run.at).getTime() >= cutoff)));
+// The runs at one condition key, inside a window of local days when given one (a Progress period's
+// periodWindow). Undated runs fall in no window with a first day.
+export function filterRuns(runs, key, { from = null, to = null } = {}) {
+  return runs.filter((run) => {
+    const day = runDay(run);
+    return (!key || conditionKey(run.conditions) === key) && (day ? (!from || day >= from) && (!to || day <= to) : !from);
+  });
 }
 
 export function median(values) {
@@ -110,13 +163,184 @@ export function median(values) {
 
 export function weeklyChange(runs, key, date = new Date()) {
   const eligible = runs.filter(trendRun);
-  const fortnight = filterRuns(eligible, key, 14, date);
-  const current = filterRuns(fortnight, key, 7, date);
+  const fortnight = filterRuns(eligible, key, periodWindow(14, date));
+  const current = filterRuns(fortnight, key, periodWindow(7, date));
   const ids = new Set(current.map((r) => r.id));
   const previous = fortnight.filter((r) => !ids.has(r.id));
   return { current, previous,
     wpm: current.length && previous.length ? median(current.map((r) => r.score.wpm)) - median(previous.map((r) => r.score.wpm)) : null,
     accuracy: current.length && previous.length ? median(current.map((r) => r.score.accuracy)) - median(previous.map((r) => r.score.accuracy)) : null,
+  };
+}
+
+// The runs a Progress view selects, one entry per local calendar day, oldest first. Each day carries its
+// runs in the order given, and the medians of their speed and accuracy. Undated runs have no day and are left out.
+export function runsByDay(runs) {
+  const days = new Map();
+  for (const run of runs) {
+    const day = runDay(run);
+    if (!day) continue;
+    if (!days.has(day)) days.set(day, []);
+    days.get(day).push(run);
+  }
+  return [...days.keys()].sort().map((day) => {
+    const list = days.get(day);
+    return { day, runs: list, wpm: median(list.map((run) => run.score.wpm)), accuracy: median(list.map((run) => run.score.accuracy)) };
+  });
+}
+
+// The figures above the Progress charts: medians over every selected run, and the fastest of them.
+// A tie for fastest goes to the most recent run.
+export function periodStats(runs) {
+  if (!runs.length) return { count: 0, wpm: null, accuracy: null, best: null };
+  const best = runs.reduce((top, run) => (run.score.wpm > top.score.wpm
+    || (run.score.wpm === top.score.wpm && (run.at || '') >= (top.at || '')) ? run : top));
+  return { count: runs.length, wpm: median(runs.map((run) => run.score.wpm)), accuracy: median(runs.map((run) => run.score.accuracy)), best };
+}
+
+// The value a share p of the sorted values falls below, interpolating between neighbours (so the 0.5
+// quantile is the median).
+export function quantile(values, p) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (sorted.length - 1) * p;
+  const below = Math.floor(at);
+  return sorted[below] + (sorted[Math.min(below + 1, sorted.length - 1)] - sorted[below]) * (at - below);
+}
+
+// Values counted into bins `width` wide on round edges, lowest first, empty bins between kept.
+export function histogram(values, width) {
+  if (!values.length) return [];
+  const first = Math.floor(Math.min(...values) / width);
+  const bins = Array.from({ length: Math.floor(Math.max(...values) / width) - first + 1 }, (_, i) => ({ from: (first + i) * width, count: 0 }));
+  for (const value of values) bins[Math.floor(value / width) - first].count += 1;
+  return bins;
+}
+
+// The test lengths someone has history at, each holding the exact condition sets (comparison keys)
+// run at that length, most used first. A length is the mode and its size; everything else that
+// enters the key (text, word list, input, correction, corpus, metric) tells its variants apart, and
+// runs are only ever compared within one variant. Word counts first, then times, shortest first,
+// then quotes, the standard test, code and anything else. Where someone has run a word count or a
+// time, that mode's preset lengths without runs stay in place with no variants, so the row keeps its shape.
+const SHAPE_ORDER = ['words', 'time', 'quote', 'standard', 'code'];
+export function shapeOf(conditions = {}) {
+  const size = conditions.mode === 'words' ? conditions.count : conditions.mode === 'time' ? conditions.duration
+    : conditions.mode === 'quote' ? conditions.quoteLength || 'any' : conditions.mode === 'code' ? conditions.codeLanguage || 'js'
+      : conditions.mode === 'standard' ? conditions.recipe || '' : '';
+  return `${conditions.mode}:${size}`;
+}
+
+export function testShapes(sources) {
+  const shapes = new Map();
+  sources.forEach((source, order) => {
+    const id = shapeOf(source.conditions);
+    if (!shapes.has(id)) shapes.set(id, { id, mode: source.conditions.mode, size: id.slice(id.indexOf(':') + 1), variants: new Map() });
+    const key = conditionKey(source.conditions);
+    const variants = shapes.get(id).variants;
+    if (!variants.has(key)) variants.set(key, { key, conditions: source.conditions, count: 0, last: 0 });
+    Object.assign(variants.get(key), { count: variants.get(key).count + 1, last: order });
+  });
+  for (const mode of Object.keys(LENGTHS)) {
+    if (![...shapes.values()].some((shape) => shape.mode === mode)) continue;
+    for (const size of LENGTHS[mode].presets) {
+      const id = `${mode}:${size}`;
+      if (!shapes.has(id)) shapes.set(id, { id, mode, size: String(size), variants: new Map() });
+    }
+  }
+  const rank = (mode) => (SHAPE_ORDER.includes(mode) ? SHAPE_ORDER.indexOf(mode) : SHAPE_ORDER.length);
+  return [...shapes.values()]
+    .map((shape) => ({ ...shape, variants: [...shape.variants.values()].sort((a, b) => b.count - a.count || b.last - a.last) }))
+    .sort((a, b) => rank(a.mode) - rank(b.mode) || (Number(a.size) || 0) - (Number(b.size) || 0) || (a.id < b.id ? -1 : 1));
+}
+
+export const CORRECTION_LABELS = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
+export function correctionLabel(policy) {
+  return CORRECTION_LABELS[policy || 'mandatory'] || 'stop on error';
+}
+
+// Every part of a condition key (conditionKey), named as people read it, in the order a conditions line
+// reads. Some parts are on the line only away from their default (`shown`), but name a condition set in
+// either state when sets differ by them. A quote ignores the punctuation setting its key keeps, so the
+// line names it only beside a quote set that differs by it.
+const version = (id) => id.replace(/^.*-(v\d+)$/, '$1');
+const LENGTH_TEXT = {
+  words: (c) => `${c.count} words`,
+  time: (c) => `${c.duration} s`,
+  quote: (c) => `${c.quoteLength || 'any'} quote`,
+  code: (c) => `code · ${c.codeLanguage || DEFAULT_CODE_LANGUAGE}`,
+  standard: (c) => `${(c.recipe || '').replace('-', ' ')} · ${c.duration} s`,
+};
+const CONDITION_PARTS = [
+  { name: 'language', text: (c) => (c.wordList ? `english ${c.wordList}` : 'english') },
+  { name: 'length', text: (c) => LENGTH_TEXT[c.mode]?.(c) ?? c.mode },
+  { name: 'text', text: (c) => (c.mode === 'quote' ? c.difficulty || 'any difficulty' : `${c.punctuation ? 'punctuation' : 'plain'}${c.numbers ? ' · numbers' : ''}`) },
+  { name: 'setting', text: (c) => (c.mode === 'quote' ? `punctuation setting ${c.punctuation ? 'on' : 'off'}` : ''), shown: () => false },
+  { name: 'input', text: (c) => (c.inputClass === 'touch' ? 'touch input' : 'physical keyboard') },
+  { name: 'layout', text: (c) => layoutLabel(c.layout || DEFAULT_LAYOUT), shown: (c) => !isDefaultLayout(c.layout) },
+  { name: 'correction', text: (c) => correctionLabel(c.correctionPolicy) },
+  { name: 'strictSpace', text: (c) => (inputRules(c).includes('strict-space') ? 'strict space' : 'no strict space'), shown: (c) => inputRules(c).includes('strict-space') },
+  { name: 'quickEnd', text: (c) => (inputRules(c).includes('quick-end-off') ? 'quick end off' : 'quick end'), shown: (c) => inputRules(c).includes('quick-end-off') },
+  { name: 'corpus', text: (c) => `corpus ${version(c.corpus || CORPUS_VERSION)}` },
+  { name: 'metric', text: (c) => `metric ${version(c.metricVersion || METRIC_VERSION)}` },
+];
+
+// The parts a conditions line shows, by name, in reading order. Beside other condition sets (`sets`, as
+// the condition pills list them), a part shown only away from its default is shown whenever they differ
+// by it, so the line names what its pill does.
+export function conditionParts(conditions, sets = []) {
+  const differs = (part) => sets.some((other) => part.text(other) !== part.text(conditions));
+  return Object.fromEntries(CONDITION_PARTS.filter((part) => (part.shown ? part.shown(conditions) || differs(part) : part.text(conditions)))
+    .map((part) => [part.name, part.text(conditions)]));
+}
+
+// Names for the condition sets at one length: each set's reading of every part the sets disagree on
+// ("plain", "plain · numbers"), so a set's name never depends on how often it was run.
+export function conditionLabels(sets) {
+  const texts = sets.map((conditions) => CONDITION_PARTS.map((part) => part.text(conditions)));
+  const differs = CONDITION_PARTS.map((_, i) => new Set(texts.map((values) => values[i])).size > 1);
+  return texts.map((values) => values.filter((_, i) => differs[i]).join(' · '));
+}
+
+// The first and last local calendar days of a Progress period, inclusive: "7 days" is today and the six
+// days before. Every period ends today, so a run saved on a day still ahead here (a device in a timezone
+// ahead) waits until its day comes. All saved runs start on `first`, the oldest day there is (no lower
+// bound without one), and never after today.
+export function periodWindow(days, date = new Date(), first = null) {
+  const to = dayKey(date);
+  const from = days === 'all' ? first : dayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - Number(days) + 1));
+  return { from: from && from > to ? to : from, to };
+}
+
+// The local calendar days a Progress period covers, oldest first: its whole window, or today alone for
+// all saved runs with no first day.
+export function periodDays(days, date = new Date(), first = null) {
+  const { from, to } = periodWindow(days, date, first);
+  const list = [];
+  for (const day = new Date(`${from ?? to}T00:00:00`); dayKey(day) <= to; day.setDate(day.getDate() + 1)) list.push(dayKey(day));
+  return list;
+}
+
+// Practice over the given days: days with any practice, the longest run of days meeting the goal (any
+// practice when it's off, as practiceStreak counts), minutes typed, and completed runs of every kind per day.
+export function practiceStats(byDay, runs, days, goal = 0) {
+  const met = (day) => (goal ? (byDay[day] || 0) >= goal : (byDay[day] || 0) > 0);
+  let longest = 0;
+  let streak = 0;
+  for (const day of days) {
+    streak = met(day) ? streak + 1 : 0;
+    longest = Math.max(longest, streak);
+  }
+  const counts = new Map(days.map((day) => [day, 0]));
+  for (const run of runs) {
+    const day = runDay(run);
+    if (validRun(run) && counts.has(day)) counts.set(day, counts.get(day) + 1);
+  }
+  return {
+    active: days.filter((day) => (byDay[day] || 0) > 0).length,
+    longest,
+    minutes: days.reduce((sum, day) => sum + (byDay[day] || 0), 0),
+    runsPerDay: [...counts].map(([day, count]) => ({ day, runs: count })),
   };
 }
 
@@ -372,10 +596,12 @@ const directKeys = (run) => run.keysVersion === KEY_COUNTS_VERSION && Array.isAr
 // Compact run memory → per-key and per-pair totals. A key's miss rate is first-attempt errors on
 // that letter over its tries. Older summaries without per-letter counts fall back to their pairs
 // (a pair's first attempt is a try at its second letter), so they only count letters typed after
-// another letter; pairDerivedRuns says how many runs that applies to. Non-comparable kinds (custom text) are
-// never mined, even if a record carries counts.
+// another letter; pairDerivedRuns says how many runs that applies to. Non-comparable kinds (custom text) and
+// repeated text are never mined, even if a record carries counts (a run on an exhausted pool saved them before
+// repeat quotes).
 export function keyAnalysis(runs, limit = 8) {
-  const recent = runs.filter((r) => comparableKind(r.kind) && validRun(r) && ((r.patterns || []).length || directKeys(r)?.length))
+  const recent = runs.filter((r) => comparableKind(r.kind) && validRun(r) && r.fresh !== false
+    && ((r.patterns || []).length || directKeys(r)?.length))
     .slice(-MAX_PATTERN_RUNS);
   const keys = new Map();
   const pairs = new Map();

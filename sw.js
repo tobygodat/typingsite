@@ -1,9 +1,11 @@
 // Offline shell for Stilltype. Precaches exactly the files server.mjs serves (tests/sw.test.js checks
-// the list), answers them cache-first, fetches page navigations network-first with the cached shell as
-// the fallback, and never touches Supabase or any other cross-origin request. The shell is cached as '/'
-// only: Cloudflare answers /index.html with a redirect to /, and a cached redirect can't answer a
-// navigation. scripts/build-static.mjs stamps VERSION with a hash of the built files, so each deploy
-// installs a fresh cache and drops the old.
+// the list) and never touches Supabase or any other cross-origin request. Page navigations and shell
+// files are both fetched network-first, refreshing the cache, with the cache as the offline fallback:
+// serving scripts and the stylesheet cache-first while the page came from the network ran a new deploy's
+// index.html against the previous deploy's app.js, which crashed before drawing the passage. The shell is
+// cached as '/' only: Cloudflare answers /index.html with a redirect to /, and a cached redirect can't
+// answer a navigation. scripts/build-static.mjs stamps VERSION with a hash of the built files, so each
+// deploy installs a fresh cache and drops the old.
 const VERSION = 'stilltype-shell-v1';
 const SHELL = [
   '/',
@@ -14,6 +16,7 @@ const SHELL = [
   '/src/styles.css',
   '/src/account.js',
   '/src/app.js',
+  '/src/code-snippets.js',
   '/src/compose-caret.js',
   '/src/compose-view.js',
   '/src/compose.js',
@@ -24,15 +27,26 @@ const SHELL = [
   '/src/graph.js',
   '/src/inbox.js',
   '/src/insights.js',
+  '/src/keybindings.js',
+  '/src/layouts.js',
+  '/src/lengths.js',
   '/src/lessons.js',
+  '/src/monkeytype.js',
   '/src/motion.js',
   '/src/multiplayer.js',
   '/src/online-race.js',
   '/src/palette.js',
   '/src/profile.js',
+  '/src/quote-filters.js',
   '/src/progress-view.js',
+  '/src/race-result.js',
   '/src/replay-view.js',
+  '/src/settings.js',
+  '/src/sound.js',
+  '/src/tape.js',
   '/src/typing.js',
+  '/src/units.js',
+  '/src/word-highlight.js',
   '/src/words.js',
   '/src/fonts/literata-roman.woff2',
   '/src/fonts/literata-italic.woff2',
@@ -55,18 +69,15 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   // Supabase and every other origin go straight to the network, uncached.
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (request.mode === 'navigate') {
-    event.respondWith(fetch(request)
-      .then((response) => {
-        if (response.ok) {
-          const copy = response.clone();
-          event.waitUntil(caches.open(VERSION).then((cache) => cache.put('/', copy)));
-        }
-        return response;
-      })
-      .catch(() => caches.match('/')));
-    return;
-  }
-  if (!SHELL.includes(url.pathname)) return;
-  event.respondWith(caches.match(url.pathname).then((cached) => cached || fetch(request)));
+  const key = request.mode === 'navigate' ? '/' : url.pathname;
+  if (!SHELL.includes(key)) return;
+  event.respondWith(fetch(request)
+    .then((response) => {
+      if (response.ok) {
+        const copy = response.clone();
+        event.waitUntil(caches.open(VERSION).then((cache) => cache.put(key, copy)));
+      }
+      return response;
+    })
+    .catch(() => caches.match(key)));
 });

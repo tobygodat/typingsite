@@ -1,5 +1,5 @@
 import { conditionKey, standardConditions } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, completePassage, passageText, typeInto, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, completePassage, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting } from './fixtures.js';
 
 // Committed docs images are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/standard-test/${name}` : testInfo.outputPath(name));
@@ -9,11 +9,8 @@ const RECIPE = 'standard v1 · 60 s · english 1k–10k mix · punctuation, numb
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const screenOverflow = (page) => page.locator('#typing-screen').evaluate((node) => node.scrollWidth - node.clientWidth);
 
-// Settings, with the collapsed test content category (word list and numbers) open.
 async function openTestContent(page) {
-  await openSettings(page);
-  const category = page.locator('#test-content-settings');
-  if (!(await category.evaluate((node) => node.open))) await category.locator('summary').click();
+  await openSettings(page, 'practice');
   await expect(page.locator('#word-list')).toBeVisible();
 }
 
@@ -55,7 +52,7 @@ const settle = (page) => page.waitForFunction(() => document.getAnimations()
 
 test('standard mode shows its recipe, locks the settings that would change it, and draws fresh text', async ({ page }) => {
   await openApp(page);
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
   await expect(page.locator('#standard-recipe')).toHaveText(`${RECIPE} · stop on error`);
@@ -70,16 +67,16 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   expect(first).toMatch(/\d/);
 
   await openTestContent(page);
-  await expect(page.locator('#word-list')).toBeDisabled();
-  await expect(page.locator('#word-list')).toHaveValue('standard');
+  await expect(page.locator('#word-list input').first()).toBeDisabled();
+  await expect(page.locator('#word-list input:checked')).toHaveValue('standard');
   // The recipe always has numbers; the numbers switch shows that and stays locked.
-  await expect(page.locator('#numbers-toggle')).toBeDisabled();
-  await expect(page.locator('#numbers-toggle')).toBeChecked();
-  await expect(page.locator('#stop-on-error-toggle')).toBeDisabled();
-  await expect(page.locator('#stop-on-error-toggle')).toBeChecked();
-  await expect(page.getByRole('combobox', { name: 'word list fixed for standard' })).toBeDisabled();
-  await expect(page.getByRole('checkbox', { name: 'numbers fixed for standard' })).toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'stop on error fixed for standard' })).toBeChecked();
+  await expect(page.locator('#numbers-toggle input').first()).toBeDisabled();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
+  await expect(page.locator('#correction-select input').first()).toBeDisabled();
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('mandatory');
+  await expect(page.getByRole('group', { name: 'word list', exact: true })).toHaveAccessibleDescription('fixed for standard');
+  await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('mandatory');
   await page.keyboard.press('Escape');
 
   // Correction is required: a miss blocks the next letter.
@@ -99,17 +96,17 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
   await expect(page.locator('#condition-line')).toContainText('english 200 · 30 s · plain · physical keyboard · continue on error');
   await openTestContent(page);
-  await expect(page.locator('#word-list')).toHaveValue('200');
-  await expect(page.locator('#numbers-toggle')).toBeEnabled();
-  await expect(page.locator('#numbers-toggle')).not.toBeChecked();
-  await expect(page.locator('#stop-on-error-toggle')).toBeEnabled();
-  await expect(page.locator('#stop-on-error-toggle')).not.toBeChecked();
+  await expect(page.locator('#word-list input:checked')).toHaveValue('200');
+  await expect(page.locator('#numbers-toggle input').first()).toBeEnabled();
+  await expect(page.locator('#numbers-toggle input[value="true"]')).not.toBeChecked();
+  await expect(page.locator('#correction-select input').first()).toBeEnabled();
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('relaxed');
   await expect(page.locator('.preference-lock').first()).toBeHidden();
   // The recipe's word-list value leaves with it, so type-ahead can't pick it in another mode.
-  await expect(page.locator('#word-list option[value="standard"]')).toHaveCount(0);
-  await page.locator('#word-list').focus();
+  await expect(page.locator('#word-list input[value="standard"]')).toBeHidden();
+  await page.locator('#word-list input:checked').focus();
   await page.keyboard.press('1');
-  await expect(page.locator('#word-list')).toHaveValue('200');
+  await expect(page.locator('#word-list input:checked')).toHaveValue('200');
   await expect(page.locator('#condition-line')).toContainText('english 200 · 30 s');
 });
 
@@ -117,7 +114,7 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await page.clock.install();
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   // 300 correct characters over the full minute: 60 wpm.
   await typeInto(page, (await passageText(page)).slice(0, 300));
   await page.clock.fastForward(60_000);
@@ -135,8 +132,8 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await page.locator('#mode-time').click();
   await page.locator('#duration-options [data-length="60"]').click();
   await page.locator('#punctuation-toggle').check();
-  await openSettings(page);
-  await page.locator('#stop-on-error-toggle').check();
+  await openSettings(page, 'practice');
+  await chooseSetting(page, 'correction-select', 'mandatory');
   await expect(page.locator('#best')).toHaveText('No best yet');
 
   await openView(page, 'Progress');
@@ -144,9 +141,9 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await expect(page.locator('#standard-median')).toHaveText('—');
   await expect(page.locator('#standard-median + span')).toBeHidden();
   await expect(page.locator('#standard-median-label')).toHaveText('median');
-  await expect(page.locator('#standard-score-note')).toHaveText('1 standard run kept. The median appears after 3, so a single fast or slow run can’t set your score.');
+  await expect(page.locator('#standard-score-note')).toHaveText('1 standard run kept. The median appears after 3.');
   await expect(page.locator('#standard-score-conditions')).toHaveText(`${RECIPE} · physical keyboard · stop on error · corpus v5 · metric v1`);
-  expect((await page.locator('#progress-conditions option').allTextContents()).filter((label) => label.startsWith('standard v1'))).toHaveLength(1);
+  await expect(page.getByRole('group', { name: 'Test' }).getByRole('button', { name: 'standard', exact: true })).toHaveCount(1);
   await expect(page.locator('#run-history .run-row').first()).toContainText('standard');
   await page.screenshot({ path: shot(testInfo, 'progress-first-run-dark.png') });
 });
@@ -154,7 +151,7 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
 test('a fresh-text retest of a standard run draws a new standard passage and compares like with like', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   const baseline = await passageText(page);
   await typeInto(page, baseline.slice(0, 300));
   await page.clock.fastForward(60_000);
@@ -179,7 +176,7 @@ test('standard mode, its run card and its Progress headline fit a 320px screen',
   await page.clock.install();
   await openApp(page);
   expect(await screenOverflow(page)).toBeLessThanOrEqual(0);
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   await expect(page.locator('#standard-options')).toBeVisible();
   expect(await overflow(page)).toBeLessThanOrEqual(0);
   // The four mode buttons fit the column, so the passage keeps both 16px gutters.
@@ -212,12 +209,12 @@ test('Progress shows the standard best and the median of recent runs with its co
   await expect(page.locator('#standard-best')).toHaveText('66');
   await expect(page.locator('#standard-median')).toHaveText('63');
   await expect(page.locator('#standard-median-label')).toHaveText('median of last 5 runs');
-  await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs kept. Interrupted runs don’t count. Your touch best is 41 wpm.');
+  await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs kept. Your touch best is 41 wpm.');
   await expect(page.locator('#standard-score-conditions')).toContainText('physical keyboard');
-  // With history, the standard score still heads the page, above the filters.
+  // With history, the filtered figures and charts head the page and the standard score follows them.
   await expect(page.locator('#progress-empty')).toBeHidden();
-  const standard = await page.locator('#standard-score').boundingBox();
-  expect(standard.y + standard.height).toBeLessThanOrEqual((await page.locator('.progress-filters').boundingBox()).y);
+  const trend = await page.locator('#progress-trend').boundingBox();
+  expect(trend.y + trend.height).toBeLessThanOrEqual((await page.locator('#standard-score').boundingBox()).y);
 
   await page.locator('#take-standard').click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
@@ -226,7 +223,7 @@ test('Progress shows the standard best and the median of recent runs with its co
   await expect(page.locator('#best')).toHaveText('Best · 66 wpm');
 });
 
-const NO_STANDARD_RUNS = 'No standard runs yet. Every one is fresh text from the same fixed recipe, so the scores stay comparable.';
+const NO_STANDARD_RUNS = 'No standard runs yet.';
 
 // The standard score heads Progress on its own: with no practice history it sits above the empty state.
 async function expectStandardAboveEmptyState(page) {
@@ -349,7 +346,7 @@ test('when only some standard runs are kept, the note counts kept runs and says 
   await expect(page.locator('#standard-best')).toHaveText('66');
   await expect(page.locator('#standard-median')).toHaveText('—');
   await expect(page.locator('#standard-score-note')).not.toContainText('so far');
-  await expect(page.locator('#standard-score-note')).toHaveText(`1 standard run kept. ${OLDER_BEST} The median appears after 3, so a single fast or slow run can’t set your score.`);
+  await expect(page.locator('#standard-score-note')).toHaveText(`1 standard run kept. ${OLDER_BEST} The median appears after 3.`);
   // The longest note still wraps inside a 320px screen.
   await page.setViewportSize({ width: 320, height: 640 });
   expect(await overflow(page)).toBeLessThanOrEqual(0);
@@ -391,7 +388,7 @@ test('a settled touch score with more kept runs heads Progress, and the keyboard
   await expect(page.locator('#standard-median')).toHaveText('46');
   await expect(page.locator('#standard-median-label')).toHaveText('median of last 3 runs');
   await expect(page.locator('#standard-score-conditions')).toContainText('touch input');
-  await expect(page.locator('#standard-score-note')).toHaveText('3 completed standard runs kept. Interrupted runs don’t count. Your physical keyboard best is 82 wpm.');
+  await expect(page.locator('#standard-score-note')).toHaveText('3 completed standard runs kept. Your physical keyboard best is 82 wpm.');
 });
 
 test('the palette starts the standard test and leaves out the settings it locks', async ({ page }) => {
@@ -415,8 +412,8 @@ test('the palette starts the standard test and leaves out the settings it locks'
 test('a custom passage over standard keeps its own condition and never reaches the standard score', async ({ page }) => {
   const text = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
-  await page.locator('#mode-standard').click();
-  await page.locator('#mode-custom').click();
+  await chooseMore(page, 'mode-standard');
+  await chooseMore(page, 'mode-custom');
   await expect(page.locator('#custom-options')).toBeVisible();
   await expect(page.locator('#standard-options')).toBeHidden();
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'false');
@@ -429,9 +426,9 @@ test('a custom passage over standard keeps its own condition and never reaches t
   await expect(page.locator('#condition-line')).toContainText('continue on error');
   await expect(page.locator('#standard-options')).toBeHidden();
   await expect(page.locator('#best')).toHaveText('Not counted');
-  await openSettings(page);
-  await expect(page.locator('#stop-on-error-toggle')).toBeEnabled();
-  await expect(page.locator('#stop-on-error-toggle')).not.toBeChecked();
+  await openSettings(page, 'practice');
+  await expect(page.locator('#correction-select input').first()).toBeEnabled();
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('relaxed');
   await expect(page.locator('.preference-lock').first()).toBeHidden();
   await page.keyboard.press('Escape');
 
@@ -447,20 +444,20 @@ test('a custom passage over standard keeps its own condition and never reaches t
 
   // Standard again closes the custom passage and locks the recipe's settings.
   await openView(page, 'Practice');
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   await expect(page.locator('#mode-custom')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
   await expect(page.locator('#best')).toHaveText('No best yet');
-  await openSettings(page);
-  await expect(page.locator('#stop-on-error-toggle')).toBeDisabled();
-  await expect(page.locator('#stop-on-error-toggle')).toBeChecked();
+  await openSettings(page, 'practice');
+  await expect(page.locator('#correction-select input').first()).toBeDisabled();
+  await expect(page.locator('#correction-select input:checked')).toHaveValue('mandatory');
 });
 
 test('the daily challenge keeps its own conditions while standard is selected', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-09-30T12:00:00Z') });
   await openApp(page);
-  await page.locator('#mode-standard').click();
+  await chooseMore(page, 'mode-standard');
   await openView(page, 'Challenge');
   await page.locator('#challenge-daily').click();
   await page.locator('#start-daily').click();
@@ -473,6 +470,7 @@ test('the daily challenge keeps its own conditions while standard is selected', 
 });
 
 test('screenshots', async ({ page, supabase }, testInfo) => {
+  test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 1280, height: 800 });
   const user = supabase.addUser('shots@stilltype.test');
@@ -492,7 +490,7 @@ test('screenshots', async ({ page, supabase }, testInfo) => {
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await openView(page, 'Practice');
-    await page.locator('#mode-standard').click();
+    await chooseMore(page, 'mode-standard');
     await expect(page.locator('#standard-options')).toBeVisible();
     await page.mouse.move(0, 0);
     await page.screenshot({ path: shot(testInfo, `practice-${theme}.png`) });

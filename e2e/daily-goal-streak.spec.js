@@ -1,25 +1,33 @@
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { dayKey, goalMinutes } from '../src/insights.js';
-import { test, expect, openApp, chooseWords, completePassage, openView, openSettings, signInWithEmail, typeInto } from './fixtures.js';
+import { test, expect, openApp, chooseWords, completePassage, openView, openProgressView, openSettings, signInWithEmail, typeInto, chooseMore, chooseSetting } from './fixtures.js';
+
+// The current streak and today's minutes, in the practice figures under the calendar.
+const streakFigure = (page) => page.locator('#practice-stats .progress-figure').filter({ has: page.locator('dt', { hasText: /^Current streak$/ }) });
+async function expectStreak(page, days, today) {
+  await expect(streakFigure(page).locator('.figure-value')).toHaveText(`${days} ${days === 1 ? 'day' : 'days'}`);
+  if (today) await expect(streakFigure(page).locator('.figure-note')).toHaveText(today);
+}
 
 test('daily goal line and practice calendar render on Progress', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openApp(page);
   await openSettings(page);
-  await page.locator('#daily-goal').selectOption('5');
+  await chooseSetting(page, 'daily-goal', '5');
   await page.keyboard.press('Escape');
   await chooseWords(page, 10);
   await completePassage(page);
   await openView(page, 'Progress');
+  await openProgressView(page, 'Practice');
   await expect(page.locator('#practice-goal')).toBeVisible();
-  await expect(page.locator('#goal-line')).toHaveText(/^Today (<1|\d+) \/ 5 min · \d+-day streak$/);
+  await expect(streakFigure(page).locator('.figure-note')).toHaveText(/^today (<1|\d+) of 5 min$/);
   const days = page.locator('#goal-calendar .goal-day');
   expect(await days.count()).toBeGreaterThanOrEqual(17 * 7 + 1);
   const today = days.last();
   await expect(today).toHaveAttribute('data-level', '1');
   // Under the 5-minute goal: no goal-met mark.
   await expect(today).not.toHaveAttribute('data-goal', 'met');
-  // The caption is visual only and stays empty until a day is focused or hovered (the goal line covers today).
+  // The caption is visual only and stays empty until a day is focused or hovered (today's minutes sit in the figures under it).
   const caption = page.locator('#goal-caption');
   await expect(caption).toHaveAttribute('aria-hidden', 'true');
   await expect(caption).toHaveText('');
@@ -99,10 +107,11 @@ test('Progress screenshots with ten weeks of seeded history', async ({ page, sup
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openSettings(page);
-  await page.locator('#daily-goal').selectOption('10');
+  await chooseSetting(page, 'daily-goal', '10');
   await page.keyboard.press('Escape');
   await openView(page, 'Progress');
-  await expect(page.locator('#goal-line')).toHaveText(/^Today \d+ \/ 10 min · 5-day streak$/);
+  await openProgressView(page, 'Practice');
+  await expectStreak(page, 5, /^today \d+ of 10 min$/);
 
   // Goal-met days carry a mark beyond colour: the attribute, the label's words and an accent-ink centre dot.
   const days = page.locator('#goal-calendar .goal-day');
@@ -153,17 +162,18 @@ test('the calendar and its longest caption fit a 320px screen', async ({ page, s
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openSettings(page);
-  await page.locator('#daily-goal').selectOption('10');
+  await chooseSetting(page, 'daily-goal', '10');
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 320, height: 640 });
   await openView(page, 'Progress');
+  await openProgressView(page, 'Practice');
   const days = page.locator('#goal-calendar .goal-day');
   const longest = await days.evaluateAll((cells) => cells.reduce((best, cell, i) => (cell.dataset.caption.length > cells[best].dataset.caption.length ? i : best), 0));
   await days.nth(longest).focus();
   await expect(page.locator('#goal-caption')).toHaveText(/ · goal met$/);
   const width = await page.evaluate(() => document.documentElement.clientWidth);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
-  for (const selector of ['#goal-calendar', '#goal-caption', '#goal-line']) {
+  for (const selector of ['#goal-calendar', '#goal-caption', '#practice-stats']) {
     const box = await page.locator(selector).boundingBox();
     expect(box.x, selector).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width, selector).toBeLessThanOrEqual(width);
@@ -174,33 +184,33 @@ test('the calendar and its longest caption fit a 320px screen', async ({ page, s
   await page.locator('#practice-goal').screenshot({ path: testInfo.outputPath('progress-goal-320.png') });
 });
 
-test('drills alone count toward daily practice and the empty trend copy agrees', async ({ page, supabase }) => {
+// Custom text is never compared, and drills aren't trend runs, but both are real practice: their minutes
+// count toward the goal and streak, while they add no trend point.
+test('drills and a custom text run count toward daily practice but not the trend', async ({ page, supabase }) => {
   const user = supabase.addUser('drills@stilltype.test');
-  const runs = seededHistory().slice(-3).map((run) => ({ ...run, kind: 'drill' }));
+  const yesterday = (at) => new Date(Date.parse(at) - 86400000).toISOString();
+  const runs = seededHistory().slice(-3).map((run) => ({ ...run, kind: 'drill', at: yesterday(run.at) }));
   supabase.profiles.set(user.id, { data: { version: 2, preferences: {}, attempts: [], runs, loops: [],
     seenTextIds: [], bests: {}, updatedAt: runs.at(-1).at } });
+  const text = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
-  await expect(page.locator('#goal-line')).toHaveText(/^Today (<1|\d+) min · 1-day streak$/);
+  await expectStreak(page, 1);
+  await expect(page.locator(`#goal-calendar .goal-day[data-day="${dayKey(runs.at(-1).at)}"]`)).not.toHaveAttribute('data-level', '0');
+  await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '0');
   await expect(page.locator('#progress-empty')).toBeVisible();
   await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');
   await expect(page.locator('#progress-empty-copy')).toContainText('Drills, daily and custom runs count toward your daily practice.');
-});
-
-// Custom text is never compared, but it is real practice: its minutes count toward the goal and streak,
-// while it still adds no trend point.
-test('a custom text run counts toward daily practice but not the trend', async ({ page }) => {
-  const text = 'the quick brown fox jumps over the lazy dog';
-  await openApp(page);
-  await page.locator('#mode-custom').click();
+  await openView(page, 'Practice');
+  await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
   await page.locator('#custom-use').click();
   await typeInto(page, text);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await openView(page, 'Progress');
   await expect(page.locator('#practice-goal')).toBeVisible();
-  await expect(page.locator('#goal-line')).toHaveText(/^Today (<1|\d+) min · 1-day streak$/);
+  await expectStreak(page, 2, /^today (<1|\d+) min$/);
   await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '1');
   await expect(page.locator('#progress-content')).toBeHidden();
   await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');
@@ -282,7 +292,7 @@ test('recorded lessons and composing active time increase the daily practice goa
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openSettings(page);
-  await page.locator('#daily-goal').selectOption('5');
+  await chooseSetting(page, 'daily-goal', '5');
   await page.keyboard.press('Escape');
   await page.clock.install({ time: new Date('2026-10-15T12:00:00Z') });
   await page.clock.pauseAt(new Date('2026-10-15T12:00:01Z'));
@@ -294,7 +304,7 @@ test('recorded lessons and composing active time increase the daily practice goa
       await page.clock.runFor(gap);
     }
   };
-  await page.locator('#open-lessons').click();
+  await chooseMore(page, 'open-lessons');
   await page.locator('#lesson-primary').click();
   const lessonText = await page.locator('#accessible-passage').textContent();
   await typePaced('#typing-input', lessonText, 250);
@@ -303,9 +313,9 @@ test('recorded lessons and composing active time increase the daily practice goa
   await expect.poll(totals).toBeGreaterThan(0);
   const lessonMs = totals();
   await openView(page, 'Progress');
-  await expect(page.locator('#goal-line')).toHaveText(`Today ${goalMinutes(lessonMs / 60000)} / 5 min · 0-day streak`);
+  await expectStreak(page, 0, `today ${goalMinutes(lessonMs / 60000)} of 5 min`);
   await openView(page, 'Practice');
-  await page.locator('#mode-compose').click();
+  await chooseMore(page, 'mode-compose');
   await typePaced('#compose-input', 'A few sentences of my own are still typing practice, and their active time belongs in the goal.', 400);
   await page.locator('#compose-done').click();
   await expect(page.locator('#compose-result')).toBeVisible();
@@ -317,7 +327,7 @@ test('recorded lessons and composing active time increase the daily practice goa
   expect(saved.attempts).toEqual([]);
   expect(saved.bests).toEqual({});
   await openView(page, 'Progress');
-  await expect(page.locator('#goal-line')).toHaveText(`Today ${goalMinutes(totals() / 60000)} / 5 min · 0-day streak`);
+  await expectStreak(page, 0, `today ${goalMinutes(totals() / 60000)} of 5 min`);
 });
 
 
@@ -331,6 +341,7 @@ test.describe('calendar on a touch device', () => {
     await chooseWords(page, 10);
     await completePassage(page);
     await openView(page, 'Progress');
+    await openProgressView(page, 'Practice');
     const picker = page.getByLabel('Practice day', { exact: true });
     await expect(picker).toBeVisible();
     expect((await picker.boundingBox()).height).toBeGreaterThanOrEqual(44);

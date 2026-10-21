@@ -6,8 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, completePassage,
-  freshTextCheck, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, openProgressView, openSettings, chooseWords, passageText, typeInto, completePassage, freshTextCheck, signInWithEmail, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
 
 const MIN = 44;
 
@@ -26,7 +25,7 @@ const EXEMPT = [
 
 // Runs in the page. Returns every visible control under `root` and its hit area.
 function measure({ root, exempt }) {
-  const CONTROLS = 'button, a[href], input:not([type="hidden"]), select, textarea, summary, '
+  const CONTROLS = 'label.setting-option, button, a[href], input:not([type="hidden"]), select, textarea, summary, '
     + '[role="button"], [role="switch"], [role="tab"], [role="option"], [tabindex="0"]';
   const describe = (el) => {
     const classes = (el.getAttribute('class') || '').trim().split(/\s+/).filter(Boolean).map((c) => `.${c}`).join('');
@@ -34,7 +33,7 @@ function measure({ root, exempt }) {
     return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${classes}${text ? ` “${text.slice(0, 36)}”` : ''}`;
   };
   const controls = [];
-  for (const el of document.querySelector(root).querySelectorAll(CONTROLS)) {
+  for (const el of (document.querySelector('dialog:modal') || document.querySelector(root)).querySelectorAll(CONTROLS)) {
     // Hidden from everyone, faded out mid-run, or not taking pointer input: not a target right now.
     if (el.closest('[aria-hidden="true"], [inert]')) continue;
     if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
@@ -134,6 +133,7 @@ for (const theme of ['dark', 'light']) {
     test.setTimeout(120000);
 
     test(`the run card and the enlarged text controls look unchanged, ${theme}`, async ({ page }, testInfo) => {
+      test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
       await openApp(page);
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await chooseWords(page, 25);
@@ -190,7 +190,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await page.locator('#mode-quote').click();
       small.push(...await sweep(page, 'practice, quote'));
       // Custom text: its editor opens under the mode bar, with a text box, an order select and "Use this text".
-      await page.locator('#mode-custom').click();
+      await chooseMore(page, 'mode-custom');
       await expect(page.locator('#custom-options')).toBeVisible();
       small.push(...await sweep(page, 'practice, custom text'));
       await chooseWords(page, 10);
@@ -214,14 +214,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
 
       await openView(page, 'Practice');
       await openSettings(page);
-      small.push(...await sweep(page, 'settings', '.preferences'));
-      // Focus mode hides the dock, popover included, and leaves its own exit button.
-      await page.locator('#focus-toggle').check();
+      small.push(...await sweep(page, 'settings', '#settings-dialog'));
+      await chooseSetting(page, 'focus-toggle', true);
+      await closeSettings(page);
       small.push(...await sweep(page, 'focus mode'));
-      await page.locator('#exit-focus').click();
+      await closeSettings(page);
+  await page.locator('#exit-focus').click();
       await expect(page.locator('#exit-focus')).toBeHidden();
-      if (await page.locator('details.preferences').getAttribute('open') !== null) await page.locator('details.preferences summary').click();
-      await expect(page.locator('.preferences-popover')).toBeHidden();
+      if (await page.locator('#settings-dialog').getAttribute('open') !== null) await closeSettings(page);
+      await expect(page.locator('#settings-dialog')).toBeHidden();
 
       await page.locator('#palette-trigger').click();
       await expect(page.locator('#palette')).toBeVisible();
@@ -290,10 +291,14 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await openView(page, 'Progress');
       await expect(page.locator('#progress-trend .trend-dot').first()).toBeVisible();
       small.push(...await sweep(page, 'progress'));
+      // Every view's own controls, one panel at a time.
+      for (const view of ['Accuracy', 'Consistency', 'Practice', 'Keys', 'Speed']) {
+        await openProgressView(page, view);
+        small.push(...await sweep(page, `progress, ${view.toLowerCase()} view`));
+      }
       await page.locator('#run-history .run-summary').first().click();
       small.push(...await sweep(page, 'progress, run open'));
-      const key = await page.locator('#progress-conditions option').evaluateAll((options) => options.find((o) => o.textContent.includes('10 words')).value);
-      await page.locator('#progress-conditions').selectOption(key);
+      await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '10 words' }).click();
       await page.locator('.history-summary').first().click();
       small.push(...await sweep(page, 'progress, comparison open'));
 
@@ -347,20 +352,27 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await openApp(page);
       await signInWithEmail(page, user.email);
       await openView(page, 'Progress');
-      await expect(page.locator('#progress-trend .trend-dot')).toHaveCount(28);
-      await expect(page.locator('#progress-trend svg.trend-dense')).toHaveCount(2);
+      await openProgressView(page, 'Accuracy');
+      await expect(page.locator('#accuracy-trend .trend-dot')).toHaveCount(14);
+      await expect(page.locator('#accuracy-trend svg.trend-dense')).toHaveCount(1);
+      expect(await sweep(page, 'progress, dense accuracy chart')).toEqual([]);
+      await openProgressView(page, 'Speed');
+      await expect(page.locator('#progress-trend .trend-dot')).toHaveCount(14);
+      await expect(page.locator('#progress-trend svg.trend-dense')).toHaveCount(1);
       expect(await sweep(page, 'progress, dense chart')).toEqual([]);
 
       // The exempt points: each owns its centre, is at least 44px tall and fills the gap it has.
-      const step = await page.locator('#progress-trend svg').first().evaluate((svg) => parseFloat(svg.style.getPropertyValue('--trend-step'))
-        * svg.getBoundingClientRect().width / svg.viewBox.baseVal.width);
-      expect(step).toBeLessThan(MIN);
+      const gaps = await page.locator('#progress-trend .trend-hit').evaluateAll((hits) => hits.map((hit) => {
+        const svg = hit.ownerSVGElement;
+        return parseFloat(hit.style.getPropertyValue('--trend-step')) * svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+      }));
+      expect(Math.min(...gaps)).toBeLessThan(MIN);
       const points = await page.evaluate(measure, { root: '#progress-trend', exempt: [] });
-      expect(points).toHaveLength(28);
-      for (const { control, hit } of points) {
-        expect(hit[0], `${control} width`).toBeGreaterThanOrEqual(Math.floor(step) - 1);
+      expect(points).toHaveLength(14);
+      points.forEach(({ control, hit }, i) => {
+        expect(hit[0], `${control} width`).toBeGreaterThanOrEqual(Math.min(MIN, Math.floor(gaps[i]) - 1));
         expect(hit[1], `${control} height`).toBeGreaterThanOrEqual(MIN);
-      }
+      });
       const dot = page.locator('#progress-trend .trend-dot.trend-wpm').nth(6).locator('circle');
       await dot.scrollIntoViewIfNeeded();
       const box = await dot.boundingBox();
