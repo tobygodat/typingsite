@@ -151,6 +151,26 @@ test('view tabs show one panel at a time, by arrow keys or a click, and stay cho
   expect(await shown()).toEqual(['speed']);
 });
 
+test('practice notes count in the singular for one run, and in the plural otherwise', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [run(0, 60, 95)]);
+  const note = page.locator('#practice-stats .progress-figure').filter({ has: page.locator('dt', { hasText: /^Active days$/ }) }).locator('.figure-note');
+  await expect(note).toHaveText('1 run a day when you practise');
+  await expect(page.locator('#goal-calendar')).toHaveAttribute('aria-label', /: 1 day with practice\./);
+});
+
+test('at 390px a pill row fades only at an edge with more of the row past it', async ({ page, supabase }) => {
+  await openProgress(page, supabase);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const fades = (id) => page.locator(`#${id}`).evaluate((row) => {
+    const style = getComputedStyle(row);
+    return [style.getPropertyValue('--fade-start'), style.getPropertyValue('--fade-end')];
+  });
+  await expect.poll(() => fades('progress-period')).toEqual(['0px', '0px']);
+  await expect.poll(() => fades('progress-tabs')).toEqual(['0px', '40px']);
+  await page.locator('#progress-tabs').evaluate((row) => { row.scrollLeft = row.scrollWidth; });
+  await expect.poll(() => fades('progress-tabs')).toEqual(['40px', '0px']);
+});
+
 test('the run list opens on the newest ten, and one button lists every run', async ({ page, supabase }) => {
   const many = Array.from({ length: 14 }, (_, i) => run(14 - i, 50 + i, 95));
   await openProgress(page, supabase, many);
