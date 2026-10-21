@@ -89,6 +89,7 @@ handling:
 ```sh
 $V drive .claude/skills/verify-stilltype/flows/palette-theme.mjs
 $V drive .claude/skills/verify-stilltype/flows/code-run.mjs --scheme light
+$V drive .claude/skills/verify-stilltype/flows/challenge-chrome.mjs --width 320 --height 568 --mobile
 $V drive .claude/skills/verify-stilltype/flows/book-run.mjs --width 390 --height 844 --mobile
 ```
 
@@ -96,7 +97,7 @@ $V drive .claude/skills/verify-stilltype/flows/book-run.mjs --width 390 --height
 // my-flow.mjs: no imports needed; everything arrives in the argument.
 export default async ({ page, h, shot, note, check, fake, url }) => {
   await h.openApp();                       // goto / and wait for the passage and fonts
-  await h.chooseWords(25);                 // also: h.chooseMore('mode-code' | 'mode-standard' | 'mode-book' | 'mode-compose' | 'mode-custom' | 'open-lessons')
+  await h.chooseWords(25);                 // also: h.chooseMore('mode-code' | 'mode-standard' | 'mode-compose' | 'mode-custom' | 'open-lessons')
   await shot('ready');                     // png + ARIA snapshot + state into run.json
   await h.type(await h.passage());         // types the visible passage at --delay
   await h.attr('body', 'data-view', 'results');
@@ -112,9 +113,13 @@ for finite animations, at most 2 s) and `text(selector)`. Keep a flow worth repe
 `.claude/skills/verify-stilltype/flows/` and add it to the feature map.
 
 Stable handles: the dock is `getByRole('navigation', { name: 'Main navigation' })` with buttons Practice,
-Train, Progress, Challenge, Commands; the practice rail is `.practice-rail` with `#mode-time`, `#mode-words`,
-`#mode-quote`, `#mode-more` / `#mode-more-label`, `#duration-options [data-length="N"]`, the book mode's `#book-options` (its dropdown is the combobox named
-"book", the page number `#book-page`) and `#punctuation-switch`; the passage is `#accessible-passage` and input `#typing-input`; the view is
+Train, Progress, Challenge, Commands (below 360px the names are "type practice", "train", "track progress",
+"race challenge"; the default substring match on the full word finds them at every width); the challenge
+tabs are `.challenge-modes` with `#challenge-online`, `#challenge-daily`, `#challenge-friends`,
+`#challenge-local` (`aria-pressed`); key hints carry `.key-hint` and hide under `--mobile`; the practice rail is `.practice-rail` with `#mode-time`, `#mode-words`,
+`#mode-quote`, `#mode-more` / `#mode-more-label`, `#duration-options [data-length="N"]`, the book mode's
+`#book-options` (its dropdown is the combobox named "book", the page number `#book-page`) and
+`#punctuation-switch`; the passage is `#accessible-passage` and input `#typing-input`; the view is
 `body[data-view]` (practice, results, progress, compete), a run in progress sets `body[data-running]`; theme is
 `html[data-theme]`; account is `#account[data-state]` (guest, member) and `[data-sync]`; the palette is
 `#palette` / `#palette-input` / `#palette-list [role=option]`; settings is the modal `#settings-dialog`

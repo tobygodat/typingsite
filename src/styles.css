@@ -3179,8 +3179,11 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .goal-chart { grid-template-columns: auto; grid-template-areas: "months" "calendar"; }
   /* The mode buttons tighten so each wrapped row fits the 288px column. */
   .segmented button { padding: 0 var(--space-1); font-size: var(--text-label); }
+  /* The full words don't fit beside settings and commands, so the dock shows its short verbs.
+     The full word stays in the accessible name after the visible one (WCAG 2.5.3, label in name):
+     "type practice", "track progress", "race challenge". */
   .nav-item { padding: 0 2px; font-size: 13px; }
-  .nav-label-full { display: none; }
+  .nav-label-full { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .nav-label-short { display: inline; }
   /* Three-digit speed (cpm), timer and accuracy side by side. */
   body[data-session="practice"] .live-stats { gap: var(--space-4); }
@@ -3215,6 +3218,14 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .first-run-learn .quiet-link { min-height: var(--control); margin-block: calc((var(--control) - 1lh) / -2); }
   /* Under 16px, iOS zooms the page in to type, and leaves it zoomed. The width stays shared with the pill. */
   .segmented.compact .custom-length-input { padding: 0 var(--space-1); font-size: var(--text-field); }
+  #settings-close { min-width: var(--control); justify-content: center; }
+}
+
+/* Key hints ("esc restarts.", "esc" on settings close, the shortcut row) name keys a touch-only
+   device doesn't have. A touchscreen laptop or a tablet with a keyboard case reports a fine
+   pointer too, and keeps them. */
+@media (any-pointer: coarse) and (not (any-pointer: fine)) {
+  .key-hint { display: none; }
 }
 
 @media (max-width: 760px) {
