@@ -1944,7 +1944,10 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   } else {
     const help = $('race-help');
     if (rule) help.textContent = withRule(race.notice, rule);
-    else if ([NOTICES.strictSpace, NOTICES.submit].some((notice) => help.textContent.endsWith(notice))) help.textContent = race.notice || (prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.');
+    else if ([NOTICES.strictSpace, NOTICES.submit].some((notice) => help.textContent.endsWith(notice))) {
+      if (race.notice) help.textContent = race.notice;
+      else showRaceRestartHint();
+    }
     updateRaceProgress(replay);
     if (passageComplete(targetAttempt, replay.typed)) finishRacePlayer();
   }
@@ -4091,8 +4094,14 @@ function setupRacePlayer() {
   raceFx.reset(race.characters);
   $('race-accessible-passage').textContent = race.passage.text;
   updateRaceProgress(replayAttempt(race.attempt));
-  $('race-help').textContent = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.';
+  showRaceRestartHint();
   $('race-input').focus({ preventScroll: true });
+}
+
+// A key hint: hidden on touch-only devices (.key-hint in styles.css), where there is no restart key.
+function showRaceRestartHint() {
+  const hint = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.';
+  $('race-help').replaceChildren(element('span', hint, 'key-hint'));
 }
 
 function updateRaceProgress(replay) {
