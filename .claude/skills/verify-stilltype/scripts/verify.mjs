@@ -18,11 +18,10 @@ const home = os.homedir();
 const stateDir = path.join(process.env.XDG_STATE_HOME || path.join(home, '.local/state'), 'stilltype-verify', slug);
 const evidenceRoot = process.env.STILLTYPE_EVIDENCE_DIR || path.join(process.env.XDG_DATA_HOME || path.join(home, '.local/share'), 'stilltype-verify', slug);
 const serverFile = path.join(stateDir, 'server.json');
-const chromiumPath = process.env.CHROMIUM || '/usr/bin/chromium';
 // One port per checkout, away from npm run dev (5173) and the e2e suite (4173), so worktrees never collide.
 const defaultPort = 5200 + [...slug].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 600;
 
-const USAGE = `verify.mjs — drive Stilltype in system Chromium, evidence under ${evidenceRoot}
+const USAGE = `verify.mjs — drive Stilltype in Chromium, evidence under ${evidenceRoot}
 
   serve [--port N]          start this checkout's server in the background (default port ${defaultPort})
   stop                      stop the server that serve started (never anything else)
@@ -80,6 +79,30 @@ function loadPlaywright() {
     } catch { /* next */ }
   }
   return null;
+}
+
+async function chromiumApi(pw) {
+  const playwright = await import(pathToFileURL(pw.entry).href);
+  return playwright.chromium ?? playwright.default.chromium;
+}
+
+// The first Chromium that runs: $CHROMIUM, the desktop's /usr/bin/chromium, the cloud machines'
+// /usr/local/bin/chromium, then Playwright's own download (npx playwright install chromium).
+async function findChromium(pw) {
+  const candidates = [
+    process.env.CHROMIUM && { path: process.env.CHROMIUM, from: 'CHROMIUM' },
+    { path: '/usr/bin/chromium', from: 'system' },
+    { path: '/usr/local/bin/chromium', from: 'system' },
+    pw && { path: (await chromiumApi(pw)).executablePath(), from: 'playwright' },
+  ].filter(Boolean);
+  const skipped = [];
+  for (const candidate of candidates) {
+    try {
+      const version = execFileSync(candidate.path, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      return { ...candidate, version, skipped };
+    } catch { skipped.push(candidate.path); }
+  }
+  return { skipped };
 }
 
 function portFree(port) {
@@ -166,9 +189,11 @@ async function doctor(opts) {
   line(major >= 18, 'node', process.version);
   const pw = loadPlaywright();
   line(Boolean(pw), 'playwright', pw ? `@playwright/test ${pw.version} from ${pw.from}` : 'not found here or in the main checkout; run npm ci');
-  let chromium = '';
-  try { chromium = execFileSync(chromiumPath, ['--version'], { encoding: 'utf8' }).trim(); } catch { /* reported below */ }
-  line(Boolean(chromium), 'chromium', chromium ? `${chromium} (${chromiumPath})` : `${chromiumPath} missing; set CHROMIUM`);
+  const browser = await findChromium(pw);
+  const skipped = browser.skipped.length ? `; skipped ${browser.skipped.join(', ')}` : '';
+  line(Boolean(browser.path), 'chromium', browser.path
+    ? `${browser.version} (${browser.path}, from ${browser.from}${skipped})`
+    : `none runs (tried ${browser.skipped.join(', ')}); set CHROMIUM or run npx playwright install chromium`);
   const dirty = git('status', '--porcelain') ? ' + uncommitted changes' : '';
   line(true, 'checkout', `${root} @ ${branch} ${git('rev-parse', '--short', 'HEAD')}${dirty}`);
   const running = managedServer();
@@ -216,10 +241,17 @@ function helpers(page, { delay }) {
       await page.mouse.move(5, 5); await page.mouse.move(40, 40);
       await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: label }).click();
     },
-    async openSettings() {
-      const settings = page.locator('details.preferences');
-      if ((await settings.getAttribute('open')) === null) await settings.locator(':scope > summary').click();
-      await page.locator('.preferences-popover').waitFor();
+    // Settings is a modal <dialog> opened from the dock's sliders button; categories sit in its side nav.
+    async openSettings(category) {
+      if (!(await page.locator('#settings-dialog').evaluate((dialog) => dialog.open))) {
+        await page.mouse.move(5, 5); await page.mouse.move(40, 40);
+        await page.locator('#settings-trigger').click();
+      }
+      await page.locator('#settings-dialog[open]').waitFor();
+      if (category) {
+        await page.locator(`#settings-dialog [data-settings-category="${category}"]`).click();
+        await page.locator(`#settings-${category}`).waitFor();
+      }
     },
     async signIn(email, password = 'correct horse battery') {
       await page.locator('#account-trigger').click();
@@ -288,17 +320,23 @@ const FLOW_IMPL = {
   async settings({ page, h, shot, note, check }) {
     await h.openApp();
     const before = await page.locator('html').getAttribute('data-theme');
-    await h.openSettings();
+    await h.openSettings('appearance');
     await h.settle();
     await shot('settings');
     const target = before === 'light' ? 'dark' : 'light';
-    await page.locator('#theme-select').selectOption(target);
+    const option = page.locator(`#theme-select input[value="${target}"]`);
+    await option.locator('..').click();
+    check(await option.isChecked(), `theme radio "${target}" is checked`);
     await h.attr('html', 'data-theme', target);
     await h.settle();
     const after = await page.locator('html').getAttribute('data-theme');
     note('theme', { before, after });
-    check(after === target, `theme select switched html[data-theme] ${before} -> ${after}`);
+    check(after === target, `theme radio switched html[data-theme] ${before} -> ${after}`);
     await shot(`settings-${target}`);
+    await page.keyboard.press('Escape');
+    await page.locator('#settings-dialog').waitFor({ state: 'hidden' });
+    check(await page.locator('#settings-trigger').evaluate((el) => el === document.activeElement), 'Escape closes settings and returns focus to the dock button');
+    check(await page.locator('html').getAttribute('data-theme') === target, 'the picked theme stays after closing');
   },
 
   async signin({ page, h, shot, note, check, fake }) {
@@ -334,8 +372,9 @@ function plan(names, opts) {
 async function run(items, opts, label) {
   const pw = loadPlaywright();
   if (!pw) fail('playwright not found; run npm ci in this checkout (or the main checkout)');
-  const playwright = await import(pathToFileURL(pw.entry).href);
-  const chromium = playwright.chromium ?? playwright.default.chromium;
+  const chromium = await chromiumApi(pw);
+  const browserPath = (await findChromium(pw)).path;
+  if (!browserPath) fail('no Chromium runs; set CHROMIUM or run npx playwright install chromium. Run doctor.');
   const { FakeSupabase } = await import(pathToFileURL(path.join(root, 'e2e/fake-supabase.js')).href);
 
   let url = opts.url;
@@ -358,11 +397,11 @@ async function run(items, opts, label) {
   const outDir = path.resolve(opts.out || path.join(evidenceRoot, `${stamp}-${label}`));
   fs.mkdirSync(outDir, { recursive: true });
   const report = {
-    label, url, root, branch, commit: git('rev-parse', 'HEAD'), dirty: Boolean(git('status', '--porcelain')),
+    label, url, root, branch, commit: git('rev-parse', 'HEAD'), dirty: Boolean(git('status', '--porcelain')), chromium: browserPath,
     started: new Date().toISOString(), seed: opts.seed || '20261009', runs: [],
   };
   let failed = false;
-  const browser = await chromium.launch({ executablePath: chromiumPath });
+  const browser = await chromium.launch({ executablePath: browserPath });
   try {
     for (const item of items) {
       const tag = `${item.flow}.${item.width}x${item.height}.${item.scheme}${item.mobile ? '.touch' : ''}`;
