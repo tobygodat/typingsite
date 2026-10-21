@@ -81,7 +81,7 @@ test('strict space refuses an early space, scores it once and keeps the word in 
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-errors')).toHaveText('1');
   expect(Number(await page.locator('#result-accuracy').textContent())).toBeLessThan(100);
-  await expect(page.locator('#result-conditions')).toContainText('continue on error · strict space · corpus');
+  await expect(page.locator('#result-conditions')).toContainText(/continue on error · strict space$/);
   await page.screenshot({ path: shot(testInfo, 'results-dark.png') });
 });
 
@@ -133,7 +133,7 @@ test('quick end off waits on a wrong last word until space submits it or the wor
   await page.keyboard.press('Space');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-errors')).toHaveText('1');
-  await expect(page.locator('#result-conditions')).toContainText('continue on error · quick end off · corpus');
+  await expect(page.locator('#result-conditions')).toContainText(/continue on error · quick end off$/);
   await expect(page.locator('#run-again')).toBeFocused();
 
   // Fixing the last word finishes the run as soon as it is right.
@@ -238,7 +238,7 @@ test('the daily challenge keeps its fixed rules whatever these settings say', as
   await page.locator('#start-daily').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   await expect(page.locator('#condition-line')).toContainText('first attempt');
-  await expect(page.locator('#condition-line')).toContainText('continue on error · corpus');
+  await expect(page.locator('#condition-line')).toContainText(/continue on error$/);
   // Changing a rule the daily ignores leaves the daily (and its first attempt) in place, and says so.
   await openSettings(page, 'practice');
   await expect(page.locator('#rules-note')).toHaveText(DAILY_NOTE);
@@ -320,7 +320,7 @@ test('a retest of a stop-on-error baseline leaves the quick end preference alone
   await setSwitch(page, 'quick-end-toggle', true);
   await page.locator('#skip-to-retest').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
-  await expect(page.locator('#condition-line')).toContainText('stop on error · corpus');
+  await expect(page.locator('#condition-line')).toContainText(/stop on error$/);
   await openSettings(page, 'practice');
   await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
 });
