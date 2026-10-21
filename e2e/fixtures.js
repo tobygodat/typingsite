@@ -32,12 +32,14 @@ export async function openApp(page, path = '/') {
 export const passageText = (page) => page.locator('#accessible-passage').textContent();
 
 export async function typeInto(page, text, selector = '#typing-input', options = {}) {
+  await closeSettings(page);
   await page.locator(selector).focus();
   await page.keyboard.type(text, options);
 }
 
 // Picks a test shape from the practice controls, as a person would.
 export async function chooseWords(page, count = 10) {
+  await closeSettings(page);
   await page.locator('#mode-words').click();
   await page.locator(`#duration-options [data-length="${count}"]`).click();
   await expect(page.locator('#condition-line')).toContainText(`${count} words`);
@@ -62,20 +64,56 @@ export async function freshTextCheck(page) {
   return { baseline, retest };
 }
 
+// Code, standard, compose, custom text and lessons sit behind "more" in the practice controls.
+export async function chooseMore(page, id) {
+  await closeSettings(page);
+  if ((await page.locator('#mode-more').getAttribute('open')) === null) await page.locator('#mode-more-label').click();
+  await page.locator(`#${id}`).click();
+}
+
 export async function openView(page, label) {
+  await closeSettings(page);
   // A run fades the dock and disables its pointer events; a real mouse nudge brings it back.
   await page.mouse.move(5, 5);
   await page.mouse.move(40, 40);
   await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: label }).click();
 }
 
-export async function openSettings(page) {
-  const settings = page.locator('details.preferences');
-  if ((await settings.getAttribute('open')) === null) await settings.locator(':scope > summary').click();
-  await expect(page.locator('.preferences-popover')).toBeVisible();
+// One of Progress's views (Speed, Accuracy, Consistency, Practice, Keys), chosen from its tabs.
+export async function openProgressView(page, name) {
+  const tab = page.getByRole('tablist', { name: 'View' }).getByRole('tab', { name, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+export async function openSettings(page, category) {
+  const dialog = page.locator('#settings-dialog');
+  if (!(await dialog.isVisible())) {
+    await page.mouse.move(5, 5);
+    await page.mouse.move(40, 40);
+    await page.locator('#settings-trigger').click();
+  }
+  await expect(dialog).toBeVisible();
+  if (category) await dialog.locator(`[data-settings-category="${category}"]`).click();
+}
+
+export async function closeSettings(page) {
+  if (await page.locator('#settings-dialog').isVisible()) await page.locator('#settings-done').click();
+}
+
+export async function chooseSetting(page, id, value) {
+  const control = page.locator(`#${id}`);
+  const category = await control.evaluate((group) => group.closest('.settings-category').id.replace('settings-', ''));
+  await openSettings(page, category);
+  const option = typeof value === 'object'
+    ? control.getByRole('radio', { name: value.label, exact: true })
+    : control.locator(`input[value="${value}"]`);
+  await expect(option).toBeEnabled();
+  await option.locator('..').click();
 }
 
 export async function signInWithEmail(page, email, password = 'correct horse battery') {
+  await closeSettings(page);
   await page.locator('#account-trigger').click();
   await page.locator('#account-signin').click();
   await page.locator('#account-email-input').fill(email);
@@ -86,3 +124,11 @@ export async function signInWithEmail(page, email, password = 'correct horse bat
 }
 
 export const storageKeys = (page) => page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('stilltype')));
+
+export async function chooseQuoteFilter(page, filter, value) {
+  const trigger = page.getByRole('combobox', { name: filter, exact: true });
+  await trigger.click();
+  await page.getByRole('listbox', { name: filter, exact: true }).getByRole('option', { name: value, exact: true }).click();
+  await expect(trigger).toContainText(value);
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+}

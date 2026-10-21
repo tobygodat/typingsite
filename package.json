@@ -8,7 +8,8 @@
     "start": "node server.mjs",
     "build": "node scripts/build-static.mjs",
     "test": "node --test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:quick": "playwright test e2e/typing.spec.js e2e/layout.spec.js e2e/chrome.spec.js e2e/practice-more.spec.js e2e/touch-targets.spec.js e2e/learning-loop.spec.js e2e/quick-restart.spec.js e2e/light-contrast.spec.js e2e/code-mode.spec.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0"

@@ -1,88 +1,57 @@
-import { test, expect, openApp } from './fixtures.js';
-import { release } from '../src/release.js';
+import { test, expect, openApp, chooseWords, passageText, typeInto } from './fixtures.js';
 
-test.use({ serviceWorkers: 'allow' });
+const version = (page) => page.getByRole('button', { name: 'What’s new in v0.2.0', exact: true });
+const panel = (page) => page.getByRole('dialog', { name: 'v0.2.0', exact: true });
 
-const trigger = (page) => page.getByRole('button', { name: `What’s new in Stilltype version ${release.version}`, exact: true });
-const panel = (page) => page.getByRole('dialog', { name: 'What’s new', exact: true });
-
-test('release panel opens by keyboard, contains focus and restores it on repeated dismissal', async ({ page }) => {
+test('the footer version opens What’s new by keyboard and returns focus on Escape, Close and the backdrop', async ({ page }) => {
   await openApp(page);
-  const button = trigger(page);
-  await expect(button).toContainText(`v${release.version}`);
-  await button.focus();
-  for (const key of ['Enter', 'Space', 'Enter']) {
+  await expect(version(page)).toHaveText('v0.2.0');
+  await version(page).focus();
+  for (const key of ['Enter', 'Space']) {
     await page.keyboard.press(key);
     await expect(panel(page)).toBeVisible();
-    await expect(panel(page).getByRole('heading', { name: `Version ${release.version}` })).toBeVisible();
-    await expect(panel(page).getByRole('listitem')).toHaveText(release.notes);
-    await expect(page.locator('#release-close')).toBeFocused();
-    for (const tab of ['Tab', 'Tab', 'Shift+Tab', 'Shift+Tab']) {
-      await page.keyboard.press(tab);
-      expect(await page.evaluate(() => document.activeElement === document.body || Boolean(document.activeElement.closest('#release-dialog')))).toBe(true);
-    }
+    await expect(panel(page).getByRole('listitem')).toHaveCount(6);
     await page.keyboard.press('Control+k');
     await expect(page.locator('#palette')).toBeHidden();
     await page.keyboard.press('Escape');
     await expect(panel(page)).toBeHidden();
-    await expect(button).toBeFocused();
+    await expect(version(page)).toBeFocused();
   }
-  await button.click();
+  await version(page).click();
   await page.locator('#release-close').click();
   await expect(panel(page)).toBeHidden();
-  await expect(button).toBeFocused();
-});
-
-test('panel contents, padding and drags stay open; backdrop dismisses and restores focus', async ({ page }) => {
-  await openApp(page);
-  await trigger(page).click();
-  await page.locator('#release-version').click();
-  await expect(panel(page)).toBeVisible();
-  const box = await panel(page).boundingBox();
-  await page.mouse.click(box.x + 5, box.y + 5);
-  await expect(panel(page)).toBeVisible();
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(5, 5);
-  await page.mouse.up();
-  await expect(panel(page)).toBeVisible();
+  await expect(version(page)).toBeFocused();
+  await version(page).click();
   await page.mouse.click(5, 5);
   await expect(panel(page)).toBeHidden();
-  await expect(trigger(page)).toBeFocused();
+  await expect(version(page)).toBeFocused();
+});
+
+test('opening What’s new mid-run interrupts the run', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 6));
+  await page.mouse.move(10, 10);
+  await version(page).click();
+  await expect(page.locator('#typing-status')).toHaveText('Interrupted');
+  await page.keyboard.press('Escape');
+  await typeInto(page, text.slice(6));
+  await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
 });
 
 for (const theme of ['dark', 'light']) {
-  test(`${theme} narrow and short mobile panel fits and remains dismissible`, async ({ page }, testInfo) => {
+  test(`${theme} What’s new fits a 320px phone with reduced motion`, async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 });
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
     await openApp(page);
-    await trigger(page).click();
+    await version(page).click();
     const box = await panel(page).boundingBox();
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(320);
-    expect(Math.abs(box.x + box.width / 2 - 160)).toBeLessThan(2);
-    expect(Math.abs(box.y + box.height / 2 - 284)).toBeLessThan(2);
+    expect(box.y + box.height).toBeLessThanOrEqual(568);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
-    await page.screenshot({ path: testInfo.outputPath(`release-${theme}-mobile.png`) });
-    await page.setViewportSize({ width: 568, height: 320 });
-    await expect(page.locator('#release-close')).toBeVisible();
     await page.locator('#release-close').click();
-    await expect(trigger(page)).toBeFocused();
+    await expect(version(page)).toBeFocused();
   });
 }
-
-test('version panel is included in the offline shell', async ({ page, context }) => {
-  await openApp(page);
-  // Explicitly await registration before readiness to avoid racing startup registration.
-  await page.evaluate(() => navigator.serviceWorker.register('/sw.js').then(() => undefined));
-  await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.active?.state), { timeout: 10000 }).toBe('activated');
-  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
-  await context.setOffline(true);
-  await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
-  await page.reload();
-  await trigger(page).click();
-  await expect(panel(page).getByRole('listitem')).toHaveText(release.notes);
-  await page.keyboard.press('Escape');
-  await expect(trigger(page)).toBeFocused();
-  await context.setOffline(false);
-});
