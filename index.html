@@ -718,14 +718,13 @@
             </section>
             <section class="board-column" aria-labelledby="board-week-heading">
               <h3 id="board-week-heading">This week’s practice</h3>
-              <p id="board-week-meta" class="condition-copy"></p>
               <ol id="board-week" class="board-list" role="list"></ol>
             </section>
             <section class="board-column board-bests" aria-labelledby="board-bests-heading">
               <h3 id="board-bests-heading">Bests</h3>
-              <label id="board-shape-field" class="filter-field board-shape" for="board-shape">Test conditions
-                <select id="board-shape" class="input select"></select>
-              </label>
+              <div id="board-shape-field" class="filter-field board-shape">
+                <select id="board-shape" class="input select" aria-label="Test conditions"></select>
+              </div>
               <p id="board-bests-meta" class="condition-copy"></p>
               <ol id="board-bests" class="board-list" role="list"></ol>
               <p id="board-bests-none" class="friends-board-note" hidden>No bests yet.</p>

@@ -477,7 +477,6 @@ test('a board left open reads the new day after 00:00 UTC, and the new week on M
   await page.clock.fastForward('10:30');
   await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-04');
   expect(await rowTexts(page, 'board-daily')).toEqual(['Mara 91 wpm 97% accuracy · 1 attempt', 'You — no completed attempt yet', 'Lin — no completed attempt yet']);
-  await expect(page.locator('#board-week-meta')).toHaveText('since 2026-09-28');
   expect((await rowTexts(page, 'board-week')).slice(0, 2)).toEqual(['Lin 41 min 37 runs', 'Mara 20 min 21 runs']);
   await expect(page.locator('#friends-board-status')).toHaveText('');
   // The rollover only read.
@@ -495,13 +494,11 @@ test('a board left open reads the new day after 00:00 UTC, and the new week on M
   await page.clock.fastForward('24:00:00');
   await page.waitForTimeout(500);
   expect(boardRequests(supabase)).toBe(before);
-  await expect(page.locator('#board-week-meta')).toHaveText('since 2026-09-28');
   await page.evaluate(() => {
     delete document.hidden;
     delete document.visibilityState;
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  await expect(page.locator('#board-week-meta')).toHaveText('since 2026-10-05');
   await expect(page.locator('#board-daily-meta')).toHaveText('2026-10-05');
   expect(await rowTexts(page, 'board-daily')).toEqual(['You — no completed attempt yet', 'Lin — no completed attempt yet', 'Mara — no completed attempt yet']);
   // Nobody has practised this week yet, Ada included: her row's summary is last week's.
