@@ -486,7 +486,7 @@ button { cursor: pointer; }
 .num { font-variant-numeric: tabular-nums lining-nums; }
 
 .sr-only,
-#typing-status.badge-info {
+#typing-status {
   position: absolute;
   width: 1px;
   height: 1px;
