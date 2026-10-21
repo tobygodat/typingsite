@@ -5415,6 +5415,15 @@ function bindEvents() {
   $('suggest-form').addEventListener('submit', sendSuggestion);
   $('cancel-suggest').addEventListener('click', () => $('suggest-dialog').close());
   $('suggest-dialog').addEventListener('click', (event) => { if (event.target === $('suggest-dialog')) $('suggest-dialog').close(); });
+  $('release-trigger').addEventListener('click', () => {
+    markInterrupted(NOTICES.focusLost);
+    compose.interrupt(NOTICES.composeFocusLost);
+    markRaceInterrupted();
+    $('release-dialog').showModal();
+  });
+  $('release-close').addEventListener('click', () => $('release-dialog').close());
+  $('release-dialog').addEventListener('click', (event) => { if (event.target === $('release-dialog')) $('release-dialog').close(); });
+  $('release-dialog').addEventListener('close', () => $('release-trigger').focus({ preventScroll: true }));
 
   $('import-trigger').addEventListener('click', openImport);
   $('import-text').addEventListener('input', () => { $('import-error').textContent = ''; updateImportButton(); });

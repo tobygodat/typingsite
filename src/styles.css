@@ -686,8 +686,9 @@ kbd {
 #settings-dialog::backdrop { background: var(--backdrop); }
 .settings-header { display: flex; flex: none; align-items: center; justify-content: space-between; padding: var(--space-6) var(--space-8) var(--space-4); }
 .settings-header h2 { margin: 0; font-size: var(--text-title); font-weight: 400; line-height: var(--settings-title-line); }
-#settings-close { display: flex; align-items: center; gap: var(--space-3); min-height: var(--control); padding-inline: var(--space-3); border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; font: var(--text-mono)/var(--space-4) var(--font-mono); }
-#settings-close:hover { color: var(--text); background: var(--raised-2); }
+:is(#settings-close, #release-close) { display: flex; align-items: center; gap: var(--space-3); min-height: var(--control); padding-inline: var(--space-3); border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; font: var(--text-mono)/var(--space-4) var(--font-mono); }
+:is(#settings-close, #release-close):hover { color: var(--text); background: var(--raised-2); }
+.release-notes { display: grid; gap: var(--space-3); margin: 0; padding: 0 var(--space-8) var(--space-8) calc(var(--space-8) + var(--space-4)); font-size: var(--text-small); }
 .settings-body { display: flex; flex: 1; min-height: 0; max-height: var(--settings-body-height); }
 .settings-nav { width: var(--settings-sidebar); flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); border-right: 1px solid var(--hairline-strong); }
 .settings-nav button { flex: none; text-align: left; padding: var(--space-2) var(--space-4); min-height: var(--control); border: 0; border-left: var(--settings-selection-line) solid transparent; border-radius: var(--radius-sm); color: var(--muted); background: transparent; font: var(--text-small)/var(--settings-option-line) var(--font-serif); cursor: pointer; }
@@ -965,6 +966,7 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 }
 
 .footer-link:hover { color: var(--text); text-decoration-color: currentColor; }
+.footer-links { display: flex; gap: var(--space-6); }
 
 /* ── Controls ───────────────────────────────────────────────────────────── */
 
@@ -3147,7 +3149,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 #replay-dialog,
 #delete-account-dialog,
 #suggest-dialog,
-#import-dialog {
+#import-dialog,
+#release-dialog {
   width: min(460px, calc(100% - 32px));
   padding: 0;
   border: 1px solid var(--hairline-strong);
@@ -3162,13 +3165,15 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 #delete-account-dialog[open],
 #replay-dialog[open],
 #import-dialog[open],
-#suggest-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
+#suggest-dialog[open],
+#release-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
 #delete-account-dialog::backdrop,
 #replay-dialog::backdrop,
 #import-dialog::backdrop,
-#suggest-dialog::backdrop { background: var(--backdrop); }
+#suggest-dialog::backdrop,
+#release-dialog::backdrop { background: var(--backdrop); }
 
 
 .account-fields { display: grid; gap: var(--space-3); }
@@ -3422,6 +3427,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   .lesson-row-detail { grid-column: 2; grid-row: 2; justify-content: flex-start; }
   .lesson-row .btn { grid-column: 3; grid-row: 1 / span 2; }
   .site-footer { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: var(--space-2); }
+  .release-notes { padding: var(--space-2) var(--space-4) var(--space-6) var(--space-8); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
   #result-wpm { font-size: var(--text-numeral-mobile); }
