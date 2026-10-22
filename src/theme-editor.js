@@ -5,10 +5,11 @@ import { BASE_TOKENS, MAX_CUSTOM_THEMES, READABLE, THEME_TOKENS, cleanThemeName,
 
 const $ = (id) => document.getElementById(id);
 
-// The colours a custom theme sets on :root, over dark or light by its background; null takes them off.
+// The colours a custom theme sets on :root, over dark or light by its background; null takes them off,
+// leaving any other inline property (the typing baseline) alone.
 // Returns the token set it wears over, or null.
 export function wearColors(root, colors) {
-  for (const name of [...root.style]) if (name.startsWith('--')) root.style.removeProperty(name);
+  for (const token of THEME_TOKENS) root.style.removeProperty(`--${token.name}`);
   if (!colors) {
     delete root.dataset.custom;
     return null;
