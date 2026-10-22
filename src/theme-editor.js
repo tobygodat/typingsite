@@ -18,21 +18,21 @@ export function wearColors(root, colors) {
   return themeMode(colors);
 }
 
-// One radio per saved custom theme, after the built-in ones; edit shows while one is in use.
-export function showThemeOptions(themes, current) {
-  const group = $('theme-select');
-  for (const option of group.querySelectorAll('[data-custom-option]')) option.remove();
+// One radio per saved custom theme, after the built-in ones in its mode's row; edit shows while one is on show.
+export function showThemeOptions(themes, shown) {
+  for (const option of document.querySelectorAll('[data-custom-option]')) option.remove();
   for (const theme of themes) {
+    const mode = themeMode(theme.colors);
     const label = document.createElement('label');
     label.className = 'setting-option';
     label.dataset.customOption = '';
-    const input = Object.assign(document.createElement('input'), { type: 'radio', name: 'theme-select', value: theme.id });
+    const input = Object.assign(document.createElement('input'), { type: 'radio', name: `${mode}-theme`, value: theme.id });
     const span = document.createElement('span');
     span.textContent = theme.name;
     label.append(input, span);
-    group.insertBefore(label, $('theme-new'));
+    $(`${mode}-theme`).append(label);
   }
-  $('theme-edit').hidden = !themes.some((theme) => theme.id === current);
+  $('theme-edit').hidden = !themes.some((theme) => theme.id === shown);
   $('theme-new').disabled = themes.length >= MAX_CUSTOM_THEMES;
 }
 
@@ -217,12 +217,12 @@ export function createThemeEditor({ themes, currentTheme, preview, save, signedI
     const next = draft.id ? themes().map((kept) => (kept.id === draft.id ? theme : kept)) : [...themes(), theme];
     close({ saved: true, focus: false });
     save(next, theme.id);
-    $('theme-select').querySelector(`input[value="${theme.id}"]`)?.focus();
+    document.querySelector(`[data-custom-option] input[value="${theme.id}"]`)?.focus();
   });
   $('theme-delete').addEventListener('click', () => {
     const id = draft.id;
     close({ saved: true, focus: false });
-    save(themes().filter((theme) => theme.id !== id), currentTheme() === id ? 'system' : currentTheme());
+    save(themes().filter((theme) => theme.id !== id), null);
     $('theme-new').focus();
   });
 

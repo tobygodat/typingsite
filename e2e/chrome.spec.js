@@ -33,6 +33,41 @@ test.describe('theme', () => {
     await expect(html(page)).toHaveAttribute('data-theme', 'dark');
   });
 
+  test('system mode switches between the dark and light picks; elsewhere a pick shows in its own mode', async ({ page }) => {
+    const checked = (id) => page.locator(`#${id} input:checked`);
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await openApp(page);
+    await chooseSetting(page, 'dark-theme', 'nord');
+    await expect(html(page)).toHaveAttribute('data-theme', 'nord');
+    await chooseSetting(page, 'light-theme', 'paper');
+    await expect(html(page)).toHaveAttribute('data-theme', 'nord');
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(html(page)).toHaveAttribute('data-theme', 'paper');
+    await expect(themeColor(page)).toHaveAttribute('content', '#fbf8f1');
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(html(page)).toHaveAttribute('data-theme', 'nord');
+    await expect(checked('theme-select')).toHaveValue('system');
+
+    await chooseSetting(page, 'theme-select', 'light');
+    await expect(html(page)).toHaveAttribute('data-theme', 'paper');
+    await chooseSetting(page, 'dark-theme', 'midnight');
+    await expect(html(page)).toHaveAttribute('data-theme', 'midnight');
+    await expect(checked('theme-select')).toHaveValue('dark');
+    await expect(checked('light-theme')).toHaveValue('paper');
+    await closeSettings(page);
+
+    await page.keyboard.press('Control+k');
+    await page.keyboard.type('light theme · swiss');
+    await page.keyboard.press('Enter');
+    await expect(html(page)).toHaveAttribute('data-theme', 'swiss');
+    await page.keyboard.press('Control+k');
+    await page.keyboard.type('theme · system');
+    await page.keyboard.press('Enter');
+    await expect(html(page)).toHaveAttribute('data-theme', 'midnight');
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(html(page)).toHaveAttribute('data-theme', 'swiss');
+  });
+
   test('a guest’s pick is not kept after reload', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);

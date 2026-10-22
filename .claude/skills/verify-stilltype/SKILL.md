@@ -92,6 +92,7 @@ $V drive .claude/skills/verify-stilltype/flows/code-run.mjs --scheme light
 $V drive .claude/skills/verify-stilltype/flows/challenge-chrome.mjs --width 320 --height 568 --mobile
 $V drive .claude/skills/verify-stilltype/flows/book-run.mjs --width 390 --height 844 --mobile
 $V drive .claude/skills/verify-stilltype/flows/themes.mjs        # every theme: settings, mid-run, results
+$V drive .claude/skills/verify-stilltype/flows/theme-modes.mjs   # system mode: a dark and a light pick, both schemes
 $V drive .claude/skills/verify-stilltype/flows/custom-theme.mjs --signed-in   # custom theme editor and generate
 ```
 
@@ -126,7 +127,8 @@ tabs are `.challenge-modes` with `#challenge-online`, `#challenge-daily`, `#chal
 `html[data-theme]`; account is `#account[data-state]` (guest, member) and `[data-sync]`; the palette is
 `#palette` / `#palette-input` / `#palette-list [role=option]`; settings is the modal `#settings-dialog`
 (opened by `#settings-trigger`) with category buttons `[data-settings-category]`, sections `#settings-<category>`,
-and radio-group fieldsets such as `#theme-select input[value=…]`.
+and radio-group fieldsets such as `#theme-select input[value=…]` (system, dark, light) and `#dark-theme` /
+`#light-theme` (each mode's pick).
 
 Running tests is separate from driving the app. One spec locally:
 `CHROMIUM=/usr/bin/chromium npx playwright test e2e/practice-more.spec.js` (`/usr/local/bin/chromium` on a cloud

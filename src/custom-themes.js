@@ -6,6 +6,7 @@
 export const MAX_CUSTOM_THEMES = 5;
 export const MAX_THEME_NAME = 40;
 export const CUSTOM_PREFIX = 'custom-';
+export const isCustomId = (value) => typeof value === 'string' && value.startsWith(CUSTOM_PREFIX);
 
 // Every colour token a built-in theme defines, in the editor's order. `key` ones are shown up front;
 // `derived` ones follow their source in the stylesheet until overridden. The edge function
@@ -94,7 +95,7 @@ export const cleanThemeName = (value) => (typeof value === 'string' ? value.repl
 // A stored theme as this build uses it: hex colours for every base token and any derived ones
 // overridden, nothing else. Anything short of that is dropped, as are repeats and any past the cap.
 function normalizeTheme(raw) {
-  if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string' || !raw.id.startsWith(CUSTOM_PREFIX)) return null;
+  if (!raw || typeof raw !== 'object' || !isCustomId(raw.id)) return null;
   const name = cleanThemeName(raw.name);
   const colors = {};
   for (const [token, value] of Object.entries(raw.colors && typeof raw.colors === 'object' ? raw.colors : {})) {

@@ -58,7 +58,7 @@ import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
 import { createSettingsView, disableSetting, onSetting, selectSetting } from './settings.js';
 import { createThemeEditor, showThemeOptions, wearColors } from './theme-editor.js';
-import { normalizeCustomThemes, readCustomThemes } from './custom-themes.js';
+import { normalizeCustomThemes, readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
 import { normalizeKeybindings, matchesBinding, bindingLabel, ariaShortcuts, createKeybindingEditor } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
@@ -80,7 +80,7 @@ import {
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, normalizeLessonProgress, recordLessonRun,
 } from './lessons.js';
 import { createRunCounter, runCountTotals } from './run-counts.js';
-import { CUSTOM_ORDERS, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
+import { CUSTOM_ORDERS, DARK_THEMES, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -179,7 +179,6 @@ const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('ra
 // Key sounds read the current preferences on each key; the AudioContext waits for an audible choice or key.
 const sounds = createSounds({ settings: () => ({ mode: prefs.sound, volume: prefs.soundVolume }), running: () => runInProgress() });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
-const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // The completed run the results view shows: its numbers, run card graph and Watch replay. Only
 // showResult sets it. `attempt` moves on without it (a drill whose retest is unavailable, the
@@ -330,7 +329,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'customThemes', 'fontSize', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
+const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -614,15 +613,33 @@ function showBest() {
   setParts($('best'), !key ? 'Not counted' : best ? ['Best · ', speedFigure(best.wpm)] : 'No best yet');
 }
 
-function resolvedTheme() {
-  if (THEMES.includes(prefs.theme)) return prefs.theme;
-  return prefersLight.matches ? 'light' : 'dark';
+// The mode a theme belongs to, a custom one's by its background; null for 'system' or a theme not saved.
+function modeOf(theme) {
+  if (DARK_THEMES.includes(theme)) return 'dark';
+  if (LIGHT_THEMES.includes(theme)) return 'light';
+  const custom = readCustomThemes(prefs.customThemes).find((entry) => entry.id === theme);
+  return custom ? colorsMode(custom.colors) : null;
 }
 
-// A saved custom theme (src/custom-themes.js) is worn over dark or light; null wears the built-in one.
-function wearTheme(colors) {
+function themeMode() {
+  return modeOf(prefs.theme) ?? 'system';
+}
+
+// A mode's pick: the theme shown, in that mode, else the one saved for it, else the mode's default.
+function themeFor(mode) {
+  if (themeMode() === mode) return prefs.theme;
+  return modeOf(prefs[`${mode}Theme`]) === mode ? prefs[`${mode}Theme`] : mode;
+}
+
+function shownTheme() {
+  const mode = themeMode();
+  return mode === 'system' ? themeFor(prefersLight.matches ? 'light' : 'dark') : prefs.theme;
+}
+
+// A custom theme (src/custom-themes.js) is worn over dark or light by its colours; without them the theme is built in.
+function wearTheme(colors, theme) {
   const root = document.documentElement;
-  root.dataset.theme = wearColors(root, colors) ?? resolvedTheme();
+  root.dataset.theme = wearColors(root, colors) ?? theme;
   const ground = getComputedStyle(root).getPropertyValue('--ground').trim();
   for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = ground;
 }
@@ -630,16 +647,59 @@ function wearTheme(colors) {
 function applyTheme() {
   // While the editor is open its draft stays on show.
   const themes = readCustomThemes(prefs.customThemes);
-  wearTheme(themeEditor?.draftColors() ?? themes.find((theme) => theme.id === prefs.theme)?.colors);
-  showThemeOptions(themes, prefs.theme);
-  selectSetting('theme-select', prefs.theme);
+  const theme = shownTheme();
+  wearTheme(themeEditor?.draftColors() ?? themes.find((entry) => entry.id === theme)?.colors, theme);
+  showThemeOptions(themes, theme);
+  selectSetting('theme-select', themeMode());
+  selectSetting('dark-theme', themeFor('dark'));
+  selectSetting('light-theme', themeFor('light'));
 }
 
-function chooseTheme(theme) {
+// The theme left for another becomes its mode's pick.
+function keepPick() {
+  const left = themeMode();
+  if (left !== 'system') prefs[`${left}Theme`] = prefs.theme;
+}
+
+// Shows a theme, or 'system'.
+function showTheme(theme) {
   themeEditor?.close({ focus: false });
+  keepPick();
   prefs.theme = theme;
   applyTheme();
   saveChoice('theme');
+}
+
+function setThemeMode(mode) {
+  showTheme(mode === 'system' ? 'system' : themeFor(mode));
+}
+
+// Outside system mode, a pick is shown at once, in its own mode.
+function pickTheme(mode, theme) {
+  if (themeMode() !== 'system') return showTheme(theme);
+  themeEditor?.close({ focus: false });
+  prefs[`${mode}Theme`] = theme;
+  applyTheme();
+  saveChoice(`${mode}Theme`);
+}
+
+// After the editor saves or deletes a custom theme: a saved one is picked as pickTheme does; a pick whose
+// theme was deleted, or moved to the other mode, goes back to its mode's default.
+function saveCustomThemes(customThemes, saved) {
+  const mode = themeMode();
+  keepPick();
+  prefs.customThemes = normalizeCustomThemes(customThemes);
+  if (prefs.theme !== 'system' && !modeOf(prefs.theme)) prefs.theme = mode;
+  for (const pick of ['dark', 'light']) if (modeOf(prefs[`${pick}Theme`]) !== pick) prefs[`${pick}Theme`] = pick;
+  if (saved) {
+    if (themeMode() === 'system') prefs[`${modeOf(saved)}Theme`] = saved;
+    else {
+      keepPick();
+      prefs.theme = saved;
+    }
+  }
+  applyTheme();
+  saveChoice('customThemes', 'theme', 'darkTheme', 'lightTheme');
 }
 
 // Slides a group's pill under its selected control; used by the dock and the segmented controls.
@@ -5287,12 +5347,14 @@ function bindEvents() {
   onSetting('quick-end-toggle', (value) => setInputRule('quickEnd', value === 'true'));
   onSetting('min-accuracy', (value) => setMinimum('minAccuracy', Number(value)));
   onSetting('min-wpm', (value) => setMinimum('minWpm', Number(value)));
-  onSetting('theme-select', chooseTheme);
+  onSetting('theme-select', setThemeMode);
+  onSetting('dark-theme', (value) => pickTheme('dark', value));
+  onSetting('light-theme', (value) => pickTheme('light', value));
   themeEditor = createThemeEditor({
     themes: () => readCustomThemes(prefs.customThemes),
-    currentTheme: () => prefs.theme,
+    currentTheme: shownTheme,
     preview: (colors) => (colors ? wearTheme(colors) : applyTheme()),
-    save: (customThemes, theme) => { prefs.customThemes = normalizeCustomThemes(customThemes); prefs.theme = theme; applyTheme(); saveChoice('customThemes', 'theme'); },
+    save: saveCustomThemes,
     signedIn: () => Boolean(session) && !signedOutElsewhere,
     generate: (vibe) => account.generateTheme(session, vibe),
     signIn: () => { settingsView.close(); openAccountDialog('signin'); },
@@ -5916,7 +5978,11 @@ function paletteCommands(query) {
     { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: prefs.minAccuracy === value ? 'current' : '', on: prefs.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
     ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? formatSpeed(value) : 'off'}`, keywords: 'min wpm cpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
-    ...[...['system', ...THEMES].map((theme) => [theme, theme]), ...readCustomThemes(prefs.customThemes).map((theme) => [theme.id, theme.name])].map(([theme, name]) => ({ group: 'display', label: `theme · ${name}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => chooseTheme(theme) })),
+    ...['system', 'dark', 'light'].map((mode) => ({ group: 'display', label: `theme · ${mode}`, keywords: 'colour color mode appearance', hint: themeMode() === mode ? 'current' : '', on: themeMode() === mode, run: () => setThemeMode(mode) })),
+    ...[['dark', DARK_THEMES], ['light', LIGHT_THEMES]].flatMap(([mode, themes]) => [
+      ...themes.map((theme) => [theme, theme]),
+      ...readCustomThemes(prefs.customThemes).filter((custom) => colorsMode(custom.colors) === mode).map((custom) => [custom.id, custom.name]),
+    ].map(([theme, name]) => ({ group: 'display', label: `${mode} theme · ${name}`, keywords: 'colour color appearance', hint: themeFor(mode) === theme ? 'current' : '', on: themeFor(mode) === theme, run: () => pickTheme(mode, theme) }))),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     // Named "this word" / "next word" so no mode reads like the palette's "current" hint.
     ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),

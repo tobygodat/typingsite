@@ -46,6 +46,7 @@ test('the editor previews live, notes low contrast at the token, and Escape puts
 
 test('a saved theme is another theme: it syncs, wears before app.js on reload, and can be deleted', async ({ page, browser, supabase }) => {
   supabase.addUser(EMAIL);
+  await page.emulateMedia({ colorScheme: 'light' });
   await openApp(page);
   await signInWithEmail(page, EMAIL);
   await openSettings(page, 'appearance');
@@ -53,10 +54,21 @@ test('a saved theme is another theme: it syncs, wears before app.js on reload, a
   await page.locator('#theme-name').fill('Plum');
   for (const [name, value] of [['ground', '#f3ecf6'], ['text', '#2b1d33'], ['muted', '#6a5a73'], ['accent', '#7b3fa0'], ['danger', '#b0302a']]) await hex(page, name).fill(value);
   await page.locator('#theme-save').click();
-  const plum = page.locator('#theme-select label:has-text("Plum") input');
+  // A light background makes it a light theme: system mode shows it while the system is light.
+  const plum = page.locator('#light-theme label:has-text("Plum") input');
   await expect(plum).toBeChecked();
+  await expect(page.locator('#theme-select input[value="system"]')).toBeChecked();
+  await expect(page.locator('#dark-theme label:has-text("Plum")')).toHaveCount(0);
   await expect(page.locator('#theme-edit')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('html')).toHaveAttribute('data-custom', '');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('html')).not.toHaveAttribute('data-custom', '');
+  await expect(page.locator('#theme-edit')).toBeHidden();
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('html')).toHaveAttribute('data-custom', '');
+  await expect.poll(() => supabase.profileFor(EMAIL)?.preferences?.lightTheme).toMatch(/^custom-/);
   await expect.poll(() => supabase.profileFor(EMAIL)?.preferences?.customThemes ?? '').toContain('"Plum"');
 
   // On reload the inline script alone wears it: app.js never runs here.
@@ -81,13 +93,15 @@ test('a saved theme is another theme: it syncs, wears before app.js on reload, a
   await page.locator('#theme-edit').click();
   await expect(page.locator('#theme-name')).toHaveValue('Plum');
   await page.locator('#theme-delete').click();
-  await expect(page.locator('#theme-select label:has-text("Plum")')).toHaveCount(0);
+  await expect(page.locator('#light-theme label:has-text("Plum")')).toHaveCount(0);
   await expect(page.locator('#theme-select input[value="system"]')).toBeChecked();
+  await expect(page.locator('#light-theme input[value="light"]')).toBeChecked();
   await expect(page.locator('html')).not.toHaveAttribute('data-custom', '');
 });
 
 test('generate fills the editor unsaved, and each failure is one line', async ({ page, supabase }) => {
   supabase.addUser(EMAIL);
+  await page.emulateMedia({ colorScheme: 'light' });
   await openApp(page);
   await signInWithEmail(page, EMAIL);
   await openSettings(page, 'appearance');
@@ -100,7 +114,7 @@ test('generate fills the editor unsaved, and each failure is one line', async ({
   await expect(page.locator('#theme-name')).toHaveValue('Rainy Tokyo');
   await expect(hex(page, 'accent')).toHaveValue('#ff5fa2');
   expect(await token(page, 'accent')).toBe('#ff5fa2');
-  await expect(page.locator('#theme-select label:has-text("Rainy Tokyo")')).toHaveCount(0);
+  await expect(page.locator('[data-custom-option]:has-text("Rainy Tokyo")')).toHaveCount(0);
   expect(supabase.profileFor(EMAIL)?.preferences?.customThemes ?? '').not.toContain('Rainy');
 
   for (const [status, body] of [
@@ -117,5 +131,13 @@ test('generate fills the editor unsaved, and each failure is one line', async ({
   // The draft from before the failures is still there to save.
   await expect(hex(page, 'accent')).toHaveValue('#ff5fa2');
   await page.locator('#theme-save').click();
-  await expect(page.locator('#theme-select label:has-text("Rainy Tokyo") input')).toBeChecked();
+  // A dark theme saved while the system is light becomes the dark pick, and waits for dark mode.
+  await expect(page.locator('#dark-theme label:has-text("Rainy Tokyo") input')).toBeChecked();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('html')).not.toHaveAttribute('data-custom', '');
+  await page.locator('#theme-select input[value="dark"]').check();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('html')).toHaveAttribute('data-custom', '');
+  expect(await token(page, 'accent')).toBe('#ff5fa2');
+  await expect(page.locator('#theme-edit')).toBeVisible();
 });

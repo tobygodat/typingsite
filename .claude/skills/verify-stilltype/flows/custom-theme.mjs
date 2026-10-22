@@ -1,8 +1,8 @@
 // Custom themes in settings → appearance → theme. Run with --signed-in for the whole flow (a guest stops
 // after the editor, since only an account keeps a theme past the tab and can generate one).
 // Shots: theme-row, editor, contrast-note, more-colours, saved, generated, generate-limit, reloaded.
-// Checks: live preview, Escape reverts and keeps settings open, save adds a radio and wears the theme over
-// dark or light, the pre-paint script wears it on reload without app.js, generate fills the editor unsaved.
+// Checks: live preview, Escape reverts and keeps settings open, save adds a radio to the dark or light theme row
+// by its background and wears it over that mode, the pre-paint script wears it on reload without app.js, generate fills the editor unsaved.
 const GENERATED = {
   name: 'Rainy Tokyo',
   mode: 'dark',
@@ -16,6 +16,7 @@ export default async ({ page, h, shot, check, note }) => {
   const token = (name) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(`--${n}`).trim(), name);
   const hex = (name) => page.locator(`#theme-hex-${name}`);
 
+  await page.emulateMedia({ colorScheme: 'light' });
   await h.openApp();
   const signedIn = (await page.locator('#account').getAttribute('data-state')) === 'member';
   await h.openSettings('appearance');
@@ -60,8 +61,8 @@ export default async ({ page, h, shot, check, note }) => {
   await h.settle();
   await shot('more-colours');
   await page.locator('#theme-save').click();
-  const plum = page.locator('#theme-select label:has-text("Plum") input');
-  check(await plum.isChecked(), 'the saved theme is a checked theme option');
+  const plum = page.locator('#light-theme label:has-text("Plum") input');
+  check(await plum.isChecked(), 'the saved theme is the checked light theme pick');
   check(await page.locator('#theme-edit').isVisible(), 'edit shows for a custom theme');
   check(await page.locator('html').getAttribute('data-custom') !== null, 'the custom colours are worn');
   await h.settle();
@@ -74,7 +75,7 @@ export default async ({ page, h, shot, check, note }) => {
   await page.waitForFunction(() => document.querySelector('#theme-name').value === 'Rainy Tokyo');
   check(await hex('accent').inputValue() === '#ff5fa2', 'generate fills the editor');
   check(await token('accent') === '#ff5fa2', 'and previews it');
-  check(await page.locator('#theme-select label:has-text("Rainy Tokyo")').count() === 0, 'nothing is saved until save');
+  check(await page.locator('[data-custom-option]:has-text("Rainy Tokyo")').count() === 0, 'nothing is saved until save');
   await h.settle();
   await shot('generated');
   await page.unroute('**/functions/v1/generate-theme');
@@ -84,7 +85,7 @@ export default async ({ page, h, shot, check, note }) => {
   note('limit line', await page.locator('#theme-generate-status').textContent());
   await shot('generate-limit');
   await page.locator('#theme-cancel').click();
-  check(await page.locator('#theme-select label:has-text("Plum") input').isChecked(), 'cancel keeps the saved theme');
+  check(await plum.isChecked(), 'cancel keeps the saved theme');
 
   // The pre-paint script alone (app.js blocked) wears the saved theme: no flash on load.
   await page.waitForTimeout(2000);

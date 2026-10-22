@@ -66,6 +66,9 @@ test('the list is stored as text, so older builds compare it by value', () => {
   assert.equal(Object.hasOwn(normalizeProfile({ version: 2, preferences: {} }).preferences, 'customThemes'), false);
   // A theme naming a custom theme the list lacks (deleted elsewhere) stays as chosen; it shows as system.
   assert.equal(preferencesInUse({ theme: 'custom-gone' }).theme, 'custom-gone');
+  // So do the dark and light picks; the app shows the mode's default while the list lacks one.
+  const picks = preferencesInUse({ darkTheme: 'custom-a', lightTheme: 'custom-b' });
+  assert.deepEqual([picks.darkTheme, picks.lightTheme], ['custom-a', 'custom-b']);
 });
 
 test('dark or light follows the background, and readability notes name the tokens under AA', () => {
@@ -109,4 +112,20 @@ test('the pre-paint script wears a saved custom theme before the first frame', (
   assert.deepEqual(prePaint({ preferences: { theme: 'nord', customThemes } }), { theme: 'nord', custom: false, style: {} });
   assert.deepEqual(prePaint({ preferences: { theme: 'custom-gone', customThemes }, light: true }), { theme: 'light', custom: false, style: {} });
   assert.deepEqual(prePaint({ preferences: { theme: 'custom-a', customThemes: '{oops' } }), { theme: 'dark', custom: false, style: {} });
+  assert.deepEqual(prePaint({ preferences: { theme: 'system', lightTheme: 'paper', customThemes: '{oops' }, light: true }), { theme: 'paper', custom: false, style: {} });
+});
+
+test('in system mode the pre-paint script wears a custom pick for the mode the system is in', () => {
+  const light = { ...DARK, ground: '#f4f1eb', text: '#1b1a19' };
+  const customThemes = normalizeCustomThemes([theme(), theme({ id: 'custom-b', colors: light })]);
+  const preferences = { theme: 'system', darkTheme: 'custom-a', lightTheme: 'custom-b', customThemes };
+  const dark = prePaint({ preferences });
+  assert.equal(dark.theme, 'dark');
+  assert.equal(dark.style['--ground'], DARK.ground);
+  const day = prePaint({ preferences, light: true });
+  assert.equal(day.theme, 'light');
+  assert.equal(day.style['--ground'], light.ground);
+  // A pick whose background is in the other mode, or that's gone, reads as the mode's default.
+  assert.deepEqual(prePaint({ preferences: { ...preferences, darkTheme: 'custom-b' } }), { theme: 'dark', custom: false, style: {} });
+  assert.deepEqual(prePaint({ preferences: { ...preferences, lightTheme: 'custom-gone' }, light: true }), { theme: 'light', custom: false, style: {} });
 });
