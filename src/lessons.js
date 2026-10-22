@@ -8,7 +8,7 @@
 import { wordList, wordListIds } from './words.js';
 import { CORPUS_VERSION, textId } from './typing.js';
 
-export const LESSON_VERSION = 'lessons-v1';
+const LESSON_VERSION = 'lessons-v1';
 // One completed run at or above both numbers unlocks the next lesson. Accuracy is the same rounded
 // input accuracy the app shows, so a run displayed as 95% passes.
 export const LESSON_ACCURACY = 95;

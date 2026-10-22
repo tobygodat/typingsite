@@ -20,7 +20,7 @@ const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
 const LIMIT_S = COMPOSE_LIMIT_MS / 1000;
 
-export const COMPOSE_NOTICES = {
+const COMPOSE_NOTICES = {
   paste: 'Paste is off. Type your answer.',
   edit: 'Only typed keys count, so cut, drop and undo are off.',
   lineDelete: 'Delete a letter or a word at a time.',
@@ -335,7 +335,6 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
       // Ended by leaving the screen: the result waits there, and focus stays where you went.
       if (end) finish('done', { focus: false });
     },
-    refreshAccount: renderPrivacy,
     isRunning: () => state === 'running',
     get promptId() { return promptId; },
   };

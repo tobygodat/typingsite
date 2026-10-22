@@ -3311,9 +3311,8 @@ function renderHistory() {
   $('history-list').hidden = !loops.length;
   $('history-empty').hidden = Boolean(loops.length);
   const template = $('history-row-template');
-  const rows = loops.map((loop, index) => {
+  const rows = loops.map((loop) => {
     const row = template.content.firstElementChild.cloneNode(true);
-    row.style.setProperty('--i', String(index));
     row.querySelector('.history-date').textContent = new Date(loop.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     row.querySelector('.history-target').textContent = loop.drillCompleted
       ? loop.target ? `“${loop.target}” drill and retest` : 'General drill and retest'

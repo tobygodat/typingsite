@@ -41,7 +41,7 @@ export const comparableKind = (kind) => !NON_COMPARABLE_KINDS.has(kind);
 // Run kinds that measure typing on ordinary text at the run's own conditions: practice tests, retests and daily
 // runs. Only these can be evidence (see evidenceRun). Narrower than comparableKind, which only splits retention
 // budgets and so includes drills: their synthetic, target-heavy text is never measured.
-export const MEASURED_KINDS = new Set(['test', 'retest', 'daily']);
+const MEASURED_KINDS = new Set(['test', 'retest', 'daily']);
 export const measuredKind = (kind) => MEASURED_KINDS.has(kind);
 
 export function runRecord(attempt, at = attempt.at || null) {
@@ -155,7 +155,7 @@ export function filterRuns(runs, key, { from = null, to = null } = {}) {
   });
 }
 
-export function median(values) {
+function median(values) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -346,7 +346,7 @@ export function practiceStats(byDay, runs, days, goal = 0) {
   };
 }
 
-export const STANDARD_RECENT_RUNS = 10;
+const STANDARD_RECENT_RUNS = 10;
 export const STANDARD_MIN_RUNS = 3;
 
 // The standard score headline: the best at one standard key, plus the median wpm of the most recent
@@ -518,7 +518,7 @@ export function practiceLevel(minutes, goal = 0) {
 // run order, since older summaries can lack a date).
 // One word across runs: lower case, without punctuation before or after it (inner marks, as in "9:30"
 // or "don't", stay). A token that is all punctuation keeps itself.
-export const missedWordKey = (word) => word.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '') || word;
+const missedWordKey = (word) => word.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '') || word;
 
 export function recurringMissedWords(runs, limit = 8) {
   const recent = runs.filter(missedWordsRun).slice(-MAX_PATTERN_RUNS);

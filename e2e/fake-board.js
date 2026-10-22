@@ -30,7 +30,7 @@ const entry = (periods, key) => (periods && typeof periods === 'object' && !Arra
 
 // As race_private.board_numbers: nothing unless the summary is stamped with the row's own updated_at,
 // then the daily keyed by the service's today and the practice keyed by its week, each checked on its own.
-export function boardNumbers(board, updatedAt, today, week) {
+function boardNumbers(board, updatedAt, today, week) {
   if (!board || typeof board !== 'object' || typeof board.at !== 'string') return null;
   const at = Date.parse(board.at);
   if (Number.isNaN(at) || at !== Date.parse(updatedAt)) return null;
