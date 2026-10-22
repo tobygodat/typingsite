@@ -131,6 +131,38 @@ test('a member’s progress and settings survive reload and follow the account',
   await expect(page.locator('.history-row')).toHaveCount(1);
 });
 
+test('a member’s saved theme becomes its mode’s pick, and the picks paint before the app runs', async ({ page, supabase }) => {
+  const ada = supabase.addUser('ada@stilltype.test');
+  // Saved by a build from before the dark and light picks.
+  supabase.profiles.set(ada.id, { data: { version: 2, profileId: 'ada', preferences: { theme: 'nord' } } });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
+  await openSettings(page);
+  for (const [id, value] of [['theme-select', 'dark'], ['dark-theme', 'nord'], ['light-theme', 'light']]) {
+    await expect(page.locator(`#${id} input:checked`)).toHaveValue(value);
+  }
+  await chooseSetting(page, 'theme-select', 'system');
+  await chooseSetting(page, 'light-theme', 'soft');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'soft');
+  await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.preferences).toMatchObject({ theme: 'system', darkTheme: 'nord', lightTheme: 'soft' });
+
+  // Every theme the page shows from its first paint, the inline script's included.
+  await page.addInitScript(() => {
+    window.themesShown = [];
+    new MutationObserver(() => window.themesShown.push(document.documentElement.dataset.theme))
+      .observe(document, { subtree: true, attributes: true, attributeFilter: ['data-theme'] });
+  });
+  for (const [scheme, theme] of [['light', 'soft'], ['dark', 'nord']]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.reload();
+    await expect(account(page)).toHaveAttribute('data-sync', 'synced');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    expect(new Set(await page.evaluate(() => window.themesShown))).toEqual(new Set([theme]));
+  }
+});
+
 test('the pre-accounts profile moves into the first empty account', async ({ page, supabase }) => {
   supabase.addUser('ada@stilltype.test');
   const legacy = {
