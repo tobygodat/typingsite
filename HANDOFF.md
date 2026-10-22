@@ -34,7 +34,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - Inbox and toast for invitations and challenges.
 - Settings dialog, ⌘K / Ctrl-K palette, Monkeytype import.
 - Rules: five correction policies, strict space, quick end, minimums, repeat quotes, pace caret.
-- Display: ten themes, text size, word highlight, one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
+- Display: ten themes, text size, typing and app fonts, word highlight, one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
 - Accounts: email or Google, sync, clear history with Undo, account deletion.
 - Offline shell, What's new, anonymous feature suggestions.
 
@@ -58,6 +58,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - `motion.js`: caret, line scroll, pace and ghost carets.
 - `tape.js`: one-line tape geometry.
 - `word-highlight.js`: word highlight.
+- `fonts.js`: typing and app font choices; `index.html` applies an account's before first paint.
 - `units.js`: wpm and cpm display.
 - `layouts.js`: layout legends, finger map.
 - `sound.js`: typing sounds.
@@ -94,6 +95,7 @@ Also `sw.js` (offline shell), `docs/` (specs, `online-races.md`, verification re
 - A slow reply never acts over what the person did since (`raceContext`).
 - Layouts are labels; people remap in the OS.
 - `sw.js` stays network-first: cache-first ran new HTML against old JS.
+- Only Literata and Geist Mono load by default: other fonts load when picked and are never precached (`tests/sw.test.js`). Carets stand on the typing font's measured baseline (`--typing-baseline`), not on Literata's metrics.
 
 ## Remaining work and known issues
 

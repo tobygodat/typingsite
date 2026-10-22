@@ -11,13 +11,17 @@
   <meta name="description" content="Focused typing practice that finds weak patterns, drills them, and measures the change on fresh text.">
   <title>Stilltype — focused typing practice</title>
   <script>
-    // Resolve the theme before first paint so there is no flash. Guests always follow the system.
+    // Resolve the theme and fonts before first paint so there is no flash. Guests always follow the system.
     try {
       const user = JSON.parse(localStorage.getItem('stilltype-session-v1'))?.user?.id;
-      const saved = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences?.theme : null;
+      const preferences = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences : null;
+      const saved = preferences?.theme;
       const themes = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
       const theme = themes.includes(saved) ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
       document.documentElement.dataset.theme = theme;
+      // The typing and app fonts too (src/fonts.js), so the passage never reflows from Literata.
+      if (['literata', 'source-serif', 'inter', 'jetbrains-mono', 'ibm-plex-mono', 'roboto-mono', 'fira-code'].includes(preferences?.typingFont)) document.documentElement.dataset.typingFont = preferences.typingFont;
+      if (['literata', 'source-serif', 'inter'].includes(preferences?.appFont)) document.documentElement.dataset.appFont = preferences.appFont;
     } catch {}
   </script>
   <link rel="stylesheet" href="/src/styles.css">
@@ -994,6 +998,26 @@
             <fieldset class="setting-options" id="tape-toggle" aria-labelledby="tape-toggle-label">
               <label class="setting-option"><input type="radio" name="tape-toggle" value="false" checked><span>off</span></label>
               <label class="setting-option"><input type="radio" name="tape-toggle" value="true"><span>on</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="typing-font-label">typing font</strong></div>
+            <fieldset class="setting-options" id="typing-font" aria-labelledby="typing-font-label">
+              <label class="setting-option"><input type="radio" name="typing-font" value="literata" checked><span>literata</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="source-serif"><span>source serif</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="inter"><span>inter</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="jetbrains-mono"><span>jetbrains mono</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="ibm-plex-mono"><span>ibm plex mono</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="roboto-mono"><span>roboto mono</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="fira-code"><span>fira code</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="app-font-label">app font</strong></div>
+            <fieldset class="setting-options" id="app-font" aria-labelledby="app-font-label">
+              <label class="setting-option"><input type="radio" name="app-font" value="literata" checked><span>literata</span></label>
+              <label class="setting-option"><input type="radio" name="app-font" value="source-serif"><span>source serif</span></label>
+              <label class="setting-option"><input type="radio" name="app-font" value="inter"><span>inter</span></label>
             </fieldset>
           </div>
           <div class="settings-preview" aria-label="Passage preview">

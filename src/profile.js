@@ -10,6 +10,7 @@ import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { CODE_LANGUAGES, DEFAULT_CODE_LANGUAGE } from './code-snippets.js';
 import { DEFAULT_WORD_HIGHLIGHT, normalizeWordHighlight } from './word-highlight.js';
 import { DEFAULT_BOOK, bookIds } from './books.js';
+import { APP_FONTS, DEFAULT_FONT, TYPING_FONTS, normalizeFont } from './fonts.js';
 import { DAILY_GOALS, retainTraces, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
 import { retainRunCounts } from './run-counts.js';
 import { normalizeLessonProgress } from './lessons.js';
@@ -37,6 +38,8 @@ export const defaultPreferences = {
   layout: DEFAULT_LAYOUT,
   fingerMap: false,
   fontSize: '28',
+  typingFont: DEFAULT_FONT,
+  appFont: DEFAULT_FONT,
   // Display only, like the text size: never a test condition.
   wordHighlight: DEFAULT_WORD_HIGHLIGHT,
   tape: false,
@@ -104,6 +107,8 @@ export function validPreferences(value) {
   if (!CODE_LANGUAGES.includes(value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
   if (!bookIds.includes(value.book)) value.book = DEFAULT_BOOK;
   value.wordHighlight = normalizeWordHighlight(value.wordHighlight);
+  value.typingFont = normalizeFont(value.typingFont, TYPING_FONTS);
+  value.appFont = normalizeFont(value.appFont, APP_FONTS);
   value.tape = value.tape === true;
   value.repeatQuotes = value.repeatQuotes === true;
   value.layout = normalizeLayout(value.layout);
