@@ -429,6 +429,49 @@
   --finger-band: rgba(236, 239, 244, 0.08);
 }
 
+/* A custom theme (src/custom-themes.js) sets its colours inline on :root, over dark or light. The surfaces
+   and tints follow the colours they come from, at dark's or light's shares, unless the theme sets them too. */
+:root[data-theme][data-custom] {
+  --outline: color-mix(in srgb, var(--muted) 77%, var(--ground));
+  --practice-level-1: color-mix(in srgb, var(--accent) 30%, transparent);
+  --practice-level-2: color-mix(in srgb, var(--accent) 55%, transparent);
+  --practice-level-3: color-mix(in srgb, var(--accent) 80%, transparent);
+}
+:root[data-theme="dark"][data-custom] {
+  --ground-2: color-mix(in srgb, var(--text) 3%, var(--ground));
+  --raised: color-mix(in srgb, var(--text) 6%, var(--ground));
+  --card-top: color-mix(in srgb, var(--text) 7%, var(--ground));
+  --card-bottom: color-mix(in srgb, var(--text) 1%, var(--ground));
+  --selection: color-mix(in srgb, var(--text) 17%, var(--ground));
+  --raised-2: color-mix(in srgb, var(--text) 8.5%, transparent);
+  --placeholder: color-mix(in srgb, var(--muted) 80%, transparent);
+  --hairline: color-mix(in srgb, var(--text) 7.5%, transparent);
+  --hairline-strong: color-mix(in srgb, var(--text) 15%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 13%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 16%, transparent);
+  --heat-1: color-mix(in srgb, var(--danger) 18%, transparent);
+  --heat-2: color-mix(in srgb, var(--danger) 36%, transparent);
+  --heat-3: color-mix(in srgb, var(--danger) 56%, transparent);
+  --finger-band: color-mix(in srgb, var(--text) 10%, transparent);
+}
+:root[data-theme="light"][data-custom] {
+  --ground-2: color-mix(in srgb, var(--text) 3%, var(--ground));
+  --raised: color-mix(in srgb, #ffffff 60%, var(--ground));
+  --card-top: color-mix(in srgb, #ffffff 80%, var(--ground));
+  --card-bottom: color-mix(in srgb, var(--text) 3%, var(--ground));
+  --selection: color-mix(in srgb, var(--text) 8%, var(--ground));
+  --raised-2: color-mix(in srgb, var(--text) 7%, transparent);
+  --placeholder: color-mix(in srgb, var(--muted) 92%, transparent);
+  --hairline: color-mix(in srgb, var(--text) 10%, transparent);
+  --hairline-strong: color-mix(in srgb, var(--text) 20%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 11%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 12%, transparent);
+  --heat-1: color-mix(in srgb, var(--danger) 8%, transparent);
+  --heat-2: color-mix(in srgb, var(--danger) 24%, transparent);
+  --heat-3: color-mix(in srgb, var(--danger) 44%, transparent);
+  --finger-band: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root { --motion-scale: 0; }
   *, *::before, *::after {
@@ -728,6 +771,29 @@ body[data-font-size="36"] #settings-preview-passage { font-size: var(--settings-
 body[data-word-highlight="current"] #settings-preview-passage span:nth-child(3),
 body[data-word-highlight="next"] #settings-preview-passage span:nth-child(4) { background: var(--word-highlight); border-radius: var(--radius-sm); }
 body[data-tape-preference="true"] #settings-preview-passage { white-space: nowrap; overflow: hidden; }
+/* Custom themes: new and edit sit after the theme options and read like them. */
+.setting-action { display: flex; align-items: center; justify-content: center; min-width: var(--control); min-height: var(--control); padding-inline: var(--space-4); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: var(--text-small)/var(--settings-option-line) var(--font-serif); cursor: pointer; }
+.setting-action:hover:not(:disabled) { color: var(--text); background: var(--raised-2); }
+.setting-action:focus-visible { outline: var(--settings-selection-line) solid var(--text); outline-offset: var(--space-1); }
+.setting-action[aria-expanded="true"] { color: var(--accent); }
+.setting-action:disabled { cursor: default; opacity: var(--disabled-opacity); }
+.theme-editor { display: grid; gap: var(--space-3); padding-block: var(--space-4); border-bottom: 1px solid var(--hairline); }
+.theme-vibe { display: flex; gap: var(--space-2); }
+.theme-vibe .input { flex: 1; min-width: 0; }
+.theme-status { margin: 0; color: var(--danger); font-size: var(--text-label); }
+.theme-status:empty { display: none; }
+.theme-colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--settings-label), 1fr)); gap: var(--space-1) var(--space-6); }
+.theme-color { display: grid; grid-template-columns: minmax(0, 1fr) var(--control) 10ch; align-items: center; gap: var(--space-2); }
+.theme-color label { color: var(--muted); font-size: var(--text-small); }
+.theme-color input[type="color"] { width: var(--control); height: var(--control); padding: var(--space-1); border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: transparent; cursor: pointer; }
+.theme-hex { padding-inline: var(--space-2); font: var(--text-mono)/1 var(--font-mono); }
+.theme-issue { grid-column: 1 / -1; color: var(--danger); font: var(--text-fine)/1.4 var(--font-mono); }
+.theme-issue:empty { display: none; }
+.theme-more summary { line-height: var(--control); color: var(--muted); font-size: var(--text-small); cursor: pointer; }
+.theme-more summary:hover { color: var(--text); }
+.theme-more[open] summary { margin-bottom: var(--space-2); }
+.theme-editor-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+#theme-delete { margin-right: auto; }
 .settings-footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--space-6); border-top: 1px solid var(--hairline-strong); padding: var(--space-4) var(--space-8); }
 .settings-footer p { font-size: var(--text-label); line-height: 1.7; color: var(--muted); margin: 0; }
 .settings-footer .btn { flex: none; padding-inline: var(--space-6); font-size: var(--text-small); }

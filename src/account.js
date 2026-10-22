@@ -375,6 +375,34 @@ async function deleteBefore(session, signal) {
   throw new AuthError(gone === false ? DELETE_COPY.unavailable : DELETE_COPY.offline);
 }
 
+// A theme from a short vibe: the generate-theme Edge Function (supabase/functions/generate-theme) asks
+// Claude for one and returns { name, mode, colors } unsaved. Throws an AuthError with one short line.
+export const GENERATE_THEME_PATH = '/functions/v1/generate-theme';
+export const THEME_COPY = {
+  session: 'Sign in again to generate a theme.',
+  failed: 'Couldn’t generate a theme. Try again.',
+  offline: 'Can’t reach the theme service. Try again.',
+};
+const THEME_ERRORS = ['vibe', 'limit', 'refused', 'timeout', 'failed', 'config', 'session'];
+export async function generateTheme(session, vibe) {
+  let current;
+  try {
+    current = await freshSession(session);
+  } catch {
+    throw new AuthError(THEME_COPY.session);
+  }
+  if (!current) throw new AuthError(THEME_COPY.session);
+  try {
+    const data = await request(GENERATE_THEME_PATH, { method: 'POST', token: current.access_token, body: { vibe } });
+    if (!data?.theme) throw new AuthError(THEME_COPY.failed);
+    return data.theme;
+  } catch (error) {
+    // The function's own errors are already one short line; a gateway's or no reply aren't.
+    if (THEME_ERRORS.includes(error.code)) throw error;
+    throw new AuthError(error.status === 401 ? THEME_COPY.session : error.status ? THEME_COPY.failed : THEME_COPY.offline);
+  }
+}
+
 // After a confirmed deletion: the session and this account's device cache go, nothing is sent. The
 // signed-out marker goes first, so other tabs of the account stop saving for it at the first change they
 // hear (a session removed without one reads as expired, and those tabs would keep caching), and last, so

@@ -57,6 +57,8 @@ import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, KEY_OUTCOME, SOUND_LABELS, SO
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
 import { createSettingsView, disableSetting, onSetting, selectSetting } from './settings.js';
+import { createThemeEditor, showThemeOptions, wearColors } from './theme-editor.js';
+import { normalizeCustomThemes, readCustomThemes } from './custom-themes.js';
 import { normalizeKeybindings, matchesBinding, bindingLabel, ariaShortcuts, createKeybindingEditor } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
@@ -190,6 +192,7 @@ const ghostOn = () => prefs.paceCaret !== 'off';
 let palette = null;
 let keybindingEditor = null;
 let settingsView = null;
+let themeEditor = null;
 let onlineRace = null;
 let inbox = null;
 let friendsBoard = null;
@@ -327,7 +330,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
+const DISPLAY_PREFERENCES = ['theme', 'customThemes', 'fontSize', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -616,12 +619,27 @@ function resolvedTheme() {
   return prefersLight.matches ? 'light' : 'dark';
 }
 
-function applyTheme() {
-  const theme = resolvedTheme();
-  document.documentElement.dataset.theme = theme;
-  const ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
+// A saved custom theme (src/custom-themes.js) is worn over dark or light; null wears the built-in one.
+function wearTheme(colors) {
+  const root = document.documentElement;
+  root.dataset.theme = wearColors(root, colors) ?? resolvedTheme();
+  const ground = getComputedStyle(root).getPropertyValue('--ground').trim();
   for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = ground;
+}
+
+function applyTheme() {
+  // While the editor is open its draft stays on show.
+  const themes = readCustomThemes(prefs.customThemes);
+  wearTheme(themeEditor?.draftColors() ?? themes.find((theme) => theme.id === prefs.theme)?.colors);
+  showThemeOptions(themes, prefs.theme);
   selectSetting('theme-select', prefs.theme);
+}
+
+function chooseTheme(theme) {
+  themeEditor?.close({ focus: false });
+  prefs.theme = theme;
+  applyTheme();
+  saveChoice('theme');
 }
 
 // Slides a group's pill under its selected control; used by the dock and the segmented controls.
@@ -5269,7 +5287,17 @@ function bindEvents() {
   onSetting('quick-end-toggle', (value) => setInputRule('quickEnd', value === 'true'));
   onSetting('min-accuracy', (value) => setMinimum('minAccuracy', Number(value)));
   onSetting('min-wpm', (value) => setMinimum('minWpm', Number(value)));
-  onSetting('theme-select', (value) => { prefs.theme = value; applyTheme(); saveChoice('theme'); });
+  onSetting('theme-select', chooseTheme);
+  themeEditor = createThemeEditor({
+    themes: () => readCustomThemes(prefs.customThemes),
+    currentTheme: () => prefs.theme,
+    preview: (colors) => (colors ? wearTheme(colors) : applyTheme()),
+    save: (customThemes, theme) => { prefs.customThemes = normalizeCustomThemes(customThemes); prefs.theme = theme; applyTheme(); saveChoice('customThemes', 'theme'); },
+    signedIn: () => Boolean(session) && !signedOutElsewhere,
+    generate: (vibe) => account.generateTheme(session, vibe),
+    signIn: () => { settingsView.close(); openAccountDialog('signin'); },
+  });
+  $('settings-dialog').addEventListener('close', () => themeEditor.close({ focus: false }));
   prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   onSetting('pace-select', (value) => setPaceCaret(value));
   $('pace-wpm').addEventListener('change', (event) => {
@@ -5888,7 +5916,7 @@ function paletteCommands(query) {
     { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: prefs.minAccuracy === value ? 'current' : '', on: prefs.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
     ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? formatSpeed(value) : 'off'}`, keywords: 'min wpm cpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
-    ...['system', ...THEMES].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
+    ...[...['system', ...THEMES].map((theme) => [theme, theme]), ...readCustomThemes(prefs.customThemes).map((theme) => [theme.id, theme.name])].map(([theme, name]) => ({ group: 'display', label: `theme · ${name}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => chooseTheme(theme) })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     // Named "this word" / "next word" so no mode reads like the palette's "current" hint.
     ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),

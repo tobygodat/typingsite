@@ -3,7 +3,8 @@
 The settings control in the dock opens a centred, opaque modal dialog. A sidebar lists the categories
 (appearance, practice, keyboard, sound, shortcuts, then "Import Monkeytype settings"); each category is a
 column of preference rows whose options are native radio groups styled as inline selectors. Appearance holds
-theme (system, dark, light, paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord), text size, word highlight, one-line tape and a sample passage. Changes apply as
+theme (system, dark, light, paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord, then up to five saved
+custom themes by name, then "new" and, while a custom theme is in use, "edit"), text size, word highlight, one-line tape and a sample passage. Changes apply as
 they are chosen; Done, the close button and Escape all close it. The theme follows the system until the
 person picks a theme; a guest's pick lasts for the tab, a signed-in pick persists.
 
@@ -18,6 +19,17 @@ person picks a theme; a guest's pick lasts for the tab, a signed-in pick persist
 - `theme-system` follows the system's light or dark preference while `#theme-select input[value="system"]`
   is checked.
 - `theme-persist` keeps a signed-in person's pick across reloads; a guest falls back to the system on reload.
+- `theme-custom` "new" (`#theme-new`) or "edit" (`#theme-edit`) opens the editor (`#theme-editor`) under the
+  theme row: a name (`#theme-name`), a vibe field (`#theme-vibe`) with `#theme-generate`, five colours up front
+  (background, text, muted text, accent, mistakes) and the rest behind "more colours" (`.theme-more`), each a
+  colour input `#theme-pick-<token>` plus a hex field `#theme-hex-<token>`. Edits preview on the whole page
+  (`html[data-custom]`, colours inline on `:root`, `data-theme` dark or light by the background). A derived
+  token's hex field is empty with what it derives to as placeholder until overridden. Text, muted text, accent
+  and mistakes under AA show `#theme-issue-<token>` ("2.1:1, needs 4.5:1"). Save adds a radio named after the
+  theme; cancel, Escape inside the editor, picking another theme or closing settings put the saved theme back.
+- `theme-generate` (signed in) sends the vibe to the generate-theme Edge Function and opens the answer in the
+  editor unsaved; a failure is one line in `#theme-generate-status`. A guest's vibe field is disabled and the
+  button reads "sign in".
 - `settings-close` closes the dialog with Escape, `#settings-close` or `#settings-done` and returns focus to
   the opener (the dock button when opened from there).
 
@@ -49,6 +61,11 @@ Preconditions:
   that category; pass any of appearance, practice, keyboard, sound, shortcuts.
 - **System theme.** Run `$V shot idle --scheme light` and `$V shot idle --scheme dark`. Each `run.json` step
   records `theme` as the scheme passed.
+- **Custom themes.** Run `$V drive .claude/skills/verify-stilltype/flows/custom-theme.mjs --signed-in`. Shots:
+  `theme-row`, `editor`, `contrast-note`, `more-colours`, `saved`, `generated`, `generate-limit`, `reloaded`.
+  It checks the live preview, Escape reverting with settings left open, save, the generate reply (routed, so
+  nothing reaches Anthropic) and its limit line, and that the inline script alone (app.js stubbed out) wears
+  the saved theme on reload. Without `--signed-in` it stops after Escape and checks the guest's disabled vibe.
 - **Signed-in persistence.** Run `$V shot settings --signed-in`. The flow signs in first (shot `signed-in`),
   then switches the theme. To prove persistence, write a flow that does the same and then `page.reload()`,
   and check `html[data-theme]` is still the picked theme.
@@ -64,5 +81,6 @@ Preconditions:
 - The modal makes the page inert: close the dialog (Escape) before driving anything behind it. Escape first
   cancels a shortcut recording in the shortcuts category, and only a second Escape closes the dialog.
 - During a run the dock fades and ignores the pointer; `h.openSettings()` nudges the mouse first.
+- The fake Supabase has no generate-theme function: route `**/functions/v1/generate-theme` in the flow.
 - Contrast has its own checks: `tests/contrast.test.js` (every theme's token pairs), `e2e/passage-contrast.spec.js`
   (every theme's passage letters and caret as painted) and `e2e/light-contrast.spec.js`. A screenshot isn't a contrast check.

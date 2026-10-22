@@ -14,6 +14,7 @@ import { DAILY_GOALS, retainTraces, retainHistory, validPracticeDays, runRecord,
 import { retainRunCounts } from './run-counts.js';
 import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
+import { normalizeCustomThemes } from './custom-themes.js';
 
 export const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -53,6 +54,8 @@ export const defaultPreferences = {
   minWpm: 0,
   keybindings: normalizeKeybindings(),
   theme: 'system',
+  // Saved custom themes (src/custom-themes.js); `theme` names one by its id.
+  customThemes: '[]',
   dailyGoal: 0,
   customText: '',
   customOrder: 'as-written',
@@ -114,6 +117,7 @@ export function validPreferences(value) {
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
   if (!PACE_MODES.includes(value.paceCaret)) value.paceCaret = 'off';
   value.paceWpm = clampPace(value.paceWpm);
+  value.customThemes = normalizeCustomThemes(value.customThemes);
   // Whether the friends board shares is kept by the board alone (src/friends-board.js), never in the
   // synced profile, so a copy saved by an earlier build is dropped rather than synced back.
   delete value.shareBoard;
