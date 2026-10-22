@@ -11,17 +11,37 @@
   <meta name="description" content="Focused typing practice that finds weak patterns, drills them, and measures the change on fresh text.">
   <title>Stilltype — focused typing practice</title>
   <script>
-    // Resolve the theme and fonts before first paint so there is no flash. Guests always follow the system.
+    // Resolve the theme and fonts before first paint so there is no flash. Guests always follow the system. A
+    // custom theme (src/custom-themes.js) sets its colours on :root over dark or light, by its background's luminance.
     try {
+      const root = document.documentElement;
       const user = JSON.parse(localStorage.getItem('stilltype-session-v1'))?.user?.id;
       const preferences = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences : null;
-      const saved = preferences?.theme;
-      const themes = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
-      const theme = themes.includes(saved) ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-      document.documentElement.dataset.theme = theme;
+      const dark = ['dark', 'terminal', 'midnight', 'nord'];
+      const light = ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'];
+      let customs = [];
+      try { customs = JSON.parse(preferences.customThemes); } catch {}
+      const custom = (id) => (Array.isArray(customs) ? customs.find((entry) => entry?.id === id && typeof entry.colors?.ground === 'string') : null);
+      const modeOf = (id) => {
+        if (dark.includes(id) || light.includes(id)) return dark.includes(id) ? 'dark' : 'light';
+        const ground = custom(id)?.colors.ground;
+        if (!ground) return null;
+        const [r, g, b] = [1, 3, 5].map((at) => parseInt(ground.slice(at, at + 2), 16) / 255).map((s) => (s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4));
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179 ? 'light' : 'dark';
+      };
+      const system = matchMedia('(prefers-color-scheme: light)').matches
+        ? (modeOf(preferences?.lightTheme) === 'light' ? preferences.lightTheme : 'light')
+        : (modeOf(preferences?.darkTheme) === 'dark' ? preferences.darkTheme : 'dark');
+      const theme = modeOf(preferences?.theme) ? preferences.theme : system;
+      const entry = custom(theme);
+      root.dataset.theme = entry ? modeOf(theme) : theme;
+      if (entry) {
+        for (const [name, value] of Object.entries(entry.colors)) if (/^[a-z0-9-]+$/.test(name) && /^#[0-9a-f]{6}$/i.test(value)) root.style.setProperty('--' + name, value);
+        root.dataset.custom = '';
+      }
       // The typing and app fonts too (src/fonts.js), so the passage never reflows from Literata.
-      if (['literata', 'source-serif', 'inter', 'jetbrains-mono', 'ibm-plex-mono', 'roboto-mono', 'fira-code'].includes(preferences?.typingFont)) document.documentElement.dataset.typingFont = preferences.typingFont;
-      if (['literata', 'source-serif', 'inter'].includes(preferences?.appFont)) document.documentElement.dataset.appFont = preferences.appFont;
+      if (['literata', 'source-serif', 'inter', 'jetbrains-mono', 'ibm-plex-mono', 'roboto-mono', 'fira-code'].includes(preferences?.typingFont)) root.dataset.typingFont = preferences.typingFont;
+      if (['literata', 'source-serif', 'inter'].includes(preferences?.appFont)) root.dataset.appFont = preferences.appFont;
     } catch {}
   </script>
   <link rel="stylesheet" href="/src/styles.css">
@@ -967,16 +987,48 @@
               <label class="setting-option"><input type="radio" name="theme-select" value="system" checked><span>system</span></label>
               <label class="setting-option"><input type="radio" name="theme-select" value="dark"><span>dark</span></label>
               <label class="setting-option"><input type="radio" name="theme-select" value="light"><span>light</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="paper"><span>paper</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="shadcn"><span>shadcn</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="terminal"><span>terminal</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="soft"><span>soft</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="midnight"><span>midnight</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="swiss"><span>swiss</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="e-ink"><span>e-ink</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="nord"><span>nord</span></label>
+              <button class="setting-action" id="theme-new" type="button" aria-controls="theme-editor" aria-expanded="false">new</button>
+              <button class="setting-action" id="theme-edit" type="button" aria-controls="theme-editor" aria-expanded="false" hidden>edit</button>
             </fieldset>
           </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="dark-theme-label">dark theme</strong></div>
+            <fieldset class="setting-options" id="dark-theme" aria-labelledby="dark-theme-label">
+              <label class="setting-option"><input type="radio" name="dark-theme" value="dark" checked><span>dark</span></label>
+              <label class="setting-option"><input type="radio" name="dark-theme" value="terminal"><span>terminal</span></label>
+              <label class="setting-option"><input type="radio" name="dark-theme" value="midnight"><span>midnight</span></label>
+              <label class="setting-option"><input type="radio" name="dark-theme" value="nord"><span>nord</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="light-theme-label">light theme</strong></div>
+            <fieldset class="setting-options" id="light-theme" aria-labelledby="light-theme-label">
+              <label class="setting-option"><input type="radio" name="light-theme" value="light" checked><span>light</span></label>
+              <label class="setting-option"><input type="radio" name="light-theme" value="paper"><span>paper</span></label>
+              <label class="setting-option"><input type="radio" name="light-theme" value="shadcn"><span>shadcn</span></label>
+              <label class="setting-option"><input type="radio" name="light-theme" value="soft"><span>soft</span></label>
+              <label class="setting-option"><input type="radio" name="light-theme" value="swiss"><span>swiss</span></label>
+              <label class="setting-option"><input type="radio" name="light-theme" value="e-ink"><span>e-ink</span></label>
+            </fieldset>
+          </div>
+          <form id="theme-editor" class="theme-editor" aria-label="Custom theme" novalidate hidden>
+            <input class="input" id="theme-name" type="text" maxlength="40" autocomplete="off" aria-label="Theme name">
+            <div class="theme-vibe">
+              <input class="input" id="theme-vibe" type="text" maxlength="120" autocomplete="off" placeholder="describe a vibe" aria-label="Describe a vibe">
+              <button class="btn btn-ghost" id="theme-generate" type="button">generate</button>
+            </div>
+            <p id="theme-generate-status" class="theme-status" role="status" aria-live="polite"></p>
+            <div id="theme-key-colors" class="theme-colors"></div>
+            <details class="theme-more">
+              <summary>more colours</summary>
+              <div id="theme-more-colors" class="theme-colors"></div>
+            </details>
+            <div class="theme-editor-actions">
+              <button class="btn btn-ghost" id="theme-delete" type="button">delete</button>
+              <button class="btn btn-ghost" id="theme-cancel" type="button">cancel</button>
+              <button class="btn btn-primary" id="theme-save" type="submit">save</button>
+            </div>
+          </form>
           <div class="preference-row">
             <div class="preference-copy"><strong id="font-size-label">text size</strong></div>
             <fieldset class="setting-options" id="font-size" aria-labelledby="font-size-label">
