@@ -214,7 +214,7 @@ Motion is fluid. It is welcome on the typing surface during a run as well as in 
 Density is low and deliberate. The practice screen centres the passage with the numbers above it and a small set of controls. Results, progress and challenge are single editorial columns separated by rules. The name "Stilltype" is a working title, so the wordmark stays a cheap italic word plus a green full stop.
 
 **Key Characteristics:**
-- Literata for everything readable, including the passage and every numeral; Geist Mono only for small measurement labels, conditions and keys.
+- Literata for everything readable, including the passage and every numeral; Geist Mono only for small measurement labels, conditions and keys. A person may pick another typing font (the passage) and app font (everything else Literata sets) in settings; Geist Mono stays.
 - Dark (default) and light theme sets, plus eight more a person can pick (paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord); four are dark and six light, and the theme follows the system, between a dark and a light pick, until the user sets a mode.
 - One green accent; coral for mistyped letters and regressions; amber for interrupted and mixed results.
 - Rules and space instead of boxes; opaque raised surfaces with a single soft float shadow; no glass, no glow.
@@ -273,6 +273,7 @@ Where a theme's accent is not green (soft, midnight, swiss, e-ink) it still mean
 **Display Font:** Literata (self-hosted variable woff2, weights 300–700, roman and italic, optical sizing on), falling back to Iowan Old Style, Palatino and Georgia.
 **Body Font:** Literata, the same stack.
 **Label/Mono Font:** Geist Mono (self-hosted, 400 and 500), falling back to ui-monospace.
+**Chosen fonts:** settings → appearance offer a typing font (`--font-typing`: the passage, compose field, replay and settings sample; Source Serif 4, Inter, JetBrains Mono, IBM Plex Mono, Roboto Mono or Fira Code) and an app font (`--font-app`: Source Serif 4 or Inter) in place of Literata. Sizes, weights and the rules below still apply; Geist Mono never changes.
 
 **Character:** A book face used for everything a person reads, including large light numerals, beside a small mono voice that only ever measures. The serif makes the passage feel like prose; the mono makes conditions and keys feel like instrument readings.
 

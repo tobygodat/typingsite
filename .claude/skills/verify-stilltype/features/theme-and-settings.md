@@ -6,7 +6,8 @@ column of preference rows whose options are native radio groups styled as inline
 theme (system, dark, light, then "new" and, while a custom theme is on show, "edit"), dark theme (dark,
 terminal, midnight, nord, then the saved custom themes with a dark background by name), light theme (light,
 paper, shadcn, soft, swiss, e-ink, then the saved custom themes with a light background), text size, word
-highlight, one-line tape and a sample passage. Changes apply as they are chosen; Done, the close button and
+highlight, one-line tape, typing font (literata, source serif, inter, jetbrains mono, ibm plex mono, roboto
+mono, fira code), app font (literata, source serif, inter) and a sample passage set in the typing font. Changes apply as they are chosen; Done, the close button and
 Escape all close it. In system mode the page shows the dark theme pick or the light theme pick as the system
 changes; in dark or light mode it shows that mode's pick, and picking a theme from the other row switches to
 its mode. A guest's choices last for the tab, a signed-in person's persist.
@@ -22,6 +23,9 @@ its mode. A guest's choices last for the tab, a signed-in person's persist.
 - `theme-pick` checks a radio in `#dark-theme` (`dark`, `terminal`, `midnight`, `nord`) or `#light-theme`
   (`light`, `paper`, `shadcn`, `soft`, `swiss`, `e-ink`). Outside system mode the pick shows at once, in its
   own mode; in system mode it shows when the system is in that mode.
+- `font-pick` checks a radio in `#typing-font` or `#app-font`; `html[data-typing-font]` / `html[data-app-font]`
+  follow, and the font file is fetched then (nothing but Literata and Geist Mono loads by default). A signed-in
+  pick is applied before first paint by the inline script in `index.html`.
 - `theme-system` switches between the two picks as the system's light or dark preference changes, while
   `#theme-select input[value="system"]` is checked.
 - `theme-persist` keeps a signed-in person's mode and picks across reloads, painted by the inline script in
@@ -46,6 +50,7 @@ its mode. A guest's choices last for the tab, a signed-in person's persist.
 
 - Click "settings" in the dock (the sliders icon only, below 900 px and on phones).
 - Ctrl+K → `theme · system|dark|light`, or `dark theme · <name>` / `light theme · <name>` (see [Command palette](./command-palette.md)).
+- Ctrl+K → `typing font · <name>` or `app font · <name>`.
 - Change the operating system's appearance while the theme is "system".
 
 ## Driving it with verify.mjs
@@ -68,6 +73,11 @@ Preconditions:
   sets its mode and picks the theme in settings (shot `<theme>-settings`), checks `meta[name=theme-color]` follows `--ground`,
   then runs 10 words with one slip (shot `<theme>-mid-run`) and finishes (shot `<theme>-results`). Below
   761 px wide it shoots mid-run only.
+- **Fonts.** Run `$V drive .claude/skills/verify-stilltype/flows/fonts.mjs --delay 30`. For each typing font
+  (with a non-default app font), on three lines and on the tape, with the custom pace caret, it types past the
+  second line and measures from the rendered glyphs: caret bar on the current letter's left edge (±1px), the
+  bar's top and bottom against the font's baseline (Literata's place, ±1px), the letter in view and the pace caret
+  on a line of letters. Shots `<font>-lines` and `<font>-tape`; `run.json` notes every measurement.
 - **Phone.** `$V shot settings --width 390 --height 844 --mobile` (add `--scheme light` to switch towards
   dark). Below 760 px the category nav wraps across the top of the dialog.
 - **Other categories.** In a flow, `await h.openSettings('practice')` opens the dialog (if closed) and shows

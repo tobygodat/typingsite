@@ -7,7 +7,7 @@ import { MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, clampPace } from './profile.js';
 import { SOUND_LABELS } from './sound.js';
 import { SPEED_UNITS } from './units.js';
 
-export const MAX_IMPORT_LENGTH = 1_000_000;
+const MAX_IMPORT_LENGTH = 1_000_000;
 
 // Monkeytype themes whose background is light (relative luminance above 0.4), from its theme list.
 // Any other theme name is taken as dark, Monkeytype's default and the larger set.

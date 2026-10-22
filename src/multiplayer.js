@@ -155,12 +155,3 @@ export function recallRace() {
   } catch { return null; }
 }
 export function forgetRace() { try { sessionStorage.removeItem(RECONNECT_KEY); } catch {} }
-export function pollRace(session, credentials, onRoom, onError, interval = 750) {
-  let stopped = false; let timer;
-  const tick = async () => {
-    try { const room = await getRace(typeof session === 'function' ? session() : session, credentials); if (!stopped) onRoom(room); }
-    catch (error) { if (!stopped) onError?.(error); }
-    if (!stopped) timer = setTimeout(tick, interval);
-  };
-  tick(); return () => { stopped = true; clearTimeout(timer); };
-}

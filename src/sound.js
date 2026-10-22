@@ -62,7 +62,7 @@ function noiseBuffer(context) {
 
 // A short band-passed noise burst, like a key bottoming out. The band moves a little each time so a
 // run of keys doesn't sound machine-made.
-export function playClick(context, gain, noise) {
+function playClick(context, gain, noise) {
   const at = context.currentTime;
   const source = context.createBufferSource();
   source.buffer = noise;
@@ -81,7 +81,7 @@ export function playClick(context, gain, noise) {
 }
 
 // A soft, falling low tone: different enough from the click to hear without looking.
-export function playTick(context, gain) {
+function playTick(context, gain) {
   const at = context.currentTime;
   const tone = context.createOscillator();
   tone.type = 'triangle';

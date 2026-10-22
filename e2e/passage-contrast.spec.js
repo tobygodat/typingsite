@@ -15,8 +15,10 @@ const ratio = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x,
 
 // One letter of each state: what it paints with, every background behind it (outermost first) and the
 // opacity it inherits, whether it is visible and on screen, and anything opaque painted over it.
-const sample = (page) => page.evaluate(() => {
+const sample = (page) => page.evaluate(async () => {
   const display = document.querySelector('#text-display');
+  // A theme switch fades body's background in over --dur-medium; read the colours the passage settles on.
+  await Promise.all(document.getAnimations().filter((a) => a.effect.target.contains(display)).map((a) => a.finished));
   const read = (char) => {
     if (!char) return null;
     const style = getComputedStyle(char);

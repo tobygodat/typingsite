@@ -11,16 +11,16 @@
   <meta name="description" content="Focused typing practice that finds weak patterns, drills them, and measures the change on fresh text.">
   <title>Stilltype — focused typing practice</title>
   <script>
-    // Resolve the theme before first paint so there is no flash. Guests always follow the system. A custom
-    // theme (src/custom-themes.js) sets its colours on :root over dark or light, by its background's luminance.
+    // Resolve the theme and fonts before first paint so there is no flash. Guests always follow the system. A
+    // custom theme (src/custom-themes.js) sets its colours on :root over dark or light, by its background's luminance.
     try {
       const root = document.documentElement;
       const user = JSON.parse(localStorage.getItem('stilltype-session-v1'))?.user?.id;
-      const saved = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences : null;
+      const preferences = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences : null;
       const dark = ['dark', 'terminal', 'midnight', 'nord'];
       const light = ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'];
       let customs = [];
-      try { customs = JSON.parse(saved.customThemes); } catch {}
+      try { customs = JSON.parse(preferences.customThemes); } catch {}
       const custom = (id) => (Array.isArray(customs) ? customs.find((entry) => entry?.id === id && typeof entry.colors?.ground === 'string') : null);
       const modeOf = (id) => {
         if (dark.includes(id) || light.includes(id)) return dark.includes(id) ? 'dark' : 'light';
@@ -30,15 +30,18 @@
         return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179 ? 'light' : 'dark';
       };
       const system = matchMedia('(prefers-color-scheme: light)').matches
-        ? (modeOf(saved?.lightTheme) === 'light' ? saved.lightTheme : 'light')
-        : (modeOf(saved?.darkTheme) === 'dark' ? saved.darkTheme : 'dark');
-      const theme = modeOf(saved?.theme) ? saved.theme : system;
+        ? (modeOf(preferences?.lightTheme) === 'light' ? preferences.lightTheme : 'light')
+        : (modeOf(preferences?.darkTheme) === 'dark' ? preferences.darkTheme : 'dark');
+      const theme = modeOf(preferences?.theme) ? preferences.theme : system;
       const entry = custom(theme);
       root.dataset.theme = entry ? modeOf(theme) : theme;
       if (entry) {
         for (const [name, value] of Object.entries(entry.colors)) if (/^[a-z0-9-]+$/.test(name) && /^#[0-9a-f]{6}$/i.test(value)) root.style.setProperty('--' + name, value);
         root.dataset.custom = '';
       }
+      // The typing and app fonts too (src/fonts.js), so the passage never reflows from Literata.
+      if (['literata', 'source-serif', 'inter', 'jetbrains-mono', 'ibm-plex-mono', 'roboto-mono', 'fira-code'].includes(preferences?.typingFont)) root.dataset.typingFont = preferences.typingFont;
+      if (['literata', 'source-serif', 'inter'].includes(preferences?.appFont)) root.dataset.appFont = preferences.appFont;
     } catch {}
   </script>
   <link rel="stylesheet" href="/src/styles.css">
@@ -88,7 +91,7 @@
         <summary id="account-trigger" class="corner-trigger account-trigger" aria-label="Account, guest mode">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
         </summary>
-        <div class="corner-popover account-popover">
+        <div class="corner-popover">
           <div id="account-guest" class="account-section">
             <p class="account-lede">Guest mode: nothing is kept once you leave.</p>
             <div class="account-actions">
@@ -258,7 +261,7 @@
           </div>
 
           <div id="compose-progress" class="progress-line" role="progressbar" aria-label="Composing time used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Not started">
-            <span id="compose-progress-bar" class="progress-fill"></span>
+            <span id="compose-progress-bar"></span>
           </div>
 
           <div id="compose-footer" class="typing-footer compose-footer">
@@ -434,7 +437,7 @@
         </div>
       </section>
 
-      <section id="learn-screen" class="screen learn-screen" data-screen="learn" aria-labelledby="learn-heading" hidden>
+      <section id="learn-screen" class="screen" data-screen="learn" aria-labelledby="learn-heading" hidden>
         <header class="section-heading page-heading">
           <h1 id="learn-heading">Learn to type</h1>
         </header>
@@ -529,7 +532,7 @@
               </section>
             </div>
             <div id="view-keys" class="view-panel" role="tabpanel" aria-labelledby="tab-keys" hidden>
-              <section class="keys-section" aria-labelledby="keys-heading">
+              <section aria-labelledby="keys-heading">
                 <h2 id="keys-heading" class="view-heading">Keys</h2>
                 <p id="key-note" class="result-note"></p>
                 <div id="keys-layout" class="keys-layout">
@@ -612,8 +615,8 @@
         </template>
       </section>
 
-      <section id="compete-screen" class="screen compete-screen" data-screen="compete" aria-labelledby="compete-heading" hidden>
-        <header class="section-heading page-heading challenge-heading">
+      <section id="compete-screen" class="screen" data-screen="compete" aria-labelledby="compete-heading" hidden>
+        <header class="section-heading page-heading">
           <div>
             <h1 id="compete-heading" tabindex="-1">Challenge</h1>
           </div>
@@ -968,11 +971,11 @@
     </header>
     <div class="settings-body">
       <nav class="settings-nav" aria-label="Settings categories">
-        <button id="settings-nav-appearance" type="button" data-settings-category="appearance" aria-controls="settings-appearance" aria-current="true">appearance</button>
-        <button id="settings-nav-practice" type="button" data-settings-category="practice" aria-controls="settings-practice">practice</button>
-        <button id="settings-nav-keyboard" type="button" data-settings-category="keyboard" aria-controls="settings-keyboard">keyboard</button>
-        <button id="settings-nav-sound" type="button" data-settings-category="sound" aria-controls="settings-sound">sound</button>
-        <button id="settings-nav-shortcuts" type="button" data-settings-category="shortcuts" aria-controls="settings-shortcuts">shortcuts</button>
+        <button type="button" data-settings-category="appearance" aria-controls="settings-appearance" aria-current="true">appearance</button>
+        <button type="button" data-settings-category="practice" aria-controls="settings-practice">practice</button>
+        <button type="button" data-settings-category="keyboard" aria-controls="settings-keyboard">keyboard</button>
+        <button type="button" data-settings-category="sound" aria-controls="settings-sound">sound</button>
+        <button type="button" data-settings-category="shortcuts" aria-controls="settings-shortcuts">shortcuts</button>
         <button id="import-trigger" class="settings-import" type="button" aria-haspopup="dialog" aria-controls="import-dialog">Import Monkeytype settings</button>
       </nav>
       <div class="settings-content">
@@ -1047,6 +1050,26 @@
             <fieldset class="setting-options" id="tape-toggle" aria-labelledby="tape-toggle-label">
               <label class="setting-option"><input type="radio" name="tape-toggle" value="false" checked><span>off</span></label>
               <label class="setting-option"><input type="radio" name="tape-toggle" value="true"><span>on</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="typing-font-label">typing font</strong></div>
+            <fieldset class="setting-options" id="typing-font" aria-labelledby="typing-font-label">
+              <label class="setting-option"><input type="radio" name="typing-font" value="literata" checked><span>literata</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="source-serif"><span>source serif</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="inter"><span>inter</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="jetbrains-mono"><span>jetbrains mono</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="ibm-plex-mono"><span>ibm plex mono</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="roboto-mono"><span>roboto mono</span></label>
+              <label class="setting-option"><input type="radio" name="typing-font" value="fira-code"><span>fira code</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="app-font-label">app font</strong></div>
+            <fieldset class="setting-options" id="app-font" aria-labelledby="app-font-label">
+              <label class="setting-option"><input type="radio" name="app-font" value="literata" checked><span>literata</span></label>
+              <label class="setting-option"><input type="radio" name="app-font" value="source-serif"><span>source serif</span></label>
+              <label class="setting-option"><input type="radio" name="app-font" value="inter"><span>inter</span></label>
             </fieldset>
           </div>
           <div class="settings-preview" aria-label="Passage preview">

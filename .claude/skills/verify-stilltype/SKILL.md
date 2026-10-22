@@ -94,6 +94,7 @@ $V drive .claude/skills/verify-stilltype/flows/book-run.mjs --width 390 --height
 $V drive .claude/skills/verify-stilltype/flows/themes.mjs        # every theme: settings, mid-run, results
 $V drive .claude/skills/verify-stilltype/flows/theme-modes.mjs   # system mode: a dark and a light pick, both schemes
 $V drive .claude/skills/verify-stilltype/flows/custom-theme.mjs --signed-in   # custom theme editor and generate
+$V drive .claude/skills/verify-stilltype/flows/fonts.mjs --delay 30   # every typing font: caret, tape, pace caret measured
 ```
 
 ```js

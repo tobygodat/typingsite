@@ -34,7 +34,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - Inbox and toast for invitations and challenges.
 - Settings dialog, ⌘K / Ctrl-K palette, Monkeytype import.
 - Rules: five correction policies, strict space, quick end, minimums, repeat quotes, pace caret.
-- Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), text size, word highlight, one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
+- Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), text size, typing and app fonts, word highlight, one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
 - Accounts: email or Google, sync, clear history with Undo, account deletion.
 - Offline shell, What's new, anonymous feature suggestions.
 
@@ -58,6 +58,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - `motion.js`: caret, line scroll, pace and ghost carets.
 - `tape.js`: one-line tape geometry.
 - `word-highlight.js`: word highlight.
+- `fonts.js`: typing and app font choices; `index.html` applies an account's before first paint.
 - `units.js`: wpm and cpm display.
 - `layouts.js`: layout legends, finger map.
 - `sound.js`: typing sounds.
@@ -85,6 +86,7 @@ Also `sw.js` (offline shell), `docs/` (specs, `online-races.md`, verification re
 - Repeated text, drills, challenges, interrupted and touch runs never mix with practice bests. Bests saved before repeat quotes stay as saved (toby).
 - Sync: copies merge, never replace; see `mergeSynced` in `src/account.js` and `tests/sync.test.js`.
 - Keystroke recordings stay on the device (toby): the account row holds the rest (`rowCopy`), so a run recorded elsewhere can't be a retest baseline.
+- From 2026-12-01 (`CONDITION_SETS_FROM`) the row and the device cache store each conditions set once (`conditionSets`); builds before #94 can't read that, so move the date if #94 ships late. Read stored copies through `normalizeProfile`, never `data.runs[i].conditions`.
 - Composing stores numbers, never text.
 - Every foreign key to `auth.users` must cascade (`supabase/tests/account-deletion.sql`).
 - Less is more (toby): no eyebrows, taglines or helper copy (DESIGN.md Don'ts).
@@ -95,6 +97,7 @@ Also `sw.js` (offline shell), `docs/` (specs, `online-races.md`, verification re
 - A slow reply never acts over what the person did since (`raceContext`).
 - Layouts are labels; people remap in the OS.
 - `sw.js` stays network-first: cache-first ran new HTML against old JS.
+- Only Literata and Geist Mono load by default: other fonts load when picked and are never precached (`tests/sw.test.js`). Carets stand on the typing font's measured baseline (`--typing-baseline`), not on Literata's metrics.
 
 ## Remaining work and known issues
 
@@ -102,7 +105,7 @@ Also `sw.js` (offline shell), `docs/` (specs, `online-races.md`, verification re
 - Real devices: Safari, touch keyboards, assistive technology and IME. Accent keys are only simulated (`e2e/dead-keys.spec.js`): check Safari, Windows Chrome, Linux IBus and macOS press-and-hold. Latency is measured only in Chromium.
 - Leaked-password protection is off: Supabase offers it only on Pro. toby to decide.
 - Signing out with everything sent also deletes this device's recordings. toby to decide whether to keep them.
-- The worst-case profile row is about 2 MB, sent whole on every push (`scripts/measure-profile.mjs`). Compacting run summaries is in progress. Don't grow retention.
+- The worst-case profile row is about 2 MB, 1.5 MB from 2026-12-01, sent whole on every push (`scripts/measure-profile.mjs`). Don't grow retention.
 - When Actions returns, `ci.yml` deploys master with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 - Vercel is retired (`vercel.json` turns off its deploys); toby can delete the project.
 - Not built: public matchmaking, rankings, anti-cheat. The recommender is a baseline, not ML.
