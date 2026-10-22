@@ -3,7 +3,7 @@
 The settings control in the dock opens a centred, opaque modal dialog. A sidebar lists the categories
 (appearance, practice, keyboard, sound, shortcuts, then "Import Monkeytype settings"); each category is a
 column of preference rows whose options are native radio groups styled as inline selectors. Appearance holds
-theme (system, dark, light, paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord), text size, word highlight, one-line tape and a sample passage. Changes apply as
+theme (system, dark, light, paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord), text size, word highlight, one-line tape, typing font (literata, source serif, inter, jetbrains mono, ibm plex mono, roboto mono, fira code), app font (literata, source serif, inter) and a sample passage set in the typing font. Changes apply as
 they are chosen; Done, the close button and Escape all close it. The theme follows the system until the
 person picks a theme; a guest's pick lasts for the tab, a signed-in pick persists.
 
@@ -15,6 +15,9 @@ person picks a theme; a guest's pick lasts for the tab, a signed-in pick persist
   `[data-settings-category="<category>"]` buttons; the current one has `aria-current="true"`.
 - `theme-pick` checks a radio in the `#theme-select` fieldset (`#theme-select input[value="dark"|"light"|"paper"|…|"e-ink"|"nord"]`);
   `html[data-theme]` and the page colours follow at once.
+- `font-pick` checks a radio in `#typing-font` or `#app-font`; `html[data-typing-font]` / `html[data-app-font]`
+  follow, and the font file is fetched then (nothing but Literata and Geist Mono loads by default). A signed-in
+  pick is applied before first paint by the inline script in `index.html`.
 - `theme-system` follows the system's light or dark preference while `#theme-select input[value="system"]`
   is checked.
 - `theme-persist` keeps a signed-in person's pick across reloads; a guest falls back to the system on reload.
@@ -25,6 +28,7 @@ person picks a theme; a guest's pick lasts for the tab, a signed-in pick persist
 
 - Click "settings" in the dock (the sliders icon only, below 900 px and on phones).
 - Ctrl+K → `theme · <name>` for any of the ten, or `theme · system` (see [Command palette](./command-palette.md)).
+- Ctrl+K → `typing font · <name>` or `app font · <name>`.
 - Change the operating system's appearance while the theme is "system".
 
 ## Driving it with verify.mjs
@@ -43,6 +47,11 @@ Preconditions:
   picks the theme in settings (shot `<theme>-settings`), checks `meta[name=theme-color]` follows `--ground`,
   then runs 10 words with one slip (shot `<theme>-mid-run`) and finishes (shot `<theme>-results`). Below
   761 px wide it shoots mid-run only.
+- **Fonts.** Run `$V drive .claude/skills/verify-stilltype/flows/fonts.mjs --delay 30`. For each typing font
+  (with a non-default app font), on three lines and on the tape, with the custom pace caret, it types past the
+  second line and measures from the rendered glyphs: caret bar on the current letter's left edge (±1px), the
+  bar's top and bottom against the font's baseline (Literata's place, ±1px), the letter in view and the pace caret
+  on a line of letters. Shots `<font>-lines` and `<font>-tape`; `run.json` notes every measurement.
 - **Phone.** `$V shot settings --width 390 --height 844 --mobile` (add `--scheme light` to switch towards
   dark). Below 760 px the category nav wraps across the top of the dialog.
 - **Other categories.** In a flow, `await h.openSettings('practice')` opens the dialog (if closed) and shows

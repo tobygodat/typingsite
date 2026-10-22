@@ -626,6 +626,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   addEventListener('online', poll);
   addEventListener('resize', () => fx.relayout());
   document.fonts?.ready.then(() => fx.relayout());
+  document.fonts?.addEventListener?.('loadingdone', () => fx.relayout());
   setInterval(updateClock, 100);
   renderHome();
   if (joinLink) { navigate('compete'); setMode('online'); $('online-guest-name').focus(); }
@@ -653,6 +654,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     // the person to it.
     get pending() { return busy || restoring; },
     open() { navigate('compete'); setMode('online'); },
+    // A new typing font moves every letter.
+    relayout: () => fx.relayout(),
     // A live race keeps the Online view; the board waits until it closes.
     openBoard() { navigate('compete'); if (!room || terminal(room)) setMode('friends'); },
     onViewChange(view) {
