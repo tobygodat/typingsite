@@ -160,7 +160,7 @@ test('runs recorded on another device are no baseline: their drill stands alone,
   await expect(page.locator('#training-targets')).toContainText('observed in 2 runs');
   await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-  await expect(page.locator('#session-description')).toHaveText('Standalone drill. Finish a new practice run afterward for a comparable retest.');
+  await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
   await openView(page, 'Progress');
   await expect(page.locator('#run-history .run-row')).toHaveCount(2);
   await expect(page.locator('#run-history')).not.toContainText('View passage');
