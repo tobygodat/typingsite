@@ -34,7 +34,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - Inbox and toast for invitations and challenges.
 - Settings dialog, ⌘K / Ctrl-K palette, Monkeytype import.
 - Rules: five correction policies, strict space, quick end, minimums, repeat quotes, pace caret.
-- Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), text size, typing and app fonts, word highlight (optionally sliding between words), one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
+- Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), a background image, text size, typing and app fonts, word highlight (optionally sliding between words), one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
 - Accounts: email or Google, sync, clear history with Undo, account deletion.
 - Offline shell, What's new, anonymous feature suggestions.
 
@@ -59,6 +59,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - `tape.js`: one-line tape geometry.
 - `word-highlight.js`: word highlight.
 - `fonts.js`: typing and app font choices; `index.html` applies an account's before first paint.
+- `wallpaper.js`: background image: the device-only copy, its dither mask, its settings row.
 - `units.js`: wpm and cpm display.
 - `layouts.js`: layout legends, finger map.
 - `sound.js`: typing sounds.
@@ -93,6 +94,7 @@ Also `sw.js` (offline shell), `docs/` (specs, `online-races.md`, verification re
 - Motion is fluid (AGENTS.md): `--dur-*` tokens only, never moving the letters being read, zero under reduced motion; scoring never reads it.
 - Every theme holds 4.5:1 text and 3:1 non-text contrast (`tests/contrast.test.js`). Custom themes are the exception: the editor notes contrast under AA at the token but never blocks a save.
 - Custom themes are stored as JSON text (`customThemes`), so older builds compare them by value and never restamp them. A custom theme joins the dark or light pick by its background's luminance. The theme-generation prompt is never logged or stored.
+- The background image stays on the device (IndexedDB, never the profile), is tinted by CSS from the theme, fades out above the passage and dims mid-run (`e2e/wallpaper.spec.js`).
 - The practice rail never moves between modes (`e2e/layout.spec.js`).
 - A slow reply never acts over what the person did since (`raceContext`).
 - Layouts are labels; people remap in the OS.

@@ -52,6 +52,7 @@ const SHELL = [
   '/src/theme-editor.js',
   '/src/typing.js',
   '/src/units.js',
+  '/src/wallpaper.js',
   '/src/word-highlight.js',
   '/src/words.js',
   '/src/fonts/literata-roman.woff2',

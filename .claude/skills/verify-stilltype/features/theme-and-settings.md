@@ -5,8 +5,8 @@ The settings control in the dock opens a centred, opaque modal dialog. A sidebar
 column of preference rows whose options are native radio groups styled as inline selectors. Appearance holds
 theme (system, dark, light, then "new" and, while a custom theme is on show, "edit"), dark theme (dark,
 terminal, midnight, nord, then the saved custom themes with a dark background by name), light theme (light,
-paper, shadcn, soft, swiss, e-ink, then the saved custom themes with a light background), text size, word
-highlight, slide (shown only while a highlight is on), one-line tape, typing font (literata, source serif, inter, jetbrains mono, ibm plex mono, roboto
+paper, shadcn, soft, swiss, e-ink, then the saved custom themes with a light background), background (an image
+file, kept on this device only), text size, word highlight, slide (shown only while a highlight is on), one-line tape, typing font (literata, source serif, inter, jetbrains mono, ibm plex mono, roboto
 mono, fira code), app font (literata, source serif, inter) and a sample passage set in the typing font. Changes apply as they are chosen; Done, the close button and
 Escape all close it. In system mode the page shows the dark theme pick or the light theme pick as the system
 changes; in dark or light mode it shows that mode's pick, and picking a theme from the other row switches to
@@ -43,6 +43,13 @@ its mode. A guest's choices last for the tab, a signed-in person's persist.
 - `theme-generate` (signed in) sends the vibe to the generate-theme Edge Function and opens the answer in the
   editor unsaved; a failure is one line in `#theme-generate-status`. A guest's vibe field is disabled and the
   button reads "sign in".
+- `wallpaper-pick` takes an image from `#wallpaper-file` (the "choose…" option; `setInputFiles` drives it):
+  `#wallpaper[data-shown]` appears as a dithered dot layer tinted from the theme over the top of the page,
+  fading out above the passage, and `#wallpaper-remove` ("remove") appears. A file that isn't an image shows
+  `#wallpaper-error` and changes nothing. The image survives reloads (IndexedDB) for guests and members alike.
+- `wallpaper-dim` drops the layer to a quarter opacity while `body[data-running="true"]`; it returns with the
+  chrome on a pointer nudge, finish or restart.
+- `wallpaper-remove` clears it (`#wallpaper` hidden again) and moves focus to the file option.
 - `word-highlight-slide` checks `#word-highlight-slide input[value="true"]` (its row shows only while
   `#word-highlight` is not off): `body[data-word-highlight-slide="true"]`, and one `.word-glide` in each
   passage glides from word to word behind the letters instead of the letters' own tint.
@@ -87,6 +94,10 @@ Preconditions:
   on a line of letters. Shots `<font>-lines` and `<font>-tape`; `run.json` notes every measurement.
 - **Phone.** `$V shot settings --width 390 --height 844 --mobile` (add `--scheme light` to switch towards
   dark). Below 760 px the category nav wraps across the top of the dialog.
+- **Background image.** Run `$V drive .claude/skills/verify-stilltype/flows/wallpaper.mjs` (add
+  `WALLPAPER_IMAGE=<path>` for your own image, default the app icon; `THEME=<name>` picks a theme first).
+  Shots: `settings-none`, `settings-image`, `idle` and `mid-run`; `run.json` notes the running opacity and
+  checks it is under 0.5.
 - **Other categories.** In a flow, `await h.openSettings('practice')` opens the dialog (if closed) and shows
   that category; pass any of appearance, practice, keyboard, sound, shortcuts.
 - **System theme.** Run `$V shot idle --scheme light` and `$V shot idle --scheme dark`. Each `run.json` step
@@ -111,6 +122,8 @@ Preconditions:
 - The modal makes the page inert: close the dialog (Escape) before driving anything behind it. Escape first
   cancels a shortcut recording in the shortcuts category, and only a second Escape closes the dialog.
 - During a run the dock fades and ignores the pointer; `h.openSettings()` nudges the mouse first.
+- The background image lives in IndexedDB, not the profile: each `$V` run starts without one, and
+  `--signed-in` doesn't bring one along.
 - The fake Supabase has no generate-theme function: route `**/functions/v1/generate-theme` in the flow.
 - Contrast has its own checks: `tests/contrast.test.js` (every theme's token pairs), `e2e/passage-contrast.spec.js`
-  (every theme's passage letters and caret as painted) and `e2e/light-contrast.spec.js`. A screenshot isn't a contrast check.
+  (every theme's passage letters and caret as painted), `e2e/wallpaper.spec.js` (the same over the brightest background image) and `e2e/light-contrast.spec.js`. A screenshot isn't a contrast check.
