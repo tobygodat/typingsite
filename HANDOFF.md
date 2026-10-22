@@ -101,6 +101,6 @@ Also `sw.js` (offline shell), `docs/` (specs, `online-races.md`, verification re
 - Leaked-password protection is off: Supabase offers it only on Pro. toby to decide.
 - Signing out with everything sent also deletes this device's recordings. toby to decide whether to keep them.
 - The worst-case profile row is about 2 MB, sent whole on every push (`scripts/measure-profile.mjs`). Compacting run summaries is in progress. Don't grow retention.
-- When Actions returns, `ci.yml` deploys master with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. README still says Actions runs.
+- When Actions returns, `ci.yml` deploys master with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 - Vercel is retired (`vercel.json` turns off its deploys); toby can delete the project.
 - Not built: public matchmaking, rankings, anti-cheat. The recommender is a baseline, not ML.
