@@ -38,6 +38,7 @@ export const defaultPreferences = {
   fontSize: '28',
   // Display only, like the text size: never a test condition.
   wordHighlight: DEFAULT_WORD_HIGHLIGHT,
+  wordHighlightSlide: false,
   tape: false,
   liveMetrics: false,
   keyboard: false,
@@ -103,6 +104,7 @@ export function validPreferences(value) {
   if (!CODE_LANGUAGES.includes(value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
   if (!bookIds.includes(value.book)) value.book = DEFAULT_BOOK;
   value.wordHighlight = normalizeWordHighlight(value.wordHighlight);
+  value.wordHighlightSlide = value.wordHighlightSlide === true;
   value.tape = value.tape === true;
   value.repeatQuotes = value.repeatQuotes === true;
   value.layout = normalizeLayout(value.layout);

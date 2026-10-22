@@ -52,7 +52,7 @@ import { BOOKS, BOOK_VERSION, bookIds, bookName, bookPage, bookPlace, openBook }
 import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength } from './lengths.js';
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
-import { createTypingFx } from './motion.js';
+import { createTypingFx, createWordGlide } from './motion.js';
 import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, KEY_OUTCOME, SOUND_LABELS, SOUND_MODES, createSounds, keyOutcome, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
@@ -174,6 +174,20 @@ let online = null;
 const onTape = () => document.body.dataset.tape === 'true';
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index), tape: onTape });
 const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
+// The settings preview's sliding highlight: on "little" for this word, "room" for next word. It is placed
+// while the preview is on screen: as it appears or resizes, and as the highlight settings change.
+const previewGlide = createWordGlide();
+$('settings-preview-passage').append(previewGlide.element);
+new ResizeObserver(() => placePreviewGlide({ instant: true })).observe($('settings-preview-passage'));
+
+// from: a word offset to slide in from, to show the slide being turned on.
+function placePreviewGlide({ instant = false, from = 0 } = {}) {
+  const passage = $('settings-preview-passage');
+  if (!prefs.wordHighlightSlide || prefs.wordHighlight === 'off' || !$('settings-dialog').open || !passage.offsetWidth) return;
+  const word = (offset) => passage.children[(prefs.wordHighlight === 'next' ? 3 : 2) + offset];
+  if (from) previewGlide.follow(word(from), { instant: true });
+  previewGlide.follow(word(0), { instant });
+}
 // Key sounds read the current preferences on each key; the AudioContext waits for an audible choice or key.
 const sounds = createSounds({ settings: () => ({ mode: prefs.sound, volume: prefs.soundVolume }), running: () => runInProgress() });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
@@ -327,7 +341,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'wordHighlightSlide', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -676,12 +690,16 @@ function setSessionKind(kind) {
 function applyPreferences() {
   syncLayout();
   document.body.dataset.wordHighlight = prefs.wordHighlight;
+  document.body.dataset.wordHighlightSlide = String(prefs.wordHighlightSlide);
   document.body.dataset.tapePreference = String(prefs.tape);
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
   document.body.dataset.keyboard = String(prefs.keyboard);
   document.body.dataset.focusMode = String(prefs.focusMode);
   selectSetting('font-size', prefs.fontSize);
   selectSetting('word-highlight', prefs.wordHighlight);
+  selectSetting('word-highlight-slide', prefs.wordHighlightSlide);
+  $('word-highlight-slide').closest('.preference-row').hidden = prefs.wordHighlight === 'off';
+  placePreviewGlide();
   selectSetting('live-toggle', prefs.liveMetrics);
   selectSetting('keyboard-toggle', prefs.keyboard);
   syncRules();
@@ -1095,7 +1113,7 @@ function renderText(display, text, { tape = () => false } = {}) {
     spacer.style.width = `${firstKept.getBoundingClientRect().left - display.getBoundingClientRect().left}px`;
     for (const child of [...display.childNodes]) {
       if (child === firstKept) break;
-      if (child.classList?.contains('caret') || child.classList?.contains('ghost-caret')) continue;
+      if (child.matches?.('.caret, .ghost-caret, .word-glide')) continue;
       child.remove();
     }
     display.insertBefore(spacer, firstKept);
@@ -1161,7 +1179,7 @@ function renderText(display, text, { tape = () => false } = {}) {
       spacer.style.height = `${height}px`;
       for (const child of [...display.childNodes]) {
         if (child === firstKept) break;
-        if (child.classList?.contains('caret') || child.classList?.contains('ghost-caret')) continue;
+        if (child.matches?.('.caret, .ghost-caret, .word-glide')) continue;
         child.remove();
       }
       display.insertBefore(spacer, firstKept);
@@ -5254,6 +5272,7 @@ function bindEvents() {
   onSetting('font-size', (value) => { prefs.fontSize = value; applyPreferences(); saveChoice('fontSize'); });
   onSetting('speed-unit', (value) => setSpeedUnit(value));
   onSetting('word-highlight', (value) => setWordHighlight(value));
+  onSetting('word-highlight-slide', (value) => setWordHighlightSlide(value === 'true'));
   keybindingEditor = createKeybindingEditor({
     form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => prefs.keybindings,
     onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
@@ -5785,6 +5804,15 @@ function setWordHighlight(mode) {
   saveChoice('wordHighlight');
 }
 
+function setWordHighlightSlide(on) {
+  const turnedOn = on && !prefs.wordHighlightSlide;
+  prefs.wordHighlightSlide = on;
+  applyPreferences();
+  // The preview shows what was turned on: its highlight slides in from the word before.
+  if (turnedOn) placePreviewGlide({ from: -1 });
+  saveChoice('wordHighlightSlide');
+}
+
 function setWordList(id, kind = restartKind()) {
   if (!wordListIds.includes(id)) return;
   const changed = prefs.wordList !== id;
@@ -5892,6 +5920,7 @@ function paletteCommands(query) {
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
     // Named "this word" / "next word" so no mode reads like the palette's "current" hint.
     ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),
+    { group: 'display', label: 'word highlight · slide', keywords: 'glide smooth motion animate', hint: onOff(prefs.wordHighlightSlide), on: prefs.wordHighlightSlide, disabled: prefs.wordHighlight === 'off', run: () => setWordHighlightSlide(!prefs.wordHighlightSlide) },
     { group: 'display', label: 'one-line tape', keywords: 'tape mode single line passage layout scroll', hint: onOff(prefs.tape), on: prefs.tape, run: () => togglePreference('tape') },
     ...[['wpm', 'words'], ['cpm', 'characters']].map(([unit, per]) => ({ group: 'display', label: `speed unit · ${unit}`, keywords: `${per} per minute speed measure`, hint: prefs.speedUnit === unit ? 'current' : '', on: prefs.speedUnit === unit, run: () => setSpeedUnit(unit) })),
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },

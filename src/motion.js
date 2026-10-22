@@ -44,6 +44,50 @@ function offsetIn(element, display) {
   return { left, top };
 }
 
+// The sliding word highlight (settings → word highlight → slide): one tint that glides from word to
+// word on transforms alone. Its two rounded ends only translate and the flat middle between them
+// scales, so the corners keep their radius at every width. It moves within its container, so the line
+// scroll and the tape carry it; a move to another line, or back into view, snaps instead of sweeping.
+export function createWordGlide() {
+  const element = document.createElement('span');
+  element.className = 'word-glide';
+  element.setAttribute('aria-hidden', 'true');
+  const fill = document.createElement('span');
+  const end = document.createElement('span');
+  element.append(fill, end);
+  let shown = null;
+  let cap = 0;
+
+  return {
+    element,
+    follow(word, { instant = false } = {}) {
+      element.classList.toggle('is-hidden', !word);
+      if (!word) {
+        shown = null;
+        return;
+      }
+      const container = element.parentElement;
+      const box = word.getBoundingClientRect();
+      const origin = container.getBoundingClientRect();
+      const left = box.left - origin.left - container.clientLeft;
+      const top = box.top - origin.top - container.clientTop;
+      if (shown && left === shown.left && top === shown.top && box.width === shown.width) return;
+      const snap = instant || !shown || Math.abs(top - shown.top) > box.height / 2 || reducedMotion.matches;
+      cap ||= end.offsetWidth;
+      if (snap) element.classList.add('is-snapping');
+      if (box.height !== shown?.height) element.style.height = `${box.height}px`;
+      element.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+      fill.style.transform = `scaleX(${Math.max(0, box.width - 2 * cap)})`;
+      end.style.transform = `translateX(${box.width - cap}px)`;
+      if (snap) {
+        element.getBoundingClientRect();
+        element.classList.remove('is-snapping');
+      }
+      shown = { left, top, width: box.width, height: box.height };
+    },
+  };
+}
+
 export function createTypingFx(wrap, display, options = {}) {
   const caret = document.createElement('span');
   caret.className = 'caret';
@@ -55,6 +99,8 @@ export function createTypingFx(wrap, display, options = {}) {
   for (const node of [caret, ghostCaret]) node.setAttribute('aria-hidden', 'true');
   // A pacer moves at `cps`; a recorded run follows `points`, [ms from the first key, characters typed].
   const ghost = { cps: 0, points: null, cursor: 0, start: 0, frame: 0, spot: null, armed: false };
+  const wordGlide = createWordGlide();
+  let glideWord = null;
 
   const caretX = spring(1400, 70);
   const caretY = spring(1400, 70);
@@ -150,10 +196,21 @@ export function createTypingFx(wrap, display, options = {}) {
       const scrollY = spacerHeight + Math.max(0, line - 1) * lineHeight;
       display.style.transform = scrollY ? `translateY(-${scrollY}px)` : '';
     }
+    placeGlide(snapNext);
     if (snapNext || reducedMotion.matches) {
       springs.forEach((s) => snap(s, s.target));
       snapNext = false;
     }
+  }
+
+  // The word the highlight is on (body[data-word-highlight]), measured only when it changes.
+  function placeGlide(instant) {
+    const { wordHighlight, wordHighlightSlide } = document.body.dataset;
+    if (wordHighlightSlide !== 'true' || wordHighlight === 'off') return;
+    const word = display.querySelector(wordHighlight === 'next' ? '.word-next' : '.word-current');
+    if (word === glideWord && !instant) return;
+    glideWord = word;
+    wordGlide.follow(word, { instant });
   }
 
   function render() {
@@ -260,7 +317,8 @@ export function createTypingFx(wrap, display, options = {}) {
       stopGhost();
       ghost.spot = null;
       ghost.cursor = 0;
-      display.append(ghostCaret, caret);
+      glideWord = null;
+      display.append(wordGlide.element, ghostCaret, caret);
       ghostCaret.classList.toggle('is-hidden', !ghost.armed);
       if (ghost.armed) requestAnimationFrame(() => { if (ghost.armed) placeGhost(0); });
       setState('idle');

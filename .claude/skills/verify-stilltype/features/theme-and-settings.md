@@ -3,7 +3,7 @@
 The settings control in the dock opens a centred, opaque modal dialog. A sidebar lists the categories
 (appearance, practice, keyboard, sound, shortcuts, then "Import Monkeytype settings"); each category is a
 column of preference rows whose options are native radio groups styled as inline selectors. Appearance holds
-theme (system, dark, light, paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord), text size, word highlight, one-line tape and a sample passage. Changes apply as
+theme (system, dark, light, paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord), text size, word highlight, slide (shown only while a highlight is on), one-line tape and a sample passage. Changes apply as
 they are chosen; Done, the close button and Escape all close it. The theme follows the system until the
 person picks a theme; a guest's pick lasts for the tab, a signed-in pick persists.
 
@@ -18,6 +18,9 @@ person picks a theme; a guest's pick lasts for the tab, a signed-in pick persist
 - `theme-system` follows the system's light or dark preference while `#theme-select input[value="system"]`
   is checked.
 - `theme-persist` keeps a signed-in person's pick across reloads; a guest falls back to the system on reload.
+- `word-highlight-slide` checks `#word-highlight-slide input[value="true"]` (its row shows only while
+  `#word-highlight` is not off): `body[data-word-highlight-slide="true"]`, and one `.word-glide` in each
+  passage glides from word to word behind the letters instead of the letters' own tint.
 - `settings-close` closes the dialog with Escape, `#settings-close` or `#settings-done` and returns focus to
   the opener (the dock button when opened from there).
 
@@ -43,6 +46,10 @@ Preconditions:
   picks the theme in settings (shot `<theme>-settings`), checks `meta[name=theme-color]` follows `--ground`,
   then runs 10 words with one slip (shot `<theme>-mid-run`) and finishes (shot `<theme>-results`). Below
   761 px wide it shoots mid-run only.
+- **Word highlight slide.** Run `$V drive .claude/skills/verify-stilltype/flows/word-glide.mjs` (and again
+  with `--reduced-motion`). It checks the slide row is hidden until a highlight is on, turns on "this word"
+  and slide (shot `settings`), then compares the glide's edges with the current word's at rest, after a
+  space (shot `mid-glide`, notes how far it still has to go), on a miss (shot `miss`) and on a later line.
 - **Phone.** `$V shot settings --width 390 --height 844 --mobile` (add `--scheme light` to switch towards
   dark). Below 760 px the category nav wraps across the top of the dialog.
 - **Other categories.** In a flow, `await h.openSettings('practice')` opens the dialog (if closed) and shows
