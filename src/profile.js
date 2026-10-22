@@ -43,6 +43,7 @@ export const defaultPreferences = {
   appFont: DEFAULT_FONT,
   // Display only, like the text size: never a test condition.
   wordHighlight: DEFAULT_WORD_HIGHLIGHT,
+  wordHighlightSlide: false,
   tape: false,
   liveMetrics: false,
   keyboard: false,
@@ -118,6 +119,7 @@ export function validPreferences(value) {
   if (!CODE_LANGUAGES.includes(value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
   if (!bookIds.includes(value.book)) value.book = DEFAULT_BOOK;
   value.wordHighlight = normalizeWordHighlight(value.wordHighlight);
+  value.wordHighlightSlide = value.wordHighlightSlide === true;
   value.typingFont = normalizeFont(value.typingFont, TYPING_FONTS);
   value.appFont = normalizeFont(value.appFont, APP_FONTS);
   value.tape = value.tape === true;

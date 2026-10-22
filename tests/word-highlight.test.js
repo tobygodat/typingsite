@@ -20,6 +20,13 @@ test('the profile declares word highlight like other settings: off unless chosen
   assert.equal(normalizeProfile({ version: 2, preferences: { wordHighlight: 7 } }).preferences.wordHighlight, 'off');
 });
 
+test('slide is off unless chosen, and only true turns it on', () => {
+  assert.equal(preferencesInUse({}).wordHighlightSlide, false);
+  assert.equal(preferencesInUse({ wordHighlightSlide: true }).wordHighlightSlide, true);
+  for (const value of ['true', 1, null, 'on']) assert.equal(preferencesInUse({ wordHighlightSlide: value }).wordHighlightSlide, false);
+  assert.equal(Object.hasOwn(normalizeProfile({ version: 2, preferences: { wordHighlight: 'next' } }).preferences, 'wordHighlightSlide'), false);
+});
+
 test('a space belongs to the word before it, matching the rendered word groups', () => {
   const text = 'the cat sat';
   assert.deepEqual(wordIndexes(text), [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2]);

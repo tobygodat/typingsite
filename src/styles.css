@@ -796,6 +796,8 @@ body[data-font-size="22"] #settings-preview-passage { font-size: var(--settings-
 body[data-font-size="36"] #settings-preview-passage { font-size: var(--settings-preview-large); }
 body[data-word-highlight="current"] #settings-preview-passage span:nth-child(3),
 body[data-word-highlight="next"] #settings-preview-passage span:nth-child(4) { background: var(--word-highlight); border-radius: var(--radius-sm); }
+#settings-preview-passage { position: relative; isolation: isolate; }
+body[data-word-highlight-slide="true"] #settings-preview-passage > span:is(:nth-child(3), :nth-child(4)) { background: none; }
 body[data-tape-preference="true"] #settings-preview-passage { white-space: nowrap; overflow: hidden; }
 /* Custom themes: new and edit sit after the theme options and read like them. */
 .setting-action { display: flex; align-items: center; justify-content: center; min-width: var(--control); min-height: var(--control); padding-inline: var(--space-4); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: var(--text-small)/var(--settings-option-line) var(--font-app); cursor: pointer; }
@@ -1815,6 +1817,40 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
   border-end-end-radius: var(--radius-sm);
 }
 
+/* Sliding (settings → word highlight → slide): one tint glides from word to word instead (src/motion.js),
+   so the letters paint none of their own. It sits behind the letters; a miss paints its coral over it. */
+body[data-word-highlight-slide="true"] :is(.word.word-current, .word.word-next) > .char:not(.wrong) { background: none; }
+body:not([data-word-highlight-slide="true"]) .word-glide,
+body[data-word-highlight="off"] .word-glide { display: none; }
+
+.word-glide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.word-glide.is-hidden { visibility: hidden; }
+.word-glide::before,
+.word-glide > span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--radius-sm);
+  height: 100%;
+  background: var(--word-highlight);
+}
+.word-glide::before { content: ""; border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.word-glide > :first-child { left: var(--radius-sm); width: 1px; transform-origin: left; }
+.word-glide > :last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.word-glide,
+.word-glide > span {
+  transition: transform var(--dur-quick) var(--ease-out);
+  will-change: transform;
+}
+.word-glide.is-snapping,
+.word-glide.is-snapping > span { transition: none; }
+
 /* Forced colours strip the tint, so keep the mark as a system highlight. */
 @media (forced-colors: active) {
   .char.wrong,
@@ -1827,6 +1863,7 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
   /* The word tint is stripped too; a system-colour outline marks the word instead. */
   body[data-word-highlight="current"] .word.word-current,
   body[data-word-highlight="next"] .word.word-next { outline: 1px solid CanvasText; }
+  .word-glide { display: none; }
 }
 
 .caret {
