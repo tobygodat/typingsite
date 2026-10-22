@@ -52,6 +52,7 @@ import { BOOKS, BOOK_VERSION, bookIds, bookName, bookPage, bookPlace, openBook }
 import { LENGTHS, isPresetLength, normalizeLengthPreferences, parseCustomLength } from './lengths.js';
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
+import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx } from './motion.js';
 import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, KEY_OUTCOME, SOUND_LABELS, SOUND_MODES, createSounds, keyOutcome, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { renderSpeedGraph } from './graph.js';
@@ -327,7 +328,7 @@ function saveChoice(...keys) {
 }
 
 // Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
+const DISPLAY_PREFERENCES = ['theme', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -673,8 +674,31 @@ function setSessionKind(kind) {
   syncLayout();
 }
 
+// The typing font's baseline below the middle of its line, from the font's own metrics, so every caret
+// stands on the baseline exactly as it does on Literata's (--typing-baseline in src/styles.css).
+function measureTypingBaseline() {
+  const probe = document.createElement('canvas').getContext('2d');
+  probe.font = `1000px ${getComputedStyle(document.documentElement).getPropertyValue('--font-typing')}`;
+  const { fontBoundingBoxAscent: ascent, fontBoundingBoxDescent: descent } = probe.measureText('H');
+  if (ascent) document.documentElement.style.setProperty('--typing-baseline', `${(ascent - descent) / 2000}em`);
+}
+
+// A new font changes letter widths, as a resize does, and again once its file arrives.
+function applyFonts() {
+  const root = document.documentElement.dataset;
+  selectSetting('typing-font', prefs.typingFont);
+  selectSetting('app-font', prefs.appFont);
+  if (root.typingFont === prefs.typingFont && root.appFont === prefs.appFont) return;
+  root.typingFont = prefs.typingFont;
+  root.appFont = prefs.appFont;
+  measureTypingBaseline();
+  relayoutText();
+  onlineRace?.relayout();
+}
+
 function applyPreferences() {
   syncLayout();
+  applyFonts();
   document.body.dataset.wordHighlight = prefs.wordHighlight;
   document.body.dataset.tapePreference = String(prefs.tape);
   document.body.dataset.liveMetrics = String(prefs.liveMetrics);
@@ -3312,9 +3336,8 @@ function renderHistory() {
   $('history-list').hidden = !loops.length;
   $('history-empty').hidden = Boolean(loops.length);
   const template = $('history-row-template');
-  const rows = loops.map((loop, index) => {
+  const rows = loops.map((loop) => {
     const row = template.content.firstElementChild.cloneNode(true);
-    row.style.setProperty('--i', String(index));
     row.querySelector('.history-date').textContent = new Date(loop.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     row.querySelector('.history-target').textContent = loop.drillCompleted
       ? loop.target ? `“${loop.target}” drill and retest` : 'General drill and retest'
@@ -5253,6 +5276,8 @@ function bindEvents() {
   $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()));
   $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()));
   onSetting('font-size', (value) => { prefs.fontSize = value; applyPreferences(); saveChoice('fontSize'); });
+  onSetting('typing-font', (value) => { prefs.typingFont = value; applyFonts(); saveChoice('typingFont'); });
+  onSetting('app-font', (value) => { prefs.appFont = value; applyFonts(); saveChoice('appFont'); });
   onSetting('speed-unit', (value) => setSpeedUnit(value));
   onSetting('word-highlight', (value) => setWordHighlight(value));
   keybindingEditor = createKeybindingEditor({
@@ -5891,6 +5916,8 @@ function paletteCommands(query) {
     ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? formatSpeed(value) : 'off'}`, keywords: 'min wpm cpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
     ...['system', ...THEMES].map((theme) => ({ group: 'display', label: `theme · ${theme}`, keywords: 'colour color mode appearance', hint: prefs.theme === theme ? 'current' : '', on: prefs.theme === theme, run: () => { prefs.theme = theme; applyTheme(); saveChoice('theme'); } })),
     ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
+    ...TYPING_FONTS.map((font) => ({ group: 'display', label: `typing font · ${fontName(font)}`, keywords: 'typeface passage monospace serif sans', hint: prefs.typingFont === font ? 'current' : '', on: prefs.typingFont === font, run: () => { prefs.typingFont = font; applyFonts(); saveChoice('typingFont'); } })),
+    ...APP_FONTS.map((font) => ({ group: 'display', label: `app font · ${fontName(font)}`, keywords: 'typeface interface serif sans', hint: prefs.appFont === font ? 'current' : '', on: prefs.appFont === font, run: () => { prefs.appFont = font; applyFonts(); saveChoice('appFont'); } })),
     // Named "this word" / "next word" so no mode reads like the palette's "current" hint.
     ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),
     { group: 'display', label: 'one-line tape', keywords: 'tape mode single line passage layout scroll', hint: onOff(prefs.tape), on: prefs.tape, run: () => togglePreference('tape') },
@@ -5962,14 +5989,17 @@ listenForSequence(() => {
 });
 
 let resizeFrame = 0;
-addEventListener('resize', () => {
+// Everything placed from letter widths: after a resize, a font choice, or a font file arriving.
+function relayoutText() {
   // On one line, crossing the 760px breakpoint changes the text size, which the trim spacer cannot follow.
   if (onTape()) primaryTextView?.restore();
   primaryFx.relayout();
   raceFx.relayout();
   cancelAnimationFrame(resizeFrame);
   resizeFrame = requestAnimationFrame(() => updateGlides({ instant: true }));
-});
+}
+addEventListener('resize', relayoutText);
+document.fonts?.addEventListener?.('loadingdone', () => { measureTypingBaseline(); relayoutText(); });
 // Both observers below redraw in the next frame: a redraw resizes the box it observes, and doing that
 // inside the observer's own callback is a resize loop, which browsers report as an error.
 // The graph is drawn at its pixel size, so redraw whenever that changes, including when results

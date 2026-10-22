@@ -11,7 +11,7 @@ const SUPABASE_URL = 'https://bicbyljexprkaedakofa.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_-JwGKezfGmITUHTITrhsNw_Izw71gdI';
 export const SESSION_KEY = 'stilltype-session-v1';
 const VERIFIER_KEY = 'stilltype-pkce-verifier';
-export const LEGACY_PROFILE_KEY = 'stilltype-profile-v2';
+const LEGACY_PROFILE_KEY = 'stilltype-profile-v2';
 
 export const profileKey = (userId) => `${LEGACY_PROFILE_KEY}:${userId}`;
 
@@ -23,7 +23,7 @@ function base64url(bytes) {
   return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export function createVerifier() {
+function createVerifier() {
   return base64url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
@@ -100,7 +100,7 @@ const storeSignIn = (data) => storeSession(sessionFrom(data, base64url(crypto.ge
 // A request that hasn't finished by then fails as unreachable, so nothing waiting behind it (the push
 // queue, sign-out) can hang on a stalled connection; edits stay on the device, as offline. A caller's own
 // signal (a queue's deadline) aborts it as well.
-export const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 15000;
 
 export async function request(path, { method = 'GET', body, token, headers = {}, signal: callerSignal } = {}) {
   const timeout = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
@@ -272,7 +272,7 @@ export const textStamp = (text) => `${text.length.toString(36)}:${cyrb53(text).t
 const storedProfile = (text) => {
   try {
     const data = JSON.parse(text);
-    return data?.version === 2 ? data : null;
+    return data?.version === 2 ? withoutConditionSets(data) : null;
   } catch {
     return null;
   }
@@ -441,7 +441,7 @@ export async function updateCloudProfile(session, data, seenAt, { board } = {}) 
     method: 'PATCH',
     token: session.access_token,
     headers: { Prefer: 'return=representation' },
-    body: { data: rowCopy(data), updated_at: at, ...column },
+    body: { data: withConditionSets(rowCopy(data)), updated_at: at, ...column },
   }));
   return rows?.[0]?.updated_at || null;
 }
@@ -453,7 +453,7 @@ export async function insertCloudProfile(session, data, { board } = {}) {
     method: 'POST',
     token: session.access_token,
     headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
-    body: { user_id: session.user.id, data: rowCopy(data), updated_at: at, ...column },
+    body: { user_id: session.user.id, data: withConditionSets(rowCopy(data)), updated_at: at, ...column },
   }));
   return rows?.[0]?.updated_at || null;
 }
@@ -478,11 +478,63 @@ export async function repairBoard(session, board, at) {
   }
 }
 
+// Each run and loop names the conditions it was typed at, and most share a few sets, so a stored copy keeps
+// each set once in conditionSets, under a stamp of its JSON, and a record names its set by that stamp
+// (conditionSet, where conditions was). Loading puts every record's conditions back exactly as they were
+// (withoutConditionSets, in normalizeProfile), so nothing that reads or merges a copy sees the table.
+// Builds from before it read only inline conditions and throw on a record without them, so a copy is
+// written this way only from CONDITION_SETS_FROM, once tabs still running one have had six weeks to reload.
+export const CONDITION_SETS_FROM = '2026-12-01T00:00:00Z';
+const CONDITIONED = ['runs', 'loops'];
+const renamed = (record, from, to, value) => Object.fromEntries(Object.entries(record).map(([key, held]) => (key === from ? [to, value] : [key, held])));
+
+export function withoutConditionSets(copy) {
+  if (!copy || typeof copy !== 'object') return copy;
+  const { conditionSets, ...rest } = copy;
+  const sets = conditionSets && typeof conditionSets === 'object' ? conditionSets : {};
+  const named = (record) => record && typeof record === 'object' && 'conditionSet' in record;
+  for (const name of CONDITIONED) {
+    if (!Array.isArray(rest[name]) || !rest[name].some(named)) continue;
+    rest[name] = rest[name].flatMap((record) => {
+      if (!named(record)) return [record];
+      if (record.conditions) {
+        const { conditionSet, ...inline } = record;
+        return [inline];
+      }
+      // A set this copy lacks (a tab on a build from before kept another copy's table): the record is left
+      // out here, and comes back from any copy that holds it whole.
+      return Object.hasOwn(sets, record.conditionSet) ? [renamed(record, 'conditionSet', 'conditions', { ...sets[record.conditionSet] })] : [];
+    });
+  }
+  return rest;
+}
+
+export function withConditionSets(profile, now = Date.now()) {
+  if (now < Date.parse(CONDITION_SETS_FROM) || !profile || typeof profile !== 'object') return profile;
+  const copy = { ...withoutConditionSets(profile) };
+  const sets = {};
+  const texts = {};
+  for (const name of CONDITIONED) {
+    if (!Array.isArray(copy[name])) continue;
+    copy[name] = copy[name].map((record) => {
+      if (!record?.conditions || typeof record.conditions !== 'object') return record;
+      const text = JSON.stringify(record.conditions);
+      const stamp = textStamp(text);
+      // Two sets with one stamp: the second stays inline.
+      if (texts[stamp] !== undefined && texts[stamp] !== text) return record;
+      texts[stamp] = text;
+      sets[stamp] = record.conditions;
+      return renamed(record, 'conditions', 'conditionSet', stamp);
+    });
+  }
+  return Object.keys(sets).length ? { ...copy, conditionSets: sets } : copy;
+}
+
 // The copy written to the device cache. A trace's summary is the replay of its own events (completeAttempt)
 // and over half its size, so it is left out and rebuilt on load (normalizeProfile).
 const withoutSummary = ({ summary, ...trace }) => trace;
-export const storedCopy = (profile) => (Array.isArray(profile?.attempts)
-  ? { ...profile, attempts: profile.attempts.map((trace) => (trace?.summary ? withoutSummary(trace) : trace)) } : profile);
+export const storedCopy = (profile, now = Date.now()) => withConditionSets(Array.isArray(profile?.attempts)
+  ? { ...profile, attempts: profile.attempts.map((trace) => (trace?.summary ? withoutSummary(trace) : trace)) } : profile, now);
 
 export function loadCachedProfile(userId) {
   return readJson(profileKey(userId));
@@ -532,7 +584,7 @@ export function capHistory(profile) {
 // Whether best `a` beats `b`: the higher wpm, then the earlier record (a later run has to beat a best,
 // not match it), then the attempt id. A total order, so every copy keeps the same best for a tie
 // whichever side merged first, and copies settle instead of rewriting the row on every load.
-export const beatsBest = (a, b) => !b || a.wpm > b.wpm || (a.wpm === b.wpm
+const beatsBest = (a, b) => !b || a.wpm > b.wpm || (a.wpm === b.wpm
   && (compare(a.at || '', b.at || '') || compare(String(a.attemptId ?? ''), String(b.attemptId ?? ''))) < 0);
 
 // historyClearedIds: the records each clear named (see clearProfile), as [marker, id] pairs, so an undo
@@ -632,7 +684,7 @@ const valueOrder = (value) => JSON.stringify(value) ?? '';
 // first, so both sides of a merge pick the same one.
 const takesTheirs = (myStamp, theirStamp, mine, theirs) => theirStamp > myStamp
   || (theirStamp === myStamp && valueOrder(theirs) < valueOrder(mine));
-export function mergePreferences(local, cloud) {
+function mergePreferences(local, cloud) {
   const mine = local.preferences || {};
   const theirs = cloud.preferences || {};
   const myStamps = stampsOf(local);
@@ -716,7 +768,7 @@ const resultOrder = (a, b) => compare(a.at || '', b.at || '') || compare(a.wpm ?
   || compare(a.accuracy ?? 0, b.accuracy ?? 0) || compare(String(a.inputClass ?? ''), String(b.inputClass ?? ''));
 const laterResult = (a, b) => (!a ? b || null : !b ? a : resultOrder(a, b) >= 0 ? a : b);
 const earlierResult = (a, b) => (!a ? b || null : !b ? a : resultOrder(a, b) <= 0 ? a : b);
-export function mergeLessons(mine = {}, theirs = {}) {
+function mergeLessons(mine = {}, theirs = {}) {
   const merged = {};
   for (const id of [...new Set([...Object.keys(mine), ...Object.keys(theirs)])].sort()) {
     const [a, b] = [mine[id], theirs[id]];

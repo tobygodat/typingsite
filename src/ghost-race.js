@@ -7,11 +7,11 @@ import { METRIC_VERSION, quoteCorpus, replayAttempt, textId } from './typing.js'
 import { wordListIds } from './words.js';
 import { comparableKind } from './insights.js';
 
-export const TRACE_VERSION = 1;
+const TRACE_VERSION = 1;
 export const MAX_TRACE_KEYS = 6000;
 // The service measures its JSON text, which spaces every array item.
-export const MAX_TRACE_BYTES = 65536;
-export const MAX_CHALLENGE_TEXT = 4000;
+const MAX_TRACE_BYTES = 65536;
+const MAX_CHALLENGE_TEXT = 4000;
 export const CHALLENGE_DAYS = 7;
 // Runs a challenge can be made from. Drills are exercises; a ghost race is already a reply.
 export const SENDABLE_KINDS = ['test', 'retest', 'daily'];
@@ -119,7 +119,7 @@ export function ghostPoints(trace, textLength) {
   return points;
 }
 
-export const challengeDuration = (conditions = {}) => conditions.mode === 'time' && TIMED.includes(conditions.duration) ? conditions.duration : null;
+const challengeDuration = (conditions = {}) => conditions.mode === 'time' && TIMED.includes(conditions.duration) ? conditions.duration : null;
 
 // Every test condition a challenge may carry, with the values this app sends and can set up again. The
 // service refuses any other (supabase/migrations/20261009100000_ghost_challenges.sql); a received row is
@@ -203,7 +203,7 @@ export function challengePayload(attempt) {
   return { passage, duration, conditions, trace, score };
 }
 
-export function describeShape(conditions = {}, duration = null) {
+function describeShape(conditions = {}, duration = null) {
   if (conditions.sourceKind === 'daily') return 'daily';
   if (duration) return `${duration}-second`;
   if (conditions.mode === 'words' && conditions.count) return `${conditions.count}-word`;
