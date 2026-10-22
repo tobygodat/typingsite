@@ -131,7 +131,10 @@ export function createThemeEditor({ themes, currentTheme, preview, save, signedI
   }
 
   function open(id, from) {
-    if (draft) preview(null);
+    if (draft) {
+      draft = null;
+      preview(null);
+    }
     const saved = themes().find((theme) => theme.id === id);
     const current = themes().find((theme) => theme.id === currentTheme());
     const base = saved || current;
