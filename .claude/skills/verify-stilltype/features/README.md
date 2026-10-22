@@ -51,7 +51,7 @@ proof.
 
 - [Practice run](./practice-run.md): the idle passage, typing a run, the chrome fading, and the run card after it.
 - [Practice controls](./practice-controls.md): the one-row rail of modes, lengths and punctuation, and the "more" menu, at desktop and phone widths.
-- [Theme and settings](./theme-and-settings.md): the settings dialog, the theme radios, and following the system theme.
+- [Theme and settings](./theme-and-settings.md): the settings dialog, the theme and font radios, and following the system theme.
 - [Command palette](./command-palette.md): Ctrl+K, filtering, and running a command such as `theme · light`.
 - [Accounts](./accounts.md): guest mode, signing in with email against the fake Supabase, and the account menu.
 - [Challenge tabs, dock labels and key hints](./challenge-and-chrome-labels.md): one selected challenge tab, label-in-name for the dock's short verbs at 320px, and key hints hidden on touch-only devices.

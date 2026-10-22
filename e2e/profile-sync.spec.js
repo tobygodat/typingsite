@@ -1,7 +1,7 @@
 // One account in two tabs or on two devices, against the fake Supabase in e2e/fake-supabase.js: a save
 // from a copy that is out of date merges with the other copy instead of replacing it.
 import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting } from './fixtures.js';
-import { textStamp } from '../src/account.js';
+import { CONDITION_SETS_FROM, textStamp } from '../src/account.js';
 
 test.setTimeout(90000);
 
@@ -88,6 +88,28 @@ test('two tabs: a tab that missed the other’s saves keeps its run and settings
   await expectBothRuns(page, { runs: 2, best: fast });
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   expect(errors).toEqual([]);
+});
+
+test('from CONDITION_SETS_FROM the row and the device cache keep each conditions set once, and read back the same', async ({ page, supabase }) => {
+  const user = supabase.addUser(EMAIL);
+  await page.clock.install({ time: new Date(Date.parse(CONDITION_SETS_FROM) + 3600000) });
+  await openApp(page);
+  await signInWithEmail(page, EMAIL);
+  const fast = await finishRun(page);
+  const slow = await finishRun(page, 60);
+  await expect.poll(() => supabase.profiles.get(user.id)?.data?.runs?.length).toBe(2);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  for (const stored of [supabase.profiles.get(user.id).data, await cachedProfile(page)]) {
+    expect(Object.keys(stored.conditionSets)).toHaveLength(1);
+    expect(stored.runs.map((run) => [run.conditions, run.conditionSet in stored.conditionSets])).toEqual([[undefined, true], [undefined, true]]);
+  }
+  expect(cloud(supabase).runs.map((run) => run.conditions.count)).toEqual([10, 10]);
+  await expectBothRuns(page, { runs: 2, best: Math.max(fast, slow) });
+  await expect(page.locator('#run-history .run-row').first()).toContainText('10 words');
+  const writes = supabase.profileWrites.length;
+  for (let round = 0; round < 3; round += 1) await page.evaluate(() => dispatchEvent(new Event('online')));
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  expect(supabase.profileWrites.length).toBe(writes);
 });
 
 test('two devices: a stale device’s push keeps the other device’s run, higher best and settings, and its settings change wins as the newest', async ({ page, browser, supabase }) => {

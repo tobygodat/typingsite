@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HISTORY, MAX_STORED_ATTEMPTS, cacheProfile, capHistory, clearProfile, fetchCloudProfile, insertCloudProfile, joinHolds, mergeAndHold,
+  CONDITION_SETS_FROM, HISTORY, MAX_STORED_ATTEMPTS, cacheProfile, capHistory, clearProfile, fetchCloudProfile, insertCloudProfile, joinHolds, mergeAndHold,
   mergeSynced, profileKey, revokeClear, rowCopy, sameProfile, sameRow, stampAfter, storedCopy, undoClearHere, updateCloudProfile,
+  withConditionSets,
 } from '../src/account.js';
 import { recordPracticeTime, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES } from '../src/insights.js';
 import { MAX_COMPOSITIONS } from '../src/compose.js';
 import { normalizeProfile, preferencesInUse } from '../src/profile.js';
-import { completeAttempt, conditionKey, createAttempt } from '../src/typing.js';
+import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, conditionKey, createAttempt } from '../src/typing.js';
 
 const minute = (n) => new Date(Date.UTC(2026, 9, 1, 12, 0) + n * 60000).toISOString();
 const profile = (over = {}) => ({
@@ -1433,6 +1434,188 @@ test('recordings stay on each device: copies settle through the row, and a row s
     assert.deepEqual(ids(read.data.attempts), ['s1', 's2']);
     assert.deepEqual(ids(normalizeProfile(read.data).runs), ['s1', 's2']);
     assert.equal(legacy.writes, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// Conditions sets as runs and loops carry them: several shapes, two custom sets that share a condition key
+// (customOrder is not part of it), one an older build saved with fewer fields, and one with its fields in
+// another order. Each is its own set, kept exactly.
+const typed = (over = {}) => ({ mode: 'time', duration: 30, count: null, punctuation: false, numbers: false, quoteLength: null,
+  difficulty: null, wordList: 'english-1k', inputClass: 'physical-keyboard', layout: 'qwerty', correctionPolicy: 'relaxed',
+  strictSpace: false, quickEnd: true, language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, ...over });
+const SETS = [
+  typed(), typed({ duration: 60 }), typed({ mode: 'words', duration: null, count: 25 }), typed({ quickEnd: false, inputClass: 'touch' }),
+  typed({ mode: 'custom', duration: null, wordList: null, customOrder: 'shuffled' }), typed({ mode: 'custom', duration: null, wordList: null, customOrder: 'random' }),
+  { mode: 'time', duration: 30, punctuation: false, wordList: 'english-1k', correctionPolicy: 'relaxed' },
+  Object.fromEntries(Object.entries(typed()).reverse()),
+];
+const AFTER = Date.parse(CONDITION_SETS_FROM);
+const BEFORE = AFTER - 1;
+const typedRun = (id, n, set) => item(id, n, { kind: 'test', status: 'complete', fresh: true, conditions: { ...SETS[set] }, score: { wpm: 40 + n, accuracy: 97 } });
+const typedLoop = (id, n, set) => item(id, n, { target: 'th', drillCompleted: true, conditions: { ...SETS[set] } });
+const load = (stored) => normalizeProfile(JSON.parse(JSON.stringify(stored)));
+
+test('from CONDITION_SETS_FROM a stored copy keeps each conditions set once, and loading gives every record back exactly', () => {
+  assert.equal(conditionKey(SETS[4]), conditionKey(SETS[5]));
+  assert.equal(conditionKey(SETS[0]), conditionKey(SETS[6]));
+  const copy = normalizeProfile(profile({
+    attempts: [finishedTrace('t', 50)],
+    runs: Array.from({ length: 48 }, (_, n) => typedRun(`r${n}`, n, n % SETS.length)),
+    loops: Array.from({ length: 12 }, (_, n) => typedLoop(`l${n}`, n, (n * 3) % SETS.length)),
+  }));
+  const before = JSON.stringify(copy);
+  const stored = storedCopy(copy, AFTER);
+  assert.equal(JSON.stringify(copy), before, 'the copy in use is left as it was');
+  assert.equal(Object.keys(stored.conditionSets).length, SETS.length);
+  assert.deepEqual(Object.values(stored.conditionSets).map((set) => JSON.stringify(set)).sort(), SETS.map((set) => JSON.stringify(set)).sort());
+  for (const record of [...stored.runs, ...stored.loops]) {
+    assert.ok(!('conditions' in record));
+    assert.ok(Object.hasOwn(stored.conditionSets, record.conditionSet));
+  }
+  assert.ok(stored.attempts.every((trace) => trace.conditions && !('summary' in trace)), 'recordings keep their own conditions');
+  assert.ok(JSON.stringify(stored.runs).length < JSON.stringify(copy.runs).length * 0.5);
+  // Loaded, every record is byte for byte what it was, so its condition key, best and comparisons are too.
+  const loaded = load(stored);
+  assert.equal(JSON.stringify(loaded.runs), JSON.stringify(copy.runs));
+  assert.equal(JSON.stringify(loaded.loops), JSON.stringify(copy.loops));
+  assert.deepEqual(loaded, copy);
+  assert.equal(JSON.stringify(loaded), JSON.stringify(load(storedCopy(copy, BEFORE))));
+  assert.ok(sameProfile(loaded, copy));
+  // Written again, from the copy in use or straight from a stored one (a row cached as fetched), it is the same text.
+  assert.equal(JSON.stringify(storedCopy(loaded, AFTER)), JSON.stringify(stored));
+  assert.equal(JSON.stringify(storedCopy(JSON.parse(JSON.stringify(stored)), AFTER)), JSON.stringify(stored));
+  assert.deepEqual(storedCopy(profile(), AFTER), profile());
+});
+
+test('until CONDITION_SETS_FROM, the row and the device cache are written exactly as builds before it write them', async () => {
+  const originalFetch = globalThis.fetch;
+  const realNow = Date.now;
+  try {
+    const copy = normalizeProfile(profile({ attempts: [finishedTrace('t', 9)], runs: SETS.map((_, n) => typedRun(`r${n}`, n, n)), loops: [typedLoop('l', 9, 2)] }));
+    // Builds before this one wrote the cache as this (src/account.js, storedCopy), and the row as rowCopy.
+    const earlier = { ...copy, attempts: copy.attempts.map(({ summary, ...trace }) => trace) };
+    assert.equal(JSON.stringify(storedCopy(copy, BEFORE)), JSON.stringify(earlier));
+    const service = fakeRow();
+    const session = { access_token: 't', user: { id: 'u1' } };
+    Date.now = () => BEFORE;
+    await insertCloudProfile(session, copy);
+    assert.equal(JSON.stringify(service.row.data), JSON.stringify(rowCopy(copy)));
+    Date.now = () => AFTER;
+    await updateCloudProfile(session, copy, service.row.updated_at);
+    assert.ok(service.row.data.conditionSets);
+    assert.equal(JSON.stringify(service.row.data), JSON.stringify(withConditionSets(rowCopy(copy), AFTER)));
+    assert.deepEqual(normalizeProfile(service.row.data), normalizeProfile(rowCopy(copy)));
+  } finally {
+    globalThis.fetch = originalFetch;
+    Date.now = realNow;
+  }
+});
+
+// Three devices, each with a second tab, pass copies only through the row and the device cache, written
+// as they would be on either side of CONDITION_SETS_FROM. Every copy read from its compact form must be
+// exactly what its inline form gives, so every merge, clear and undo is the one inline copies make.
+test('randomised: copies read from compact rows and caches merge exactly as inline ones, in any order, and settle', () => {
+  const realNow = Date.now;
+  const inexact = [];
+  const unsettled = [];
+  const rekeyed = [];
+  try {
+    for (let seed = 1; seed <= 150; seed += 1) {
+      const random = seeded(seed);
+      let now = AFTER;
+      Date.now = () => now;
+      const keys = new Map();
+      const write = (copy) => {
+        const compact = storedCopy(copy, random() < 0.75 ? AFTER : BEFORE);
+        if (JSON.stringify(load(compact)) !== JSON.stringify(load(storedCopy(copy, BEFORE))) && !inexact.includes(seed)) inexact.push(seed);
+        return JSON.stringify(compact);
+      };
+      const read = (text) => normalizeProfile(JSON.parse(text));
+      const tabs = Array.from({ length: 6 }, () => device(normalizeProfile(profile())));
+      const caches = [null, null, null];
+      let row = null;
+      let writes = 0;
+      const push = (d) => {
+        const theirs = row && read(row);
+        const merged = theirs ? mergeInto(d, theirs) : d.copy;
+        if (!theirs || !sameRow(merged, theirs)) {
+          row = write(rowCopy(merged));
+          writes += 1;
+        }
+      };
+      for (let step = 0; step < 50; step += 1) {
+        now += 60000;
+        const n = Math.floor(random() * tabs.length);
+        const d = tabs[n];
+        const roll = random();
+        const set = Math.floor(random() * SETS.length);
+        if (roll < 0.3) {
+          const id = `r${keys.size}`;
+          keys.set(id, conditionKey(SETS[set]));
+          d.copy = { ...d.copy, runs: [...d.copy.runs, typedRun(id, step, set)] };
+        } else if (roll < 0.38) {
+          const id = `l${keys.size}`;
+          keys.set(id, conditionKey(SETS[set]));
+          d.copy = { ...d.copy, loops: [...d.copy.loops, typedLoop(id, step, set)] };
+        } else if (roll < 0.46) clearOn(d);
+        else if (roll < 0.54 && d.clears.length) undoOn(d, d.clears[Math.floor(random() * d.clears.length)]);
+        else if (roll < 0.77) {
+          // Tabs of one device share its cache: this tab takes in what is there, then writes it back.
+          const cache = caches[n % 3];
+          if (cache) mergeInto(d, read(cache));
+          caches[n % 3] = write(d.copy);
+        } else push(d);
+      }
+      for (let round = 0; round < 3; round += 1) for (const d of tabs) push(d);
+      const settled = writes;
+      for (let round = 0; round < 3; round += 1) for (const d of tabs) push(d);
+      if (writes !== settled || tabs.some((d) => !sameRow(d.copy, read(row)))) unsettled.push(seed);
+      for (const copy of [read(row), ...tabs.map((d) => d.copy)]) {
+        for (const record of [...copy.runs, ...copy.loops]) if (conditionKey(record.conditions) !== keys.get(record.id) && !rekeyed.includes(seed)) rekeyed.push(seed);
+      }
+    }
+  } finally {
+    Date.now = realNow;
+  }
+  assert.deepEqual(inexact, []);
+  assert.deepEqual(unsettled, []);
+  assert.deepEqual(rekeyed, []);
+});
+
+// A tab still on a build from before, left open past the date, keeps conditionSets as a field it doesn't
+// know and writes its own records inline; one it rebuilt from a stored record can carry both.
+test('a row a build from before wrote back after CONDITION_SETS_FROM is read with every run, and settles', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    const session = { access_token: 't', user: { id: 'u1' } };
+    const laptop = normalizeProfile(profile({ runs: [typedRun('a', 1, 0), typedRun('b', 2, 1), typedRun('c', 3, 2)], updatedAt: minute(3), mergeStamp: minute(3) }));
+    const compact = JSON.parse(JSON.stringify(withConditionSets(rowCopy(laptop), AFTER)));
+    const older = JSON.parse(JSON.stringify(withConditionSets(rowCopy({ ...laptop, runs: laptop.runs.slice(0, 2) }), AFTER)));
+    const written = {
+      ...compact,
+      // The table of a copy it held from before run c, saved later, so c's set is not in it.
+      conditionSets: older.conditionSets,
+      runs: [compact.runs[0], { ...compact.runs[1], conditions: { ...SETS[1] } }, compact.runs[2], typedRun('old', 4, 3)],
+      updatedAt: minute(4),
+    };
+    const read = normalizeProfile(written);
+    // Run c names a set this copy lacks: it is left out rather than guessed at, so nothing reads a run without conditions.
+    assert.deepEqual(ids(read.runs), ['a', 'b', 'old']);
+    assert.deepEqual(read.runs.slice(0, 2), laptop.runs.slice(0, 2));
+    assert.deepEqual(read.runs[2].conditions, SETS[3]);
+    assert.ok(!('conditionSets' in read));
+    assert.ok(read.runs.every((run) => !('conditionSet' in run)));
+    // This build holds run c whole, so merging the row gives it back, and the row settles after one write.
+    const service = fakeRow({ data: written, updated_at: '2026-10-01T12:04:00+00:00' });
+    let copy = await push(session, laptop);
+    assert.equal(service.writes, 1);
+    assert.deepEqual(ids(copy.runs), ['a', 'b', 'c', 'old']);
+    assert.deepEqual(copy.runs.map((run) => conditionKey(run.conditions)), [0, 1, 2, 3].map((set) => conditionKey(SETS[set])));
+    assert.deepEqual(normalizeProfile(service.row.data).runs, copy.runs);
+    for (let round = 0; round < 3; round += 1) copy = await push(session, copy);
+    assert.equal(service.writes, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
