@@ -3,9 +3,12 @@
 The settings control in the dock opens a centred, opaque modal dialog. A sidebar lists the categories
 (appearance, practice, keyboard, sound, shortcuts, then "Import Monkeytype settings"); each category is a
 column of preference rows whose options are native radio groups styled as inline selectors. Appearance holds
-theme (system, dark, light, paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord), text size, word highlight, one-line tape and a sample passage. Changes apply as
-they are chosen; Done, the close button and Escape all close it. The theme follows the system until the
-person picks a theme; a guest's pick lasts for the tab, a signed-in pick persists.
+theme (system, dark, light), dark theme (dark, terminal, midnight, nord), light theme (light, paper, shadcn,
+soft, swiss, e-ink), text size, word highlight, one-line tape and a sample passage. Changes apply as they
+are chosen; Done, the close button and Escape all close it. In system mode the page shows the dark theme
+pick or the light theme pick as the system changes; in dark or light mode it shows that mode's pick, and
+picking a theme from the other row switches to its mode. A guest's choices last for the tab, a signed-in
+person's persist.
 
 ## Sub-features
 
@@ -13,18 +16,22 @@ person picks a theme; a guest's pick lasts for the tab, a signed-in pick persist
   `#settings-trigger` (accessible name "Settings"), with focus on the current category button.
 - `settings-category` switches the visible `#settings-<category>` section from the sidebar's
   `[data-settings-category="<category>"]` buttons; the current one has `aria-current="true"`.
-- `theme-pick` checks a radio in the `#theme-select` fieldset (`#theme-select input[value="dark"|"light"|"paper"|…|"e-ink"|"nord"]`);
-  `html[data-theme]` and the page colours follow at once.
-- `theme-system` follows the system's light or dark preference while `#theme-select input[value="system"]`
-  is checked.
-- `theme-persist` keeps a signed-in person's pick across reloads; a guest falls back to the system on reload.
+- `theme-mode` checks a radio in `#theme-select` (`input[value="system"|"dark"|"light"]`); `html[data-theme]`
+  becomes that mode's pick at once.
+- `theme-pick` checks a radio in `#dark-theme` (`dark`, `terminal`, `midnight`, `nord`) or `#light-theme`
+  (`light`, `paper`, `shadcn`, `soft`, `swiss`, `e-ink`). Outside system mode the pick shows at once, in its
+  own mode; in system mode it shows when the system is in that mode.
+- `theme-system` switches between the two picks as the system's light or dark preference changes, while
+  `#theme-select input[value="system"]` is checked.
+- `theme-persist` keeps a signed-in person's mode and picks across reloads, painted by the inline script in
+  `index.html` before the app runs; a guest falls back to system mode with dark and light on reload.
 - `settings-close` closes the dialog with Escape, `#settings-close` or `#settings-done` and returns focus to
   the opener (the dock button when opened from there).
 
 ## How to get to it (user POV)
 
 - Click "settings" in the dock (the sliders icon only, below 900 px and on phones).
-- Ctrl+K → `theme · <name>` for any of the ten, or `theme · system` (see [Command palette](./command-palette.md)).
+- Ctrl+K → `theme · system|dark|light`, or `dark theme · <name>` / `light theme · <name>` (see [Command palette](./command-palette.md)).
 - Change the operating system's appearance while the theme is "system".
 
 ## Driving it with verify.mjs
@@ -39,8 +46,12 @@ Preconditions:
   set with "light" selected. `run.json` notes `theme: {before: "dark", after: "light"}`, and the checks
   cover the radio being checked, `html[data-theme]` following, Escape closing the dialog with focus back on
   `#settings-trigger`, and the theme staying after the close.
+- **Dark and light picks.** Run `$V drive .claude/skills/verify-stilltype/flows/theme-modes.mjs`. In system mode
+  it picks nord and paper, then emulates each system scheme: shots `settings-dark` and `settings-light` show
+  the appearance rows, `idle-dark` (nord) and `idle-light` (paper) the page. The checks cover the checked
+  radios and `html[data-theme]` following the scheme.
 - **Every theme.** Run `$V drive .claude/skills/verify-stilltype/flows/themes.mjs`. For each of the ten it
-  picks the theme in settings (shot `<theme>-settings`), checks `meta[name=theme-color]` follows `--ground`,
+  sets its mode and picks the theme in settings (shot `<theme>-settings`), checks `meta[name=theme-color]` follows `--ground`,
   then runs 10 words with one slip (shot `<theme>-mid-run`) and finishes (shot `<theme>-results`). Below
   761 px wide it shoots mid-run only.
 - **Phone.** `$V shot settings --width 390 --height 844 --mobile` (add `--scheme light` to switch towards

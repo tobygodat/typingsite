@@ -1,14 +1,16 @@
-// Every theme: pick it in settings → appearance, then a 10-word run with one slip (mid-run shot shows
-// typed, mistyped and untyped letters and the caret), then the results. Shots: <theme>-settings,
-// <theme>-mid-run, <theme>-results. At a phone width it shoots mid-run only.
-const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
+// Every theme: in settings → appearance, set the theme to its mode (dark or light) and pick it in that mode's
+// row, then a 10-word run with one slip (mid-run shot shows typed, mistyped and untyped letters and the
+// caret), then the results. Shots: <theme>-settings, <theme>-mid-run, <theme>-results. At a phone width it
+// shoots mid-run only.
+const MODES = { dark: ['dark', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
 
 export default async ({ page, h, shot, check }) => {
   const phone = page.viewportSize().width < 761;
-  for (const theme of THEMES) {
+  for (const [mode, theme] of Object.entries(MODES).flatMap(([name, themes]) => themes.map((one) => [name, one]))) {
     await h.openApp();
     await h.openSettings('appearance');
-    const option = page.locator(`#theme-select input[value="${theme}"]`);
+    await page.locator(`#theme-select input[value="${mode}"]`).locator('..').click();
+    const option = page.locator(`#${mode}-theme input[value="${theme}"]`);
     await option.locator('..').click();
     await h.attr('html', 'data-theme', theme);
     check(await option.isChecked(), `${theme} radio is checked`);

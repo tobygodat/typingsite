@@ -215,7 +215,7 @@ Density is low and deliberate. The practice screen centres the passage with the 
 
 **Key Characteristics:**
 - Literata for everything readable, including the passage and every numeral; Geist Mono only for small measurement labels, conditions and keys.
-- Dark (default) and light theme sets, plus eight more a person can pick (paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord); the theme follows the system until the user picks one.
+- Dark (default) and light theme sets, plus eight more a person can pick (paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord); four are dark and six light, and the theme follows the system, between a dark and a light pick, until the user sets a mode.
 - One green accent; coral for mistyped letters and regressions; amber for interrupted and mixed results.
 - Rules and space instead of boxes; opaque raised surfaces with a single soft float shadow; no glass, no glow.
 - Fluid motion: carets glide, lines scroll, and motion may live on the typing surface when it helps someone follow the run.

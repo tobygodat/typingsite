@@ -14,10 +14,13 @@
     // Resolve the theme before first paint so there is no flash. Guests always follow the system.
     try {
       const user = JSON.parse(localStorage.getItem('stilltype-session-v1'))?.user?.id;
-      const saved = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences?.theme : null;
-      const themes = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
-      const theme = themes.includes(saved) ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-      document.documentElement.dataset.theme = theme;
+      const saved = user ? JSON.parse(localStorage.getItem('stilltype-profile-v2:' + user))?.preferences : null;
+      const dark = ['dark', 'terminal', 'midnight', 'nord'];
+      const light = ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'];
+      const system = matchMedia('(prefers-color-scheme: light)').matches
+        ? (light.includes(saved?.lightTheme) ? saved.lightTheme : 'light')
+        : (dark.includes(saved?.darkTheme) ? saved.darkTheme : 'dark');
+      document.documentElement.dataset.theme = dark.includes(saved?.theme) || light.includes(saved?.theme) ? saved.theme : system;
     } catch {}
   </script>
   <link rel="stylesheet" href="/src/styles.css">
@@ -963,14 +966,26 @@
               <label class="setting-option"><input type="radio" name="theme-select" value="system" checked><span>system</span></label>
               <label class="setting-option"><input type="radio" name="theme-select" value="dark"><span>dark</span></label>
               <label class="setting-option"><input type="radio" name="theme-select" value="light"><span>light</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="paper"><span>paper</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="shadcn"><span>shadcn</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="terminal"><span>terminal</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="soft"><span>soft</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="midnight"><span>midnight</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="swiss"><span>swiss</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="e-ink"><span>e-ink</span></label>
-              <label class="setting-option"><input type="radio" name="theme-select" value="nord"><span>nord</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="dark-theme-label">dark theme</strong></div>
+            <fieldset class="setting-options" id="dark-theme" aria-labelledby="dark-theme-label">
+              <label class="setting-option"><input type="radio" name="dark-theme" value="dark" checked><span>dark</span></label>
+              <label class="setting-option"><input type="radio" name="dark-theme" value="terminal"><span>terminal</span></label>
+              <label class="setting-option"><input type="radio" name="dark-theme" value="midnight"><span>midnight</span></label>
+              <label class="setting-option"><input type="radio" name="dark-theme" value="nord"><span>nord</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="light-theme-label">light theme</strong></div>
+            <fieldset class="setting-options" id="light-theme" aria-labelledby="light-theme-label">
+              <label class="setting-option"><input type="radio" name="light-theme" value="light" checked><span>light</span></label>
+              <label class="setting-option"><input type="radio" name="light-theme" value="paper"><span>paper</span></label>
+              <label class="setting-option"><input type="radio" name="light-theme" value="shadcn"><span>shadcn</span></label>
+              <label class="setting-option"><input type="radio" name="light-theme" value="soft"><span>soft</span></label>
+              <label class="setting-option"><input type="radio" name="light-theme" value="swiss"><span>swiss</span></label>
+              <label class="setting-option"><input type="radio" name="light-theme" value="e-ink"><span>e-ink</span></label>
             </fieldset>
           </div>
           <div class="preference-row">
