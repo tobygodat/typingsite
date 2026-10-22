@@ -34,7 +34,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - Inbox and toast for invitations and challenges.
 - Settings dialog, ⌘K / Ctrl-K palette, Monkeytype import.
 - Rules: five correction policies, strict space, quick end, minimums, repeat quotes, pace caret.
-- Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), a background image, text size, typing and app fonts, word highlight, one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
+- Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), a background image, text size, typing and app fonts, word highlight (optionally sliding between words), one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
 - Accounts: email or Google, sync, clear history with Undo, account deletion.
 - Offline shell, What's new, anonymous feature suggestions.
 
@@ -55,7 +55,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - `progress-view.js`: Progress charts.
 - `graph.js`: speed graph.
 - `replay-view.js`: watch replay.
-- `motion.js`: caret, line scroll, pace and ghost carets.
+- `motion.js`: caret, line scroll, pace and ghost carets, and the sliding word highlight.
 - `tape.js`: one-line tape geometry.
 - `word-highlight.js`: word highlight.
 - `fonts.js`: typing and app font choices; `index.html` applies an account's before first paint.

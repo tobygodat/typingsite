@@ -6,7 +6,7 @@ column of preference rows whose options are native radio groups styled as inline
 theme (system, dark, light, then "new" and, while a custom theme is on show, "edit"), dark theme (dark,
 terminal, midnight, nord, then the saved custom themes with a dark background by name), light theme (light,
 paper, shadcn, soft, swiss, e-ink, then the saved custom themes with a light background), background (an image
-file, kept on this device only), text size, word highlight, one-line tape, typing font (literata, source serif, inter, jetbrains mono, ibm plex mono, roboto
+file, kept on this device only), text size, word highlight, slide (shown only while a highlight is on), one-line tape, typing font (literata, source serif, inter, jetbrains mono, ibm plex mono, roboto
 mono, fira code), app font (literata, source serif, inter) and a sample passage set in the typing font. Changes apply as they are chosen; Done, the close button and
 Escape all close it. In system mode the page shows the dark theme pick or the light theme pick as the system
 changes; in dark or light mode it shows that mode's pick, and picking a theme from the other row switches to
@@ -50,6 +50,9 @@ its mode. A guest's choices last for the tab, a signed-in person's persist.
 - `wallpaper-dim` drops the layer to a quarter opacity while `body[data-running="true"]`; it returns with the
   chrome on a pointer nudge, finish or restart.
 - `wallpaper-remove` clears it (`#wallpaper` hidden again) and moves focus to the file option.
+- `word-highlight-slide` checks `#word-highlight-slide input[value="true"]` (its row shows only while
+  `#word-highlight` is not off): `body[data-word-highlight-slide="true"]`, and one `.word-glide` in each
+  passage glides from word to word behind the letters instead of the letters' own tint.
 - `settings-close` closes the dialog with Escape, `#settings-close` or `#settings-done` and returns focus to
   the opener (the dock button when opened from there).
 
@@ -80,6 +83,10 @@ Preconditions:
   sets its mode and picks the theme in settings (shot `<theme>-settings`), checks `meta[name=theme-color]` follows `--ground`,
   then runs 10 words with one slip (shot `<theme>-mid-run`) and finishes (shot `<theme>-results`). Below
   761 px wide it shoots mid-run only.
+- **Word highlight slide.** Run `$V drive .claude/skills/verify-stilltype/flows/word-glide.mjs` (and again
+  with `--reduced-motion`). It checks the slide row is hidden until a highlight is on, turns on "this word"
+  and slide (shot `settings`), then compares the glide's edges with the current word's at rest, after a
+  space (shot `mid-glide`, notes how far it still has to go), on a miss (shot `miss`) and on a later line.
 - **Fonts.** Run `$V drive .claude/skills/verify-stilltype/flows/fonts.mjs --delay 30`. For each typing font
   (with a non-default app font), on three lines and on the tape, with the custom pace caret, it types past the
   second line and measures from the rendered glyphs: caret bar on the current letter's left edge (±1px), the

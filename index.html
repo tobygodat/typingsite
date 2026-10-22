@@ -46,7 +46,7 @@
   </script>
   <link rel="stylesheet" href="/src/styles.css">
 </head>
-<body data-view="practice" data-session="practice" data-font-size="28" data-word-highlight="off" data-tape="false" data-live-metrics="false" data-keyboard="false" data-focus-mode="false" data-ghost="off">
+<body data-view="practice" data-session="practice" data-font-size="28" data-word-highlight="off" data-word-highlight-slide="false" data-tape="false" data-live-metrics="false" data-keyboard="false" data-focus-mode="false" data-ghost="off">
   <a class="skip-link" href="#typing-input">Skip to typing</a>
   <div id="wallpaper" class="wallpaper" hidden></div>
 
@@ -1051,6 +1051,13 @@
               <label class="setting-option"><input type="radio" name="word-highlight" value="off" checked><span>off</span></label>
               <label class="setting-option"><input type="radio" name="word-highlight" value="current"><span>this word</span></label>
               <label class="setting-option"><input type="radio" name="word-highlight" value="next"><span>next word</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row" hidden>
+            <div class="preference-copy"><strong id="word-highlight-slide-label">slide</strong></div>
+            <fieldset class="setting-options" id="word-highlight-slide" aria-labelledby="word-highlight-label word-highlight-slide-label">
+              <label class="setting-option"><input type="radio" name="word-highlight-slide" value="false" checked><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="word-highlight-slide" value="true"><span>on</span></label>
             </fieldset>
           </div>
           <div class="preference-row">
