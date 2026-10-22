@@ -24,6 +24,7 @@
 </head>
 <body data-view="practice" data-session="practice" data-font-size="28" data-word-highlight="off" data-tape="false" data-live-metrics="false" data-keyboard="false" data-focus-mode="false" data-ghost="off">
   <a class="skip-link" href="#typing-input">Skip to typing</a>
+  <div id="wallpaper" class="wallpaper" hidden></div>
 
   <div class="app-shell">
     <header class="dock-zone">
@@ -972,6 +973,13 @@
               <label class="setting-option"><input type="radio" name="theme-select" value="e-ink"><span>e-ink</span></label>
               <label class="setting-option"><input type="radio" name="theme-select" value="nord"><span>nord</span></label>
             </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="wallpaper-label">background</strong><small id="wallpaper-error" class="preference-note" hidden>can’t read that file</small></div>
+            <div class="setting-options" role="group" aria-labelledby="wallpaper-label" aria-describedby="wallpaper-error">
+              <label class="setting-option"><input id="wallpaper-file" type="file" accept="image/*"><span>choose…</span></label>
+              <button id="wallpaper-remove" class="setting-option" type="button" hidden><span>remove</span></button>
+            </div>
           </div>
           <div class="preference-row">
             <div class="preference-copy"><strong id="font-size-label">text size</strong></div>

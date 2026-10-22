@@ -72,6 +72,13 @@
   /* Progress charts: about 2.5 wide to 1 tall, between these heights. */
   --chart-height: 400px;
   --chart-height-min: 240px;
+  /* Background image (src/wallpaper.js): one dot every pitch over the top of the page, a tint of the accent
+     faded out above the passage, dimmed while a run is in progress. */
+  --wallpaper-pitch: 3px;
+  --wallpaper-dot: 2px;
+  --wallpaper-height: 40svh;
+  --wallpaper-tint: 35%;
+  --wallpaper-dim: 0.25;
 
   /* Motion: every duration scales from one place and drops to zero for reduced motion. */
   --motion-scale: 1;
@@ -464,6 +471,8 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   transition: background-color var(--dur-medium) var(--ease-out), color var(--dur-medium) var(--ease-out);
+  /* The background image sits between the body's colour and the page. */
+  isolation: isolate;
 }
 
 h1, h2, h3 { text-wrap: balance; font-weight: 400; }
@@ -715,6 +724,8 @@ kbd {
 .setting-option:hover span { color: var(--text); background: var(--raised-2); }
 .setting-option input:checked + span { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 calc(-1 * var(--settings-selection-line)) 0 var(--accent); }
 .setting-option input:focus-visible + span { outline: var(--settings-selection-line) solid var(--text); outline-offset: var(--space-1); }
+button.setting-option { border: 0; padding: 0; background: none; outline: none; }
+button.setting-option:focus-visible span { outline: var(--settings-selection-line) solid var(--text); outline-offset: var(--space-1); }
 .setting-option:has(:disabled) { cursor: default; opacity: var(--disabled-opacity); }
 .preference-range { display: flex; align-items: center; gap: var(--space-3); }
 .preference-value { min-width: 4ch; color: var(--muted); font-size: var(--text-small); text-align: right; }
@@ -1582,6 +1593,27 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 
 body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
 body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { pointer-events: none; }
+
+/* The background image: dots × the dithered image (inverted on light themes, where the accent is the dark
+   end) × a fade, over the tint. Only its opacity changes, so a run never relays out or repaints it. */
+.wallpaper {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: -1;
+  height: var(--wallpaper-height);
+  pointer-events: none;
+  opacity: 0;
+  background: color-mix(in oklab, var(--accent) var(--wallpaper-tint), var(--ground));
+  mask-image: linear-gradient(#000 20%, rgb(0 0 0 / 0.45) 55%, rgb(0 0 0 / 0.1) 80%, #0000 92%), conic-gradient(at var(--wallpaper-dot) var(--wallpaper-dot), #0000 75%, #000 0), var(--wallpaper-mask, none), linear-gradient(light-dark(#000, #0000) 0 0);
+  mask-size: 100% 100%, var(--wallpaper-pitch) var(--wallpaper-pitch), var(--wallpaper-size, 0 0), 100% 100%;
+  mask-repeat: no-repeat, repeat, no-repeat, no-repeat;
+  mask-composite: intersect, intersect, exclude;
+  image-rendering: pixelated;
+  transition: opacity var(--dur-medium) var(--ease-out);
+}
+.wallpaper[data-shown] { opacity: 1; }
+body[data-running="true"] .wallpaper[data-shown] { opacity: var(--wallpaper-dim); }
+@supports not (color: light-dark(#000, #fff)) { .wallpaper { display: none; } }
 
 /* Caps Lock warning: sits in the gap under the measure rule, so showing it moves nothing.
    It is a warning, not chrome, so the running fade leaves it alone; it is a readable

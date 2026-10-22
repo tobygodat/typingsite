@@ -57,6 +57,7 @@ import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, KEY_OUTCOME, SOUND_LABELS, SO
 import { renderSpeedGraph } from './graph.js';
 import { createPalette } from './palette.js';
 import { createSettingsView, disableSetting, onSetting, selectSetting } from './settings.js';
+import { createWallpaper } from './wallpaper.js';
 import { normalizeKeybindings, matchesBinding, bindingLabel, ariaShortcuts, createKeybindingEditor } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
@@ -5259,6 +5260,7 @@ function bindEvents() {
     onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
   });
   keybindingEditor.refresh();
+  createWallpaper({ layer: $('wallpaper'), input: $('wallpaper-file'), remove: $('wallpaper-remove'), error: $('wallpaper-error') });
   settingsView = createSettingsView({ dialog: $('settings-dialog'), trigger: $('settings-trigger'), fallback: $('exit-focus'), stopRecording: () => keybindingEditor.stopRecording() });
   onSetting('live-toggle', (value) => { prefs.liveMetrics = value === 'true'; applyPreferences(); saveChoice('liveMetrics'); });
   onSetting('keyboard-toggle', (value) => { prefs.keyboard = value === 'true'; applyPreferences(); saveChoice('keyboard'); });

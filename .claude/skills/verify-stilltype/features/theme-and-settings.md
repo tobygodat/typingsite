@@ -3,7 +3,8 @@
 The settings control in the dock opens a centred, opaque modal dialog. A sidebar lists the categories
 (appearance, practice, keyboard, sound, shortcuts, then "Import Monkeytype settings"); each category is a
 column of preference rows whose options are native radio groups styled as inline selectors. Appearance holds
-theme (system, dark, light, paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord), text size, word highlight, one-line tape and a sample passage. Changes apply as
+theme (system, dark, light, paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord), background (an image
+file, kept on this device only), text size, word highlight, one-line tape and a sample passage. Changes apply as
 they are chosen; Done, the close button and Escape all close it. The theme follows the system until the
 person picks a theme; a guest's pick lasts for the tab, a signed-in pick persists.
 
@@ -18,6 +19,13 @@ person picks a theme; a guest's pick lasts for the tab, a signed-in pick persist
 - `theme-system` follows the system's light or dark preference while `#theme-select input[value="system"]`
   is checked.
 - `theme-persist` keeps a signed-in person's pick across reloads; a guest falls back to the system on reload.
+- `wallpaper-pick` takes an image from `#wallpaper-file` (the "choose…" option; `setInputFiles` drives it):
+  `#wallpaper[data-shown]` appears as a dithered dot layer tinted from the theme over the top of the page,
+  fading out above the passage, and `#wallpaper-remove` ("remove") appears. A file that isn't an image shows
+  `#wallpaper-error` and changes nothing. The image survives reloads (IndexedDB) for guests and members alike.
+- `wallpaper-dim` drops the layer to a quarter opacity while `body[data-running="true"]`; it returns with the
+  chrome on a pointer nudge, finish or restart.
+- `wallpaper-remove` clears it (`#wallpaper` hidden again) and moves focus to the file option.
 - `settings-close` closes the dialog with Escape, `#settings-close` or `#settings-done` and returns focus to
   the opener (the dock button when opened from there).
 
@@ -45,6 +53,10 @@ Preconditions:
   761 px wide it shoots mid-run only.
 - **Phone.** `$V shot settings --width 390 --height 844 --mobile` (add `--scheme light` to switch towards
   dark). Below 760 px the category nav wraps across the top of the dialog.
+- **Background image.** Run `$V drive .claude/skills/verify-stilltype/flows/wallpaper.mjs` (add
+  `WALLPAPER_IMAGE=<path>` for your own image, default the app icon; `THEME=<name>` picks a theme first).
+  Shots: `settings-none`, `settings-image`, `idle` and `mid-run`; `run.json` notes the running opacity and
+  checks it is under 0.5.
 - **Other categories.** In a flow, `await h.openSettings('practice')` opens the dialog (if closed) and shows
   that category; pass any of appearance, practice, keyboard, sound, shortcuts.
 - **System theme.** Run `$V shot idle --scheme light` and `$V shot idle --scheme dark`. Each `run.json` step
@@ -64,5 +76,7 @@ Preconditions:
 - The modal makes the page inert: close the dialog (Escape) before driving anything behind it. Escape first
   cancels a shortcut recording in the shortcuts category, and only a second Escape closes the dialog.
 - During a run the dock fades and ignores the pointer; `h.openSettings()` nudges the mouse first.
+- The background image lives in IndexedDB, not the profile: each `$V` run starts without one, and
+  `--signed-in` doesn't bring one along.
 - Contrast has its own checks: `tests/contrast.test.js` (every theme's token pairs), `e2e/passage-contrast.spec.js`
-  (every theme's passage letters and caret as painted) and `e2e/light-contrast.spec.js`. A screenshot isn't a contrast check.
+  (every theme's passage letters and caret as painted), `e2e/wallpaper.spec.js` (the same over the brightest background image) and `e2e/light-contrast.spec.js`. A screenshot isn't a contrast check.
