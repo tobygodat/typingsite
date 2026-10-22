@@ -9,7 +9,9 @@ export default async ({ page, h, shot, note, check }) => {
   await h.openApp();
   await h.openSettings('appearance');
   if (process.env.THEME) {
-    await page.locator(`#theme-select input[value="${process.env.THEME}"]`).locator('..').click();
+    const mode = ['dark', 'terminal', 'midnight', 'nord'].includes(process.env.THEME) ? 'dark' : 'light';
+    await page.locator(`#theme-select input[value="${mode}"]`).locator('..').click();
+    await page.locator(`#${mode}-theme input[value="${process.env.THEME}"]`).locator('..').click();
     await h.attr('html', 'data-theme', process.env.THEME);
   }
   check(await layer.isHidden(), 'no image by default');

@@ -3,10 +3,14 @@
 The settings control in the dock opens a centred, opaque modal dialog. A sidebar lists the categories
 (appearance, practice, keyboard, sound, shortcuts, then "Import Monkeytype settings"); each category is a
 column of preference rows whose options are native radio groups styled as inline selectors. Appearance holds
-theme (system, dark, light, paper, shadcn, terminal, soft, midnight, swiss, e-ink, nord), background (an image
-file, kept on this device only), text size, word highlight, one-line tape, typing font (literata, source serif, inter, jetbrains mono, ibm plex mono, roboto mono, fira code), app font (literata, source serif, inter) and a sample passage set in the typing font. Changes apply as
-they are chosen; Done, the close button and Escape all close it. The theme follows the system until the
-person picks a theme; a guest's pick lasts for the tab, a signed-in pick persists.
+theme (system, dark, light, then "new" and, while a custom theme is on show, "edit"), dark theme (dark,
+terminal, midnight, nord, then the saved custom themes with a dark background by name), light theme (light,
+paper, shadcn, soft, swiss, e-ink, then the saved custom themes with a light background), background (an image
+file, kept on this device only), text size, word highlight, one-line tape, typing font (literata, source serif, inter, jetbrains mono, ibm plex mono, roboto
+mono, fira code), app font (literata, source serif, inter) and a sample passage set in the typing font. Changes apply as they are chosen; Done, the close button and
+Escape all close it. In system mode the page shows the dark theme pick or the light theme pick as the system
+changes; in dark or light mode it shows that mode's pick, and picking a theme from the other row switches to
+its mode. A guest's choices last for the tab, a signed-in person's persist.
 
 ## Sub-features
 
@@ -14,14 +18,31 @@ person picks a theme; a guest's pick lasts for the tab, a signed-in pick persist
   `#settings-trigger` (accessible name "Settings"), with focus on the current category button.
 - `settings-category` switches the visible `#settings-<category>` section from the sidebar's
   `[data-settings-category="<category>"]` buttons; the current one has `aria-current="true"`.
-- `theme-pick` checks a radio in the `#theme-select` fieldset (`#theme-select input[value="dark"|"light"|"paper"|…|"e-ink"|"nord"]`);
-  `html[data-theme]` and the page colours follow at once.
+- `theme-mode` checks a radio in `#theme-select` (`input[value="system"|"dark"|"light"]`); `html[data-theme]`
+  becomes that mode's pick at once.
+- `theme-pick` checks a radio in `#dark-theme` (`dark`, `terminal`, `midnight`, `nord`) or `#light-theme`
+  (`light`, `paper`, `shadcn`, `soft`, `swiss`, `e-ink`). Outside system mode the pick shows at once, in its
+  own mode; in system mode it shows when the system is in that mode.
 - `font-pick` checks a radio in `#typing-font` or `#app-font`; `html[data-typing-font]` / `html[data-app-font]`
   follow, and the font file is fetched then (nothing but Literata and Geist Mono loads by default). A signed-in
   pick is applied before first paint by the inline script in `index.html`.
-- `theme-system` follows the system's light or dark preference while `#theme-select input[value="system"]`
-  is checked.
-- `theme-persist` keeps a signed-in person's pick across reloads; a guest falls back to the system on reload.
+- `theme-system` switches between the two picks as the system's light or dark preference changes, while
+  `#theme-select input[value="system"]` is checked.
+- `theme-persist` keeps a signed-in person's mode and picks across reloads, painted by the inline script in
+  `index.html` before the app runs; a guest falls back to system mode with dark and light on reload.
+- `theme-custom` "new" (`#theme-new`) or "edit" (`#theme-edit`) opens the editor (`#theme-editor`) under the
+  theme rows: a name (`#theme-name`), a vibe field (`#theme-vibe`) with `#theme-generate`, five colours up front
+  (background, text, muted text, accent, mistakes) and the rest behind "more colours" (`.theme-more`), each a
+  colour input `#theme-pick-<token>` plus a hex field `#theme-hex-<token>`. Edits preview on the whole page
+  (`html[data-custom]`, colours inline on `:root`, `data-theme` dark or light by the background). A derived
+  token's hex field is empty with what it derives to as placeholder until overridden. Text, muted text, accent
+  and mistakes under AA show `#theme-issue-<token>` ("2.1:1, needs 4.5:1"). Save adds a radio named after the
+  theme to `#dark-theme` or `#light-theme` by its background's luminance and picks it there, as picking a
+  theme does; cancel, Escape inside the editor, picking another theme or closing settings put the saved theme
+  back. Deleting one sends any pick of it back to its mode's default.
+- `theme-generate` (signed in) sends the vibe to the generate-theme Edge Function and opens the answer in the
+  editor unsaved; a failure is one line in `#theme-generate-status`. A guest's vibe field is disabled and the
+  button reads "sign in".
 - `wallpaper-pick` takes an image from `#wallpaper-file` (the "choose…" option; `setInputFiles` drives it):
   `#wallpaper[data-shown]` appears as a dithered dot layer tinted from the theme over the top of the page,
   fading out above the passage, and `#wallpaper-remove` ("remove") appears. A file that isn't an image shows
@@ -35,7 +56,7 @@ person picks a theme; a guest's pick lasts for the tab, a signed-in pick persist
 ## How to get to it (user POV)
 
 - Click "settings" in the dock (the sliders icon only, below 900 px and on phones).
-- Ctrl+K → `theme · <name>` for any of the ten, or `theme · system` (see [Command palette](./command-palette.md)).
+- Ctrl+K → `theme · system|dark|light`, or `dark theme · <name>` / `light theme · <name>` (see [Command palette](./command-palette.md)).
 - Ctrl+K → `typing font · <name>` or `app font · <name>`.
 - Change the operating system's appearance while the theme is "system".
 
@@ -51,8 +72,12 @@ Preconditions:
   set with "light" selected. `run.json` notes `theme: {before: "dark", after: "light"}`, and the checks
   cover the radio being checked, `html[data-theme]` following, Escape closing the dialog with focus back on
   `#settings-trigger`, and the theme staying after the close.
+- **Dark and light picks.** Run `$V drive .claude/skills/verify-stilltype/flows/theme-modes.mjs`. In system mode
+  it picks nord and paper, then emulates each system scheme: shots `settings-dark` and `settings-light` show
+  the appearance rows, `idle-dark` (nord) and `idle-light` (paper) the page. The checks cover the checked
+  radios and `html[data-theme]` following the scheme.
 - **Every theme.** Run `$V drive .claude/skills/verify-stilltype/flows/themes.mjs`. For each of the ten it
-  picks the theme in settings (shot `<theme>-settings`), checks `meta[name=theme-color]` follows `--ground`,
+  sets its mode and picks the theme in settings (shot `<theme>-settings`), checks `meta[name=theme-color]` follows `--ground`,
   then runs 10 words with one slip (shot `<theme>-mid-run`) and finishes (shot `<theme>-results`). Below
   761 px wide it shoots mid-run only.
 - **Fonts.** Run `$V drive .claude/skills/verify-stilltype/flows/fonts.mjs --delay 30`. For each typing font
@@ -70,6 +95,11 @@ Preconditions:
   that category; pass any of appearance, practice, keyboard, sound, shortcuts.
 - **System theme.** Run `$V shot idle --scheme light` and `$V shot idle --scheme dark`. Each `run.json` step
   records `theme` as the scheme passed.
+- **Custom themes.** Run `$V drive .claude/skills/verify-stilltype/flows/custom-theme.mjs --signed-in`. Shots:
+  `theme-row`, `editor`, `contrast-note`, `more-colours`, `saved`, `generated`, `generate-limit`, `reloaded`.
+  It checks the live preview, Escape reverting with settings left open, save, the generate reply (routed, so
+  nothing reaches Anthropic) and its limit line, and that the inline script alone (app.js stubbed out) wears
+  the saved theme on reload. Without `--signed-in` it stops after Escape and checks the guest's disabled vibe.
 - **Signed-in persistence.** Run `$V shot settings --signed-in`. The flow signs in first (shot `signed-in`),
   then switches the theme. To prove persistence, write a flow that does the same and then `page.reload()`,
   and check `html[data-theme]` is still the picked theme.
@@ -87,5 +117,6 @@ Preconditions:
 - During a run the dock fades and ignores the pointer; `h.openSettings()` nudges the mouse first.
 - The background image lives in IndexedDB, not the profile: each `$V` run starts without one, and
   `--signed-in` doesn't bring one along.
+- The fake Supabase has no generate-theme function: route `**/functions/v1/generate-theme` in the flow.
 - Contrast has its own checks: `tests/contrast.test.js` (every theme's token pairs), `e2e/passage-contrast.spec.js`
   (every theme's passage letters and caret as painted), `e2e/wallpaper.spec.js` (the same over the brightest background image) and `e2e/light-contrast.spec.js`. A screenshot isn't a contrast check.

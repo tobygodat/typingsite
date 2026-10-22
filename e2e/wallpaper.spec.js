@@ -102,6 +102,7 @@ test('reduced motion keeps the dimming and drops its transition', async ({ page 
   await expect.poll(() => opacity(page)).toBe(0.25);
 });
 
+const DARK_THEMES = ['dark', 'terminal', 'midnight', 'nord'];
 const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
 const channel = (v) => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
 const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
@@ -109,11 +110,13 @@ const ratio = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x,
 const over = ([r, g, b, a], under) => [r, g, b].map((value, i) => value * a + under[i] * (1 - a));
 
 for (const theme of THEMES) {
+  const mode = DARK_THEMES.includes(theme) ? 'dark' : 'light';
   for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['phone', { width: 390, height: 844 }]]) {
     test(`${theme} theme, ${label}: the passage, mistakes and caret keep their contrast over the brightest image`, async ({ page }) => {
       await page.setViewportSize(viewport);
+      await page.emulateMedia({ colorScheme: mode });
       await openApp(page);
-      await chooseSetting(page, 'theme-select', theme);
+      await chooseSetting(page, `${mode}-theme`, theme);
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       // Every dot at full strength: a white image, or a black one where light themes invert it.
       const light = await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme === 'light');

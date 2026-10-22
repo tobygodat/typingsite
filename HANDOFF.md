@@ -18,7 +18,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - e2e serves on `E2E_PORT` (default 4173) and fakes Supabase. On a shared machine set your own port, or Playwright reuses another worktree's server.
 - CI, temporary while GitHub Actions is off: on tobygdesktop run `bash ~/.capy/drive/captain-typingsite/skills/local-ci/run.sh <pr>` (`E2E=1` adds the browser suite). A PR is ready when `local-ci/tobygdesktop` is green at its head.
 - Deploy, temporary: by hand after each merge, on tobylaptop in `~/Projects/typingsite`: `git pull --ff-only && npm test && npm run build && npx wrangler@4.151.0 deploy`, then check live `/`, `src/app.js` and `src/styles.css` match `dist/`. Site: https://stilltype.tobygodat.workers.dev (Cloudflare Worker `stilltype`, `wrangler.jsonc`).
-- Supabase project `bicbyljexprkaedakofa` has every file in `supabase/migrations/`. Its history uses other timestamps, so apply a new migration alone (`supabase db query --linked -f <file>`), not with `db push`. `supabase functions deploy delete-account` deploys account deletion.
+- Supabase project `bicbyljexprkaedakofa` has every file in `supabase/migrations/`. Its history uses other timestamps, so apply a new migration alone (`supabase db query --linked -f <file>`), not with `db push`. `supabase functions deploy delete-account` deploys account deletion; `supabase functions deploy generate-theme` deploys theme generation (needs the `ANTHROPIC_API_KEY` secret).
 - Release: bump the version in `package.json`, its lock and `index.html` (`tests/release.test.js` checks), and rewrite the What's new bullets (six at most).
 
 ## Features
@@ -34,7 +34,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - Inbox and toast for invitations and challenges.
 - Settings dialog, ⌘K / Ctrl-K palette, Monkeytype import.
 - Rules: five correction policies, strict space, quick end, minimums, repeat quotes, pace caret.
-- Display: ten themes, a background image, text size, typing and app fonts, word highlight, one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
+- Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), a background image, text size, typing and app fonts, word highlight, one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
 - Accounts: email or Google, sync, clear history with Undo, account deletion.
 - Offline shell, What's new, anonymous feature suggestions.
 
@@ -65,6 +65,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - `sound.js`: typing sounds.
 - `keybindings.js`: shortcuts.
 - `settings.js`: settings dialog.
+- `custom-themes.js`, `theme-editor.js`: custom themes (tokens, contrast, storage) and their editor; generation is `supabase/functions/generate-theme`.
 - `palette.js`: command palette.
 - `monkeytype.js`: Monkeytype import.
 - `compose.js`, `compose-view.js`, `compose-caret.js`: composing practice.
@@ -91,7 +92,8 @@ Also `sw.js` (offline shell), `docs/` (specs, `online-races.md`, verification re
 - Every foreign key to `auth.users` must cascade (`supabase/tests/account-deletion.sql`).
 - Less is more (toby): no eyebrows, taglines or helper copy (DESIGN.md Don'ts).
 - Motion is fluid (AGENTS.md): `--dur-*` tokens only, never moving the letters being read, zero under reduced motion; scoring never reads it.
-- Every theme holds 4.5:1 text and 3:1 non-text contrast (`tests/contrast.test.js`).
+- Every theme holds 4.5:1 text and 3:1 non-text contrast (`tests/contrast.test.js`). Custom themes are the exception: the editor notes contrast under AA at the token but never blocks a save.
+- Custom themes are stored as JSON text (`customThemes`), so older builds compare them by value and never restamp them. A custom theme joins the dark or light pick by its background's luminance. The theme-generation prompt is never logged or stored.
 - The background image stays on the device (IndexedDB, never the profile), is tinted by CSS from the theme, fades out above the passage and dims mid-run (`e2e/wallpaper.spec.js`).
 - The practice rail never moves between modes (`e2e/layout.spec.js`).
 - A slow reply never acts over what the person did since (`raceContext`).

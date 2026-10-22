@@ -66,17 +66,19 @@ const seedRandom = () => {
   Math.random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 };
 
+const DARK_THEMES = ['dark', 'terminal', 'midnight', 'nord'];
 const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
 
 for (const theme of THEMES) {
+  const mode = DARK_THEMES.includes(theme) ? 'dark' : 'light';
   for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['phone', { width: 390, height: 844 }]]) {
     test(`${theme} theme, ${label}: untyped, typed and mistyped letters and the caret stay readable`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await page.addInitScript(seedRandom);
-      await page.emulateMedia({ colorScheme: theme === 'light' ? 'light' : 'dark' });
+      await page.emulateMedia({ colorScheme: mode });
       await openApp(page);
-      if (theme !== 'dark' && theme !== 'light') {
-        await chooseSetting(page, 'theme-select', theme);
+      if (theme !== mode) {
+        await chooseSetting(page, `${mode}-theme`, theme);
         await closeSettings(page);
       }
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);

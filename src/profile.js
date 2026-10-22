@@ -16,6 +16,7 @@ import { retainRunCounts } from './run-counts.js';
 import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
 import { withoutConditionSets } from './account.js';
+import { isCustomId, normalizeCustomThemes } from './custom-themes.js';
 
 export const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -56,13 +57,23 @@ export const defaultPreferences = {
   minAccuracy: 0,
   minWpm: 0,
   keybindings: normalizeKeybindings(),
+  // 'system', or the theme shown in dark or light mode, which is then that mode's pick. System mode shows
+  // darkTheme or lightTheme; old builds read theme alone.
   theme: 'system',
+  darkTheme: 'dark',
+  lightTheme: 'light',
+  // Saved custom themes (src/custom-themes.js): theme, darkTheme or lightTheme name one by its id.
+  customThemes: '[]',
   dailyGoal: 0,
   customText: '',
   customOrder: 'as-written',
   paceCaret: 'off',
   paceWpm: 80,
 };
+
+// Each theme by its ground's luminance (src/styles.css): dark grounds sit below 0.05, light above 0.85.
+export const DARK_THEMES = ['dark', 'terminal', 'midnight', 'nord'];
+export const LIGHT_THEMES = ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'];
 
 export const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
 export const MIN_ACCURACY_OPTIONS = [0, 80, 90, 95, 98];
@@ -120,6 +131,11 @@ export function validPreferences(value) {
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
   if (!PACE_MODES.includes(value.paceCaret)) value.paceCaret = 'off';
   value.paceWpm = clampPace(value.paceWpm);
+  // A custom theme's id is kept even when the list lacks it (it may arrive from another copy); the app
+  // shows the mode's default until it does.
+  if (!DARK_THEMES.includes(value.darkTheme) && !isCustomId(value.darkTheme)) value.darkTheme = 'dark';
+  if (!LIGHT_THEMES.includes(value.lightTheme) && !isCustomId(value.lightTheme)) value.lightTheme = 'light';
+  value.customThemes = normalizeCustomThemes(value.customThemes);
   // Whether the friends board shares is kept by the board alone (src/friends-board.js), never in the
   // synced profile, so a copy saved by an earlier build is dropped rather than synced back.
   delete value.shareBoard;
