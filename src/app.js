@@ -1896,7 +1896,8 @@ function wireComposition(input, type) {
 }
 
 // An online race types through the practice path (see online). pending: a commit typed before the race's
-// limit is still to be scored, so the race waits for it before it finishes.
+// limit is still to be scored, so the race waits for it before it finishes. keydown: the race's own keydown
+// passes each key it lets through, for a Backspace in an empty field (see backspaceInEmptyField).
 function wireOnlineTyping(input, surface) {
   online = surface;
   input.addEventListener('beforeinput', (event) => beforeTypingInput(event, 'online'));
@@ -1905,7 +1906,7 @@ function wireOnlineTyping(input, surface) {
     input.value = replayAttempt(online.attempt).typed;
   });
   wireComposition(input, 'online');
-  return { pending: () => commitInTime('online') };
+  return { pending: () => commitInTime('online'), keydown: (event) => backspaceInEmptyField(event, 'online') };
 }
 
 // Everything the typing surface says, kept short. The focus-lost and composition

@@ -3,15 +3,14 @@ Read HANDOFF.md first — current state, the work queue, and the decisions alrea
 PRODUCT.md holds durable product truth (users, purpose, metric contract, accessibility floor).
 
 ## Before asking to merge
-CI runs only unit tests and the build on each push; the browser suite does not run automatically,
-to save GitHub Actions minutes. Run it locally and report the result in the PR:
+GitHub Actions is off for now, so CI runs on tobygdesktop (see HANDOFF.md) and the browser suite
+runs only locally. Run it and report the result in the PR:
 `npm test`, `npm run build`, then `npm run test:e2e`. The suite uses `CHROMIUM` when set and
 Playwright's own browser otherwise, so without `npx playwright install chromium` point it at a system
 build: `CHROMIUM=/usr/bin/chromium` on the desktop, `CHROMIUM=/usr/local/bin/chromium` on cloud
 machines (which have no `/usr/bin/chromium`). While iterating, `npm run test:e2e:quick` runs the core practice
-loop, layout and chrome specs in a few minutes; it does not replace the full run. On GitHub it
-runs only on request (Actions → Browser checks → Run workflow), so do not trigger it yourself
-unless asked. `npm run test:e2e` is Chromium only. When a change touches input, layout, motion or
+loop, layout and chrome specs in a few minutes; it does not replace the full run. Do not
+trigger the GitHub Browser checks workflow unless asked. `npm run test:e2e` is Chromium only. When a change touches input, layout, motion or
 anything engine-specific, also run `npm run test:e2e:firefox` and `npm run test:e2e:webkit`, or both
 with Chromium as `npm run test:e2e:all` (after `npx playwright install firefox webkit`; the
 `E2E_BROWSERS` variable picks the engines, so `E2E_BROWSERS=firefox npx playwright test e2e/<spec>`
