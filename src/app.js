@@ -1709,6 +1709,14 @@ function scoreAccentPair(type, keys = null) {
   if (type === 'primary') finishIfTimeUp();
 }
 
+// WebKit sends no beforeinput for a Backspace in an empty field, so there that key would make no sound.
+// It is taken from its keydown instead, in every browser, as the delete it would have been.
+function backspaceInEmptyField(event, type) {
+  if (event.key !== 'Backspace' || event.isComposing || event.defaultPrevented || event.target.value !== '') return;
+  event.preventDefault();
+  beforeTypingInput({ inputType: 'deleteContentBackward', isComposing: false, preventDefault() {} }, type);
+}
+
 function beforeTypingInput(event, type = 'primary') {
   const compositionInput = event.inputType?.includes('Composition');
   // Safari can insert a commit's text after compositionend; that is the commit itself, not a next key.
@@ -5294,6 +5302,7 @@ function bindEvents() {
   wireComposition($('typing-input'), 'primary');
   $('typing-input').addEventListener('keydown', (event) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
+    backspaceInEmptyField(event, 'primary');
   });
   for (const type of ['keydown', 'keyup']) $('typing-input').addEventListener(type, syncCapsLock);
   $('typing-input').addEventListener('blur', () => setCapsWarning(false));
@@ -5425,6 +5434,7 @@ function bindEvents() {
   wireComposition($('race-input'), 'race');
   $('race-input').addEventListener('keydown', (event) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
+    backspaceInEmptyField(event, 'race');
   });
   $('race-input').addEventListener('paste', (event) => { event.preventDefault(); refusePaste('race'); });
   $('race-input').addEventListener('blur', markRaceInterrupted);
@@ -5959,22 +5969,32 @@ addEventListener('resize', () => {
   cancelAnimationFrame(resizeFrame);
   resizeFrame = requestAnimationFrame(() => updateGlides({ instant: true }));
 });
+// Both observers below redraw in the next frame: a redraw resizes the box it observes, and doing that
+// inside the observer's own callback is a resize loop, which browsers report as an error.
 // The graph is drawn at its pixel size, so redraw whenever that changes, including when results
 // comes back into view after a resize on another screen.
+let graphFrame = 0;
 new ResizeObserver(() => {
-  const graph = $('speed-graph');
-  const width = Math.round(graph.clientWidth);
-  // Sub-pixel layout settling is ignored so it cannot cut the first draw short.
-  if (!shownResult || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
-  renderSpeedGraph(graph, shownResult, { animate: false });
+  cancelAnimationFrame(graphFrame);
+  graphFrame = requestAnimationFrame(() => {
+    const graph = $('speed-graph');
+    const width = Math.round(graph.clientWidth);
+    // Sub-pixel layout settling is ignored so it cannot cut the first draw short.
+    if (!shownResult || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
+    renderSpeedGraph(graph, shownResult, { animate: false });
+  });
 }).observe($('speed-graph'));
 // The shown view's charts, drawn again at a new width.
 let viewsWidth = 0;
+let viewsFrame = 0;
 new ResizeObserver(() => {
-  const panels = document.querySelector('.view-panels');
-  if (!panels.clientWidth || viewsWidth === panels.clientWidth) return;
-  viewsWidth = panels.clientWidth;
-  drawProgressView();
+  cancelAnimationFrame(viewsFrame);
+  viewsFrame = requestAnimationFrame(() => {
+    const panels = document.querySelector('.view-panels');
+    if (!panels.clientWidth || viewsWidth === panels.clientWidth) return;
+    viewsWidth = panels.clientWidth;
+    drawProgressView();
+  });
 }).observe(document.querySelector('.view-panels'));
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });

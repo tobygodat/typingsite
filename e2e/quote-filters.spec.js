@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, chooseQuoteFilter, openView, openSettings, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, passageText, chooseQuoteFilter, openView, openSettings, chooseSetting, phone } from './fixtures.js';
 
 const combo = (page, name = 'length') => page.getByRole('combobox', { name, exact: true });
 const list = (page, name = 'length') => page.getByRole('listbox', { name, exact: true });
@@ -181,7 +181,7 @@ for (const width of [1280, 1000, 901, 900, 390, 320]) {
 }
 
 test.describe('touch quote filters', () => {
-  test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 320, height: 640 }, ...phone });
 
   test('both triggers and menu options keep 44px targets', async ({ page }) => {
     await quotes(page);

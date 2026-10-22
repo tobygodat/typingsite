@@ -188,14 +188,15 @@ export class FakeSupabase {
         return reply(400, { error: 'unsupported_grant_type' });
       }
 
-      // A full-page navigation: stands in for Google and sends the browser back with a PKCE code.
+      // A full-page navigation: stands in for Google and sends the browser back with a PKCE code. The
+      // service answers with a redirect; Playwright can't fulfill one in WebKit, so a page replaces itself.
       case 'GET /auth/v1/authorize': {
         const code = randomUUID();
         this.lastAuthorize = Object.fromEntries(url.searchParams);
         this.googleCodes.set(code, { challenge: url.searchParams.get('code_challenge'), email: 'google.user@stilltype.test' });
         const back = new URL(url.searchParams.get('redirect_to'));
         back.searchParams.set('code', code);
-        return route.fulfill({ status: 302, headers: { location: back.toString() } });
+        return route.fulfill({ status: 200, contentType: 'text/html', body: `<script>location.replace(${JSON.stringify(back.toString())})</script>` });
       }
 
       // Supabase's default (global) sign-out ends every session of the user: their refresh tokens stop working.

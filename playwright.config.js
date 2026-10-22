@@ -4,7 +4,21 @@ import { defineConfig, devices } from '@playwright/test';
 // generated runs never land in a real localhost profile, and Supabase is always faked (e2e/fake-supabase.js).
 // CHROMIUM points at a system browser, as in scripts/measure-latency.mjs; otherwise run
 // `npx playwright install chromium` once.
+// Chromium runs by default. E2E_BROWSERS picks engines (comma-separated, or `all`), so a plain
+// `npx playwright test` stays Chromium-only; Firefox and WebKit need `npx playwright install firefox webkit`.
 const port = Number(process.env.E2E_PORT || 4173);
+const engines = {
+  chromium: {
+    ...devices['Desktop Chrome'],
+    launchOptions: process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {},
+  },
+  firefox: devices['Desktop Firefox'],
+  webkit: devices['Desktop Safari'],
+};
+const wanted = (process.env.E2E_BROWSERS || 'chromium').split(',').map((name) => name.trim());
+const names = wanted.includes('all') ? Object.keys(engines) : wanted;
+const unknown = names.filter((name) => !engines[name]);
+if (unknown.length) throw new Error(`E2E_BROWSERS: unknown engine ${unknown.join(', ')} (chromium, firefox, webkit or all)`);
 
 export default defineConfig({
   testDir: 'e2e',
@@ -13,14 +27,15 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    ...devices['Desktop Chrome'],
     baseURL: `http://127.0.0.1:${port}`,
-    viewport: { width: 1280, height: 800 },
     trace: 'retain-on-failure',
     // The offline shell (sw.js) stays out of the way of the page.route fakes; e2e/pwa-offline.spec.js allows it.
     serviceWorkers: 'block',
-    launchOptions: process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {},
   },
+  projects: names.map((name) => ({
+    name,
+    use: { ...engines[name], viewport: { width: 1280, height: 800 } },
+  })),
   webServer: {
     command: 'node server.mjs',
     env: { PORT: String(port) },

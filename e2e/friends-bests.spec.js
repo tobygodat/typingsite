@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey, quoteCorpus } from '../src/typing.js';
 import { BOARD_V, dailyVersion, shapeOf } from '../src/friends-board.js';
 import { dailyPassage } from '../src/insights.js';
-import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, phone } from './fixtures.js';
 import { mondayOf, utcDay } from './fake-board.js';
 
 test.setTimeout(120000);
@@ -326,7 +326,7 @@ test('a clear takes your bests off the board, and undo brings them back', async 
 });
 
 test.describe('phone', () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 390, height: 844 }, ...phone });
 
   test('the board stacks on a phone, and it and its bests fit at 320px', async ({ page, supabase }, testInfo) => {
     const { ada, lin } = circle(supabase);

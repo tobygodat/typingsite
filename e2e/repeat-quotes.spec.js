@@ -1,5 +1,5 @@
 // Repeat quotes: off by default, a setting and a palette command, and honest labels when a seen quote returns.
-import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting, chooseQuoteFilter } from './fixtures.js';
+import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting, chooseQuoteFilter, phone } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -370,7 +370,7 @@ test('on: a retest still draws unseen text and compares fairly', async ({ page }
 });
 
 test.describe('phone 390px', () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 390, height: 844 }, ...phone });
 
   test('the repeated-text notice fits beside restart', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });

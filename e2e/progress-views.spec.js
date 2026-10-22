@@ -164,6 +164,11 @@ test('at 390px a pill row fades only at an edge with more of the row past it', a
     const style = getComputedStyle(row);
     return [style.getPropertyValue('--fade-start'), style.getPropertyValue('--fade-end')];
   });
+  // Without scroll timelines (Firefox today) every row keeps the plain fade at its right edge instead.
+  if (!(await page.evaluate(() => CSS.supports('animation-timeline: scroll()')))) {
+    await expect(page.locator('#progress-tabs')).toHaveCSS('mask-image', /^linear-gradient\(to right, .+, (transparent|rgba\(0, 0, 0, 0\))\)$/);
+    return;
+  }
   await expect.poll(() => fades('progress-period')).toEqual(['0px', '0px']);
   await expect.poll(() => fades('progress-tabs')).toEqual(['0px', '40px']);
   await page.locator('#progress-tabs').evaluate((row) => { row.scrollLeft = row.scrollWidth; });

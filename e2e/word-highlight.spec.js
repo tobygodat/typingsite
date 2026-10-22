@@ -1,6 +1,6 @@
 // Word highlight: settings → word highlight (off, current, next) and its palette commands.
 // A display preference: it tints one passage word, changes instantly and never enters the conditions.
-import { test, expect, openApp, openView, openSettings, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting, phone } from './fixtures.js';
 
 // Committed docs screenshots are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/word-highlight/${name}.png` : testInfo.outputPath(`${name}.png`));
@@ -234,7 +234,7 @@ test.describe('screenshots', () => {
 });
 
 test.describe('phone', () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 390, height: 844 }, ...phone });
 
   test('the settings row fits unclipped at 320 px', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 640 });

@@ -1,6 +1,6 @@
 // Speed unit: wpm (default) or cpm. Display only: scoring, bests, comparisons and condition keys stay in wpm.
 import { CORPUS_VERSION, METRIC_VERSION, standardConditions, conditionKey } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, chooseMore, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, chooseMore, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail, chooseSetting, closeSettings, phone } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -472,7 +472,7 @@ test('a race result saved before the setting reads in cpm, and what was saved is
 
 for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow phone', { width: 320, height: 640 }]]) {
   test.describe(`${name} ${viewport.width}px`, () => {
-    test.use({ viewport, hasTouch: true, isMobile: true });
+    test.use({ viewport, ...phone });
 
     test('three- and four-digit cpm figures fit without sideways scroll', async ({ page }, testInfo) => {
       await page.emulateMedia({ colorScheme: 'dark' });
@@ -506,7 +506,7 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
 }
 
 test.describe('narrow phone 320px, a two-minute run', () => {
-  test.use({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 320, height: 640 }, ...phone });
 
   test('a three-digit live cpm beside a three-digit timer fits mid-run', async ({ page }) => {
     await openApp(page);
@@ -527,7 +527,7 @@ test.describe('narrow phone 320px, a two-minute run', () => {
 });
 
 test.describe('short phone 375×553', () => {
-  test.use({ viewport: { width: 375, height: 553 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 375, height: 553 }, ...phone });
 
   test('settings scroll to every touch-sized practice row', async ({ page }) => {
     await openApp(page);

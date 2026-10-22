@@ -1,5 +1,5 @@
 // Run card: raw wpm, consistency, the character breakdown and the static words list.
-import { test, expect, openApp, passageText, typeInto, chooseWords } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, phone } from './fixtures.js';
 
 // Committed screenshots are rewritten only with SCREENSHOTS=1; normal runs keep them in the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/run-card-stats/${name}` : testInfo.outputPath(name));
@@ -103,7 +103,7 @@ test('the words list is one tab stop whose words show their pace by keyboard', a
 });
 
 test.describe('phone', () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 390, height: 844 }, ...phone });
 
   test('the secondary row and words list fit at 390 px', async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme: 'dark' });
@@ -140,7 +140,7 @@ function statSpill(page) {
 }
 
 test.describe('narrow phone', () => {
-  test.use({ viewport: { width: 320, height: 700 }, hasTouch: true, isMobile: true });
+  test.use({ viewport: { width: 320, height: 700 }, ...phone });
 
   test('long, error-heavy stats stay inside the card at 320 px', async ({ page }) => {
     await openApp(page);

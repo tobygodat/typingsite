@@ -11,7 +11,11 @@ build: `CHROMIUM=/usr/bin/chromium` on the desktop, `CHROMIUM=/usr/local/bin/chr
 machines (which have no `/usr/bin/chromium`). While iterating, `npm run test:e2e:quick` runs the core practice
 loop, layout and chrome specs in a few minutes; it does not replace the full run. On GitHub it
 runs only on request (Actions → Browser checks → Run workflow), so do not trigger it yourself
-unless asked.
+unless asked. `npm run test:e2e` is Chromium only. When a change touches input, layout, motion or
+anything engine-specific, also run `npm run test:e2e:firefox` and `npm run test:e2e:webkit`, or both
+with Chromium as `npm run test:e2e:all` (after `npx playwright install firefox webkit`; the
+`E2E_BROWSERS` variable picks the engines, so `E2E_BROWSERS=firefox npx playwright test e2e/<spec>`
+runs one spec there).
 
 ## Design system: Afterimage
 The redesign shipped on 22 September 2026 is the binding visual system. Follow DESIGN.md and the

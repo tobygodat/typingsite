@@ -2,12 +2,19 @@
 // `pointer` reads fine, but a finger can still reach every control. The 44px touch targets therefore
 // key on `any-pointer: coarse`. Chromium's CDP media emulation ignores the pointer features, so this
 // browser starts with Blink's own pointer settings instead (bit flags: 2 coarse, 4 fine; 1 no hover,
-// 2 hover): a fine primary pointer with hover, and a coarse one also available. That needs its own
-// browser, so these tests live in their own file.
+// 2 hover): a fine primary pointer with hover, and a coarse one also available. Firefox takes the same
+// from its pointer preferences (bit flags: 1 coarse, 2 fine, 4 hover). WebKit has no such setting.
+// That needs its own browser, so these tests live in their own file.
 import { test, expect, openApp, openView, chooseWords, completePassage } from './fixtures.js';
 
 const args = ['--blink-settings=primaryPointerType=4,availablePointerTypes=6,primaryHoverType=2,availableHoverTypes=3'];
-test.use({ launchOptions: process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM, args } : { args } });
+const pointers = {
+  chromium: process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM, args } : { args },
+  firefox: { firefoxUserPrefs: { 'ui.primaryPointerCapabilities': 6, 'ui.allPointerCapabilities': 7 } },
+  webkit: {},
+};
+test.use({ launchOptions: [async ({ browserName }, use) => use(pointers[browserName]), { scope: 'worker' }] });
+test.skip(({ browserName }) => browserName === 'webkit', 'WebKit can’t start with a coarse pointer beside a fine one');
 
 const MIN = 44;
 
