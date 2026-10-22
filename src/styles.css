@@ -1577,7 +1577,7 @@ body[data-session="retest"] .standard-options { display: none; }
   align-items: baseline;
   gap: 6px;
   color: var(--muted);
-  font: var(--text-mono)/1.2 var(--font-mono);
+  font: var(--text-body)/1.2 var(--font-app);
 }
 
 .live-stat strong {
@@ -2082,7 +2082,7 @@ body[data-session="practice"] .compose-measure { justify-content: space-between;
   align-items: baseline;
   gap: var(--space-1);
   color: var(--muted);
-  font: var(--text-mono)/1.2 var(--font-mono);
+  font: var(--text-body)/1.2 var(--font-app);
 }
 
 .compose-facts strong {
@@ -2357,7 +2357,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
   letter-spacing: -0.04em;
 }
 
-.run-card-unit { color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
+.run-card-unit { color: var(--muted); font: var(--text-body)/1.2 var(--font-app); }
 
 .run-card-facts {
   margin: 0;
@@ -2617,7 +2617,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .standard-score h2 { margin: 0; font-size: var(--text-title); font-weight: 400; }
 .standard-figures { margin: var(--space-2) 0 0; display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-14); }
 .standard-figures dt { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.standard-figures dd { margin: var(--space-2) 0 0; display: flex; align-items: baseline; gap: 6px; color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
+.standard-figures dd { margin: var(--space-2) 0 0; display: flex; align-items: baseline; gap: 6px; color: var(--muted); font: var(--text-body)/1.2 var(--font-app); }
 /* Longhands, so the shorthand can't reset .num's tabular figures. */
 .standard-figures strong { color: var(--text); font-family: var(--font-app); font-size: var(--text-display); font-weight: 300; line-height: 1; letter-spacing: -0.035em; }
 .standard-score p { max-width: 64ch; margin: 0; }
@@ -2951,7 +2951,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .board-name { overflow-wrap: anywhere; }
 .board-value { grid-column: 2; grid-row: 1 / span 2; align-self: center; white-space: nowrap; }
 .board-value strong { font-size: var(--text-title); font-weight: 300; line-height: 1; letter-spacing: -0.015em; }
-.board-unit { color: var(--muted); font: var(--text-mono)/1.5 var(--font-mono); }
+.board-unit { color: var(--muted); font: var(--text-body)/1.5 var(--font-app); }
 .board-detail { color: var(--muted); font-size: var(--text-small); }
 .friends-board-share { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: var(--space-4) 0; }
 .friends-board-off { margin: 0; max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
@@ -3268,8 +3268,8 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 /* On a narrow dialog the readout wraps below the title. */
 .replay-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2) var(--space-4); }
 .replay-readout { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); }
-/* Number and unit share one baseline: the number in Literata, the unit a small mono label. */
-.replay-stat { display: flex; align-items: baseline; gap: var(--space-1); color: var(--muted); font: var(--text-mono)/1.2 var(--font-mono); }
+/* Number and unit share one baseline, both in the app font, the unit smaller and muted. */
+.replay-stat { display: flex; align-items: baseline; gap: var(--space-1); color: var(--muted); font: var(--text-label)/1.2 var(--font-app); }
 .replay-stat-value { color: var(--text); font: var(--text-lead)/1 var(--font-app); font-variant-numeric: tabular-nums; }
 /* At most three lines, like the live passage; replay-view.js keeps the caret on the first two.
    The inline padding (offset by the margin) keeps a line-start caret clear of the clip. */
