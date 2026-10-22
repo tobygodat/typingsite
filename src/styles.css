@@ -2694,7 +2694,7 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .progress-section, .training-memory, .daily-challenge { padding: var(--space-8) 0; border-top: 1px solid var(--hairline); }
 /* The standard score's rule and space already divide it from the first history section. */
 #progress-history > .progress-section:first-child { padding-top: 0; border-top: 0; }
-.progress-section h2, .training-memory h2, .daily-challenge h2, .local-challenge-heading { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
+.progress-section h2, .training-memory h2, .daily-challenge h2 { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
 
 /* Keys: static heatmap, coral steps only, no motion. Rows stagger by half a key, then a whole key. */
 .key-heatmap { justify-content: center; gap: var(--heat-gap); margin: var(--space-4) 0 var(--space-3); }
@@ -2764,7 +2764,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 .compose-row-main span { color: var(--muted); }
 .compose-row p { margin: 0; color: var(--muted); }
 .compose-history .result-note { margin: 0 0 var(--space-2); max-width: 72ch; color: var(--muted); }
-.local-challenge-heading { margin-top: var(--space-8); }
 
 /* ── Learn to type ──────────────────────────────────────────────────────── */
 
@@ -2886,7 +2885,6 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
    coloured: your row is marked by the word "You". */
 .friends-board { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
 .friends-board-guest { display: grid; justify-items: start; gap: var(--space-4); margin: var(--space-6) 0; }
-.friends-board-guest p { margin: 0; max-width: 60ch; }
 .friends-board-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); margin: var(--space-6) 0; }
 .board-column h3 { margin: 0; font-size: var(--text-lead); font-weight: 400; }
 .board-column .condition-copy { margin: var(--space-1) 0 var(--space-3); }

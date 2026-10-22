@@ -11,7 +11,7 @@ const SUPABASE_URL = 'https://bicbyljexprkaedakofa.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_-JwGKezfGmITUHTITrhsNw_Izw71gdI';
 export const SESSION_KEY = 'stilltype-session-v1';
 const VERIFIER_KEY = 'stilltype-pkce-verifier';
-export const LEGACY_PROFILE_KEY = 'stilltype-profile-v2';
+const LEGACY_PROFILE_KEY = 'stilltype-profile-v2';
 
 export const profileKey = (userId) => `${LEGACY_PROFILE_KEY}:${userId}`;
 
@@ -23,7 +23,7 @@ function base64url(bytes) {
   return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export function createVerifier() {
+function createVerifier() {
   return base64url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
@@ -100,7 +100,7 @@ const storeSignIn = (data) => storeSession(sessionFrom(data, base64url(crypto.ge
 // A request that hasn't finished by then fails as unreachable, so nothing waiting behind it (the push
 // queue, sign-out) can hang on a stalled connection; edits stay on the device, as offline. A caller's own
 // signal (a queue's deadline) aborts it as well.
-export const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 15000;
 
 export async function request(path, { method = 'GET', body, token, headers = {}, signal: callerSignal } = {}) {
   const timeout = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
@@ -532,7 +532,7 @@ export function capHistory(profile) {
 // Whether best `a` beats `b`: the higher wpm, then the earlier record (a later run has to beat a best,
 // not match it), then the attempt id. A total order, so every copy keeps the same best for a tie
 // whichever side merged first, and copies settle instead of rewriting the row on every load.
-export const beatsBest = (a, b) => !b || a.wpm > b.wpm || (a.wpm === b.wpm
+const beatsBest = (a, b) => !b || a.wpm > b.wpm || (a.wpm === b.wpm
   && (compare(a.at || '', b.at || '') || compare(String(a.attemptId ?? ''), String(b.attemptId ?? ''))) < 0);
 
 // historyClearedIds: the records each clear named (see clearProfile), as [marker, id] pairs, so an undo
@@ -632,7 +632,7 @@ const valueOrder = (value) => JSON.stringify(value) ?? '';
 // first, so both sides of a merge pick the same one.
 const takesTheirs = (myStamp, theirStamp, mine, theirs) => theirStamp > myStamp
   || (theirStamp === myStamp && valueOrder(theirs) < valueOrder(mine));
-export function mergePreferences(local, cloud) {
+function mergePreferences(local, cloud) {
   const mine = local.preferences || {};
   const theirs = cloud.preferences || {};
   const myStamps = stampsOf(local);
@@ -716,7 +716,7 @@ const resultOrder = (a, b) => compare(a.at || '', b.at || '') || compare(a.wpm ?
   || compare(a.accuracy ?? 0, b.accuracy ?? 0) || compare(String(a.inputClass ?? ''), String(b.inputClass ?? ''));
 const laterResult = (a, b) => (!a ? b || null : !b ? a : resultOrder(a, b) >= 0 ? a : b);
 const earlierResult = (a, b) => (!a ? b || null : !b ? a : resultOrder(a, b) <= 0 ? a : b);
-export function mergeLessons(mine = {}, theirs = {}) {
+function mergeLessons(mine = {}, theirs = {}) {
   const merged = {};
   for (const id of [...new Set([...Object.keys(mine), ...Object.keys(theirs)])].sort()) {
     const [a, b] = [mine[id], theirs[id]];

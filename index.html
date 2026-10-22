@@ -67,7 +67,7 @@
         <summary id="account-trigger" class="corner-trigger account-trigger" aria-label="Account, guest mode">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
         </summary>
-        <div class="corner-popover account-popover">
+        <div class="corner-popover">
           <div id="account-guest" class="account-section">
             <p class="account-lede">Guest mode: nothing is kept once you leave.</p>
             <div class="account-actions">
@@ -237,7 +237,7 @@
           </div>
 
           <div id="compose-progress" class="progress-line" role="progressbar" aria-label="Composing time used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Not started">
-            <span id="compose-progress-bar" class="progress-fill"></span>
+            <span id="compose-progress-bar"></span>
           </div>
 
           <div id="compose-footer" class="typing-footer compose-footer">
@@ -413,7 +413,7 @@
         </div>
       </section>
 
-      <section id="learn-screen" class="screen learn-screen" data-screen="learn" aria-labelledby="learn-heading" hidden>
+      <section id="learn-screen" class="screen" data-screen="learn" aria-labelledby="learn-heading" hidden>
         <header class="section-heading page-heading">
           <h1 id="learn-heading">Learn to type</h1>
         </header>
@@ -508,7 +508,7 @@
               </section>
             </div>
             <div id="view-keys" class="view-panel" role="tabpanel" aria-labelledby="tab-keys" hidden>
-              <section class="keys-section" aria-labelledby="keys-heading">
+              <section aria-labelledby="keys-heading">
                 <h2 id="keys-heading" class="view-heading">Keys</h2>
                 <p id="key-note" class="result-note"></p>
                 <div id="keys-layout" class="keys-layout">
@@ -591,8 +591,8 @@
         </template>
       </section>
 
-      <section id="compete-screen" class="screen compete-screen" data-screen="compete" aria-labelledby="compete-heading" hidden>
-        <header class="section-heading page-heading challenge-heading">
+      <section id="compete-screen" class="screen" data-screen="compete" aria-labelledby="compete-heading" hidden>
+        <header class="section-heading page-heading">
           <div>
             <h1 id="compete-heading" tabindex="-1">Challenge</h1>
           </div>
@@ -947,11 +947,11 @@
     </header>
     <div class="settings-body">
       <nav class="settings-nav" aria-label="Settings categories">
-        <button id="settings-nav-appearance" type="button" data-settings-category="appearance" aria-controls="settings-appearance" aria-current="true">appearance</button>
-        <button id="settings-nav-practice" type="button" data-settings-category="practice" aria-controls="settings-practice">practice</button>
-        <button id="settings-nav-keyboard" type="button" data-settings-category="keyboard" aria-controls="settings-keyboard">keyboard</button>
-        <button id="settings-nav-sound" type="button" data-settings-category="sound" aria-controls="settings-sound">sound</button>
-        <button id="settings-nav-shortcuts" type="button" data-settings-category="shortcuts" aria-controls="settings-shortcuts">shortcuts</button>
+        <button type="button" data-settings-category="appearance" aria-controls="settings-appearance" aria-current="true">appearance</button>
+        <button type="button" data-settings-category="practice" aria-controls="settings-practice">practice</button>
+        <button type="button" data-settings-category="keyboard" aria-controls="settings-keyboard">keyboard</button>
+        <button type="button" data-settings-category="sound" aria-controls="settings-sound">sound</button>
+        <button type="button" data-settings-category="shortcuts" aria-controls="settings-shortcuts">shortcuts</button>
         <button id="import-trigger" class="settings-import" type="button" aria-haspopup="dialog" aria-controls="import-dialog">Import Monkeytype settings</button>
       </nav>
       <div class="settings-content">
