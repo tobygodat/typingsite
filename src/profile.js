@@ -14,6 +14,7 @@ import { DAILY_GOALS, retainTraces, retainHistory, validPracticeDays, runRecord,
 import { retainRunCounts } from './run-counts.js';
 import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
+import { withoutConditionSets } from './account.js';
 
 export const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -140,8 +141,9 @@ function storedPreferences(raw) {
 const withSummary = (trace) => (trace && !trace.summary && Array.isArray(trace.events) && typeof trace.text === 'string'
   ? { ...trace, summary: replayAttempt(trace) } : trace);
 
-export function normalizeProfile(parsed) {
-  if (parsed?.version !== 2) return emptyProfile();
+export function normalizeProfile(stored) {
+  if (stored?.version !== 2) return emptyProfile();
+  const parsed = withoutConditionSets(stored);
   const rawPreferences = { ...(parsed.preferences || {}) };
   const preferencesAt = { ...(parsed.preferencesAt || {}) };
   const oldChoice = preferencesAt.stopOnError || '';
