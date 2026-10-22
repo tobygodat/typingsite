@@ -272,7 +272,7 @@ export const textStamp = (text) => `${text.length.toString(36)}:${cyrb53(text).t
 const storedProfile = (text) => {
   try {
     const data = JSON.parse(text);
-    return data?.version === 2 ? data : null;
+    return data?.version === 2 ? withoutConditionSets(data) : null;
   } catch {
     return null;
   }
@@ -441,7 +441,7 @@ export async function updateCloudProfile(session, data, seenAt, { board } = {}) 
     method: 'PATCH',
     token: session.access_token,
     headers: { Prefer: 'return=representation' },
-    body: { data: rowCopy(data), updated_at: at, ...column },
+    body: { data: withConditionSets(rowCopy(data)), updated_at: at, ...column },
   }));
   return rows?.[0]?.updated_at || null;
 }
@@ -453,7 +453,7 @@ export async function insertCloudProfile(session, data, { board } = {}) {
     method: 'POST',
     token: session.access_token,
     headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
-    body: { user_id: session.user.id, data: rowCopy(data), updated_at: at, ...column },
+    body: { user_id: session.user.id, data: withConditionSets(rowCopy(data)), updated_at: at, ...column },
   }));
   return rows?.[0]?.updated_at || null;
 }
@@ -478,11 +478,63 @@ export async function repairBoard(session, board, at) {
   }
 }
 
+// Each run and loop names the conditions it was typed at, and most share a few sets, so a stored copy keeps
+// each set once in conditionSets, under a stamp of its JSON, and a record names its set by that stamp
+// (conditionSet, where conditions was). Loading puts every record's conditions back exactly as they were
+// (withoutConditionSets, in normalizeProfile), so nothing that reads or merges a copy sees the table.
+// Builds from before it read only inline conditions and throw on a record without them, so a copy is
+// written this way only from CONDITION_SETS_FROM, once tabs still running one have had six weeks to reload.
+export const CONDITION_SETS_FROM = '2026-12-01T00:00:00Z';
+const CONDITIONED = ['runs', 'loops'];
+const renamed = (record, from, to, value) => Object.fromEntries(Object.entries(record).map(([key, held]) => (key === from ? [to, value] : [key, held])));
+
+export function withoutConditionSets(copy) {
+  if (!copy || typeof copy !== 'object') return copy;
+  const { conditionSets, ...rest } = copy;
+  const sets = conditionSets && typeof conditionSets === 'object' ? conditionSets : {};
+  const named = (record) => record && typeof record === 'object' && 'conditionSet' in record;
+  for (const name of CONDITIONED) {
+    if (!Array.isArray(rest[name]) || !rest[name].some(named)) continue;
+    rest[name] = rest[name].flatMap((record) => {
+      if (!named(record)) return [record];
+      if (record.conditions) {
+        const { conditionSet, ...inline } = record;
+        return [inline];
+      }
+      // A set this copy lacks (a tab on a build from before kept another copy's table): the record is left
+      // out here, and comes back from any copy that holds it whole.
+      return Object.hasOwn(sets, record.conditionSet) ? [renamed(record, 'conditionSet', 'conditions', { ...sets[record.conditionSet] })] : [];
+    });
+  }
+  return rest;
+}
+
+export function withConditionSets(profile, now = Date.now()) {
+  if (now < Date.parse(CONDITION_SETS_FROM) || !profile || typeof profile !== 'object') return profile;
+  const copy = { ...withoutConditionSets(profile) };
+  const sets = {};
+  const texts = {};
+  for (const name of CONDITIONED) {
+    if (!Array.isArray(copy[name])) continue;
+    copy[name] = copy[name].map((record) => {
+      if (!record?.conditions || typeof record.conditions !== 'object') return record;
+      const text = JSON.stringify(record.conditions);
+      const stamp = textStamp(text);
+      // Two sets with one stamp: the second stays inline.
+      if (texts[stamp] !== undefined && texts[stamp] !== text) return record;
+      texts[stamp] = text;
+      sets[stamp] = record.conditions;
+      return renamed(record, 'conditions', 'conditionSet', stamp);
+    });
+  }
+  return Object.keys(sets).length ? { ...copy, conditionSets: sets } : copy;
+}
+
 // The copy written to the device cache. A trace's summary is the replay of its own events (completeAttempt)
 // and over half its size, so it is left out and rebuilt on load (normalizeProfile).
 const withoutSummary = ({ summary, ...trace }) => trace;
-export const storedCopy = (profile) => (Array.isArray(profile?.attempts)
-  ? { ...profile, attempts: profile.attempts.map((trace) => (trace?.summary ? withoutSummary(trace) : trace)) } : profile);
+export const storedCopy = (profile, now = Date.now()) => withConditionSets(Array.isArray(profile?.attempts)
+  ? { ...profile, attempts: profile.attempts.map((trace) => (trace?.summary ? withoutSummary(trace) : trace)) } : profile, now);
 
 export function loadCachedProfile(userId) {
   return readJson(profileKey(userId));
