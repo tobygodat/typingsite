@@ -1,6 +1,6 @@
 // Keyboard policy is shared by settings, profile loading and the event dispatcher.
 export const DEFAULT_KEYBINDINGS = Object.freeze({ restart: 'Escape', commands: 'Mod+K', exitFocus: 'Escape' });
-export const KEYBINDING_LABELS = Object.freeze({ restart: 'restart test / local challenge', commands: 'commands', exitFocus: 'exit focus mode' });
+const KEYBINDING_LABELS = Object.freeze({ restart: 'restart test / local challenge', commands: 'commands', exitFocus: 'exit focus mode' });
 const modifiers = ['Ctrl', 'Meta', 'Mod', 'Alt', 'Shift'];
 const aliases = { control: 'Ctrl', ctrl: 'Ctrl', cmd: 'Meta', command: 'Meta', meta: 'Meta', mod: 'Mod', alt: 'Alt', shift: 'Shift', esc: 'Escape', escape: 'Escape', tab: 'Tab', enter: 'Enter' };
 const alias = (value) => Object.hasOwn(aliases, value.toLowerCase()) ? aliases[value.toLowerCase()] : null;

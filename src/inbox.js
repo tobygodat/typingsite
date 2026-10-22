@@ -16,7 +16,7 @@ const MAX_ENTRIES = 30;
 const POLL_MS = 10000;
 const DAY_MS = 86400000;
 const WEEK_MS = 7 * DAY_MS;
-export const TOAST_MS = 18000;
+const TOAST_MS = 18000;
 
 // Draws a list's rows again without losing keyboard focus: a focused control comes back on the new
 // control with the same data attributes or, when its row has gone, on `fallback`. The online race's
@@ -169,7 +169,6 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
         button.type = 'button';
         button.className = 'btn btn-secondary btn-sm';
         button.dataset.inboxAction = entry.kind;
-        button.dataset.inboxEntry = entry.id;
         button.textContent = action.label;
         markWaiting(button, entry.kind);
         button.addEventListener('click', () => {

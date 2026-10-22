@@ -24,6 +24,7 @@ const SHELL = [
   '/src/compose.js',
   '/src/corpus.js',
   '/src/egg.js',
+  '/src/fonts.js',
   '/src/ghost-race.js',
   '/src/friends-board.js',
   '/src/graph.js',
@@ -74,7 +75,8 @@ self.addEventListener('fetch', (event) => {
   // Supabase and every other origin go straight to the network, uncached.
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   const key = request.mode === 'navigate' ? '/' : url.pathname;
-  if (!SHELL.includes(key)) return;
+  // Font choices other than the default are left out of the precache and kept once a page has used them.
+  if (!SHELL.includes(key) && !key.startsWith('/src/fonts/')) return;
   event.respondWith(fetch(request)
     .then((response) => {
       if (response.ok) {

@@ -5,7 +5,7 @@ import { isDefaultLayout } from './layouts.js';
 export const METRIC_VERSION = 'stilltype-metrics-v1';
 export const EVENT_VERSION = 'stilltype-events-v1';
 export const CORPUS_VERSION = 'original-en-v5';
-export const MAX_PAIR_PAUSE_MS = 2000;
+const MAX_PAIR_PAUSE_MS = 2000;
 // The standard word for speed: five characters, spaces and punctuation included.
 export const CHARS_PER_WORD = 5;
 
@@ -173,7 +173,7 @@ function standardSentence(random) {
 // capitals, commas, full stops, some question marks and numbers. The second sentence is the quote
 // segment, in double quotation marks, so every typist reaches it. It is generated like the rest
 // (not drawn from the quote corpus), so no part of an attempt repeats text the person has seen.
-export function makeStandardText(seed) {
+function makeStandardText(seed) {
   const random = seededRandom(seed);
   const words = standardSentence(random);
   const quoted = standardSentence(random);

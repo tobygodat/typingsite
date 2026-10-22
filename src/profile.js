@@ -10,10 +10,12 @@ import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { CODE_LANGUAGES, DEFAULT_CODE_LANGUAGE } from './code-snippets.js';
 import { DEFAULT_WORD_HIGHLIGHT, normalizeWordHighlight } from './word-highlight.js';
 import { DEFAULT_BOOK, bookIds } from './books.js';
+import { APP_FONTS, DEFAULT_FONT, TYPING_FONTS, normalizeFont } from './fonts.js';
 import { DAILY_GOALS, retainTraces, retainHistory, validPracticeDays, runRecord, settleDailyFirsts } from './insights.js';
 import { retainRunCounts } from './run-counts.js';
 import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
+import { withoutConditionSets } from './account.js';
 
 export const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -36,6 +38,8 @@ export const defaultPreferences = {
   layout: DEFAULT_LAYOUT,
   fingerMap: false,
   fontSize: '28',
+  typingFont: DEFAULT_FONT,
+  appFont: DEFAULT_FONT,
   // Display only, like the text size: never a test condition.
   wordHighlight: DEFAULT_WORD_HIGHLIGHT,
   tape: false,
@@ -63,7 +67,7 @@ export const defaultPreferences = {
 export const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
 export const MIN_ACCURACY_OPTIONS = [0, 80, 90, 95, 98];
 export const MIN_WPM_OPTIONS = [0, 20, 30, 40, 60, 80, 100];
-export const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
+const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
 export const PACE_MIN_WPM = 10;
 export const PACE_MAX_WPM = 300;
 export const clampPace = (value) => Math.min(PACE_MAX_WPM, Math.max(PACE_MIN_WPM, Math.round(Number(value) || 80)));
@@ -103,6 +107,8 @@ export function validPreferences(value) {
   if (!CODE_LANGUAGES.includes(value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
   if (!bookIds.includes(value.book)) value.book = DEFAULT_BOOK;
   value.wordHighlight = normalizeWordHighlight(value.wordHighlight);
+  value.typingFont = normalizeFont(value.typingFont, TYPING_FONTS);
+  value.appFont = normalizeFont(value.appFont, APP_FONTS);
   value.tape = value.tape === true;
   value.repeatQuotes = value.repeatQuotes === true;
   value.layout = normalizeLayout(value.layout);
@@ -140,8 +146,9 @@ function storedPreferences(raw) {
 const withSummary = (trace) => (trace && !trace.summary && Array.isArray(trace.events) && typeof trace.text === 'string'
   ? { ...trace, summary: replayAttempt(trace) } : trace);
 
-export function normalizeProfile(parsed) {
-  if (parsed?.version !== 2) return emptyProfile();
+export function normalizeProfile(stored) {
+  if (stored?.version !== 2) return emptyProfile();
+  const parsed = withoutConditionSets(stored);
   const rawPreferences = { ...(parsed.preferences || {}) };
   const preferencesAt = { ...(parsed.preferencesAt || {}) };
   const oldChoice = preferencesAt.stopOnError || '';

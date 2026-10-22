@@ -7,6 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { FakeRaces } from './fake-races.js';
 import { FakeChallenges } from './fake-challenges.js';
 import { FakeBoard } from './fake-board.js';
+import { withoutConditionSets } from '../src/account.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -72,8 +73,11 @@ export class FakeSupabase {
     return user;
   }
 
+  // The row's data as the app reads it: from CONDITION_SETS_FROM it keeps each conditions set once
+  // (src/account.js), and each run and loop gets its conditions back here.
   profileFor(email) {
-    return this.profiles.get(this.users.get(email)?.id)?.data || null;
+    const data = this.profiles.get(this.users.get(email)?.id)?.data || null;
+    return data && 'conditionSets' in data ? withoutConditionSets(data) : data;
   }
 
   // What auth.admin.deleteUser does to the real project: the user, their sessions and every row whose
