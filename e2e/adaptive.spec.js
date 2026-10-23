@@ -19,7 +19,14 @@ async function typeWithPairSlip(page, text) {
   return pair;
 }
 
+// A fixed passage: a random hundred words now and then has no pair typed ten times.
+const seedRandom = () => {
+  let seed = 20261023;
+  Math.random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+};
+
 test('adaptive practice draws on the run’s target, never counts, and retests on fresh text', async ({ page }) => {
+  await page.addInitScript(seedRandom);
   await openApp(page);
   await chooseWords(page, 100);
   const target = await typeWithPairSlip(page, await passageText(page));
