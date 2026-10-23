@@ -1,6 +1,6 @@
 // One account in two tabs or on two devices, against the fake Supabase in e2e/fake-supabase.js: a save
 // from a copy that is out of date merges with the other copy instead of replacing it.
-import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting, finishDrill } from './fixtures.js';
 import { CONDITION_SETS_FROM, textStamp } from '../src/account.js';
 
 test.setTimeout(90000);
@@ -36,6 +36,14 @@ async function finishRun(page, delay = 0) {
   await typeInto(page, await passageText(page), '#typing-input', { delay });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   return Number(await page.locator('#result-wpm').textContent());
+}
+
+// With no baseline left to retest, Train's one button starts a drill that says it stands alone.
+async function expectStandaloneDrill(page) {
+  await openView(page, 'Train');
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
 }
 
 const cachedProfile = (page) => page.evaluate(() => {
@@ -493,8 +501,8 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
     await chooseWords(page, 10);
     await typeInto(page, await passageText(page));
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-    await page.locator('#skip-to-retest').click();
-    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+    await page.locator('#result-drill').click();
+    await finishDrill(page);
 
     await openSettings(other, 'practice');
     if (mine === 'custom') {
@@ -539,8 +547,8 @@ test('picking pace caret custom (from off) during a retest keeps the custom spee
   await chooseWords(page, 10);
   await typeInto(page, await passageText(page));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
 
   await openSettings(other);
   await chooseSetting(other, 'pace-select', 'custom');
@@ -694,7 +702,7 @@ test('a clear an older build saved elsewhere withdraws, on return, the drill and
   await openApp(page);
   await signInWithEmail(page, EMAIL);
   await finishRun(page);
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect(page.locator('#result-drill')).toBeVisible();
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
 
@@ -702,12 +710,12 @@ test('a clear an older build saved elsewhere withdraws, on return, the drill and
   const writes = supabase.writes.length;
   await page.evaluate(() => dispatchEvent(new Event('online')));
   await expect(page.locator('#best')).toHaveText('No best yet');
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#start-drill')).toBeDisabled();
+  await expect(page.locator('#result-drill')).toBeHidden();
   await expect(page.locator('#result-delta')).toHaveText('No run yet.');
   await expect.poll(() => supabase.writes.length).toBeGreaterThan(writes);
   expect(runIds(cloud(supabase))).toEqual([]);
   expect(runIds(await cachedProfile(page))).toEqual([]);
+  await expectStandaloneDrill(page);
 });
 
 test('undo brings back a run the clearing device never saw, after another device applied the clear', async ({ page, browser, supabase }) => {
@@ -759,8 +767,8 @@ test('a retest keeps its baseline’s conditions when another tab picks others, 
   await chooseWords(page, 10);
   await typeInto(page, await passageText(page));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   await expect(page.locator('#condition-line')).toContainText('10 words');
 
   await chooseWords(other, 25);
@@ -772,7 +780,7 @@ test('a retest keeps its baseline’s conditions when another tab picks others, 
   await typeInto(page, await passageText(page));
   await expect(page.locator('#comparison-panel')).toBeVisible();
   await expect(page.locator('#comparison-panel')).not.toHaveAttribute('data-outcome', 'unavailable');
-  await expect(page.locator('#result-conditions')).toContainText('10 words');
+  await expect(page.locator('#comparison-conditions')).toContainText('10 words');
   // Once the retest is over, the newer pick from the other tab applies.
   await expect(page.locator('#duration-options [data-length="25"]')).toHaveAttribute('aria-pressed', 'true');
   expect(errors).toEqual([]);
@@ -795,7 +803,7 @@ for (const when of ['prepared', 'running']) {
     await chooseWords(page, 10);
     await typeInto(page, await passageText(page));
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-    await page.locator('#start-drill').click();
+    await page.locator('#result-drill').click();
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
     const drill = await passageText(page);
     if (when === 'running') await typeInto(page, drill.slice(0, 5));
@@ -808,7 +816,7 @@ for (const when of ['prepared', 'running']) {
     await expect(page.locator('#condition-line')).toContainText('10 words');
     await typeInto(page, await passageText(page));
     await expect(page.locator('#comparison-panel')).toBeVisible();
-    await expect(page.locator('#result-conditions')).toContainText('10 words');
+    await expect(page.locator('#comparison-conditions')).toContainText('10 words');
 
     // The retest's comparison reached the account, and the other tab's pick is still the saved one.
     await expect.poll(() => cloud(supabase)?.loops?.length, { timeout: 15000 }).toBe(1);
@@ -816,6 +824,8 @@ for (const when of ['prepared', 'running']) {
     expect((await cachedProfile(page)).preferences).toMatchObject({ mode: 'words', count: 25 });
     await expect(other.locator('#condition-line')).toContainText('25 words');
     await expect(page.locator('#duration-options [data-length="25"]')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#comparison-back').click();
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
     await page.locator('#run-again').click();
     await expect(page.locator('#condition-line')).toContainText('25 words');
     expect((await passageText(page)).split(' ')).toHaveLength(25);
@@ -996,16 +1006,16 @@ test('a clear in another tab withdraws the drill and retest offered for a cleare
   await openApp(page);
   await signInWithEmail(page, EMAIL);
   await finishRun(page);
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect(page.locator('#result-drill')).toBeVisible();
   const other = await extraPage(context, supabase, errors);
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
 
   await clearHistoryIn(other);
   await expect(page.locator('#best')).toHaveText('No best yet');
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#start-drill')).toBeDisabled();
+  await expect(page.locator('#result-drill')).toBeHidden();
   await expect(page.locator('#result-delta')).toHaveText('No run yet.');
+  await expectStandaloneDrill(page);
   expect(errors).toEqual([]);
 });
 
@@ -1033,7 +1043,7 @@ test('an older clear that names the run on show withdraws its drill and retest u
   await openApp(page);
   await signInWithEmail(page, EMAIL);
   await finishRun(page);
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect(page.locator('#result-drill')).toBeVisible();
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
   const row = supabase.profiles.get(user.id);
   const [run] = row.data.runs;
@@ -1049,7 +1059,7 @@ test('an older clear that names the run on show withdraws its drill and retest u
   // A device that never held the run cleared just before it was stamped: the run is after that clear.
   await pull({ ...row.data, historyClearedAt: newer });
   await expect.poll(async () => (await cachedProfile(page))?.historyClearedAt).toBe(newer);
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect(page.locator('#result-drill')).toBeVisible();
 
   // A device whose clock runs behind held the run and cleared earlier, naming it. Its merge with the
   // row keeps the newer marker and drops the run.
@@ -1062,9 +1072,9 @@ test('an older clear that names the run on show withdraws its drill and retest u
   });
   await expect.poll(async () => (await cachedProfile(page))?.historyClearedIds).toEqual([[older, run.id]]);
   expect((await cachedProfile(page)).historyClearedAt).toBe(newer);
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#start-drill')).toBeDisabled();
+  await expect(page.locator('#result-drill')).toBeHidden();
   await expect(page.locator('#result-delta')).toHaveText('No run yet.');
+  await expectStandaloneDrill(page);
 });
 
 // A tab answers to every clear it has applied, not only its newest. Once a newer clear is undone, a run
@@ -1094,7 +1104,7 @@ test('a newer clear undone elsewhere leaves the run on show made after an older 
 
   // This tab finishes a run, stamped before the laptop's marker by its own clock, and sends it.
   await finishRun(page);
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect(page.locator('#result-drill')).toBeVisible();
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
   const [run] = runIds(cloud(supabase));
 
@@ -1105,7 +1115,7 @@ test('a newer clear undone elsewhere leaves the run on show made after an older 
   await expect.poll(async () => (await cachedProfile(page))?.historyClearedAt).toBe(older);
   expect(runIds(await cachedProfile(page))).toEqual([run]);
   await expect.poll(() => runIds(cloud(supabase))).toEqual([run]);
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect(page.locator('#result-drill')).toBeVisible();
   await expect(page.locator('#result-delta')).not.toHaveText('No run yet.');
 });
 
@@ -1118,8 +1128,8 @@ test('a clear in another tab during a retest applies when it ends, with no compa
   const other = await extraPage(context, supabase, errors);
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   const text = await passageText(page);
   await typeInto(page, text.slice(0, 3));
 
@@ -1128,10 +1138,9 @@ test('a clear in another tab during a retest applies when it ends, with no compa
   // Nothing changes mid-run.
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
   await page.keyboard.type(text.slice(3));
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'train');
   await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', 'unavailable');
   await expect(page.locator('#comparison-caveat')).toContainText('history was cleared');
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
   // The retest itself is kept; no comparison with the cleared run is.
   await expect.poll(() => runIds(cloud(supabase)).length, { timeout: 15000 }).toBe(1);
   expect(cloud(supabase).loops || []).toEqual([]);

@@ -1,6 +1,6 @@
 // Keyboard layouts: the on-screen legend, the optional finger map, and the layout as a test condition.
 import { conditionKey } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, finishDrill, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
 
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/keyboard-layouts/${name}.png` : testInfo.outputPath(`${name}.png`));
 const row = (page, index) => page.locator(`#keyboard .key-row:nth-child(${index}) .key`);
@@ -162,8 +162,7 @@ test('a drill keeps its target keys marked on the new legend', async ({ page }) 
   await openApp(page);
   await runCommand(page, 'layout · workman');
   await runCommand(page, 'finger map');
-  await openView(page, 'Train');
-  await page.locator('#manual-heading').click();
+  await chooseMore(page, 'mode-drill');
   await page.locator('#manual-target-input').fill('th');
   await page.locator('#apply-manual-target').click();
   await expect(page.locator('#session-title')).toHaveText('Practice “th”');
@@ -184,36 +183,32 @@ test('a drill keeps its target keys marked on the new legend', async ({ page }) 
   }
 });
 
-test('a retest keeps the chosen layout and refuses a baseline typed on another', async ({ page }) => {
+test('a drill from a baseline typed on another layout stands alone on the chosen one, and a baseline on that layout retests on it', async ({ page }) => {
   await openApp(page);
   await runCommand(page, 'layout · dvorak');
   await chooseWords(page, 10);
   await completePassage(page);
   await runCommand(page, 'layout · qwerty');
   await expect(page.locator('#condition-line')).not.toContainText('dvorak');
-  await openView(page, 'Train');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#comparison-status')).toHaveText('No fair retest available.');
-  await expect(page.locator('#comparison-sample')).toHaveText('different keyboard layout');
-  await expect(page.locator('#comparison-caveat')).toHaveText('The baseline was typed on dvorak. Switch the keyboard layout back to dvorak to retest it.');
-  await openSettings(page, 'keyboard');
-  await expect(page.locator('#layout-select input:checked')).toHaveValue('qwerty');
-  await page.keyboard.press('Escape');
 
   // A drill from that baseline stands alone, on the layout in use.
-  await openView(page, 'Train');
-  await page.locator('#start-drill').click();
+  await chooseMore(page, 'mode-drill');
+  await page.locator('#manual-target-input').fill('th');
+  await page.locator('#apply-manual-target').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#condition-line')).not.toContainText('dvorak');
   await expect(page.locator('#session-description')).toHaveText('Standalone drill. The baseline was typed on dvorak. Switch the keyboard layout back to dvorak to retest it.');
+
+  await openSettings(page, 'keyboard');
+  await expect(page.locator('#layout-select input:checked')).toHaveValue('qwerty');
+  await page.keyboard.press('Escape');
 
   // Back on Dvorak, a new baseline retests on Dvorak.
   await runCommand(page, 'layout · dvorak');
   await chooseWords(page, 10);
   await completePassage(page);
-  await openView(page, 'Train');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   await expect(page.locator('#condition-line')).toContainText('10 words · plain · physical keyboard · dvorak');
 });
 
@@ -233,17 +228,14 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#result-conditions')).not.toContainText('dvorak');
 
     // The drill keeps the touch baseline, so a retest follows it.
-    await openView(page, 'Train');
-    await page.locator('#manual-heading').click();
+    await chooseMore(page, 'mode-drill');
     await page.locator('#manual-target-input').fill('th');
     await page.locator('#apply-manual-target').click();
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
     await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
 
-    // The retest starts, and on touch it compares with the touch baseline.
-    await openView(page, 'Train');
-    await page.locator('#skip-to-retest').click();
-    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+    // The retest starts after the drill's minute, and on touch it compares with the touch baseline.
+    await finishDrill(page);
     await page.locator('#typing-input').tap();
     await expect(page.locator('#condition-line')).toContainText('10 words · plain · touch input · continue on error');
     await completePassage(page);

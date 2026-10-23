@@ -1086,14 +1086,17 @@ export function takeLegacyProfile() {
 // to an account. The table accepts inserts only; nothing can be read back through the API.
 export const MAX_SUGGESTION = 1000;
 // Every value body[data-view] takes; the table's feature_suggestions_view_check holds the same list.
+// Train shared the results screen when the table was made, so it is stored as "results" too.
 const SUGGESTION_VIEWS = new Set(['practice', 'results', 'progress', 'compete', 'learn']);
+const SUGGESTION_VIEW_NAMES = { train: 'results' };
 
 // The row to store, or the sentence to show instead.
 export function suggestionRow(text, view) {
   const body = typeof text === 'string' ? text.trim() : '';
   if (!body) return { error: 'Write a suggestion first.' };
   if (body.length > MAX_SUGGESTION) return { error: `Keep it under ${MAX_SUGGESTION} characters.` };
-  return { row: { body, view: SUGGESTION_VIEWS.has(view) ? view : null } };
+  const name = SUGGESTION_VIEW_NAMES[view] || view;
+  return { row: { body, view: SUGGESTION_VIEWS.has(name) ? name : null } };
 }
 
 export async function sendSuggestion(text, view) {

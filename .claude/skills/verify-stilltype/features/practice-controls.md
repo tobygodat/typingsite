@@ -1,8 +1,8 @@
 # Practice controls
 
 One short rail above the passage holds the mode (time, words, quote, and "more"), the length pills
-(including custom) and the punctuation switch. "more" opens a small menu with code, standard, book,
-compose, custom and learn to type; picking one renames "more" to that mode and slides the pill under it.
+(including custom), the punctuation switch and, for time and words, the adaptive switch. "more" opens a small
+menu with code, standard, book, compose, custom, drill (a 1–8 letter manual drill) and learn to type; picking one renames "more" to that mode and slides the pill under it.
 Book mode puts a book dropdown and the page number where the lengths go.
 
 ## Sub-features
@@ -10,6 +10,8 @@ Book mode puts a book dropdown and the page number where the lengths go.
 - `rail-modes` switches time / words / quote with `#mode-time`, `#mode-words`, `#mode-quote`.
 - `rail-lengths` picks a length in `#duration-options [data-length="N"]`, or "custom" for any 5–600 s or 5–500 words.
 - `rail-punctuation` toggles `#punctuation-switch`; the condition line says plain or punctuation.
+- `rail-adaptive` toggles `#adaptive-switch` (time and words only); the next passage leans on the pairs you keep missing, and its run is not counted toward bests.
+- `more-drill` opens the manual drill form `#manual-target` under the rail from "drill" (`#mode-drill`); `Drill it` starts a drill of those letters.
 - `more-open` opens `.mode-more-menu` from `#mode-more-label`; Escape or a click elsewhere closes it without restarting.
 - `more-choose` picks code, standard, book, compose or custom; `#mode-more-label` reads the chosen mode and `#mode-more[data-active]` is set.
 - `book-pick` chooses a book from the combobox named "book" in `#book-options`; `#book-page` reads that book's next page ("page 1").

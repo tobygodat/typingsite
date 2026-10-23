@@ -64,20 +64,32 @@ export async function chooseWords(page, count = 10) {
   await expect(page.locator('#condition-line')).toContainText(`${count} words`);
 }
 
-// Types whatever passage is showing and waits for the results view.
+// Types whatever passage is showing and waits for its result: on Practice, or on Train for a retest.
 export async function completePassage(page) {
   const text = await passageText(page);
   await typeInto(page, text);
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('body')).toHaveAttribute('data-view', /^(results|train)$/);
   return text;
 }
 
-// A baseline, then straight to a fresh retest: the shortest way to a saved comparison.
+// A drill lasts a minute and then starts its retest. The clock is faked from here on (a spec that faked
+// it already keeps its own), a few letters start the drill and the minute is skipped. Installed this late,
+// WebKit's faked performance.now() jumps back and a touch drill never ends, so a phone-viewport spec
+// installs the clock before openApp.
+export async function finishDrill(page) {
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await page.clock.install().catch(() => {});
+  await typeInto(page, (await passageText(page)).slice(0, 4));
+  await page.clock.fastForward(60_000);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+}
+
+// A baseline, its drill and a fresh retest: the shortest way to a saved comparison.
 export async function freshTextCheck(page) {
   await chooseWords(page, 10);
   const baseline = await completePassage(page);
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   const retest = await completePassage(page);
   await expect(page.locator('#comparison-panel')).toBeVisible();
   return { baseline, retest };

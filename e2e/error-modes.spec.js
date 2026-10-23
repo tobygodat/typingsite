@@ -1,4 +1,4 @@
-import { test, expect, chooseWords, completePassage, openApp, openView, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, chooseWords, completePassage, finishDrill, openApp, openView, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
 
 // Committed docs screenshots are only rewritten when SCREENSHOTS is set; normal runs write to test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/error-modes/${name}` : testInfo.outputPath(name));
@@ -70,12 +70,12 @@ test('fail on any error ends a local challenge turn as failed', async ({ page })
 });
 
 // A drill that a failure policy ends shows its failed result, like any other failed run, instead of moving
-// straight on to the retest: Try drill again repeats it and Skip to retest goes on to the fresh retest.
+// straight on to the retest: Try drill again repeats it, and a drill that runs its minute goes on to the retest.
 const FAILURE_LABELS = { 'fail-any': 'fail on any error', 'fail-word': 'fail on word error' };
 
-// Starts the drill from the results view and fails it on a wrong letter, judged at the space for fail on word error.
+// Starts the drill from the run's result and fails it on a wrong letter, judged at the space for fail on word error.
 async function failDrill(page, policy, reason, options = {}) {
-  await page.locator('#start-drill').click();
+  await page.locator('#result-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#condition-line')).toContainText(`drill · 60 s · english · physical keyboard · ${FAILURE_LABELS[policy]}`);
   const text = await passageText(page);
@@ -85,34 +85,32 @@ async function failDrill(page, policy, reason, options = {}) {
   await expect(page.locator('#result-delta')).toHaveText(`failed · ${reason}`);
 }
 
-test('a drill failed by fail-word shows its result, then retries or goes on to the retest', async ({ page }) => {
+test('a drill failed by fail-word shows its result, then retries, and goes on to the retest once it runs its minute', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   await chooseCorrection(page, 'fail-word');
   const baseline = await completePassage(page);
-  await expect(page.locator('#start-drill')).toHaveText('Start drill');
+  await expect(page.locator('#result-drill')).toHaveText('Drill and retest');
 
   await failDrill(page, 'fail-word', 'word error');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#announcement')).toHaveText(/^Drill failed, word error\. \d+ wpm, \d+% accuracy\.$/);
-  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 10-word retest.');
-  await expect(page.locator('#start-drill')).toHaveText('Try drill again');
-  await expect(page.locator('#results-heading')).toBeFocused();
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect(page.locator('#result-drill')).toHaveText('Try drill again');
+  await expect(page.locator('#result-drill')).toBeFocused();
 
   // Trying again starts the drill afresh under the same policy.
   await failDrill(page, 'fail-word', 'word error');
-  await expect(page.locator('#results-heading')).toBeFocused();
+  await expect(page.locator('#result-drill')).toBeFocused();
 
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  // A third try that runs its minute without a wrong word goes on to the retest of the same baseline.
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   await expect(page.locator('#condition-line')).toContainText('10 words · plain · physical keyboard · fail on word error');
   expect(await passageText(page)).not.toBe(baseline);
   await completePassage(page);
   await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', /^(improved|mixed|regressed|steady)$/);
-  // No drill was finished, so the loop is recorded as a fresh-text check.
   await openView(page, 'Progress');
-  await expect(page.locator('.history-target')).toHaveText('Fresh-text check');
+  await expect(page.locator('.history-target')).toHaveText('General drill and retest');
 });
 
 test('a drill that runs its minute under fail on any error still goes straight to the retest', async ({ page }) => {
@@ -121,7 +119,7 @@ test('a drill that runs its minute under fail on any error still goes straight t
   await chooseWords(page, 10);
   await chooseCorrection(page, 'fail-any');
   await completePassage(page);
-  await page.locator('#start-drill').click();
+  await page.locator('#result-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await typeInto(page, (await passageText(page)).slice(0, 20));
   await page.clock.fastForward(60_000);
@@ -142,7 +140,7 @@ async function showFailedDrill(page, viewport) {
   await typeInto(page, await passageText(page), '#typing-input', { delay: 120 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await failDrill(page, 'fail-any', 'wrong key', { delay: 110 });
-  await expect(page.locator('#results-heading')).toBeFocused();
+  await expect(page.locator('#result-delta')).toBeVisible();
   // The run card's graph draws in about 450 ms.
   await page.waitForTimeout(600);
 }
@@ -158,9 +156,10 @@ test('failed drill result screenshots', async ({ page }, testInfo) => {
 test('failed drill result fits at 320px', async ({ page }, testInfo) => {
   await showFailedDrill(page, { width: 320, height: 568 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
-  // On a phone the drill follows the score card; the shot shows the drill and its actions.
-  await page.locator('.recommendation-panel').evaluate((node) => node.scrollIntoView({ block: 'start' }));
-  await expect(page.locator('#start-drill')).toBeInViewport();
+  // On a phone the actions follow the score card; the shot shows Try drill again among them.
+  await page.locator('.result-actions').evaluate((node) => node.scrollIntoView({ block: 'start' }));
+  await expect(page.locator('#result-drill')).toHaveText('Try drill again');
+  await expect(page.locator('#result-drill')).toBeInViewport();
   await page.screenshot({ path: shot(testInfo, 'failed-drill-320.png') });
 });
 

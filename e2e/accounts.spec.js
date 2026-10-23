@@ -114,7 +114,7 @@ test('a member’s progress and settings survive reload and follow the account',
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
   await openView(page, 'Progress');
-  await expect(page.locator('.history-target')).toHaveText('Fresh-text check');
+  await expect(page.locator('.history-target')).toHaveText('General drill and retest');
 
   // Signing out clears this device; signing back in restores everything from the account row.
   await page.locator('#account-trigger').click();

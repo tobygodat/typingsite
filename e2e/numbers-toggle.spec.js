@@ -1,4 +1,4 @@
-import { test, expect, openApp, chooseWords, completePassage, passageText, openSettings, openView, signInWithEmail, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, openApp, chooseWords, completePassage, finishDrill, passageText, openSettings, openView, signInWithEmail, chooseSetting, closeSettings } from './fixtures.js';
 import { dailyPassage } from '../src/insights.js';
 import { quoteCorpus } from '../src/typing.js';
 
@@ -50,7 +50,7 @@ test('numbers live in test content settings, default off, and keep practice best
   await openView(page, 'Progress');
   await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '10 words' }).click();
   await page.locator('.conditions-disclosure > summary').click();
-  const variants = page.getByRole('combobox', { name: 'Conditions' });
+  const variants = page.getByRole('combobox', { name: 'Conditions', exact: true });
   await expect(variants.locator('option')).toHaveCount(2);
   for (const label of await variants.locator('option').allTextContents()) {
     await variants.selectOption({ label });
@@ -71,16 +71,15 @@ test('numbers command stays available and toggles timed passages both ways', asy
   expect(await passageText(page)).not.toMatch(/\d/);
 });
 
-test('fresh retests restore numbers from the baseline after the preference changes', async ({ page }) => {
+// Train plans for the current settings, so a changed preference looks for a baseline at the new ones; the
+// result's own drill and retest go back to the run's numbers.
+test('a fresh retest keeps its baseline’s numbers', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   await numbersCommand(page, 'off');
   const baseline = await completePassage(page);
-  await numbersCommand(page, 'on');
-  await expect(page.locator('#numbers-toggle input[value="true"]')).not.toBeChecked();
-  await openView(page, 'Train');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
   await expect(page.locator('#condition-line')).toContainText('numbers');
   expect(await passageText(page)).not.toBe(baseline);

@@ -47,9 +47,9 @@ async function command(page, label) {
   await expect(page.locator('#palette')).toBeHidden();
 }
 
-// "+15 wpm" → [sign, 15]
+// "+15" → [sign, 15]; the comparison names its unit once, beside the figures.
 const parseSigned = (text) => {
-  const match = text.match(/^([+−]?)(\d+(?:\.\d+)?) (wpm|cpm)$/);
+  const match = text.match(/^([+−]?)(\d+(?:\.\d+)?)$/);
   expect(match, text).not.toBeNull();
   return [match[1], Number(match[2])];
 };
@@ -290,9 +290,12 @@ test('a retest comparison and the drills and retests list read in cpm', async ({
   await openApp(page);
   await freshTextCheck(page);
   const [sign, delta] = parseSigned(await page.locator('#comparison-wpm').textContent());
+  const now = Number(await page.locator('#comparison-wpm-now').textContent());
+  await expect(page.locator('#comparison-panel .comparison-rows [data-speed-unit]')).toHaveText('wpm');
   await command(page, 'speed unit · cpm');
-  await expect(page.locator('#comparison-wpm')).toHaveText(`${sign}${delta * 5} cpm`);
-  await expect(page.locator('#comparison-panel .comparison-rows span').last()).toHaveText('cpm');
+  await expect(page.locator('#comparison-wpm')).toHaveText(`${sign}${delta * 5}`);
+  await expect(page.locator('#comparison-wpm-now')).toHaveText(`${now * 5}`);
+  await expect(page.locator('#comparison-panel .comparison-rows [data-speed-unit]')).toHaveText('cpm');
 
   await openView(page, 'Progress');
   await expect(page.locator('.history-measure span').nth(1)).toHaveText('Corrected cpm');

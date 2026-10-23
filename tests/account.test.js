@@ -109,6 +109,8 @@ test('an account whose only history is composing keeps its own settings on impor
 test('a suggestion stores only trimmed text and a known view', () => {
   assert.deepEqual(suggestionRow('  dvorak layout  ', 'practice'), { row: { body: 'dvorak layout', view: 'practice' } });
   for (const view of ['results', 'progress', 'compete', 'learn']) assert.equal(suggestionRow('idea', view).row.view, view);
+  // Train is stored under the name its screen had when the table was made.
+  assert.equal(suggestionRow('idea', 'train').row.view, 'results');
   assert.deepEqual(suggestionRow('idea', '<script>'), { row: { body: 'idea', view: null } });
   assert.ok(suggestionRow('   ', 'practice').error);
   assert.ok(suggestionRow(undefined).error);

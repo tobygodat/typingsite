@@ -1,6 +1,6 @@
 // Custom time and word count: the "custom" pill in the length row, its bounds and messages, its own
 // bests and retests, the palette commands, and what is remembered (guests: the tab only).
-import { test, expect, openApp, passageText, typeInto, completePassage, signInWithEmail, chooseMore, openSettings, chooseQuoteFilter } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, completePassage, signInWithEmail, chooseMore, openSettings, chooseQuoteFilter, finishDrill } from './fixtures.js';
 
 // Committed docs images are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/custom-length/${name}` : testInfo.outputPath(name));
@@ -90,8 +90,8 @@ test('a custom time has its own best and its retest keeps the custom length', as
   await expect(page.locator('#result-conditions')).toContainText('· 45 s ·');
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   await expect(page.locator('#condition-line')).toContainText('· 45 s ·');
   await expect(page.locator('#timer')).toHaveText('45');
   expect(await passageText(page)).not.toBe(text);

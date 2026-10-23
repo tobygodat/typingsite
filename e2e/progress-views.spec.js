@@ -39,7 +39,7 @@ test('period and test pills filter the overview, and condition sets never mix', 
   await openProgress(page, supabase);
   const tests = page.getByRole('group', { name: 'Test' });
   const period = page.getByRole('group', { name: 'Period' });
-  const variants = page.getByRole('combobox', { name: 'Conditions' });
+  const variants = page.getByRole('combobox', { name: 'Conditions', exact: true });
 
   await expect(page.locator('#progress-variants')).toBeHidden();
   await page.locator('.conditions-disclosure > summary').click();
@@ -211,7 +211,7 @@ test('Show all lasts until the period, test or condition set changes', async ({ 
   const rows = page.locator('#run-history .run-row');
   const showAll = page.locator('#show-all-runs');
   const period = page.getByRole('group', { name: 'Period' });
-  const variants = page.getByRole('combobox', { name: 'Conditions' });
+  const variants = page.getByRole('combobox', { name: 'Conditions', exact: true });
 
   await showAll.click();
   await expect(rows).toHaveCount(15);
@@ -261,7 +261,7 @@ test('quote sets that differ only by the punctuation setting say so on the condi
   const quote = { mode: 'quote', count: null, quoteLength: 'short', difficulty: 'any', wordList: null };
   await openProgress(page, supabase, [run(2, 50, 95, quote), run(1, 55, 95, quote), run(0, 60, 95, { ...quote, punctuation: true })]);
   await page.locator('.conditions-disclosure > summary').click();
-  const variants = page.getByRole('combobox', { name: 'Conditions' });
+  const variants = page.getByRole('combobox', { name: 'Conditions', exact: true });
   await expect(variants.locator('option')).toHaveText(['punctuation setting off', 'punctuation setting on']);
   await expect(page.locator('#progress-conditions')).toContainText('any · punctuation setting off · physical keyboard');
   await variants.selectOption({ label: 'punctuation setting on' });
@@ -281,7 +281,7 @@ test('changing a period, test or condition keeps focus on its control', async ({
   await disclosure.focus();
   await page.keyboard.press('Enter');
   await page.keyboard.press('Tab');
-  const variants = page.getByRole('combobox', { name: 'Conditions' });
+  const variants = page.getByRole('combobox', { name: 'Conditions', exact: true });
   await expect(variants).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');

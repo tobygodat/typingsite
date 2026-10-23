@@ -1,5 +1,5 @@
 // Repeat quotes: off by default, a setting and a palette command, and honest labels when a seen quote returns.
-import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting, chooseQuoteFilter, phone } from './fixtures.js';
+import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting, chooseQuoteFilter, phone, finishDrill } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -61,7 +61,7 @@ async function typeQuote(page, msPerKey = 0) {
     }
     await page.clock.resume();
   }
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('body')).toHaveAttribute('data-view', /^(results|train)$/);
 }
 
 test('off by default: unseen quotes come first, and an exhausted pool says it is repeating', async ({ page }) => {
@@ -172,11 +172,12 @@ test('on: a seen quote can return to chase its score, but never sets a best, a b
   await expect(page.locator('#result-comparison-note')).toHaveText('');
   await expect(page.locator('#result-conditions')).toContainText('repeated text · english · short quote · gentle');
   await expect(page.locator('#best')).toHaveText(best);
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#recommendation-meta')).toContainText('Repeated text has no retest.');
   await shot(page, 'results-repeated-light');
   await page.emulateMedia({ colorScheme: 'dark' });
   await shot(page, 'results-repeated-dark');
+  // Repeated text is no baseline, so the drill it offers has no retest after it.
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
 
   await openView(page, 'Progress');
   await expect(page.locator('#run-history .run-row')).toHaveCount(2);
@@ -324,13 +325,13 @@ test('a daily repeat attempt is repeated text too, so it is never a retest basel
   await page.locator('#challenge-daily').click();
   await page.locator('#start-daily').click();
   await completePassage(page);
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
   await page.locator('#run-again').click();
   await expect(page.locator('#session-description')).toContainText('repeat attempt');
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete · repeat attempt');
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#recommendation-meta')).toHaveText('A standalone drill.');
+  // The first attempt was a baseline; the repeat dropped it, so the drill it offers stands alone.
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
 });
 
 test('stop on error: a blocked letter swaps the notice for its hint without moving restart', async ({ page }) => {
@@ -360,8 +361,8 @@ test('on: a retest still draws unseen text and compares fairly', async ({ page }
   await setRepeats(page, true);
   await page.keyboard.press('Escape');
   await typeQuote(page);
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   expect(await passageText(page)).not.toBe(quote);
   await expect(page.locator('#session-description')).toHaveText('Fresh text, same conditions.');
   await expect(page.locator('#condition-line')).not.toContainText('repeated text');

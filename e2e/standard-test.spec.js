@@ -1,5 +1,5 @@
 import { conditionKey, standardConditions } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, completePassage, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, completePassage, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting, finishDrill } from './fixtures.js';
 
 // Committed docs images are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/standard-test/${name}` : testInfo.outputPath(name));
@@ -127,7 +127,7 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   // Two lines, like other conditions, so the sticky run card grows no taller.
   expect((await page.locator('#result-conditions').boundingBox()).height).toBeLessThanOrEqual(36.5);
   await expect(page.locator('#best')).toHaveText('Best · 60 wpm');
-  await expect(page.locator('#recommendation-meta')).toContainText('fresh standard retest');
+  await expect(page.locator('#result-drill')).toBeVisible();
 
   // A time test of the same length, with punctuation and stop on error, is still a different condition.
   await openView(page, 'Practice');
@@ -157,8 +157,8 @@ test('a fresh-text retest of a standard run draws a new standard passage and com
   const baseline = await passageText(page);
   await typeInto(page, baseline.slice(0, 300));
   await page.clock.fastForward(60_000);
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
   await expect(page.locator('#timer')).toHaveText('60');
   const retest = await passageText(page);
@@ -166,7 +166,8 @@ test('a fresh-text retest of a standard run draws a new standard passage and com
   await typeInto(page, retest.slice(0, 320));
   await page.clock.fastForward(60_000);
   await expect(page.locator('#comparison-panel')).toBeVisible();
-  await expect(page.locator('#comparison-wpm')).toHaveText('+4 wpm');
+  await expect(page.locator('#comparison-wpm-now')).toHaveText('64');
+  await expect(page.locator('#comparison-wpm')).toHaveText('+4');
   // The person's own settings were never rewritten by the recipe.
   await openView(page, 'Practice');
   await page.locator('#mode-time').click();

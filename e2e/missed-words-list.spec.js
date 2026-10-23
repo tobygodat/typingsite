@@ -1,11 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, conditionKey, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, passageText, typeInto, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere } from './fixtures.js';
-
-// Docs images are taken only on request (SCREENSHOTS=1), when the quotes are typed at a human pace
-// (~130 ms a key, a believable 70-100 wpm) so the run card beside the list looks real.
-const shot = (name) => `docs/screenshots/missed-words-list/${name}.png`;
-const pace = process.env.SCREENSHOTS ? 130 : 0;
+import { test, expect, openApp, openView, passageText, typeInto, finishDrill, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere } from './fixtures.js';
 
 // Common words that recur from quote to quote, so the same word gets missed in more than one run.
 const TARGETS = ['the', 'and', 'a', 'of', 'to', 'in', 'it', 'that', 'for', 'was'];
@@ -35,16 +30,33 @@ async function typeWithMisses(page, text, delay) {
   return missed;
 }
 
-const listRows = (page) => page.locator('#missed-words-list li').evaluateAll((rows) => rows.map((row) => [row.children[0].textContent, row.children[1].textContent]));
+// "Words you keep missing" is a command palette entry: its hint counts the words, and it is left out of
+// the palette with fewer than two. Returns the entry, with the palette open and the query typed.
+async function keepMissing(page) {
+  await page.mouse.move(5, 5);
+  await page.mouse.move(40, 40);
+  await page.locator('#palette-trigger').click();
+  await page.keyboard.type('practice words you keep missing');
+  return page.locator('#palette-list .palette-option', { hasText: 'practice words you keep missing' });
+}
 
-test('words missed across runs build a list in Training that starts an uncounted practice', async ({ page }) => {
-  if (process.env.SCREENSHOTS) test.setTimeout(360_000);
-  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+async function keepMissingCount(page) {
+  const option = await keepMissing(page);
+  const count = await option.count() ? Number((await option.locator('.opt-hint').textContent()).match(/^(\d+) words$/)[1]) : 0;
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#palette')).toBeHidden();
+  return count;
+}
+
+async function practiseKeepMissing(page) {
+  await expect(await keepMissing(page)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#session-title')).toHaveText('Practice words you keep missing');
+}
+
+test('words missed across runs build the palette’s list, which starts an uncounted practice', async ({ page }) => {
   await openApp(page);
-  await openView(page, 'Train');
-  await expect(page.locator('#missed-words-note')).toHaveText(/^Not enough evidence yet: no runs counted so far\./);
-  await expect(page.locator('#practice-missed-list')).toBeHidden();
-  await openView(page, 'Practice');
+  expect(await keepMissingCount(page)).toBe(0);
   // Short original quotes: real sentences, where common words recur from run to run.
   await page.locator('#mode-quote').click();
   await chooseQuoteFilter(page, 'length', 'short');
@@ -56,70 +68,47 @@ test('words missed across runs build a list in Training that starts an uncounted
   while (runs < 3 || recurring().length < 2) {
     expect(runs, 'two target words recur within a few short quotes').toBeLessThan(6);
     if (runs) await page.locator('#run-again').click();
-    for (const word of await typeWithMisses(page, await passageText(page), pace)) tally.set(word, (tally.get(word) || 0) + 1);
+    for (const word of await typeWithMisses(page, await passageText(page), 0)) tally.set(word, (tally.get(word) || 0) + 1);
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
     runs += 1;
-    if (runs === 1) await expect(page.locator('#missed-words-note')).toHaveText(/^Not enough evidence yet: one run on a physical keyboard counted so far\./);
+    // One run is no list yet: no word has been missed twice.
+    if (runs === 1) expect(await keepMissingCount(page)).toBe(0);
   }
 
-  // Training is the results screen: the list sits below the recurring patterns.
-  await openView(page, 'Train');
-  const note = page.locator('#missed-words-note');
-  await expect(note).toHaveText(`First-try misses in your last ${runs} runs on a physical keyboard.`);
-  const rows = await listRows(page);
-  expect(rows.length).toBe(Math.min(8, recurring().length));
-  for (const [word, copy] of rows) expect(copy).toBe(`missed in ${tally.get(word)} of the last ${runs} runs`);
-  // Ranked by the number of runs each word was missed in.
-  const counts = rows.map(([, copy]) => Number(copy.match(/missed in (\d+)/)[1]));
-  expect(counts).toEqual([...counts].sort((a, b) => b - a));
-  const action = page.locator('#practice-missed-list');
-  await expect(action).toHaveText(`Practice these ${rows.length} words`);
-  // The trace's own word practice is on screen too, so the names tell the two apart.
-  await expect(action).toHaveAccessibleName(`Practice these ${rows.length} words you keep missing`);
+  // Ranked by the number of runs each word was missed in, eight at most.
+  const words = recurring().sort((a, b) => b[1] - a[1]);
+  const count = Math.min(8, words.length);
+  expect(await keepMissingCount(page)).toBe(count);
+  // The trace's own word practice is still on the run card, with its own name.
   await expect(page.locator('#practice-words')).toBeVisible();
   await expect(page.locator('#practice-words')).not.toHaveAccessibleName(/keep missing/);
-  // One hairline and 32px between the two sections, not the column's grid gap on top.
-  const patternsEnd = await page.locator('section.training-memory').first().evaluate((node) => node.getBoundingClientRect().bottom);
-  const listTop = await page.locator('section.missed-words').evaluate((node) => node.getBoundingClientRect().top);
-  // Within 1/100 px: Firefox's layout units leave a remainder in the 1e-4 px range.
-  expect(Math.abs(listTop - patternsEnd)).toBeLessThan(0.01);
 
-  if (process.env.SCREENSHOTS) {
-    // The whole list down to its button, 32px above the fold, with the drill beside it.
-    await action.evaluate((button) => window.scrollTo(0, button.getBoundingClientRect().bottom + window.scrollY + 32 - window.innerHeight));
-    await page.mouse.move(1270, 790);
-    await page.screenshot({ path: shot('training-list-dark') });
-    await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await page.screenshot({ path: shot('training-list-light') });
-    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  }
-
-  await action.click();
+  await practiseKeepMissing(page);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
   await expect(page.locator('#session-kicker')).toHaveText('missed words');
-  await expect(page.locator('#session-title')).toHaveText('Practice words you keep missing');
   await expect(page.locator('#condition-line')).toContainText('missed words · not counted · 40 words');
   const practice = (await passageText(page)).split(' ');
   expect(practice.length).toBe(40);
-  for (const [word] of rows) expect(practice).toContain(word);
+  // Past eight, words tied with the eighth may be left out; every word ranked above it is in.
+  const cut = words.length > 8 ? words[7][1] : 0;
+  for (const [word, n] of words) if (n > cut) expect(practice).toContain(word);
   await typeInto(page, practice.join(' '));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-delta')).toHaveText('Word practice complete · not counted toward your best');
-  // Out of the evidence: the list still counts the same runs. (#best says word practice isn't counted,
+  // Out of the evidence: the list still counts the same words. (#best says word practice isn't counted,
   // so the signed-in test checks the stored bests instead.)
-  await expect(note).toContainText(`your last ${runs} runs`);
-  expect(await listRows(page)).toEqual(rows);
+  expect(await keepMissingCount(page)).toBe(count);
 
-  // Then the existing loop: the same practice again, or a fresh-text retest of the last quote run.
-  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh short quote retest.');
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  // Then the existing loop: the same practice again, or Train's drill and a fresh-text retest of the
+  // last quote run.
+  await expect(page.locator('#result-drill')).toBeVisible();
   await page.locator('#run-again').click();
   await expect(page.locator('#session-title')).toHaveText('Practice words you keep missing');
   expect((await passageText(page)).split(' ')).toEqual(practice);
   await openView(page, 'Train');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
+  await finishDrill(page);
   await expect(page.locator('#session-description')).toHaveText('Fresh text, same conditions.');
 });
 
@@ -168,23 +157,11 @@ test('signed in, the list rides the synced run summaries, starts from the palett
   // Recorded on this device, so the newest recording is here to be the retest baseline.
   await recordedHere(page, user.id, data);
   await signInWithEmail(page, user.email);
-  await openView(page, 'Train');
-  const expected = [['their', 'missed in 3 of the last 3 runs'], ['because', 'missed in 2 of the last 3 runs'], ['river', 'missed in 2 of the last 3 runs']];
-  expect(await listRows(page)).toEqual(expected);
+  expect(await keepMissingCount(page)).toBe(3);
   const best = `Best · ${top.score.wpm} wpm`;
   await expect(page.locator('#best')).toHaveText(best);
 
-  // The mobile layout: rows stack within the column, no sideways scroll.
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  await page.locator('section.missed-words').scrollIntoViewIfNeeded();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  if (process.env.SCREENSHOTS) await page.screenshot({ path: shot('training-list-390') });
-  await page.setViewportSize({ width: 320, height: 760 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
-  await page.setViewportSize({ width: 1280, height: 800 });
-
-  // The palette starts the same practice.
+  // The palette starts the practice of the words missed in two runs or more.
   await page.locator('#palette-trigger').click();
   await page.keyboard.type('keep missing');
   await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('practice words you keep missing');
@@ -195,9 +172,6 @@ test('signed in, the list rides the synced run summaries, starts from the palett
   expect(new Set(passage)).toEqual(new Set(['their', 'because', 'river']));
   await typeInto(page, passage.join(' '));
   await expect(page.locator('#result-delta')).toHaveText('Word practice complete · not counted toward your best');
-  // With no run in this tab, the newest retained run is the retest baseline.
-  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 25-word retest.');
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
   // Faster than the seeded runs, and still out of bests: word practice has no best of its own, and the
   // stored bests are unchanged (below).
   await expect(page.locator('#best')).toHaveText('Not counted');
@@ -205,10 +179,19 @@ test('signed in, the list rides the synced run summaries, starts from the palett
   // Persisted on the account: a reload shows the same list, unchanged by the practice run.
   await expect.poll(() => supabase.profileFor(user.email)?.runs.length).toBe(6);
   expect(supabase.profileFor(user.email).bests).toEqual(bests);
+
+  // With no run in this tab, the newest retained run is the baseline: the drill it offers is retested
+  // on fresh 25-word text.
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
+  await finishDrill(page);
+  await expect(page.locator('#condition-line')).toContainText('25 words');
+
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
   await page.reload();
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  await openView(page, 'Train');
-  expect(await listRows(page)).toEqual(expected);
+  expect(await keepMissingCount(page)).toBe(3);
 
   const clear = async () => {
     await openView(page, 'Progress');
@@ -217,20 +200,15 @@ test('signed in, the list rides the synced run summaries, starts from the palett
     await page.locator('#confirm-clear').click();
   };
   // Start the practice, then clear history before typing it; Undo brings the list back.
-  await page.locator('#practice-missed-list').click();
-  await expect(page.locator('#session-title')).toHaveText('Practice words you keep missing');
+  await practiseKeepMissing(page);
   await clear();
   await page.locator('#undo-clear').click();
-  await openView(page, 'Train');
-  expect(await listRows(page)).toEqual(expected);
+  expect(await keepMissingCount(page)).toBe(3);
 
   await clear();
-  await openView(page, 'Train');
-  await expect(page.locator('#missed-words-note')).toHaveText(/^Not enough evidence yet: no runs counted so far\./);
-  await expect(page.locator('#missed-words-list')).toBeHidden();
-  await expect(page.locator('#practice-missed-list')).toBeHidden();
-  // The cleared words are gone from Run again too: it starts a normal test.
-  await page.locator('#run-again').click();
+  expect(await keepMissingCount(page)).toBe(0);
+  // The cleared words are gone from Practice too: it starts a normal test.
+  await openView(page, 'Practice');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
   await expect(page.locator('#session-title')).not.toHaveText('Practice words you keep missing');
   expect((await passageText(page)).split(' ')).toHaveLength(25);
@@ -248,9 +226,7 @@ test('custom text never feeds the list: its misses aren’t counted, as stored o
     bests: {}, updatedAt: new Date(Date.now() - 60000).toISOString() } });
   await openApp(page);
   await signInWithEmail(page, user.email);
-  await openView(page, 'Train');
-  const expected = [['because', 'missed in 2 of the last 2 runs'], ['their', 'missed in 2 of the last 2 runs']];
-  expect(await listRows(page)).toEqual(expected);
+  expect(await keepMissingCount(page)).toBe(2);
 
   // A custom run typed here, missing "the", "and" and "it" on the first try, adds no evidence either.
   await openView(page, 'Practice');
@@ -261,9 +237,9 @@ test('custom text never feeds the list: its misses aren’t counted, as stored o
   const missed = await typeWithMisses(page, await passageText(page), 20);
   expect([...missed].sort()).toEqual(['and', 'it', 'the']);
   await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
-  await openView(page, 'Train');
-  expect(await listRows(page)).toEqual(expected);
-  await expect(page.locator('#missed-words-note')).toContainText('your last 2 runs');
+  expect(await keepMissingCount(page)).toBe(2);
+  await practiseKeepMissing(page);
+  expect(new Set((await passageText(page)).split(' '))).toEqual(new Set(['their', 'because']));
   await expect.poll(() => supabase.profileFor(user.email)?.runs.length).toBe(5);
   const stored = supabase.profileFor(user.email).runs.at(-1);
   expect(stored.kind).toBe('custom');
@@ -271,8 +247,7 @@ test('custom text never feeds the list: its misses aren’t counted, as stored o
 });
 
 // Holds the next account-row fetch until `release()`, as a slow network would. The page boots from
-// its device copy, so Train draws the list before a newer row arrives; adopting that row redraws
-// Progress but not Train, which leaves the list on screen out of date.
+// its device copy, so the palette counts that copy's words until a newer row arrives.
 async function holdNextProfileFetch(page) {
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
@@ -289,58 +264,40 @@ async function holdNextProfileFetch(page) {
   return { fetched, release };
 }
 
-test('a list left stale by a sync is checked when pressed, and a clear elsewhere redraws it without losing focus', async ({ page, supabase }) => {
+test('the palette’s list follows a sync: runs from another device join it, and a clear from elsewhere empties it', async ({ page, supabase }) => {
   const user = supabase.addUser('stale@stilltype.test');
   const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
   // Saved as this build saves (mergeStamp), so copies merge rather than the later one replacing the other.
   const row = (traces, updatedAt, extra = {}) => ({ data: { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: traces,
     runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt, mergeStamp: updatedAt, ...extra } });
-  const shownWords = async () => (await listRows(page)).map(([word]) => word).sort();
   supabase.profiles.set(user.id, row([trace('a', day(4), ['their', 'because']), trace('b', day(3), ['their', 'because'])], day(3)));
   await openApp(page);
   // Recorded on this device (the runs saved meanwhile below come from another, recordings left there).
   await recordedHere(page, user.id, supabase.profiles.get(user.id).data);
   await signInWithEmail(page, user.email);
 
-  // Reloads with the account row held back and draws Train from the device copy. Someone practises
-  // the list and comes back to it (adopting a row over a plain test would reset it and switch to
-  // Practice); then `traces`, saved meanwhile on another device, arrive. Focus waits on the button.
-  const syncUnderList = async (shown, traces, extra = {}, { stale = true } = {}) => {
+  // Reloads with the account row held back, so the palette counts the device copy's words; then
+  // `traces`, saved meanwhile on another device, arrive.
+  const syncUnderPalette = async (shown, traces, extra = {}) => {
     const { fetched, release } = await holdNextProfileFetch(page);
     await page.reload();
     await fetched;
     await expect(page.locator('#text-display .char').first()).toBeVisible();
-    await openView(page, 'Train');
-    expect(await shownWords()).toEqual([...shown].sort());
-    await page.locator('#practice-missed-list').click();
-    await expect(page.locator('#session-title')).toHaveText('Practice words you keep missing');
-    await openView(page, 'Train');
-    await page.locator('#practice-missed-list').focus();
+    expect(await keepMissingCount(page)).toBe(shown);
     const at = new Date().toISOString();
     supabase.profiles.set(user.id, row(traces, at, typeof extra === 'function' ? extra(at) : extra));
     release();
     await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
-    // The precondition: the newer row is in, and Train still shows the old words.
-    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-    if (stale) expect(await shownWords()).toEqual([...shown].sort());
   };
 
-  // Different words now: the press practises the words the runs hold, not the stale ones. The other
-  // device's runs merge with these, so all four recur.
-  await syncUnderList(['their', 'because'], [trace('c', day(2), ['river', 'garden']), trace('d', day(1), ['river', 'garden'])]);
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#session-title')).toHaveText('Practice words you keep missing');
+  // Different words now: the palette practises the words the runs hold. The other device's runs merge
+  // with these, so all four recur.
+  await syncUnderPalette(2, [trace('c', day(2), ['river', 'garden']), trace('d', day(1), ['river', 'garden'])]);
+  expect(await keepMissingCount(page)).toBe(4);
+  await practiseKeepMissing(page);
   expect(new Set((await passageText(page)).split(' '))).toEqual(new Set(['river', 'garden', 'their', 'because']));
 
-  // History cleared elsewhere: the clear applies as it arrives (with the training it removed), so the
-  // list is redrawn at once; focus moves to the section rather than staying on the button it hid, and
-  // Enter starts nothing.
-  await syncUnderList(['river', 'garden', 'their', 'because'], [], (at) => ({ historyClearedAt: `${at}~elsewhere` }), { stale: false });
-  await expect(page.locator('#missed-words-note')).toHaveText(/^Not enough evidence yet: no runs counted so far\./);
-  await expect(page.locator('#missed-words-list')).toBeHidden();
-  await expect(page.locator('#practice-missed-list')).toBeHidden();
-  await expect(page.locator('#missed-words-heading')).toBeFocused();
-  await page.keyboard.press('Enter');
-  // Every session start switches to Practice, so staying on Train means nothing started.
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  // History cleared elsewhere: the clear applies as it arrives, so the palette has no words to offer.
+  await syncUnderPalette(4, [], (at) => ({ historyClearedAt: `${at}~elsewhere` }));
+  expect(await keepMissingCount(page)).toBe(0);
 });

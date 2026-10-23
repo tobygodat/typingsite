@@ -1,6 +1,6 @@
 // Minimum accuracy and speed to continue: practice-only settings, judged on the timing tick after a
 // grace period, ending a run as interrupted with its reason and keeping it out of bests.
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore, chooseSetting, closeSettings, phone } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, openSettings, openView, chooseMore, chooseSetting, closeSettings, phone } from './fixtures.js';
 
 const shot = (page, testInfo, name) => page.screenshot({
   path: process.env.SCREENSHOTS ? `docs/screenshots/min-thresholds/${name}.png` : testInfo.outputPath(`${name}.png`),
@@ -58,8 +58,6 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
   await page.clock.resume();
   await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
   await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: accuracy fell below 95%, so it isn’t counted.');
-  await expect(page.locator('#recommendation-title')).toHaveText('Restart for a counted run');
-  await expect(page.locator('#recommendation-evidence')).toHaveText('Runs under your minimums aren’t counted. Change them in settings.');
   await expect(page.locator('#announcement')).toHaveText(/^Stopped: accuracy fell below 95%\. \d+ wpm, 8\d% accuracy\.$/);
   await expect(page.locator('#result-conditions')).toContainText('min 95% accuracy');
   expect(Number(await page.locator('#result-accuracy').textContent())).toBeLessThan(95);
@@ -67,9 +65,9 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
   await expect(page.locator('#result-accuracy')).toHaveText('85');
   await expect(page.locator('#result-wpm')).toHaveText('51');
   await expect(page.locator('#result-time')).toHaveText('8.0 s');
-  await expect(page.locator('#start-drill')).toBeDisabled();
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#results-heading')).toBeFocused();
+  // Not counted, so it is no baseline: the result offers no drill and retest.
+  await expect(page.locator('#result-drill')).toBeHidden();
+  await expect(page.locator('#run-again')).toBeFocused();
   await expect(page.locator('#best')).toHaveText('No best yet');
   await expect(page.locator('#typing-status')).toHaveText('Interrupted');
   await expect(page.locator('#typing-status')).toHaveClass(/badge-warning/);
@@ -82,8 +80,8 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
   await page.waitForTimeout(450);
   await shot(page, testInfo, 'stopped-light');
 
-  // Once the typist has paused, Enter on the result heading starts a fresh run that still carries the minimum.
-  await expect(page.locator('#results-heading')).toBeFocused();
+  // Once the typist has paused, Enter on Run again starts a fresh run that still carries the minimum.
+  await expect(page.locator('#run-again')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('#typing-status')).toHaveText('Ready');
   await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy');
@@ -207,12 +205,13 @@ test('a retest carries its baseline’s minimums, and the daily challenge has no
   await openSettings(page, 'practice');
   await chooseSetting(page, 'min-wpm', '100');
   await page.keyboard.press('Escape');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   await expect(page.locator('#condition-line')).toContainText('min 20 wpm');
   await expect(page.locator('#condition-line')).not.toContainText('min 100 wpm');
   const retest = await passageText(page);
-  await page.clock.pauseAt(Date.now() + 1000);
+  // The drill's minute ran the page clock ahead of this process, so pause from the page's own time.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
   await typeAtPace(page, retest.slice(0, 22));
   await page.clock.runFor(2000);
   await expect(page.locator('#typing-status')).toHaveText('In progress');
@@ -221,21 +220,24 @@ test('a retest carries its baseline’s minimums, and the daily challenge has no
   await expect(page.locator('#comparison-panel')).toBeVisible();
   await expect(page.locator('#comparison-status')).not.toHaveText('Retest complete.');
 
-  // A retest under the baseline's minimum stops, and no comparison is made from it.
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  // A retest under the baseline's minimum stops, and no comparison is made from it. Train's drill and
+  // retest is against the same baseline.
+  await openView(page, 'Train');
+  await page.locator('#start-drill').click();
+  await finishDrill(page);
+  await expect(page.locator('#condition-line')).toContainText('min 20 wpm');
   const slow = await passageText(page);
   // The page clock ran ahead of this process while paused, so pause from the page's own time.
   await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
   await typeAtPace(page, slow.slice(0, 21), 1000);
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'train');
   await page.clock.resume();
   await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: speed fell below 20 wpm, so it isn’t counted.');
   await expect(page.locator('#comparison-status')).toHaveText('Retest complete.');
   await expect(page.locator('#comparison-caveat')).toHaveText('The retest fell under the baseline’s minimums, so no comparison is made.');
-  // None of the stopped run's numbers reach the panel, keystroke counts included.
-  for (const id of ['#comparison-accuracy', '#comparison-wpm', '#comparison-timing']) await expect(page.locator(id)).toHaveText('—');
-  await expect(page.locator('#comparison-sample')).toHaveText('timing not compared');
+  // None of the stopped run's numbers reach the panel: its figures are not shown at all.
+  await expect(page.locator('#comparison-panel .comparison-rows')).toBeHidden();
+  await expect(page.locator('#comparison-conditions')).toHaveText('');
 
   await runCommand(page, 'daily challenge');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
@@ -354,7 +356,7 @@ test('a last key that misses just past a whole second finishes the run under its
   await expect(page.locator('#best')).toHaveText('No best yet');
 });
 
-test('a retest stopped under its baseline’s minimum shows no timing for the drilled pair', async ({ page }) => {
+test('a retest stopped under its baseline’s minimum shows no figures for the drilled pair', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
   await chooseWords(page, 10);
@@ -364,7 +366,7 @@ test('a retest stopped under its baseline’s minimum shows no timing for the dr
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 
-  await page.locator('#manual-heading').click();
+  await chooseMore(page, 'mode-drill');
   await page.locator('#manual-target-input').fill('th');
   await page.locator('#apply-manual-target').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
@@ -377,12 +379,13 @@ test('a retest stopped under its baseline’s minimum shows no timing for the dr
   const slow = await passageText(page);
   await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
   await typeAtPace(page, slow.slice(0, 21), 1000);
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'train');
   await page.clock.resume();
   await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: speed fell below 20 wpm, so it isn’t counted.');
   await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', 'unavailable');
-  for (const id of ['#comparison-accuracy', '#comparison-wpm', '#comparison-timing']) await expect(page.locator(id)).toHaveText('—');
-  await expect(page.locator('#comparison-sample')).toHaveText('th · timing not compared');
+  // Neither the pair's misses nor the run's accuracy and speed are shown.
+  await expect(page.locator('#comparison-panel .comparison-rows')).toBeHidden();
+  await expect(page.locator('#comparison-target-row')).toBeHidden();
   await expect(page.locator('#comparison-caveat')).toHaveText('The retest fell under the baseline’s minimums, so no comparison is made.');
 
   // Progress keeps the baseline and records no drill-and-retest comparison.

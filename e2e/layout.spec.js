@@ -8,6 +8,7 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
     test.use({ viewport, ...phone });
 
     test('fits without sideways scroll and keeps 44px targets', async ({ page }) => {
+      await page.clock.install();
       await openApp(page);
       expect(await overflow(page)).toBeLessThanOrEqual(0);
       // The practice column itself never widens past its gutters (the document can't show that).
@@ -28,8 +29,8 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
         for (const height of boxes) expect(height, selector).toBeGreaterThanOrEqual(44);
       }
 
-      // The first-run "Learn to type" links sit inside a sentence and still give a finger 44px.
-      const learnLinks = { Train: '#train-learn [data-action="open-lessons"]', Progress: '#progress-empty [data-action="open-lessons"]' };
+      // The first-run "Learn to type" link sits inside a sentence and still gives a finger 44px.
+      const learnLinks = { Progress: '#progress-empty [data-action="open-lessons"]' };
       for (const view of ['Train', 'Progress', 'Challenge']) {
         await openView(page, view);
         expect(await overflow(page), view).toBeLessThanOrEqual(0);
