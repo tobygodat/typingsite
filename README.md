@@ -47,7 +47,7 @@ The backend migration is in `supabase/migrations/20260930085227_online_races.sql
 
 Account deletion runs in the Edge Function `supabase/functions/delete-account/`. Deploy it with `supabase functions deploy delete-account`, keeping the default JWT verification. Apply `supabase/migrations/20261009140000_forget_deleted_race_opener.sql` with it (`supabase db push`): every foreign key to `auth.users` already cascades, and that migration clears the one user id kept as text, the quota key on rooms. `supabase/tests/account-deletion.sql` checks both. Until it is deployed, Delete my account reports that deletion isn't switched on yet and deletes nothing.
 
-GitHub Actions is off for now: CI runs locally and `master` is deployed by hand with wrangler (see [HANDOFF.md](HANDOFF.md)). Run `npm run test:e2e` before merging.
+CI and the deploy of `master` run on a self-hosted GitHub Actions runner on tobygdesktop (see [HANDOFF.md](HANDOFF.md)). Run `npm run test:e2e` before merging.
 
 ## Measurement and implementation
 
