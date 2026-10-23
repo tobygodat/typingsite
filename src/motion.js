@@ -175,26 +175,23 @@ export function createTypingFx(wrap, display, options = {}) {
     caretY.target = Math.floor((top + lineHeight * 0.25) / lineHeight) * lineHeight;
 
     const tape = Boolean(options.tape?.());
-    if (tape !== wasTape) {
+    const switched = tape !== wasTape;
+    if (switched) {
       // Switching layouts starts the tape from the beginning of the line; realign places it.
       wasTape = tape;
       tapeScroll = 0;
       tapeWord = null;
       wrap.dataset.tapeScrolled = 'false';
-      // Leaving the tape drops its sideways scroll at once; the three lines then scroll as usual.
-      if (!tape) setScroll('', true);
     }
     if (tape) measureTape(x, current, lineHeight, snapNext);
     else {
       const spacer = display.querySelector('.passage-spacer');
       const spacerHeight = spacer?.offsetHeight || 0;
       const logicalTop = top - spacerHeight;
-      const nextLine = Math.floor((logicalTop + lineHeight * 0.25) / lineHeight);
-      if (nextLine !== line) {
-        line = nextLine;
-      }
+      line = Math.floor((logicalTop + lineHeight * 0.25) / lineHeight);
       const scrollY = spacerHeight + Math.max(0, line - 1) * lineHeight;
-      display.style.transform = scrollY ? `translateY(-${scrollY}px)` : '';
+      // Leaving the tape lands the three lines on the caret's line at once; after that they scroll.
+      setScroll(scrollY ? `translateY(-${scrollY}px)` : '', switched);
     }
     placeGlide(snapNext);
     if (snapNext || reducedMotion.matches) {

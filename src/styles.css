@@ -3664,6 +3664,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .nav-label-short { display: inline; }
   /* Three-digit speed (cpm), timer and accuracy side by side. */
   body[data-session="practice"] .live-stats { gap: var(--space-4); }
+  /* At 40px a three-digit speed beside a word count ("25/25") is wider than the 288px column. */
+  .live-stat strong { font-size: var(--text-title); }
 }
 
 /* Any coarse pointer keeps a 44px minimum target. any-pointer, not pointer: a touchscreen laptop or

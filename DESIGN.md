@@ -280,7 +280,7 @@ Where a theme's accent is not green (soft, midnight, swiss, e-ink) it still mean
 ### Hierarchy
 - **Numeral** (300, 132px, 0.9, -0.04em; 112px under 760px): the WPM figure on the run card. Tabular lining figures.
 - **Display** (400, 48px, 1.05–1.08, -0.025em; 38px under 760px): screen headings on practice sessions and results.
-- **Live stat** (300, 48px, 1, -0.035em; 40px under 760px): the live WPM, accuracy and timer, baseline-aligned with its unit in muted body-size Literata.
+- **Live stat** (300, 48px, 1, -0.035em; 40px under 760px; `--text-title` (30px) under 360px, so a three-digit speed beside a word count fits the 288px column): the live WPM, accuracy and timer, baseline-aligned with its unit in muted body-size Literata.
 - **Passage** (400, 36px at the default "medium" setting, line height 1.75, -0.004em, ligatures off): the typing text. The settings give 29px, 36px or 44px on desktop, and 22px, 26px or 32px under 760px. Three lines are visible (one with the one-line tape), with the top and bottom edges faded by a mask (side fades on the tape).
 - **Title** (400, 30px, 1.2, -0.015em): section headings (comparison, recommendation, empty states, challenge panels).
 - **Body** (400, 17px, 1.6): running copy, capped at 56–60ch.

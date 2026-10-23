@@ -503,6 +503,39 @@ test('switching layouts mid-run keeps the run going and the caret in view', asyn
   await expect(page.locator('#typing-status')).toHaveText('In progress');
 });
 
+test('turning the tape off mid-run lands the three lines on the caret’s line at once', async ({ page }) => {
+  await openApp(page);
+  await setTape(page, true);
+  await chooseWords(page, 100);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 200));
+
+  // Every frame from the first one on three lines: the offset shown, the one set, and any transition.
+  await page.evaluate(() => {
+    window.lineFrames = [];
+    const node = document.getElementById('text-display');
+    const sample = () => {
+      if (document.body.dataset.tape === 'false') {
+        window.lineFrames.push({ shown: new DOMMatrix(getComputedStyle(node).transform).m42, set: node.style.transform, moving: node.getAnimations().length });
+      }
+      if (window.lineFrames.length < 30) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await page.mouse.move(5, 5);
+  await page.mouse.move(60, 60);
+  await setTape(page, false);
+  await page.waitForFunction(() => window.lineFrames.length >= 30);
+  const frames = await page.evaluate(() => window.lineFrames);
+  const landed = frames.filter((frame) => frame.set.startsWith('translateY'));
+  expect(landed.length).toBeGreaterThan(0);
+  // On line 2 or later, so the three lines scroll up to it.
+  expect(-landed[0].shown).toBeGreaterThan(0);
+  for (const frame of landed) expect(frame.shown).toBeCloseTo(-Number(/translateY\(-([\d.]+)px\)/.exec(frame.set)[1]), 1);
+  expect(frames.filter((frame) => frame.moving)).toEqual([]);
+  await expect(page.locator('#typing-status')).toHaveText('In progress');
+});
+
 // A run with one slip (typed at about 80 wpm when taking screenshots), then a pointer nudge so the chrome is back.
 async function midRun(page) {
   const delay = process.env.SCREENSHOTS ? 150 : 0;
