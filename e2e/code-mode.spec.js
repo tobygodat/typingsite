@@ -30,8 +30,10 @@ test('code mode serves a python snippet and keeps the run out of bests', async (
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-conditions')).toHaveText(/^code · python · physical keyboard · (stop|continue) on error · not counted toward bests$/);
   await expect(page.locator('#result-delta')).toHaveText('Code run complete · not counted toward your best');
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
   await expect(page.locator('#best')).toHaveText('Code runs aren’t ranked');
+  // A code run is no baseline, so its drill has no retest after it.
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#session-description')).toHaveText('A standalone drill. Code runs have no fresh-text retest.');
 });
 
 test('code snippets stay inside the typing area at 320px with large text', async ({ page }) => {
@@ -61,14 +63,15 @@ test('a code run clears the earlier practice baseline', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   await completePassage(page);
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
   await page.locator('#run-again').click();
   await chooseMore(page, 'mode-code');
   await expect(page.locator('#condition-line')).toContainText('code ·');
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText('Code run complete · not counted toward your best');
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#recommendation-meta')).toHaveText('A standalone drill. Code runs have no fresh-text retest.');
+  // The code run dropped the prose baseline, so the drill it offers has no retest after it.
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#session-description')).toHaveText('A standalone drill. Code runs have no fresh-text retest.');
 });
 
 test('practising a code target keeps the prose punctuation, numbers and word list', async ({ page, supabase }) => {
@@ -83,7 +86,7 @@ test('practising a code target keeps the prose punctuation, numbers and word lis
   await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
   await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
 
-  await openView(page, 'Train');
+  await openView(page, 'Progress');
   await expect(page.locator('#training-conditions')).toContainText('code · js');
   await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
   await expect(page.locator('#session-title')).toHaveText('Practice “th”');

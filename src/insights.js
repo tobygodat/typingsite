@@ -59,6 +59,8 @@ export function runRecord(attempt, at = attempt.at || null) {
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
     firstDailyAttempt: attempt.firstDailyAttempt,
+    // Adaptive practice is drill-kind: kept apart from bests, trends, baselines and pattern evidence.
+    ...(attempt.adaptive ? { adaptive: true } : {}),
   };
   // Pattern counts only feed recurring targets, which never read custom text or missed-word practice.
   if (!comparableKind(attempt.kind)) return record;

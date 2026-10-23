@@ -60,14 +60,11 @@ test('custom results offer no drill or retest, even with a normal baseline retai
   await openApp(page);
   await chooseWords(page, 10);
   await completePassage(page);
-  await expect(page.locator('#start-drill')).toBeVisible();
-  await expect(page.locator('#recommendation-meta')).toContainText('10-word retest');
+  await expect(page.locator('#result-drill')).toBeVisible();
 
   await page.locator('.nav-item[data-nav="practice"]').click();
   await finishCustom(page);
-  for (const id of ['#start-drill', '#skip-to-retest', '#recommendation-meta', '#recommendation-title']) {
-    await expect(page.locator(id)).toBeHidden();
-  }
+  await expect(page.locator('#result-drill')).toBeHidden();
   await expect(page.locator('#run-again')).toBeVisible();
 });
 

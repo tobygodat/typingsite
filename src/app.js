@@ -23,6 +23,7 @@ import {
   customTextProblem,
   inputRules,
   deadMark,
+  makeAdaptive,
   makeDrill,
   minimumStop,
   normalizeCustomText,
@@ -70,7 +71,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { CORRECTION_LABELS, DAILY_GOALS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { CORRECTION_LABELS, DAILY_GOALS, MAX_PATTERN_RUNS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
 import { RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
@@ -202,7 +203,6 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let shownResult = null;
 let wordsPassage = null;
 // The words the Train list last drew, so its button can tell when the runs changed underneath.
-let missedListWords = [];
 const ghostOn = () => prefs.paceCaret !== 'off';
 let palette = null;
 let keybindingEditor = null;
@@ -515,6 +515,7 @@ function describeRun(run) {
   if (run.kind === 'daily') return `daily · ${run.challengeDate} · ${run.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${describeConditions(run.conditions)}`;
   if (run.kind === 'missed') return `missed words · not counted · ${run.text?.split(' ').length || 40} words${run.conditions.punctuation ? ' · punctuation' : ''}${run.conditions.numbers ? ' · numbers' : ''} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)}`;
   if (run.kind === 'custom') return `custom text · ${customOrderLabel(run.conditions.customOrder)} · ${run.conditions.inputClass === 'touch' ? 'touch input' : 'physical keyboard'} · ${correctionLabel(run.conditions.correctionPolicy)} · not counted`;
+  if (run.adaptive) return `adaptive · ${describeConditions(run.conditions)}`;
   if (run.kind !== 'drill') {
     const minimums = describeMinimums(run.minimums);
     const page = run.conditions?.mode === 'book' && bookPage(run.textId);
@@ -816,6 +817,7 @@ function applyPreferences() {
   applySoundPreferences();
   applyTheme();
   $('punctuation-toggle').checked = prefs.punctuation;
+  $('adaptive-toggle').checked = prefs.adaptive;
   selectSetting('numbers-toggle', Boolean(prefs.numbers));
   quoteFilters.refresh();
   selectSetting('word-list', prefs.wordList);
@@ -958,7 +960,9 @@ function setModeControls() {
     button.classList.toggle('is-active', selected);
     button.setAttribute('aria-pressed', String(selected));
   });
-  document.querySelector('.compact-switch').hidden = custom || composeOpen;
+  document.querySelectorAll('.practice-rail .compact-switch').forEach((toggle) => { toggle.hidden = custom || composeOpen; });
+  // Adaptive text is drawn word by word, so it only exists for time and words tests.
+  if (!['time', 'words'].includes(prefs.mode)) $('adaptive-switch').hidden = true;
   // "more" takes the name of the mode chosen inside it.
   const moreActive = $('mode-more').querySelector('[aria-pressed="true"]');
   $('mode-more-label').textContent = moreActive ? moreActive.textContent : 'more';
@@ -1306,6 +1310,24 @@ function updateCharacterStates(characters, typed, target, start = 0) {
 
 // Repeats are for open practice only: a retest always needs text the profile hasn't seen. Code snippets
 // come round again once each has been shown, marked not fresh, whatever the repeat setting.
+// Adaptive practice weights a word or timed passage toward the pairs this person keeps missing at these
+// conditions: the recurring ones, else the newest traces' target. With none, or once after an adaptive
+// run's plain retest was asked for, the passage is the usual one and the run a normal test.
+let plainNext = false;
+function adaptivePassage() {
+  if (plainNext) {
+    plainNext = false;
+    return null;
+  }
+  if (!prefs.adaptive || !['time', 'words'].includes(prefs.mode)) return null;
+  const source = conditions();
+  const recurring = recurringTargets(profile.runs, profile.loops, source).slice(0, 4).map((target) => target.pair);
+  const fallback = recommendTarget(profile.attempts, source).target;
+  const pairs = recurring.length ? recurring : fallback ? [fallback] : [];
+  return pairs.length ? makeAdaptive(pairs, { mode: prefs.mode, count: prefs.count, duration: prefs.duration, punctuation: prefs.punctuation,
+    numbers: Boolean(prefs.numbers), wordList: prefs.wordList }) : null;
+}
+
 function choosePassage(extraSeen = [], { allowRepeats = false } = {}) {
   if (prefs.mode === 'code') return { ...codePassage(prefs.codeLanguage, { seenIds: [...profile.seenTextIds, ...extraSeen] }), corpus: CORPUS_VERSION };
   if (prefs.mode === 'book') return bookPassage(extraSeen);
@@ -1476,7 +1498,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   if (kind === 'lesson' && !lessonUnlocked(profile.lessons, lessonIndex)) lessonIndex = nextLessonIndex(profile.lessons);
   passage = selectedPassage || (kind === 'missed' ? wordsPassage : kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList)
     : kind === 'lesson' ? lessonPassage(lessonIndex) : kind === 'challenge' ? ghostPassage() : kind === 'custom' ? customPassage()
-      : choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : [], { allowRepeats: kind === 'practice' && prefs.repeatQuotes }));
+      : (kind === 'practice' && adaptivePassage()) || choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : [], { allowRepeats: kind === 'practice' && prefs.repeatQuotes }));
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
     return false;
@@ -1508,14 +1530,14 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   }
   // Drills, word practice and lessons are generated practice text, never a passage to keep fresh for a retest.
   // Generated text records nothing, but still replaces a passage set up earlier in the same task.
-  recordSeenOnDisplay(['drill', 'missed', 'lesson'].includes(kind) || passage.book ? [] : [passage.id, kind === 'daily' ? passage.challengeId : null]);
+  recordSeenOnDisplay(['drill', 'missed', 'lesson'].includes(kind) || passage.book || passage.adaptive ? [] : [passage.id, kind === 'daily' ? passage.challengeId : null]);
   // The one place a run gets its input class: from the press that started it, never a default or the last run's.
   const runConditions = kind === 'daily' ? dailyConditions() : kind === 'lesson' ? lessonConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, ...practiceTextConditions(passage.text), quoteLength: null, difficulty: null, wordList: null, corpus: CORPUS_VERSION } : kind === 'challenge' ? ghostConditions() : kind === 'custom' ? customConditions() : conditions();
   attempt = createAttempt({
     id: uid(),
     text: passage.text,
     textId: passage.id,
-    kind: kind === 'practice' ? 'test' : kind,
+    kind: kind === 'practice' ? (passage.adaptive ? 'drill' : 'test') : kind,
     conditions: { ...sessionConditions(kind, runConditions), inputClass: activationInput },
   });
   if (kind === 'challenge') attempt.challengeId = ghostRace.id;
@@ -1524,6 +1546,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     attempt.firstDailyAttempt = passage.firstDailyAttempt;
   }
   if (kind === 'drill') attempt.target = selectedTarget;
+  if (passage.adaptive) attempt.adaptive = true;
   if (kind === 'lesson') attempt.lesson = { id: passage.lessonId, index: lessonIndex, pairs: passage.pairs, words: passage.words };
   // Open practice stops at the current minimums. A retest carries its baseline's, so both sides of a
   // comparison pass the same filter; drills and the daily challenge always run to the end.
@@ -1570,16 +1593,13 @@ function recordSeenOnDisplay(ids) {
   displayedIds = ids;
 }
 
-function showUnavailableRetest(reason, sample = 'no matching fresh text') {
-  switchView('results');
-  $('comparison-panel').hidden = false;
-  $('comparison-panel').dataset.outcome = 'unavailable';
-  $('comparison-status').textContent = 'No fair retest available.';
-  $('comparison-accuracy').textContent = '—';
-  $('comparison-timing').textContent = '—';
-  showSpeed($('comparison-wpm'), null);
-  $('comparison-sample').textContent = sample;
+function showUnavailableRetest(reason) {
+  switchView('train');
+  showComparison('No fair retest available.', 'unavailable');
+  $('comparison-panel').classList.add('is-uncompared');
+  $('comparison-conditions').textContent = '';
   $('comparison-caveat').textContent = reason;
+  renderComparisonNext(null, null);
   announce(reason);
 }
 
@@ -2361,7 +2381,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
   const saved = storeAttempt(completed);
 
   // A drill the correction setting failed shows its result like any failed run, so it can be tried
-  // again or skipped to the retest; a finished or interrupted drill goes straight on to the retest.
+  // again; a finished or interrupted drill goes straight on to the retest.
   if (sessionKind === 'drill' && baselineAttempt && !completed.failed) {
     if (trainingContext) trainingContext.drillCompleted = valid;
     // Train already offers this retest: startDrill() rendered its actions.
@@ -2372,18 +2392,28 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
   }
 
   if (sessionKind === 'practice' || sessionKind === 'daily') {
-    // A code run is never a baseline, so it drops the earlier one rather than retest against it.
+    // A code run is never a baseline, so it drops the earlier one rather than retest against it. An
+    // adaptive run is drill-kind: it leaves the baseline as it was.
     if (completed.conditions?.mode === 'code') {
       baselineAttempt = null;
       trainingContext = null;
-    } else if (valid) {
+    } else if (valid && !completed.adaptive) {
       // Familiar text flatters the score, so a repeated passage can't be the baseline for a fresh retest.
       baselineAttempt = completed.fresh === false ? null : completed;
       trainingContext = null;
     }
   }
   renderResults(completed, saved);
-  if (sessionKind === 'retest') renderComparison(baselineAttempt, completed, saved);
+  // A retest's result is its comparison, on Train, and its card waits behind Back to practice; every
+  // other run's result stays on Practice.
+  if (sessionKind === 'retest') {
+    switchView('train');
+    renderComparison(baselineAttempt, completed, saved);
+    // The passage may have scrolled the page; Train opens at its top.
+    scrollTo(0, 0);
+    $('comparison-status').focus({ preventScroll: true });
+    return;
+  }
   if (sessionKind === 'challenge') {
     // Touch and physical-keyboard runs are never compared, so only the sender's kind of input is sent.
     const sameInput = inputOf(completed.conditions) === inputOf(ghostRace.conditions);
@@ -2397,7 +2427,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
   }
   switchView('results');
   renderCard(completed);
-  focusResult($(failedDrill(completed) ? 'start-drill' : 'run-again'));
+  focusResult($(failedDrill(completed) ? 'result-drill' : 'run-again'));
   // Every run a minimum ends gets the hold, wherever it was caught: the tick, the last character or
   // the timer.
   stopHold = completed.stopped ? now() : null;
@@ -2477,23 +2507,10 @@ function practiseRecurringWords() {
   startWordPractice(words.map((item) => item.word), { recurring: true });
 }
 
-// The Train list's button. A sync or a clear elsewhere can change the runs under a list drawn
-// earlier, so a list that no longer matches is redrawn; with fewer than two words left nothing
-// starts, the change is announced and focus stays on the section instead of the hidden button.
-function practiseMissedList() {
-  const live = recurringMissedWords(profile.runs).words.map((item) => item.word);
-  if (live.length !== missedListWords.length || live.some((word, index) => word !== missedListWords[index])) renderMissedWords();
-  if (live.length >= 2) {
-    practiseRecurringWords();
-    return;
-  }
-  announce('Fewer than two words to practice now. The list has been updated.');
-  $('missed-words-heading').focus();
-}
-
 function resultHeadline(completed) {
   if (completed.failed) return `failed · ${completed.failed}`;
   if (completed.status !== 'complete') return completed.stopped?.atEnd ? 'Under your minimum · not counted' : 'Interrupted · not counted';
+  if (completed.adaptive) return 'Adaptive run · not counted toward your best';
   if (completed.kind === 'drill') return 'Drill complete · not counted toward your best';
   if (completed.kind === 'challenge') return 'Ghost race complete · not counted toward your best';
   if (completed.kind === 'missed') return 'Word practice complete · not counted toward your best';
@@ -2545,6 +2562,8 @@ function renderResults(completed, saved) {
   renderSecondaryStats(completed);
   setParts($('result-conditions'), describeRun(completed));
   setParts($('result-delta'), resultHeadline(completed));
+  // The headline is read out with the result; it shows only when the run wasn't counted.
+  $('results-heading').classList.toggle('sr-only', counted);
   const repeated = repeatedResult(completed);
   const stopped = completed.stopped ? stopReason(completed.stopped) : '';
   const uncounted = counted ? '' : completed.failed ? 'The correction setting ended this run, so it isn’t counted.' : stopped ? [stopped, ', so it isn’t counted.'] : 'Focus or input changed during the run, so it isn’t counted.';
@@ -2556,16 +2575,12 @@ function renderResults(completed, saved) {
     activeRecommendation = trainingRecommendation(completed.conditions, completed);
     selectedTarget = activeRecommendation.target;
   }
-  // Custom text and ghost races are never mined for targets or kept as a baseline, so their results offer no drill or retest:
-  // the recommendation would come from other runs and the retest would measure a different text. Word
-  // practice isn't compared either, but like a drill it leads on to a retest of the run its words came from.
-  renderRecommendation(counted || failedDrill(completed), comparableKind(completed.kind) || completed.kind === 'missed', completed);
+  renderResultDrill(completed);
   // A counted book page moves the place on, so running again types the next page.
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again'
     : counted && completed.conditions?.mode === 'book' && completed.kind !== 'drill' ? 'Next page' : 'Run again';
-  renderTraining();
   renderDaily();
-  $('comparison-panel').hidden = true;
+  $('result-more').append($('ghost-offer'));
   const failure = completed.failed ? `${completed.kind === 'drill' ? 'Drill' : 'Run'} failed, ${completed.failed}. ` : stopped ? `${plain(stopped)}. ` : '';
   $('ghost-result').hidden = completed.kind !== 'challenge';
   renderGhostOffer(completed);
@@ -2577,46 +2592,23 @@ function renderResults(completed, saved) {
 // A counted practice run on repeated text: saved and listed, never a best, trend or retest baseline.
 const repeatedResult = (completed) => completed?.status === 'complete' && completed.kind === 'test' && completed.fresh === false;
 
-// Train's drill and retest actions, from the current recommendation and baseline. Runs after each result
-// and as each drill starts, so a drill left before its end still offers its retest even when its baseline
-// came from saved history (practiceTarget) and no result has been shown in this tab.
-// `compared` is false after a custom text result (any non-comparable kind): that text is never mined for
-// targets or kept as a baseline, so Train offers no drill or retest for it. A drill started later shows them again.
-function renderRecommendation(counted = true, compared = true, completed = null) {
-  // After startDaily() there is no recommendation: show the general drill Start drill falls back to.
+// The result's second action. After a counted run it starts the drill and retest loop for the run's
+// recommendation; after an adaptive run, a fresh-text retest against the newest normal run at these
+// conditions, or a plain test when there is none. Custom text and ghost races are never mined for targets
+// or kept as a baseline, so they offer neither. Word practice isn't compared either, but like a drill it
+// leads on to a retest of the run its words came from.
+function renderResultDrill(completed) {
+  const button = $('result-drill');
+  const counted = completed.status === 'complete';
+  const compared = comparableKind(completed.kind) || completed.kind === 'missed';
+  button.hidden = !compared || !(counted || failedDrill(completed));
+  if (completed.adaptive) {
+    button.textContent = baselineFor(completed.conditions) ? 'Retest on fresh text' : 'Retest';
+    return;
+  }
   activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
-  $('recommendation-title').textContent = counted ? activeRecommendation.title : 'Restart for a counted run';
-  $('recommendation-evidence').textContent = counted ? activeRecommendation.reason : completed?.failed ? 'This run failed under the correction setting.'
-    : completed?.stopped ? 'Runs under your minimums aren’t counted. Change them in settings.' : 'This run lost focus or used unsupported input.';
-  $('recommendation-meta').textContent = baselineAttempt
-    ? `About 1 min, then a fresh ${retestLength(baselineAttempt.conditions)} retest.`
-    : completed?.conditions?.mode === 'code' ? CODE_DRILL_NOTE
-    : repeatedResult(completed)
-      ? 'A standalone drill. Repeated text has no retest.'
-      : 'A standalone drill.';
-  $('start-drill').disabled = !counted;
-  $('start-drill').textContent = completed && failedDrill(completed) ? 'Try drill again' : 'Start drill';
-  $('skip-to-retest').disabled = !counted || baselineAttempt?.status !== 'complete';
-  for (const id of ['recommendation-title', 'recommendation-evidence', 'recommendation-list', 'recommendation-meta', 'start-drill', 'skip-to-retest']) $(id).hidden = !compared;
-  renderEvidenceList(activeRecommendation.evidence);
-}
-
-function renderEvidenceList(evidence) {
-  const strongest = [...evidence.pairs]
-    .filter((item) => item.errors > 0 || (item.timings.length >= 10 && item.slowdownMs > 0))
-    .sort((a, b) => b.errors - a.errors || (b.slowdownMs || 0) - (a.slowdownMs || 0))
-    .slice(0, 2);
-  $('recommendation-list').replaceChildren(...strongest.map((item) => {
-    const row = document.createElement('div');
-    row.className = 'evidence-row';
-    const pair = document.createElement('strong');
-    pair.textContent = item.pair;
-    const counts = document.createElement('span');
-    const timing = item.medianMs === null ? 'timing needs more samples' : `${item.medianMs} ms median over ${item.timings.length} ${item.timings.length === 1 ? 'interval' : 'intervals'}`;
-    counts.textContent = `${item.errors}/${item.observations} first-try errors · ${timing}`;
-    row.append(pair, counts);
-    return row;
-  }));
+  const target = activeRecommendation.target;
+  button.textContent = failedDrill(completed) ? 'Try drill again' : target ? `Drill “${target}”` : 'Drill and retest';
 }
 
 const COMPARISON_HEADINGS = {
@@ -2626,43 +2618,54 @@ const COMPARISON_HEADINGS = {
   steady: 'Level with your baseline.',
 };
 
-function renderComparison(before, after, saved) {
-  const comparison = compareAttempts(before, after);
+// Train after a retest: the outcome, then the trained pair's misses, accuracy and speed beside the
+// baseline's, the text and conditions they were measured on, and the way on.
+function showComparison(heading, outcome) {
+  $('train-next').hidden = true;
   const panel = $('comparison-panel');
   panel.hidden = false;
-  const outcome = comparison.comparable ? comparison.state : 'unavailable';
   panel.dataset.outcome = outcome;
-  $('comparison-status').textContent = comparison.comparable ? COMPARISON_HEADINGS[comparison.state] : 'Retest complete.';
-  $('comparison-accuracy').textContent = comparison.comparable ? signed(comparison.accuracyDelta, 'pp') : '—';
-  showSpeed($('comparison-wpm'), comparison.comparable ? comparison.wpmDelta : null);
+  $('comparison-status').textContent = heading;
+}
 
+const missedCopy = (count) => `${count.errors} of ${count.observations}`;
+
+function renderComparison(before, after, saved) {
+  const comparison = compareAttempts(before, after);
   const trainedTarget = trainingContext?.target || selectedTarget;
-  // No comparison means no timing comparison either: a retest that isn't compared (stopped under a
-  // minimum, interrupted, other conditions or repeated text) puts none of its numbers on this panel.
-  // No baseline: a clear from another tab or device removed it while this retest was under way.
+  showComparison(comparison.comparable ? COMPARISON_HEADINGS[comparison.state] : 'Retest complete.', comparison.comparable ? comparison.state : 'unavailable');
+  $('comparison-panel').classList.toggle('is-uncompared', !comparison.comparable);
+  renderComparisonNext(trainedTarget, after.conditions);
+  // No comparison means none of its numbers: a retest that isn't compared (stopped under a minimum,
+  // interrupted, other conditions or repeated text) says why instead. No baseline: a clear from another
+  // tab or device removed it while this retest was under way.
   if (!comparison.comparable) {
     const reason = before ? comparison.reason : 'Your history was cleared, so there is no baseline to compare with.';
-    $('comparison-timing').textContent = '—';
-    $('comparison-sample').textContent = !before ? 'no baseline' : trainedTarget ? `${trainedTarget} · timing not compared` : 'timing not compared';
+    $('comparison-conditions').textContent = '';
     $('comparison-caveat').textContent = `${reason}${saved ? '' : ' Couldn’t save on this device.'}`;
     renderHistory();
     return;
   }
   const beforePattern = summarizePatterns([before]).pairs.find((item) => item.pair === trainedTarget);
   const afterPattern = summarizePatterns([after]).pairs.find((item) => item.pair === trainedTarget);
-  const enoughTiming = beforePattern?.timings.length >= 10 && afterPattern?.timings.length >= 10;
-  const timingSummary = { target: trainedTarget, beforeCount: beforePattern?.timings.length || 0, afterCount: afterPattern?.timings.length || 0, deltaMs: null };
-  if (enoughTiming) {
-    const delta = afterPattern.medianMs - beforePattern.medianMs;
-    timingSummary.deltaMs = delta;
-    $('comparison-timing').textContent = signed(delta, 'ms');
-    $('comparison-sample').textContent = `${trainedTarget} · ${beforePattern.timings.length} before · ${afterPattern.timings.length} after`;
-  } else {
-    $('comparison-timing').textContent = '—';
-    $('comparison-sample').textContent = trainedTarget
-      ? `${trainedTarget} · ${timingSummary.beforeCount} before · ${timingSummary.afterCount} after · too few to call`
-      : `keystrokes · ${before.summary?.insertions || 0} before · ${after.summary.insertions} after · no target pattern`;
+  // The pair's misses on the retest, beside the evidence the drill was chosen on (or, for a target picked by
+  // hand, the baseline run's).
+  const was = trainingContext?.was || beforePattern;
+  $('comparison-target-row').hidden = !afterPattern || !was;
+  if (afterPattern && was) {
+    $('comparison-target-label').textContent = `${trainedTarget} missed`;
+    $('comparison-target').textContent = missedCopy(afterPattern);
+    $('comparison-target-was').textContent = `was ${missedCopy(was)}`;
   }
+  $('comparison-accuracy-now').textContent = after.summary.score.accuracy;
+  $('comparison-accuracy').textContent = signed(comparison.accuracyDelta, 'pp');
+  showSpeed($('comparison-wpm-now'), after.summary.score.wpm);
+  showSpeed($('comparison-wpm'), comparison.wpmDelta);
+  const parts = conditionParts(after.conditions);
+  $('comparison-conditions').textContent = ['fresh text', parts.language, parts.length].join(' · ');
+  const enoughTiming = beforePattern?.timings.length >= 10 && afterPattern?.timings.length >= 10;
+  const timingSummary = { target: trainedTarget, beforeCount: beforePattern?.timings.length || 0, afterCount: afterPattern?.timings.length || 0,
+    deltaMs: enoughTiming ? afterPattern.medianMs - beforePattern.medianMs : null };
   let comparisonSaved = saved;
   if (saved) {
     profile.loops.push({
@@ -2680,8 +2683,117 @@ function renderComparison(before, after, saved) {
     });
     comparisonSaved = saveProfile();
   }
-  $('comparison-caveat').textContent = `${comparison.reason}${comparisonSaved ? '' : ' Couldn’t save on this device.'}`;
+  $('comparison-caveat').textContent = comparisonSaved ? '' : 'Couldn’t save on this device.';
   renderHistory();
+}
+
+// The next recurring pair at the retest's conditions, other than the one just trained.
+function renderComparisonNext(trained, source) {
+  const next = source && recurringTargets(profile.runs, profile.loops, source).find((target) => target.pair !== trained);
+  const button = $('comparison-next');
+  button.hidden = !next;
+  if (!next) return;
+  button.textContent = `Next: “${next.pair}”`;
+  button.onclick = () => practiceTarget(next.pair, source);
+}
+
+// Train from the dock: the next drill for the current conditions, worked out from saved history. A
+// recurring pair comes first, then the newest traces' evidence, then the general drill.
+function trainPlan(source = conditions()) {
+  return { recommendation: trainingRecommendation(source), baseline: baselineFor(source), source };
+}
+
+// The baseline for a fresh-text retest at `source` conditions: this tab's, when it matches, else the newest
+// retained run. Adaptive runs are drill-kind and never one.
+function baselineFor(source) {
+  const key = conditionKey(source);
+  return baselineAttempt?.status === 'complete' && !baselineAttempt.adaptive && conditionKey(baselineAttempt.conditions) === key
+    ? baselineAttempt : retainedBaseline(source);
+}
+
+// After an adaptive run: a fresh-text retest against the newest normal run at the same conditions, or,
+// with none, a plain test that can become the next baseline.
+function startAdaptiveRetest() {
+  const baseline = baselineFor(shownResult.conditions);
+  if (!baseline) {
+    plainNext = true;
+    resetSession('practice', { focus: true });
+    return;
+  }
+  baselineAttempt = baseline;
+  selectedTarget = null;
+  trainingContext = { target: null, recommendationKind: 'adaptive', baselineAttemptId: baseline.id, drillCompleted: false };
+  startRetest();
+}
+
+function renderTrain() {
+  $('comparison-panel').hidden = true;
+  $('train-next').hidden = false;
+  const { recommendation, source } = trainPlan();
+  const target = recommendation.target;
+  $('train-heading').textContent = recommendation.title;
+  const words = target ? evidenceWords(target, source) : [];
+  $('train-words').hidden = !words.length;
+  $('train-words').replaceChildren(...words.map((word) => {
+    const span = document.createElement('span');
+    const at = word.indexOf(target);
+    span.append(word.slice(0, at), element('b', target), word.slice(at + target.length));
+    return span;
+  }));
+  const was = recommendation.was;
+  const evidence = !target ? '' : was?.errors ? `${missedCopy(was)} missed${was.runs ? ` in ${plural(was.runs, 'run')}` : ''}`
+    : was?.slowRuns ? `slower than your median in ${plural(was.slowRuns, 'run')}` : '';
+  setText($('train-evidence'), evidence);
+  $('train-evidence').hidden = !evidence;
+  const last = lastLoopCopy(source);
+  setText($('train-last'), last);
+  $('train-last').hidden = !last;
+}
+
+// Words this person missed on the first try that hold the pair, newest first, from the runs pattern
+// memory reads at these conditions.
+function evidenceWords(target, source) {
+  const key = conditionKey(source);
+  const words = [];
+  for (const run of [...profile.runs].reverse()) {
+    if (!evidenceRun(run) || conditionKey(run.conditions) !== key) continue;
+    for (const word of run.missedWords || []) {
+      const bare = word.toLowerCase().replace(/[^a-z]/g, '');
+      if (bare.includes(target) && !words.includes(bare)) words.push(bare);
+      if (words.length === 6) return words;
+    }
+  }
+  return words;
+}
+
+// The newest finished loop with a target at these conditions: how often its pair was missed on fresh
+// runs before the retest and from the retest on.
+function lastLoopCopy(source) {
+  const key = conditionKey(source);
+  const loop = [...profile.loops].reverse().find((item) => item.target && conditionKey(item.conditions) === key);
+  if (!loop) return '';
+  const split = profile.runs.find((run) => run.id === loop.afterAttemptId)?.at || loop.at;
+  const runs = profile.runs.filter((run) => evidenceRun(run) && run.at && conditionKey(run.conditions) === key).slice(-MAX_PATTERN_RUNS);
+  const rate = (list) => {
+    let observations = 0;
+    let errors = 0;
+    for (const run of list) {
+      const pattern = run.patterns?.find((item) => item[0] === loop.target);
+      if (pattern) { observations += pattern[1]; errors += pattern[2]; }
+    }
+    return observations ? Math.round((errors / observations) * 100) : null;
+  };
+  const before = rate(runs.filter((run) => run.at < split));
+  const after = rate(runs.filter((run) => run.at >= split));
+  return before === null || after === null ? '' : `${loop.target} · ${before}% → ${after}% missed since you drilled it`;
+}
+
+// Train's one button: the drill, then the retest, then the comparison.
+function startTrainDrill() {
+  const { recommendation, baseline } = trainPlan();
+  activeRecommendation = recommendation;
+  baselineAttempt = baseline;
+  startDrill();
 }
 
 function startDrill() {
@@ -2692,11 +2804,13 @@ function startDrill() {
   if (mismatch) baselineAttempt = null;
   const source = baselineAttempt?.conditions;
   if (source) restoreConditions(source);
-  trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false };
+  trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', baselineAttemptId: baselineAttempt?.id || null,
+    drillCompleted: false, was: activeRecommendation?.was || null };
   trainingContext.drill = { target: selectedTarget, duration: 60, wordList: prefs.wordList, textVersion: makeDrill(selectedTarget, prefs.wordList).textVersion };
-  renderRecommendation();
+  showManualTarget(false);
   resetSession('drill', { focus: true });
-  if (mismatch) $('session-description').textContent = `Standalone drill. ${mismatch}`;
+  // With no baseline nothing follows the drill, so it says so where the drill describes itself.
+  if (!baselineAttempt) $('session-description').textContent = prefs.mode === 'code' ? CODE_DRILL_NOTE : `Standalone drill.${mismatch ? ` ${mismatch}` : ''}`;
 }
 
 function startRetest() {
@@ -2704,7 +2818,7 @@ function startRetest() {
   const source = baselineAttempt.conditions;
   const mismatch = layoutMismatch(source);
   if (mismatch) {
-    showUnavailableRetest(mismatch, 'different keyboard layout');
+    showUnavailableRetest(mismatch);
     return;
   }
   restoreConditions(source);
@@ -2751,12 +2865,14 @@ function restoreConditions(source) {
   setModeControls();
 }
 
+// "results" is the practice screen showing a finished run in place of the passage.
 function switchView(view) {
   quoteFilters.dismiss();
   document.body.dataset.view = view;
-  document.querySelectorAll('[data-screen]').forEach((screen) => { screen.hidden = screen.dataset.screen !== view; });
+  const shown = view === 'results' ? 'practice' : view;
+  document.querySelectorAll('[data-screen]').forEach((screen) => { screen.hidden = screen.dataset.screen !== shown; });
   document.querySelectorAll('[data-nav]').forEach((control) => {
-    const active = control.dataset.nav === view;
+    const active = control.dataset.nav === shown;
     control.classList.toggle('is-active', active);
     if (active) control.setAttribute('aria-current', 'page');
     else control.removeAttribute('aria-current');
@@ -2767,10 +2883,9 @@ function switchView(view) {
   updateGlides();
   if (view === 'progress') renderHistory();
   onlineRace?.onViewChange(view);
-  if (view === 'results') renderTraining();
+  if (view === 'train') renderTrain();
   if (view === 'compete') renderDaily();
   if (view === 'learn') renderLessons();
-  renderFirstRun();
 }
 
 function navigate(view) {
@@ -2785,7 +2900,7 @@ function navigate(view) {
     switchView('practice');
     return;
   }
-  // Leaving mid-drill draws no retest passage to throw away; Train's retest button draws one when asked.
+  // Leaving mid-drill draws no retest passage to throw away.
   if (attempt?.status === 'running' && view !== 'practice') {
     markInterrupted(NOTICES.leftSurface);
     finishPrimary(null, { replacing: true });
@@ -2961,18 +3076,19 @@ function retainedBaseline(source = null) {
   }) || null;
 }
 
+// A recurring pair's counts, as Train shows them and the comparison reads them back.
+function recurringEvidence(pair, source) {
+  const recurring = recurringTargets(profile.runs, profile.loops, source).find((item) => item.pair === pair);
+  return recurring ? { errors: recurring.errors, observations: recurring.observations, runs: recurring.runs, slowRuns: recurring.slowRuns } : null;
+}
+
 function practiceTarget(target, source) {
   baselineAttempt = retainedBaseline({ ...source, layout: inputLayout(source.inputClass) });
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
-  const code = source.mode === 'code';
   activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
-    reason: baselineAttempt ? `You chose “${target}”. A retained run at these conditions is your baseline.`
-      : code ? `You chose “${target}”. Code runs have no fresh-text retest.`
-        : `You chose “${target}”. Finish a new practice run afterward to establish a retest baseline.`,
-    evidence: summarizePatterns(profile.attempts, 20, source) };
+    evidence: summarizePatterns(profile.attempts, 20, source), was: recurringEvidence(target, source) };
   startDrill();
-  if (!baselineAttempt) $('session-description').textContent = code ? CODE_DRILL_NOTE : 'Standalone drill.';
 }
 
 // The run just finished always counts toward its own recommendation, even when its trace was too large to keep.
@@ -2980,13 +3096,12 @@ function trainingRecommendation(source, current = null) {
   const traces = current && !profile.attempts.includes(current) ? [...profile.attempts, current] : profile.attempts;
   const recommendation = recommendTarget(traces, source);
   const recurring = recurringTargets(profile.runs, profile.loops, source)[0];
-  if (!recurring) return recommendation;
-  const counts = recurring.errors
-    ? `${recurring.errors} first-try errors in ${recurring.observations} tries across ${recurring.runs} matching runs`
-    : `slower than your own run median in ${recurring.slowRuns} matching runs, with at least 10 clean intervals in each`;
-  return { ...recommendation, kind: 'targeted', target: recurring.pair,
-    title: `${recurring.review ? 'Revisit' : 'Practice'} “${recurring.pair}”`,
-    reason: `“${recurring.pair}”: ${counts}. ${recurring.review ? 'Fresh runs have enough new observations to revisit this target.' : 'This pattern recurred in more than one run.'}` };
+  if (!recurring) {
+    const pattern = recommendation.target && recommendation.evidence.pairs.find((item) => item.pair === recommendation.target);
+    return pattern ? { ...recommendation, was: { errors: pattern.errors, observations: pattern.observations, runs: recommendation.evidence.attemptCount } } : recommendation;
+  }
+  return { ...recommendation, kind: 'targeted', target: recurring.pair, was: recurringEvidence(recurring.pair, source),
+    title: `${recurring.review ? 'Revisit' : 'Practice'} “${recurring.pair}”` };
 }
 
 function renderTraining() {
@@ -3003,34 +3118,6 @@ function renderTraining() {
     row.append(copy, targetButton(target.pair, source));
     return row;
   }));
-  renderMissedWords();
-}
-
-// Words missed on the first try in two or more recent counted runs, with what was counted.
-function renderMissedWords() {
-  const { runs, inputClass, recurring, words } = recurringMissedWords(profile.runs);
-  const enough = words.length >= 2;
-  // A redraw that hides the button while it has focus (a clear from another device, say) leaves focus on
-  // the section, not lost to the page.
-  const hadFocus = document.activeElement === $('practice-missed-list');
-  const input = inputClass === 'touch' ? 'touch input' : 'a physical keyboard';
-  $('missed-words-note').textContent = enough
-    ? `First-try misses in your last ${runs} runs on ${input}.`
-    : runs < 2
-      ? `Not enough evidence yet: ${runs ? `one run on ${input}` : 'no runs'} counted so far.`
-      : `Not enough evidence yet: ${recurring ? `only ${wordCopy(words[0].word)} was missed on the first try in more than one of your last ${runs} runs on ${input} (in ${words[0].runs})` : `no word was missed on the first try in more than one of your last ${runs} runs on ${input}`}.`;
-  $('missed-words-list').replaceChildren(...(enough ? words : []).map((item) => {
-    const row = element('li', '', 'missed-word');
-    row.append(element('span', wordCopy(item.word), 'missed-word-text'), element('span', `missed in ${item.runs} of the last ${runs} runs`, 'num'));
-    return row;
-  }));
-  $('missed-words-list').hidden = !enough;
-  missedListWords = enough ? words.map((item) => item.word) : [];
-  $('practice-missed-list').hidden = !enough;
-  if (hadFocus && !enough) $('missed-words-heading').focus();
-  $('practice-missed-list').textContent = `Practice these ${words.length} words`;
-  // The run card can offer "Practice these N words" too, so the name says which words these are.
-  $('practice-missed-list').setAttribute('aria-label', `Practice these ${words.length} words you keep missing`);
 }
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
@@ -3377,6 +3464,7 @@ function runRow(run) {
 
 function renderHistory() {
   renderStandardScore();
+  renderTraining();
   // One moment for the whole page, so every figure, chart and list reads the same period window.
   const date = new Date();
   historyDay = dayKey(date);
@@ -3611,8 +3699,6 @@ function startDaily() {
   baselineAttempt = null;
   trainingContext = null;
   activeRecommendation = null;
-  // The baseline is gone, so Train no longer offers the drill's retest.
-  renderRecommendation();
   resetSession('daily', { focus: true });
 }
 
@@ -3868,10 +3954,6 @@ function renderLessons() {
     }
     return row;
   }));
-}
-
-function renderFirstRun() {
-  $('train-learn').hidden = Boolean(shownResult || profile.runs.length || profile.attempts.length);
 }
 
 // ── Ghost races ───────────────────────────────────────────────────────────
@@ -4371,15 +4453,10 @@ function forgetTraining() {
   $('run-card').hidden = true;
   showResult(null);
   $('speed-graph').replaceChildren();
-  $('recommendation-title').textContent = 'Finish a run to get a drill.';
-  $('recommendation-evidence').textContent = '';
-  $('recommendation-list').replaceChildren();
-  $('comparison-panel').hidden = true;
+  $('result-drill').hidden = true;
   $('ghost-result').hidden = true;
   renderGhostOffer(null);
-  $('start-drill').disabled = true;
-  $('start-drill').textContent = 'Start drill';
-  $('skip-to-retest').disabled = true;
+  if (document.body.dataset.view === 'train') renderTrain();
 }
 
 // Empties history in memory and on the results screen once the account is deleted, when there is
@@ -4724,7 +4801,6 @@ function followLessonProgress() {
   const row = list.contains(document.activeElement) ? [...list.children].indexOf(document.activeElement.closest('.lesson-row')) : -1;
   renderLessons();
   if (row >= 0) (list.children[row]?.querySelector('button') || $('lesson-primary')).focus({ preventScroll: true });
-  renderFirstRun();
 }
 
 // The device's copy and the account row are merged, and whatever the row lacks goes up.
@@ -5347,6 +5423,11 @@ function bindEvents() {
     saveProfile();
     resetSession('practice', { focus: true });
   });
+  $('adaptive-toggle').addEventListener('change', (event) => {
+    prefs.adaptive = event.target.checked;
+    saveProfile();
+    resetSession('practice', { focus: true });
+  });
   // Numbers sits beside the word list in settings and, like it, keeps a custom passage.
   onSetting('numbers-toggle', (value) => {
     const changed = Boolean(prefs.numbers) !== (value === 'true');
@@ -5532,10 +5613,20 @@ function bindEvents() {
   $('key-select').addEventListener('change', (event) => selectHeatKey(event.target.value || null));
   coarsePointer.addEventListener('change', () => renderKeys(heatRuns));
   $('training-conditions').addEventListener('change', renderTraining);
-  $('practice-missed-list').addEventListener('click', practiseMissedList);
   $('start-daily').addEventListener('click', startDaily);
-  $('start-drill').addEventListener('click', startDrill);
-  $('skip-to-retest').addEventListener('click', startRetest);
+  $('start-drill').addEventListener('click', startTrainDrill);
+  $('result-drill').addEventListener('click', () => (shownResult?.adaptive ? startAdaptiveRetest() : startDrill()));
+  // A finished retest is a run like any other, so its card waits on Practice with everything a result offers.
+  $('comparison-back').addEventListener('click', () => {
+    if (shownResult?.kind !== 'retest' || shownResult !== attempt) {
+      navigate('practice');
+      return;
+    }
+    switchView('results');
+    renderCard(shownResult);
+    focusResult($('run-again'));
+  });
+  $('mode-drill').addEventListener('click', toggleManualTarget);
   $('manual-target').addEventListener('submit', (event) => {
     event.preventDefault();
     const raw = $('manual-target-input').value.trim();
@@ -5548,8 +5639,6 @@ function bindEvents() {
       kind: 'manual',
       target: selectedTarget,
       title: `Practice “${selectedTarget}”`,
-      reason: `You picked “${selectedTarget}”. It’s kept separate from the automatic recommendation.`,
-      evidence: activeRecommendation?.evidence || summarizePatterns(profile.attempts, 20, baselineAttempt?.conditions),
     };
     startDrill();
   });
@@ -5737,6 +5826,17 @@ function openCustom(open = true) {
   }
   setModeControls();
   if (open) $('custom-text').focus();
+}
+
+// "drill" in the more menu: a 1–8 letter target of your own, drilled at once.
+function showManualTarget(open) {
+  $('manual-target').hidden = !open;
+  $('mode-drill').setAttribute('aria-expanded', String(open));
+  if (open) $('manual-target-input').focus();
+}
+
+function toggleManualTarget() {
+  showManualTarget($('manual-target').hidden);
 }
 
 // Signed in, the text is kept with the other preferences; a guest's preferences live only in memory.
@@ -6002,7 +6102,7 @@ function paletteCommands(query) {
   // The standard recipe fixes these; like quote mode, the palette leaves out what can't change.
   const fixedText = ['quote', 'code', 'book'].includes(prefs.mode) || standardLocked();
   const commands = [
-    ...[['practice', 'practice'], ['results', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
+    ...[['practice', 'practice'], ['train', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => jumpTo(view),
     })),
     { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); $('compete-heading').focus(); } },
@@ -6196,7 +6296,6 @@ setRunning(false);
 renderHistory();
 renderTraining();
 renderDaily();
-renderFirstRun();
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
 inbox = createInbox({
   isRunning: runInProgress,

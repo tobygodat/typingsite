@@ -89,11 +89,10 @@ test('leaving mid-run interrupts it and keeps it out of bests', async ({ page })
   await typeInto(page, text.slice(0, 8));
 
   await openView(page, 'Progress');
-  await openView(page, 'Train');
-  await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
-  await expect(page.locator('#result-comparison-note')).toContainText('isn’t counted');
-  await expect(page.locator('#recommendation-title')).toHaveText('Restart for a counted run');
-  await expect(page.locator('#start-drill')).toBeDisabled();
+  // Back on Practice the interrupted passage is gone: a new one is ready, and no best was set.
+  await openView(page, 'Practice');
+  await expect(page.locator('#typing-status')).toHaveText('Ready');
+  expect(await passageText(page)).not.toBe(text);
   await expect(page.locator('#best')).toHaveText('No best yet');
 });
 
@@ -116,5 +115,5 @@ test('a finished words run announces its score once', async ({ page }) => {
   const wpm = await page.locator('#result-wpm').textContent();
   await expect(page.locator('#announcement')).toHaveText(`${wpm} wpm, ${await page.locator('#result-accuracy').textContent()}% accuracy.`);
   await expect(page.locator('#live-stats')).not.toHaveAttribute('aria-live', /.+/);
-  await expect(page.locator('#results-heading')).toBeFocused();
+  await expect(page.locator('#run-again')).toBeFocused();
 });

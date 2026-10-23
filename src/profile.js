@@ -28,6 +28,8 @@ export const defaultPreferences = {
   customCount: null,
   punctuation: false,
   numbers: false,
+  // Practice text weighted toward recurring pairs; its runs are drill-kind.
+  adaptive: false,
   quoteLength: 'medium',
   difficulty: 'any',
   wordList: DEFAULT_WORD_LIST,
@@ -123,6 +125,7 @@ export function validPreferences(value) {
   value.typingFont = normalizeFont(value.typingFont, TYPING_FONTS);
   value.appFont = normalizeFont(value.appFont, APP_FONTS);
   value.tape = value.tape === true;
+  value.adaptive = value.adaptive === true;
   value.repeatQuotes = value.repeatQuotes === true;
   value.layout = normalizeLayout(value.layout);
   value.fingerMap = value.fingerMap === true;

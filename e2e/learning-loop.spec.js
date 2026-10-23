@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt, quoteCorpus } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, freshTextCheck, openView, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, freshTextCheck, openView, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere } from './fixtures.js';
 
 const translateY = (page) => page.locator('#text-display').evaluate((node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).m42);
 
@@ -10,17 +10,23 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   await chooseWords(page, 10);
   const baseline = await completePassage(page);
 
-  // Sparse evidence gives a general drill, never a confident weakness.
-  await expect(page.locator('#recommendation-title')).toHaveText('General drill');
-  await expect(page.locator('#recommendation-evidence')).toHaveText(/^(Too little data to target a pattern yet|Not enough clean data to name a weakness yet)/);
-  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 10-word retest.');
+  // Sparse evidence gives a general drill, never a confident weakness: the result offers no target, and
+  // neither does Train.
+  await expect(page.locator('#result-drill')).toHaveText('Drill and retest');
+  await openView(page, 'Train');
+  await expect(page.locator('#train-heading')).toHaveText('General drill');
+  await expect(page.locator('#train-evidence')).toBeHidden();
+  await expect(page.locator('#train-words')).toBeHidden();
+  await expect(page.locator('#start-drill')).toHaveText('Drill and retest');
 
-  await page.locator('#manual-heading').click();
+  // The letters to drill are picked from Practice's "more" menu.
+  await openView(page, 'Practice');
+  await chooseMore(page, 'mode-drill');
   await page.locator('#manual-target-input').fill('br!');
   await page.locator('#apply-manual-target').click();
   await expect(page.locator('#manual-target-input')).toHaveAttribute('aria-invalid', 'true');
   await expect(page.locator('#manual-target-error')).toHaveText('Use 1–8 letters, no spaces or punctuation.');
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
 
   await page.locator('#manual-target-input').fill('br');
   await page.locator('#apply-manual-target').click();
@@ -53,9 +59,6 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   const panel = page.locator('#comparison-panel');
   await expect(panel).toBeVisible();
   await expect(panel).toHaveAttribute('data-outcome', /^(improved|mixed|regressed|steady)$/);
-  // Ten words give too few "br" intervals to call a timing change.
-  await expect(page.locator('#comparison-timing')).toHaveText('—');
-  await expect(page.locator('#comparison-sample')).toHaveText(/^br · \d+ before · \d+ after · too few to call$/);
 
   await openView(page, 'Progress');
   await expect(page.locator('#progress-empty')).toBeHidden();
@@ -64,6 +67,9 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   await expect(page.locator('.history-conditions')).toContainText('10 words');
   await page.locator('.history-summary').click();
   await expect(page.locator('.history-detail')).toContainText('60 s · br');
+  // Ten words give too few "br" intervals to call a timing change.
+  await expect(page.locator('.history-conditions')).toContainText(/ · br · \d+ before · \d+ after$/);
+  await expect(page.locator('.history-detail')).toContainText(/“br” clean intervals: \d+ before \/ \d+ after\. Too few samples to call a timing change\./);
 });
 
 test('leaving a drill for another view ends it without drawing a retest passage', async ({ page, supabase }) => {
@@ -73,7 +79,7 @@ test('leaving a drill for another view ends it without drawing a retest passage'
   await signInWithEmail(page, user.email);
   await chooseWords(page, 10);
   await completePassage(page);
-  await page.locator('#start-drill').click();
+  await page.locator('#result-drill').click();
   await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1);
   const seen = supabase.profileFor(user.email).seenTextIds;
   await typeInto(page, (await passageText(page)).slice(0, 4));
@@ -106,10 +112,13 @@ test('leaving a drill for another view ends it without drawing a retest passage'
   await expect.poll(runs).toEqual(['test complete', 'drill interrupted', 'drill interrupted', 'drill interrupted']);
   expect(supabase.profileFor(user.email).seenTextIds).toEqual(seen);
 
-  // Train still offers the retest, which draws its passage only when asked.
+  // Train still drills and retests against the same baseline; the retest passage is drawn only once
+  // a drill has run its minute.
   await openView(page, 'Train');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
+  expect(supabase.profileFor(user.email).seenTextIds).toEqual(seen);
+  await finishDrill(page);
   await expect.poll(() => supabase.profileFor(user.email).seenTextIds.length).toBe(seen.length + 1);
   const withRetest = supabase.profileFor(user.email).seenTextIds;
 
@@ -123,14 +132,17 @@ test('leaving a drill for another view ends it without drawing a retest passage'
   await page.keyboard.press('Enter');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   const added = () => supabase.profileFor(user.email).seenTextIds.filter((id) => !withRetest.includes(id));
-  await expect.poll(() => runs().length).toBe(5);
+  await expect.poll(() => runs().length).toBe(6);
   await expect.poll(() => added().some((id) => id.startsWith('daily-'))).toBe(true);
   expect(added().filter((id) => !id.startsWith('daily-'))).toEqual([]);
-  // The daily dropped the drill's baseline, so Train offers a standalone drill and no retest.
+  // The daily dropped the drill's baseline, but Train plans from saved runs: the 10-word test is its
+  // baseline again, so its drill leads on to a retest.
   await openView(page, 'Train');
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
   await expect(page.locator('#start-drill')).toBeEnabled();
-  await expect(page.locator('#recommendation-meta')).toContainText('standalone drill');
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#condition-line')).toContainText('drill · 60 s');
+  await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
 });
 
 // A saved 25-word run with a "th" slip every fourth character, so two of them make a recurring target.
@@ -156,7 +168,7 @@ test('runs recorded on another device are no baseline: their drill stands alone,
   await openApp(page);
   await signInWithEmail(page, user.email);
   // The summaries arrive, so the recurring target does too; the recordings stay where they were made.
-  await openView(page, 'Train');
+  await openView(page, 'Progress');
   await expect(page.locator('#training-targets')).toContainText('observed in 2 runs');
   await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
@@ -166,7 +178,7 @@ test('runs recorded on another device are no baseline: their drill stands alone,
   await expect(page.locator('#run-history')).not.toContainText('View passage');
 });
 
-test('a drill started from saved history keeps its retest on Train when left', async ({ page, supabase }) => {
+test('a drill started from saved history, left once, is retested against that history when drilled again', async ({ page, supabase }) => {
   const user = supabase.addUser('saved@stilltype.test');
   const traces = [savedTrace('saved-a', '2026-09-28T12:00:00Z'), savedTrace('saved-b', '2026-09-29T12:00:00Z')];
   const data = { version: 2, preferences: {}, attempts: traces,
@@ -179,8 +191,7 @@ test('a drill started from saved history keeps its retest on Train when left', a
   await recordedHere(page, user.id, data);
   // Signing in reloads the page, so no run has been shown in this tab: only the saved runs can be the baseline.
   await signInWithEmail(page, user.email);
-  await openView(page, 'Train');
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
+  await openView(page, 'Progress');
   await expect(page.locator('#training-targets')).toContainText('50 tries');
   await expect(page.locator('#training-targets')).toContainText('observed in 2 runs');
 
@@ -190,12 +201,11 @@ test('a drill started from saved history keeps its retest on Train when left', a
   await typeInto(page, (await passageText(page)).slice(0, 8));
   await openView(page, 'Progress');
   await expect.poll(() => profile()?.runs?.map((run) => `${run.kind} ${run.status}`)).toEqual(['test complete', 'test complete', 'drill interrupted']);
-  await openView(page, 'Train');
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
-  await expect(page.locator('#recommendation-title')).toHaveText('Practice “th”');
-  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 25-word retest.');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  // The same pattern again finds the saved baseline: its drill runs its minute, then the retest.
+  await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
+  await expect(page.locator('#session-title')).toHaveText('Practice “th”');
+  await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
+  await finishDrill(page);
   await expect(page.locator('#condition-line')).toContainText('25 words');
   await completePassage(page);
   await expect(page.locator('#comparison-panel')).toBeVisible();
@@ -203,8 +213,8 @@ test('a drill started from saved history keeps its retest on Train when left', a
   const retest = profile().runs.at(-1);
   expect(retest.kind).toBe('retest');
 
-  // After another reload, a comparison row's drill left before its first key keeps the retest too,
-  // now against that retest as the newest compatible run.
+  // After another reload, a comparison row's drill is retested too, now against that retest as the
+  // newest compatible run.
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
   await page.reload();
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
@@ -213,16 +223,15 @@ test('a drill started from saved history keeps its retest on Train when left', a
   await page.locator('.history-detail').getByRole('button', { name: 'Practice “th” again' }).click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#session-title')).toHaveText('Practice “th”');
-  await openView(page, 'Train');
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
+  await finishDrill(page);
+  await expect(page.locator('#condition-line')).toContainText('25 words');
   await completePassage(page);
   await expect.poll(beforeIds).toEqual(['saved-b', retest.id]);
 });
 
-// A custom text result hides Train's drill and retest, and is never a baseline. A drill started after it
-// shows them again, against the run before the custom text, so leaving it still offers that retest.
+// A custom text result offers no drill, and is never a baseline. A drill started after it is against the
+// run before the custom text, so after leaving it, Train's Drill and retest still retests that run.
 test('a drill left after a custom text result keeps the earlier baseline’s retest', async ({ page }) => {
   const custom = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
@@ -234,31 +243,33 @@ test('a drill left after a custom text result keeps the earlier baseline’s ret
   await page.locator('#custom-use').click();
   await typeInto(page, custom);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#start-drill')).toBeHidden();
-  await expect(page.locator('#skip-to-retest')).toBeHidden();
+  await expect(page.locator('#result-drill')).toBeHidden();
 
-  await page.locator('#manual-heading').click();
+  await chooseMore(page, 'mode-drill');
   await page.locator('#manual-target-input').fill('th');
   await page.locator('#apply-manual-target').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await typeInto(page, (await passageText(page)).slice(0, 4));
   await openView(page, 'Train');
   await expect(page.locator('#start-drill')).toBeVisible();
-  await expect(page.locator('#skip-to-retest')).toBeVisible();
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
-  await expect(page.locator('#recommendation-meta')).toHaveText('About 1 min, then a fresh 10-word retest.');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
+  await finishDrill(page);
   await expect(page.locator('#condition-line')).toContainText('10 words');
   expect(await passageText(page)).not.toBe(custom);
 });
 
 test('a manual drill works without a baseline', async ({ page }) => {
   await openApp(page);
+  // With no run yet, Train's one button is a general drill that stands alone.
   await openView(page, 'Train');
-  await expect(page.locator('#recommendation-title')).toHaveText('Finish a run to get a drill.');
-  await expect(page.locator('#start-drill')).toBeDisabled();
-  await page.locator('#manual-heading').click();
+  await expect(page.locator('#train-heading')).toHaveText('General drill');
+  await expect(page.locator('#start-drill')).toBeEnabled();
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
+  await openView(page, 'Practice');
+  await chooseMore(page, 'mode-drill');
   await page.locator('#manual-target-input').fill('th');
   await page.locator('#apply-manual-target').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
@@ -287,8 +298,13 @@ test('an exhausted quote pool refuses a retest and explains why', async ({ page 
   expect(seen.size).toBe(pool.length);
 
   await completePassage(page);
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  // The drill runs its minute, then the retest finds no unseen quote and Train says why.
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await page.clock.install();
+  await typeInto(page, (await passageText(page)).slice(0, 4));
+  await page.clock.fastForward(60_000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'train');
   await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', 'unavailable');
   await expect(page.locator('#comparison-status')).toHaveText('No fair retest available.');
   await expect(page.locator('#comparison-caveat')).toContainText('You’ve seen every matching quote');
@@ -325,7 +341,7 @@ test('clearing history needs the typed word and can be undone', async ({ page })
   await expect(page.locator('#comparison-caveat')).not.toContainText('Couldn’t save');
   await openView(page, 'Progress');
   await expect(page.locator('.history-row')).toHaveCount(1);
-  await expect(page.locator('.history-target')).toHaveText('Fresh-text check');
+  await expect(page.locator('.history-target')).toHaveText('General drill and retest');
 
   await page.locator('#clear-history').click();
   await expect(page.locator('#clear-dialog')).toBeVisible();

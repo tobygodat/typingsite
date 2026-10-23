@@ -89,10 +89,10 @@ test('learn to type opens from the mode area, the palette and first-run states',
   await expect(map.locator('.key.target')).toHaveText(['f', 'j']);
   await expect(map.locator('.finger-label-full')).toHaveText(['pinky', 'ring', 'middle', 'index', 'index', 'middle', 'ring', 'pinky']);
 
-  // First-run states link here quietly. The links hide with their screen, so focus moves to the lesson's action.
-  await openView(page, 'Train');
-  await expect(page.locator('#train-learn')).toBeVisible();
-  await page.locator('#train-learn button').focus();
+  // The empty Progress screen links here quietly, by key or by click. The link hides with its screen, so focus
+  // moves to the lesson's action. (Train no longer carries a "New to typing?" line.)
+  await openView(page, 'Progress');
+  await page.locator('#progress-empty .quiet-link').focus();
   await page.keyboard.press('Enter');
   await expect(body(page)).toHaveAttribute('data-view', 'learn');
   await expect(page.locator('#lesson-primary')).toBeFocused();
@@ -154,16 +154,19 @@ test('a lesson shows the finger map, passes at 95% and unlocks the next keys wit
   await expect(page.locator('#lesson-keyboard .key.target')).toHaveText(['d', 'k']);
   await expect(page.locator('#lesson-keyboard .key.is-known')).toHaveText(['f', 'j', 'space']);
 
-  // Lessons never become bests, trends, run history or a Train result.
+  // Lessons never become bests, trends, run history, a practice result or a Train recommendation.
   await expect(page.locator('#best')).toHaveText('No best yet');
   await openView(page, 'Progress');
   await expect(page.locator('#progress-empty')).toBeVisible();
   await openView(page, 'Train');
+  await expect(page.locator('#train-heading')).toHaveText('General drill');
+  await expect(page.locator('#train-evidence')).toBeHidden();
+  await openView(page, 'Practice');
   await expect(page.locator('#run-card')).toBeHidden();
   await expect(page.locator('#result-delta')).toHaveText('No run yet.');
 
   // The next lesson moves on to the next keys, and the normal keyboard comes back afterwards.
-  await page.locator('#train-learn button').click();
+  await openLessons(page);
   await page.locator('#lesson-primary').click();
   await expect(page.locator('#session-title')).toHaveText('Lesson 2 · d and k');
   expect(await passageText(page)).toMatch(/^[fjdk]{2}( [fjdk]{2})+$/);
@@ -468,7 +471,7 @@ test.describe('on a touch screen', () => {
     await chooseWords(page, 10);
     await expect(page.locator('#condition-line')).toContainText('physical keyboard');
     await completePassage(page);
-    await expect(page.locator('#results-heading')).toBeFocused();
+    await expect(page.locator('#run-again')).toBeFocused();
     await page.locator('#run-again').tap();
     await expect(page.locator('#typing-input')).toBeFocused();
     await expect(page.locator('#condition-line')).toContainText('touch input');
@@ -477,8 +480,8 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#condition-line')).toContainText('touch input');
     await completePassage(page);
     await expect(page.locator('#result-conditions')).toContainText('touch input');
-    // A key outside a text field can only be a hardware keyboard: here the restart key on the result heading.
-    await expect(page.locator('#results-heading')).toBeFocused();
+    // A key outside a text field can only be a hardware keyboard: here the restart key on Run again.
+    await expect(page.locator('#run-again')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(page.locator('#condition-line')).toContainText('physical keyboard');
     await page.locator('#restart-button').tap();
@@ -734,8 +737,8 @@ test('passing every lesson hands off to the training loop', async ({ page, supab
   await chooseWords(page, 10);
   await completePassage(page);
   await expect(page.locator('#run-card')).toBeVisible();
-  await expect(page.locator('#start-drill')).toBeEnabled();
-  await page.locator('#start-drill').click();
+  await expect(page.locator('#result-drill')).toBeEnabled();
+  await page.locator('#result-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
 
   await page.mouse.move(5, 5);

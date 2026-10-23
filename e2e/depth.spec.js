@@ -28,7 +28,8 @@ test('Progress filters comparable runs, opens chart points, and explains a saved
   await page.locator('.history-summary').click();
   await expect(page.locator('.history-detail')).toContainText('before');
   await expect(page.locator('.history-detail')).toContainText('after');
-  await expect(page.locator('.history-detail')).toContainText('Skipped');
+  // A retest always follows its minute of drill now, so the loop records the drill it ran.
+  await expect(page.locator('.history-detail')).toContainText('drill60 s · general');
 
   await openView(page, 'Practice');
   await chooseWords(page, 25);

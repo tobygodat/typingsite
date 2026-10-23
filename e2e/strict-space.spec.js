@@ -1,4 +1,4 @@
-import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore, chooseSetting, closeSettings, finishDrill } from './fixtures.js';
 
 // Committed docs screenshots are only rewritten when SCREENSHOTS is set; normal runs write to test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/strict-space/${name}` : testInfo.outputPath(name));
@@ -135,7 +135,7 @@ test('quick end off waits on a wrong last word until space submits it or the wor
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-errors')).toHaveText('1');
   await expect(page.locator('#result-conditions')).toContainText(/continue on error · quick end off$/);
-  await expect(page.locator('#results-heading')).toBeFocused();
+  await expect(page.locator('#run-again')).toBeFocused();
 
   // Fixing the last word finishes the run as soon as it is right.
   await page.locator('#run-again').click();
@@ -305,8 +305,8 @@ test('a retest restores the baseline’s strict space and quick end', async ({ p
   await page.keyboard.press('Control+k');
   await page.locator('#palette-input').fill('strict space');
   await page.keyboard.press('Enter');
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   await expect(page.locator('#condition-line')).toContainText('strict space · quick end off');
 });
 
@@ -321,8 +321,8 @@ test('a retest of a stop-on-error baseline leaves the quick end preference alone
   // Quick end isn't part of that baseline's conditions, so turning it back on must stick.
   await setSwitch(page, 'stop-on-error-toggle', false);
   await setSwitch(page, 'quick-end-toggle', true);
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   await expect(page.locator('#condition-line')).toContainText(/stop on error$/);
   await openSettings(page, 'practice');
   await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
@@ -336,7 +336,7 @@ test('a drill from a words baseline is timed: quick end is disabled and a rule c
   // Typed at a person's pace, since the best it sets shows in the screenshot.
   await typeInto(page, await passageText(page), '#typing-input', PACE);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await page.locator('#start-drill').click();
+  await page.locator('#result-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   // The baseline was a words run, but every drill is a timed minute, so quick end has nothing to change.
   await expect(page.locator('#condition-line')).toHaveText('drill · 60 s · english · physical keyboard · continue on error');
@@ -375,7 +375,7 @@ test('a drill from a words baseline is timed: quick end is disabled and a rule c
   await expect(page.locator('#input-help')).toHaveText(STRICT_NOTICE);
 });
 
-test('a rule changed on the results screen or during a retest keeps the retest on its baseline’s rules and applies to the next practice run', async ({ page }, testInfo) => {
+test('a rule changed on a result or during a retest keeps the retest on its baseline’s rules and applies to the next practice run', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await openApp(page);
   await chooseWords(page, 10);
@@ -384,8 +384,8 @@ test('a rule changed on the results screen or during a retest keeps the retest o
   await typeInto(page, await passageText(page), '#typing-input', PACE);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await setSwitch(page, 'quick-end-toggle', true);
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   // The retest runs on its baseline's rules; the switch keeps the choice and says why it waits.
   await expect(page.locator('#condition-line')).toContainText('continue on error · quick end off');
   await openSettings(page, 'practice');
@@ -408,6 +408,7 @@ test('a rule changed on the results screen or during a retest keeps the retest o
   await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', /^(improved|mixed|regressed|steady)$/);
   await expect(page.locator('#result-conditions')).toContainText('continue on error · quick end off');
   // The preferences wait for the next practice run.
+  await page.locator('#comparison-back').click();
   await page.locator('#run-again').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
   await expect(page.locator('#condition-line')).toContainText('10 words');
@@ -421,8 +422,8 @@ test('the footer best follows a waiting retest’s rules, not a rule changed und
   await openApp(page);
   await chooseWords(page, 10);
   await completePassage(page);
-  await page.locator('#skip-to-retest').click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await page.locator('#result-drill').click();
+  await finishDrill(page);
   await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
   const best = await page.locator('#best').textContent();
   await setSwitch(page, 'strict-space-toggle', true);
@@ -430,6 +431,7 @@ test('the footer best follows a waiting retest’s rules, not a rule changed und
   await expect(page.locator('#best')).toHaveText(best);
   // The next practice run takes strict space, which has no best yet.
   await completePassage(page);
+  await page.locator('#comparison-back').click();
   await page.locator('#run-again').click();
   await expect(page.locator('#condition-line')).toContainText('continue on error · strict space');
   await expect(page.locator('#best')).toHaveText('No best yet');

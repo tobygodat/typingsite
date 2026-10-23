@@ -13,6 +13,7 @@ import {
   conditionKey,
   createAttempt,
   editStats,
+  makeAdaptive,
   makeDrill,
   makePassage,
   metrics,
@@ -1011,4 +1012,18 @@ test('minimum settings are stored like any other choice: off by default, unknown
   assert.deepEqual(normalizeProfile({ version: 2, preferences: {} }).preferences, {}, 'an unchosen minimum is not stored');
   assert.deepEqual(normalizeProfile({ version: 2, preferences: { minAccuracy: 95, minWpm: 40 } }).preferences, { minAccuracy: 95, minWpm: 40 });
   assert.deepEqual(normalizeProfile({ version: 2, preferences: { minAccuracy: 97, minWpm: '40' } }).preferences, { minAccuracy: 0, minWpm: 0 });
+});
+
+test('adaptive passages are real lowercase words, about half of them holding a recurring pair', () => {
+  let seed = 7;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const passage = makeAdaptive(['br', 'ou'], { mode: 'words', count: 100, random });
+  const words = passage.text.split(' ');
+  assert.equal(words.length, 100);
+  assert.equal(passage.adaptive, true);
+  assert.equal(words.every((word) => /^[a-z]+$/.test(word)), true);
+  const holding = words.filter((word) => word.includes('br') || word.includes('ou')).length;
+  assert.ok(holding >= 35 && holding <= 80, `${holding} of 100 hold a pair`);
+  assert.ok(words.some((word) => word.includes('br')) && words.some((word) => word.includes('ou')));
+  assert.equal(makeAdaptive(['qx']), null);
 });

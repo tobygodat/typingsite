@@ -1,5 +1,6 @@
-// The Train view after a run: on a wide screen the score and the trace print side by side with the
-// drill below; on a phone the drill comes straight after the score, before the trace.
+// A run's result on Practice: on a wide screen the score and the trace print side by side with Run again
+// and the drill below; on a phone the actions come straight after the score, before the trace. Before any
+// run there is no print, and Train is the one general drill, centred.
 import { test, expect, openApp, openView, chooseWords, completePassage, phone } from './fixtures.js';
 
 const box = (page, selector) => page.locator(selector).boundingBox();
@@ -7,33 +8,41 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
 
 async function tabIntoTrace(page) {
   await expect(page.locator('#run-again')).toBeFocused();
-  const before = await page.evaluate(() => scrollY);
+  // Run again's focus brought it into view below the score, so the page has scrolled and the trace lies above it.
+  expect(await page.evaluate(() => scrollY), 'focus scrolled the page').toBeGreaterThan(0);
   const inWords = () => page.evaluate(() => !!document.activeElement.closest('#result-words'));
   for (let presses = 0; presses < 6 && !(await inWords()); presses++) await page.keyboard.press('Tab');
   expect(await inWords(), 'a trace word has focus').toBe(true);
-  // Run again's focus brought it into view below the score, so the trace word lies above it.
-  expect(await page.evaluate(() => scrollY), 'focus scrolled the page').not.toBe(before);
-  return page.evaluate(() => document.activeElement.getBoundingClientRect().top);
+  return page.evaluate(() => {
+    const word = document.activeElement.getBoundingClientRect();
+    return { top: word.top, bottom: word.bottom };
+  });
 }
 
-// Before any run there is no print: no trace, no shared frame, and the drill copy takes the whole width.
-// The frame only exists from 901px, so narrower screens check the rest.
+// Before any run there is no print: no score, no trace, and Train holds only the general drill, its block
+// spanning the screen's content width with the heading and the one button centred in it.
 async function expectNoPrint(page) {
   await expect(page.locator('#run-card')).toBeHidden();
   await expect(page.locator('.run-trace')).toBeHidden();
-  const view = await page.locator('.results-layout').evaluate((grid) => {
-    const frame = getComputedStyle(grid, '::before');
-    const style = getComputedStyle(grid);
-    return { frame: frame.display === 'none' || parseFloat(frame.borderTopWidth) === 0,
-      content: grid.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-      drill: document.querySelector('.results-drill').getBoundingClientRect().width };
+  await expect(page.locator('#train-heading')).toHaveText('General drill');
+  await expect(page.locator('#start-drill')).toBeVisible();
+  await expect(page.locator('#train-last')).toBeHidden();
+  await expect(page.locator('#comparison-panel')).toBeHidden();
+  const view = await page.locator('#train-screen').evaluate((screen) => {
+    const style = getComputedStyle(screen);
+    const box = (selector) => document.querySelector(selector).getBoundingClientRect();
+    const centre = (rect) => rect.left + rect.width / 2;
+    return { content: screen.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+      block: box('#train-next').width, middle: centre(box('#train-next')),
+      heading: centre(box('#train-heading')), drill: centre(box('#start-drill')) };
   });
-  if (page.viewportSize().width >= 901) expect(view.frame, 'no card frame').toBe(true);
-  expect(Math.abs(view.drill - view.content), 'drill spans the content width').toBeLessThanOrEqual(1);
+  expect(Math.abs(view.block - view.content), 'the drill block spans the content width').toBeLessThanOrEqual(1);
+  expect(Math.abs(view.heading - view.middle), 'heading centred').toBeLessThanOrEqual(1);
+  expect(Math.abs(view.drill - view.middle), 'button centred').toBeLessThanOrEqual(1);
   expect(await overflow(page)).toBeLessThanOrEqual(0);
 }
 
-test('before any run at 1440px there is no print and the drill takes the whole width', async ({ page }) => {
+test('before any run at 1440px there is no print and Train is the general drill, centred', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page);
   await openView(page, 'Train');
@@ -41,7 +50,7 @@ test('before any run at 1440px there is no print and the drill takes the whole w
 });
 
 for (const width of [901, 800]) {
-  test(`at ${width}px a run fits the width with the score and the trace ${width > 900 ? 'side by side' : 'stacked around the drill'}`, async ({ page }) => {
+  test(`at ${width}px a run fits the width with the score and the trace ${width > 900 ? 'side by side' : 'stacked around Run again and the drill'}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await openApp(page);
     await chooseWords(page, 10);
@@ -51,13 +60,13 @@ for (const width of [901, 800]) {
     expect(await overflow(page)).toBeLessThanOrEqual(0);
     const score = await box(page, '#run-card');
     const trace = await box(page, '.run-trace');
-    const drill = await box(page, '.results-drill');
+    const actions = await box(page, '.result-actions');
     if (width > 900) {
       expect(trace.x).toBeGreaterThanOrEqual(score.x + score.width);
       expect(Math.abs(trace.y - score.y)).toBeLessThanOrEqual(4);
     } else {
-      expect(score.y + score.height).toBeLessThanOrEqual(drill.y);
-      expect(drill.y + drill.height).toBeLessThanOrEqual(trace.y);
+      expect(score.y + score.height).toBeLessThanOrEqual(actions.y);
+      expect(actions.y + actions.height).toBeLessThanOrEqual(trace.y);
     }
   });
 }
@@ -74,31 +83,36 @@ test('at 1440px the score and the trace share a row and the drill sits below the
   expect(trace.x).toBeGreaterThan(score.x + score.width);
   const traceTop = await box(page, '.run-trace');
   expect(Math.abs(traceTop.y - score.y)).toBeLessThanOrEqual(4);
-  const drill = await box(page, '#start-drill');
+  const drill = await box(page, '#result-drill');
   expect(drill.y).toBeGreaterThan(Math.max(score.y + score.height, traceTop.y + traceTop.height));
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: testInfo.outputPath('train-1440.png'), fullPage: true });
 });
 
-test('at 1440px tabbing from Run again into the trace stops below the dock', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+// 700px tall, so Run again's focus scrolls the page and the trace lies above it.
+test('at 1440px tabbing from Run again back into the trace stops below the dock', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 700 });
   await openApp(page);
   await chooseWords(page, 10);
   await completePassage(page);
-  const top = await tabIntoTrace(page);
+  const word = await tabIntoTrace(page);
   const dock = await box(page, 'nav.dock');
-  expect(top).toBeGreaterThanOrEqual(dock.y + dock.height);
+  expect(word.top).toBeGreaterThanOrEqual(dock.y + dock.height);
+  expect(word.bottom).toBeLessThanOrEqual(700);
 });
 
 // Focus goes to the next step only when it fits on screen with the score; otherwise to the result heading,
 // so the score never scrolls away. The restart key works from either.
 test('after a run Run again takes focus when it fits under the score, and the heading does when it can’t', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setViewportSize({ width: 1280, height: 600 });
   await openApp(page);
   await chooseWords(page, 10);
   await completePassage(page);
   await expect(page.locator('#results-heading')).toBeFocused();
-  await expect(page.locator('#results-heading')).toBeInViewport({ ratio: 1 });
+  // A counted run's heading is visually hidden (a clipped 1px box), so check where it sits rather than what shows.
+  const heading = await box(page, '#results-heading');
+  expect(heading.y).toBeGreaterThanOrEqual(0);
+  expect(heading.y + heading.height).toBeLessThanOrEqual(600);
   await expect(page.locator('#result-wpm')).toBeInViewport({ ratio: 1 });
   await page.keyboard.press('Enter');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
@@ -117,9 +131,17 @@ test('after a run Run again takes focus when it fits under the score, and the he
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, ...phone });
 
-  test('at 390px the result heading takes focus and the score stays in view', async ({ page }) => {
+  test('at 390px Run again takes focus under the score, and on a short phone the heading does; the score stays in view', async ({ page }) => {
     await openApp(page);
     await chooseWords(page, 10);
+    await completePassage(page);
+    await expect(page.locator('#run-again')).toBeFocused();
+    await expect(page.locator('#run-again')).toBeInViewport({ ratio: 1 });
+    await expect(page.locator('#result-wpm')).toBeInViewport({ ratio: 1 });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+
+    await page.setViewportSize({ width: 390, height: 560 });
     await completePassage(page);
     await expect(page.locator('#results-heading')).toBeFocused();
     await expect(page.locator('#result-wpm')).toBeInViewport({ ratio: 1 });
@@ -132,7 +154,7 @@ test.describe('phone', () => {
     await expect(page.locator('#speed-graph svg')).toBeVisible();
 
     const wpm = await box(page, '#result-wpm');
-    const drill = await box(page, '#start-drill');
+    const drill = await box(page, '#result-drill');
     const graph = await box(page, '#speed-graph');
     expect(wpm.y + wpm.height).toBeLessThan(drill.y);
     expect(drill.y + drill.height).toBeLessThan(graph.y);
@@ -156,7 +178,7 @@ test.describe('phone', () => {
     expect(word.bottom).toBeLessThanOrEqual(dock.y);
   });
 
-  test('before any run at 390px there is no print and the drill takes the whole width', async ({ page }) => {
+  test('before any run at 390px there is no print and Train is the general drill, centred', async ({ page }) => {
     await openApp(page);
     await openView(page, 'Train');
     await expectNoPrint(page);

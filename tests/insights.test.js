@@ -1024,3 +1024,13 @@ test('two condition sets with different keys never share a name, whichever key p
     }
   }
 });
+
+test('adaptive runs are drill-kind records: flagged, and never a trend point, a best or evidence', () => {
+  const typed = { id: 'a', kind: 'drill', adaptive: true, status: 'complete', conditions: {}, text: 'the cat', events: [...'the cat'].map((char, i) => ({ type: 'insert', text: char, position: i, offsetMs: i * 100 })) };
+  const record = runRecord(typed);
+  assert.equal(record.adaptive, true);
+  assert.equal(record.kind, 'drill');
+  assert.equal(trendRun(record), false);
+  assert.equal(measuredKind(record.kind), false);
+  assert.equal('adaptive' in runRecord({ ...typed, kind: 'test', adaptive: undefined }), false);
+});

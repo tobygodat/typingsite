@@ -95,7 +95,7 @@ test('in focus mode, one Escape closes the replay and focus mode stays on', asyn
   await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
 });
 
-test('Watch replay plays the run the results show, not a drill whose retest was unavailable', async ({ page }) => {
+test('Watch replay plays the run the result shows, and a drill whose retest was unavailable leaves nothing to replay', async ({ page }) => {
   // Exhaust the gentle medium quotes (as in learning-loop.spec.js), so the drill's retest is refused.
   const pool = quoteCorpus.filter((quote) => quote.difficulty === 'gentle' && quote.text.split(/\s+/).length > 30 && quote.text.split(/\s+/).length <= 60);
   const texts = new Set(pool.map((quote) => quote.text));
@@ -118,20 +118,24 @@ test('Watch replay plays the run the results show, not a drill whose retest was 
   }
   expect(seen.size).toBe(pool.length);
   const baseline = await completePassage(page);
+  await page.locator('#watch-replay').click();
+  await expect(page.locator('#replay-dialog')).toBeVisible();
+  await expect(page.locator('#replay-text')).toHaveText(baseline);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#replay-dialog')).toBeHidden();
 
-  await page.locator('#start-drill').click();
+  await page.locator('#result-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   const drill = await passageText(page);
   await typeInto(page, drill.slice(0, 12));
   await page.clock.fastForward(60_000);
   await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', 'unavailable');
 
-  // The results still describe the baseline, so that is what plays.
-  await page.locator('#watch-replay').click();
-  await expect(page.locator('#replay-dialog')).toBeVisible();
-  await expect(page.locator('#replay-text')).toHaveText(baseline);
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#replay-dialog')).toBeHidden();
+  // Back on Practice a fresh passage waits: the drill is never offered as a replay.
+  await page.locator('#comparison-back').click();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#typing-status')).toHaveText('Ready');
+  await expect(page.locator('#watch-replay')).toBeHidden();
 });
 
 test('a custom run keeps no trace, so it offers no replay; the next counted run does again', async ({ page }) => {

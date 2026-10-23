@@ -23,11 +23,11 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 
 ## Features
 
-- Practice: time, words (presets or custom) and quote, with punctuation, numbers and four word lists.
-- More: code (js, python, go, rust), standard 60 s test, book pages, compose, custom text.
+- Practice: time, words (presets or custom) and quote, with punctuation, numbers and four word lists. Adaptive (time and words) leans the text toward the pairs you keep missing; its runs are drill-kind, so never a best, trend point or baseline.
+- More: code (js, python, go, rust), standard 60 s test, book pages, compose, custom text, a 1–8 letter manual drill.
 - Learn to type: 14 lessons; only physical-keyboard runs unlock the next.
-- Results: run card with speed graph, watch replay, practice missed words.
-- Train: recurring letter-pair targets, one-minute drills, fresh comparable retests.
+- Results: on Practice, in place of the passage (`body[data-view=results]`): run card, Run again / Drill “pair” / Watch replay, speed graph, typed words, practice missed words.
+- Train (Direction D): one button. It plans for the current settings from saved history (recurring pair, else the newest traces, else a general drill), runs a one-minute drill, then a fresh retest, and shows the comparison on Train; its Back to practice opens the retest's own run card. "Patterns across runs" lives on Progress; "words you keep missing" is a palette command.
 - Progress: period and length filters, figures, speed / accuracy / consistency / practice / keys tabs, daily goal and streaks, runs started.
 - Challenge: online races (invite or guest link, friends, Race again), Daily, friends board, one keyboard.
 - Ghost races: a friend races your recorded run within seven days.

@@ -83,7 +83,7 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
   const text = await passageText(page);
   await typeInto(page, text, '#typing-input', { delay: 130 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#results-heading')).toBeFocused();
+  await expect(page.locator('#run-again')).toBeFocused();
 
   // After the run: pick a friend and send it.
   const offer = page.locator('#ghost-offer');
@@ -131,7 +131,7 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
     await lightShot(linPage, testInfo, 'racing-light');
     await linPage.keyboard.type(text.slice(half), { delay: 110 });
     await expect(linPage.locator('body')).toHaveAttribute('data-view', 'results');
-    await expect(linPage.locator('#results-heading')).toBeFocused();
+    await expect(linPage.locator('#run-again')).toBeFocused();
 
     const result = linPage.locator('#ghost-result');
     await expect(result).toBeVisible();
@@ -142,8 +142,7 @@ test('a finished run goes to a friend, who races its ghost later, and both see w
     await expect(linPage.locator('#ghost-offer')).toBeHidden();
     await expect(linPage.locator('#best')).toHaveText('Not counted');
     // Never a baseline or pattern evidence, so no drill or retest is offered from it.
-    await expect(linPage.locator('#start-drill')).toBeHidden();
-    await expect(linPage.locator('#skip-to-retest')).toBeHidden();
+    await expect(linPage.locator('#result-drill')).toBeHidden();
     expect(row.result).toBeTruthy();
     // Saved as its own kind: never a best, so no comparison or progress point either. Only its summary is
     // kept, so ghost races never take the place of practice traces.
@@ -329,7 +328,7 @@ test.describe('on a touch screen', () => {
   });
 });
 
-test('at 320 px a long sender name wraps, a corrected slip onto ö is still sent, inbox polls keep focus and the race ends a retest cycle', async ({ page, supabase }) => {
+test('at 320 px a long sender name wraps, a corrected slip onto ö is still sent, inbox polls keep focus and the race result offers no drill or retest', async ({ page, supabase }) => {
   const name = 'christopher.montgomery12';
   const sender = supabase.addUser(`${name}@stilltype.test`);
   const lin = supabase.addUser('lin@stilltype.test');
@@ -342,10 +341,10 @@ test('at 320 px a long sender name wraps, a corrected slip onto ö is still sent
   await signInWithEmail(page, 'lin@stilltype.test');
   await expect(page.locator('#challenge-toast')).toBeVisible({ timeout: 12000 });
   await page.locator('#challenge-toast-close').click();
-  // A practice run first: the ghost race ends its drill-and-retest cycle, as the daily does.
+  // A practice run first offers a drill and retest; the ghost race's result offers neither.
   await chooseWords(page, 10);
   await typeInto(page, await passageText(page), '#typing-input', { delay: 20 });
-  await expect(page.locator('#skip-to-retest')).toBeEnabled();
+  await expect(page.locator('#result-drill')).toBeVisible();
   // A poll of the inbox with nothing new leaves keyboard focus where it was.
   await page.locator('#inbox-trigger').click();
   const raceButton = page.locator('#inbox-list [data-inbox-action="challenge"]');
@@ -371,8 +370,7 @@ test('at 320 px a long sender name wraps, a corrected slip onto ö is still sent
   await expect(page.locator('#ghost-result-status')).toHaveText(`Sent to ${name}.`);
   expect(challenge.result.correct).toBe(passage.length);
   expect(challenge.result.accuracy).toBeLessThan(100);
-  await expect(page.locator('#skip-to-retest')).toBeDisabled();
-  await expect(page.locator('#recommendation-meta')).toHaveText(/^A standalone drill\./);
+  await expect(page.locator('#result-drill')).toBeHidden();
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 760 });
     await expect.poll(overflow, { message: `no overflow at ${width}` }).toBeLessThanOrEqual(0);
@@ -803,7 +801,7 @@ test('a Race reply that lands after a practice run began neither interrupts that
   await expect(page.locator('#ghost-result')).toBeHidden();
   await expect(page.locator('#ghost-offer')).toBeVisible();
   await expectOffer(page, 'Ada');
-  await expect(page.locator('#results-heading')).toBeFocused();
+  await expect(page.locator('#run-again')).toBeFocused();
   // The run's end announces both the offer that waited for it and the run's own result.
   await expect(page.locator('#announcement')).toHaveText(/^Ada’s race is ready\. \d+ wpm, \d+% accuracy\.$/);
   expect(ada.result).toBeNull();
@@ -888,7 +886,7 @@ test('a Race reply that lands after a drill ran out and its retest began keeps t
   await chooseWords(page, 10);
   await typeInto(page, await passageText(page), '#typing-input', { delay: 90 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await page.locator('#start-drill').click();
+  await page.locator('#result-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await typeInto(page, (await passageText(page)).slice(0, 20), '#typing-input', { delay: 90 });
   // In the drill's last seconds Lin races Ada from the inbox.
@@ -1024,7 +1022,7 @@ test('a Race that fails while Lin types a run says so once the run ends', async 
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#account-toast')).toBeVisible();
   await expect(page.locator('#account-feedback')).toHaveText('The ghost race didn’t start. Request failed (503).');
-  await expect(page.locator('#results-heading')).toBeFocused();
+  await expect(page.locator('#run-again')).toBeFocused();
 });
 
 test('a toast that goes while its Race button has focus hands focus to the inbox and says why', async ({ page, supabase }) => {

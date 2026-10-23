@@ -883,8 +883,8 @@ test('an accent key let go where the field can’t hear it doesn’t hold back t
   await dispatchEvents(page, held);
   await page.clock.fastForward(15_000);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#results-heading')).toBeFocused();
-  await page.locator('#results-heading').dispatchEvent('keyup', { key: 'Dead' });
+  await expect(page.locator('#run-again')).toBeFocused();
+  await page.locator('#run-again').dispatchEvent('keyup', { key: 'Dead' });
   await page.clock.resume();
   await page.locator('#run-again').click();
   await expect(page.locator('#typing-status')).toHaveText('Ready');

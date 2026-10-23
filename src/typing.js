@@ -82,7 +82,10 @@ export function timedCharacterSupply(seconds = 0) {
 export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST, numbers = false, seconds = 0) {
   if (mode === 'quote') return quoteCorpus[Math.floor(random() * quoteCorpus.length)].text;
   const bank = wordList(list);
-  const draw = () => bank[Math.floor(random() * bank.length)];
+  return drawnPassage(() => bank[Math.floor(random() * bank.length)], mode, count, punctuation, random, numbers, seconds);
+}
+
+function drawnPassage(draw, mode, count, punctuation, random, numbers, seconds) {
   const finish = (all) => (punctuation ? punctuate(all) : all).join(' ');
   // Every timed test starts from 1,600 words: at least 3,199 characters, more than 120 s at 300 WPM needs,
   // so a preset passage is never topped up and stays exactly what it was.
@@ -748,14 +751,17 @@ export function normalizeManualTarget(value) {
   return String(value || '').trim().toLowerCase().replace(/[^a-z]/g, '').slice(0, 8);
 }
 
+// Every real word a drill can draw on: the word list, the drill words and the quotes' words.
+const drillVocabulary = (bank) => [...new Set([
+  ...bank,
+  ...drillWords,
+  ...quoteCorpus.flatMap((item) => item.text.toLowerCase().match(/[a-z]+/g) || []),
+])];
+
 export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
   const safeTarget = normalizeManualTarget(target);
   const bank = wordList(list);
-  const corpusWords = [...new Set([
-    ...bank,
-    ...drillWords,
-    ...quoteCorpus.flatMap((item) => item.text.toLowerCase().match(/[a-z]+/g) || []),
-  ])];
+  const corpusWords = drillVocabulary(bank);
   const candidates = safeTarget ? corpusWords.filter((word) => word.includes(safeTarget)) : bank;
   // A manual target may itself be a valid word that the small local corpus does
   // not contain. Repeat that exact user choice; never fabricate word forms.
@@ -764,6 +770,24 @@ export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
   const text = sequence.join(' ');
   const label = safeTarget || 'general';
   return { id: `drill-${label}-${textId(text)}`, textVersion: `drill-${label}@2`, text, target: safeTarget, corpus: CORPUS_VERSION };
+}
+
+// Adaptive practice: a word or timed passage of real words in which about half are words holding one
+// of the person's recurring pairs, taken in turn. Nothing in the text is marked, and it is drill-kind
+// text: never a best, a trend point or a retest baseline. Null when no word holds any of the pairs.
+export function makeAdaptive(pairs, { mode = 'time', count = 25, duration = 0, punctuation = false, numbers = false, wordList: list = DEFAULT_WORD_LIST, random = Math.random } = {}) {
+  const bank = wordList(list);
+  const vocabulary = drillVocabulary(bank);
+  const groups = pairs.map((pair) => vocabulary.filter((word) => /^[a-z]+$/.test(word) && word.includes(pair))).filter((group) => group.length);
+  if (!groups.length) return null;
+  let turn = 0;
+  const draw = () => {
+    if (random() >= 0.5) return bank[Math.floor(random() * bank.length)];
+    const group = groups[turn++ % groups.length];
+    return group[Math.floor(random() * group.length)];
+  };
+  const text = drawnPassage(draw, mode, count, punctuation, random, numbers, duration);
+  return { id: `adaptive-${textId(text)}`, textVersion: 'adaptive@1', text, pairs, adaptive: true, corpus: CORPUS_VERSION };
 }
 
 // The test conditions this build offers, and so the only ones it writes: the timed lengths (seconds) and

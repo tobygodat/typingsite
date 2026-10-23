@@ -10,7 +10,7 @@ consistency, final c/i/e/m, a speed-over-time graph and the conditions line.
 - `run-shape` picks the test shape (time 15/30/60/120, words 10/25/50/100, quote) before typing.
 - `run-typing` starts on the first key; correct letters fill, mistyped letters turn coral with a tint.
 - `run-chrome-fade` fades the dock and rail while `body[data-running]` is set; pointer movement brings them back.
-- `run-results` switches to `body[data-view=results]` with the run card and the train panel beside it.
+- `run-results` switches to `body[data-view=results]`: the run card, `Run again` / `Drill “<pair>”` / `Watch replay`, the speed graph and the typed words render on Practice in place of the passage (`#practice-result`). A retest's result is the comparison on Train instead (`body[data-view=train]`, `#comparison-panel`).
 - `run-restart` restarts with Escape or the restart button (`#restart-button`) and draws a new passage.
 
 ## How to get to it (user POV)
@@ -36,7 +36,11 @@ Preconditions:
   100, first-try errors 0, `46/0/0/0` for the seeded passage, consistency a number.
 - **Light theme run.** Run `$V shot results --scheme light`. Same checks; the run card sits on warm paper.
 - **Phone run.** Run `$V shot results --width 390 --height 844 --mobile`. The dock sits at the bottom, the run card
-  fills the width, and the train panel follows below the fold (add `--full-page` to capture it).
+  fills the width, and the actions, graph and words follow below the fold (add `--full-page` to capture it).
+- **Train loop.** Run `$V drive .claude/skills/verify-stilltype/flows/train-d.mjs` (desktop) and again with
+  `--width 390 --height 844 --mobile --full-page`. It seeds a signed-in history that keeps missing "ou" and "br" and
+  shoots the result on Practice, one-button Train, the comparison after Drill and retest, Train after the loop, and
+  an adaptive run and its result.
 - **Restart.** Drive it: in a flow file, type a few letters with `h.type('ab')`, press
   `page.keyboard.press('Escape')`, then `check` that `#accessible-passage` text changed and
   `body[data-running]` is gone.

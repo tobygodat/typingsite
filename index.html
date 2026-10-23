@@ -58,7 +58,7 @@
         <div class="dock-nav glide" data-glide="current">
           <span class="glide-pill" aria-hidden="true"></span>
           <button class="nav-item is-active" type="button" data-nav="practice" aria-current="page"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
-          <button class="nav-item" type="button" data-nav="results">train</button>
+          <button class="nav-item" type="button" data-nav="train">train</button>
           <button class="nav-item" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
           <button class="nav-item" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
         </div>
@@ -130,6 +130,7 @@
                   <button id="mode-book" type="button" data-mode="book" aria-pressed="false">book</button>
                   <button id="mode-compose" type="button" data-compose aria-pressed="false">compose</button>
                   <button id="mode-custom" type="button" aria-pressed="false" aria-controls="custom-options" aria-expanded="false">custom</button>
+                  <button id="mode-drill" type="button" aria-pressed="false" aria-controls="manual-target" aria-expanded="false">drill</button>
                   <button id="open-lessons" class="mode-more-lessons" type="button" data-action="open-lessons">learn to type</button>
                 </div>
               </details>
@@ -164,6 +165,10 @@
               <input id="punctuation-toggle" class="switch" type="checkbox">
               <span>punctuation</span>
             </label>
+            <label id="adaptive-switch" class="compact-switch" for="adaptive-toggle">
+              <input id="adaptive-toggle" class="switch" type="checkbox">
+              <span>adaptive</span>
+            </label>
           </div>
           <p id="custom-length-error" class="field-error custom-length-error" role="alert"></p>
           <span id="minimum-note" class="minimum-note" hidden></span>
@@ -186,6 +191,15 @@
           </div>
           <p id="custom-error" class="field-error" role="alert"></p>
         </div>
+
+        <form id="manual-target" class="custom-options manual-target" novalidate hidden>
+          <label for="manual-target-input" class="sr-only">Letters to drill</label>
+          <div class="input-action">
+            <input id="manual-target-input" class="input" type="text" maxlength="16" placeholder="letters, e.g. br" aria-describedby="manual-target-error">
+            <button id="apply-manual-target" class="btn btn-secondary" type="submit">Drill it</button>
+          </div>
+          <p id="manual-target-error" class="field-error" role="alert"></p>
+        </form>
 
         <form id="typing-form" class="typing-form" autocomplete="off">
           <div class="measure-row">
@@ -238,6 +252,88 @@
             </div>
           </div>
         </form>
+
+        <div id="practice-result" class="results-layout practice-result">
+          <header class="section-heading result-heading">
+            <h2 id="results-heading" class="sr-only" tabindex="-1"><span id="result-delta">No run yet.</span></h2>
+            <p id="result-comparison-note" class="result-note"></p>
+          </header>
+
+          <article id="run-card" class="run-card" aria-label="Run summary" hidden>
+            <div class="run-card-score">
+              <strong id="result-wpm" class="num" data-bare>—</strong>
+              <span class="run-card-unit" data-speed-unit>wpm</span>
+            </div>
+            <dl class="run-card-facts">
+              <div><dt>accuracy</dt><dd><strong id="result-accuracy" class="num">—</strong><b>%</b></dd></div>
+              <div><dt>first-try errors</dt><dd id="result-errors" class="num">—</dd></div>
+              <div><dt>time</dt><dd id="result-time" class="num">—</dd></div>
+            </dl>
+            <dl class="run-card-facts run-card-more">
+              <div id="result-raw-row"><dt data-speed-unit="raw {unit}">raw wpm</dt><dd id="result-raw" class="num" data-bare>—</dd></div>
+              <div title="100 minus the variation of your per-second raw speed; needs 3 seconds"><dt>consistency</dt><dd><strong id="result-consistency" class="num">—</strong><b>%</b></dd></div>
+              <div title="The finished text: correct / still wrong / extra / missed characters. Slips you fixed count as first-try errors"><dt>final c/i/e/m</dt><dd id="result-chars" class="num">—</dd></div>
+            </dl>
+            <p class="metric-note"><span id="speed-definition"></span> · accuracy counts every character typed, corrected ones included</p>
+            <p class="condition-copy" id="result-conditions">english · common words</p>
+            <details class="manual-panel metric-more">
+              <summary>How raw, consistency and c/i/e/m are counted</summary>
+              <p class="metric-note">raw counts every character typed, mistakes included · consistency is 100 minus the variation of per-second speed · final c/i/e/m: correct, still wrong, extra past the end, missed; fixed slips are first-try errors</p>
+            </details>
+          </article>
+
+          <div class="result-actions">
+            <button id="run-again" class="btn btn-primary" type="button" data-action="run-again">Run again</button>
+            <button id="result-drill" class="btn btn-secondary" type="button" hidden>Drill</button>
+            <button id="watch-replay" class="btn btn-ghost" type="button" data-action="watch-replay" hidden>Watch replay</button>
+          </div>
+
+          <div class="run-trace">
+            <figure class="run-card-graph">
+              <div id="speed-graph" class="speed-graph" role="img" aria-label="Speed over time"></div>
+              <figcaption class="graph-legend" aria-hidden="true">
+                <span class="legend-speed" data-speed-unit="speed · {unit}">speed · wpm</span>
+                <span class="legend-average">average</span>
+                <span class="legend-miss">mistake</span>
+              </figcaption>
+            </figure>
+            <div class="run-card-wordlist">
+              <div id="result-words" class="run-card-words" role="listbox" aria-label="Words typed; mistyped words are marked. Arrow keys move between words."></div>
+              <p id="result-word-detail" class="word-detail"></p>
+            </div>
+            <p class="word-detail practice-evidence" id="practice-words-evidence" hidden></p>
+            <button id="practice-words" class="btn btn-ghost run-card-practice" type="button" data-action="practice-words" hidden>Practice missed words</button>
+          </div>
+
+          <div id="result-more" class="result-more">
+            <article id="ghost-result" class="comparison-panel ghost-result" aria-labelledby="ghost-result-heading" hidden>
+              <h2 id="ghost-result-heading">Ghost race</h2>
+              <div id="ghost-result-rows" class="race-results"></div>
+              <p id="ghost-result-rule" class="ghost-result-rule"></p>
+              <p id="ghost-result-status"></p>
+              <button id="ghost-result-action" class="btn btn-secondary" type="button" hidden>Race again</button>
+            </article>
+            <details id="ghost-offer" class="manual-panel ghost-offer" hidden>
+              <summary>Challenge a friend with this run</summary>
+              <p class="ghost-offer-copy">They race your keystrokes on this text within 7 days.</p>
+              <div id="ghost-offer-empty" hidden>
+                <p class="ghost-offer-copy">Your friend list is empty.</p>
+                <button id="ghost-offer-friends" class="btn btn-ghost btn-sm" type="button">Open online races</button>
+              </div>
+              <form id="ghost-offer-form" class="ghost-offer-form" novalidate>
+                <label class="filter-field" for="ghost-friend">Friend
+                  <select id="ghost-friend" class="input"></select>
+                </label>
+                <label class="filter-field" for="ghost-name">Name they see
+                  <input id="ghost-name" class="input" type="text" maxlength="24" autocomplete="nickname" placeholder="Name">
+                </label>
+                <button id="send-ghost" class="btn btn-secondary" type="submit">Send challenge</button>
+              </form>
+              <p id="ghost-offer-status" class="result-note" role="status"></p>
+              <p id="ghost-offer-error" class="field-error" role="alert"></p>
+            </details>
+          </div>
+        </div>
 
         <form id="compose-form" class="compose-form" autocomplete="off" novalidate hidden>
           <div class="measure-row compose-measure">
@@ -306,136 +402,31 @@
         </div>
       </section>
 
-      <section id="results-screen" class="screen results-screen" data-screen="results" aria-labelledby="results-heading" hidden>
-        <div class="results-layout">
-          <header class="section-heading">
-            <h1 id="results-heading" tabindex="-1"><span id="result-delta">No run yet.</span></h1>
-            <p id="result-comparison-note" class="result-note"></p>
-            <p id="train-learn" class="first-run-learn">New to typing? <button class="quiet-link" type="button" data-action="open-lessons">Learn to type</button>.</p>
-          </header>
-
-          <article id="run-card" class="run-card" aria-label="Run summary" hidden>
-            <div class="run-card-score">
-              <strong id="result-wpm" class="num" data-bare>—</strong>
-              <span class="run-card-unit" data-speed-unit>wpm</span>
-            </div>
-            <dl class="run-card-facts">
-              <div><dt>accuracy</dt><dd><strong id="result-accuracy" class="num">—</strong><b>%</b></dd></div>
-              <div><dt>first-try errors</dt><dd id="result-errors" class="num">—</dd></div>
-              <div><dt>time</dt><dd id="result-time" class="num">—</dd></div>
-            </dl>
-            <dl class="run-card-facts run-card-more">
-              <div id="result-raw-row"><dt data-speed-unit="raw {unit}">raw wpm</dt><dd id="result-raw" class="num" data-bare>—</dd></div>
-              <div title="100 minus the variation of your per-second raw speed; needs 3 seconds"><dt>consistency</dt><dd><strong id="result-consistency" class="num">—</strong><b>%</b></dd></div>
-              <div title="The finished text: correct / still wrong / extra / missed characters. Slips you fixed count as first-try errors"><dt>final c/i/e/m</dt><dd id="result-chars" class="num">—</dd></div>
-            </dl>
-            <p class="metric-note"><span id="speed-definition"></span> · accuracy counts every character typed, corrected ones included</p>
-            <p class="condition-copy" id="result-conditions">english · common words</p>
-            <details class="manual-panel metric-more">
-              <summary>How raw, consistency and c/i/e/m are counted</summary>
-              <p class="metric-note">raw counts every character typed, mistakes included · consistency is 100 minus the variation of per-second speed · final c/i/e/m: correct, still wrong, extra past the end, missed; fixed slips are first-try errors</p>
-            </details>
-          </article>
-
-          <div class="results-drill">
-            <article id="ghost-result" class="comparison-panel ghost-result" aria-labelledby="ghost-result-heading" hidden>
-              <h2 id="ghost-result-heading">Ghost race</h2>
-              <div id="ghost-result-rows" class="race-results"></div>
-              <p id="ghost-result-rule" class="ghost-result-rule"></p>
-              <p id="ghost-result-status"></p>
-              <button id="ghost-result-action" class="btn btn-secondary" type="button" hidden>Race again</button>
-            </article>
-
-            <article id="comparison-panel" class="comparison-panel" data-outcome="insufficient" hidden>
-              <h2 id="comparison-status">There is not enough evidence to call a change yet.</h2>
-              <div class="comparison-rows">
-                <div><span>accuracy</span><strong id="comparison-accuracy" class="num">—</strong></div>
-                <div><span>target timing</span><strong id="comparison-timing" class="num">—</strong></div>
-                <div><span data-speed-unit>wpm</span><strong id="comparison-wpm" class="num" data-signed>—</strong></div>
-              </div>
-              <p><span id="comparison-sample">No observed sample</span> · <span id="comparison-caveat">One sample, not proof of lasting change.</span></p>
-            </article>
-
-            <article class="recommendation-panel">
-              <h2 id="recommendation-title">Finish a run to get a drill.</h2>
-              <p id="recommendation-evidence"></p>
-              <div id="recommendation-list" class="evidence-list" aria-label="Observed weak patterns"></div>
-              <p id="recommendation-meta" class="recommendation-meta">About 1 min, then a fresh 30 s passage.</p>
-              <div class="recommendation-actions">
-                <button id="start-drill" class="btn btn-primary" type="button" data-action="start-drill" disabled>Start drill</button>
-                <button id="skip-to-retest" class="btn btn-ghost" type="button" data-action="skip-to-retest" disabled>Skip to retest</button>
-                <button id="run-again" class="btn btn-ghost" type="button" data-action="run-again">Run again</button>
-                <button id="watch-replay" class="btn btn-ghost" type="button" data-action="watch-replay" hidden>Watch replay</button>
-              </div>
-            </article>
-
-            <details class="manual-panel">
-              <summary id="manual-heading">Drill something else</summary>
-              <form id="manual-target" novalidate>
-                <label for="manual-target-input" class="sr-only">Letters or a word to drill</label>
-                <div class="input-action">
-                  <input id="manual-target-input" class="input" type="text" maxlength="16" placeholder="letters or a word, e.g. br" aria-describedby="manual-target-error">
-                  <button id="apply-manual-target" class="btn btn-secondary" type="submit">Drill it</button>
-                </div>
-                <p id="manual-target-error" class="field-error" role="alert"></p>
-              </form>
-            </details>
-            <details id="ghost-offer" class="manual-panel ghost-offer" hidden>
-              <summary>Challenge a friend with this run</summary>
-              <p class="ghost-offer-copy">They race your keystrokes on this text within 7 days.</p>
-              <div id="ghost-offer-empty" hidden>
-                <p class="ghost-offer-copy">Your friend list is empty.</p>
-                <button id="ghost-offer-friends" class="btn btn-ghost btn-sm" type="button">Open online races</button>
-              </div>
-              <form id="ghost-offer-form" class="ghost-offer-form" novalidate>
-                <label class="filter-field" for="ghost-friend">Friend
-                  <select id="ghost-friend" class="input"></select>
-                </label>
-                <label class="filter-field" for="ghost-name">Name they see
-                  <input id="ghost-name" class="input" type="text" maxlength="24" autocomplete="nickname" placeholder="Name">
-                </label>
-                <button id="send-ghost" class="btn btn-secondary" type="submit">Send challenge</button>
-              </form>
-              <p id="ghost-offer-status" class="result-note" role="status"></p>
-              <p id="ghost-offer-error" class="field-error" role="alert"></p>
-            </details>
+      <section id="train-screen" class="screen train-screen" data-screen="train" aria-labelledby="train-heading" hidden>
+        <div id="train-next" class="train-block">
+          <h1 id="train-heading" tabindex="-1">General drill</h1>
+          <p id="train-words" class="train-words" hidden></p>
+          <p id="train-evidence" class="train-evidence" hidden></p>
+          <div class="train-actions">
+            <button id="start-drill" class="btn btn-primary" type="button" data-action="start-drill">Drill and retest</button>
           </div>
-
-          <div class="run-trace">
-            <figure class="run-card-graph">
-              <div id="speed-graph" class="speed-graph" role="img" aria-label="Speed over time"></div>
-              <figcaption class="graph-legend" aria-hidden="true">
-                <span class="legend-speed" data-speed-unit="speed · {unit}">speed · wpm</span>
-                <span class="legend-average">average</span>
-                <span class="legend-miss">mistake</span>
-              </figcaption>
-            </figure>
-            <div class="run-card-wordlist">
-              <div id="result-words" class="run-card-words" role="listbox" aria-label="Words typed; mistyped words are marked. Arrow keys move between words."></div>
-              <p id="result-word-detail" class="word-detail"></p>
-            </div>
-            <p class="word-detail practice-evidence" id="practice-words-evidence" hidden></p>
-            <button id="practice-words" class="btn btn-ghost run-card-practice" type="button" data-action="practice-words" hidden>Practice missed words</button>
-          </div>
-
-          <!-- Block flow, so the grid gap doesn't sit between the two: one hairline and 32px. -->
-          <div class="results-history">
-            <section class="training-memory" aria-labelledby="training-memory-heading">
-              <h2 id="training-memory-heading">Patterns across runs</h2>
-              <div class="filter-field">
-                <select id="training-conditions" class="input" aria-label="Test conditions"></select>
-              </div>
-              <p id="training-memory-note" class="result-note"></p>
-              <div id="training-targets"></div>
-            </section>
-            <section class="training-memory missed-words" aria-labelledby="missed-words-heading">
-              <h2 id="missed-words-heading" tabindex="-1">Words you keep missing</h2>
-              <p id="missed-words-note" class="result-note"></p>
-              <ol id="missed-words-list" class="missed-words-list" hidden></ol>
-              <button id="practice-missed-list" class="btn btn-secondary" type="button" data-action="practice-missed-list" hidden>Practice these words</button>
-            </section>
-          </div>
+          <p id="train-last" class="train-last" hidden></p>
         </div>
+
+        <article id="comparison-panel" class="train-block comparison-panel" data-outcome="insufficient" aria-labelledby="comparison-status" hidden>
+          <h1 id="comparison-status" tabindex="-1">Retest complete.</h1>
+          <dl class="comparison-rows">
+            <div id="comparison-target-row"><dt id="comparison-target-label">missed</dt><dd><strong id="comparison-target" class="num">—</strong><span id="comparison-target-was"></span></dd></div>
+            <div><dt>accuracy</dt><dd><strong class="num"><span id="comparison-accuracy-now">—</span><b>%</b></strong><span id="comparison-accuracy" class="num">—</span></dd></div>
+            <div><dt data-speed-unit>wpm</dt><dd><strong id="comparison-wpm-now" class="num" data-bare>—</strong><span id="comparison-wpm" class="num" data-bare data-signed>—</span></dd></div>
+          </dl>
+          <p id="comparison-conditions" class="condition-copy"></p>
+          <p id="comparison-caveat"></p>
+          <div class="train-actions">
+            <button id="comparison-back" class="btn btn-primary" type="button">Back to practice</button>
+            <button id="comparison-next" class="btn btn-secondary" type="button" hidden>Next</button>
+          </div>
+        </article>
       </section>
 
       <section id="learn-screen" class="screen" data-screen="learn" aria-labelledby="learn-heading" hidden>
@@ -589,6 +580,14 @@
             <h2 id="comparison-history-heading">Drills and retests</h2>
             <p id="history-empty" class="result-note" hidden>None in this period.</p>
             <div id="history-list" class="history-list" aria-live="polite" hidden></div>
+          </section>
+          <section class="training-memory" aria-labelledby="training-memory-heading">
+            <h2 id="training-memory-heading">Patterns across runs</h2>
+            <div class="filter-field">
+              <select id="training-conditions" class="input" aria-label="Test conditions"></select>
+            </div>
+            <p id="training-memory-note" class="result-note"></p>
+            <div id="training-targets"></div>
           </section>
         </div>
         <section id="compose-history" class="progress-section compose-history" aria-labelledby="compose-history-heading" hidden>

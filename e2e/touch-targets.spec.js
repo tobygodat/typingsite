@@ -203,7 +203,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await page.keyboard.type(text.slice(6));
       await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
       small.push(...await sweep(page, 'results'));
-      await page.locator('#manual-heading').click();
+      // The 1–8 letter drill moved from the result into Practice's "more" menu.
+      await chooseMore(page, 'mode-drill');
+      await expect(page.locator('#manual-target')).toBeVisible();
       small.push(...await sweep(page, 'results, manual drill open'));
       // The ghost race offer, where a run offers one (signed in only).
       const offer = page.locator('.manual-panel > summary', { hasText: 'Challenge a friend' });
@@ -282,9 +284,19 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       small.push(...await sweep(page, 'account, signed in', '.corner'));
       await page.locator('#account-trigger').click();
 
+      // Train recommends from runs at the current conditions, so match the saved runs: 25 words from the top 1k.
+      await chooseSetting(page, 'word-list', '1k');
+      await closeSettings(page);
+      await chooseWords(page, 25);
       await openView(page, 'Train');
-      await expect(page.locator('#training-targets')).toContainText('observed in 2 runs');
+      await expect(page.locator('#train-heading')).toHaveText(/^Practice “/);
+      await expect(page.locator('#train-evidence')).toBeVisible();
       small.push(...await sweep(page, 'train'));
+      // The patterns across runs moved to Progress, with their "Practice … again" buttons.
+      await openView(page, 'Progress');
+      await expect(page.locator('#training-targets')).toContainText('observed in 2 runs');
+      await expect(page.locator('#training-targets button').first()).toBeVisible();
+      small.push(...await sweep(page, 'progress, patterns across runs'));
 
       await openView(page, 'Practice');
       await freshTextCheck(page);
