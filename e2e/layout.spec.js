@@ -52,6 +52,32 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
   });
 }
 
+for (const width of [320, 360]) test.describe(`live stats at ${width}px`, () => {
+  test.use({ viewport: { width, height: 640 }, ...phone });
+
+  test('the widest built-in figures fit mid-run without widening the column', async ({ page }) => {
+    await openApp(page);
+    await chooseWords(page, 25);
+    await typeInto(page, (await passageText(page)).slice(0, 20));
+    await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+    // Written and measured in one task, so the run's own tick can't rewrite them in between: a
+    // three-digit speed with every built-in length, and a four-digit cpm against the clock.
+    const cases = [['25', '/25', '188', 'wpm'], ['100', '/100', '999', 'wpm'], ['100', '/100', '999', 'cpm'], ['120', 's', '1999', 'cpm']];
+    for (const shown of cases) {
+      const fit = await page.evaluate(([timer, count, speed, unit]) => {
+        document.getElementById('timer').textContent = timer;
+        document.getElementById('timer-unit').textContent = count;
+        document.getElementById('live-wpm').textContent = speed;
+        document.querySelector('#live-stats [data-speed-unit]').textContent = unit;
+        document.getElementById('live-accuracy').textContent = '100';
+        const column = document.getElementById('typing-screen');
+        return { page: document.documentElement.scrollWidth - document.documentElement.clientWidth, column: column.scrollWidth - column.clientWidth };
+      }, shown);
+      expect(fit, shown.join(' ')).toEqual({ page: 0, column: 0 });
+    }
+  });
+});
+
 test.describe('narrow run card', () => {
   test.use({ viewport: { width: 320, height: 640 }, ...phone });
 
