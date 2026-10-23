@@ -1,5 +1,7 @@
 name: CI
 
+# Both jobs run on the self-hosted runner on tobygdesktop (~/actions-runner, see HANDOFF.md).
+# Its .env sets its own npm cache and E2E_PORT, and each job checks out under the runner's _work.
 on:
   pull_request:
   push:
@@ -15,15 +17,16 @@ concurrency:
 jobs:
   unit:
     name: Unit and build checks
-    runs-on: ubuntu-latest
+    # Never run a fork's code on the desktop.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, tobygdesktop]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run build
 
@@ -31,7 +34,7 @@ jobs:
     name: Deploy to Cloudflare
     needs: unit
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, tobygdesktop]
     timeout-minutes: 10
     environment:
       name: production

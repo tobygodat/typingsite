@@ -16,8 +16,8 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 ```
 
 - e2e serves on `E2E_PORT` (default 4173) and fakes Supabase. On a shared machine set your own port, or Playwright reuses another worktree's server.
-- CI, temporary while GitHub Actions is off: on tobygdesktop run `bash ~/.capy/drive/captain-typingsite-zhvfpa/skills/local-ci/run.sh <pr>` (`E2E=1` adds the browser suite). A PR is ready when `local-ci/tobygdesktop` is green at its head.
-- Deploy, temporary: by hand after each merge, on tobylaptop in `~/Projects/typingsite`: `git pull --ff-only && npm test && npm run build && npx wrangler@4.151.0 deploy`, then check live `/`, `src/app.js` and `src/styles.css` match `dist/`. Site: https://stilltype.tobygodat.workers.dev (Cloudflare Worker `stilltype`, `wrangler.jsonc`).
+- CI: `ci.yml` runs on a self-hosted runner on tobygdesktop (labels `self-hosted, tobygdesktop`), because hosted runners are blocked by billing. Every PR from this repo gets the "Unit and build checks" check (`npm ci`, `npm test`, `npm run build`); a PR is ready when it is green at its head. PRs from forks never run there. The runner lives in `~/actions-runner` (its `.env` sets its own npm cache and `E2E_PORT=4917`) as the systemd user service `actions-runner-typingsite`: `systemctl --user status|stop|start actions-runner-typingsite`. The browser suite still runs only locally.
+- Deploy: every push to master deploys from the same runner after the checks pass (`ci.yml` "Deploy to Cloudflare", repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`). By hand if the runner is down, on tobylaptop in `~/Projects/typingsite`: `git pull --ff-only && npm test && npm run build && npx wrangler@4.151.0 deploy`, then check live `/`, `src/app.js` and `src/styles.css` match `dist/`. Site: https://stilltype.tobygodat.workers.dev (Cloudflare Worker `stilltype`, `wrangler.jsonc`).
 - Supabase project `bicbyljexprkaedakofa` has every file in `supabase/migrations/`. Its history uses other timestamps, so apply a new migration alone (`supabase db query --linked -f <file>`), not with `db push`. `supabase functions deploy delete-account` deploys account deletion; `supabase functions deploy generate-theme` deploys theme generation (needs the `ANTHROPIC_API_KEY` secret).
 - Release: bump the version in `package.json`, its lock and `index.html` (`tests/release.test.js` checks), and rewrite the What's new bullets (six at most).
 
@@ -108,6 +108,5 @@ Also `sw.js` (offline shell), `docs/` (specs, `online-races.md`, verification re
 - Leaked-password protection is off: Supabase offers it only on Pro. toby to decide.
 - Signing out with everything sent also deletes this device's recordings. toby to decide whether to keep them.
 - The worst-case profile row is about 2 MB, 1.5 MB from 2026-12-01, sent whole on every push (`scripts/measure-profile.mjs`). Don't grow retention.
-- When Actions returns, `ci.yml` deploys master with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 - Vercel is retired (`vercel.json` turns off its deploys); toby can delete the project.
 - Not built: public matchmaking, rankings, anti-cheat. The recommender is a baseline, not ML.

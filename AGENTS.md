@@ -3,8 +3,9 @@ Read HANDOFF.md first — current state, the work queue, and the decisions alrea
 PRODUCT.md holds durable product truth (users, purpose, metric contract, accessibility floor).
 
 ## Before asking to merge
-GitHub Actions is off for now, so CI runs on tobygdesktop (see HANDOFF.md) and the browser suite
-runs only locally. Run it and report the result in the PR:
+The "Unit and build checks" check runs on a self-hosted Actions runner on tobygdesktop (see
+HANDOFF.md) and must be green at your head. The browser suite runs only locally. Run it and report
+the result in the PR:
 `npm test`, `npm run build`, then `npm run test:e2e`. The suite uses `CHROMIUM` when set and
 Playwright's own browser otherwise, so without `npx playwright install chromium` point it at a system
 build: `CHROMIUM=/usr/bin/chromium` on the desktop, `CHROMIUM=/usr/local/bin/chromium` on cloud
