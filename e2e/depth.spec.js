@@ -28,8 +28,8 @@ test('Progress filters comparable runs, opens chart points, and explains a saved
   await page.locator('.history-summary').click();
   await expect(page.locator('.history-detail')).toContainText('before');
   await expect(page.locator('.history-detail')).toContainText('after');
-  // A retest always follows its minute of drill now, so the loop records the drill it ran.
-  await expect(page.locator('.history-detail')).toContainText('drill60 s · general');
+  // A retest always follows its drill now, so the loop records the drill it ran.
+  await expect(page.locator('.history-detail')).toContainText('drill30 s · general');
 
   await openView(page, 'Practice');
   await chooseWords(page, 25);
@@ -127,9 +127,12 @@ test('older compact history survives without full traces and offers an honest st
   await expect(page.locator('.history-detail')).toContainText('60 wpm · 98%');
   await expect(page.locator('.history-detail')).toContainText('65 wpm · 99%');
   await expect(page.locator('.history-detail')).toContainText('Too few samples');
+  // A loop saved before drills recorded their length ran the old 60 s drill.
+  await expect(page.locator('.history-detail')).toContainText('drill60 s · th');
   await page.locator('.history-detail button').click();
   await expect(page.locator('#session-description')).toContainText('Standalone drill');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#condition-line')).toContainText('drill · 30 s');
 });
 
 test('clear and undo include daily history, which guests do not retain after reload', async ({ page }) => {

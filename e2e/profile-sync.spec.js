@@ -811,7 +811,7 @@ for (const when of ['prepared', 'running']) {
     await chooseWords(other, 25);
     await expect.poll(() => cloud(supabase)?.preferences.count).toBe(25);
     if (when === 'prepared') await typeInto(page, drill.slice(0, 5));
-    await page.clock.fastForward(60_000);
+    await page.clock.fastForward(30_000);
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
     await expect(page.locator('#condition-line')).toContainText('10 words');
     await typeInto(page, await passageText(page));

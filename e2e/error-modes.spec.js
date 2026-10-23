@@ -70,14 +70,14 @@ test('fail on any error ends a local challenge turn as failed', async ({ page })
 });
 
 // A drill that a failure policy ends shows its failed result, like any other failed run, instead of moving
-// straight on to the retest: Try drill again repeats it, and a drill that runs its minute goes on to the retest.
+// straight on to the retest: Try drill again repeats it, and a drill that runs its 30 seconds goes on to the retest.
 const FAILURE_LABELS = { 'fail-any': 'fail on any error', 'fail-word': 'fail on word error' };
 
 // Starts the drill from the run's result and fails it on a wrong letter, judged at the space for fail on word error.
 async function failDrill(page, policy, reason, options = {}) {
   await page.locator('#result-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-  await expect(page.locator('#condition-line')).toContainText(`drill · 60 s · english · physical keyboard · ${FAILURE_LABELS[policy]}`);
+  await expect(page.locator('#condition-line')).toContainText(`drill · 30 s · english · physical keyboard · ${FAILURE_LABELS[policy]}`);
   const text = await passageText(page);
   const at = text.indexOf(' ', 12) - 1;
   await typeInto(page, text.slice(0, at) + (text[at] === 'x' ? 'z' : 'x') + (policy === 'fail-word' ? ' ' : ''), '#typing-input', options);
@@ -85,7 +85,7 @@ async function failDrill(page, policy, reason, options = {}) {
   await expect(page.locator('#result-delta')).toHaveText(`failed · ${reason}`);
 }
 
-test('a drill failed by fail-word shows its result, then retries, and goes on to the retest once it runs its minute', async ({ page }) => {
+test('a drill failed by fail-word shows its result, then retries, and goes on to the retest once it runs its 30 seconds', async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   await chooseCorrection(page, 'fail-word');
@@ -102,7 +102,7 @@ test('a drill failed by fail-word shows its result, then retries, and goes on to
   await failDrill(page, 'fail-word', 'word error');
   await expect(page.locator('#result-drill')).toBeFocused();
 
-  // A third try that runs its minute without a wrong word goes on to the retest of the same baseline.
+  // A third try that runs its 30 seconds without a wrong word goes on to the retest of the same baseline.
   await page.locator('#result-drill').click();
   await finishDrill(page);
   await expect(page.locator('#condition-line')).toContainText('10 words · plain · physical keyboard · fail on word error');
@@ -113,7 +113,7 @@ test('a drill failed by fail-word shows its result, then retries, and goes on to
   await expect(page.locator('.history-target')).toHaveText('General drill and retest');
 });
 
-test('a drill that runs its minute under fail on any error still goes straight to the retest', async ({ page }) => {
+test('a drill that runs its 30 seconds under fail on any error still goes straight to the retest', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
   await chooseWords(page, 10);
@@ -122,7 +122,7 @@ test('a drill that runs its minute under fail on any error still goes straight t
   await page.locator('#result-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await typeInto(page, (await passageText(page)).slice(0, 20));
-  await page.clock.fastForward(60_000);
+  await page.clock.fastForward(30_000);
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
   await expect(page.locator('#announcement')).toHaveText('Drill complete. Retest ready.');

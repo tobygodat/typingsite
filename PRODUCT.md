@@ -37,7 +37,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 ## Capabilities and Constraints
 
 **Shipped today** (Stilltype, working title):
-- A complete guest loop: timed/word/quote test (preset or custom length), observed recommendation or manual target, one-minute drill, unseen comparable retest, and saved local progress.
+- A complete guest loop: timed/word/quote test (preset or custom length), observed recommendation or manual target, 30-second drill, unseen comparable retest, and saved local progress.
 - Quote length/difficulty filters, optional punctuation, corrected WPM (or CPM, display only) and input accuracy, first-attempt error retention, keyboard display with layout legends and an optional finger map, text size, typing and app fonts, word highlight, one-line tape, live-metric, correction-policy (free, stop on error, no backspace, fail on word error, fail on any error) and focus preferences.
 - Private online two-player races with account invitations, guest links, a shared server countdown, live progress and unranked results. A signed-in account hosts; guests can join without an account. Shared-keyboard challenges remain available.
 - Book mode: the opening sections of four public-domain books, typed a page at a time, with the place in each book kept. Pages are practice runs with their own conditions.

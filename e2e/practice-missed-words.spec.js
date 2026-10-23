@@ -176,7 +176,7 @@ test('a drill offers no word practice, while a daily run does', async ({ page })
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   const drill = (await passageText(page)).split(' ');
   await typeWithMisses(page, `${drill.slice(0, 6).join(' ')} `, [1, 3]);
-  await page.clock.fastForward(60_000);
+  await page.clock.fastForward(30_000);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-delta')).toHaveText('Drill complete · not counted toward your best');
   await expect(page.locator('#result-words .word-miss').first()).toBeVisible();
@@ -268,13 +268,13 @@ test('words practised from a drill’s retest are drilled and retested under the
   await openApp(page);
   await chooseWords(page, 10);
   await completePassage(page);
-  // A manual "br" drill, then the retest it starts after its minute, typed with two misses.
+  // A manual "br" drill, then the retest it starts after its 30 seconds, typed with two misses.
   await chooseMore(page, 'mode-drill');
   await page.locator('#manual-target-input').fill('br');
   await page.locator('#apply-manual-target').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await typeInto(page, (await passageText(page)).slice(0, 20));
-  await page.clock.fastForward(60_000);
+  await page.clock.fastForward(30_000);
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
   const retest = await passageText(page);
   const words = retest.split(' ');
