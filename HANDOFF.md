@@ -1,6 +1,6 @@
 # Handoff — Stilltype
 
-Updated 21 October 2026 at master 4642623. Read this first, then `PRODUCT.md`, `DESIGN.md` and `AGENTS.md`. Feature detail lives in each module's comments and tests.
+Updated 23 October 2026 at master b3893d7. Read this first, then `PRODUCT.md`, `DESIGN.md` and `AGENTS.md`. Feature detail lives in each module's comments and tests.
 
 ## What it is
 
@@ -34,7 +34,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - Inbox and toast for invitations and challenges.
 - Settings dialog, ⌘K / Ctrl-K palette, Monkeytype import.
 - Rules: five correction policies, strict space, quick end, minimums, repeat quotes, pace caret.
-- Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), a background image, text size, typing and app fonts, word highlight (optionally sliding between words), one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
+- Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), a background image (regular, dither or gradient, with blur, opacity and height), text size, typing and app fonts, word highlight (optionally sliding between words), one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
 - Accounts: email or Google, sync, clear history with Undo, account deletion.
 - Offline shell, What's new, anonymous feature suggestions.
 
@@ -59,7 +59,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - `tape.js`: one-line tape geometry.
 - `word-highlight.js`: word highlight.
 - `fonts.js`: typing and app font choices; `index.html` applies an account's before first paint.
-- `wallpaper.js`: background image: the device-only copy, its dither mask, its settings row.
+- `wallpaper.js`: background image: the device-only copy and its look (style, blur, opacity, height), the dither mask and gradient wash, the reading band cut out of it, its settings rows.
 - `units.js`: wpm and cpm display.
 - `layouts.js`: layout legends, finger map.
 - `sound.js`: typing sounds.
@@ -94,7 +94,7 @@ Also `sw.js` (offline shell), `docs/` (specs, `online-races.md`, verification re
 - Motion is fluid (AGENTS.md): `--dur-*` tokens only, never moving the letters being read, zero under reduced motion; scoring never reads it.
 - Every theme holds 4.5:1 text and 3:1 non-text contrast (`tests/contrast.test.js`). Custom themes are the exception: the editor notes contrast under AA at the token but never blocks a save.
 - Custom themes are stored as JSON text (`customThemes`), so older builds compare them by value and never restamp them. A custom theme joins the dark or light pick by its background's luminance. The theme-generation prompt is never logged or stored.
-- The background image stays on the device (IndexedDB, never the profile), is tinted by CSS from the theme, fades out above the passage and dims mid-run (`e2e/wallpaper.spec.js`).
+- The background image stays on the device (IndexedDB, never the profile), fades out at the countdown and dims mid-run (`e2e/wallpaper.spec.js`). It is stored in colour (a WebP at most 1024 px); one picked before background styles is a grey copy and shows grey until re-picked. Its style (regular, dither, gradient), blur (0–32 px), opacity (10–100%) and height (0–100%) are device settings stored beside it, never in the profile, and show only once there is an image. Dither, the default, is tinted by CSS from the theme; blur means nothing there and is disabled. Height moves where the fade ends on the practice screen, from the top of the reading band (countdown, passage and controls) at 0 to the bottom of the screen at 100; other screens keep 0. No strength of photo keeps the letters' contrast, so the reading band, the key hints and the footer items are cut out of the layer's mask with a feathered edge (`wallpaper.js` measures them on resize and scroll): the picture never paints behind them, which the e2e spec checks in every theme at full strength, the most blur and full height. Blur, opacity and height are CSS on the layer, so a slider never redraws; the dither mask and gradient wash are drawn once per pick or style and again only when the screen's size in cells changes.
 - The practice rail never moves between modes (`e2e/layout.spec.js`).
 - A slow reply never acts over what the person did since (`raceContext`).
 - Layouts are labels; people remap in the OS.

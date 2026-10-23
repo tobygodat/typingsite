@@ -5383,7 +5383,7 @@ function bindEvents() {
     onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
   });
   keybindingEditor.refresh();
-  createWallpaper({ layer: $('wallpaper'), input: $('wallpaper-file'), remove: $('wallpaper-remove'), error: $('wallpaper-error') });
+  createWallpaper({ layer: $('wallpaper'), input: $('wallpaper-file'), remove: $('wallpaper-remove'), error: $('wallpaper-error'), style: $('wallpaper-style'), blur: $('wallpaper-blur'), opacity: $('wallpaper-opacity'), reach: $('wallpaper-reach'), surfaces: [$('typing-form'), $('compose-form')], chrome: [...document.querySelectorAll('.shortcut-row, .site-footer > *')] });
   settingsView = createSettingsView({ dialog: $('settings-dialog'), trigger: $('settings-trigger'), fallback: $('exit-focus'), stopRecording: () => keybindingEditor.stopRecording() });
   onSetting('live-toggle', (value) => { prefs.liveMetrics = value === 'true'; applyPreferences(); saveChoice('liveMetrics'); });
   onSetting('keyboard-toggle', (value) => { prefs.keyboard = value === 'true'; applyPreferences(); saveChoice('keyboard'); });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ditherMask, greyscale } from '../src/wallpaper.js';
+import { colourGrid, ditherMask, greyscale, readLook, smoothScale } from '../src/wallpaper.js';
 
 const rgba = (values) => new Uint8ClampedArray(values.flatMap((value) => [value, value, value, 255]));
 const levels = (mask) => [...mask.filter((_, i) => i % 4 === 3)];
@@ -50,4 +50,36 @@ test('a small image still fills a large grid', () => {
   assert.equal(mask.length, 300);
   assert.equal(mask[0], 0);
   assert.equal(mask[29], 255);
+});
+
+test('colourGrid averages each cell in colour, opaque, cropped like cover', () => {
+  // Left half red, right half blue, twice as wide as tall: a 2 × 1 grid shows one colour per half.
+  const width = 8;
+  const data = new Uint8ClampedArray(width * 4 * 4).map((_, i) => {
+    const x = (i / 4 | 0) % width;
+    return [x < 4 ? 255 : 0, 0, x < 4 ? 0 : 255, 255][i % 4];
+  });
+  assert.deepEqual([...colourGrid({ width, height: 4, data }, 2, 1)], [255, 0, 0, 255, 0, 0, 255, 255]);
+  const mixed = colourGrid({ width, height: 4, data }, 1, 1);
+  assert.deepEqual([...mixed], [128, 0, 128, 255]);
+});
+
+test('smoothScale keeps each cell centre, blends between them and holds flat at the edges', () => {
+  const grid = new Uint8ClampedArray([0, 0, 0, 255, 200, 100, 50, 255]);
+  const out = smoothScale(grid, 2, 1, 8);
+  const red = (x) => out[x * 4];
+  assert.equal(out.length, 16 * 8 * 4);
+  assert.equal(red(0), 0);
+  assert.equal(red(15), 200);
+  for (let x = 1; x < 16; x++) assert.ok(red(x) >= red(x - 1), `rises at ${x}`);
+  assert.ok(red(7) > 0 && red(8) < 200);
+  assert.equal(red(7) + red(8), 200);
+  assert.deepEqual([...out.slice(0, 4)], [...out.slice(16 * 4 * 7, 16 * 4 * 7 + 4)]);
+});
+
+test('readLook defaults to sharp dither at full strength, ending below the countdown, and clamps what it reads', () => {
+  assert.deepEqual(readLook(), { style: 'dither', blur: 0, opacity: 100, reach: 0 });
+  assert.deepEqual(readLook({ style: 'regular', blur: 12, opacity: 55, reach: 40 }), { style: 'regular', blur: 12, opacity: 55, reach: 40 });
+  assert.deepEqual(readLook({ style: 'sepia', blur: 900, opacity: 0, reach: 300 }), { style: 'dither', blur: 32, opacity: 10, reach: 100 });
+  assert.deepEqual(readLook({ style: 'gradient', blur: 'x', opacity: null }), { style: 'gradient', blur: 0, opacity: 100, reach: 0 });
 });
