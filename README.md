@@ -21,7 +21,7 @@ Open [localhost:5173](http://localhost:5173). The interface and solo practice ru
 
 1. Pick time, words or quote. Typing starts the clock; Backspace corrects mistakes and Escape restarts by default. Errors must be corrected before advancing.
 2. Finish a run to see corrected WPM, input accuracy and observed pattern evidence. Small samples get a general drill, not a confident diagnosis.
-3. Start the one-minute drill, or enter your own target. Manual drills also work before a baseline exists.
+3. Start the 30-second drill, or enter your own target. Manual drills also work before a baseline exists.
 4. With a baseline, the drill opens an unseen retest under the original conditions. Results show changes, sample limits and whether the comparison is valid. A depleted quote pool does not reuse a quote as a fresh retest.
 5. Open Progress for WPM and accuracy trends, weekly medians, run details and expandable comparisons. Filter by exact test conditions and the last 7 days, 30 days or all saved runs. Select a chart point to open its run. Comparisons include before/after scores, the drill, and timing sample counts, with an action to practice the target again.
 

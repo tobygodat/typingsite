@@ -166,7 +166,7 @@ test('a drill keeps its target keys marked on the new legend', async ({ page }) 
   await page.locator('#manual-target-input').fill('th');
   await page.locator('#apply-manual-target').click();
   await expect(page.locator('#session-title')).toHaveText('Practice “th”');
-  await expect(page.locator('#condition-line')).toContainText('drill · 60 s · english · physical keyboard · workman');
+  await expect(page.locator('#condition-line')).toContainText('drill · 30 s · english · physical keyboard · workman');
   const targets = page.locator('#keyboard .key.target');
   await expect(targets).toHaveCount(2);
   expect(await targets.evaluateAll((keys) => keys.map((key) => key.dataset.key))).toEqual(['h', 't']);
@@ -234,7 +234,7 @@ test.describe('on a touch screen', () => {
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
     await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
 
-    // The retest starts after the drill's minute, and on touch it compares with the touch baseline.
+    // The retest starts after the drill's 30 seconds, and on touch it compares with the touch baseline.
     await finishDrill(page);
     await page.locator('#typing-input').tap();
     await expect(page.locator('#condition-line')).toContainText('10 words · plain · touch input · continue on error');

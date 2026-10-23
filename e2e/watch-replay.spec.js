@@ -128,7 +128,7 @@ test('Watch replay plays the run the result shows, and a drill whose retest was 
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   const drill = await passageText(page);
   await typeInto(page, drill.slice(0, 12));
-  await page.clock.fastForward(60_000);
+  await page.clock.fastForward(30_000);
   await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', 'unavailable');
 
   // Back on Practice a fresh passage waits: the drill is never offered as a replay.

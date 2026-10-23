@@ -338,8 +338,8 @@ test('a drill from a words baseline is timed: quick end is disabled and a rule c
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await page.locator('#result-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-  // The baseline was a words run, but every drill is a timed minute, so quick end has nothing to change.
-  await expect(page.locator('#condition-line')).toHaveText('drill · 60 s · english · physical keyboard · continue on error');
+  // The baseline was a words run, but every drill is timed, so quick end has nothing to change.
+  await expect(page.locator('#condition-line')).toHaveText('drill · 30 s · english · physical keyboard · continue on error');
   await openSettings(page, 'practice');
   await expect(page.locator('#quick-end-toggle input').first()).toBeDisabled();
   await expect(page.locator('#quick-end-toggle input[value="true"]')).not.toBeChecked();
@@ -367,7 +367,7 @@ test('a drill from a words baseline is timed: quick end is disabled and a rule c
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#session-title')).toHaveText(title);
   await expect(page.locator('#typing-status')).toHaveText('Ready');
-  await expect(page.locator('#condition-line')).toHaveText('drill · 60 s · english · physical keyboard · continue on error · strict space');
+  await expect(page.locator('#condition-line')).toHaveText('drill · 30 s · english · physical keyboard · continue on error · strict space');
   expect(await passageText(page)).toBe(drill);
   const at = midWord(drill);
   await typeInto(page, `${drill.slice(0, at)} `);

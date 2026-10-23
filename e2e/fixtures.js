@@ -72,15 +72,15 @@ export async function completePassage(page) {
   return text;
 }
 
-// A drill lasts a minute and then starts its retest. The clock is faked from here on (a spec that faked
-// it already keeps its own), a few letters start the drill and the minute is skipped. Installed this late,
+// A drill lasts 30 seconds and then starts its retest. The clock is faked from here on (a spec that faked
+// it already keeps its own), a few letters start the drill and its 30 seconds are skipped. Installed this late,
 // WebKit's faked performance.now() jumps back and a touch drill never ends, so a phone-viewport spec
 // installs the clock before openApp.
 export async function finishDrill(page) {
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await page.clock.install().catch(() => {});
   await typeInto(page, (await passageText(page)).slice(0, 4));
-  await page.clock.fastForward(60_000);
+  await page.clock.fastForward(30_000);
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
 }
 

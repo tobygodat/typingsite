@@ -758,6 +758,8 @@ const drillVocabulary = (bank) => [...new Set([
   ...quoteCorpus.flatMap((item) => item.text.toLowerCase().match(/[a-z]+/g) || []),
 ])];
 
+export const DRILL_SECONDS = 30;
+
 export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
   const safeTarget = normalizeManualTarget(target);
   const bank = wordList(list);

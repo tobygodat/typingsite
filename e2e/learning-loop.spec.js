@@ -47,8 +47,10 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   }).toBe(true);
   expect(wrap.height).toBeGreaterThan(0);
 
-  // The drill is one minute long, then the retest starts itself.
-  await page.clock.fastForward(60_000);
+  // The drill is 30 seconds long, then the retest starts itself.
+  await page.clock.fastForward(29_000);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await page.clock.fastForward(1_000);
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
   await expect(page.locator('#session-title')).toHaveText('Measure the change');
   await expect(page.locator('#condition-line')).toContainText('10 words');
@@ -66,7 +68,7 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   await expect(page.locator('.history-target')).toHaveText('“br” drill and retest');
   await expect(page.locator('.history-conditions')).toContainText('10 words');
   await page.locator('.history-summary').click();
-  await expect(page.locator('.history-detail')).toContainText('60 s · br');
+  await expect(page.locator('.history-detail')).toContainText('30 s · br');
   // Ten words give too few "br" intervals to call a timing change.
   await expect(page.locator('.history-conditions')).toContainText(/ · br · \d+ before · \d+ after$/);
   await expect(page.locator('.history-detail')).toContainText(/“br” clean intervals: \d+ before \/ \d+ after\. Too few samples to call a timing change\./);
@@ -113,7 +115,7 @@ test('leaving a drill for another view ends it without drawing a retest passage'
   expect(supabase.profileFor(user.email).seenTextIds).toEqual(seen);
 
   // Train still drills and retests against the same baseline; the retest passage is drawn only once
-  // a drill has run its minute.
+  // a drill has run its 30 seconds.
   await openView(page, 'Train');
   await page.locator('#start-drill').click();
   await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
@@ -141,7 +143,7 @@ test('leaving a drill for another view ends it without drawing a retest passage'
   await expect(page.locator('#start-drill')).toBeEnabled();
   await page.locator('#start-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-  await expect(page.locator('#condition-line')).toContainText('drill · 60 s');
+  await expect(page.locator('#condition-line')).toContainText('drill · 30 s');
   await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
 });
 
@@ -201,7 +203,7 @@ test('a drill started from saved history, left once, is retested against that hi
   await typeInto(page, (await passageText(page)).slice(0, 8));
   await openView(page, 'Progress');
   await expect.poll(() => profile()?.runs?.map((run) => `${run.kind} ${run.status}`)).toEqual(['test complete', 'test complete', 'drill interrupted']);
-  // The same pattern again finds the saved baseline: its drill runs its minute, then the retest.
+  // The same pattern again finds the saved baseline: its drill runs its 30 seconds, then the retest.
   await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
   await expect(page.locator('#session-title')).toHaveText('Practice “th”');
   await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
@@ -274,7 +276,7 @@ test('a manual drill works without a baseline', async ({ page }) => {
   await page.locator('#apply-manual-target').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#session-title')).toHaveText('Practice “th”');
-  await expect(page.locator('#condition-line')).toContainText('drill · 60 s');
+  await expect(page.locator('#condition-line')).toContainText('drill · 30 s');
 });
 
 test('an exhausted quote pool refuses a retest and explains why', async ({ page }) => {
@@ -298,12 +300,12 @@ test('an exhausted quote pool refuses a retest and explains why', async ({ page 
   expect(seen.size).toBe(pool.length);
 
   await completePassage(page);
-  // The drill runs its minute, then the retest finds no unseen quote and Train says why.
+  // The drill runs its 30 seconds, then the retest finds no unseen quote and Train says why.
   await page.locator('#result-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await page.clock.install();
   await typeInto(page, (await passageText(page)).slice(0, 4));
-  await page.clock.fastForward(60_000);
+  await page.clock.fastForward(30_000);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'train');
   await expect(page.locator('#comparison-panel')).toHaveAttribute('data-outcome', 'unavailable');
   await expect(page.locator('#comparison-status')).toHaveText('No fair retest available.');

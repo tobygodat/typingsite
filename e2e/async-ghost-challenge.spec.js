@@ -890,7 +890,7 @@ test('a Race reply that lands after a drill ran out and its retest began keeps t
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await typeInto(page, (await passageText(page)).slice(0, 20), '#typing-input', { delay: 90 });
   // In the drill's last seconds Lin races Ada from the inbox.
-  await page.clock.fastForward(55_000);
+  await page.clock.fastForward(25_000);
   await page.mouse.move(5, 5);
   await page.mouse.move(40, 40);
   const reply = await holdInboxRace(page, supabase);

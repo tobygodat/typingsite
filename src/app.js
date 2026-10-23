@@ -24,6 +24,7 @@ import {
   inputRules,
   deadMark,
   makeAdaptive,
+  DRILL_SECONDS,
   makeDrill,
   minimumStop,
   normalizeCustomText,
@@ -496,7 +497,7 @@ function describeRules(value) {
   return [strictSpace, quickEnd].filter(Boolean).map((rule) => ` · ${rule}`).join('');
 }
 
-// A drill is always one minute of generated text, whatever the baseline was. Its conditions record
+// A drill is always DRILL_SECONDS of generated text, whatever the baseline was. Its conditions record
 // quick end at the default (sessionConditions), so only rules that applied are listed.
 // The layout setting describes a physical keyboard, so touch runs always keep the default key.
 function inputLayout(inputClass) {
@@ -521,7 +522,7 @@ function describeRun(run) {
     const page = run.conditions?.mode === 'book' && bookPage(run.textId);
     return [`${run.fresh === false ? 'repeated text · ' : ''}${page ? `page ${page} · ` : ''}${describeConditions(run.conditions)}`, ...(minimums.length ? [' · ', ...minimums] : [])];
   }
-  return `drill · 60 s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}${describeRules(run.conditions)}`;
+  return `drill · ${DRILL_SECONDS} s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}${describeRules(run.conditions)}`;
 }
 
 function describeLesson(run) {
@@ -1377,7 +1378,7 @@ const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custo
 function sessionDurationMs(kind = sessionKind) {
   if (kind === 'challenge') return ghostRace?.duration ? ghostRace.duration * 1000 : null;
   if (['daily', 'lesson', 'missed', 'race'].includes(kind)) return null;
-  if (kind === 'drill') return 60000;
+  if (kind === 'drill') return DRILL_SECONDS * 1000;
   if (kind === 'custom') return null;
   if (prefs.mode === 'time') return prefs.duration * 1000;
   if (prefs.mode === 'standard') return STANDARD_SECONDS * 1000;
@@ -1386,7 +1387,7 @@ function sessionDurationMs(kind = sessionKind) {
 
 // Why strict space and quick end can't change a session's run, read from the session itself (its
 // kind, its timing and the conditions its run was built with), never from the test-shape
-// preferences: a drill started from a words baseline is still a timed minute. quickEnd names why
+// preferences: a drill started from a words baseline is still timed. quickEnd names why
 // quick end does nothing there ('' when it applies); fixed names a session that keeps the rules it
 // started with (the daily's are set, a retest has to match its baseline, custom text keeps the
 // defaults, and a race under way keeps its own for both players).
@@ -1432,7 +1433,7 @@ function sessionConditions(kind, run = conditions()) {
 function configureSessionCopy() {
   const copy = {
     practice: ['practice', 'Practice', ''],
-    drill: ['drill · 1 min', selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
+    drill: [`drill · ${DRILL_SECONDS} s`, selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
     custom: ['custom text', 'Your text', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
     missed: ['missed words', wordsPassage?.recurring ? 'Practice words you keep missing' : 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
@@ -2806,7 +2807,7 @@ function startDrill() {
   if (source) restoreConditions(source);
   trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', baselineAttemptId: baselineAttempt?.id || null,
     drillCompleted: false, was: activeRecommendation?.was || null };
-  trainingContext.drill = { target: selectedTarget, duration: 60, wordList: prefs.wordList, textVersion: makeDrill(selectedTarget, prefs.wordList).textVersion };
+  trainingContext.drill = { target: selectedTarget, duration: DRILL_SECONDS, wordList: prefs.wordList, textVersion: makeDrill(selectedTarget, prefs.wordList).textVersion };
   showManualTarget(false);
   resetSession('drill', { focus: true });
   // With no baseline nothing follows the drill, so it says so where the drill describes itself.
@@ -3542,6 +3543,7 @@ function renderHistory() {
     detail.append(scoreFacts([
       ['before', loop.comparison.before ? [speedFigure(loop.comparison.before.wpm), ` · ${loop.comparison.before.accuracy}%`] : 'Not retained in this older comparison'],
       ['after', loop.comparison.after ? [speedFigure(loop.comparison.after.wpm), ` · ${loop.comparison.after.accuracy}%`] : 'Not retained in this older comparison'],
+      // Loops saved without a drill length come from when every drill ran 60 s.
       ['drill', loop.drillCompleted ? `${loop.drill?.duration || 60} s · ${loop.target || 'general'}` : 'Skipped'],
     ]));
     const timing = loop.targetTiming;
@@ -3723,7 +3725,7 @@ function renderDaily() {
 
 // ── Lessons ───────────────────────────────────────────────────────────────
 
-const HANDOFF_COPY = 'That’s the whole keyboard. From here the training loop takes over: take a practice run, and Train suggests a one-minute drill from your own mistakes once there’s enough evidence, then retests you on fresh text.';
+const HANDOFF_COPY = `That’s the whole keyboard. From here the training loop takes over: take a practice run, and Train suggests a ${DRILL_SECONDS}-second drill from your own mistakes once there’s enough evidence, then retests you on fresh text.`;
 let lessonActions = { primary: null, secondary: null };
 
 function lessonCopy(index, current = null) {

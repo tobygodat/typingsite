@@ -210,7 +210,7 @@ test('a retest carries its baseline’s minimums, and the daily challenge has no
   await expect(page.locator('#condition-line')).toContainText('min 20 wpm');
   await expect(page.locator('#condition-line')).not.toContainText('min 100 wpm');
   const retest = await passageText(page);
-  // The drill's minute ran the page clock ahead of this process, so pause from the page's own time.
+  // The drill's 30 seconds ran the page clock ahead of this process, so pause from the page's own time.
   await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
   await typeAtPace(page, retest.slice(0, 22));
   await page.clock.runFor(2000);
@@ -371,7 +371,7 @@ test('a retest stopped under its baseline’s minimum shows no figures for the d
   await page.locator('#apply-manual-target').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await typeInto(page, (await passageText(page)).slice(0, 12));
-  await page.clock.fastForward(60_000);
+  await page.clock.fastForward(30_000);
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
   await expect(page.locator('#condition-line')).toContainText('min 20 wpm');
 
