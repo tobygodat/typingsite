@@ -1,7 +1,8 @@
 // Background image (settings → appearance): picked, kept on this device across reloads, removed; a file that
-// isn't an image changes nothing. The layer never takes the pointer or moves the page, dims while a run is in
-// progress and comes back with the chrome. Over the brightest image, the passage, the coral mistakes and the
-// caret keep their contrast in every theme.
+// isn't an image changes nothing. Its style, blur and opacity show once there is an image, apply as they move
+// and stay on this device with it. The layer never takes the pointer or moves the page, dims while a run is in
+// progress and comes back with the chrome. Over the brightest image, dithered or shown as it is at full
+// strength and the most blur, the passage, the coral mistakes and the caret keep their contrast in every theme.
 import { test, expect, openApp, chooseWords, passageText, openSettings, closeSettings, chooseSetting } from './fixtures.js';
 
 const layer = (page) => page.locator('#wallpaper');
@@ -26,6 +27,8 @@ async function pickImage(page, file) {
 }
 
 const opacity = (page) => layer(page).evaluate((node) => Number(getComputedStyle(node).opacity));
+const before = (page, property) => layer(page).evaluate((node, name) => getComputedStyle(node, '::before')[name], property);
+const lookRows = (page) => ['#wallpaper-style', '#wallpaper-blur', '#wallpaper-opacity'].map((id) => page.locator(id));
 
 test('a picked image stays on this device until it is removed', async ({ page }) => {
   await openApp(page);
@@ -35,7 +38,7 @@ test('a picked image stays on this device until it is removed', async ({ page })
 
   await pickImage(page, 'icons/icon-512.png');
   await expect(page.locator('#wallpaper-remove')).toBeVisible();
-  expect(await layer(page).evaluate((node) => getComputedStyle(node).maskImage)).toContain('blob:');
+  expect(await before(page, 'maskImage')).toContain('blob:');
   await expect.poll(() => opacity(page)).toBe(1);
   expect(await page.evaluate(() => Object.keys(localStorage).some((key) => localStorage.getItem(key).includes('wallpaper')))).toBe(false);
 
@@ -52,6 +55,75 @@ test('a picked image stays on this device until it is removed', async ({ page })
   await expect(page.locator('#text-display .char').first()).toBeVisible();
   await page.waitForTimeout(300);
   await expect(layer(page)).toBeHidden();
+});
+
+test('style, blur and opacity wait for an image, apply as they move and stay on this device', async ({ page }) => {
+  await openApp(page);
+  await openSettings(page, 'appearance');
+  for (const row of lookRows(page)) await expect(row).toBeHidden();
+
+  await pickImage(page, 'icons/icon-512.png');
+  for (const row of lookRows(page)) await expect(row).toBeVisible();
+  await expect(page.locator('#wallpaper-style input[value="dither"]')).toBeChecked();
+  await expect(layer(page)).toHaveAttribute('data-style', 'dither');
+  await expect(page.locator('#wallpaper-blur')).toBeDisabled();
+  await expect(page.locator('#wallpaper-opacity')).toHaveValue('100');
+
+  await chooseSetting(page, 'wallpaper-style', 'regular');
+  await expect(layer(page)).toHaveAttribute('data-style', 'regular');
+  expect(await before(page, 'backgroundImage')).toContain('blob:');
+  expect(await before(page, 'maskImage')).toBe('none');
+  await expect(page.locator('#wallpaper-blur')).toBeEnabled();
+  await page.locator('#wallpaper-blur').fill('16');
+  expect(await before(page, 'filter')).toBe('blur(16px)');
+  await page.locator('#wallpaper-opacity').fill('40');
+  expect(Number(await before(page, 'opacity'))).toBeCloseTo(0.4);
+  await expect.poll(() => opacity(page)).toBe(1);
+
+  await chooseSetting(page, 'wallpaper-style', 'gradient');
+  await expect(layer(page)).toHaveAttribute('data-style', 'gradient');
+  expect(await before(page, 'backgroundImage')).toContain('blob:');
+  expect(await before(page, 'filter')).toBe('blur(16px)');
+  expect(await page.evaluate(() => Object.keys(localStorage).some((key) => localStorage.getItem(key).includes('wallpaper')))).toBe(false);
+
+  await page.reload();
+  await expect(layer(page)).toHaveAttribute('data-style', 'gradient');
+  expect(await before(page, 'filter')).toBe('blur(16px)');
+  expect(Number(await before(page, 'opacity'))).toBeCloseTo(0.4);
+  await openSettings(page, 'appearance');
+  await expect(page.locator('#wallpaper-style input[value="gradient"]')).toBeChecked();
+  await expect(page.locator('#wallpaper-blur')).toHaveValue('16');
+  await expect(page.locator('#wallpaper-opacity')).toHaveValue('40');
+
+  await chooseSetting(page, 'wallpaper-style', 'dither');
+  await expect(layer(page)).toHaveAttribute('data-style', 'dither');
+  expect(await before(page, 'filter')).toBe('none');
+  await expect(page.locator('#wallpaper-blur')).toBeDisabled();
+
+  await page.locator('#wallpaper-remove').click();
+  for (const row of lookRows(page)) await expect(row).toBeHidden();
+});
+
+test('an image picked before styles still shows, grey, in every style', async ({ page }) => {
+  await openApp(page);
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('stilltype-device', 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('files');
+    open.onsuccess = () => {
+      const transaction = open.result.transaction('files', 'readwrite');
+      transaction.objectStore('files').put({ width: 4, height: 2, luma: new Uint8ClampedArray([0, 80, 160, 255, 255, 160, 80, 0]) }, 'wallpaper');
+      transaction.oncomplete = () => { open.result.close(); resolve(); };
+      transaction.onerror = () => reject(transaction.error);
+    };
+  }));
+  await page.reload();
+  await expect(layer(page)).toHaveAttribute('data-shown', '');
+  await expect(layer(page)).toHaveAttribute('data-style', 'dither');
+  for (const style of ['regular', 'gradient']) {
+    await chooseSetting(page, 'wallpaper-style', style);
+    await expect(layer(page)).toHaveAttribute('data-style', style);
+    expect(await before(page, 'backgroundImage')).toContain('blob:');
+  }
 });
 
 test('a file that is not an image changes nothing', async ({ page }) => {
@@ -109,18 +181,25 @@ const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0
 const ratio = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
 const over = ([r, g, b, a], under) => [r, g, b].map((value, i) => value * a + under[i] * (1 - a));
 
+const CASES = [['desktop', { width: 1280, height: 800 }], ['tablet', { width: 760, height: 1000 }], ['phone', { width: 390, height: 844 }]]
+  .flatMap(([label, viewport]) => ['dither', 'regular'].map((style) => [label, viewport, style]));
 for (const theme of THEMES) {
   const mode = DARK_THEMES.includes(theme) ? 'dark' : 'light';
-  for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['phone', { width: 390, height: 844 }]]) {
-    test(`${theme} theme, ${label}: the passage, mistakes and caret keep their contrast over the brightest image`, async ({ page }) => {
+  for (const [label, viewport, style] of CASES) {
+    test(`${theme} theme, ${label}, ${style}: the passage, mistakes and caret keep their contrast over the brightest image`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await page.emulateMedia({ colorScheme: mode });
       await openApp(page);
       await chooseSetting(page, `${mode}-theme`, theme);
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-      // Every dot at full strength: a white image, or a black one where light themes invert it.
+      // Every dot, or the whole picture, at full strength: a white image, or a black one where light themes invert it.
       const light = await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme === 'light');
       await pickImage(page, await solidImage(page, light ? 0 : 255));
+      if (style === 'regular') {
+        await chooseSetting(page, 'wallpaper-style', 'regular');
+        await page.locator('#wallpaper-blur').fill(await page.locator('#wallpaper-blur').getAttribute('max'));
+        await expect(layer(page)).toHaveAttribute('data-style', 'regular');
+      }
       await closeSettings(page);
       await chooseWords(page, 25);
       await expect.poll(() => opacity(page)).toBe(1);

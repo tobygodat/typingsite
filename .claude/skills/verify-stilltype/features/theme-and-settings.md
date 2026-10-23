@@ -47,6 +47,14 @@ its mode. A guest's choices last for the tab, a signed-in person's persist.
   `#wallpaper[data-shown]` appears as a dithered dot layer tinted from the theme over the top of the page,
   fading out above the passage, and `#wallpaper-remove` ("remove") appears. A file that isn't an image shows
   `#wallpaper-error` and changes nothing. The image survives reloads (IndexedDB) for guests and members alike.
+- `wallpaper-style` (its row, and the blur and opacity rows, show only once there is an image) checks
+  `#wallpaper-style input[value=…]`: regular (the photo in colour), dither (the default, as above) or gradient
+  (a smooth wash of the photo's colours). `#wallpaper[data-style]` follows; regular and gradient end above the
+  countdown, dither above the passage.
+- `wallpaper-blur` and `wallpaper-opacity` are native ranges (`#wallpaper-blur` 0–32 px, disabled for dither;
+  `#wallpaper-opacity` 10–100%). They set `--wallpaper-blur` and `--wallpaper-opacity` on the layer as they
+  move (read them on `#wallpaper::before`) and save on release. Style, blur and opacity survive reloads with
+  the image and never reach the profile.
 - `wallpaper-dim` drops the layer to a quarter opacity while `body[data-running="true"]`; it returns with the
   chrome on a pointer nudge, finish or restart.
 - `wallpaper-remove` clears it (`#wallpaper` hidden again) and moves focus to the file option.
@@ -95,9 +103,10 @@ Preconditions:
 - **Phone.** `$V shot settings --width 390 --height 844 --mobile` (add `--scheme light` to switch towards
   dark). Below 760 px the category nav wraps across the top of the dialog.
 - **Background image.** Run `$V drive .claude/skills/verify-stilltype/flows/wallpaper.mjs` (add
-  `WALLPAPER_IMAGE=<path>` for your own image, default the app icon; `THEME=<name>` picks a theme first).
-  Shots: `settings-none`, `settings-image`, `idle` and `mid-run`; `run.json` notes the running opacity and
-  checks it is under 0.5.
+  `WALLPAPER_IMAGE=<path>` for your own image, default the app icon; `THEME=<name>` picks a theme first;
+  `BLUR=<steps>` / `OPACITY=<steps>` move those sliders with the arrow keys first.) Shots: `settings-none`,
+  `settings-image`, `settings-<style>` and `idle-<style>` for regular, dither and gradient, and `mid-run`;
+  `run.json` notes each style's filter and opacity and the running opacity, and checks it is under 0.5.
 - **Other categories.** In a flow, `await h.openSettings('practice')` opens the dialog (if closed) and shows
   that category; pass any of appearance, practice, keyboard, sound, shortcuts.
 - **System theme.** Run `$V shot idle --scheme light` and `$V shot idle --scheme dark`. Each `run.json` step

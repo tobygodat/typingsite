@@ -1,6 +1,6 @@
 # Handoff — Stilltype
 
-Updated 21 October 2026 at master 4642623. Read this first, then `PRODUCT.md`, `DESIGN.md` and `AGENTS.md`. Feature detail lives in each module's comments and tests.
+Updated 23 October 2026 at master b3893d7. Read this first, then `PRODUCT.md`, `DESIGN.md` and `AGENTS.md`. Feature detail lives in each module's comments and tests.
 
 ## What it is
 
@@ -16,7 +16,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 ```
 
 - e2e serves on `E2E_PORT` (default 4173) and fakes Supabase. On a shared machine set your own port, or Playwright reuses another worktree's server.
-- CI, temporary while GitHub Actions is off: on tobygdesktop run `bash ~/.capy/drive/captain-typingsite/skills/local-ci/run.sh <pr>` (`E2E=1` adds the browser suite). A PR is ready when `local-ci/tobygdesktop` is green at its head.
+- CI, temporary while GitHub Actions is off: on tobygdesktop run `bash ~/.capy/drive/captain-typingsite-zhvfpa/skills/local-ci/run.sh <pr>` (`E2E=1` adds the browser suite). A PR is ready when `local-ci/tobygdesktop` is green at its head.
 - Deploy, temporary: by hand after each merge, on tobylaptop in `~/Projects/typingsite`: `git pull --ff-only && npm test && npm run build && npx wrangler@4.151.0 deploy`, then check live `/`, `src/app.js` and `src/styles.css` match `dist/`. Site: https://stilltype.tobygodat.workers.dev (Cloudflare Worker `stilltype`, `wrangler.jsonc`).
 - Supabase project `bicbyljexprkaedakofa` has every file in `supabase/migrations/`. Its history uses other timestamps, so apply a new migration alone (`supabase db query --linked -f <file>`), not with `db push`. `supabase functions deploy delete-account` deploys account deletion; `supabase functions deploy generate-theme` deploys theme generation (needs the `ANTHROPIC_API_KEY` secret).
 - Release: bump the version in `package.json`, its lock and `index.html` (`tests/release.test.js` checks), and rewrite the What's new bullets (six at most).
@@ -34,7 +34,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - Inbox and toast for invitations and challenges.
 - Settings dialog, ⌘K / Ctrl-K palette, Monkeytype import.
 - Rules: five correction policies, strict space, quick end, minimums, repeat quotes, pace caret.
-- Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), a background image, text size, typing and app fonts, word highlight (optionally sliding between words), one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
+- Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), a background image (regular, dither or gradient, with blur and opacity), text size, typing and app fonts, word highlight (optionally sliding between words), one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
 - Accounts: email or Google, sync, clear history with Undo, account deletion.
 - Offline shell, What's new, anonymous feature suggestions.
 
@@ -59,7 +59,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - `tape.js`: one-line tape geometry.
 - `word-highlight.js`: word highlight.
 - `fonts.js`: typing and app font choices; `index.html` applies an account's before first paint.
-- `wallpaper.js`: background image: the device-only copy, its dither mask, its settings row.
+- `wallpaper.js`: background image: the device-only copy and its look (style, blur, opacity), the dither mask and gradient wash, its settings rows.
 - `units.js`: wpm and cpm display.
 - `layouts.js`: layout legends, finger map.
 - `sound.js`: typing sounds.
@@ -94,7 +94,7 @@ Also `sw.js` (offline shell), `docs/` (specs, `online-races.md`, verification re
 - Motion is fluid (AGENTS.md): `--dur-*` tokens only, never moving the letters being read, zero under reduced motion; scoring never reads it.
 - Every theme holds 4.5:1 text and 3:1 non-text contrast (`tests/contrast.test.js`). Custom themes are the exception: the editor notes contrast under AA at the token but never blocks a save.
 - Custom themes are stored as JSON text (`customThemes`), so older builds compare them by value and never restamp them. A custom theme joins the dark or light pick by its background's luminance. The theme-generation prompt is never logged or stored.
-- The background image stays on the device (IndexedDB, never the profile), is tinted by CSS from the theme, fades out above the passage and dims mid-run (`e2e/wallpaper.spec.js`).
+- The background image stays on the device (IndexedDB, never the profile), fades out above the passage and dims mid-run (`e2e/wallpaper.spec.js`). It is stored in colour (a WebP at most 1024 px); one picked before #<PR> is a grey copy and shows grey until re-picked. Its style (regular, dither, gradient), blur (0–32 px) and opacity (10–100%) are device settings stored beside it, never in the profile, and show only once there is an image. Dither, the default, is tinted by CSS from the theme; blur means nothing there and is disabled. Regular and gradient are the picture itself, so they end above the countdown, not just the passage: that holds every theme's contrast floor at any blur or opacity, which the e2e spec checks at full strength and the most blur. Blur and opacity are CSS on the layer's `::before`, so a slider never redraws; the dither mask and gradient wash are drawn once per pick or style and again only when the layer's size in cells changes.
 - The practice rail never moves between modes (`e2e/layout.spec.js`).
 - A slow reply never acts over what the person did since (`raceContext`).
 - Layouts are labels; people remap in the OS.
