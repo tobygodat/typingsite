@@ -77,9 +77,9 @@ test('smoothScale keeps each cell centre, blends between them and holds flat at 
   assert.deepEqual([...out.slice(0, 4)], [...out.slice(16 * 4 * 7, 16 * 4 * 7 + 4)]);
 });
 
-test('readLook defaults to sharp dither at full strength and clamps what it reads', () => {
-  assert.deepEqual(readLook(), { style: 'dither', blur: 0, opacity: 100 });
-  assert.deepEqual(readLook({ style: 'regular', blur: 12, opacity: 55 }), { style: 'regular', blur: 12, opacity: 55 });
-  assert.deepEqual(readLook({ style: 'sepia', blur: 900, opacity: 0 }), { style: 'dither', blur: 32, opacity: 10 });
-  assert.deepEqual(readLook({ style: 'gradient', blur: 'x', opacity: null }), { style: 'gradient', blur: 0, opacity: 100 });
+test('readLook defaults to sharp dither at full strength, ending below the countdown, and clamps what it reads', () => {
+  assert.deepEqual(readLook(), { style: 'dither', blur: 0, opacity: 100, reach: 0 });
+  assert.deepEqual(readLook({ style: 'regular', blur: 12, opacity: 55, reach: 40 }), { style: 'regular', blur: 12, opacity: 55, reach: 40 });
+  assert.deepEqual(readLook({ style: 'sepia', blur: 900, opacity: 0, reach: 300 }), { style: 'dither', blur: 32, opacity: 10, reach: 100 });
+  assert.deepEqual(readLook({ style: 'gradient', blur: 'x', opacity: null }), { style: 'gradient', blur: 0, opacity: 100, reach: 0 });
 });

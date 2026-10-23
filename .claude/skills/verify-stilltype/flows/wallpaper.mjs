@@ -1,6 +1,6 @@
 // Background image: settings → appearance with no image, pick one (WALLPAPER_IMAGE, default the app icon),
 // then the practice page idle in each style (regular, dither, gradient), and mid-run with one slip, where the
-// layer dims. THEME picks a theme in settings first (default: the system's). BLUR and OPACITY move those
+// layer dims. THEME picks a theme in settings first (default: the system's). BLUR, OPACITY and HEIGHT move those
 // sliders with the keyboard before the idle shots (default: left as they are). Shots: settings-none,
 // settings-image, settings-<style>, idle-<style>, mid-run.
 import path from 'node:path';
@@ -31,7 +31,7 @@ export default async ({ page, h, shot, note, check }) => {
   await h.settle();
   await shot('settings-image');
 
-  for (const [slider, steps] of [['#wallpaper-blur', process.env.BLUR], ['#wallpaper-opacity', process.env.OPACITY]]) {
+  for (const [slider, steps] of [['#wallpaper-blur', process.env.BLUR], ['#wallpaper-opacity', process.env.OPACITY], ['#wallpaper-reach', process.env.HEIGHT]]) {
     if (!steps) continue;
     await page.locator('#wallpaper-style input[value="regular"]').locator('..').click();
     await page.locator(slider).focus();

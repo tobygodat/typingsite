@@ -89,13 +89,15 @@
   /* Progress charts: about 2.5 wide to 1 tall, between these heights. */
   --chart-height: 400px;
   --chart-height-min: 240px;
-  /* Background image (src/wallpaper.js) over the top of the page, faded out above the passage, dimmed while a
+  /* Background image (src/wallpaper.js) over the top of the page, faded out at the countdown, dimmed while a
      run is in progress: dither puts one dot every pitch in a tint of the accent; gradient averages the photo
-     over cells this size. Blur and opacity are the person's (settings → appearance), set on the layer. */
+     over cells this size; the reading band's edges blur over the feather. Blur, opacity and reach are the
+     person's (settings → appearance), set on the layer. */
   --wallpaper-pitch: 3px;
   --wallpaper-dot: 2px;
   --wallpaper-cell: 160px;
-  --wallpaper-height: 40svh;
+  --wallpaper-reach: 0;
+  --wallpaper-feather: var(--space-8);
   --wallpaper-tint: 35%;
   --wallpaper-dim: 0.25;
   --wallpaper-blur: 0px;
@@ -1692,29 +1694,33 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
 body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { pointer-events: none; }
 
-/* The background image. The layer fades it out above the passage and dims it mid-run; only its opacity
-   changes, so a run never relays out or repaints it. Its ::before holds the style: dither is dots × the
-   dithered image (inverted on light themes, where the accent is the dark end) over the tint; regular and
-   gradient are the picture itself, blurred once by the compositor and overscanned so the blur never pulls
-   the ground in at the edges. The person's opacity sits there too, so a slider drag never waits on the dim
-   transition. The fade is gone at 92% of the layer: above the passage (src/wallpaper.js measures it) where a
-   tall, narrow window lifts the passage into the top 40%, and above the countdown for a photo, which can be
-   as light or as dark as the letters' ground. */
+/* The background image. The layer fades it out and dims it mid-run; only its opacity changes, so a run never
+   relays out or repaints it. Its ::before holds the style: dither is dots × the dithered image (inverted on light
+   themes, where the accent is the dark end) over the tint; regular and gradient are the picture itself, blurred
+   once by the compositor and overscanned so the blur never pulls the ground in at the edges. The person's
+   opacity sits there too, so a slider drag never waits on the dim transition. ::before always covers the screen
+   and the layer clips it, so reach moves only where the fade ends: gone at 92% of the layer, at the top of the
+   practice screen's reading band (src/wallpaper.js measures it) at reach 0 and at the bottom of the screen at 1,
+   on the practice screen only. The band's blocks are cut out of the mask, so no photo is ever behind the letters. */
 .wallpaper {
   position: fixed;
   inset: 0 0 auto;
   z-index: -1;
-  height: min(var(--wallpaper-height), var(--wallpaper-passage, 100svh) / 0.92);
+  --wallpaper-end: calc(var(--wallpaper-top, 40svh) + var(--wallpaper-reach) * (100svh - var(--wallpaper-top, 40svh)));
+  height: calc(var(--wallpaper-end) / 0.92);
   overflow: hidden;
   pointer-events: none;
   opacity: 0;
-  mask-image: linear-gradient(#000 20%, rgb(0 0 0 / 0.45) 55%, rgb(0 0 0 / 0.1) 80%, #0000 92%);
+  mask-image: linear-gradient(#000 20%, rgb(0 0 0 / 0.45) 55%, rgb(0 0 0 / 0.1) 80%, #0000 92%), var(--wallpaper-bands, linear-gradient(#000 0 0));
+  mask-composite: intersect;
   transition: opacity var(--dur-medium) var(--ease-out);
 }
+body:not([data-view="practice"]) .wallpaper { --wallpaper-end: var(--wallpaper-top, 40svh); }
 .wallpaper::before {
   content: "";
   position: absolute;
-  inset: 0;
+  inset: 0 0 auto;
+  height: 100svh;
   opacity: var(--wallpaper-opacity);
 }
 .wallpaper[data-style="dither"]::before {
@@ -1725,9 +1731,9 @@ body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options
   mask-composite: intersect, exclude;
   image-rendering: pixelated;
 }
-.wallpaper:is([data-style="regular"], [data-style="gradient"]) { height: min(var(--wallpaper-height), var(--wallpaper-stats, 100svh) / 0.92); }
 .wallpaper:is([data-style="regular"], [data-style="gradient"])::before {
-  inset: calc(-2 * var(--wallpaper-blur));
+  inset: calc(-2 * var(--wallpaper-blur)) calc(-2 * var(--wallpaper-blur)) auto;
+  height: calc(100svh + 4 * var(--wallpaper-blur));
   background: var(--wallpaper-image) center / cover no-repeat;
   filter: blur(var(--wallpaper-blur));
 }

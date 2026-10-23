@@ -1,9 +1,11 @@
 // Background image (settings → appearance): picked, kept on this device across reloads, removed; a file that
-// isn't an image changes nothing. Its style, blur and opacity show once there is an image, apply as they move
-// and stay on this device with it. The layer never takes the pointer or moves the page, dims while a run is in
-// progress and comes back with the chrome. Over the brightest image, dithered or shown as it is at full
-// strength and the most blur, the passage, the coral mistakes and the caret keep their contrast in every theme.
-import { test, expect, openApp, chooseWords, passageText, openSettings, closeSettings, chooseSetting } from './fixtures.js';
+// isn't an image changes nothing. Its style, blur, opacity and height show once there is an image, apply as they
+// move and stay on this device with it; the height ends it at the countdown until it is raised, on the practice
+// screen only. The layer never takes the pointer or moves the page, dims while a run is in progress and comes back
+// with the chrome. Over the brightest image, dithered or shown as it is at full strength, the most blur and the
+// full height, nothing is painted behind the reading band, the hints or the footer, and the passage, the coral
+// mistakes and the caret keep their contrast in every theme.
+import { test, expect, openApp, chooseWords, passageText, openSettings, closeSettings, chooseSetting, openView } from './fixtures.js';
 
 const layer = (page) => page.locator('#wallpaper');
 
@@ -28,7 +30,10 @@ async function pickImage(page, file) {
 
 const opacity = (page) => layer(page).evaluate((node) => Number(getComputedStyle(node).opacity));
 const before = (page, property) => layer(page).evaluate((node, name) => getComputedStyle(node, '::before')[name], property);
-const lookRows = (page) => ['#wallpaper-style', '#wallpaper-blur', '#wallpaper-opacity'].map((id) => page.locator(id));
+const lookRows = (page) => ['#wallpaper-style', '#wallpaper-blur', '#wallpaper-opacity', '#wallpaper-reach'].map((id) => page.locator(id));
+// Where the layer's fade ends, and where the practice screen's reading band (countdown, passage, controls) starts.
+const fadeEnd = (page) => layer(page).evaluate((node) => node.getBoundingClientRect().height * 0.92);
+const readingTop = (page) => page.locator('#typing-form').evaluate((node) => node.getBoundingClientRect().top);
 
 test('a picked image stays on this device until it is removed', async ({ page }) => {
   await openApp(page);
@@ -57,7 +62,7 @@ test('a picked image stays on this device until it is removed', async ({ page })
   await expect(layer(page)).toBeHidden();
 });
 
-test('style, blur and opacity wait for an image, apply as they move and stay on this device', async ({ page }) => {
+test('style, blur, opacity and height wait for an image, apply as they move and stay on this device', async ({ page }) => {
   await openApp(page);
   await openSettings(page, 'appearance');
   for (const row of lookRows(page)) await expect(row).toBeHidden();
@@ -68,6 +73,8 @@ test('style, blur and opacity wait for an image, apply as they move and stay on 
   await expect(layer(page)).toHaveAttribute('data-style', 'dither');
   await expect(page.locator('#wallpaper-blur')).toBeDisabled();
   await expect(page.locator('#wallpaper-opacity')).toHaveValue('100');
+  await expect(page.locator('#wallpaper-reach')).toHaveValue('0');
+  expect(Math.abs(await fadeEnd(page) - await readingTop(page))).toBeLessThan(1);
 
   await chooseSetting(page, 'wallpaper-style', 'regular');
   await expect(layer(page)).toHaveAttribute('data-style', 'regular');
@@ -79,6 +86,15 @@ test('style, blur and opacity wait for an image, apply as they move and stay on 
   await page.locator('#wallpaper-opacity').fill('40');
   expect(Number(await before(page, 'opacity'))).toBeCloseTo(0.4);
   await expect.poll(() => opacity(page)).toBe(1);
+  // The picture covers the screen whatever the height, so raising it only moves where the fade ends.
+  const screen = await page.evaluate(() => innerHeight);
+  const picture = await before(page, 'height');
+  await page.locator('#wallpaper-reach').fill('100');
+  expect(Math.abs(await fadeEnd(page) - screen)).toBeLessThan(1);
+  expect(await before(page, 'height')).toBe(picture);
+  await page.locator('#wallpaper-reach').fill('50');
+  const top = await readingTop(page);
+  expect(Math.abs(await fadeEnd(page) - (top + screen) / 2)).toBeLessThan(1);
 
   await chooseSetting(page, 'wallpaper-style', 'gradient');
   await expect(layer(page)).toHaveAttribute('data-style', 'gradient');
@@ -94,6 +110,14 @@ test('style, blur and opacity wait for an image, apply as they move and stay on 
   await expect(page.locator('#wallpaper-style input[value="gradient"]')).toBeChecked();
   await expect(page.locator('#wallpaper-blur')).toHaveValue('16');
   await expect(page.locator('#wallpaper-opacity')).toHaveValue('40');
+  await expect(page.locator('#wallpaper-reach')).toHaveValue('50');
+  // The height is the practice screen's: elsewhere the picture still ends where the reading band starts.
+  await closeSettings(page);
+  await expect.poll(async () => Math.abs(await fadeEnd(page) - (top + screen) / 2)).toBeLessThan(1);
+  await openView(page, 'Progress');
+  await expect.poll(async () => Math.abs(await fadeEnd(page) - top)).toBeLessThan(1);
+  await openView(page, 'Practice');
+  await openSettings(page, 'appearance');
 
   await chooseSetting(page, 'wallpaper-style', 'dither');
   await expect(layer(page)).toHaveAttribute('data-style', 'dither');
@@ -186,7 +210,7 @@ const CASES = [['desktop', { width: 1280, height: 800 }], ['tablet', { width: 76
 for (const theme of THEMES) {
   const mode = DARK_THEMES.includes(theme) ? 'dark' : 'light';
   for (const [label, viewport, style] of CASES) {
-    test(`${theme} theme, ${label}, ${style}: the passage, mistakes and caret keep their contrast over the brightest image`, async ({ page }) => {
+    test(`${theme} theme, ${label}, ${style}: nothing is painted behind the reading band, and the passage, mistakes and caret keep their contrast over the brightest image`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await page.emulateMedia({ colorScheme: mode });
       await openApp(page);
@@ -200,9 +224,35 @@ for (const theme of THEMES) {
         await page.locator('#wallpaper-blur').fill(await page.locator('#wallpaper-blur').getAttribute('max'));
         await expect(layer(page)).toHaveAttribute('data-style', 'regular');
       }
+      await page.locator('#wallpaper-reach').fill('100');
       await closeSettings(page);
       await chooseWords(page, 25);
       await expect.poll(() => opacity(page)).toBe(1);
+
+      // The reading band, the hints and each footer item look the same with the layer as without it.
+      await page.addStyleTag({ content: '.caret-bar { visibility: hidden !important; }' });
+      const blocks = await page.evaluate(() => [...document.querySelectorAll('#typing-form, .shortcut-row, .site-footer > *')]
+        .map((node) => node.getBoundingClientRect()).filter((rect) => rect.height && rect.width)
+        .map(({ x, y, width, height }) => ({ x, y, width, height })));
+      const paint = () => Promise.all(blocks.map((clip) => page.screenshot({ clip })));
+      const shown = await paint();
+      await layer(page).evaluate((node) => { node.style.visibility = 'hidden'; });
+      const bare = await paint();
+      await layer(page).evaluate((node) => { node.style.visibility = ''; });
+      // The largest channel difference per block: a picture leaking through would differ by far more than rounding.
+      const drift = await page.evaluate(async (pairs) => {
+        const pixels = async (png) => {
+          const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+          const context = Object.assign(document.createElement('canvas'), { width: bitmap.width, height: bitmap.height }).getContext('2d');
+          context.drawImage(bitmap, 0, 0);
+          return context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+        };
+        return Promise.all(pairs.map(async ([a, b]) => {
+          const [left, right] = await Promise.all([pixels(a), pixels(b)]);
+          return left.reduce((most, value, i) => Math.max(most, Math.abs(value - right[i])), 0);
+        }));
+      }, shown.map((png, i) => [png.toString('base64'), bare[i].toString('base64')]));
+      blocks.forEach((block, i) => expect(drift[i], `layer behind ${JSON.stringify(block)}`).toBeLessThanOrEqual(2));
 
       // Every colour painted behind the passage, with the letters and caret hidden.
       await page.addStyleTag({ content: '#text-display, #text-display * { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; } .caret-bar { visibility: hidden !important; }' });

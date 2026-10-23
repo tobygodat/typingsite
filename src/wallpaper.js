@@ -1,9 +1,10 @@
 // The background image (settings → appearance). It stays on this device, in IndexedDB, as a copy at most
-// MAX_EDGE pixels on its long side, with its look (style, blur, opacity) beside it; profiles never carry
+// MAX_EDGE pixels on its long side, with its look (style, blur, opacity, reach) beside it; profiles never carry
 // either. Three styles: regular shows the photo; dither shows an ordered-dither mask over a tint of the theme's
 // accent, so a theme change costs no redraw; gradient shows a coarse grid of the photo's colours that the
-// browser scales up smoothly. Blur and opacity are CSS on the layer, so a slider drag never redraws. The dither
-// and gradient grids are drawn once per pick or style, and again only when the layer's size in cells changes.
+// browser scales up smoothly. Blur, opacity and reach are CSS on the layer, so a slider drag never redraws. The
+// dither and gradient grids cover the whole screen and are drawn once per pick or style, and again only when the
+// screen's size in cells changes.
 import { onSetting, selectSetting } from './settings.js';
 
 export const MAX_EDGE = 1024;
@@ -105,13 +106,14 @@ export function smoothScale(grid, cols, rows, scale) {
   return out;
 }
 
-// A stored look, or the default (dither, sharp, full strength): anything unreadable falls back field by field.
+// A stored look, or the default (dither, sharp, full strength, ending at the countdown): anything unreadable falls back field by field.
 export function readLook(saved) {
   const number = (value, min, max, fallback) => (Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback);
   return {
     style: STYLES.includes(saved?.style) ? saved.style : 'dither',
     blur: number(saved?.blur, 0, BLUR_MAX, 0),
     opacity: number(saved?.opacity, OPACITY_MIN, 100, 100),
+    reach: number(saved?.reach, 0, 100, 0),
   };
 }
 
@@ -162,8 +164,8 @@ async function readStored(saved) {
   return { pixels, blob: await encode(node, 'image/webp') };
 }
 
-export function createWallpaper({ layer, input, remove, error, style, blur, opacity, stats, passage }) {
-  const rows = [style, blur, opacity].map((control) => control.closest('.preference-row'));
+export function createWallpaper({ layer, input, remove, error, style, blur, opacity, reach, surfaces, chrome }) {
+  const rows = [style, blur, opacity, reach].map((control) => control.closest('.preference-row'));
   let image = null;
   let luma = null;
   let look = readLook();
@@ -206,7 +208,7 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     const dither = look.style === 'dither';
     const cell = parseFloat(getComputedStyle(layer).getPropertyValue(dither ? '--wallpaper-pitch' : '--wallpaper-cell'));
     const cols = Math.ceil(layer.clientWidth / cell);
-    const lines = Math.ceil(layer.clientHeight / cell);
+    const lines = Math.ceil(innerHeight / cell);
     const size = `${cols * cell}px ${lines * cell}px`;
     const key = `${look.style} ${size}`;
     if (!cols || !lines || key === drawn) return;
@@ -223,32 +225,44 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
   function apply() {
     selectSetting('wallpaper-style', look.style);
     blur.disabled = look.style === 'dither';
-    for (const [control, value, text] of [[blur, look.blur, `${look.blur} px`], [opacity, look.opacity, `${look.opacity}%`]]) {
+    for (const [control, value, text] of [[blur, look.blur, `${look.blur} px`], [opacity, look.opacity, `${look.opacity}%`], [reach, look.reach, `${look.reach}%`]]) {
       control.value = String(value);
       control.setAttribute('aria-valuetext', text);
       control.style.setProperty('--fill', `${((value - control.min) / (control.max - control.min)) * 100}%`);
     }
     layer.style.setProperty('--wallpaper-blur', `${look.blur}px`);
     layer.style.setProperty('--wallpaper-opacity', String(look.opacity / 100));
+    layer.style.setProperty('--wallpaper-reach', String(look.reach / 100));
   }
 
   const save = () => stored('readwrite', (files) => files.put(look, LOOK)).catch(() => {});
 
-  // Where the practice screen's countdown and passage start, for the layer to fade out above: the rail never
-  // moves between modes, so this changes only with the window or the text size. A hidden screen keeps the last.
+  // The practice screen's reading band: the picture fades out at its top at reach 0 and never paints behind it, or
+  // behind the hints and footer, at any reach, since no strength of photo keeps the letters' contrast. Each block
+  // is cut out of the layer's mask with a feathered edge, and blocks closer than two feathers are one band.
+  // Viewport positions, as the layer is fixed; a hidden practice screen keeps the last.
   function measure() {
-    for (const [name, node] of [['--wallpaper-stats', stats], ['--wallpaper-passage', passage]]) {
-      const { top, height } = node.getBoundingClientRect();
-      if (height) layer.style.setProperty(name, `${top + scrollY}px`);
+    const surface = surfaces.map((node) => node.getBoundingClientRect()).find((rect) => rect.height);
+    if (!surface) return;
+    const feather = parseFloat(getComputedStyle(layer).getPropertyValue('--wallpaper-feather'));
+    const bands = [];
+    for (const { top, bottom } of [surface, ...chrome.map((node) => node.getBoundingClientRect()).filter((rect) => rect.height)].sort((a, b) => a.top - b.top)) {
+      const last = bands.at(-1);
+      if (last && top - last[1] < 2 * feather) last[1] = Math.max(last[1], bottom);
+      else bands.push([top, bottom]);
     }
+    const stops = bands.map(([top, bottom]) => `#000 ${top - feather}px, #0000 ${top}px, #0000 ${bottom}px, #000 ${bottom + feather}px`);
+    layer.style.setProperty('--wallpaper-top', `${surface.top}px`);
+    layer.style.setProperty('--wallpaper-bands', `linear-gradient(${stops.join(', ')})`);
   }
-  new ResizeObserver(measure).observe(passage);
-  addEventListener('resize', measure);
-
-  new ResizeObserver(() => {
+  const observer = new ResizeObserver(measure);
+  for (const node of [...surfaces, ...chrome]) observer.observe(node);
+  addEventListener('scroll', measure, { passive: true });
+  addEventListener('resize', () => {
+    measure();
     clearTimeout(timer);
     if (image) timer = setTimeout(draw, 150);
-  }).observe(layer);
+  });
 
   input.addEventListener('change', async () => {
     const [file] = input.files;
@@ -280,7 +294,7 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     if (image) draw();
   });
 
-  for (const [control, field] of [[blur, 'blur'], [opacity, 'opacity']]) {
+  for (const [control, field] of [[blur, 'blur'], [opacity, 'opacity'], [reach, 'reach']]) {
     control.addEventListener('input', () => {
       look = { ...look, [field]: Number(control.value) };
       apply();

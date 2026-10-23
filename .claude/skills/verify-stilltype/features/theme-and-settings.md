@@ -45,16 +45,18 @@ its mode. A guest's choices last for the tab, a signed-in person's persist.
   button reads "sign in".
 - `wallpaper-pick` takes an image from `#wallpaper-file` (the "choose…" option; `setInputFiles` drives it):
   `#wallpaper[data-shown]` appears as a dithered dot layer tinted from the theme over the top of the page,
-  fading out above the passage, and `#wallpaper-remove` ("remove") appears. A file that isn't an image shows
+  fading out at the countdown, and `#wallpaper-remove` ("remove") appears. A file that isn't an image shows
   `#wallpaper-error` and changes nothing. The image survives reloads (IndexedDB) for guests and members alike.
-- `wallpaper-style` (its row, and the blur and opacity rows, show only once there is an image) checks
+- `wallpaper-style` (its row, and the blur, opacity and height rows, show only once there is an image) checks
   `#wallpaper-style input[value=…]`: regular (the photo in colour), dither (the default, as above) or gradient
-  (a smooth wash of the photo's colours). `#wallpaper[data-style]` follows; regular and gradient end above the
-  countdown, dither above the passage.
+  (a smooth wash of the photo's colours). `#wallpaper[data-style]` follows.
 - `wallpaper-blur` and `wallpaper-opacity` are native ranges (`#wallpaper-blur` 0–32 px, disabled for dither;
   `#wallpaper-opacity` 10–100%). They set `--wallpaper-blur` and `--wallpaper-opacity` on the layer as they
-  move (read them on `#wallpaper::before`) and save on release. Style, blur and opacity survive reloads with
-  the image and never reach the profile.
+  move (read them on `#wallpaper::before`) and save on release. `#wallpaper-reach` ("height", 0–100%) moves
+  where the layer's fade ends on the practice screen, from the top of the reading band (`#typing-form`: the
+  countdown, passage and controls) to the bottom of the screen; the band, `.shortcut-row` and the footer items
+  are cut out of the layer's mask (`--wallpaper-bands`), so the picture never paints behind them. Style, blur,
+  opacity and height survive reloads with the image and never reach the profile.
 - `wallpaper-dim` drops the layer to a quarter opacity while `body[data-running="true"]`; it returns with the
   chrome on a pointer nudge, finish or restart.
 - `wallpaper-remove` clears it (`#wallpaper` hidden again) and moves focus to the file option.
