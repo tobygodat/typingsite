@@ -148,9 +148,13 @@ async function readImage(file, blob) {
   return { pixels: context.getImageData(0, 0, node.width, node.height), blob: blob ?? (await encode(node, 'image/webp')) };
 }
 
-// An image picked before styles is a grey copy ({ width, height, luma }): it shows grey in every style.
+// Stored as the encoded file's bytes, never a Blob: WebKit refuses Blobs in IndexedDB in private windows. An image
+// picked before styles is a grey copy ({ width, height, luma }): it shows grey in every style.
 async function readStored(saved) {
-  if (saved instanceof Blob) return readImage(saved, saved);
+  if (saved.bytes) {
+    const blob = new Blob([saved.bytes], { type: saved.type });
+    return readImage(blob, blob);
+  }
   const [node, context] = canvas(saved.width, saved.height);
   const pixels = context.createImageData(saved.width, saved.height);
   saved.luma.forEach((value, i) => pixels.data.set([value, value, value, 255], i * 4));
@@ -259,7 +263,8 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     }
     error.hidden = true;
     show(next);
-    stored('readwrite', (files) => files.put(next.blob, KEY)).catch(() => {});
+    const bytes = await next.blob.arrayBuffer();
+    stored('readwrite', (files) => files.put({ type: next.blob.type, bytes }, KEY)).catch(() => {});
   });
 
   remove.addEventListener('click', () => {
