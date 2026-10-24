@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { colourGrid, ditherMask, greyscale, readLook, smoothScale } from '../src/wallpaper.js';
+import { colourGrid, contrast, ditherMask, greyscale, luminance, readLook, smoothScale } from '../src/wallpaper.js';
 
 const rgba = (values) => new Uint8ClampedArray(values.flatMap((value) => [value, value, value, 255]));
 const levels = (mask) => [...mask.filter((_, i) => i % 4 === 3)];
@@ -82,4 +82,13 @@ test('readLook defaults to sharp dither at full strength, ending below the count
   assert.deepEqual(readLook({ style: 'regular', blur: 12, opacity: 55, reach: 40 }), { style: 'regular', blur: 12, opacity: 55, reach: 40 });
   assert.deepEqual(readLook({ style: 'sepia', blur: 900, opacity: 0, reach: 300 }), { style: 'dither', blur: 32, opacity: 10, reach: 100 });
   assert.deepEqual(readLook({ style: 'gradient', blur: 'x', opacity: null }), { style: 'gradient', blur: 0, opacity: 100, reach: 0 });
+});
+
+test('contrast is the WCAG ratio of relative luminances', () => {
+  const ratio = (a, b) => contrast(luminance(a), luminance(b));
+  assert.equal(ratio([0, 0, 0], [255, 255, 255]), 21);
+  assert.equal(ratio([255, 255, 255], [0, 0, 0]), 21);
+  assert.equal(ratio([90, 90, 90], [90, 90, 90]), 1);
+  assert.equal(ratio([118, 118, 118], [255, 255, 255]).toFixed(2), '4.54');
+  assert.equal(ratio([119, 119, 119], [255, 255, 255]).toFixed(2), '4.48');
 });

@@ -55,7 +55,9 @@ its mode. A guest's choices last for the tab, a signed-in person's persist.
   move (read them on `#wallpaper::before`) and save on release. `#wallpaper-reach` ("height", 0–100%) moves
   where the layer's fade ends on the practice screen, from the top of the reading band (`#typing-form`: the
   countdown, passage and controls) to the bottom of the screen; above 0 the picture runs on behind the band,
-  `.shortcut-row` and the footer items with no hole cut around them. Style, blur,
+  `.shortcut-row` and the footer items with no hole cut around them. Where it would take text below the
+  contrast floor, `#live-stats`, `#typing-wrap`, `.shortcut-row` or a footer item gets `[data-halo]` (an outline
+  in `--ground` under the letters, a ring round the caret). Style, blur,
   opacity and height survive reloads with the image and never reach the profile.
 - `wallpaper-dim` drops the layer to a quarter opacity while `body[data-running="true"]`; it returns with the
   chrome on a pointer nudge, finish or restart.

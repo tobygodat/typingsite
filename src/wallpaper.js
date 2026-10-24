@@ -15,6 +15,10 @@ const LEVELS = 4;
 const WASH_SCALE = 8;
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 const KEY = 'wallpaper';
+// The contrast floor: letters at least 4.5:1, the caret at least 3:1; mistyped letters sit on their tint.
+const INKS = [['--text', '', 4.5], ['--muted', '', 4.5], ['--danger', '--danger-soft', 4.5], ['--accent', '', 3]];
+// Samples per region at most, so a check costs about the same on any screen.
+const SAMPLES = 8192;
 const LOOK = 'wallpaper-look';
 
 // Rec. 709 luma, stretched so the darkest and lightest 2% clip: a dim photo uses the whole range too.
@@ -34,6 +38,13 @@ export function greyscale(rgba) {
   for (let i = 0; i < luma.length; i++) luma[i] = ((luma[i] - low) * 255) / (high - low);
   return luma;
 }
+
+// WCAG relative luminance of an sRGB colour, and the contrast between two luminances, as the e2e spec measures.
+const channel = (value) => { const s = value / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+export const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+export const contrast = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+
+const over = ([r, g, b, a], under) => [r, g, b].map((value, i) => value * a + under[i] * (1 - a));
 
 // Lays a cols × rows grid over the image as background-size: cover does (centred, cropped) and hands each cell
 // the pixel spans under it.
@@ -164,7 +175,7 @@ async function readStored(saved) {
   return { pixels, blob: await encode(node, 'image/webp') };
 }
 
-export function createWallpaper({ layer, input, remove, error, style, blur, opacity, reach, surfaces }) {
+export function createWallpaper({ layer, input, remove, error, style, blur, opacity, reach, surfaces, reading }) {
   const rows = [style, blur, opacity, reach].map((control) => control.closest('.preference-row'));
   let image = null;
   let luma = null;
@@ -172,6 +183,11 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
   let drawn = '';
   let url = '';
   let timer = 0;
+  // The pixels behind what is shown: the photo or wash, scaled over the screen as cover does, or the dither mask
+  // with one cell per dot.
+  let source = null;
+  const probe = layer.appendChild(document.createElement('i'));
+  const [, swatch] = canvas(1, 1);
 
   function show(next) {
     image = next;
@@ -180,6 +196,8 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     remove.hidden = !image;
     for (const row of rows) row.hidden = !image;
     if (image) return draw();
+    source = null;
+    halo();
     URL.revokeObjectURL(url);
     url = '';
     layer.hidden = true;
@@ -188,14 +206,16 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     layer.style.removeProperty('--wallpaper-image');
   }
 
-  function publish(blob, key, size) {
+  function publish(blob, key, size, pixels) {
     if (drawn !== key) return;
+    source = pixels;
     URL.revokeObjectURL(url);
     url = URL.createObjectURL(blob);
     layer.style.setProperty('--wallpaper-image', `url("${url}")`);
     if (size) layer.style.setProperty('--wallpaper-size', size);
     layer.dataset.style = look.style;
     layer.dataset.shown = '';
+    halo();
   }
 
   function draw() {
@@ -203,7 +223,7 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     if (look.style === 'regular') {
       if (drawn === 'regular') return;
       drawn = 'regular';
-      return publish(image.blob, drawn);
+      return publish(image.blob, drawn, '', image.pixels);
     }
     const dither = look.style === 'dither';
     const cell = parseFloat(getComputedStyle(layer).getPropertyValue(dither ? '--wallpaper-pitch' : '--wallpaper-cell'));
@@ -219,20 +239,91 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     const pixels = dither ? ditherMask({ width, height, luma }, cols, lines) : smoothScale(colourGrid(image.pixels, cols, lines), cols, lines, scale);
     const [node, context] = canvas(cols * scale, lines * scale);
     context.putImageData(new ImageData(pixels, cols * scale, lines * scale), 0, 0);
-    encode(node).then((blob) => publish(blob, key, size), () => {});
+    const shown = { width: cols * scale, height: lines * scale, data: pixels, cell: dither ? cell : 0 };
+    encode(node).then((blob) => publish(blob, key, size, shown), () => {});
   }
 
   function apply() {
     selectSetting('wallpaper-style', look.style);
     blur.disabled = look.style === 'dither';
-    for (const [control, value, text] of [[blur, look.blur, `${look.blur} px`], [opacity, look.opacity, `${look.opacity}%`], [reach, look.reach, `${look.reach}%`]]) {
+    for (const [control, value, label] of [[blur, look.blur, `${look.blur} px`], [opacity, look.opacity, `${look.opacity}%`], [reach, look.reach, `${look.reach}%`]]) {
       control.value = String(value);
-      control.setAttribute('aria-valuetext', text);
+      control.setAttribute('aria-valuetext', label);
       control.style.setProperty('--fill', `${((value - control.min) / (control.max - control.min)) * 100}%`);
     }
     layer.style.setProperty('--wallpaper-blur', `${look.blur}px`);
     layer.style.setProperty('--wallpaper-opacity', String(look.opacity / 100));
     layer.style.setProperty('--wallpaper-reach', String(look.reach / 100));
+    halo();
+  }
+
+  // A colour as the page paints it, in sRGB with alpha 0–1, whatever syntax the token uses.
+  function colour(value) {
+    probe.style.color = value;
+    swatch.clearRect(0, 0, 1, 1);
+    swatch.fillStyle = '#0000';
+    swatch.fillStyle = getComputedStyle(probe).color;
+    swatch.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = swatch.getImageData(0, 0, 1, 1).data;
+    return [r, g, b, a / 255];
+  }
+
+  // Text the picture runs behind gets an outline in the ground colour (data-halo) where what the layer paints there
+  // would take a letter, a mistyped letter on its tint or the caret below the contrast floor: the style, tint,
+  // blur, opacity, height and mid-run dim all count, and the worst pixel under each region decides it. Checked
+  // when one of those, the theme or the layout changes, never per keystroke.
+  function halo() {
+    const strength = layer.hidden || layer.dataset.shown === undefined || !source ? 0
+      : (look.opacity / 100) * (document.body.dataset.running === 'true' ? parseFloat(getComputedStyle(layer).getPropertyValue('--wallpaper-dim')) : 1);
+    const height = layer.getBoundingClientRect().height;
+    const stops = [...getComputedStyle(layer).maskImage.matchAll(/rgba?\(([^)]*)\)\s+([\d.]+)%/g)]
+      .map(([, rgb, at]) => [(Number(at) / 100) * height, Number(rgb.match(/[\d.]+/g)[3] ?? 1)]);
+    const fade = (y) => {
+      const next = stops.findIndex(([at]) => at > y);
+      if (next === 0) return stops[0][1];
+      if (next === -1) return stops.at(-1)?.[1] ?? 0;
+      const [[y0, a0], [y1, a1]] = [stops[next - 1], stops[next]];
+      return a0 + ((y - y0) / (y1 - y0)) * (a1 - a0);
+    };
+    const ground = colour('var(--ground)');
+    const inks = INKS.map(([ink, tint, floor]) => [colour(`var(${ink})`), tint && colour(`var(${tint})`), floor]);
+    const tint = colour('color-mix(in oklab, var(--accent) var(--wallpaper-tint), var(--ground))');
+    const light = getComputedStyle(document.documentElement).colorScheme === 'light';
+    const spread = source?.cell ? 0 : 3 * look.blur;
+    const [scale, left, top] = source?.cell ? [source.cell, 0, 0] : (() => {
+      if (!source) return [1, 0, 0];
+      const width = layer.clientWidth + 4 * look.blur;
+      const tall = innerHeight + 4 * look.blur;
+      const fit = Math.max(width / source.width, tall / source.height);
+      return [fit, (width - source.width * fit) / 2 - 2 * look.blur, (tall - source.height * fit) / 2 - 2 * look.blur];
+    })();
+    for (const node of reading) {
+      const rect = node.getBoundingClientRect();
+      const alpha = rect.height ? strength * fade(rect.top) : 0;
+      let readable = alpha <= 0;
+      if (!readable) {
+        const span = (from, to, size) => [Math.max(0, Math.floor(from)), Math.min(size, Math.ceil(to))];
+        const [x0, x1] = span((rect.left - spread - left) / scale, (rect.right + spread - left) / scale, source.width);
+        const [y0, y1] = span((rect.top - spread - top) / scale, (rect.bottom + spread - top) / scale, source.height);
+        const step = Math.max(1, Math.ceil(Math.sqrt(((x1 - x0) * (y1 - y0)) / SAMPLES)));
+        readable = true;
+        for (let y = y0; readable && y < y1; y += step) {
+          for (let x = x0; readable && x < x1; x += step) {
+            const at = (y * source.width + x) * 4;
+            const dots = source.data[at + 3] / 255;
+            const behind = source.cell
+              ? over([...tint.slice(0, 3), alpha * (light ? 1 - dots : dots)], ground)
+              : over([source.data[at], source.data[at + 1], source.data[at + 2], alpha], ground);
+            readable = inks.every(([ink, under, floor]) => {
+              const surface = under ? over(under, behind) : behind;
+              return contrast(luminance(over(ink, surface)), luminance(surface)) >= floor;
+            });
+          }
+        }
+      }
+      if (readable) delete node.dataset.halo;
+      else node.dataset.halo = '';
+    }
   }
 
   const save = () => stored('readwrite', (files) => files.put(look, LOOK)).catch(() => {});
@@ -242,9 +333,13 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
   function measure() {
     const surface = surfaces.map((node) => node.getBoundingClientRect()).find((rect) => rect.height);
     if (surface) layer.style.setProperty('--wallpaper-top', `${surface.top}px`);
+    halo();
   }
   const observer = new ResizeObserver(measure);
-  for (const node of surfaces) observer.observe(node);
+  for (const node of [...surfaces, ...reading]) observer.observe(node);
+  const changed = (records) => { if (records.some((record) => record.target.getAttribute(record.attributeName) !== record.oldValue)) halo(); };
+  new MutationObserver(changed).observe(document.body, { attributes: true, attributeOldValue: true, attributeFilter: ['data-running', 'data-view'] });
+  new MutationObserver(changed).observe(document.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: ['data-theme', 'style', 'class'] });
   addEventListener('scroll', measure, { passive: true });
   addEventListener('resize', () => {
     measure();
