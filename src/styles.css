@@ -91,14 +91,15 @@
   --chart-height-min: 240px;
   /* Background image (src/wallpaper.js) over the top of the page, faded out at the countdown, dimmed while a
      run is in progress: dither puts one dot every pitch in a tint of the accent; gradient averages the photo
-     over cells this size; the reading band's edges blur over the feather. Blur, opacity and reach are the
-     person's (settings → appearance), set on the layer. */
+     over cells this size; text the picture would take below the contrast floor gets an outline this wide in the
+     ground colour (half of the stroke shows, under the letter). Blur, opacity and reach are the person's
+     (settings → appearance), set on the layer. */
   --wallpaper-pitch: 3px;
   --wallpaper-dot: 2px;
   --wallpaper-cell: 160px;
   --wallpaper-reach: 0;
-  --wallpaper-feather: var(--space-8);
   --wallpaper-tint: 35%;
+  --wallpaper-halo: 2px;
   --wallpaper-dim: 0.25;
   --wallpaper-blur: 0px;
   --wallpaper-opacity: 1;
@@ -1701,7 +1702,7 @@ body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options
    opacity sits there too, so a slider drag never waits on the dim transition. ::before always covers the screen
    and the layer clips it, so reach moves only where the fade ends: gone at 92% of the layer, at the top of the
    practice screen's reading band (src/wallpaper.js measures it) at reach 0 and at the bottom of the screen at 1,
-   on the practice screen only. The band's blocks are cut out of the mask, so no photo is ever behind the letters. */
+   on the practice screen only. */
 .wallpaper {
   position: fixed;
   inset: 0 0 auto;
@@ -1711,8 +1712,7 @@ body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options
   overflow: hidden;
   pointer-events: none;
   opacity: 0;
-  mask-image: linear-gradient(#000 20%, rgb(0 0 0 / 0.45) 55%, rgb(0 0 0 / 0.1) 80%, #0000 92%), var(--wallpaper-bands, linear-gradient(#000 0 0));
-  mask-composite: intersect;
+  mask-image: linear-gradient(#000 20%, rgb(0 0 0 / 0.45) 55%, rgb(0 0 0 / 0.1) 80%, #0000 92%);
   transition: opacity var(--dur-medium) var(--ease-out);
 }
 body:not([data-view="practice"]) .wallpaper { --wallpaper-end: var(--wallpaper-top, 40svh); }
@@ -1740,6 +1740,10 @@ body:not([data-view="practice"]) .wallpaper { --wallpaper-end: var(--wallpaper-t
 .wallpaper[data-shown] { opacity: 1; }
 body[data-running="true"] .wallpaper[data-shown] { opacity: var(--wallpaper-dim); }
 @supports not (color: light-dark(#000, #fff)) { .wallpaper { display: none; } }
+/* src/wallpaper.js marks text the picture would make hard to read: a stroke in the ground colour drawn under each
+   letter, so it never thins the letter itself, and the same ring round the caret. */
+[data-halo] { -webkit-text-stroke: var(--wallpaper-halo) var(--ground); paint-order: stroke fill; }
+[data-halo] .caret-bar { box-shadow: 0 0 0 calc(var(--wallpaper-halo) / 2) var(--ground); }
 
 /* Caps Lock warning: sits in the gap under the measure rule, so showing it moves nothing.
    It is a warning, not chrome, so the running fade leaves it alone; it is a readable
