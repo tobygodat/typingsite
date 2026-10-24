@@ -164,7 +164,7 @@ async function readStored(saved) {
   return { pixels, blob: await encode(node, 'image/webp') };
 }
 
-export function createWallpaper({ layer, input, remove, error, style, blur, opacity, reach, surfaces, chrome }) {
+export function createWallpaper({ layer, input, remove, error, style, blur, opacity, reach, surfaces }) {
   const rows = [style, blur, opacity, reach].map((control) => control.closest('.preference-row'));
   let image = null;
   let luma = null;
@@ -237,26 +237,14 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
 
   const save = () => stored('readwrite', (files) => files.put(look, LOOK)).catch(() => {});
 
-  // The practice screen's reading band: the picture fades out at its top at reach 0 and never paints behind it, or
-  // behind the hints and footer, at any reach, since no strength of photo keeps the letters' contrast. Each block
-  // is cut out of the layer's mask with a feathered edge, and blocks closer than two feathers are one band.
-  // Viewport positions, as the layer is fixed; a hidden practice screen keeps the last.
+  // The top of the practice screen's reading band, where the picture fades out at reach 0. A viewport position, as
+  // the layer is fixed; a hidden practice screen keeps the last.
   function measure() {
     const surface = surfaces.map((node) => node.getBoundingClientRect()).find((rect) => rect.height);
-    if (!surface) return;
-    const feather = parseFloat(getComputedStyle(layer).getPropertyValue('--wallpaper-feather'));
-    const bands = [];
-    for (const { top, bottom } of [surface, ...chrome.map((node) => node.getBoundingClientRect()).filter((rect) => rect.height)].sort((a, b) => a.top - b.top)) {
-      const last = bands.at(-1);
-      if (last && top - last[1] < 2 * feather) last[1] = Math.max(last[1], bottom);
-      else bands.push([top, bottom]);
-    }
-    const stops = bands.map(([top, bottom]) => `#000 ${top - feather}px, #0000 ${top}px, #0000 ${bottom}px, #000 ${bottom + feather}px`);
-    layer.style.setProperty('--wallpaper-top', `${surface.top}px`);
-    layer.style.setProperty('--wallpaper-bands', `linear-gradient(${stops.join(', ')})`);
+    if (surface) layer.style.setProperty('--wallpaper-top', `${surface.top}px`);
   }
   const observer = new ResizeObserver(measure);
-  for (const node of [...surfaces, ...chrome]) observer.observe(node);
+  for (const node of surfaces) observer.observe(node);
   addEventListener('scroll', measure, { passive: true });
   addEventListener('resize', () => {
     measure();
