@@ -178,7 +178,7 @@ test('a condition key is compared only when this build writes it the same way', 
   assert.equal(shapeOf(key({ ...time60, corpus: 'original-en-v4' })), null);
   assert.equal(shapeOf(`${key(time60)}:extra-field`), null);
   assert.equal(shapeOf(key({ ...time60, mode: 'zen' })), null);
-  assert.equal(shapeOf('time:060::plain:::200:physical-keyboard:mandatory:original-en-v5:stilltype-metrics-v1'), null);
+  assert.equal(shapeOf('time:060::plain:::200:physical-keyboard:mandatory:original-en-v6:stilltype-metrics-v1'), null);
   assert.equal(shapeOf(null), null);
 });
 

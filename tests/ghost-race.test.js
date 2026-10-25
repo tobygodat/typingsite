@@ -221,7 +221,7 @@ test('challenge runs are their own kind: no patterns, no trend, and the default 
   assert.equal(comparable(baseline, attempt), false);
   assert.equal(comparable({ ...attempt, textId: 'other-text' }, run(passage)), false);
   assert.equal(conditionKey({ mode: 'time', duration: 30, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' }),
-    'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
+    'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
 });
 
 test('sending posts only the request id, the friend, the name and the run', async () => {

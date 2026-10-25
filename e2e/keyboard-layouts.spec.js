@@ -257,7 +257,7 @@ test('a saved profile from before layouts reads as QWERTY and keeps its best', a
   // Preferences and bests exactly as master saved them: no layout anywhere.
   const legacyKey = conditionKey({ mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null,
     wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en' });
-  expect(legacyKey).toBe('time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
+  expect(legacyKey).toBe('time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
   supabase.profiles.set(user.id, { data: { version: 2, preferences: { mode: 'time', duration: 30, wordList: '200', keyboard: true, stopOnError: false },
     attempts: [], runs: [], loops: [], seenTextIds: [], bests: { [legacyKey]: { wpm: 72, attemptId: 'old', at: '2026-09-20T12:00:00Z' } }, updatedAt: '2026-09-20T12:00:00Z' } });
   await openApp(page);

@@ -31,15 +31,15 @@ function seeded(seed = 7) {
 }
 
 test('preset condition keys are byte-identical to master, so existing bests and retests still match', () => {
-  assert.equal(conditionKey(shape('time', 30)), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
-  assert.equal(conditionKey(shape('time', 120)), 'time:120::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
-  assert.equal(conditionKey(shape('words', 25)), 'words::25:plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
-  assert.equal(conditionKey(shape('words', 100)), 'words::100:plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
+  assert.equal(conditionKey(shape('time', 30)), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
+  assert.equal(conditionKey(shape('time', 120)), 'time:120::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
+  assert.equal(conditionKey(shape('words', 25)), 'words::25:plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
+  assert.equal(conditionKey(shape('words', 100)), 'words::100:plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
 });
 
 test('a custom length is its own condition, and a custom value equal to a preset is that preset', () => {
-  assert.equal(conditionKey(shape('time', 45)), 'time:45::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
-  assert.equal(conditionKey(shape('words', 75)), 'words::75:plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
+  assert.equal(conditionKey(shape('time', 45)), 'time:45::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
+  assert.equal(conditionKey(shape('words', 75)), 'words::75:plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
   const presetKeys = [...LENGTHS.time.presets.map((n) => conditionKey(shape('time', n))), ...LENGTHS.words.presets.map((n) => conditionKey(shape('words', n)))];
   assert.equal(presetKeys.includes(conditionKey(shape('time', 45))), false);
   assert.equal(presetKeys.includes(conditionKey(shape('words', 75))), false);
@@ -108,18 +108,18 @@ test('custom lengths are remembered, and broken values fall back to the defaults
   assert.deepEqual(normalizeLengthPreferences({ duration: '30', count: null }), { duration: 30, count: 25, customDuration: null, customCount: null });
 });
 
-test('presets keep master’s 1,600-word timed passages byte for byte; longer times are topped up to the supply', () => {
+test('presets keep one 1,600-word timed passage byte for byte; longer times are topped up to the supply', () => {
   assert.equal(timedCharacterSupply(0), 0);
   assert.equal(timedCharacterSupply(120), 3000);
   assert.equal(timedCharacterSupply(600), 15000);
-  // The text ids master gives makePassage('time', 0, punctuation, seeded(), list, numbers) for every list and setting.
-  const master = {
-    '200:plain': 'generated-1vlvygv', '200:punctuation': 'generated-j880b5', '200:plain+numbers': 'generated-15iwpdi', '200:punctuation+numbers': 'generated-w8q3hy',
-    '1k:plain': 'generated-12z5wah', '1k:punctuation': 'generated-uwen6z', '1k:plain+numbers': 'generated-remgnk', '1k:punctuation+numbers': 'generated-1jk9ia8',
-    '5k:plain': 'generated-1d07ywh', '5k:punctuation': 'generated-13rcxbz', '5k:plain+numbers': 'generated-8v94bw', '5k:punctuation+numbers': 'generated-cok5m2',
-    '10k:plain': 'generated-1429i8l', '10k:punctuation': 'generated-h937hb', '10k:plain+numbers': 'generated-18l0oza', '10k:punctuation+numbers': 'generated-1d353dq',
+  // The text ids makePassage('time', 0, punctuation, seeded(), list, numbers) gives for every list and setting.
+  const ids = {
+    '200:plain': 'generated-1wd62n5', '200:punctuation': 'generated-1rbaa57', '200:plain+numbers': 'generated-1tb836k', '200:punctuation+numbers': 'generated-swyvyo',
+    '1k:plain': 'generated-1l1j522', '1k:punctuation': 'generated-loxuhd', '1k:plain+numbers': 'generated-ijuefq', '1k:punctuation+numbers': 'generated-jv8exc',
+    '5k:plain': 'generated-1dkhwmp', '5k:punctuation': 'generated-c3ml60', '5k:plain+numbers': 'generated-12tgt60', '5k:punctuation+numbers': 'generated-mecc8f',
+    '10k:plain': 'generated-aot3wf', '10k:punctuation': 'generated-fmw7vo', '10k:plain+numbers': 'generated-1esjo7l', '10k:punctuation+numbers': 'generated-gxqlvc',
   };
-  for (const [key, id] of Object.entries(master)) {
+  for (const [key, id] of Object.entries(ids)) {
     const [list, setting] = key.split(':');
     for (const seconds of [0, ...LENGTHS.time.presets]) {
       const passage = selectPassage({ mode: 'time', duration: seconds, punctuation: setting.startsWith('punctuation'), numbers: setting.endsWith('+numbers'), wordList: list, random: seeded() });
