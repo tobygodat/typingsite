@@ -4,6 +4,9 @@
 import { test, expect, openApp, openView, chooseWords, completePassage, phone } from './fixtures.js';
 
 const box = (page, selector) => page.locator(selector).boundingBox();
+// Instant typing scores five-digit speeds that no run reaches, and those widen the run card; a fast
+// person's pace keeps the score to three digits.
+const atPace = { delay: 25 };
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
 
 async function tabIntoTrace(page) {
@@ -54,7 +57,7 @@ for (const width of [901, 800]) {
     await page.setViewportSize({ width, height: 900 });
     await openApp(page);
     await chooseWords(page, 10);
-    await completePassage(page);
+    await completePassage(page, atPace);
     await expect(page.locator('#speed-graph svg')).toBeVisible();
 
     expect(await overflow(page)).toBeLessThanOrEqual(0);
@@ -75,7 +78,7 @@ test('at 1440px the score and the trace share a row and the drill sits below the
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page);
   await chooseWords(page, 10);
-  await completePassage(page);
+  await completePassage(page, atPace);
   await expect(page.locator('#speed-graph svg')).toBeVisible();
 
   const score = await box(page, '#run-card');
@@ -150,7 +153,7 @@ test.describe('phone', () => {
   test('at 390px the drill comes after the score and before the speed graph', async ({ page }, testInfo) => {
     await openApp(page);
     await chooseWords(page, 10);
-    await completePassage(page);
+    await completePassage(page, atPace);
     await expect(page.locator('#speed-graph svg')).toBeVisible();
 
     const wpm = await box(page, '#result-wpm');

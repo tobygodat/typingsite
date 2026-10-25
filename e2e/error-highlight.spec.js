@@ -4,6 +4,8 @@ const TEXT = 'minimum errors remain readable';
 const ERROR_LENGTH = 'minimum errors'.length;
 
 async function expectUniformErrorBand(page, testInfo, name) {
+  // A fresh miss fades its tint in (1ms under reduced motion, still a frame of the old tint), so sample it settled.
+  await page.locator('#text-display .wrong').evaluateAll((nodes) => Promise.all(nodes.flatMap((node) => node.getAnimations({ subtree: true })).map((animation) => animation.finished.catch(() => {}))));
   const boxes = await page.locator('#text-display .wrong').evaluateAll((nodes) => nodes.map((node) => {
     const rect = node.getBoundingClientRect();
     const style = getComputedStyle(node, node.parentElement.classList.contains('word') ? null : '::before');
