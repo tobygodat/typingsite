@@ -83,7 +83,7 @@ test('a page number is read back from the page id', () => {
 test('book pages key by book and text version, apart from every other mode', () => {
   const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
     inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
-  assert.equal(conditionKey(practice), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
+  assert.equal(conditionKey(practice), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
   assert.equal(conditionKey(bookConditions), 'book-alice:::punctuation::::physical-keyboard:relaxed:gutenberg-en-v1:stilltype-metrics-v1');
   assert.notEqual(conditionKey({ ...bookConditions, book: 'pride' }), conditionKey(bookConditions));
   assert.notEqual(conditionKey({ ...bookConditions, corpus: 'gutenberg-en-v2' }), conditionKey(bookConditions));

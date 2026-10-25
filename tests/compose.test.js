@@ -300,5 +300,5 @@ test('the prompt deck shows every prompt once before repeating, never the curren
 test('composing adds nothing to copy-test conditions', () => {
   // Composing is stored apart from runs; condition keys for every test stay exactly as they were.
   assert.equal(conditionKey({ mode: 'time', duration: 30, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed' }),
-    'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
+    'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
 });

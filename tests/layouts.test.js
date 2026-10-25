@@ -26,7 +26,7 @@ const practice = { mode: 'time', duration: 30, count: null, punctuation: false, 
   corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
 
 test('QWERTY and legacy runs keep master’s condition key byte for byte', () => {
-  assert.equal(conditionKey(practice), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
+  assert.equal(conditionKey(practice), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
   const shapes = [
     practice,
     { ...practice, mode: 'words', duration: null, count: 25, wordList: '1k', punctuation: true },

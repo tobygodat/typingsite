@@ -23,7 +23,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 
 ## Features
 
-- Practice: time, words (presets or custom) and quote, with punctuation, numbers and four word lists. Adaptive (time and words) leans the text toward the pairs you keep missing; its runs are drill-kind, so never a best, trend point or baseline.
+- Practice: time, words (presets or custom) and quote, with punctuation, numbers and four word lists. Time and words text is generated like Monkeytype's English (`drawnPassage` in `src/typing.js`): no word equal to either of the two before it, random sentence-aware punctuation at its rates, 1 word in 10 a number. Adaptive (time and words) leans the text toward the pairs you keep missing; its runs are drill-kind, so never a best, trend point or baseline.
 - More: code (js, python, go, rust), standard 60 s test, book pages, compose, custom text, a 1–8 letter manual drill.
 - Learn to type: 14 lessons; only physical-keyboard runs unlock the next.
 - Results: on Practice, in place of the passage (`body[data-view=results]`): run card, Run again / Drill “pair” / Watch replay, speed graph, typed words, practice missed words.

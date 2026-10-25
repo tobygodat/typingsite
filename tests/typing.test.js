@@ -208,7 +208,7 @@ test('correcting a mistake does not erase historical errors', () => {
 test('empty run has a finite score', () => assert.deepEqual(metrics('', '', 0, 0, 0), {wpm:0, accuracy:100}));
 test('word sessions contain requested number of words and punctuation is optional', () => {
   assert.equal(makePassage('words', 25, false).split(' ').length, 25);
-  assert.match(makePassage('words', 10, true, () => 0), /^The the the the the, the the the the\. The$/);
+  assert.equal(makePassage('words', 10, true, () => 0), 'The the. The the. The the. The the. The the.');
 });
 
 test('numbers mix in only when on, stay seeded, and split condition keys', () => {
@@ -221,7 +221,7 @@ test('numbers mix in only when on, stay seeded, and split condition keys', () =>
   assert.equal(mixed, makePassage('words', 200, false, seeded(7), undefined, true));
   assert.doesNotMatch(makePassage('time', 0, true, seeded(3)), /\d/);
   // A short passage that draws no numbers still gets one.
-  assert.equal(makePassage('words', 1, false, () => 0.99, undefined, true), '9910');
+  assert.equal(makePassage('words', 1, false, () => 0.99, undefined, true), '9999');
   for (let seed = 1; seed <= 200; seed += 1) assert.match(makePassage('words', 10, false, seeded(seed), undefined, true), /\d/);
   const base = { mode: 'words', count: 10, punctuation: false };
   assert.notEqual(conditionKey(base), conditionKey({ ...base, numbers: true }));
@@ -710,9 +710,9 @@ test('replayCursor matches replayAttempt at every prefix of the events', () => {
 test('condition keys without a standard recipe stay byte-identical', () => {
   const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null,
     wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en' };
-  assert.equal(conditionKey(practice), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
+  assert.equal(conditionKey(practice), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
   assert.equal(conditionKey({ ...practice, recipe: null }), conditionKey(practice));
-  assert.equal(conditionKey({}), ':::plain::::physical-keyboard:mandatory:original-en-v5:stilltype-metrics-v1');
+  assert.equal(conditionKey({}), ':::plain::::physical-keyboard:mandatory:original-en-v6:stilltype-metrics-v1');
 });
 
 test('the standard test is its own condition, versioned by recipe', () => {
@@ -722,7 +722,7 @@ test('the standard test is its own condition, versioned by recipe', () => {
   assert.deepEqual({ mode: standard.mode, duration: standard.duration, punctuation: standard.punctuation, wordList: standard.wordList,
     correctionPolicy: standard.correctionPolicy, recipe: standard.recipe }, { mode: 'standard', duration: 60, punctuation: true,
     wordList: null, correctionPolicy: 'mandatory', recipe: 'standard-v1' });
-  assert.equal(conditionKey(standard), 'standard:60::punctuation::::physical-keyboard:mandatory:original-en-v5:stilltype-metrics-v1:standard-v1');
+  assert.equal(conditionKey(standard), 'standard:60::punctuation::::physical-keyboard:mandatory:original-en-v6:stilltype-metrics-v1:standard-v1');
   // Even a time test that happens to share its length, punctuation and policy never shares a best.
   const lookalike = { mode: 'time', duration: 60, punctuation: true, wordList: '10k', correctionPolicy: 'mandatory' };
   assert.notEqual(conditionKey(standard), conditionKey(lookalike));
@@ -901,11 +901,11 @@ const defaults = { mode: 'words', duration: null, count: 10, punctuation: false,
   wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en' };
 
 test('default strict space and quick end keep the condition key byte-identical', () => {
-  const master = 'words::10:plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1';
+  const master = 'words::10:plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1';
   assert.equal(conditionKey(defaults), master);
   assert.equal(conditionKey({ ...defaults, strictSpace: false, quickEnd: true }), master);
   assert.equal(conditionKey({ mode: 'time', duration: 30, wordList: '200', correctionPolicy: 'relaxed', strictSpace: false, quickEnd: true }),
-    'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1');
+    'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
   assert.equal(conditionKey({ ...defaults, strictSpace: true }), `${master}:strict-space`);
   assert.equal(conditionKey({ ...defaults, quickEnd: false }), `${master}:quick-end-off`);
   assert.equal(conditionKey({ ...defaults, strictSpace: true, quickEnd: false }), `${master}:strict-space:quick-end-off`);
