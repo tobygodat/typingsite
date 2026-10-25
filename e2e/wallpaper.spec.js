@@ -4,8 +4,8 @@
 // screen only. The layer never takes the pointer or moves the page, dims while a run is in progress and comes back
 // with the chrome. Raised to full height, the picture runs on behind the reading band, the hints and the footer
 // with no hole in it, and over the brightest image in every style, at full strength and the most blur, the
-// passage, the coral mistakes and the caret keep their contrast in every theme, idle and mid-run: outlined in the
-// ground colour where the picture would take them below the floor, and not over a quiet image.
+// passage and the coral mistakes keep their contrast in every theme, idle and mid-run: outlined in the ground
+// colour where the picture would take them below the floor, and not over a quiet image. The caret is never ringed.
 import { test, expect, openApp, chooseWords, passageText, openSettings, closeSettings, chooseSetting, openView } from './fixtures.js';
 
 const layer = (page) => page.locator('#wallpaper');
@@ -264,7 +264,8 @@ const over = ([r, g, b, a], under) => [r, g, b].map((value, i) => value * a + un
 
 // Raised to full height over the brightest image the picture is behind the passage, so wherever it would take the
 // letters below the floor they get an outline in the ground colour, idle and mid-run (where the dim may make it
-// unnecessary): either way the letters, the mistyped letters on their tint and the caret keep their contrast.
+// unnecessary): either way the letters and the mistyped letters on their tint keep their contrast. The caret stays
+// bare.
 const STYLES = ['dither', 'regular', 'gradient'];
 const CASES = VIEWPORTS.flatMap(([label, viewport]) => STYLES.map((style) => [label, viewport, style]));
 const largestDifference = (page, pairs) => page.evaluate(async (list) => {
@@ -294,7 +295,7 @@ async function passageContrast(page) {
   const bare = await page.addStyleTag({ content: '#text-display, #text-display * { -webkit-text-stroke: 0 !important; }' });
   const shot = await page.screenshot({ clip: box });
   await Promise.all([hide, bare].map((tag) => tag.evaluate((node) => node.remove())));
-  const { grounds, inks, outline } = await page.evaluate(async (png) => {
+  const { grounds, inks, outline, caret } = await page.evaluate(async (png) => {
     const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
     const context = Object.assign(document.createElement('canvas'), { width: bitmap.width, height: bitmap.height }).getContext('2d');
     context.drawImage(bitmap, 0, 0);
@@ -314,18 +315,16 @@ async function passageContrast(page) {
       width: parseFloat(char.webkitTextStrokeWidth),
       color: color(char.webkitTextStrokeColor),
       under: char.paintOrder.startsWith('stroke'),
-      caret: caret.boxShadow === 'none' ? null : color(caret.boxShadow.match(/rgba?\([^)]*\)/)[0]),
     };
     probe.remove();
-    return { grounds: [...seen.values()], inks, outline };
+    return { grounds: [...seen.values()], inks, outline, caret: { shadow: caret.boxShadow, outline: caret.outlineStyle } };
   }, shot.toString('base64'));
+  expect(caret, 'the caret has no ring').toEqual({ shadow: 'none', outline: 'none' });
   if (outline) {
-    // The outline is drawn, under each letter, in the ground colour, and rings the caret: that is what the letters
-    // and caret sit on.
+    // The outline is drawn, under each letter, in the ground colour: that is what the letters sit on.
     expect(outline.width, 'outline width').toBeGreaterThanOrEqual(1);
     expect(outline.color, 'outline colour').toEqual(inks['--ground']);
     expect(outline.under, 'outline under the letter').toBe(true);
-    expect(outline.caret, 'caret ring').toEqual(inks['--ground']);
     // Where the picture strays furthest from the ground behind the letters, the outline paints it back to the ground.
     // How far that is depends on the theme, the style and the dim, so compare with the picture rather than a number.
     const [painted] = await largestDifference(page, [[outlined, shot]]);
@@ -337,14 +336,14 @@ async function passageContrast(page) {
   expect(worst(inks['--text']), 'typed letters').toBeGreaterThanOrEqual(4.5);
   expect(worst(inks['--muted']), 'untyped letters').toBeGreaterThanOrEqual(4.5);
   expect(worst(inks['--danger'], inks['--danger-soft']), 'mistyped letters on their tint').toBeGreaterThanOrEqual(4.5);
-  expect(worst(inks['--accent']), 'caret').toBeGreaterThanOrEqual(3);
+  if (!outline) expect(worst(inks['--accent']), 'caret').toBeGreaterThanOrEqual(3);
   return Boolean(outline);
 }
 
 for (const theme of THEMES) {
   const mode = DARK_THEMES.includes(theme) ? 'dark' : 'light';
   for (const [label, viewport, style] of CASES) {
-    test(`${theme} theme, ${label}, ${style}: at full height the passage, mistakes and caret keep their contrast over the brightest image, outlined where they need it`, async ({ page }) => {
+    test(`${theme} theme, ${label}, ${style}: at full height the passage and mistakes keep their contrast over the brightest image, outlined where they need it, the caret bare`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await page.emulateMedia({ colorScheme: mode });
       await openApp(page);
