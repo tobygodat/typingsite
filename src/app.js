@@ -6108,7 +6108,6 @@ function paletteCommands(query) {
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => jumpTo(view),
     })),
     { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); $('compete-heading').focus(); } },
-    { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartHint(), run: restartTest },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
@@ -6153,8 +6152,10 @@ function paletteCommands(query) {
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(prefs.keyboard && prefs.fingerMap), on: prefs.keyboard && prefs.fingerMap, run: toggleFingerMap },
     { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
+    { group: 'display', label: 'import Monkeytype settings…', keywords: 'monkeytype import settings config json migrate', run: openImport },
     ...SOUND_MODES.map((mode) => ({ group: 'sound', label: `sound · ${SOUND_LABELS[mode]}`, keywords: 'audio typing key clicks error tick mute volume', hint: prefs.sound === mode ? 'current' : '', on: prefs.sound === mode, run: () => setSound(mode) })),
     ...[25, 50, 75, 100].map((volume) => ({ group: 'sound', label: `sound volume · ${volume}%`, keywords: 'audio loud quiet louder quieter', hint: prefs.soundVolume === volume ? 'current' : '', on: prefs.soundVolume === volume, disabled: prefs.sound === 'off', run: () => setSoundVolume(volume) })),
+    { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     ...(session
       ? [
         { group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount },
@@ -6165,7 +6166,6 @@ function paletteCommands(query) {
         { group: 'account', label: 'sign in…', keywords: 'log in login account', run: () => openAccountDialog('signin') },
         { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
       ]),
-    { group: 'display', label: 'import Monkeytype settings…', keywords: 'monkeytype import settings config json migrate', run: openImport },
     { group: 'help', label: 'keybindings…', keywords: 'settings shortcuts restart keyboard', run: () => { settingsView.open('shortcuts', $('palette-trigger')); $('keybinding-restart').focus(); } },
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
     { group: 'local data', label: 'clear local history…', keywords: 'delete reset erase', disabled: !hasAnyHistory(), run: () => { navigate('progress'); $('clear-history').click(); } },

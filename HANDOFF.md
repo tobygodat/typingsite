@@ -32,7 +32,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - Challenge: online races (invite or guest link, friends, Race again), Daily, friends board, one keyboard.
 - Ghost races: a friend races your recorded run within seven days.
 - Inbox and toast for invitations and challenges.
-- Settings dialog, ⌘K / Ctrl-K palette, Monkeytype import.
+- Settings dialog, ⌘K / Ctrl-K palette (each group listed once, in the order of its first command; `e2e/palette-alignment.spec.js` holds its rows centred and its columns aligned), Monkeytype import.
 - Rules: five correction policies, strict space, quick end, minimums, repeat quotes, pace caret.
 - Display: ten themes in a mode (system, dark, light) with a dark and a light pick, up to five custom themes (editor, or generated from a short description by Claude Haiku 5.5, 20 a day), a background image (regular, dither or gradient, with blur, opacity and height), text size, typing and app fonts, word highlight (optionally sliding between words), one-line tape, wpm or cpm, live metrics, keyboard with five layouts and a finger map, focus mode, sounds.
 - Accounts: email or Google, sync, clear history with Undo, account deletion.
