@@ -78,7 +78,7 @@ test('a unit template names the unit and keeps text only its unit shows', () => 
 test('the speed unit is not a test condition, so bests and retests keep matching', () => {
   const conditions = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
     inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
-  const key = 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1';
+  const key = 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1';
   assert.equal(conditionKey(conditions), key);
   assert.equal(conditionKey({ ...conditions, speedUnit: 'cpm' }), key);
 });

@@ -4,7 +4,7 @@ import { isDefaultLayout } from './layouts.js';
 
 export const METRIC_VERSION = 'stilltype-metrics-v1';
 export const EVENT_VERSION = 'stilltype-events-v1';
-export const CORPUS_VERSION = 'original-en-v5';
+export const CORPUS_VERSION = 'original-en-v6';
 const MAX_PAIR_PAUSE_MS = 2000;
 // The standard word for speed: five characters, spaces and punctuation included.
 export const CHARS_PER_WORD = 5;
@@ -43,33 +43,46 @@ export const quoteCorpus = [
   { id: 'long-library-01', difficulty: 'precise', text: 'The oldest room in the library was easy to overlook. Its narrow door opened onto a tall window, a long oak table, and shelves marked by decades of careful use. Readers left penciled notes on scraps of paper, questions for people they would never meet. Some were answered in the margins of later pages. The room held no grand secret, only a patient conversation carried forward through attention, disagreement, and the habit of leaving a useful thought for whoever came next.' },
 ];
 
-function punctuate(words) {
-  return words.map((word, i) => {
-    // Lists are all lowercase so plain tests never need Shift; capitals come only from here.
-    let result = word === 'i' ? 'I' : word;
-    if (i % 9 === 0) result = result[0].toUpperCase() + result.slice(1);
-    if (i % 9 === 8) result += '.';
-    else if (i % 9 === 4) result += ',';
-    return result;
-  });
+// Generated tests follow Monkeytype's English generator (getNextWord and punctuateWord in
+// frontend/src/ts/test/words-generator.ts, and frontend/src/ts/test/english-punctuation.ts, at
+// monkeytypegame/monkeytype@895dc9a), word by word and on the passed random source, so a seed gives one passage.
+const CONTRACTIONS = new Map(Object.entries({
+  are: ["aren't"], can: ["can't"], could: ["couldn't"], did: ["didn't"], does: ["doesn't"], do: ["don't"],
+  had: ["hadn't"], has: ["hasn't"], have: ["haven't"], is: ["isn't"], it: ["it's", "it'll"], i: ["i'm", "i'll", "i've", "i'd"],
+  you: ["you'll", "you're", "you've", "you'd"], that: ["that's", "that'll", "that'd"], must: ["mustn't", "must've"],
+  there: ["there's", "there'll", "there'd"], he: ["he's", "he'll", "he'd"], she: ["she's", "she'll", "she'd"],
+  we: ["we're", "we'll", "we'd"], they: ["they're", "they'll", "they'd"], should: ["shouldn't", "should've"],
+  was: ["wasn't"], were: ["weren't"], will: ["won't"], would: ["wouldn't", "would've"], going: ["goin'"],
+}));
+
+// A sentence starts with a capital; otherwise each mark in turn gets its chance, at Monkeytype's rates.
+// `end` is a word test's length, so its last word ends a sentence and the one before never does.
+function punctuateWord(word, previous, index, end, random) {
+  const lastChar = previous?.at(-1);
+  if (index === 0 || /[.?!]/.test(lastChar)) return word[0].toUpperCase() + word.slice(1);
+  if ((random() < 0.1 && lastChar !== ',' && index !== end - 2) || index === end - 1) {
+    const mark = random();
+    return word + (mark <= 0.8 ? '.' : mark < 0.9 ? '?' : '!');
+  }
+  if (random() < 0.01 && lastChar !== ',') return `"${word}"`;
+  if (random() < 0.011 && lastChar !== ',') return `'${word}'`;
+  if (random() < 0.012 && lastChar !== ',') return `(${word})`;
+  if (random() < 0.013 && ![',', ';', ':'].includes(lastChar)) return `${word}:`;
+  if (random() < 0.014 && lastChar !== ',' && previous !== '-') return '-';
+  if (random() < 0.015 && ![',', ';'].includes(lastChar)) return `${word};`;
+  if (random() < 0.2 && lastChar !== ',') return `${word},`;
+  const contractions = CONTRACTIONS.get(word.toLowerCase());
+  if (random() < 0.5 && contractions) {
+    const contraction = contractions[Math.floor(random() * contractions.length)];
+    return word === 'I' ? `I${contraction.slice(1)}` : contraction;
+  }
+  return word;
 }
 
-// Roughly 1 word in 8 becomes a 1–4 digit number, drawn from the same random source so a
-// seeded passage stays reproducible. A passage that drew none still gets one, so short
-// tests with numbers on always contain a number (words added to a passage skip that rule).
-function numberize(words, random, atLeastOne = true) {
-  const number = () => {
-    const digits = 1 + Math.floor(random() * 4);
-    const low = digits === 1 ? 0 : 10 ** (digits - 1);
-    return String(low + Math.floor(random() * (10 ** digits - low)));
-  };
-  let drawn = false;
-  const result = words.map((word) => {
-    if (random() >= 1 / 8) return word;
-    drawn = true;
-    return number();
-  });
-  if (atLeastOne && !drawn && result.length) result[Math.floor(random() * result.length)] = number();
+// 1 to 4 digits, never a leading zero.
+function number(random) {
+  let result = String(1 + Math.floor(random() * 9));
+  for (let digits = 1 + Math.floor(random() * 4); result.length < digits;) result += Math.floor(random() * 10);
   return result;
 }
 
@@ -85,22 +98,38 @@ export function makePassage(mode, count, punctuation, random = Math.random, list
   return drawnPassage(() => bank[Math.floor(random() * bank.length)], mode, count, punctuation, random, numbers, seconds);
 }
 
+// A word equal to either of the two drawn before it is drawn again, up to 100 times; so is "i" without
+// punctuation, which only appears as "I". Monkeytype compares against the finished words; comparing the
+// drawn ones means a contraction or a number can't hide a repeat. Then punctuation, then 1 word in 10
+// becomes a number.
 function drawnPassage(draw, mode, count, punctuation, random, numbers, seconds) {
-  const finish = (all) => (punctuation ? punctuate(all) : all).join(' ');
+  const end = mode === 'time' ? Infinity : count;
+  const drawn = [];
+  const words = [];
+  const add = (length) => {
+    for (let i = 0; i < length; i += 1) {
+      const recent = drawn.slice(-2);
+      let word = draw();
+      for (let tries = 0; tries < 100 && (recent.includes(word) || (!punctuation && word === 'i')); tries += 1) word = draw();
+      drawn.push(word);
+      if (punctuation) word = punctuateWord(word === 'i' ? 'I' : word, words.at(-1), words.length, end, random);
+      words.push(numbers && random() < 0.1 ? number(random) : word);
+    }
+  };
   // Every timed test starts from 1,600 words: at least 3,199 characters, more than 120 s at 300 WPM needs,
   // so a preset passage is never topped up and stays exactly what it was.
-  let words = Array.from({ length: mode === 'time' ? 1600 : count }, draw);
-  if (numbers) words = numberize(words, random);
-  let text = finish(words);
+  add(mode === 'time' ? 1600 : count);
+  // A passage that drew no number still gets one, so short tests with numbers on always contain a number.
+  if (numbers && words.length && !words.some((word) => /^\d+$/.test(word))) words[Math.floor(random() * words.length)] = number(random);
+  let text = words.join(' ');
   // Numbers are often shorter than the words they replace, so the supply is measured on the finished text
   // and a longer time is topped up until it holds enough. Each round adds about the words the shortfall
-  // needs at the passage's own average length, and draws them after all the others, so a seed still gives
+  // needs at the passage's own average length, generated after all the others, so a seed still gives
   // one passage.
   const supply = mode === 'time' ? timedCharacterSupply(seconds) : 0;
   while (text.length < supply) {
-    const extra = Array.from({ length: Math.ceil(((supply - text.length) * words.length) / text.length) }, draw);
-    words = words.concat(numbers ? numberize(extra, random, false) : extra);
-    text = finish(words);
+    add(Math.ceil(((supply - text.length) * words.length) / text.length));
+    text = words.join(' ');
   }
   return text;
 }

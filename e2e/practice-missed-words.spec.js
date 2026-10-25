@@ -143,15 +143,16 @@ test('after a timed test, the practice run lasts until its passage is typed', as
 
 test('a missed comma is practised with its comma, and the run says punctuation', async ({ page }) => {
   await openApp(page);
-  await chooseWords(page, 10);
+  await chooseWords(page, 50);
   await page.locator('#punctuation-toggle').check();
   await expect(page.locator('#condition-line')).toContainText('punctuation');
   const text = await passageText(page);
   const words = text.split(' ');
-  // Generated punctuation puts a comma after the fifth word: miss only that comma.
-  const comma = words[4];
-  expect(comma).toMatch(/,$/);
-  const at = words.slice(0, 5).join(' ').length - 1;
+  // Generated punctuation puts a comma after about one word in five: miss only the first such comma.
+  const index = words.findIndex((word) => /^[a-z]+,$/.test(word));
+  expect(index).toBeGreaterThan(0);
+  const comma = words[index];
+  const at = words.slice(0, index + 1).join(' ').length - 1;
   await page.locator('#typing-input').focus();
   await page.keyboard.type(text.slice(0, at));
   await page.keyboard.type('x');
@@ -304,16 +305,22 @@ test('a missed capital is practised as written, and the run doesn’t say punctu
   await openApp(page);
   await chooseWords(page, 10);
   await page.locator('#punctuation-toggle').check();
-  const text = await passageText(page);
-  // Generated punctuation capitalises the tenth and last word, with nothing after it: miss only its capital.
-  const capital = text.split(' ')[9];
+  // Generated punctuation sometimes adds contractions, quotes, brackets or dashes; draw again until it adds only
+  // capitals and sentence marks, so the practice that follows has no mark of its own.
+  let text = await passageText(page);
+  for (let tries = 0; tries < 30 && /[^\p{L}\p{N} ,.?!]/u.test(text); tries += 1) {
+    await page.locator('#restart-button').click();
+    await expect.poll(() => passageText(page)).not.toBe(text);
+    text = await passageText(page);
+  }
+  expect(text).not.toMatch(/[^\p{L}\p{N} ,.?!]/u);
+  // Generated punctuation capitalises the first word, with nothing after it: miss only its capital.
+  const capital = text.split(' ')[0];
   expect(capital).toMatch(/^\p{Lu}\p{Ll}*$/u);
-  const at = text.length - capital.length;
   await page.locator('#typing-input').focus();
-  await page.keyboard.type(text.slice(0, at));
   await page.keyboard.type('x');
   await page.keyboard.press('Backspace');
-  await page.keyboard.type(text.slice(at));
+  await page.keyboard.type(text);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#practice-words-evidence')).toContainText(`missed first try: ${capital}`);
 
