@@ -3352,8 +3352,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .palette-option[aria-selected="true"] .opt-mark { background: var(--accent); }
 .palette-option .opt-hint { color: var(--muted); font: var(--text-fine)/1 var(--font-mono); letter-spacing: 0.03em; white-space: nowrap; }
 .palette-option .opt-hint.is-on { color: var(--accent); }
-/* Centre each row on its lowercase letters, not the font's line box: Literata's sits about 2px low. */
-.palette-option :is(.opt-text, .opt-hint) { text-box: trim-both ex alphabetic; }
+/* Centre each row on its lowercase letters, not the font's line box: Literata's sits about 2px low.
+   The trimmed text still hit-tests over its full line, into the next row, so only the row takes the pointer. */
+.palette-option :is(.opt-text, .opt-hint) { text-box: trim-both ex alphabetic; pointer-events: none; }
 .palette-option.is-secret { color: var(--ghost); }
 .palette-option.is-secret .opt-mark { background: var(--ghost); }
 
