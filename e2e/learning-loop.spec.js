@@ -38,6 +38,7 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   expect(drill.split(' ').every((word) => word.includes('br'))).toBe(true);
 
   // Long text scrolls inside the fixed three-line window and the caret stays in view.
+  const typingFrom = await page.evaluate(() => Date.now());
   await typeInto(page, drill.slice(0, 190));
   await expect.poll(() => translateY(page)).toBeLessThan(0);
   const wrap = await page.locator('#typing-wrap').boundingBox();
@@ -47,8 +48,8 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   }).toBe(true);
   expect(wrap.height).toBeGreaterThan(0);
 
-  // The drill is 30 seconds long, then the retest starts itself.
-  await page.clock.fastForward(29_000);
+  // The drill is 30 seconds long from its first key, then the retest starts itself.
+  await page.clock.fastForward(29_000 - (await page.evaluate(() => Date.now()) - typingFrom));
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await page.clock.fastForward(1_000);
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');

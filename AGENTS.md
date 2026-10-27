@@ -3,20 +3,20 @@ Read HANDOFF.md first — current state, the work queue, and the decisions alrea
 PRODUCT.md holds durable product truth (users, purpose, metric contract, accessibility floor).
 
 ## Before asking to merge
-The "Unit and build checks" check runs on a self-hosted Actions runner on tobygdesktop (see
-HANDOFF.md) and must be green at your head. The browser suite runs only locally. Run it and report
-the result in the PR:
-`npm test`, `npm run build`, then `npm run test:e2e`. The suite uses `CHROMIUM` when set and
+The "Unit and build checks" and "Browser e2e" checks run on a self-hosted Actions runner on
+tobygdesktop (see HANDOFF.md) and must be green at your head. "Browser e2e" runs Chromium on pull
+requests and all three engines after each push to master. Run `npm test`, `npm run build` and
+`npm run test:e2e` locally while you work. The suite uses `CHROMIUM` when set and
 Playwright's own browser otherwise, so without `npx playwright install chromium` point it at a system
 build: `CHROMIUM=/usr/bin/chromium` on the desktop, `CHROMIUM=/usr/local/bin/chromium` on cloud
 machines (which have no `/usr/bin/chromium`). While iterating, `npm run test:e2e:quick` runs the core practice
 loop, layout and chrome specs in a few minutes; it does not replace the full run. Do not
 trigger the GitHub Browser checks workflow unless asked. `npm run test:e2e` is Chromium only. When a change touches input, layout, motion or
-anything engine-specific, also run `npm run test:e2e:firefox` and `npm run test:e2e:webkit`, or both
+anything engine-specific, also run by hand and report in the PR `npm run test:e2e:firefox` and `npm run test:e2e:webkit`, or both
 with Chromium as `npm run test:e2e:all` (after `npx playwright install firefox webkit`; the
 `E2E_BROWSERS` variable picks the engines, so `E2E_BROWSERS=firefox npx playwright test e2e/<spec>`
 runs one spec there). Locally the suite runs on two thirds of the cores (16 workers on tobygdesktop)
-with traces off; CI keeps a trace of each failure. Leave `--workers` unset, or pass `--workers=8` when
+with traces off; CI traces each failure's retry. Leave `--workers` unset, or pass `--workers=8` when
 `pgrep -f "playwright test"` finds another run on the same machine. To debug a failure, rerun that spec
 with `--trace=on`.
 
