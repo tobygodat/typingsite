@@ -29,10 +29,12 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
 
   function filtered(query) {
     const q = query.trim().toLowerCase();
-    return getCommands(q)
+    const commands = getCommands(q);
+    const groups = [...new Set(commands.map((command) => command.group))];
+    return commands
       .map((command) => ({ command, score: command.secret ? 100 : fuzzyScore(`${command.label} ${command.keywords || ''} ${command.group}`, q) }))
       .filter(({ score, command }) => score > 0 && !command.disabled)
-      .sort((a, b) => (q ? b.score - a.score : 0))
+      .sort((a, b) => (q ? b.score - a.score : groups.indexOf(a.command.group) - groups.indexOf(b.command.group)))
       .map(({ command }) => command);
   }
 
@@ -60,7 +62,10 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
       const mark = document.createElement('span');
       mark.className = 'opt-mark';
       mark.setAttribute('aria-hidden', 'true');
-      label.append(mark, document.createTextNode(command.label));
+      const text = document.createElement('span');
+      text.className = 'opt-text';
+      text.textContent = command.label;
+      label.append(mark, text);
       option.append(label);
       if (command.hint) {
         const hint = document.createElement('span');
@@ -86,7 +91,7 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     const row = list.querySelector(`#palette-option-${active}`);
     input.setAttribute('aria-activedescendant', row.id);
     if (instant) highlight.style.transition = 'none';
-    highlight.style.setProperty('--hl-y', `${row.offsetTop}px`);
+    highlight.style.setProperty('--hl-y', `${list.offsetTop + row.offsetTop}px`);
     highlight.style.setProperty('--hl-h', `${row.offsetHeight}px`);
     highlight.style.setProperty('--hl-o', '1');
     if (instant) requestAnimationFrame(() => { highlight.style.transition = ''; });
