@@ -15,7 +15,10 @@ trigger the GitHub Browser checks workflow unless asked. `npm run test:e2e` is C
 anything engine-specific, also run `npm run test:e2e:firefox` and `npm run test:e2e:webkit`, or both
 with Chromium as `npm run test:e2e:all` (after `npx playwright install firefox webkit`; the
 `E2E_BROWSERS` variable picks the engines, so `E2E_BROWSERS=firefox npx playwright test e2e/<spec>`
-runs one spec there).
+runs one spec there). Locally the suite runs on two thirds of the cores (16 workers on tobygdesktop)
+with traces off; CI keeps a trace of each failure. Leave `--workers` unset, or pass `--workers=8` when
+`pgrep -f "playwright test"` finds another run on the same machine. To debug a failure, rerun that spec
+with `--trace=on`.
 
 ## Design system: Afterimage
 The redesign shipped on 22 September 2026 is the binding visual system. Follow DESIGN.md and the

@@ -30,6 +30,8 @@ export { expect };
 export const phone = { hasTouch: true, isMobile: async ({ browserName }, use) => use(browserName !== 'firefox') };
 
 export async function openApp(page, path = '/') {
+  // Reloading the app aborts any font still downloading, which Firefox logs as a console error.
+  if (page.url() !== 'about:blank') await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await page.goto(path);
   await expect(page.locator('#text-display .char').first()).toBeVisible();
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
@@ -65,9 +67,9 @@ export async function chooseWords(page, count = 10) {
 }
 
 // Types whatever passage is showing and waits for its result: on Practice, or on Train for a retest.
-export async function completePassage(page) {
+export async function completePassage(page, options) {
   const text = await passageText(page);
-  await typeInto(page, text);
+  await typeInto(page, text, undefined, options);
   await expect(page.locator('body')).toHaveAttribute('data-view', /^(results|train)$/);
   return text;
 }

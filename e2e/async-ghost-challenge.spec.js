@@ -568,6 +568,8 @@ test('a finish whose reply was lost after it was stored gets the stored result b
   await pollInbox(page);
   await page.locator('#inbox-list [data-inbox-action="challenge"]').click();
   await expect(page.locator('body')).toHaveAttribute('data-session', 'challenge');
+  // The first race's result screen was a challenge session too; wait for the second race itself.
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
   const first = { wpm: 41, accuracy: 100, elapsedMs: 13000, correct: passage.length };
   Object.assign(second, { result: first, completedAt: new Date().toISOString() });
   await typeInto(page, passage, '#typing-input', { delay: 110 });
