@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeInboxEntry, parseLegacyRaceResult, raceResultOf, raceResultParts, raceResultText } from '../src/race-result.js';
+import { normalizeInboxEntry, parseLegacyRaceResult, raceOutcome, raceResultOf, raceResultParts, raceResultText, rematchControls, tallyView } from '../src/race-result.js';
 import { formatSpeed } from '../src/units.js';
 
 // Exactly what the inbox saved for a race result before the speed unit setting:
@@ -99,4 +99,37 @@ test('normalising is idempotent', () => {
     assert.deepEqual(normalizeInboxEntry(JSON.parse(JSON.stringify(once))), once, text);
     assert.equal(once.text, text);
   }
+});
+
+test('the faster racer wins; accuracy breaks a wpm tie; equal on both is a tie', () => {
+  assert.equal(raceOutcome({ wpm: 92, accuracy: 90 }, { wpm: 88, accuracy: 100 }), 'won');
+  assert.equal(raceOutcome({ wpm: 88, accuracy: 100 }, { wpm: 92, accuracy: 90 }), 'lost');
+  assert.equal(raceOutcome({ wpm: 70, accuracy: 97 }, { wpm: 70, accuracy: 95 }), 'won');
+  assert.equal(raceOutcome({ wpm: 70, accuracy: 95 }, { wpm: 70, accuracy: 97 }), 'lost');
+  assert.equal(raceOutcome({ wpm: 70, accuracy: 96 }, { wpm: 70, accuracy: 96 }), 'tied');
+  // A racer with no score yet reads as 0 wpm at 100%, as the service reports one.
+  assert.equal(raceOutcome({}, { wpm: 0, accuracy: 100 }), 'tied');
+  assert.equal(raceOutcome({ wpm: 1 }, {}), 'won');
+});
+
+test('the tally reads mine first and raises the winner\'s figure; without one there is nothing to show', () => {
+  assert.deepEqual(tallyView([3, 1], 'won'), { mine: 3, theirs: 1, raised: 'mine' });
+  assert.deepEqual(tallyView([1, 3], 'lost'), { mine: 1, theirs: 3, raised: 'theirs' });
+  assert.deepEqual(tallyView([2, 2], 'tied'), { mine: 2, theirs: 2, raised: null });
+  assert.deepEqual(tallyView([0, 0], 'tied'), { mine: 0, theirs: 0, raised: null });
+  // A guest on either side, or a service from before tallies.
+  for (const tally of [null, undefined, [], [1], [1, '2'], [1.5, 0], { mine: 1, theirs: 0 }]) assert.equal(tallyView(tally, 'won'), null);
+});
+
+test('each racer picks Rematch on their own; both picked starts it; a racer who left ends the choice', () => {
+  const open = { rematch: false, left: false };
+  const picked = { rematch: true, left: false };
+  assert.deepEqual(rematchControls(open, open), { mine: 'open', theirs: 'open', starting: false });
+  assert.deepEqual(rematchControls(picked, open), { mine: 'chosen', theirs: 'open', starting: false });
+  assert.deepEqual(rematchControls(open, picked), { mine: 'open', theirs: 'chosen', starting: false });
+  assert.deepEqual(rematchControls(picked, picked), { mine: 'chosen', theirs: 'chosen', starting: true });
+  assert.deepEqual(rematchControls(picked, { rematch: false, left: true }), { mine: 'inactive', theirs: 'left', starting: false });
+  assert.deepEqual(rematchControls(open, { left: true }), { mine: 'inactive', theirs: 'left', starting: false });
+  // A service from before picks sends neither flag: both read as not picked.
+  assert.deepEqual(rematchControls({}, {}), { mine: 'open', theirs: 'open', starting: false });
 });

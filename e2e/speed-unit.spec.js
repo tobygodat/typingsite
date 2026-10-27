@@ -411,9 +411,11 @@ test('an online race’s results and its inbox entry read in the chosen unit', a
     await expect(page.locator('#online-results')).toBeVisible({ timeout: 10000 });
     await expect(lin.locator('#online-results')).toBeVisible({ timeout: 10000 });
 
-    const speeds = page.locator('#online-result-rows .race-result-row span:first-of-type');
+    const speeds = page.locator('#online-results .duel-wpm');
+    const units = page.locator('#online-results .duel-unit');
     const before = await speeds.allTextContents();
-    before.forEach((value) => expect(value).toMatch(/^\d+ wpm$/));
+    before.forEach((value) => expect(value).toMatch(/^\d+$/));
+    await expect(units).toHaveText(['wpm', 'wpm']);
     await page.locator('#inbox-trigger').click();
     await expect(page.locator('#inbox-list [data-kind="result"]')).toContainText(/Lin: \d+ wpm to \d+\./);
     await page.locator('#inbox-trigger').click();
@@ -421,11 +423,12 @@ test('an online race’s results and its inbox entry read in the chosen unit', a
     await page.mouse.move(5, 5);
     await page.mouse.move(40, 40);
     await command(page, 'speed unit · cpm');
-    await expect(speeds).toHaveText(before.map((value) => `${Number(value.split(' ')[0]) * 5} cpm`));
+    await expect(speeds).toHaveText(before.map((value) => `${Number(value) * 5}`));
+    await expect(units).toHaveText(['cpm', 'cpm']);
     await page.locator('#inbox-trigger').click();
     await expect(page.locator('#inbox-list [data-kind="result"]')).toContainText(/Lin: \d+ cpm to \d+\./);
     // Each player's own setting: Lin still reads wpm.
-    await expect(lin.locator('#online-result-rows .race-result-row span:first-of-type').first()).toHaveText(/^\d+ wpm$/);
+    await expect(lin.locator('#online-results .duel-unit').first()).toHaveText('wpm');
   } finally {
     await context.close();
   }

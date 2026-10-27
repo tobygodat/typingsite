@@ -40,11 +40,16 @@ export function createRace(session, { passage, conditions = {}, displayName, inv
     conditions: { ...conditions, textId: conditions.textId || passage?.id }, displayName,
     inviteEmail: friendId ? '' : inviteEmail.trim(), ...(friendId ? { friendId } : {}) });
 }
-// A rematch keeps both seats. The first player to ask opens the room; the second joins it.
-export function rematchRace(session, credentials, { passage, conditions = {} }) {
-  return action(session, 'rematch', credentials, { passage: typeof passage === 'string' ? passage : passage?.text,
-    conditions: { ...conditions, textId: passage?.id || conditions.textId } });
+// Picks Rematch on a closed race, or takes the pick back (want: false). When both seats have picked, the
+// service opens the next room for both, already counting down, and its id comes back as `rematchId`. The
+// reply's `roomId` is another room only when this seat moves into it: a service from before picks opens or
+// joins the rematch at the first ask.
+export function rematchRace(session, credentials, { want = true, passage, conditions = {} }) {
+  return action(session, 'rematch', credentials, { want, ...(passage ? { passage: typeof passage === 'string' ? passage : passage.text,
+    conditions: { ...conditions, textId: passage.id || conditions.textId } } : {}) });
 }
+// Both racers' keystroke traces once the race is finished, in seat order: [{ slot, trace }].
+export const getRaceTraces = (session, credentials) => action(session, 'traces', credentials).then((result) => result?.traces || []);
 // Friends are private to the signed-in owner. Rows carry an email only when the owner typed it.
 // Each call takes the abort signal its queue gives it (below).
 export const listFriends = (session, signal) => session ? action(session, 'friends', {}, {}, signal) : Promise.resolve([]);
@@ -117,11 +122,12 @@ export function joinRace(session, { roomId, inviteToken, displayName, guestToken
 }
 export const getRace = (session, credentials) => action(session, 'get', credentials);
 export const setRaceReady = (session, credentials, ready = true) => action(session, 'ready', credentials, { ready });
-export function updateRaceProgress(session, credentials, { typed, keystrokes, errors, finished = false }) {
+// A finished racer's progress carries the run's keystroke trace, which draws the graph and replay.
+export function updateRaceProgress(session, credentials, { typed, keystrokes, errors, finished = false, trace = null }) {
   const key = `${credentials.roomId}:${session?.user?.id || credentials.guestToken}`;
   const sequence = (sequences.get(key) || 0) + 1;
   sequences.set(key, sequence);
-  return action(session, 'progress', credentials, { typed, keystrokes, errors, finished, sequence });
+  return action(session, 'progress', credentials, { typed, keystrokes, errors, finished, sequence, ...(trace ? { trace } : {}) });
 }
 export const leaveRace = (session, credentials) => action(session, 'leave', credentials);
 export function parseRaceLink(href) {

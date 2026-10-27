@@ -98,7 +98,7 @@ export function createTypingFx(wrap, display, options = {}) {
   ghostCaret.className = 'ghost-caret is-hidden';
   for (const node of [caret, ghostCaret]) node.setAttribute('aria-hidden', 'true');
   // A pacer moves at `cps`; a recorded run follows `points`, [ms from the first key, characters typed].
-  const ghost = { cps: 0, points: null, cursor: 0, start: 0, frame: 0, spot: null, armed: false };
+  const ghost = { cps: 0, points: null, cursor: 0, start: 0, frame: 0, spot: null, armed: false, seeked: 0 };
   const wordGlide = createWordGlide();
   let glideWord = null;
 
@@ -370,10 +370,19 @@ export function createTypingFx(wrap, display, options = {}) {
         ghost.armed = Boolean(ghost.points);
         ghost.cps = 0;
         ghost.cursor = 0;
+        ghost.seeked = 0;
         ghost.spot = null;
         ghostCaret.toggleAttribute('data-replay', ghost.armed);
         ghostCaret.classList.toggle('is-hidden', !ghost.armed);
         if (ghost.armed) placeGhost(0);
+      },
+      // The recorded run where it was `elapsed` ms in, for a replay that keeps its own clock.
+      seek(elapsed) {
+        if (!ghost.points) return;
+        stopGhost();
+        if (elapsed < ghost.seeked) ghost.cursor = 0;
+        ghost.seeked = elapsed;
+        placeGhost(replayAt(elapsed));
       },
       run(startTime) {
         // The pacer is decoration and stays put under reduced motion. A recorded run is the race

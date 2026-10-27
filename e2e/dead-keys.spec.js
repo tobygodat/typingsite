@@ -1399,8 +1399,8 @@ test('an online race scores accent keys as practice does, in the Chromium, Firef
 
     await typeInto(guest, text, '#online-input', { delay: 15 });
     await expect(page.locator('#online-results')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('#online-result-rows .race-result-row').filter({ hasText: 'Ada' }))
-      .toContainText(`${Math.round((text.length / (text.length + 2)) * 100)}% accuracy`);
+    await expect(page.locator('#online-duel-mine .duel-accuracy'))
+      .toHaveText(`${Math.round((text.length / (text.length + 2)) * 100)}%`);
   } finally { await context.close(); }
 });
 

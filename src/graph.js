@@ -79,34 +79,25 @@ export function describeSeries({ points }, averageWpm, unit) {
     + `${misses} ${misses === 1 ? 'mistake' : 'mistakes'} marked.`;
 }
 
-export function renderSpeedGraph(container, attempt, { animate = true } = {}) {
+// The chart's frame at the container's pixel size: three gridlines (0, half, top) labelled on the left
+// and the time axis labelled underneath. Returns the svg and the scales the lines are drawn on.
+function plot(container, { durationS, top, animate }) {
   const width = Math.round(container.clientWidth);
   const height = Math.round(container.clientHeight);
-  const series = speedSeries(attempt);
-  const averageWpm = attempt?.summary?.score?.wpm ?? 0;
-  // Described even while hidden and undrawn, so the label always reads in the unit on screen.
-  container.setAttribute('aria-label', describeSeries(series, averageWpm));
   container.replaceChildren();
-  if (!width || !height) return;
+  if (!width || !height) return null;
   const svg = el('svg', { viewBox: `0 0 ${width} ${height}`, width, height, 'aria-hidden': 'true' });
   if (animate) svg.classList.add('is-drawing');
   container.append(svg);
-
-  // Drawn in the display unit, so the gridline labels are round numbers in that unit.
-  const { durationS } = series;
-  const points = series.points.map((point) => ({ ...point, speed: speedValue(point.wpm) }));
-  const average = speedValue(averageWpm);
-  const top = niceMax(Math.max(average, ...points.map((point) => point.speed)));
   // Four-digit cpm labels need a little more room than the usual two or three digits.
   const left = String(top).length > 3 ? PAD.left + 8 : PAD.left;
-  const plotW = width - left - PAD.right;
+  const right = width - PAD.right;
+  const plotW = right - left;
   const plotH = height - PAD.top - PAD.bottom;
   const x = (t) => left + (durationS ? (t / durationS) * plotW : 0);
   const y = (speed) => PAD.top + plotH - (Math.min(speed, top) / top) * plotH;
-
-  // Three gridlines (0, half, top) labelled on the left; the time axis labelled underneath.
   for (const value of [0, top / 2, top]) {
-    svg.append(el('line', { class: value ? 'graph-grid' : 'graph-axis', x1: left, x2: width - PAD.right, y1: y(value), y2: y(value) }));
+    svg.append(el('line', { class: value ? 'graph-grid' : 'graph-axis', x1: left, x2: right, y1: y(value), y2: y(value) }));
     svg.append(el('text', { class: 'graph-label', x: left - 8, y: y(value), 'text-anchor': 'end', 'dominant-baseline': 'middle' }, Math.round(value)));
   }
   const ticks = durationS ? [0, durationS / 2, durationS] : [0];
@@ -114,19 +105,48 @@ export function renderSpeedGraph(container, attempt, { animate = true } = {}) {
     const anchor = index === 0 ? 'start' : index === ticks.length - 1 ? 'end' : 'middle';
     svg.append(el('text', { class: 'graph-label', x: x(t), y: height - 4, 'text-anchor': anchor }, seconds(Math.round(t * 10) / 10)));
   });
-  if (!points.length) return;
+  return { svg, x, y, left, right };
+}
 
-  svg.append(el('line', { class: 'graph-average', x1: left, x2: width - PAD.right, y1: y(average), y2: y(average) }));
-
+function line({ svg, x, y, left }, points, className) {
   const coords = points.map((point) => [x(point.t), y(point.speed)]);
   if (coords.length === 1) coords.unshift([left, coords[0][1]]);
   const d = coords.map(([px, py], index) => `${index ? 'L' : 'M'}${px.toFixed(1)} ${py.toFixed(1)}`).join(' ');
-  svg.append(el('path', { class: 'graph-line', d, pathLength: 1 }));
+  svg.append(el('path', { class: className, d, pathLength: 1 }));
+}
+
+// Speed points in the display unit, so the gridline labels are round numbers in that unit.
+const inUnit = (points) => points.map((point) => ({ ...point, speed: speedValue(point.wpm) }));
+
+export function renderSpeedGraph(container, attempt, { animate = true } = {}) {
+  const series = speedSeries(attempt);
+  const averageWpm = attempt?.summary?.score?.wpm ?? 0;
+  // Described even while hidden and undrawn, so the label always reads in the unit on screen.
+  container.setAttribute('aria-label', describeSeries(series, averageWpm));
+  const points = inUnit(series.points);
+  const average = speedValue(averageWpm);
+  const chart = plot(container, { durationS: series.durationS, top: niceMax(Math.max(average, ...points.map((point) => point.speed))), animate });
+  if (!chart || !points.length) return;
+  const { svg, y, left, right } = chart;
+  svg.append(el('line', { class: 'graph-average', x1: left, x2: right, y1: y(average), y2: y(average) }));
+  line(chart, points, 'graph-line');
 
   // Mistakes sit on the line where they happened, so a slip and the dip after it read together.
   for (const point of points) {
     if (!point.misses) continue;
     const r = Math.min(5, 3 + (point.misses - 1) * 0.75);
-    svg.append(el('circle', { class: 'graph-miss', cx: x(point.t).toFixed(1), cy: y(point.speed).toFixed(1), r }));
+    svg.append(el('circle', { class: 'graph-miss', cx: chart.x(point.t).toFixed(1), cy: y(point.speed).toFixed(1), r }));
   }
+}
+
+// An online race: both racers' speed on one chart over the race clock, which both traces start from the
+// shared start, so the two lines compare directly. Yours is the accent, theirs the text colour.
+export function renderDuelGraph(container, [mine, theirs], { animate = true } = {}) {
+  const series = [mine, theirs].map(speedSeries);
+  const [ours, others] = series.map((each) => inUnit(each.points));
+  const top = niceMax(Math.max(0, ...ours.map((point) => point.speed), ...others.map((point) => point.speed)));
+  const chart = plot(container, { durationS: Math.max(...series.map((each) => each.durationS)), top, animate });
+  if (!chart) return;
+  if (others.length) line(chart, others, 'graph-line graph-line-theirs');
+  if (ours.length) line(chart, ours, 'graph-line');
 }

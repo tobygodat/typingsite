@@ -53,10 +53,14 @@ begin
   cy_room := (public.race_action('create',null,jsonb_build_object('displayName','Cy','passage',passage,'inviteEmail',ada_email),null)->>'roomId')::uuid;
   if (select count(*) from race_private.players where user_id = ada) <> 2 then raise exception 'Setup did not seat Ada twice.'; end if;
 
-  -- Bob's race finishes and Ada asks for a rematch: a room hosted by Bob, opened under Ada's key.
+  -- Bob's race finishes and both pick a rematch, Ada second: a room hosted by Bob, opened under Ada's key.
   update race_private.rooms set status = 'finished' where id = bob_room;
+  perform set_config('request.jwt.claim.sub',bob::text,true);
+  perform public.race_action('rematch',bob_room,jsonb_build_object('passage',passage),null);
   perform set_config('request.jwt.claim.sub',ada::text,true);
-  rematch_room := (public.race_action('rematch',bob_room,jsonb_build_object('passage',passage),null)->>'roomId')::uuid;
+  rematch_room := (public.race_action('rematch',bob_room,jsonb_build_object('passage',passage),null)->'room'->>'rematchId')::uuid;
+  -- Their pair's tally, which goes with either account.
+  insert into race_private.head_to_head (a_id, b_id, a_wins) values (least(ada, bob), greatest(ada, bob), 1);
   if (select opened_by from race_private.rooms where id = rematch_room) <> 'user:' || ada::text then raise exception 'Setup did not charge Ada for the rematch.'; end if;
 
   -- What auth.admin.deleteUser(ada) does to these tables.
@@ -71,6 +75,7 @@ begin
   if exists(select 1 from race_private.friends where owner_id = ada or friend_id = ada) then
     raise exception 'A friend row owned by or pointing at the deleted account survived.';
   end if;
+  if exists(select 1 from race_private.head_to_head where ada in (a_id, b_id)) then raise exception 'A tally naming the deleted account survived.'; end if;
   -- Bob's own race and the rematch in it stay, with only his seat, and nothing names Ada.
   if (select count(*) from race_private.players where room_id in (bob_room, rematch_room)) <> 2
     or (select count(*) from race_private.players where room_id in (bob_room, rematch_room) and user_id = bob) <> 2 then

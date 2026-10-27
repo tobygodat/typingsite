@@ -1,16 +1,22 @@
 import { createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
 import { createTypingFx } from './motion.js';
-import { standIn } from './ghost-race.js';
+import { encodeTrace, standIn, validTrace } from './ghost-race.js';
 import * as multiplayer from './multiplayer.js';
-import { speedFigure } from './units.js';
-import { raceResultText } from './race-result.js';
+import { showSpeed } from './units.js';
+import { RACE_LEADS, raceOutcome, raceResultText, rematchControls, tallyView } from './race-result.js';
 import { redrawList } from './inbox.js';
+import { createRaceReview } from './race-review.js';
 
 const $ = (id) => document.getElementById(id);
 const stamp = (value) => typeof value === 'number' ? value : Date.parse(value);
 const RESULT_RETAINED_MS = 23 * 60 * 60 * 1000;
-// The opponent opened a rematch that is still waiting for this player.
-const rematchAsked = (room) => Boolean(room?.rematchId && room.rematchOpen && room.rematchSlot && room.rematchSlot !== room.selfSlot);
+// A finished race's results are watched for the other racer's Rematch pick: often while they are on
+// screen, slowly otherwise.
+const PICK_WATCH_MS = 1000;
+const CLOSED_WATCH_MS = 3000;
+// A trace posted just after the race finished can miss the first read, so traces are read up to three times.
+const TRACE_READS = 3;
+const TRACE_RETRY_MS = 2000;
 const terminal = (room) => ['finished', 'cancelled', 'expired'].includes(room?.status);
 const PENDING_INVITE = 'stilltype-race-invite-tab-v1';
 
@@ -54,6 +60,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   let mode = 'online';
   let friends = [];
   let friendsLoaded = false;
+  // The rematch room this tab is moving to, and the room whose traces it has read.
+  let following = null;
+  let tracesRead = null;
+  const review = createRaceReview({ renderText });
   // The empty list's copy from index.html; a failed first read shows its error there until a read succeeds.
   const noFriends = $('online-friends-empty').textContent;
   // Every friend-list request goes through this queue, one at a time, and each reply is the list.
@@ -76,6 +86,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     },
     finish() {
       finishRequested = true;
+      attempt.endedAt = Math.max(0, performance.now() - startPerf);
       $('online-input').disabled = true;
       $('online-help').textContent = 'Passage complete. Sending your result…';
       setRunning(false);
@@ -168,17 +179,34 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     return selectPassage({ mode: 'quote', quoteLength: conditions.quoteLength || 'medium', difficulty: conditions.difficulty || 'any',
       seenIds: conditions.textId ? [conditions.textId] : [] });
   }
-  // Same opponent, same settings, a fresh passage. Whoever asks second joins the first one's room.
-  function rematch(from, conditions) {
+  // Same opponent, same settings, a fresh passage. Picks Rematch on a closed race, or takes the pick back;
+  // once both have picked, the service opens the next race and both tabs move to it (followRematch).
+  function pickRematch(from, conditions, want = true) {
     if (busy) return;
     navigate('compete');
     setMode('online');
     if (room && !terminal(room)) { error('Leave your current race before starting another.'); return; }
     perform(async () => {
-      const passage = rematchPassage(conditions);
-      const result = await multiplayer.rematchRace(getSession(), from, { passage, conditions: { ...conditions, textId: passage.id } });
-      enterRoom(result);
+      const passage = want ? rematchPassage(conditions) : null;
+      const result = await multiplayer.rematchRace(getSession(), from, { want, passage, conditions: passage ? { ...conditions, textId: passage.id } : {} });
+      // The same race comes back with the pick, unless this seat moved: a service from before picks opens
+      // or joins the rematch at once.
+      if (room && result.roomId === room.id) applyRoom(result.room);
+      else enterRoom(result);
     });
+  }
+  // Both picked: the service opened the next race, already counting down, and this seat moves to it.
+  function followRematch() {
+    if (!room?.rematchId || !self()?.rematch || following === room.rematchId) return;
+    following = room.rematchId;
+    const from = credentials;
+    multiplayer.joinRace(getSession(), { roomId: room.rematchId, guestToken: from.guestToken, displayName: self().name })
+      .then((result) => { if (credentials === from) enterRoom(result); })
+      .catch((failure) => {
+        if (credentials !== from) return;
+        following = null;
+        error(failure.message || 'The race service is unavailable. Try again.');
+      });
   }
 
   function renderFriends(failure = null) {
@@ -240,10 +268,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   // toast) is aria-disabled and its press is ignored: aria-disabled, not disabled, so the control just
   // pressed keeps keyboard focus, and no press is dropped unseen. A friend change waiting its turn
   // behind a slow friend-list read holds up no race.
-  const RACE_CONTROLS = '#create-online-race, #join-online-race, #online-ready, #online-leave, #online-again, #online-rematch, [data-race-friend], [data-accept-invite]';
+  const RACE_CONTROLS = '#create-online-race, #join-online-race, #online-ready, #online-leave, #online-rematch, [data-race-friend], [data-accept-invite]';
   const FRIEND_CONTROLS = '#online-befriend, [data-remove-friend]';
   function markBusy(control) {
-    if (control.matches(FRIEND_CONTROLS) ? changingFriends : busy) control.setAttribute('aria-disabled', 'true');
+    if ((control.matches(FRIEND_CONTROLS) ? changingFriends : busy) || control.dataset.state === 'inactive') control.setAttribute('aria-disabled', 'true');
     else control.removeAttribute('aria-disabled');
   }
   function renderBusy() {
@@ -284,12 +312,18 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('online-help').textContent = 'Type when the countdown ends. Paste and key repeat are off.';
     $('online-connection').textContent = '';
     $('online-results').hidden = true;
+    review.hide();
+    tracesRead = null;
     $('online-after').hidden = true;
     $('online-account-invite-status').hidden = true;
     befriended = false;
     setRunning(false);
   }
   function enterRoom(result) {
+    const nextId = result.roomId || result.room.id;
+    // Going on to another race leaves a closed one, so its other racer sees that; its own rematch doesn't.
+    const left = room && credentials && terminal(room) && ![room.id, room.rematchId].includes(nextId) ? credentials : null;
+    if (left) multiplayer.leaveRace(getSession(), left).catch(() => {});
     generation += 1;
     clearTimeout(pollTimer);
     resetAttempt();
@@ -352,8 +386,16 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       setRunning(false);
       $('online-input').disabled = true;
       if (room.status === 'finished') renderResults();
-      if (previousStatus !== room.status) say(room.status === 'finished' ? $('online-winner').textContent : $('online-room-status').textContent);
+      if (previousStatus !== room.status) say(room.status === 'finished' ? resultSentence() : $('online-room-status').textContent);
+      followRematch();
     }
+  }
+  // The result as one sentence, as the inbox keeps it: "You beat Lin: 72 wpm to 65."
+  function resultSentence() {
+    const me = self();
+    const opponent = opponentOf(room);
+    if (!me || !opponent) return 'Race complete.';
+    return raceResultText({ lead: RACE_LEADS[raceOutcome(me, opponent)], opponent: opponent.name, wpm: [me.wpm || 0, opponent.wpm || 0] });
   }
   const away = () => document.hidden || document.body.dataset.view !== 'compete';
   // Inbox entries for this room: the opponent arriving, a rematch request and the result.
@@ -365,21 +407,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       inbox.notify({ id: `joined:${room.id}`, kind: 'joined', roomId: room.id,
         text: room.rematchOf ? `${opponent.name} is back for the rematch.` : `${opponent.name} joined your race.` }, { toast: away() });
     }
-    if (rematchAsked(room)) {
-      // Guests have no service inbox, so the entry lapses when the rematch room stops accepting racers.
-      inbox.notify({ id: `invite:${room.rematchId}`, kind: 'invite', roomId: room.rematchId, local: true,
-        until: room.rematchExpiresAt,
-        text: `${room.rematchBy || 'Your opponent'} wants a rematch.` }, { toast: true });
-    } else if (room.rematchId && !room.rematchOpen) {
-      // Cancelled, expired or already under way: a request this device found is no longer open.
-      inbox.withdraw(`invite:${room.rematchId}`);
-    }
     const justFinished = previousStatus && previousStatus !== 'finished';
     if (room.status === 'finished' && opponent && (justFinished || entering)) {
       const me = self();
-      // Accuracy breaks a WPM tie, as on the results board.
-      const ahead = (me.wpm || 0) - (opponent.wpm || 0) || (me.accuracy ?? 100) - (opponent.accuracy ?? 100);
-      const lead = ahead === 0 ? 'You tied with' : ahead > 0 ? 'You beat' : 'You raced';
+      const lead = RACE_LEADS[raceOutcome(me, opponent)];
       // Finished rooms are deleted a day after they expire, so Race again lapses a little before.
       const until = new Date(Date.parse(room.expiresAt || new Date().toISOString()) + RESULT_RETAINED_MS).toISOString();
       // Saved in wpm, like every speed; the inbox words it in the unit chosen when it is shown.
@@ -390,18 +421,12 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   }
   function renderAfter() {
     const opponent = opponentOf(room);
-    const show = terminal(room) && Boolean(opponent);
-    $('online-after').hidden = !show;
-    if (!show) return;
-    const asked = rematchAsked(room);
-    $('online-rematch-note').hidden = !asked;
-    $('online-rematch-note').textContent = asked ? `${room.rematchBy || opponent.name} wants a rematch.` : '';
-    $('online-rematch').textContent = asked ? 'Join rematch' : 'Race again';
     // A host who invited by email already has them by email; the list never links the two.
-    const canAdd = Boolean(getSession()) && opponent.account && !opponent.friend && !befriended
+    const canAdd = terminal(room) && Boolean(opponent) && Boolean(getSession()) && opponent.account && !opponent.friend && !befriended
       && !(room.selfSlot === 1 && room.inviteKind === 'account');
+    $('online-after').hidden = !canAdd;
     $('online-befriend').hidden = !canAdd;
-    $('online-befriend').textContent = `Add ${opponent.name} to friends`;
+    if (canAdd) $('online-befriend').textContent = `Add ${opponent.name} to friends`;
   }
   function renderRoom() {
     if (!room) return;
@@ -412,14 +437,17 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
         : room.rematchOf && !opponent?.connected && !opponent?.ready ? `Rematch sent. Waiting for ${opponent.name} to join.` : 'Both players are here.',
       countdown: 'Both players are ready.',
       racing: finishRequested || me?.finished ? 'Waiting for the other player.' : 'The clock keeps running if you leave the passage.',
-      finished: 'Race complete.',
+      // The results below say it.
+      finished: '',
       cancelled: 'This race ended because a player left.',
       expired: 'This invitation has expired.',
     };
-    $('online-room-status').textContent = copy[room.status] || 'Connecting to the race…';
+    $('online-room-status').textContent = copy[room.status] ?? 'Connecting to the race…';
     $('online-ready').hidden = room.status !== 'waiting';
     $('online-ready').textContent = me?.ready ? 'Not ready' : 'Ready to race';
     $('online-stage').hidden = !['countdown', 'racing'].includes(room.status);
+    $('online-players').hidden = room.status === 'finished';
+    if (room.status !== 'waiting') $('online-account-invite-status').hidden = true;
     $('online-leave').textContent = terminal(room) ? 'Close race' : 'Leave race';
     $('challenge-local').disabled = !terminal(room);
     $('challenge-daily').disabled = !terminal(room);
@@ -483,16 +511,18 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     }
     if (delta >= 0 && remaining === 0 && !finishRequested && attempt && !pending) {
       finishRequested = true;
+      attempt.endedAt = (room.duration || 60) * 1000;
       dirty = true;
       setRunning(false);
       $('online-help').textContent = 'Time’s up. Sending your result…';
       poll();
     }
   }
-  // A closed race with two players keeps a slow watch, so a rematch request reaches both and an
-  // unanswered one is withdrawn when it lapses, until the service is due to delete the room.
-  const watchingRematch = () => terminal(room) && room.players.length === 2 && (!room.rematchId || room.rematchOpen)
+  // A closed race with two players keeps a watch, so each sees the other's Rematch pick and both move to
+  // the rematch together, until the service is due to delete the room.
+  const watchingRematch = () => terminal(room) && room.players.length === 2
     && Date.now() < Date.parse(room.expiresAt) + RESULT_RETAINED_MS;
+  const resultsInView = () => room?.status === 'finished' && !away() && mode === 'online';
   async function poll() {
     if (!credentials || networkBusy || (terminal(room) && !watchingRematch())) return;
     clearTimeout(pollTimer);
@@ -507,7 +537,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
         // The service takes printable ASCII, as passages are: any other letter (an accent key's é) is a
         // mistake, sent as a stand-in that differs from the letter expected there.
         const typed = replay.typed.replace(/[^ -~]/g, (char, index) => standIn(attempt.text[index]));
-        const payload = { typed, keystrokes: baseKeystrokes + replay.insertions - baseTyped.length, errors: baseErrors + replay.mistakes - prefixErrors, finished: finishRequested };
+        // A finished run sends its keystroke trace for the graph and replay; a race resumed after a reload
+        // has no record of the keys before it, so it sends none.
+        const trace = finishRequested && !baseTyped ? encodeTrace(attempt) : null;
+        const payload = { typed, keystrokes: baseKeystrokes + replay.insertions - baseTyped.length, errors: baseErrors + replay.mistakes - prefixErrors, finished: finishRequested, trace };
         dirty = false;
         next = await multiplayer.updateRaceProgress(getSession(), currentCredentials, payload);
       } else next = await multiplayer.getRace(getSession(), currentCredentials);
@@ -521,28 +554,67 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     } finally {
       networkBusy = false;
       if (credentials && !terminal(room)) pollTimer = setTimeout(poll, dirty && finishRequested ? 0 : 650);
-      else if (credentials && watchingRematch()) pollTimer = setTimeout(poll, 3000);
+      else if (credentials && watchingRematch()) pollTimer = setTimeout(poll, resultsInView() ? PICK_WATCH_MS : CLOSED_WATCH_MS);
     }
   }
+  // You on the left, them on the right, the pair's tally between. The winner reads larger and brighter,
+  // and the tally figure this race raised is the accent. Under each result, its Rematch control.
   function renderResults() {
-    $('online-results').hidden = false;
-    const players = [...room.players].sort((a, b) => b.wpm - a.wpm || b.accuracy - a.accuracy);
-    const tied = players.length === 2 && players[0].wpm === players[1].wpm && players[0].accuracy === players[1].accuracy;
-    $('online-winner').textContent = tied ? 'It’s a tie.' : players.length === 2 ? `${players[0].name} leads.` : 'Race results';
-    $('online-result-rows').replaceChildren(...players.map((player) => {
-      const row = document.createElement('article');
-      row.className = 'race-result-row';
-      const name = document.createElement('strong');
-      name.textContent = player.name;
-      row.append(name);
-      for (const value of [speedFigure(player.wpm || 0), `${player.accuracy ?? 100}% accuracy`, `${(player.elapsed || 0).toFixed(1)} s`]) {
-        const span = document.createElement('span');
-        span.className = 'num';
-        span.append(value);
-        row.append(span);
-      }
-      return row;
-    }));
+    const me = self();
+    const opponent = opponentOf(room);
+    $('online-results').hidden = !me || !opponent;
+    if (!me || !opponent) return;
+    const outcome = raceOutcome(me, opponent);
+    const sides = [['mine', me, outcome], ['theirs', opponent, raceOutcome(opponent, me)]];
+    for (const [side, player, result] of sides) {
+      const node = $(`online-duel-${side}`);
+      node.dataset.outcome = result;
+      if (side === 'theirs') node.querySelector('.duel-name').textContent = player.name;
+      showSpeed(node.querySelector('.duel-wpm'), player.wpm || 0);
+      node.querySelector('.duel-accuracy').textContent = `${player.accuracy ?? 100}%`;
+    }
+    // Guests have no tally.
+    const tally = me.account && opponent.account ? tallyView(room.tally, outcome) : null;
+    $('online-tally').hidden = !tally;
+    if (tally) {
+      const [mine, , theirs] = $('online-tally').children;
+      mine.textContent = tally.mine;
+      theirs.textContent = tally.theirs;
+      mine.classList.toggle('is-raised', tally.raised === 'mine');
+      theirs.classList.toggle('is-raised', tally.raised === 'theirs');
+      $('online-tally').setAttribute('aria-label', `You ${tally.mine}, ${opponent.name} ${tally.theirs}`);
+    }
+    const controls = rematchControls(me, opponent);
+    const button = $('online-rematch');
+    button.dataset.state = controls.mine;
+    button.setAttribute('aria-pressed', String(controls.mine === 'chosen'));
+    markBusy(button);
+    const theirs = $('online-their-rematch');
+    theirs.dataset.state = controls.theirs;
+    theirs.lastElementChild.textContent = controls.theirs === 'left' ? 'left' : 'Rematch';
+    theirs.setAttribute('aria-label', controls.theirs === 'left' ? `${opponent.name} left`
+      : `${opponent.name} ${controls.theirs === 'chosen' ? 'picked' : 'hasn’t picked'} Rematch`);
+    $('online-starting').hidden = !controls.starting;
+    readTraces();
+  }
+  // Both racers' traces draw the graph and the replay. A race from before traces, or one either racer
+  // resumed after a reload, has none, and shows neither.
+  async function readTraces() {
+    if (tracesRead === room.id) return;
+    tracesRead = room.id;
+    const from = credentials;
+    const { text } = room.passage;
+    const name = opponentOf(room).name;
+    for (let read = 1; read <= TRACE_READS; read += 1) {
+      let traces;
+      try { traces = await multiplayer.getRaceTraces(getSession(), from); } catch { return; }
+      if (credentials !== from) return;
+      const mine = traces.find((entry) => entry.slot === room.selfSlot)?.trace;
+      const theirs = traces.find((entry) => entry.slot !== room.selfSlot)?.trace;
+      if (validTrace(mine) && validTrace(theirs)) { review.show({ text, mine, theirs, name }); return; }
+      if (read < TRACE_READS) await new Promise((resolve) => { setTimeout(resolve, TRACE_RETRY_MS); });
+      if (credentials !== from) return;
+    }
   }
   async function leave() {
     const previous = credentials;
@@ -604,10 +676,12 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     applyRoom(result.room || result);
   }));
   $('online-leave').addEventListener('click', () => perform(leave));
-  $('online-again').addEventListener('click', () => perform(async () => { await leave(); refreshInvites(); $('online-name').focus(); }));
+  // Pressed again, a pick is taken back. Against a racer who left, the button does nothing.
   $('online-rematch').addEventListener('click', () => {
-    if (rematchAsked(room)) joinInvite(room.rematchId);
-    else rematch(credentials, room.conditions);
+    const me = self();
+    const opponent = opponentOf(room);
+    if (!me || !opponent || rematchControls(me, opponent).mine === 'inactive') return;
+    pickRematch(credentials, room.conditions, !me.rematch);
   });
   $('online-befriend').addEventListener('click', async () => {
     const from = credentials;
@@ -651,7 +725,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     leave,
     joinInvite,
     // A guest's seat capability is only in this tab's credentials, so reuse them for the same room.
-    rematchRoom: (roomId, conditions) => rematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions),
+    rematchRoom: (roomId, conditions) => pickRematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions),
     // The race this tab is seated in and still waiting or racing, if any.
     get liveRoomId() { return room && !terminal(room) ? room.id : null; },
     // Which Challenge tab shows: online, daily or local (one keyboard).

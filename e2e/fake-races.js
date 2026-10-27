@@ -1,6 +1,7 @@
 // Shared by independent browser contexts. Production authorization/state is separately
 // exercised against the migration; this adapter drives the real UI without network calls.
 import { randomUUID } from 'node:crypto';
+import { scoreTrace, validTrace } from '../src/ghost-race.js';
 
 export class FakeRaces {
   constructor(auth) {
@@ -12,6 +13,39 @@ export class FakeRaces {
     // waits until a test calls the release pushed onto it. The action itself is already done.
     this.held = null;
     this.holding = new Set();
+    // Set, the service keeps no traces, as for a race from before them.
+    this.dropTraces = false;
+    // Each pair of accounts' wins, keyed by the two ids in order: [first's wins, second's wins].
+    this.tallies = new Map();
+  }
+
+  // As race_private.settle: a finished race between two accounts adds the winner's win (a tie, nothing).
+  settle(room) {
+    const [one, two] = [1, 2].map((slot) => room.players.find((p) => p.slot === slot));
+    if (!one?.userId || !two?.userId) return;
+    const key = [one.userId, two.userId].sort().join(':');
+    const wins = this.tallies.get(key) || [0, 0];
+    const ahead = one.wpm - two.wpm || one.accuracy - two.accuracy;
+    const winner = ahead > 0 ? one : ahead < 0 ? two : null;
+    if (winner) wins[key.startsWith(winner.userId) ? 0 : 1] += 1;
+    this.tallies.set(key, wins);
+  }
+
+  tally(room, slot) {
+    const me = room.players.find((p) => p.slot === slot);
+    const them = room.players.find((p) => p.slot !== slot);
+    if (room.status !== 'finished' || !me?.userId || !them?.userId) return null;
+    const key = [me.userId, them.userId].sort().join(':');
+    const wins = this.tallies.get(key);
+    if (!wins) return null;
+    return key.startsWith(me.userId) ? [...wins] : [wins[1], wins[0]];
+  }
+
+  // As race_private.keep_trace: once, from a finished racer, and only a trace that replays to the result.
+  keepTrace(room, player, trace) {
+    if (this.dropTraces || !player.finished || player.trace || !validTrace(trace)) return;
+    if (scoreTrace(trace, room.passage, { relaxed: true }).correct !== player.correct) return;
+    player.trace = trace;
   }
 
   // Holds the reply to the next request with this action: the service applies it on arrival, and the
@@ -27,26 +61,21 @@ export class FakeRaces {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  rematchState(room) {
-    const next = this.rooms.get(room.rematchId);
-    return { rematchExpiresAt: next?.expiresAt || null,
-      rematchOpen: Boolean(next) && next.status === 'waiting' && Date.now() < Date.parse(next.expiresAt) };
-  }
-
   snapshot(room, slot) {
     const now = Date.now();
     if (now >= Date.parse(room.expiresAt) && !['finished', 'cancelled'].includes(room.status)) room.status = 'expired';
     if (room.status === 'countdown' && now >= Date.parse(room.startAt)) room.status = 'racing';
     // As race_action: ten seconds' grace after the clock for the last progress.
-    if (room.status === 'racing' && (room.players.every((p) => p.finished) || now >= Date.parse(room.startAt) + (room.duration + 10) * 1000)) room.status = 'finished';
+    if (room.status === 'racing' && (room.players.every((p) => p.finished) || now >= Date.parse(room.startAt) + (room.duration + 10) * 1000)) {
+      room.status = 'finished';
+      this.settle(room);
+    }
     return {
       id: room.id, status: room.status, passage: room.passage, conditions: room.conditions,
       duration: room.duration, startAt: room.startAt, expiresAt: room.expiresAt,
       serverNow: new Date(now).toISOString(), selfSlot: slot, inviteKind: room.inviteKind,
-      rematchOf: room.rematchOf || null, rematchId: room.rematchId || null, rematchSlot: room.rematchSlot || null,
-      rematchBy: room.players.find((p) => p.slot === room.rematchSlot)?.name || null,
-      ...this.rematchState(room),
-      players: room.players.map(({ userId, guestToken, typed, sequence, keystrokes, errors, lastSeen, ...player }) => ({
+      rematchOf: room.rematchOf || null, rematchId: room.rematchId || null, tally: this.tally(room, slot),
+      players: room.players.map(({ userId, guestToken, typed, sequence, keystrokes, errors, lastSeen, correct, trace, ...player }) => ({
         ...player, connected: now - lastSeen < 10000, account: Boolean(userId),
         friend: Boolean(userId) && (this.friends.get(room.players.find((p) => p.slot === slot)?.userId) || []).some((f) => f.friendId === userId),
         ...(player.slot === slot ? { typed, sequence, keystrokes, errors } : {}),
@@ -56,7 +85,8 @@ export class FakeRaces {
 
   player(slot, name, userId, guestToken) {
     return { slot, name, userId, guestToken, ready: false, progress: 0, finished: false, lastSeen: Date.now(),
-      wpm: 0, accuracy: 100, elapsed: 0, sequence: 0, typed: '', keystrokes: 0, errors: 0 };
+      wpm: 0, accuracy: 100, elapsed: 0, sequence: 0, typed: '', keystrokes: 0, errors: 0, correct: 0,
+      rematch: false, left: false, trace: null };
   }
 
   handle(caller, { p_action: action, p_room_id: id, p_data: data = {}, p_guest_token: guestToken }, send) {
@@ -125,22 +155,37 @@ export class FakeRaces {
     if (action === 'rematch') {
       if (!['finished', 'cancelled', 'expired'].includes(room.status)) return failure('Finish this race before starting another.');
       if (room.players.length < 2) return failure('Nobody joined this race, so there is no one to race again.');
+      // As race_action: once the next room is open, asking moves this seat to it.
       const open = this.rooms.get(room.rematchId);
       if (open && ['waiting', 'countdown', 'racing'].includes(open.status)) {
         open.players.find((p) => p.slot === player.slot).lastSeen = Date.now();
         return reply(200, { room: this.snapshot(open, player.slot), roomId: open.id, guestToken: player.guestToken });
       }
+      if (open) for (const p of room.players) p.rematch = false;
+      if (typeof (data.want ?? true) !== 'boolean') return failure('Invalid rematch choice.');
       const other = room.players.find((p) => p.slot !== player.slot);
-      const next = {
-        id: randomUUID(), passage: data.passage, conditions: data.conditions, duration: 60,
-        status: 'waiting', startAt: null, createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 15 * 60000).toISOString(),
-        invitedUser: other.userId || null, inviteKind: room.inviteKind, inviteToken: null, rematchOf: room.id,
-        players: room.players.map((p) => ({ ...this.player(p.slot, p.name, p.userId, p.guestToken), lastSeen: p.slot === player.slot ? Date.now() : 0 })),
-      };
-      this.rooms.set(next.id, next);
-      Object.assign(room, { rematchId: next.id, rematchSlot: player.slot });
-      return reply(200, { room: this.snapshot(next, player.slot), roomId: next.id, guestToken: player.guestToken });
+      if (data.want === false) player.rematch = false;
+      else {
+        if (other.left) return failure(`${other.name} has left this race.`);
+        Object.assign(player, { rematch: true, left: false });
+        if (other.rematch) {
+          // Both picked: the next room opens for the same seats, already counting down.
+          const next = {
+            id: randomUUID(), passage: data.passage, conditions: data.conditions, duration: 60,
+            status: 'countdown', startAt: new Date(Date.now() + 5000).toISOString(), createdAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 15 * 60000).toISOString(),
+            invitedUser: other.userId || null, inviteKind: room.inviteKind, inviteToken: null, rematchOf: room.id,
+            players: room.players.map((p) => ({ ...this.player(p.slot, p.name, p.userId, p.guestToken), ready: true })),
+          };
+          this.rooms.set(next.id, next);
+          room.rematchId = next.id;
+        }
+      }
+      return reply(200, { room: this.snapshot(room, player.slot), roomId: room.id, guestToken: player.guestToken });
+    }
+    if (action === 'traces') {
+      if (room.status !== 'finished') return failure('This race has not finished.');
+      return reply(200, { traces: room.players.map(({ slot, trace }) => ({ slot, trace })).sort((a, b) => a.slot - b.slot) });
     }
     if (action === 'befriend') {
       const other = room.players.find((p) => p.slot !== player.slot);
@@ -153,7 +198,12 @@ export class FakeRaces {
       this.friends.set(caller, list);
       return reply(200, this.friendList(caller));
     }
-    if (action === 'leave') { room.status = 'cancelled'; return reply(200, this.snapshot(room, player.slot)); }
+    if (action === 'leave') {
+      // A closed race marks the seat as left, which ends the other's rematch choice.
+      if (['finished', 'cancelled', 'expired'].includes(room.status)) Object.assign(player, { left: true, rematch: false });
+      else room.status = 'cancelled';
+      return reply(200, this.snapshot(room, player.slot));
+    }
     if (action === 'ready' && room.status === 'waiting') {
       player.ready = data.ready;
       if (room.players.length === 2 && room.players.every((p) => p.ready)) {
@@ -161,6 +211,7 @@ export class FakeRaces {
         room.status = 'countdown';
       }
     }
+    if (action === 'progress' && (room.status === 'finished' || player.finished)) this.keepTrace(room, player, data.trace);
     if (action === 'progress' && room.status === 'racing' && !player.finished && data.sequence > player.sequence) {
       // As race_action checks them: printable ASCII text, and counters that match it.
       const correct = [...data.typed].filter((char, i) => char === room.passage[i]).length;
@@ -175,7 +226,13 @@ export class FakeRaces {
       player.elapsed = Math.min(room.duration, Math.max(0.001, (Date.now() - Date.parse(room.startAt)) / 1000));
       player.wpm = Math.round(correct / 5 / (player.elapsed / 60));
       player.accuracy = data.keystrokes ? Math.round((data.keystrokes - data.errors) / data.keystrokes * 100) : 100;
+      player.correct = correct;
       player.finished = Boolean(data.finished && data.typed === room.passage) || player.elapsed >= room.duration;
+      if (player.finished) this.keepTrace(room, player, data.trace);
+      if (room.players.every((p) => p.finished)) {
+        room.status = 'finished';
+        this.settle(room);
+      }
     }
     return reply(200, this.snapshot(room, player.slot));
   }
