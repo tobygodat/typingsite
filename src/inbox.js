@@ -318,10 +318,11 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     return invites;
   }
 
+  // Only one corner panel at a time, however the inbox was opened, closed as it opens (as with the account).
+  new MutationObserver(() => { if ($('inbox').open) $('account').open = false; })
+    .observe($('inbox'), { attributeFilter: ['open'] });
   $('inbox').addEventListener('toggle', () => {
     if (!$('inbox').open) return;
-    // Only one corner panel at a time, however the inbox was opened.
-    $('account').open = false;
     // The open inbox holds everything the toast would say.
     hideToast();
     render();

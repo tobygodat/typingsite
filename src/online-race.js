@@ -523,7 +523,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('online-stage').hidden = !['countdown', 'racing'].includes(room.status);
     $('online-players').hidden = room.status === 'finished';
     if (room.status !== 'waiting') $('online-account-invite-status').hidden = true;
-    $('online-leave').textContent = terminal(room) ? 'Close race' : 'Leave race';
+    const leaveLabel = terminal(room) ? 'Close race' : 'Leave race';
+    if ($('online-leave').textContent !== leaveLabel) $('online-leave').textContent = leaveLabel;
     $('challenge-local').disabled = !terminal(room);
     $('challenge-daily').disabled = !terminal(room);
     $('challenge-friends').disabled = !terminal(room);
