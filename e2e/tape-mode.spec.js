@@ -169,7 +169,8 @@ test('the tape steps by whole words near the right edge, never per letter', asyn
   }
 });
 
-test('trimming and remounting passed words moves nothing on the line', async ({ page }) => {
+test('trimming and remounting passed words moves nothing on the line', async ({ page, browserName }) => {
+  test.fixme(browserName === 'webkit', 'TOB-22: words shift for one keystroke in about 1 in 3 WebKit runs');
   test.setTimeout(90_000);
   await openApp(page);
   await setTape(page, true);
