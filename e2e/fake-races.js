@@ -126,7 +126,7 @@ export class FakeRaces {
       }
       if (email) invitedUser = [...this.auth.users.values()].find((user) => user.email === email)?.id || 'unknown';
       const room = {
-        id: randomUUID(), passage: data.passage, conditions: data.conditions, duration: 60,
+        id: randomUUID(), passage: data.passage, conditions: data.conditions, duration: data.conditions?.duration ?? 60,
         status: 'waiting', startAt: null, createdAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 15 * 60000).toISOString(),
         invitedUser, inviteKind: invitedUser ? 'account' : 'guest',
@@ -171,7 +171,7 @@ export class FakeRaces {
         if (other.rematch) {
           // Both picked: the next room opens for the same seats, already counting down.
           const next = {
-            id: randomUUID(), passage: data.passage, conditions: data.conditions, duration: 60,
+            id: randomUUID(), passage: data.passage, conditions: data.conditions, duration: data.conditions?.duration ?? 60,
             status: 'countdown', startAt: new Date(Date.now() + 5000).toISOString(), createdAt: new Date().toISOString(),
             expiresAt: new Date(Date.now() + 15 * 60000).toISOString(),
             invitedUser: other.userId || null, inviteKind: room.inviteKind, inviteToken: null, rematchOf: room.id,
