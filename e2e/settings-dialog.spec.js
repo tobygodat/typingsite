@@ -136,6 +136,8 @@ for (const [key, id, remote, current, query] of [
       await chooseSetting(other, id, remote);
       await expect.poll(() => supabase.profileFor(user.email)?.preferences?.[key]).toBe(remote);
       const remoteStamp = supabase.profileFor(user.email).preferencesAt[key];
+      // The second tab came to the front; until the first is brought back it draws no frames.
+      await page.bringToFront();
       await openSettings(page, 'practice');
       await expect(page.locator(`#${id} input:checked`)).toHaveValue(String(current));
       await expect(page.locator('#typing-input')).toHaveValue(typed);

@@ -5103,10 +5103,11 @@ function bindAccount() {
     closeAccountMenu();
     menu.querySelector('summary').focus();
   });
-  menu.addEventListener('toggle', () => {
-    // Only one corner panel at a time; a keyboard open sends no pointerdown to close the other.
+  // Only one corner panel at a time; a keyboard open sends no pointerdown to close the other. This
+  // runs as the menu opens: its toggle event comes a task later and would close a panel opened since.
+  new MutationObserver(() => {
     if (menu.open) { settingsView?.close(); $('inbox').open = false; }
-  });
+  }).observe(menu, { attributeFilter: ['open'] });
   // Hiding sends nothing: unsent changes wait in the device cache for the pending push or the next return
   // or load (a hidden page's keepalive write is capped at 64 KiB, far below a profile). Other devices'
   // changes come in when it is shown again.
