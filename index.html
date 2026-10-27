@@ -645,12 +645,14 @@
                 <input id="online-invite-email" class="input" type="email" maxlength="254" autocomplete="off" placeholder="Their account email">
               </div>
               <div class="online-setup-actions">
-                <button id="create-online-race" class="btn btn-primary" type="submit">Create race</button>
+                <button id="create-online-race" class="btn btn-primary" type="submit">Challenge</button>
+                <button id="online-customize" class="btn btn-ghost" type="button" aria-expanded="false" aria-controls="online-options">Customize<svg class="online-customize-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"/></svg></button>
                 <label id="online-save-friend-row" class="compact-switch" for="online-save-friend" hidden>
                   <input id="online-save-friend" class="switch" type="checkbox" checked>
                   <span>save to friends</span>
                 </label>
               </div>
+              <div id="online-options" class="online-options" role="group" aria-label="Race options" hidden></div>
             </form>
             <section id="online-friends" class="online-friends" aria-labelledby="online-friends-heading" hidden>
               <div class="online-section-heading"><h2 id="online-friends-heading">Friends</h2></div>

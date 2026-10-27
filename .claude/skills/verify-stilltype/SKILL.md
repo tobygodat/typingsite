@@ -97,6 +97,7 @@ $V drive .claude/skills/verify-stilltype/flows/custom-theme.mjs --signed-in   # 
 $V drive .claude/skills/verify-stilltype/flows/fonts.mjs --delay 30   # every typing font: caret, tape, pace caret measured
 $V drive .claude/skills/verify-stilltype/flows/wallpaper.mjs     # background image: settings without/with one, each style idle, dimmed mid-run
 $V drive .claude/skills/verify-stilltype/flows/online-rematch.mjs --full-page   # two accounts race: results, graph, replay, each Rematch state
+$V drive .claude/skills/verify-stilltype/flows/challenge-options.mjs   # Challenge page: Challenge and Customize, closed and open
 ```
 
 ```js

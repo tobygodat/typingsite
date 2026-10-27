@@ -1,4 +1,6 @@
-import { createAttempt, replayAttempt, selectPassage, CORPUS_VERSION, METRIC_VERSION } from './typing.js';
+import { createAttempt, replayAttempt } from './typing.js';
+import { LENGTHS } from './lengths.js';
+import { raceConditions, raceOptions, racePassage } from './race-options.js';
 import { createTypingFx } from './motion.js';
 import { encodeTrace, standIn, validTrace } from './ghost-race.js';
 import * as multiplayer from './multiplayer.js';
@@ -33,7 +35,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping }) {
+export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping, practice, updateGlide }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -175,9 +177,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       enterRoom(result);
     });
   }
+  // A rematch keeps the race's conditions with a fresh passage. A race from before options was a medium quote.
   function rematchPassage(conditions = {}) {
-    return selectPassage({ mode: 'quote', quoteLength: conditions.quoteLength || 'medium', difficulty: conditions.difficulty || 'any',
-      seenIds: conditions.textId ? [conditions.textId] : [] });
+    return racePassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', ...conditions }, { seenIds: conditions.textId ? [conditions.textId] : [] });
   }
   // Same opponent, same settings, a fresh passage. Picks Rematch on a closed race, or takes the pick back;
   // once both have picked, the service opens the next race and both tabs move to it (followRematch).
@@ -258,10 +260,82 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     try { await friendRequests.reload(); }
     catch (failure) { if (!friendsLoaded) renderFriends(failure); }
   }
+  // A race takes the practice setup, or what Customize holds while it is open. Customize is for one race:
+  // creating it closes Customize and drops its choices.
+  let customized = null;
   function newRace() {
-    const passage = selectPassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any' });
-    const conditions = { mode: 'quote', quoteLength: 'medium', difficulty: 'any', duration: 60, correctionPolicy: 'mandatory', onlineRace: true, language: 'en', inputClass: 'physical-keyboard', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
-    return { passage, conditions };
+    const conditions = raceConditions(customized ?? raceOptions(practice()));
+    return { passage: racePassage(conditions), conditions };
+  }
+  // The practice row's own controls (mode, length, punctuation), cloned from it, so Customize looks and
+  // works like practice but changes only this race.
+  function buildCustomize() {
+    const options = $('online-options');
+    if (options.childElementCount) return;
+    const modes = document.querySelector('.practice-rail .mode-options').cloneNode(true);
+    modes.querySelector('.mode-more')?.remove();
+    modes.setAttribute('aria-label', 'Race mode');
+    const lengths = $('duration-options').cloneNode(true);
+    lengths.querySelectorAll('#custom-length, #custom-length-form').forEach((node) => node.remove());
+    lengths.setAttribute('aria-label', 'Race length');
+    const punctuation = $('punctuation-switch').cloneNode(true);
+    for (const node of [modes, lengths, punctuation, ...modes.querySelectorAll('[id]'), ...lengths.querySelectorAll('[id]'), ...punctuation.querySelectorAll('[id]')]) node.removeAttribute('id');
+    punctuation.removeAttribute('for');
+    punctuation.querySelector('input').checked = false;
+    modes.dataset.raceModes = '';
+    lengths.dataset.raceLengths = '';
+    punctuation.dataset.racePunctuation = '';
+    options.append(modes, lengths, punctuation);
+    modes.addEventListener('click', (event) => {
+      const mode = event.target.closest('[data-mode]')?.dataset.mode;
+      if (!mode || mode === customized.mode) return;
+      const { punctuation: marks = false } = customized;
+      customized = mode === 'quote' ? raceOptions({ mode, quoteLength: practice().quoteLength })
+        : raceOptions({ ...practice(), mode, punctuation: marks, session: 'practice', adaptive: false });
+      renderCustomize();
+    });
+    lengths.addEventListener('click', (event) => {
+      const length = Number(event.target.closest('[data-length]')?.dataset.length);
+      if (!length) return;
+      customized = { ...customized, [LENGTHS[customized.mode].key]: length };
+      renderCustomize();
+    });
+    punctuation.querySelector('input').addEventListener('change', (event) => {
+      customized = { ...customized, punctuation: event.target.checked };
+    });
+  }
+  function renderCustomize() {
+    const options = $('online-options');
+    const modes = options.querySelector('[data-race-modes]');
+    modes.querySelectorAll('[data-mode]').forEach((button) => {
+      const on = button.dataset.mode === customized.mode;
+      button.setAttribute('aria-pressed', String(on));
+      button.classList.toggle('is-active', on);
+    });
+    const spec = LENGTHS[customized.mode];
+    const lengths = options.querySelector('[data-race-lengths]');
+    lengths.hidden = !spec;
+    if (spec) {
+      lengths.querySelectorAll('[data-length]').forEach((button, index) => {
+        const value = spec.presets[index];
+        const on = value === customized[spec.key];
+        button.dataset.length = String(value);
+        button.textContent = String(value);
+        button.setAttribute('aria-label', `${value} ${spec.unit}`);
+        button.setAttribute('aria-pressed', String(on));
+        button.classList.toggle('is-active', on);
+      });
+    }
+    const punctuation = options.querySelector('[data-race-punctuation]');
+    punctuation.hidden = customized.mode === 'quote';
+    punctuation.querySelector('input').checked = Boolean(customized.punctuation);
+    updateGlide(modes);
+    if (spec) updateGlide(lengths);
+  }
+  function closeCustomize() {
+    customized = null;
+    $('online-options').hidden = true;
+    $('online-customize').setAttribute('aria-expanded', 'false');
   }
   // One race action at a time, and apart from those, one friend-list change at a time. While one is
   // in flight, every control that starts another of its kind (for races, also in the inbox and on the
@@ -335,6 +409,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('online-share').hidden = !result.inviteToken;
     if (result.inviteToken) $('online-guest-link').value = multiplayer.makeGuestRaceLink({ roomId: credentials.roomId, inviteToken: result.inviteToken }, location.href);
     room = result.room;
+    if (customized) closeCustomize();
     inbox.settle(`invite:${room.id}`);
     renderHome();
     applyRoom(room, { entering: true });
@@ -497,7 +572,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const remaining = Math.max(0, (room.duration || 60) * 1000 - delta);
     const countdown = delta < 0 ? `Starting in ${Math.ceil(-delta / 1000)}` : '';
     if (countdown !== lastClock) { $('online-countdown').textContent = countdown; lastClock = countdown; }
-    $('online-timer').textContent = delta < 0 ? '60 s race' : `${Math.ceil(remaining / 1000)} s remaining`;
+    $('online-timer').textContent = delta < 0 ? `${room.duration || 60} s race` : `${Math.ceil(remaining / 1000)} s remaining`;
     const me = self();
     // An accent commit typed before the limit is scored first, though the key that ended it comes after.
     const pending = typing.pending();
@@ -690,6 +765,14 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     // A race opened since learns it from the service.
     if (credentials?.roomId === from.roomId) { befriended = true; renderAfter(); }
     announce(`${name} is on your friends list.`);
+  });
+  $('online-customize').addEventListener('click', () => {
+    if (customized) { closeCustomize(); return; }
+    buildCustomize();
+    customized = raceOptions(practice());
+    $('online-options').hidden = false;
+    $('online-customize').setAttribute('aria-expanded', 'true');
+    renderCustomize();
   });
   $('online-invite-email').addEventListener('input', () => { $('online-save-friend-row').hidden = !$('online-invite-email').value.trim(); });
   inbox.subscribe(renderInvites);

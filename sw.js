@@ -44,6 +44,7 @@ const SHELL = [
   '/src/quote-filters.js',
   '/src/progress-view.js',
   '/src/run-counts.js',
+  '/src/race-options.js',
   '/src/race-result.js',
   '/src/race-review.js',
   '/src/replay-view.js',

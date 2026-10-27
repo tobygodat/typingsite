@@ -6331,6 +6331,12 @@ onlineRace = createOnlineRace({
   signIn: () => openAccountDialog('signin'),
   navigate, renderText, updateCharacterStates, setRunning, announce,
   wireTyping: wireOnlineTyping,
+  updateGlide,
+  // What plain Challenge races: the practice setup, and the session it is in (custom text, compose or a drill
+  // are practice's own, so a race falls back to its default).
+  practice: () => ({ mode: prefs.mode, duration: prefs.duration, count: prefs.count, punctuation: prefs.punctuation,
+    numbers: prefs.numbers, wordList: prefs.wordList, quoteLength: prefs.quoteLength, difficulty: prefs.difficulty, adaptive: prefs.adaptive,
+    session: composeOpen ? 'compose' : customOpen || sessionKind === 'custom' ? 'custom' : sessionKind === 'drill' ? 'drill' : 'practice' }),
   // The one-keyboard tab makes the race the session the rule switches act on.
   onModeChange: syncRules,
   onPassageSeen(id) {

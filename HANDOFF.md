@@ -29,7 +29,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - Results: on Practice, in place of the passage (`body[data-view=results]`): run card, Run again / Drill “pair” / Watch replay, speed graph, typed words, practice missed words.
 - Train (Direction D): one button. It plans for the current settings from saved history (recurring pair, else the newest traces, else a general drill), runs a 30-second drill, then a fresh retest, and shows the comparison on Train; its Back to practice opens the retest's own run card. "Patterns across runs" lives on Progress; "words you keep missing" is a palette command.
 - Progress: period and length filters, figures, speed / accuracy / consistency / practice / keys tabs, daily goal and streaks, runs started.
-- Challenge: online races (invite or guest link, friends), Daily, friends board, one keyboard. A finished online race shows both results side by side with the pair's lasting tally (accounts only), a Rematch pick under each (both picked starts the next race on its own), and a Graph / Replay of both racers drawn from their keystroke traces.
+- Challenge: online races (invite or guest link, friends) race the host's practice setup (time, words or quote, length, punctuation, numbers, word set; practice-only setups fall back to a medium quote on 60 s), or what Customize sets for that race, Daily, friends board, one keyboard. A finished online race shows both results side by side with the pair's lasting tally (accounts only), a Rematch pick under each (both picked starts the next race on its own), and a Graph / Replay of both racers drawn from their keystroke traces.
 - Ghost races: a friend races your recorded run within seven days.
 - Inbox and toast for invitations and challenges.
 - Settings dialog, ⌘K / Ctrl-K palette (each group listed once, in the order of its first command; `e2e/palette-alignment.spec.js` holds its rows centred and its columns aligned), Monkeytype import.
@@ -71,7 +71,7 @@ npm run test:e2e  # Playwright in Chromium; test:e2e:firefox, :webkit, :all; :qu
 - `compose.js`, `compose-view.js`, `compose-caret.js`: composing practice.
 - `profile.js`: profile defaults and `normalizeProfile`.
 - `account.js`: auth, the profile row, `mergeSynced`, `HISTORY`.
-- `online-race.js`, `multiplayer.js`: online races and their RPCs; `race-review.js`: a finished race's graph and two-caret replay.
+- `online-race.js`, `multiplayer.js`: online races and their RPCs; `race-review.js`: a finished race's graph and two-caret replay; `race-options.js`: what a race is set up as and its passage.
 - `ghost-race.js`: ghost challenges.
 - `inbox.js`, `race-result.js`: inbox, toast, race results.
 - `friends-board.js`: friends board and sharing.
