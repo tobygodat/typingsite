@@ -12,6 +12,31 @@ export function raceResultParts({ lead, opponent, wpm }, figure = savedSpeed) {
 
 export const raceResultText = (race) => raceResultParts(race).join('');
 
+// How a race went for `mine`, as its results show it: more wpm wins, and accuracy breaks a wpm tie.
+export function raceOutcome(mine, theirs) {
+  const ahead = (mine.wpm || 0) - (theirs.wpm || 0) || (mine.accuracy ?? 100) - (theirs.accuracy ?? 100);
+  return ahead > 0 ? 'won' : ahead < 0 ? 'lost' : 'tied';
+}
+
+export const RACE_LEADS = { won: 'You beat', lost: 'You raced', tied: 'You tied with' };
+
+// The pair's wins as the service keeps them ([mine, theirs]), and which figure this race just raised.
+// Null when there is no tally to show: a guest on either side, or a service without one.
+export function tallyView(tally, outcome) {
+  if (!Array.isArray(tally) || tally.length !== 2 || !tally.every(Number.isSafeInteger)) return null;
+  return { mine: tally[0], theirs: tally[1], raised: outcome === 'won' ? 'mine' : outcome === 'lost' ? 'theirs' : null };
+}
+
+// The two Rematch controls of a finished race: this racer's button and what the other picked. A racer who
+// left takes the choice with them. When both have picked, the next race is starting.
+export function rematchControls(mine, theirs) {
+  return {
+    mine: theirs.left ? 'inactive' : mine.rematch ? 'chosen' : 'open',
+    theirs: theirs.left ? 'left' : theirs.rematch ? 'chosen' : 'open',
+    starting: Boolean(mine.rematch && theirs.rematch && !theirs.left),
+  };
+}
+
 const score = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 const validRace = (race) => typeof race?.lead === 'string' && typeof race.opponent === 'string'
   && Array.isArray(race.wpm) && race.wpm.length === 2 && race.wpm.every(score);

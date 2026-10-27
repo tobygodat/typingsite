@@ -1774,7 +1774,8 @@ body[data-running="true"] .caps-warning { transition: none; }
 
 .typing-wrap,
 .race-typing-wrap,
-.online-typing-wrap {
+.online-typing-wrap,
+.duel-replay-wrap {
   --passage-size: 36px;
   --typing-line: calc(var(--passage-size) * 1.75);
   position: relative;
@@ -1806,7 +1807,8 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
 
 #text-display,
 #race-text-display,
-#online-text-display {
+#online-text-display,
+#online-replay-display {
   position: relative;
   color: var(--muted);
   font-family: var(--font-typing);
@@ -3082,6 +3084,49 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .online-share > label { color: var(--muted); font-size: var(--text-small); }
 .online-link-row { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
 .online-link-row input { min-width: 0; flex: 1; }
+/* Online race results: you on the left, them on the right, the pair's tally between. Size and
+   brightness say who won without colour; the accent marks only the tally figure this race raised. */
+.race-duel { margin-top: var(--space-8); }
+.duel-scores { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: var(--space-6); text-align: center; }
+.duel-side { min-width: 0; display: grid; grid-template-rows: auto var(--text-numeral-mobile) auto auto; justify-items: center; align-items: end; }
+.duel-name { margin: 0; font-size: var(--text-lead); font-weight: 400; overflow-wrap: anywhere; }
+.duel-speed { margin: 0; display: flex; align-items: baseline; gap: var(--space-2); }
+.duel-wpm { font: 300 var(--text-numeral-mobile)/0.9 var(--font-app); letter-spacing: -0.04em; }
+.duel-unit { color: var(--muted); font: var(--text-body)/1.2 var(--font-app); }
+.duel-accuracy { margin: var(--space-4) 0 0; font-size: var(--text-title); }
+.duel-side[data-outcome="lost"] :is(.duel-name, .duel-wpm, .duel-accuracy) { color: var(--muted); }
+.duel-side[data-outcome="lost"] .duel-wpm { font-size: var(--text-numeral-narrow); }
+.duel-choice { width: 100%; margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--hairline); display: flex; justify-content: center; }
+.duel-middle { padding-top: var(--space-6); display: grid; justify-items: center; align-content: start; gap: var(--space-3); }
+.duel-tally { margin: 0; display: flex; align-items: baseline; gap: var(--space-3); font: 300 var(--text-numeral-narrow)/1 var(--font-app); }
+.duel-tally > span[aria-hidden] { color: var(--muted); }
+.duel-tally .is-raised { color: var(--accent); }
+.duel-starting { margin: 0; color: var(--accent); }
+.duel-check { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; display: none; }
+/* Picked: an accent outline with a check, pressed again to take the pick back. */
+.duel-rematch[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.duel-rematch[aria-pressed="true"]:hover:not([aria-disabled="true"]) { background: var(--accent-soft); }
+.duel-rematch[aria-pressed="true"] .duel-check,
+.duel-their-rematch[data-state="chosen"] .duel-check { display: block; }
+/* Against a racer who left the button leads nowhere: a hairline outline, no fill. */
+.duel-rematch[data-state="inactive"] { border-color: var(--hairline-strong); background: transparent; color: var(--muted); opacity: 1; cursor: default; }
+.duel-their-rematch { min-height: var(--control); margin: 0; display: inline-flex; align-items: center; gap: var(--space-2); color: var(--muted); }
+.duel-their-rematch[data-state="open"]::before { content: ""; width: var(--space-3); height: var(--space-3); border: 1.5px solid var(--muted); border-radius: var(--radius-full); }
+.duel-their-rematch[data-state="chosen"] { color: var(--accent); }
+.duel-review { margin-top: var(--space-10); display: grid; justify-items: center; gap: var(--space-6); }
+.duel-toggle { background: var(--raised); }
+.duel-toggle button[aria-pressed="true"] { background: var(--raised-2); }
+.duel-graph { width: 100%; height: calc(var(--space-16) * 4); aspect-ratio: auto; }
+.graph-line-theirs { stroke: var(--text); }
+.duel-replay { width: 100%; }
+.duel-replay-wrap { margin: 0; cursor: default; }
+/* One colour per racer: your caret is the accent, theirs the text colour, each named under it. */
+.duel-replay-wrap .ghost-caret::after { background: var(--text); }
+.caret-tag { position: absolute; top: calc(50% + var(--typing-baseline) + var(--space-1)); left: 0; transform: translateX(-50%); }
+.caret-tag > span { display: block; color: var(--accent); font: var(--text-fine)/1 var(--font-mono); white-space: nowrap; }
+.ghost-caret .caret-tag > span { color: var(--text); }
+.duel-replay-controls { margin-top: var(--space-4); display: flex; justify-content: center; gap: var(--space-3); }
+
 .online-players { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); margin: var(--space-6) 0; }
 .online-player-row { min-width: 0; display: grid; grid-template-columns: 1fr; gap: var(--space-2); }
 .online-player-row strong { font-weight: 400; overflow-wrap: anywhere; }
@@ -3121,7 +3166,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .online-link-row input { flex-basis: 100%; }
   .online-section-heading { flex-wrap: wrap; }
   .online-friend-row { flex-wrap: wrap; }
-  .online-typing-wrap { --passage-size: var(--text-title); }
+  :is(.online-typing-wrap, .duel-replay-wrap) { --passage-size: var(--text-title); }
 }
 
 .challenge-setup {
@@ -3759,6 +3804,12 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 @media (max-width: 560px) {
   .ghost-result .race-result-row { grid-template-columns: 1fr 1fr; }
+  .duel-scores { gap: var(--space-3); }
+  .duel-side { grid-template-rows: auto var(--text-display) auto auto; }
+  .duel-wpm { font-size: var(--text-display); }
+  .duel-side[data-outcome="lost"] .duel-wpm { font-size: var(--text-title); }
+  .duel-unit, .duel-accuracy { font-size: var(--text-small); }
+  .duel-tally { font-size: var(--text-title); gap: var(--space-1); }
 }
 
 @media (max-width: 360px) {

@@ -22,6 +22,11 @@ async function createGuestRace(page) {
 async function race(host, guest) {
   await host.locator('#online-ready').click();
   await guest.locator('#online-ready').click();
+  await typeRace(host, guest);
+}
+
+// A race already counting down: both type the whole passage, the host first, so the host wins.
+async function typeRace(host, guest) {
   await expect(host.locator('#online-input')).toBeEnabled({ timeout: 12000 });
   await expect(guest.locator('#online-input')).toBeEnabled();
   const passage = await host.locator('#online-accessible-passage').textContent();
@@ -153,7 +158,7 @@ test('a challenge that arrives mid-run waits for the run to end, even with the c
   await expect(page.locator('#challenge-toast')).toContainText('Kai challenged you to a race.');
 });
 
-test('after a race either player can race again against the same opponent, and add them as a friend', async ({ page, browser, supabase }) => {
+test('after a race both pick Rematch and the next race starts on its own, the pair keeps a tally, and either can add the other as a friend', async ({ page, browser, supabase }) => {
   supabase.addUser('host@stilltype.test');
   supabase.addUser('lin@stilltype.test');
   await openApp(page);
@@ -174,6 +179,20 @@ test('after a race either player can race again against the same opponent, and a
     await expect(lin.locator('#online-room')).toBeVisible();
     await race(page, lin);
 
+    // You on the left, them on the right; the winner reads larger, and the tally counts the pair's wins,
+    // this race's figure in the accent.
+    await expect(page.locator('#online-duel-mine')).toHaveAttribute('data-outcome', 'won');
+    await expect(page.locator('#online-duel-theirs .duel-name')).toHaveText('Lin');
+    await expect(lin.locator('#online-duel-mine')).toHaveAttribute('data-outcome', 'lost');
+    await expect(lin.locator('#online-duel-theirs .duel-name')).toHaveText('Ada');
+    await expect(page.locator('#online-tally')).toHaveText('1–0');
+    await expect(lin.locator('#online-tally')).toHaveText('0–1');
+    await expect(page.locator('#online-tally .is-raised')).toHaveText('1');
+    await expect(lin.locator('#online-tally .is-raised')).toHaveText('1');
+    expect(await page.locator('#online-duel-mine .duel-wpm').evaluate((node) => parseFloat(getComputedStyle(node).fontSize)))
+      .toBeGreaterThan(await page.locator('#online-duel-theirs .duel-wpm').evaluate((node) => parseFloat(getComputedStyle(node).fontSize)));
+    await expect(page.locator('#online-players')).toBeHidden();
+
     // The invited racer can keep the host; the host already knows them by email.
     await expect(lin.locator('#online-befriend')).toHaveText('Add Ada to friends');
     await expect(page.locator('#online-befriend')).toBeHidden();
@@ -190,20 +209,31 @@ test('after a race either player can race again against the same opponent, and a
     await expect(page.locator('#inbox-list [data-inbox-action="joined"]')).toHaveCount(0);
     await page.locator('#inbox-trigger').click();
 
-    // Lin asks first; Ada sees the request and joins the same new room with one click.
+    // Lin picks Rematch, and Ada sees it beside Lin's result. Pressed again, the pick is taken back.
+    await expect(page.locator('#online-their-rematch')).toHaveAttribute('data-state', 'open');
     await lin.locator('#online-rematch').click();
-    await expect(lin.locator('#online-room-status')).toContainText('Rematch sent. Waiting for Ada to join.');
-    await expect(page.locator('#online-rematch-note')).toHaveText('Lin wants a rematch.', { timeout: 8000 });
-    await expect(page.locator('#challenge-toast')).toContainText('Lin wants a rematch.', { timeout: 12000 });
-    await expect(page.locator('#online-rematch')).toHaveText('Join rematch');
+    await expect(lin.locator('#online-rematch')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#online-their-rematch')).toHaveAttribute('data-state', 'chosen', { timeout: 5000 });
+    await lin.locator('#online-rematch').click();
+    await expect(lin.locator('#online-rematch')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('#online-their-rematch')).toHaveAttribute('data-state', 'open', { timeout: 5000 });
+    await lin.locator('#online-rematch').click();
+    await expect(page.locator('#online-their-rematch')).toHaveAttribute('data-state', 'chosen', { timeout: 5000 });
+    // Nothing to accept: no toast, no invitation, and no Ready. When Ada picks too, both count down.
+    await expect(page.locator('#challenge-toast')).toBeHidden();
     await page.locator('#online-rematch').click();
+    await expect(page.locator('#online-countdown')).toContainText('Starting in', { timeout: 5000 });
+    await expect(lin.locator('#online-countdown')).toContainText('Starting in', { timeout: 5000 });
+    await expect(page.locator('#online-ready')).toBeHidden();
+    await expect(lin.locator('#online-ready')).toBeHidden();
     const rematch = supabase.races.rooms.get(first.rematchId);
     expect(rematch.rematchOf).toBe(first.id);
     expect(rematch.players.map((p) => p.name)).toEqual(['Ada', 'Lin']);
-    await expect(page.locator('#online-players')).toContainText('Lin');
-    await expect(lin.locator('#online-room-status')).toContainText('Both players are here.', { timeout: 5000 });
-    await race(page, lin);
     expect(supabase.races.rooms.size).toBe(2);
+    await expect(page.locator('#online-accessible-passage')).toHaveText(rematch.passage);
+    await typeRace(page, lin);
+    await expect(page.locator('#online-tally')).toHaveText('2–0');
+    await expect(lin.locator('#online-tally')).toHaveText('0–2');
 
     // A result outlives its room only so long: past the service's retention it has no Race again,
     // even when it lapses while the inbox is already open.
@@ -225,13 +255,10 @@ test('after a race either player can race again against the same opponent, and a
     await page.locator('#inbox-trigger').click();
     await expect(page.locator('#inbox-list [data-kind="result"]').first()).toContainText('closed');
     await expect(page.locator('#inbox-list [data-inbox-action="result"]')).toHaveCount(0);
-    // The rematch request Ada answered from the race is used up too.
-    await expect(page.locator('#inbox-list [data-kind="invite"]').first()).toContainText('closed');
-    await expect(page.locator('#inbox-list [data-inbox-action="invite"]')).toHaveCount(0);
   } finally { await context.close(); }
 });
 
-test('a guest races again with the same seat and no new link, and a rematch the host cancels takes its toast away', async ({ page, browser, supabase }) => {
+test('a guest races again with the same seat and no new link and keeps no tally, and a host who closes the race ends the choice', async ({ page, browser, supabase }) => {
   test.setTimeout(180_000);
   supabase.addUser('host@stilltype.test');
   await openApp(page);
@@ -250,20 +277,29 @@ test('a guest races again with the same seat and no new link, and a rematch the 
     await race(page, guest);
     await expect(guest.locator('#inbox')).toBeHidden();
     await expect(guest.locator('#online-befriend')).toBeHidden();
+    await expect(page.locator('#online-tally')).toBeHidden();
+    await expect(guest.locator('#online-tally')).toBeHidden();
+    const first = [...supabase.races.rooms.values()][0];
+    const seat = first.players[1].guestToken;
     await page.locator('#online-rematch').click();
-    await expect(page.locator('#online-players')).toContainText('invited');
-    await expect(guest.locator('#challenge-toast')).toContainText('Ada wants a rematch.', { timeout: 8000 });
-    await guest.locator('#challenge-toast').getByRole('button', { name: 'Join' }).click();
-    await expect(guest.locator('#online-rematch-note')).toBeHidden();
-    await expect(page.locator('#online-room-status')).toContainText('Both players are here.', { timeout: 5000 });
-    await race(page, guest);
-    await page.locator('#online-rematch').click();
-    await expect(guest.locator('#challenge-toast')).toContainText('Ada wants a rematch.', { timeout: 8000 });
-    await expect(guest.locator('#online-rematch')).toHaveText('Join rematch');
+    await expect(guest.locator('#online-their-rematch')).toHaveAttribute('data-state', 'chosen', { timeout: 5000 });
+    await guest.locator('#online-rematch').click();
+    await expect(guest.locator('#online-countdown')).toContainText('Starting in', { timeout: 5000 });
+    await expect(page.locator('#online-countdown')).toContainText('Starting in', { timeout: 5000 });
+    expect(supabase.races.rooms.get(first.rematchId).players[1].guestToken).toBe(seat);
+    await typeRace(page, guest);
+    await guest.locator('#online-rematch').click();
+    await expect(page.locator('#online-their-rematch')).toHaveAttribute('data-state', 'chosen', { timeout: 5000 });
+    // Ada closes the race: Lin's side reads left for Ada, and Lin's pick is over.
     await page.locator('#online-leave').click();
-    await expect(guest.locator('#challenge-toast')).toBeHidden({ timeout: 8000 });
-    await expect(guest.locator('#online-rematch-note')).toBeHidden();
-    await expect(guest.locator('#online-rematch')).toHaveText('Race again');
+    await expect(guest.locator('#online-their-rematch')).toHaveAttribute('data-state', 'left', { timeout: 5000 });
+    await expect(guest.locator('#online-their-rematch')).toHaveText('left');
+    await expect(guest.locator('#online-rematch')).toHaveAttribute('aria-disabled', 'true');
+    await expect(guest.locator('#online-rematch')).toHaveAttribute('aria-pressed', 'false');
+    await guest.locator('#online-rematch').click({ force: true });
+    await expect(guest.locator('#online-error')).toBeEmpty();
+    await expect(guest.locator('#online-rematch')).toHaveAttribute('aria-pressed', 'false');
+    expect(supabase.races.rooms.size).toBe(2);
     expect(await guest.evaluate(() => Object.keys(localStorage))).toEqual([]);
   } finally { await context.close(); }
 });

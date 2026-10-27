@@ -82,8 +82,12 @@ test('an account hosts a guest across separate contexts, shares progress, resume
     await typeInto(guest, passage, '#online-input', { delay: 15 });
     await expect(page.locator('#online-results')).toBeVisible({ timeout: 10000 });
     await expect(guest.locator('#online-results')).toBeVisible();
-    await expect(page.locator('#online-result-rows .race-result-row')).toHaveCount(2);
-    expect(await guest.locator('#online-result-rows').textContent()).toBe(await page.locator('#online-result-rows').textContent());
+    await expect(page.locator('#online-results .duel-side')).toHaveCount(2);
+    // Each sees the same two results, their own on the left.
+    for (const [mine, theirs] of [['mine', 'theirs'], ['theirs', 'mine']]) {
+      expect(await guest.locator(`#online-duel-${theirs} :is(.duel-speed, .duel-accuracy)`).allTextContents())
+        .toEqual(await page.locator(`#online-duel-${mine} :is(.duel-speed, .duel-accuracy)`).allTextContents());
+    }
     await expect(page.locator('#best')).toHaveText('No best yet');
     expect(supabase.profileFor('host@stilltype.test')).not.toHaveProperty('attempts');
     expect((await page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find((key) => key.startsWith('stilltype-profile-v2:')))).attempts))).toHaveLength(0);

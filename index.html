@@ -690,15 +690,43 @@
               </div>
               <p id="online-help" class="online-copy">Paste and key repeat are off.</p>
             </div>
-            <section id="online-results" class="race-leaderboard" hidden aria-labelledby="online-winner">
-              <div class="race-result-heading"><h2 id="online-winner">Race results</h2><button id="online-again" class="btn btn-secondary" type="button">New race</button></div>
-              <div id="online-result-rows" class="race-results"></div>
-              <p>Not counted in your progress.</p>
+            <section id="online-results" class="race-duel" hidden aria-label="Race results">
+              <div class="duel-scores">
+                <div id="online-duel-mine" class="duel-side">
+                  <h3 class="duel-name">You</h3>
+                  <p class="duel-speed"><strong class="duel-wpm num" data-bare></strong><span class="duel-unit" data-speed-unit>wpm</span></p>
+                  <p class="duel-accuracy num"></p>
+                  <div class="duel-choice"><button id="online-rematch" class="btn btn-primary duel-rematch" type="button" aria-pressed="false"><svg class="duel-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Rematch</button></div>
+                </div>
+                <div class="duel-middle">
+                  <p id="online-tally" class="duel-tally num" hidden><span></span><span aria-hidden="true">–</span><span></span></p>
+                  <p id="online-starting" class="duel-starting" role="status" hidden>Starting</p>
+                </div>
+                <div id="online-duel-theirs" class="duel-side">
+                  <h3 class="duel-name"></h3>
+                  <p class="duel-speed"><strong class="duel-wpm num" data-bare></strong><span class="duel-unit" data-speed-unit>wpm</span></p>
+                  <p class="duel-accuracy num"></p>
+                  <div class="duel-choice"><p id="online-their-rematch" class="duel-their-rematch" role="status"><svg class="duel-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg><span></span></p></div>
+                </div>
+              </div>
+              <div id="online-review" class="duel-review" hidden>
+                <div class="segmented duel-toggle" role="group" aria-label="Race view">
+                  <button id="online-show-graph" type="button" aria-pressed="true">Graph</button>
+                  <button id="online-show-replay" type="button" aria-pressed="false">Replay</button>
+                </div>
+                <div id="online-duel-graph" class="duel-graph speed-graph" role="img"></div>
+                <div id="online-duel-replay" class="duel-replay" hidden>
+                  <div class="duel-replay-wrap"><div id="online-replay-display" aria-hidden="true"></div></div>
+                  <div class="duel-replay-controls">
+                    <button id="online-replay-toggle" class="btn btn-secondary" type="button">Play</button>
+                    <button id="online-replay-speed" class="btn btn-ghost" type="button" aria-label="Playback speed 1×">1×</button>
+                    <button id="online-replay-restart" class="btn btn-ghost" type="button">Restart</button>
+                  </div>
+                </div>
+              </div>
             </section>
             <div id="online-after" class="online-after" hidden>
-              <p id="online-rematch-note" class="online-copy" role="status"></p>
               <div class="online-actions">
-                <button id="online-rematch" class="btn btn-primary" type="button">Race again</button>
                 <button id="online-befriend" class="btn btn-ghost" type="button" hidden>Add to friends</button>
               </div>
             </div>

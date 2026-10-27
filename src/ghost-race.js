@@ -86,9 +86,17 @@ export function validTrace(trace) {
 export function traceAttempt(trace, text) {
   const events = [];
   let at = 0;
+  let typed = 0;
   [...trace.k].forEach((key, index) => {
     at += trace.t[index];
-    events.push(key === DELETE ? { type: 'delete', count: 1, offsetMs: at } : { type: 'insert', text: key, accepted: true, offsetMs: at });
+    if (key === DELETE) {
+      typed = Math.max(0, typed - 1);
+      events.push({ type: 'delete', count: 1, offsetMs: at });
+      return;
+    }
+    // Where the key landed, as a recorded run keeps it: the speed graph reads it to tell hits from misses.
+    events.push({ type: 'insert', text: key, position: typed, accepted: true, offsetMs: at });
+    if (typed < text.length) typed += 1;
   });
   return { text, events, startedAt: 0, endedAt: trace.e, conditions: {} };
 }

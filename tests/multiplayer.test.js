@@ -82,7 +82,7 @@ test('friend races send only the friend id, and rematches keep the guest seat', 
     assert.equal(calls[1].p_action,'rematch');
     assert.equal(calls[1].p_guest_token,guestToken);
     assert.equal(calls[1].p_room_id,roomId);
-    assert.deepEqual(calls[1].p_data,{passage:'A fresh passage.',conditions:{quoteLength:'medium',textId:'next'}});
+    assert.deepEqual(calls[1].p_data,{want:true,passage:'A fresh passage.',conditions:{quoteLength:'medium',textId:'next'}});
     await addFriend(session,{email:' lin@example.com ',name:' Lin '});
     assert.deepEqual(calls[2].p_data,{email:'lin@example.com',name:'Lin'});
     await addFriendFromRace(session,{roomId,guestToken});
@@ -90,6 +90,14 @@ test('friend races send only the friend id, and rematches keep the guest seat', 
     assert.equal(calls[3].p_guest_token,null);
     assert.deepEqual(await listFriends(null),[]);
     assert.equal(calls.length,4);
+    // Taking a pick back sends no passage; a finished racer's progress carries the trace.
+    await rematchRace(null,{roomId,guestToken},{want:false});
+    assert.deepEqual(calls[4].p_data,{want:false});
+    const trace = {v:1,k:'A',t:[120],e:120};
+    await updateRaceProgress(null,{roomId,guestToken},{typed:'A',keystrokes:1,errors:0,finished:true,trace});
+    assert.deepEqual(calls[5].p_data.trace,trace);
+    await updateRaceProgress(null,{roomId,guestToken},{typed:'A',keystrokes:1,errors:0});
+    assert.equal('trace' in calls[6].p_data,false);
   } finally { globalThis.fetch = original; }
 });
 
