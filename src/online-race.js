@@ -342,7 +342,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     notifyChanges(previousStatus, previousOpponent, entering);
     if (room.startAt && startPerf === null) {
       startPerf = performance.now() + stamp(room.startAt) - stamp(room.serverNow);
+      setTimeout(updateClock, startPerf - performance.now());
     }
+    startIfDue();
     if (['countdown', 'racing'].includes(room.status)) prepareAttempt();
     renderRoom();
     updateClock();
@@ -452,7 +454,16 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     }
     renderAfter();
   }
+  // The service starts a counted-down room on the first request after its start time; this tab starts
+  // it on the shared clock instead, so typing opens when the countdown ends rather than a poll later.
+  function startIfDue() {
+    if (room?.status === 'countdown' && startPerf !== null && performance.now() >= startPerf) {
+      room = { ...room, status: 'racing' };
+      renderRoom();
+    }
+  }
   function updateClock() {
+    startIfDue();
     if (!room || startPerf === null || terminal(room)) return;
     const delta = performance.now() - startPerf;
     const remaining = Math.max(0, (room.duration || 60) * 1000 - delta);

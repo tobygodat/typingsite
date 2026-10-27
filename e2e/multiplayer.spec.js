@@ -92,6 +92,35 @@ test('an account hosts a guest across separate contexts, shares progress, resume
   } finally { await context.close(); }
 });
 
+test('typing opens when the shared countdown ends, without waiting for a poll to say so', async ({ page, browser, supabase }) => {
+  const room = await hostRace(page, supabase);
+  const link = await page.locator('#online-guest-link').inputValue();
+  const { context, guest } = await guestPage(browser, supabase, link);
+  try {
+    await guest.locator('#online-guest-name').fill('Lin');
+    await guest.locator('#join-online-race').click();
+    await expect(page.locator('#online-players')).toContainText('Lin');
+    await page.evaluate(() => {
+      const input = document.getElementById('online-input');
+      new MutationObserver(() => { if (!input.disabled) window.enabledAt ??= Date.now(); }).observe(input, { attributes: true, attributeFilter: ['disabled'] });
+    });
+    await page.locator('#online-ready').click();
+    await guest.locator('#online-ready').click();
+    await expect(page.locator('#online-countdown')).toContainText('Starting in');
+    // The service answers nothing from here until the race is under way.
+    supabase.races.held = [];
+    supabase.races.holding = new Set(['get']);
+    await expect(page.locator('#online-input')).toBeEnabled({ timeout: 8000 });
+    expect(await page.evaluate(() => window.enabledAt) - Date.parse(room.startAt)).toBeLessThan(150);
+    const passage = await page.locator('#online-accessible-passage').textContent();
+    await typeInto(page, passage.slice(0, 5), '#online-input', { delay: 15 });
+    await expect(page.locator('#online-input')).toHaveValue(passage.slice(0, 5));
+    supabase.races.holding = new Set();
+    for (const release of supabase.races.held) release();
+    await expect.poll(() => room.players[0].typed).toBe(passage.slice(0, 5));
+  } finally { await context.close(); }
+});
+
 test('account invitations appear only in the invited account inbox', async ({ page, browser, supabase }) => {
   supabase.addUser('friend@stilltype.test');
   const room = await hostRace(page, supabase, 'friend@stilltype.test');
