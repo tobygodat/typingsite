@@ -42,10 +42,6 @@ export function formatSpeed(wpm, { bare = false, signed = false, whole = false }
   return bare ? number : `${number} ${normalizeSpeedUnit(unit)}`;
 }
 
-// The run card's definitions of the speed figure and of raw speed, as unitText templates.
-export const SPEED_DEFINITION = '{unit} counts correct characters kept{cpm: (wpm × 5)}';
-export const RAW_SPEED_DEFINITION = 'Every character typed, mistakes included: characters{wpm: ÷ 5} per minute';
-
 // A unit word in a template: {unit} is the unit, and {wpm:…} or {cpm:…} is text only that unit shows.
 export function unitText(template, unit = shown) {
   return template.replace(/\{(unit|wpm|cpm)(?::([^}]*))?\}/g, (_, key, text) => (key === 'unit' ? unit : key === unit ? text : ''));

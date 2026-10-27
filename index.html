@@ -260,50 +260,37 @@
           </header>
 
           <article id="run-card" class="run-card" aria-label="Run summary" hidden>
-            <div class="run-card-score">
-              <strong id="result-wpm" class="num" data-bare>—</strong>
-              <span class="run-card-unit" data-speed-unit>wpm</span>
+            <div class="run-card-head">
+              <div class="run-card-score">
+                <strong id="result-wpm" class="num" data-bare>—</strong>
+                <span class="run-card-unit" data-speed-unit>wpm</span>
+              </div>
+              <div class="run-card-side">
+                <dl class="run-card-facts">
+                  <div id="result-accuracy-fact"><dt>accuracy</dt><dd><strong id="result-accuracy" class="num">—</strong><b>%</b></dd></div>
+                  <div><dt>time</dt><dd id="result-time" class="num">—</dd></div>
+                  <div title="100 minus the variation of your per-second raw speed; needs 3 seconds"><dt>consistency</dt><dd><strong id="result-consistency" class="num">—</strong><b>%</b></dd></div>
+                </dl>
+                <p id="result-standing" class="run-card-standing" hidden></p>
+              </div>
             </div>
-            <dl class="run-card-facts">
-              <div><dt>accuracy</dt><dd><strong id="result-accuracy" class="num">—</strong><b>%</b></dd></div>
-              <div><dt>first-try errors</dt><dd id="result-errors" class="num">—</dd></div>
-              <div><dt>time</dt><dd id="result-time" class="num">—</dd></div>
-            </dl>
-            <dl class="run-card-facts run-card-more">
-              <div id="result-raw-row"><dt data-speed-unit="raw {unit}">raw wpm</dt><dd id="result-raw" class="num" data-bare>—</dd></div>
-              <div title="100 minus the variation of your per-second raw speed; needs 3 seconds"><dt>consistency</dt><dd><strong id="result-consistency" class="num">—</strong><b>%</b></dd></div>
-              <div title="The finished text: correct / still wrong / extra / missed characters. Slips you fixed count as first-try errors"><dt>final c/i/e/m</dt><dd id="result-chars" class="num">—</dd></div>
-            </dl>
-            <p class="metric-note"><span id="speed-definition"></span> · accuracy counts every character typed, corrected ones included</p>
-            <p class="condition-copy" id="result-conditions">english · common words</p>
-            <details class="manual-panel metric-more">
-              <summary>How raw, consistency and c/i/e/m are counted</summary>
-              <p class="metric-note">raw counts every character typed, mistakes included · consistency is 100 minus the variation of per-second speed · final c/i/e/m: correct, still wrong, extra past the end, missed; fixed slips are first-try errors</p>
-            </details>
-          </article>
-
-          <div class="result-actions">
-            <button id="run-again" class="btn btn-primary" type="button" data-action="run-again">Run again</button>
-            <button id="result-drill" class="btn btn-secondary" type="button" hidden>Drill</button>
-            <button id="watch-replay" class="btn btn-ghost" type="button" data-action="watch-replay" hidden>Watch replay</button>
-          </div>
-
-          <div class="run-trace">
             <figure class="run-card-graph">
               <div id="speed-graph" class="speed-graph" role="img" aria-label="Speed over time"></div>
-              <figcaption class="graph-legend" aria-hidden="true">
-                <span class="legend-speed" data-speed-unit="speed · {unit}">speed · wpm</span>
-                <span class="legend-average">average</span>
-                <span class="legend-miss">mistake</span>
-              </figcaption>
             </figure>
             <div class="run-card-wordlist">
               <div id="result-words" class="run-card-words" role="listbox" aria-label="Words typed; mistyped words are marked. Arrow keys move between words."></div>
               <p id="result-word-detail" class="word-detail"></p>
+              <button id="practice-words" class="run-card-practice" type="button" data-action="practice-words" hidden>Practice missed words</button>
             </div>
-            <p class="word-detail practice-evidence" id="practice-words-evidence" hidden></p>
-            <button id="practice-words" class="btn btn-ghost run-card-practice" type="button" data-action="practice-words" hidden>Practice missed words</button>
-          </div>
+            <div class="result-actions">
+              <div class="result-buttons">
+                <button id="run-again" class="btn btn-primary" type="button" data-action="run-again">Run again</button>
+                <button id="result-drill" class="btn btn-secondary" type="button" hidden>Drill</button>
+                <button id="watch-replay" class="btn btn-ghost" type="button" data-action="watch-replay" hidden>Watch replay</button>
+              </div>
+              <p class="condition-copy" id="result-conditions">english · common words</p>
+            </div>
+          </article>
 
           <div id="result-more" class="result-more">
             <article id="ghost-result" class="comparison-panel ghost-result" aria-labelledby="ghost-result-heading" hidden>

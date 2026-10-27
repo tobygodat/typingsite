@@ -43,7 +43,6 @@ import {
   standardConditions,
   summarizePatterns,
   textId,
-  rawWpm,
   consistency,
   characterBreakdown,
   wordHistory,
@@ -74,7 +73,7 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { CORRECTION_LABELS, DAILY_GOALS, MAX_PATTERN_RUNS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, retainHistory, validPracticeDays, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
-import { RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
+import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
 import { readMonkeytypeSettings } from './monkeytype.js';
@@ -857,12 +856,11 @@ function applySoundPreferences() {
 
 // Display only: every speed and unit word on screen re-texts in place (src/units.js), so nothing restarts
 // and open rows and focus stay as they are. Only text re-texts: a speed placed in an attribute or drawn in
-// SVG has to be redrawn here, as the raw speed's tooltip, the words' spoken paces and the two charts are
+// SVG has to be redrawn here, as the words' spoken paces and the two charts are
 // (the pace field follows in showPace).
 function applySpeedUnit() {
   selectSetting('speed-unit', prefs.speedUnit);
   const changed = showSpeedUnit(prefs.speedUnit);
-  $('result-raw-row').title = unitText(RAW_SPEED_DEFINITION);
   if (!changed) return;
   labelWords();
   if (shownResult && rateShown(shownResult)) renderSpeedGraph($('speed-graph'), shownResult, { animate: false });
@@ -2168,9 +2166,8 @@ function ghostPace(mode = prefs.paceCaret) {
   else if (mode === 'best') wpm = profile.bests[key]?.wpm || null;
   else if (mode === 'average' || mode === 'last') {
     // Only test and retest runs are comparable, as for trends and bests: drills would skew the pace.
-    const runs = filterRuns(profile.runs.filter(trendRun), key).filter((run) => run.score?.wpm);
-    const recent = runs.slice(mode === 'last' ? -1 : -10);
-    if (recent.length) wpm = Math.round(recent.reduce((sum, run) => sum + run.score.wpm, 0) / recent.length);
+    const recent = trendRunsAt(key).slice(mode === 'last' ? -1 : -10);
+    if (recent.length) wpm = meanWpm(recent);
   }
   const fromBest = mode === 'best' && Boolean(wpm);
   const fallback = !wpm;
@@ -2453,8 +2450,7 @@ function renderCard(completed) {
   renderPracticeWords(completed);
 }
 
-// Offer the words this run tripped on or was slowest through as their own uncounted run. The
-// slowest are one timing each, so they show their speed beside the run's median, not a weakness.
+// Offer the words this run tripped on or was slowest through as their own uncounted run.
 // Only an evidence run is mined for words, by the same rule as recurring patterns: a complete test,
 // retest or daily run on fresh text. Not a drill (synthetic, target-heavy text), repeated text (a daily
 // passage shown before, a repeated quote), custom text or word practice itself. Run again repeats a word-practice passage.
@@ -2463,17 +2459,8 @@ function renderPracticeWords(completed) {
   const { missed, slow } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
   const words = [...missed, ...slow.map((item) => item.word)];
   const button = $('practice-words');
-  const evidence = $('practice-words-evidence');
-  button.hidden = evidence.hidden = !words.length;
+  button.hidden = !words.length;
   if (!words.length) return;
-  // Sentences about this run's words, set in Literata like the word pace line, and each number is a
-  // book-face figure (.num), never the mono of the conditions line.
-  const figure = (value) => element('span', value, 'num');
-  const lines = [
-    missed.length && [`missed first try: ${missed.map(wordCopy).join(', ')}`],
-    slow.length && ['slowest in this run: ', ...slow.flatMap((item, index) => [`${index ? ', ' : ''}${item.word} `, figure(speedFigure(item.wpm, { bare: true })), ' ', unitLabel()])],
-  ].filter(Boolean);
-  evidence.replaceChildren(...lines.flatMap((parts, index) => (index ? ['\n', ...parts] : parts)));
   button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
   // The run whose words are practised (an evidence run, or there'd be no button) is the baseline for
   // the fresh retest offered afterward, as a finished practice or daily run is. A retest doesn't set it
@@ -2482,11 +2469,6 @@ function renderPracticeWords(completed) {
     baselineAttempt = completed;
     startWordPractice(words);
   };
-}
-
-// Quote a token that carries punctuation, so "table," reads as the word typed.
-function wordCopy(word) {
-  return /[^\p{L}\p{N}]/u.test(word) ? `“${word}”` : word;
 }
 
 // An uncounted `missed` run of these words. It is not a drill, so a drill's context and target from
@@ -2553,14 +2535,13 @@ function renderResults(completed, saved) {
   activeRecommendation ||= recommendTarget([], completed.conditions);
   const replay = completed.summary;
   const counted = completed.status === 'complete';
-  const firstErrors = replay.firstAttempts.filter((item) => !item.correct).length;
   showResult(completed);
   const speed = rateShown(completed) ? formatSpeed(replay.score.wpm) : 'Too quick to time';
   showSpeed($('result-wpm'), rateShown(completed) ? replay.score.wpm : null);
   $('result-accuracy').textContent = replay.score.accuracy;
-  $('result-errors').textContent = firstErrors;
-  $('result-time').textContent = `${(replay.elapsedMs / 1000).toFixed(1)} s`;
+  setParts($('result-time'), [(replay.elapsedMs / 1000).toFixed(1), element('b', ' s')]);
   renderSecondaryStats(completed);
+  renderStanding(completed);
   setParts($('result-conditions'), describeRun(completed));
   setParts($('result-delta'), resultHeadline(completed));
   // The headline is read out with the result; it shows only when the run wasn't counted.
@@ -2956,18 +2937,36 @@ function conditionOptions(select, sources, fallback = null) {
   return groups.get(select.value);
 }
 
-// Raw speed, consistency, the character breakdown and the static words list. Display only.
+// Consistency and the static words list. Display only. The card shows no first-try errors or character
+// breakdown; accuracy's tooltip keeps both, since accuracy is counted from them.
 function renderSecondaryStats(completed) {
   const replay = completed.summary;
-  const steady = consistency(completed, replay);
   const chars = characterBreakdown(completed, replay);
-  // Raw speed is a rate too, so a custom run that ends inside a second shows none, as for net wpm.
-  showSpeed($('result-raw'), rateShown(completed) ? rawWpm(completed, replay) : null);
-  $('result-consistency').textContent = steady ?? '—';
-  // A break opportunity after each slash, so a long breakdown wraps instead of widening the card.
-  $('result-chars').replaceChildren(...[chars.correct, chars.incorrect, chars.extra, chars.missed]
-    .flatMap((value, i) => (i ? ['/', document.createElement('wbr'), String(value)] : [String(value)])));
+  const errors = replay.firstAttempts.filter((item) => !item.correct).length;
+  $('result-consistency').textContent = consistency(completed, replay) ?? '—';
+  $('result-accuracy-fact').title = `${plural(errors, 'first-try error')} · final c/i/e/m ${chars.correct}/${chars.incorrect}/${chars.extra}/${chars.missed}`;
   renderWords(completed, replay);
+}
+
+// Counted runs on fresh text at one set of conditions, oldest first: what the pace caret and the run
+// card average.
+function trendRunsAt(key) {
+  return filterRuns(profile.runs.filter(trendRun), key).filter((run) => run.score?.wpm);
+}
+
+function meanWpm(runs) {
+  return Math.round(runs.reduce((sum, run) => sum + run.score.wpm, 0) / runs.length);
+}
+
+// Under the facts: the average of the last ten counted runs at these conditions (the pace caret's
+// average) and the best. Only after a counted run with one before it at the same conditions.
+function renderStanding(completed) {
+  const key = conditionKey(completed.conditions);
+  const recent = trendRun(completed) ? trendRunsAt(key).slice(-10) : [];
+  const best = profile.bests[key]?.wpm;
+  const line = $('result-standing');
+  line.hidden = recent.length < 2 || !best;
+  setParts(line, line.hidden ? '' : ['average ', speedFigure(meanWpm(recent), { bare: true, whole: true }), ' · best ', speedFigure(best, { bare: true, whole: true })]);
 }
 
 // Words reached: one tab stop. Arrow keys, Home and End move between words, and focus or a tap
@@ -2999,15 +2998,7 @@ function labelWords() {
   });
 }
 
-// Before any choice the first word is the tab stop and the line names the fastest and slowest words.
-function wordSummary() {
-  const paced = wordItems.filter((item) => item.wpm !== null);
-  if (paced.length < 2) return '';
-  const fastest = paced.reduce((best, item) => (item.wpm > best.wpm ? item : best));
-  const slowest = paced.reduce((low, item) => (item.wpm < low.wpm ? item : low));
-  return [`fastest “${fastest.word}” `, speedFigure(fastest.wpm), ` · slowest “${slowest.word}” `, speedFigure(slowest.wpm)];
-}
-
+// Before any choice the first word is the tab stop and the line below stays empty.
 function selectWord(index, { focus = false } = {}) {
   const words = [...$('result-words').querySelectorAll('[role="option"]')];
   wordIndex = index === null || !words.length ? null : Math.max(0, Math.min(index, words.length - 1));
@@ -3016,7 +3007,7 @@ function selectWord(index, { focus = false } = {}) {
     word.setAttribute('aria-selected', String(i === wordIndex));
   });
   const item = wordItems[wordIndex];
-  setParts($('result-word-detail'), item ? [`“${item.word}” · `, item.wpm === null ? 'no pace' : speedFigure(item.wpm), item.wrong ? ' · mistyped' : ''] : wordSummary());
+  setParts($('result-word-detail'), item ? [`“${item.word}” · `, item.wpm === null ? 'no pace' : speedFigure(item.wpm), item.wrong ? ' · mistyped' : ''] : '');
   if (focus && item) words[wordIndex].focus();
 }
 
@@ -4445,8 +4436,9 @@ function forgetTraining() {
   // The practised words came from the cleared runs, so Run again starts a normal test.
   wordsPassage = null;
   showSpeed($('result-wpm'), null);
-  showSpeed($('result-raw'), null);
-  for (const id of ['result-accuracy', 'result-errors', 'result-time', 'result-consistency', 'result-chars']) $(id).textContent = '—';
+  for (const id of ['result-accuracy', 'result-time', 'result-consistency']) $(id).textContent = '—';
+  $('result-accuracy-fact').removeAttribute('title');
+  $('result-standing').hidden = true;
   $('result-words').replaceChildren();
   wordItems = [];
   selectWord(null);
@@ -6266,7 +6258,6 @@ compose = createCompose({
     return saveProfile();
   },
 });
-$('speed-definition').replaceChildren(unitLabel(SPEED_DEFINITION));
 const quoteFilters = createQuoteFilters({
   filters: [
     ...QUOTE_FILTERS.map((filter) => ({ ...filter, root: $('quote-options') })),

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CHARS_PER_WORD, CORPUS_VERSION, METRIC_VERSION, conditionKey, metrics } from '../src/typing.js';
-import { DEFAULT_SPEED_UNIT, RAW_SPEED_DEFINITION, SPEED_DEFINITION, formatSpeed, normalizeSpeedUnit, signedNumber, speedValue, unitText, wpmFromSpeed } from '../src/units.js';
+import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, signedNumber, speedValue, unitText, wpmFromSpeed } from '../src/units.js';
 import { describeSeries } from '../src/graph.js';
 import { resultParts, resultText } from '../src/ghost-race.js';
 import { raceResultParts } from '../src/race-result.js';
@@ -53,17 +53,6 @@ test('a figure entered in the chosen unit goes back to wpm, the inverse of the d
   assert.equal(wpmFromSpeed(333, 'cpm'), 66.6);
   assert.equal(speedValue(Math.round(wpmFromSpeed(333, 'cpm')), 'cpm'), 335);
   for (const wpm of [10, 67, 300]) assert.equal(wpmFromSpeed(speedValue(wpm, 'cpm'), 'cpm'), wpm);
-});
-
-test('the metric note names the unit and how it is derived', () => {
-  assert.equal(unitText(SPEED_DEFINITION, 'wpm'), 'wpm counts correct characters kept');
-  assert.equal(unitText(SPEED_DEFINITION, 'cpm'), 'cpm counts correct characters kept (wpm × 5)');
-});
-
-test('the raw speed tooltip defines the unit it is shown in', () => {
-  assert.equal(unitText(RAW_SPEED_DEFINITION, 'wpm'), 'Every character typed, mistakes included: characters ÷ 5 per minute');
-  assert.equal(unitText(RAW_SPEED_DEFINITION, 'cpm'), 'Every character typed, mistakes included: characters per minute');
-  assert.equal(unitText(RAW_SPEED_DEFINITION), unitText(RAW_SPEED_DEFINITION, 'wpm'));
 });
 
 test('a unit template names the unit and keeps text only its unit shows', () => {

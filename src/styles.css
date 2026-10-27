@@ -84,6 +84,11 @@
   --heat-key: 52px;
   --heat-gap: 6px;
   --content-max: 1080px;
+  /* The run card: its width, the speed trace's height (time labels included), and the narrowest the
+     conditions line gets beside the actions before it drops under them. */
+  --result-card: 900px;
+  --result-trace: 144px;
+  --result-conditions: 240px;
   /* Open practice from the rail to the shortcut row at the default text size: the practice screen's anchor. */
   --practice-block: 510px;
   /* Progress charts: about 2.5 wide to 1 tall, between these heights. */
@@ -2407,9 +2412,10 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 body[data-view="results"] .practice-result { display: grid; }
 body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
-/* Up to 900px one column in source order: the score, the actions, then the trace. */
+/* One card, centred under the rail; what follows it (a ghost race, its offer) keeps the card's width. */
 .results-layout {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, var(--result-card));
+  justify-content: center;
   gap: var(--space-8);
   align-items: start;
 }
@@ -2418,54 +2424,35 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .result-heading:has(> h2.sr-only):has(> .result-note:empty) { display: contents; }
 .result-heading h2 { margin: 0 0 var(--space-2); font-size: var(--text-title); font-weight: 400; line-height: 1.2; letter-spacing: -0.015em; }
 
-/* A static print on card stock: the score (number, facts) and the trace (speed graph, words). */
-.run-card,
-.run-trace {
+/* A static print on card stock: the score and its facts, the trace, the words, then the actions. */
+.run-card {
   min-width: 0;
-  padding: 22px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xl);
-  background: linear-gradient(165deg, var(--card-top), var(--card-bottom));
+  padding: var(--space-8);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--card-top), var(--card-bottom));
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-8);
 }
 
+/* The actions under a hairline, the conditions line set against them on the right. */
 .result-actions {
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--hairline);
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4) var(--space-6);
 }
+.result-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.result-buttons .btn { font-size: var(--text-body); font-weight: 400; }
+.result-buttons .btn-primary { font-weight: 500; }
+.result-buttons .btn:not(.btn-ghost) { padding-inline: var(--space-6); }
+.result-actions .condition-copy { flex: 1 1 var(--result-conditions); text-align: end; letter-spacing: 0.02em; }
 
 .result-more { min-width: 0; display: grid; gap: var(--space-8); }
 .result-more:not(:has(> :not([hidden]))) { display: none; }
-
-/* From 901px the score and the trace share one frame, drawn by the grid's ::before across their row. */
-@media (min-width: 901px) {
-  .results-layout {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas: "heading heading" "score trace" "actions actions" "more more";
-    column-gap: var(--space-16);
-  }
-  .results-layout:has(> .result-heading > h2.sr-only):has(> .result-heading > .result-note:empty) { grid-template-areas: "score trace" "actions actions" "more more"; }
-  .results-layout > .section-heading { grid-area: heading; }
-  .results-layout > .run-card { grid-area: score; }
-  .results-layout > .run-trace { grid-area: trace; }
-  .results-layout > .result-actions { grid-area: actions; }
-  .results-layout > .result-more { grid-area: more; }
-  .results-layout::before {
-    content: "";
-    grid-area: score / score / trace / trace;
-    align-self: stretch;
-    border: 1px solid var(--hairline-strong);
-    border-radius: var(--radius-xl);
-    background: linear-gradient(165deg, var(--card-top), var(--card-bottom));
-  }
-  .run-card,
-  .run-trace { border: 0; border-radius: 0; background: none; }
-  .run-card { padding-inline-end: 0; }
-  .run-trace { padding-inline-start: 0; }
-}
 
 /* ── Train: one drill, then its comparison ──────────────────────────────── */
 
@@ -2525,9 +2512,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .comparison-panel.is-uncompared .comparison-rows { display: none; }
 #comparison-panel > .ghost-offer { width: min(720px, 100%); margin-top: var(--space-10); text-align: start; }
 
-.run-card-graph { margin: 0; display: grid; gap: var(--space-2); }
+.run-card-graph { margin: 0; }
 
-.speed-graph { aspect-ratio: 16 / 9; margin-inline: -4px; }
+.speed-graph { height: var(--result-trace); }
 /* Drawn at the container's pixel size. Capping it at the container keeps the old drawing from
    holding the card at its old width when the window narrows, so the observer sees the new width
    and redraws; until then it scales evenly rather than stretching. */
@@ -2538,7 +2525,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .graph-average { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 4; }
 .graph-label { fill: var(--muted); font: var(--text-fine) var(--font-mono); font-variant-numeric: tabular-nums; }
 .graph-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.graph-miss { fill: var(--danger); stroke: var(--card-top); stroke-width: 1.5; }
+.graph-miss { fill: var(--danger); stroke: var(--card-top); stroke-width: 2; }
 
 /* The line draws once, left to right, and the mistakes fade in to finish with it. */
 .is-drawing .graph-line { stroke-dasharray: 1; animation: graph-draw var(--dur-develop) var(--ease-out) both; }
@@ -2546,67 +2533,87 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 @keyframes graph-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @keyframes graph-fade { from { opacity: 0; } }
 
-.graph-legend { display: flex; flex-wrap: wrap; gap: var(--space-4); color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); }
-.graph-legend span { display: inline-flex; align-items: center; gap: var(--space-2); }
-.graph-legend span::before { content: ""; width: 14px; }
-.legend-speed::before { height: 2px; border-radius: var(--radius-full); background: var(--accent); }
-.legend-average::before { border-top: 1px dashed var(--muted); }
-.legend-miss::before { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--danger); }
+/* The score on the left; on the right the facts in one row, and under them the average and best. */
+.run-card-head {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: var(--space-6) 0;
+}
 
+/* A speed too wide for the row puts its unit underneath instead of pushing past the card. */
 .run-card-score {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-3);
-  margin-top: var(--space-1);
 }
 
 #result-wpm {
   font-family: var(--font-app);
   font-size: var(--text-numeral);
-  font-weight: 300;
-  line-height: 0.9;
-  letter-spacing: -0.04em;
+  font-weight: 400;
+  line-height: 0.76;
+  letter-spacing: -0.035em;
 }
 
-.run-card-unit { color: var(--muted); font: var(--text-body)/1.2 var(--font-app); }
+.run-card-unit { color: var(--muted); font: italic var(--text-lead)/1 var(--font-app); }
+
+/* On a wide card the figure's side bearing pulls it back onto the card's left edge; a phone keeps the
+   whole box inside the padding. */
+@media (min-width: 761px) {
+  #result-wpm { margin-inline-start: -0.09em; }
+}
+
+.run-card-side { min-width: 0; padding-bottom: var(--space-2); display: grid; gap: var(--space-3); }
 
 .run-card-facts {
   margin: 0;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--hairline);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-3);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3) 0;
 }
 
 /* Values sit on one line even when a label wraps; a cell never widens its track. */
-.run-card-facts div { display: flex; flex-direction: column; justify-content: space-between; gap: 4px; min-width: 0; }
-.run-card-facts dt { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.02em; }
-.run-card-facts dd { margin: 0; font-size: 24px; font-weight: 400; line-height: 1.1; letter-spacing: -0.02em; }
+.run-card-facts div { display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-1); min-width: 0; }
+.run-card-facts dt { color: var(--muted); font: 500 var(--text-mono)/1.35 var(--font-mono); letter-spacing: 0.04em; }
+.run-card-facts dd { margin: 0; font-size: 24px; font-weight: 400; line-height: 1.15; }
 .run-card-facts strong { font-weight: inherit; }
 .run-card-facts b { color: var(--muted); font-size: 16px; font-weight: 400; margin-left: 1px; }
 
-/* The secondary row: same labels, smaller numerals, no rule of its own. */
-.run-card-more { padding-top: 0; border-top: 0; }
-.run-card-more dd { font-size: var(--text-lead); }
-.run-card-more b { font-size: var(--text-label); }
+.run-card-standing { margin: 0; color: var(--muted); font: var(--text-small)/1.35 var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
 
 /* Words reached, static: plain ink, mistyped words in coral on the error tint. Past four lines it
    scrolls. One word at a time is the tab stop; the chosen word is underlined and its pace shows in
    the line below. The padding (offset by the margin) keeps a focused word's ring inside the scroller. */
-.run-card-wordlist { display: grid; gap: var(--space-2); }
+.run-card-wordlist { display: grid; justify-items: start; gap: var(--space-3); }
 .run-card-words {
-  margin: 0 calc(var(--space-2) * -1);
+  justify-self: stretch;
+  margin: calc(var(--space-1) * -1) calc(var(--space-2) * -1);
   padding: var(--space-1) var(--space-2);
-  max-height: calc(var(--text-label) * 1.7 * 4 + var(--space-1) * 2);
+  max-height: calc(var(--text-body) * 1.6 * 4 + var(--space-1) * 2);
   overflow-y: auto;
   color: var(--muted);
-  font: var(--text-label)/1.7 var(--font-app);
+  font: var(--text-body)/1.6 var(--font-app);
 }
 .run-card-words span { color: var(--text); border-radius: var(--radius-sm); cursor: pointer; }
-.run-card-words .word-miss { color: var(--danger); background: var(--danger-soft); }
+.run-card-words .word-miss { padding-inline: var(--space-1); color: var(--danger); background: var(--danger-soft); }
 .run-card-words [aria-selected="true"] { text-decoration: underline; text-underline-offset: 3px; }
-.word-detail { margin: 0; color: var(--muted); font: var(--text-label)/1.45 var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
+.word-detail { margin: 0; color: var(--muted); font: var(--text-small)/1.35 var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
+.word-detail:empty { display: none; }
+
+/* The way into word practice reads as a green line of text, with a full-height target under touch. */
+.run-card-practice {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent);
+  font: var(--text-small)/1.35 var(--font-app);
+  cursor: pointer;
+}
+.run-card-practice:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .metric-note {
   margin: 0;
@@ -2615,12 +2622,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   font-style: italic;
   line-height: 1.45;
 }
-
-.run-card .condition-copy { font-size: var(--text-fine); }
-/* The practice offer's evidence is sentences about the words, so it takes the word pace line's
-   Literata (.word-detail), one sentence per line. */
-.practice-evidence { white-space: pre-line; overflow-wrap: anywhere; }
-.run-card-practice { justify-self: start; align-self: start; margin-inline-start: calc((var(--space-4) + var(--space-1)) * -1); }
+@media (pointer: coarse) { .run-card-practice { min-height: var(--control); } }
 
 .section-heading h1 {
   margin: 0 0 var(--space-3);
@@ -2688,8 +2690,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .manual-panel > summary:hover,
 .manual-panel[open] > summary { color: var(--text); }
 
-.manual-panel > form,
-.metric-more > .metric-note { margin-top: var(--space-3); }
+.manual-panel > form { margin-top: var(--space-3); }
 
 .input-action { display: flex; gap: var(--space-2); max-width: 460px; }
 .input-action .input { flex: 1; }
@@ -3697,6 +3698,11 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
   #result-wpm { font-size: var(--text-numeral-mobile); }
+  /* The run card stacks: the score over its facts, the conditions line under the actions. */
+  .run-card { padding: var(--space-6); gap: var(--space-6); }
+  .run-card-head { grid-template-columns: minmax(0, 1fr); }
+  .result-actions { padding-top: var(--space-6); }
+  .result-actions .condition-copy { text-align: start; }
   .train-block { padding-top: var(--space-16); }
   .train-block h1 { font-size: 38px; }
   .train-block .comparison-rows { gap: var(--space-3); }
@@ -3821,11 +3827,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 @media (max-width: 360px) {
   #result-wpm { font-size: var(--text-numeral-narrow); }
-  /* Three tracks are about 73px here: values step down a size so "120.0 s" fits, and the
-     character breakdown takes its own row under raw wpm and consistency. */
+  /* Three tracks are about 76px here: values step down a size so "120.0 s" fits. */
+  .run-card { padding: var(--space-4); }
   .run-card-facts dd { font-size: var(--text-lead); }
-  .run-card-more { grid-template-columns: repeat(2, 1fr); }
-  .run-card-more div:last-child { grid-column: 1 / -1; }
 }
 
 @media (max-width: 1000px) and (min-width: 761px) {

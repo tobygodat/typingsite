@@ -259,7 +259,7 @@ test.describe('reduced motion', () => {
     await expect(page.locator('#speed-graph svg')).toBeVisible();
     await expect(line).toBeAttached();
     await expect(line).not.toHaveCSS('stroke', 'none');
-    await expect(line).toHaveAttribute('d', /^M.+ L/);
+    await expect(line).toHaveAttribute('d', /^M.+ C/);
     const durations = await line.evaluate((node) => getComputedStyle(node).animationDuration.split(', '));
     expect(durations.every((value) => parseFloat(value) <= 0.001)).toBe(true);
     await expect(page.locator('#speed-graph')).toHaveAttribute('aria-label', /Speed over time/);

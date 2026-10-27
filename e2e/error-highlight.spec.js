@@ -1,4 +1,4 @@
-import { test, expect, openApp, chooseSetting, closeSettings, chooseMore, typeInto } from './fixtures.js';
+import { test, expect, firstTryErrors, openApp, chooseSetting, closeSettings, chooseMore, typeInto } from './fixtures.js';
 
 const TEXT = 'minimum errors remain readable';
 const ERROR_LENGTH = 'minimum errors'.length;
@@ -71,7 +71,7 @@ for (const colorScheme of ['dark', 'light']) {
       await expect(page.locator('#text-display .wrong')).toHaveCount(0);
       await page.keyboard.type(TEXT);
       await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-      await expect(page.locator('#result-errors')).toHaveText(String(ERROR_LENGTH));
+      await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors(String(ERROR_LENGTH)));
     });
   }
 }

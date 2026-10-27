@@ -34,26 +34,18 @@ test('missed and slowest words become their own uncounted practice run', async (
   const button = page.locator('#practice-words');
   await expect(button).toBeVisible();
   await expect(button).toHaveText(/^Practice these [3-7] words$/);
-  // The slowest words are one timing each, so they show their speed and the run's median.
-  const evidence = page.locator('#practice-words-evidence');
-  await expect(evidence).toContainText(`missed first try: ${missed.join(', ')}`);
-  await expect(evidence).toContainText(/slowest in this run: .+ \d+ wpm/);
-  // A sentence, not a conditions line: Literata throughout, and every number a book-face figure.
-  await expect(evidence).toHaveCSS('font-family', /^"?Literata/);
-  const figures = evidence.locator('.num');
-  expect(await figures.count()).toBeGreaterThanOrEqual(3);
-  for (const figure of await figures.all()) {
-    await expect(figure).toHaveText(/^\d+$/);
-    await expect(figure).toHaveCSS('font-family', /^"?Literata/);
-    await expect(figure).toHaveCSS('font-variant-numeric', 'lining-nums tabular-nums');
-  }
-  const bare = await evidence.evaluate((node) => [...node.childNodes].filter((child) => child.nodeType === Node.TEXT_NODE).map((child) => child.textContent).join(''));
-  expect(bare).not.toMatch(/\d/);
+  // The words missed first try are the coral ones in the passage; the slowest make up the rest of the count.
+  await expect(page.locator('#result-words .word-miss')).toHaveText(missed);
+  const count = Number((await button.textContent()).match(/\d+/)[0]);
+  // A green line of Literata, not a button box.
+  await expect(button).toHaveCSS('font-family', /^"?Literata/);
+  await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
   await button.click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
   const practice = (await passageText(page)).split(' ');
   expect(practice.length).toBe(40);
+  expect(new Set(practice).size).toBe(count);
   for (const word of missed) expect(practice).toContain(word);
   await expect(page.locator('#condition-line')).toContainText('missed words · not counted');
   await expect(page.locator('#session-kicker')).toHaveText('missed words');
@@ -69,7 +61,6 @@ test('missed and slowest words become their own uncounted practice run', async (
   await expect(page.locator('#best')).toHaveText('Not counted');
   // A practice run is never mined for words of its own: Run again repeats its passage.
   await expect(page.locator('#practice-words')).toBeHidden();
-  await expect(page.locator('#practice-words-evidence')).toBeHidden();
   // Run again stays on the same practice passage.
   await page.locator('#run-again').click();
   await expect(page.locator('#session-kicker')).toHaveText('missed words');
@@ -107,7 +98,6 @@ test('custom text offers no word practice, and word practice closes the custom e
   await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
   await expect(page.locator('#result-words .word-miss').first()).toBeVisible();
   await expect(page.locator('#practice-words')).toBeHidden();
-  await expect(page.locator('#practice-words-evidence')).toBeHidden();
 });
 
 test('after a timed test, the practice run lasts until its passage is typed', async ({ page }) => {
@@ -159,7 +149,7 @@ test('a missed comma is practised with its comma, and the run says punctuation',
   await page.keyboard.press('Backspace');
   await page.keyboard.type(text.slice(at));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#practice-words-evidence')).toContainText(`missed first try: “${comma}”`);
+  await expect(page.locator('#result-words .word-miss')).toHaveText([comma]);
 
   await page.locator('#practice-words').click();
   await expect(page.locator('#session-kicker')).toHaveText('missed words');
@@ -183,7 +173,6 @@ test('a drill offers no word practice, while a daily run does', async ({ page })
   await expect(page.locator('#result-words .word-miss').first()).toBeVisible();
   // Its text is synthetic and target-heavy, so its misses and slow words are never offered.
   await expect(page.locator('#practice-words')).toBeHidden();
-  await expect(page.locator('#practice-words-evidence')).toBeHidden();
 
   await openView(page, 'Challenge');
   await page.locator('#challenge-daily').click();
@@ -195,7 +184,7 @@ test('a drill offers no word practice, while a daily run does', async ({ page })
   await typeWithMisses(page, daily, [1, second]);
   await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete');
   await expect(page.locator('#practice-words')).toBeVisible();
-  await expect(page.locator('#practice-words-evidence')).toContainText('missed first try:');
+  await expect(page.locator('#result-words .word-miss').first()).toBeVisible();
 });
 
 test('a daily passage shown before offers no word practice', async ({ page }) => {
@@ -221,7 +210,6 @@ test('a daily passage shown before offers no word practice', async ({ page }) =>
   await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete · repeat attempt');
   await expect(page.locator('#result-words .word-miss').first()).toBeVisible();
   await expect(page.locator('#practice-words')).toBeHidden();
-  await expect(page.locator('#practice-words-evidence')).toBeHidden();
 });
 
 // A retest's result is its comparison, on Train. A retest is measured, so its own misses are still
@@ -248,8 +236,7 @@ test('words practised from a retest are retested against that retest', async ({ 
   await page.locator('#comparison-back').click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(wordPracticeOffer(page)).toBeVisible();
-  await expect(page.locator('#practice-words-evidence')).toBeVisible();
-  await expect(page.locator('#practice-words-evidence')).toContainText(`missed first try: ${words[1]}, ${words[second]}`);
+  await expect(page.locator('#result-words .word-miss')).toHaveText([words[1], words[second]]);
 
   await wordPracticeOffer(page).click();
   await expect(page.locator('#session-kicker')).toHaveText('missed words');
@@ -283,7 +270,7 @@ test('words practised from a drill’s retest are drilled and retested under the
   await typeWithMisses(page, retest, [1, second]);
   await expect(page.locator('#comparison-panel')).toBeVisible();
   await page.locator('#comparison-back').click();
-  await expect(page.locator('#practice-words-evidence')).toContainText(`missed first try: ${words[1]}, ${words[second]}`);
+  await expect(page.locator('#result-words .word-miss')).toHaveText([words[1], words[second]]);
 
   await wordPracticeOffer(page).click();
   await expect(page.locator('#session-kicker')).toHaveText('missed words');
@@ -322,7 +309,7 @@ test('a missed capital is practised as written, and the run doesn’t say punctu
   await page.keyboard.press('Backspace');
   await page.keyboard.type(text);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#practice-words-evidence')).toContainText(`missed first try: ${capital}`);
+  await expect(page.locator('#result-words .word-miss')).toHaveText([capital]);
 
   await page.locator('#practice-words').click();
   await expect(page.locator('#session-kicker')).toHaveText('missed words');
@@ -346,7 +333,7 @@ test('screenshots', async ({ page }) => {
     await finishWithTwoMisses(page, 130);
     await expect(page.locator('#practice-words')).toBeVisible();
     await page.mouse.move(1270, 990);
-    // The card runs past the fold; show its foot, where the evidence and the offer sit.
+    // The card runs past the fold; show its foot, where the offer sits.
     await page.locator('#run-card').evaluate((card) => card.scrollIntoView({ block: 'end', behavior: 'instant' }));
     await page.evaluate(() => window.scrollBy(0, 24));
     await page.screenshot({ path: shot(`run-card-${scheme}`) });
