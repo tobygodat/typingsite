@@ -83,7 +83,8 @@ test('the palette lists both fonts like theme and marks the current one', async 
 
 for (const font of ['literata', 'fira-code']) {
   for (const tape of [false, true]) {
-    test(`${font}${tape ? ' on the tape' : ''}: the caret stays on the letter and the baseline past the line scroll`, async ({ page }) => {
+    test(`${font}${tape ? ' on the tape' : ''}: the caret stays on the letter and the baseline past the line scroll`, async ({ page, browserName }) => {
+      test.fail(font === 'fira-code' && browserName === 'webkit', 'TOB-22: WebKit on Linux sets the Fira Code caret 1.32 px off the baseline');
       await openApp(page);
       await chooseSetting(page, 'typing-font', font);
       await chooseSetting(page, 'tape-toggle', String(tape));

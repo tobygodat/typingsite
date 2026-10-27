@@ -1,6 +1,6 @@
 name: CI
 
-# Both jobs run on the self-hosted runner on tobygdesktop (~/actions-runner, see HANDOFF.md).
+# Every job runs on the self-hosted runner on tobygdesktop (~/actions-runner, see HANDOFF.md).
 # Its .env sets its own npm cache and E2E_PORT, and each job checks out under the runner's _work.
 on:
   pull_request:
@@ -10,10 +10,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   unit:
     name: Unit and build checks
@@ -21,6 +17,9 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, tobygdesktop]
     timeout-minutes: 10
+    concurrency:
+      group: unit-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,3 +49,33 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.151.0"
+
+  e2e:
+    name: Browser e2e
+    # After the deploy, so on master it reports without delaying it.
+    needs: [unit, deploy]
+    if: ${{ !cancelled() && needs.unit.result == 'success' }}
+    runs-on: [self-hosted, tobygdesktop]
+    timeout-minutes: 20
+    concurrency:
+      group: e2e-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      CHROMIUM: /usr/bin/chromium
+      E2E_BROWSERS: ${{ github.event_name == 'push' && 'all' || 'chromium' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - if: github.event_name == 'push'
+        run: npx playwright install firefox webkit
+      - run: |
+          if pgrep -f "playwright test" >/dev/null; then set -- --workers=8; fi
+          npx playwright test "$@"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failures
+          path: test-results/
