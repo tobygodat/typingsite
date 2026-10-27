@@ -64,10 +64,7 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   expect(first).toBeLessThanOrEqual(110);
   await expect(page.locator('.run-card-unit')).toHaveText('wpm');
   await expect(page.locator('#best')).toHaveText(`Best · ${first} wpm`);
-  const raw = Number(await page.locator('#result-raw').textContent());
-  const rawRow = page.locator('.run-card-more > div', { has: page.locator('#result-raw') });
-  await expect(rawRow).toHaveAttribute('title', 'Every character typed, mistakes included: characters ÷ 5 per minute');
-  await expect(page.locator('#result-word-detail')).toContainText(/^fastest “.+” \d+ wpm · slowest/);
+  await expect(page.locator('#result-words [role="option"]').last()).toHaveAttribute('title', /^\d+ wpm$/);
 
   await openSettings(page, 'practice');
   await expect(page.locator('#speed-unit input:checked')).toHaveValue('wpm');
@@ -78,19 +75,10 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('#best')).toHaveText(`Best · ${first * 5} cpm`);
   // The figure's machine-readable value stays the wpm it was saved in.
   await expect(page.locator('#best data')).toHaveAttribute('value', String(first));
-  await expect(page.locator('#speed-definition')).toHaveText('cpm counts correct characters kept (wpm × 5)');
-  await expect(page.locator('.legend-speed')).toHaveText('speed · cpm');
-  // The run card's secondary stats read in the unit too: raw speed and each word's pace.
-  await expect(page.locator('#result-raw')).toHaveText(String(raw * 5));
-  await expect(page.locator('.run-card-more dt').first()).toHaveText('raw cpm');
-  // Its tooltip defines the unit shown, not five-character words.
-  await expect(rawRow).toHaveAttribute('title', 'Every character typed, mistakes included: characters per minute');
-  await expect(page.locator('#result-word-detail')).toContainText(/^fastest “.+” \d+ cpm · slowest “.+” \d+ cpm/);
+  // Each word's pace reads in the unit too.
+  await expect(page.locator('#result-words [role="option"]').last()).toHaveAttribute('title', /^\d+ cpm$/);
   await expect(page.locator('#result-words [role="option"]').first()).toHaveAttribute('aria-label', /, (\d+ cpm|no pace)/);
   await expect(page.locator('#speed-graph')).toHaveAttribute('aria-label', new RegExp(`^Speed over time: average ${first * 5} cpm, peak \\d+ cpm, lowest \\d+ cpm\\.`));
-  // The axis is drawn in cpm: its top gridline sits above the run's own average.
-  const labels = await page.locator('#speed-graph text.graph-label').allTextContents();
-  expect(Math.max(...labels.map(Number).filter(Number.isFinite))).toBeGreaterThanOrEqual(first * 5);
   await expect(page.locator('#settings-dialog')).toContainText('live cpm and accuracy');
   await shot(page, testInfo, 'settings-dark');
   await page.keyboard.press('Escape');
@@ -106,6 +94,8 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('#result-delta')).toHaveText(new RegExp(`^(Matched your best of|[+−]\\d+ vs your best of) ${first * 5} cpm$`));
   await expect(page.locator('#announcement')).toHaveText(`${second} cpm, ${accuracy}% accuracy.`);
   await expect(page.locator('#best')).toHaveText(`Best · ${Math.max(first * 5, second)} cpm`);
+  // Two counted runs at these conditions: the card's average and best read in cpm too.
+  await expect(page.locator('#result-standing')).toHaveText(`average ${Math.round((first + second / 5) / 2) * 5} · best ${Math.max(first * 5, second)}`);
   await shot(page, testInfo, 'results-dark');
 
   await openView(page, 'Progress');
@@ -124,7 +114,7 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('#result-wpm')).toHaveText(String(second / 5));
   await expect(page.locator('.run-card-unit')).toHaveText('wpm');
   await expect(page.locator('#speed-graph')).toHaveAttribute('aria-label', /average \d+ wpm/);
-  await expect(rawRow).toHaveAttribute('title', 'Every character typed, mistakes included: characters ÷ 5 per minute');
+  await expect(page.locator('#result-standing')).toHaveText(`average ${Math.round((first + second / 5) / 2)} · best ${Math.max(first, second / 5)}`);
 });
 
 test('light theme: the run card and the palette command in cpm', async ({ page }, testInfo) => {
@@ -573,7 +563,6 @@ test('a custom run too quick to time shows no rate in cpm, before or after a uni
     if (unit === 'wpm') await command(page, 'speed unit · wpm');
     await expect(page.locator('#speed-unit input:checked')).toHaveValue(unit);
     await expect(page.locator('#result-wpm')).toHaveText('—');
-    await expect(page.locator('#result-raw')).toHaveText('—');
     await expect(page.locator('.run-card-graph')).toBeHidden();
     const words = await page.locator('#result-words [role="option"]').evaluateAll((nodes) => nodes.map((word) => word.getAttribute('aria-label')).join(' '));
     expect(words).not.toMatch(/wpm|cpm/);

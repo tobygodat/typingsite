@@ -108,15 +108,51 @@ function plot(container, { durationS, top, animate }) {
   return { svg, x, y, left, right };
 }
 
-function line({ svg, x, y, left }, points, className) {
+// Straight segments, or with smooth a Catmull-Rom curve through every point, so the mistake dots stay on it.
+function line({ svg, x, y, left }, points, className, { smooth = false } = {}) {
   const coords = points.map((point) => [x(point.t), y(point.speed)]);
   if (coords.length === 1) coords.unshift([left, coords[0][1]]);
-  const d = coords.map(([px, py], index) => `${index ? 'L' : 'M'}${px.toFixed(1)} ${py.toFixed(1)}`).join(' ');
+  const at = ([px, py]) => `${px.toFixed(1)} ${py.toFixed(1)}`;
+  const d = coords.map((point, index) => {
+    if (!index) return `M${at(point)}`;
+    if (!smooth) return `L${at(point)}`;
+    const from = coords[index - 1];
+    const before = coords[index - 2] || from;
+    const after = coords[index + 1] || point;
+    const out = [0, 1].map((axis) => from[axis] + (point[axis] - before[axis]) / 6);
+    const into = [0, 1].map((axis) => point[axis] - (after[axis] - from[axis]) / 6);
+    return `C${at(out)} ${at(into)} ${at(point)}`;
+  }).join(' ');
   svg.append(el('path', { class: className, d, pathLength: 1 }));
 }
 
 // Speed points in the display unit, so the gridline labels are round numbers in that unit.
 const inUnit = (points) => points.map((point) => ({ ...point, speed: speedValue(point.wpm) }));
+
+// The run card's trace: the full width with no speed axis, so the line spans the run's own range (a
+// fifth of the average at least, so a steady run reads as steady) with an eighth of the plot clear above
+// and below. A hairline floor, and the time at the start, middle and end underneath.
+const TRACE_LABELS = 24;
+function trace(container, { durationS, low, high, animate }) {
+  const width = Math.round(container.clientWidth);
+  const height = Math.round(container.clientHeight);
+  container.replaceChildren();
+  if (!width || !height) return null;
+  const svg = el('svg', { viewBox: `0 0 ${width} ${height}`, width, height, 'aria-hidden': 'true' });
+  if (animate) svg.classList.add('is-drawing');
+  container.append(svg);
+  const floor = height - TRACE_LABELS;
+  const middle = (low + high) / 2;
+  const span = Math.max(high - low, middle / 5, 1);
+  const x = (t) => (durationS ? (t / durationS) * width : 0);
+  const y = (speed) => floor * (7 / 8 - ((speed - middle) / span + 0.5) * (3 / 4));
+  svg.append(el('line', { class: 'graph-axis', x1: 0, x2: width, y1: floor - 0.5, y2: floor - 0.5 }));
+  const ticks = durationS ? [0, durationS / 2, durationS] : [0];
+  ticks.forEach((t, index) => {
+    svg.append(el('text', { class: 'graph-label', x: x(t), y: height - 4, 'text-anchor': index && index === ticks.length - 1 ? 'end' : 'start' }, seconds(Math.round(t * 10) / 10)));
+  });
+  return { svg, x, y, left: 0, right: width };
+}
 
 export function renderSpeedGraph(container, attempt, { animate = true } = {}) {
   const series = speedSeries(attempt);
@@ -125,17 +161,17 @@ export function renderSpeedGraph(container, attempt, { animate = true } = {}) {
   container.setAttribute('aria-label', describeSeries(series, averageWpm));
   const points = inUnit(series.points);
   const average = speedValue(averageWpm);
-  const chart = plot(container, { durationS: series.durationS, top: niceMax(Math.max(average, ...points.map((point) => point.speed))), animate });
+  const speeds = [average, ...points.map((point) => point.speed)];
+  const chart = trace(container, { durationS: series.durationS, low: Math.min(...speeds), high: Math.max(...speeds), animate });
   if (!chart || !points.length) return;
   const { svg, y, left, right } = chart;
   svg.append(el('line', { class: 'graph-average', x1: left, x2: right, y1: y(average), y2: y(average) }));
-  line(chart, points, 'graph-line');
+  line(chart, points, 'graph-line', { smooth: true });
 
   // Mistakes sit on the line where they happened, so a slip and the dip after it read together.
   for (const point of points) {
     if (!point.misses) continue;
-    const r = Math.min(5, 3 + (point.misses - 1) * 0.75);
-    svg.append(el('circle', { class: 'graph-miss', cx: chart.x(point.t).toFixed(1), cy: y(point.speed).toFixed(1), r }));
+    svg.append(el('circle', { class: 'graph-miss', cx: chart.x(point.t).toFixed(1), cy: y(point.speed).toFixed(1), r: 4 }));
   }
 }
 

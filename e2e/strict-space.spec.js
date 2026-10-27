@@ -1,4 +1,4 @@
-import { test, expect, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore, chooseSetting, closeSettings, finishDrill } from './fixtures.js';
+import { test, expect, firstTryErrors, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore, chooseSetting, closeSettings, finishDrill } from './fixtures.js';
 
 // Committed docs screenshots are only rewritten when SCREENSHOTS is set; normal runs write to test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/strict-space/${name}` : testInfo.outputPath(name));
@@ -80,7 +80,7 @@ test('strict space refuses an early space, scores it once and keeps the word in 
   await page.keyboard.type(text.slice(at + 1), PACE);
 
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-errors')).toHaveText('1');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('1'));
   expect(Number(await page.locator('#result-accuracy').textContent())).toBeLessThan(100);
   await expect(page.locator('#result-conditions')).toContainText(/continue on error · strict space$/);
   await page.screenshot({ path: shot(testInfo, 'results-dark.png') });
@@ -107,7 +107,7 @@ test('quick end is on by default: a wrong last letter still ends a words run', a
   const text = await passageText(page);
   await typeInto(page, text.slice(0, -1) + wrongFor(text.at(-1)));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-errors')).toHaveText('1');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('1'));
   await expect(page.locator('#result-conditions')).not.toContainText('quick end');
 });
 
@@ -133,7 +133,7 @@ test('quick end off waits on a wrong last word until space submits it or the wor
   await expect(page.locator('#typing-status')).toHaveText('In progress');
   await page.keyboard.press('Space');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-errors')).toHaveText('1');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('1'));
   await expect(page.locator('#result-conditions')).toContainText(/continue on error · quick end off$/);
   await expect(page.locator('#run-again')).toBeFocused();
 
@@ -146,7 +146,7 @@ test('quick end off waits on a wrong last word until space submits it or the wor
   await expect(page.locator('#input-help')).toHaveText('');
   await page.keyboard.type(next.at(-1));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-errors')).toHaveText('1');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('1'));
 });
 
 test('a held space that submits the run doesn’t also press Run again', async ({ page }) => {

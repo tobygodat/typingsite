@@ -1,5 +1,5 @@
-// Run card: raw wpm, consistency, the character breakdown and the static words list.
-import { test, expect, openApp, passageText, typeInto, chooseWords, phone } from './fixtures.js';
+// Run card: consistency, the counts behind accuracy (its tooltip) and the static words list.
+import { test, expect, firstTryErrors, finalChars, openApp, passageText, typeInto, chooseWords, phone } from './fixtures.js';
 
 // Committed screenshots are rewritten only with SCREENSHOTS=1; normal runs keep them in the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/run-card-stats/${name}` : testInfo.outputPath(name));
@@ -17,23 +17,17 @@ async function finishRun(page) {
   return { text, at };
 }
 
-test('the run card shows raw wpm, consistency, c/i/e/m and the words typed', async ({ page }, testInfo) => {
+test('the run card shows consistency, the counts behind accuracy and the words typed', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
   const { text, at } = await finishRun(page);
 
-  await expect(page.locator('#result-raw')).toHaveText(/^\d+$/);
-  const raw = Number(await page.locator('#result-raw').textContent());
-  expect(raw).toBeGreaterThanOrEqual(Number(await page.locator('#result-wpm').textContent()));
   await expect(page.locator('#result-consistency')).toHaveText(/^\d+$/);
   // The breakdown describes the finished text: the fixed slip is a first-try error, not "incorrect".
-  await expect(page.locator('#result-errors')).toHaveText('1');
-  await expect(page.locator('#result-chars')).toHaveText(new RegExp(`^${text.length}/0/0/0$`));
-  await expect(page.locator('.run-card-more dt')).toHaveText(['raw wpm', 'consistency', 'final c/i/e/m']);
-  await expect(page.locator('.run-card .metric-note').nth(1)).toContainText('consistency is 100 minus');
-  await expect(page.locator('.run-card .metric-note').nth(1)).toContainText('still wrong');
-  await expect(page.locator('.run-card .metric-note').nth(1)).toContainText('fixed slips are first-try errors');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('1'));
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', finalChars(`${text.length}/0/0/0`));
+  await expect(page.locator('.run-card-facts dt')).toHaveText(['accuracy', 'time', 'consistency']);
   // The print scrolls with the page.
   expect(await page.locator('#run-card').evaluate((node) => getComputedStyle(node).position)).toBe('static');
 
@@ -74,12 +68,13 @@ test('the words list is one tab stop whose words show their pace by keyboard', a
   await expect(list).toHaveAttribute('role', 'listbox');
   await expect(list).toHaveAttribute('aria-label', /words typed/i);
   expect(await list.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
-  // Before a choice the line names the fastest and slowest words; only one word is a tab stop.
-  await expect(detail).toHaveText(/^fastest “\S+” \d+ wpm · slowest “\S+” \d+ wpm$/);
+  // Before a choice the line below is empty and takes no room; only one word is a tab stop.
+  await expect(detail).toBeEmpty();
+  await expect(detail).toBeHidden();
   await expect(list.locator('[tabindex="0"]')).toHaveCount(1);
-  // Finish focuses "run again" in the drill; Tab walks on to the trace and the list's one stop.
+  // Finish focuses "run again" at the card's foot; Shift+Tab walks back to the list's one stop.
   for (let i = 0; i < 12 && !(await words.first().evaluate((node) => node === document.activeElement)); i += 1) {
-    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
   }
   await expect(words.first()).toBeFocused();
   const firstWord = await words.first().textContent();
@@ -105,7 +100,7 @@ test('the words list is one tab stop whose words show their pace by keyboard', a
 test.describe('phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, ...phone });
 
-  test('the secondary row and words list fit at 390 px', async ({ page }, testInfo) => {
+  test('the facts and words list fit at 390 px', async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
     await finishRun(page);
@@ -149,18 +144,15 @@ test.describe('narrow phone', () => {
     const text = await passageText(page);
     await typeInto(page, [...text].map((char) => (char === 'x' ? 'z' : 'x')).join(''));
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-    await expect(page.locator('#result-chars')).toHaveText(`0/${text.length}/0/0`);
-    await expect(page.locator('#result-errors')).toHaveText(String(text.length));
-    // Below 360 px the breakdown has its own row, and it can still break after a slash.
-    await expect(page.locator('#result-chars wbr')).toHaveCount(3);
+    await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', finalChars(`0/${text.length}/0/0`));
+    await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors(String(text.length)));
     expect(await statSpill(page)).toEqual([]);
     // Larger than any run here reaches: a 120 s timed run, typed fast with many slips.
     await page.evaluate(() => {
       const set = (id, html) => { document.getElementById(id).innerHTML = html; };
-      set('result-time', '120.0 s');
-      set('result-errors', '1250');
-      set('result-raw', '1480');
-      set('result-chars', '1400/<wbr>1250/<wbr>120/<wbr>12');
+      set('result-time', '120.0<b> s</b>');
+      set('result-accuracy', '100');
+      set('result-consistency', '100');
     });
     expect(await statSpill(page)).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);

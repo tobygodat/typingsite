@@ -1,6 +1,6 @@
-// A run's result on Practice: on a wide screen the score and the trace print side by side with Run again
-// and the drill below; on a phone the actions come straight after the score, before the trace. Before any
-// run there is no print, and Train is the one general drill, centred.
+// A run's result on Practice is one card: the score with its facts beside it (under it on a phone), the
+// speed trace, the words typed, then Run again and the drill under a hairline. Before any run there is no
+// print, and Train is the one general drill, centred.
 import { test, expect, openApp, openView, chooseWords, completePassage, phone } from './fixtures.js';
 
 const box = (page, selector) => page.locator(selector).boundingBox();
@@ -14,7 +14,7 @@ async function tabIntoTrace(page) {
   // Run again's focus brought it into view below the score, so the page has scrolled and the trace lies above it.
   expect(await page.evaluate(() => scrollY), 'focus scrolled the page').toBeGreaterThan(0);
   const inWords = () => page.evaluate(() => !!document.activeElement.closest('#result-words'));
-  for (let presses = 0; presses < 6 && !(await inWords()); presses++) await page.keyboard.press('Tab');
+  for (let presses = 0; presses < 6 && !(await inWords()); presses++) await page.keyboard.press('Shift+Tab');
   expect(await inWords(), 'a trace word has focus').toBe(true);
   return page.evaluate(() => {
     const word = document.activeElement.getBoundingClientRect();
@@ -26,7 +26,7 @@ async function tabIntoTrace(page) {
 // spanning the screen's content width with the heading and the one button centred in it.
 async function expectNoPrint(page) {
   await expect(page.locator('#run-card')).toBeHidden();
-  await expect(page.locator('.run-trace')).toBeHidden();
+  await expect(page.locator('#speed-graph')).toBeHidden();
   await expect(page.locator('#train-heading')).toHaveText('General drill');
   await expect(page.locator('#start-drill')).toBeVisible();
   await expect(page.locator('#train-last')).toBeHidden();
@@ -53,7 +53,7 @@ test('before any run at 1440px there is no print and Train is the general drill,
 });
 
 for (const width of [901, 800]) {
-  test(`at ${width}px a run fits the width with the score and the trace ${width > 900 ? 'side by side' : 'stacked around Run again and the drill'}`, async ({ page }) => {
+  test(`at ${width}px a run fits the width as one card, the facts beside the score and the actions last`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await openApp(page);
     await chooseWords(page, 10);
@@ -61,33 +61,39 @@ for (const width of [901, 800]) {
     await expect(page.locator('#speed-graph svg')).toBeVisible();
 
     expect(await overflow(page)).toBeLessThanOrEqual(0);
-    const score = await box(page, '#run-card');
-    const trace = await box(page, '.run-trace');
+    const card = await box(page, '#run-card');
+    const wpm = await box(page, '#result-wpm');
+    const facts = await box(page, '.run-card-facts');
+    const trace = await box(page, '#speed-graph');
+    const words = await box(page, '#result-words');
     const actions = await box(page, '.result-actions');
-    if (width > 900) {
-      expect(trace.x).toBeGreaterThanOrEqual(score.x + score.width);
-      expect(Math.abs(trace.y - score.y)).toBeLessThanOrEqual(4);
-    } else {
-      expect(score.y + score.height).toBeLessThanOrEqual(actions.y);
-      expect(actions.y + actions.height).toBeLessThanOrEqual(trace.y);
-    }
+    expect(facts.x).toBeGreaterThanOrEqual(wpm.x + wpm.width);
+    expect(facts.y).toBeLessThan(wpm.y + wpm.height);
+    expect(wpm.y + wpm.height).toBeLessThanOrEqual(trace.y);
+    expect(trace.y + trace.height).toBeLessThanOrEqual(words.y);
+    expect(words.y + words.height).toBeLessThanOrEqual(actions.y);
+    expect(actions.y + actions.height).toBeLessThanOrEqual(card.y + card.height);
   });
 }
 
-test('at 1440px the score and the trace share a row and the drill sits below them', async ({ page }, testInfo) => {
+test('at 1440px the facts share the score\'s row, the trace spans the card and the drill sits in its last row', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page);
   await chooseWords(page, 10);
   await completePassage(page, atPace);
   await expect(page.locator('#speed-graph svg')).toBeVisible();
 
-  const score = await box(page, '#run-card');
+  const card = await box(page, '#run-card');
+  const wpm = await box(page, '#result-wpm');
+  const facts = await box(page, '.run-card-facts');
+  expect(facts.x).toBeGreaterThan(wpm.x + wpm.width);
+  expect(facts.y + facts.height).toBeLessThanOrEqual(wpm.y + wpm.height + 4);
   const trace = await box(page, '#speed-graph');
-  expect(trace.x).toBeGreaterThan(score.x + score.width);
-  const traceTop = await box(page, '.run-trace');
-  expect(Math.abs(traceTop.y - score.y)).toBeLessThanOrEqual(4);
+  expect(trace.width).toBeGreaterThan(card.width * 0.85);
+  const words = await box(page, '#result-words');
   const drill = await box(page, '#result-drill');
-  expect(drill.y).toBeGreaterThan(Math.max(score.y + score.height, traceTop.y + traceTop.height));
+  expect(drill.y).toBeGreaterThan(Math.max(trace.y + trace.height, words.y + words.height));
+  expect(drill.y + drill.height).toBeLessThanOrEqual(card.y + card.height);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
   await page.screenshot({ path: testInfo.outputPath('train-1440.png'), fullPage: true });
 });
@@ -107,7 +113,7 @@ test('at 1440px tabbing from Run again back into the trace stops below the dock'
 // Focus goes to the next step only when it fits on screen with the score; otherwise to the result heading,
 // so the score never scrolls away. The restart key works from either.
 test('after a run Run again takes focus when it fits under the score, and the heading does when it can’t', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.setViewportSize({ width: 1280, height: 480 });
   await openApp(page);
   await chooseWords(page, 10);
   await completePassage(page);
@@ -115,7 +121,7 @@ test('after a run Run again takes focus when it fits under the score, and the he
   // A counted run's heading is visually hidden (a clipped 1px box), so check where it sits rather than what shows.
   const heading = await box(page, '#results-heading');
   expect(heading.y).toBeGreaterThanOrEqual(0);
-  expect(heading.y + heading.height).toBeLessThanOrEqual(600);
+  expect(heading.y + heading.height).toBeLessThanOrEqual(480);
   await expect(page.locator('#result-wpm')).toBeInViewport({ ratio: 1 });
   await page.keyboard.press('Enter');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
@@ -150,17 +156,21 @@ test.describe('phone', () => {
     await expect(page.locator('#result-wpm')).toBeInViewport({ ratio: 1 });
   });
 
-  test('at 390px the drill comes after the score and before the speed graph', async ({ page }, testInfo) => {
+  test('at 390px the card stacks: score, facts, speed graph, words, then the drill', async ({ page }, testInfo) => {
     await openApp(page);
     await chooseWords(page, 10);
     await completePassage(page, atPace);
     await expect(page.locator('#speed-graph svg')).toBeVisible();
 
     const wpm = await box(page, '#result-wpm');
-    const drill = await box(page, '#result-drill');
+    const facts = await box(page, '.run-card-facts');
     const graph = await box(page, '#speed-graph');
-    expect(wpm.y + wpm.height).toBeLessThan(drill.y);
-    expect(drill.y + drill.height).toBeLessThan(graph.y);
+    const words = await box(page, '#result-words');
+    const drill = await box(page, '#result-drill');
+    expect(wpm.y + wpm.height).toBeLessThan(facts.y);
+    expect(facts.y + facts.height).toBeLessThan(graph.y);
+    expect(graph.y + graph.height).toBeLessThan(words.y);
+    expect(words.y + words.height).toBeLessThan(drill.y);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: testInfo.outputPath('train-390.png'), fullPage: true });
   });
@@ -168,6 +178,7 @@ test.describe('phone', () => {
   // Chromium centres a focused element it scrolls to; Safari scrolls only as far as it must, which
   // would park a word under the bottom dock. A nearest scroll stands in for Safari's focus scroll.
   test('at 390px a word scrolled up from below the fold stops above the dock', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 560 });
     await openApp(page);
     await chooseWords(page, 10);
     await completePassage(page);
@@ -188,21 +199,15 @@ test.describe('phone', () => {
   });
 });
 
-test('the wpm note and the conditions show at once; the other counts open on request', async ({ page }) => {
+test('the conditions show at once; no metric notes, and the counts behind accuracy and consistency sit in their tooltips', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openApp(page);
   await chooseWords(page, 10);
   await completePassage(page);
 
-  const notes = page.locator('#run-card .metric-note');
-  await expect(notes.first()).toBeVisible();
-  await expect(notes.first()).toContainText('wpm counts correct characters kept');
   await expect(page.locator('#result-conditions')).toBeVisible();
-
-  const more = page.locator('#run-card details:has(.metric-note)');
-  await expect(more).not.toHaveAttribute('open');
-  await expect(notes.nth(1)).toBeHidden();
-  await more.locator('summary').click();
-  await expect(notes.nth(1)).toBeVisible();
-  await expect(notes.nth(1)).toContainText('consistency is 100 minus');
+  await expect(page.locator('#run-card .metric-note')).toHaveCount(0);
+  await expect(page.locator('#run-card details')).toHaveCount(0);
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', /^0 first-try errors · final c\/i\/e\/m \d+\/0\/0\/0$/);
+  await expect(page.locator('.run-card-facts > div', { has: page.locator('#result-consistency') })).toHaveAttribute('title', /^100 minus the variation/);
 });

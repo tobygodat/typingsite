@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openView, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, firstTryErrors, openApp, passageText, typeInto, chooseWords, completePassage, openView, chooseSetting, closeSettings } from './fixtures.js';
 
 test('a corrected mistake keeps its first-try error and visible tint', async ({ page }) => {
   await openApp(page);
@@ -24,7 +24,7 @@ test('a corrected mistake keeps its first-try error and visible tint', async ({ 
   await page.keyboard.type(text.slice(at));
 
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-errors')).toHaveText('1');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('1'));
   const accuracy = Number(await page.locator('#result-accuracy').textContent());
   expect(accuracy).toBeLessThan(100);
   expect(accuracy).toBeGreaterThan(90);

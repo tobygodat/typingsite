@@ -118,7 +118,7 @@ test('tab still moves focus inside the settings dialog', async ({ page }) => {
 
 test('enter restarts from the result card but not mid-run, even after the chrome returns', async ({ page }) => {
   // Short enough that Run again can't sit under the score, so the result heading takes focus.
-  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.setViewportSize({ width: 1280, height: 480 });
   await openApp(page);
   await chooseWords(page, 10);
   await openSettings(page);
@@ -142,7 +142,7 @@ test('enter restarts from the result card but not mid-run, even after the chrome
 
   await page.locator('#restart-button').click({ force: true });
   await completePassage(page);
-  // Run again is below the fold at 1280×600, so the result heading has focus, and the restart key works there too.
+  // Run again is below the fold at 1280×480, so the result heading has focus, and the restart key works there too.
   await expect(page.locator('#results-heading')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');

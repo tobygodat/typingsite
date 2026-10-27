@@ -39,6 +39,10 @@ export async function openApp(page, path = '/') {
 
 export const passageText = (page) => page.locator('#accessible-passage').textContent();
 
+// The run card keeps first-try errors and the final c/i/e/m in accuracy's tooltip (#result-accuracy-fact).
+export const firstTryErrors = (count) => new RegExp(`^${count} first-try errors? · `);
+export const finalChars = (chars) => new RegExp(` · final c/i/e/m ${chars}$`);
+
 export async function typeInto(page, text, selector = '#typing-input', options = {}) {
   await closeSettings(page);
   await page.locator(selector).focus();

@@ -29,7 +29,7 @@ const speedGraph = (page) => page.locator('#speed-graph').evaluate((graph) => {
     shown: svg.getBoundingClientRect().width,
     height: Number(svg.getAttribute('height')),
     containerHeight: graph.clientHeight,
-    traceRight: graph.closest('.run-trace').getBoundingClientRect().right,
+    traceRight: graph.closest('.run-card-graph').getBoundingClientRect().right,
   };
 });
 
@@ -46,7 +46,7 @@ for (const [from, to] of [[{ width: 1280, height: 800 }, { width: 320, height: 5
     const graph = await speedGraph(page);
     expect(Math.abs(graph.drawn - graph.container)).toBeLessThanOrEqual(1);
     expect(Math.abs(graph.shown - graph.container)).toBeLessThanOrEqual(1);
-    // Redrawn at the new size, not squeezed: the drawing keeps the container's 16:9 height.
+    // Redrawn at the new size, not squeezed: the drawing keeps the container's height.
     expect(Math.abs(graph.height - graph.containerHeight)).toBeLessThanOrEqual(1);
     expect(graph.traceRight).toBeLessThanOrEqual(to.width);
 

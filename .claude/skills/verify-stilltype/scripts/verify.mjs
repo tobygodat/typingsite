@@ -294,7 +294,8 @@ const FLOW_IMPL = {
     await h.attr('body', 'data-view', 'results');
     await h.settle();
     const result = {};
-    for (const key of ['wpm', 'accuracy', 'errors', 'time', 'raw', 'consistency', 'chars', 'conditions']) result[key] = await h.text(`#result-${key}`);
+    for (const key of ['wpm', 'accuracy', 'time', 'consistency', 'standing', 'conditions']) result[key] = await h.text(`#result-${key}`);
+    result.counts = await page.locator('#result-accuracy-fact').getAttribute('title');
     note('passage', text);
     note('result', result);
     check(/^\d+$/.test(result.wpm), `result wpm is a number (${result.wpm})`);

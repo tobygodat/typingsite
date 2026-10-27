@@ -103,7 +103,7 @@ test.describe('narrow run card', () => {
         return { page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           overflow: card.scrollWidth - card.clientWidth, score: score.scrollWidth - score.clientWidth,
           inner, numeral: rect('#result-wpm'), unit: rect('.run-card-unit'), card: { left: box.left, right: box.right },
-          trace: rect('.run-trace'), traceOverflow: document.querySelector('.run-trace').scrollWidth - document.querySelector('.run-trace').clientWidth,
+          trace: rect('.run-card-graph'), traceOverflow: document.querySelector('.run-card-graph').scrollWidth - document.querySelector('.run-card-graph').clientWidth,
           shell: rect('.app-shell') };
       });
       expect(fit.page, `${width}px page`).toBe(0);

@@ -1,5 +1,5 @@
 import { quoteCorpus } from '../src/typing.js';
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore, chooseSetting, closeSettings, chooseQuoteFilter } from './fixtures.js';
+import { test, expect, firstTryErrors, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, openView, chooseMore, chooseSetting, closeSettings, chooseQuoteFilter } from './fixtures.js';
 
 async function finishWithCorrectedMiss(page) {
   await openApp(page);
@@ -13,7 +13,7 @@ async function finishWithCorrectedMiss(page) {
   await page.keyboard.press('Backspace');
   await page.keyboard.type(text.slice(at), { delay: 30 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-errors')).toHaveText('1');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('1'));
   return { text, at };
 }
 
@@ -21,7 +21,7 @@ async function finishWithCorrectedMiss(page) {
 const runCard = async (page) => ({
   wpm: await page.locator('#result-wpm').textContent(),
   accuracy: await page.locator('#result-accuracy').textContent(),
-  errors: await page.locator('#result-errors').textContent(),
+  errors: (await page.locator('#result-accuracy-fact').getAttribute('title')).match(/^(\d+) first-try/)[1],
 });
 const replayStats = async (page) => ({
   wpm: await page.locator('#replay-wpm').textContent(),
@@ -262,7 +262,7 @@ async function finishLongRunWithMiss(page) {
   await page.clock.fastForward(150);
   await typeAtPace(text.slice(at));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-errors')).toHaveText('1');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('1'));
   return missAt;
 }
 

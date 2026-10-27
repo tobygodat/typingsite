@@ -1,4 +1,4 @@
-import { test, expect, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore, chooseSetting, chooseQuoteFilter } from './fixtures.js';
+import { test, expect, firstTryErrors, finalChars, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore, chooseSetting, chooseQuoteFilter } from './fixtures.js';
 
 // Accent (dead) keys, as US-International and similar layouts send them. On macOS (and Linux with an
 // input method) the mark arrives as a composition that the next key commits; Chrome sends that through
@@ -208,7 +208,7 @@ test('a quote with \' and " typed on accent keys completes as a counted run', as
 
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-accuracy')).toHaveText('100');
-  await expect(page.locator('#result-errors')).toHaveText('0');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('0'));
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 
   await expect.poll(() => lastStoredAttempt(page, user.id).then((stored) => stored?.textId)).toMatch(/^short-precise-/);
@@ -251,7 +251,7 @@ test('a composed vowel where the mark belongs is a coral mistake, not an interru
   await keys.commit('"');
   await page.keyboard.type(text.slice(at + 1));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
-  await expect(page.locator('#result-errors')).toHaveText('1');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('1'));
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 });
 
@@ -971,7 +971,7 @@ test('a mark pending when focus moves on is dropped, and the run stays ready or 
   await page.keyboard.type(text.slice(5));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-accuracy')).toHaveText('100');
-  await expect(page.locator('#result-errors')).toHaveText('0');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('0'));
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 });
 
@@ -1174,8 +1174,8 @@ test('a commit on a passage’s last letter counts every key in it before the ru
     await commit();
     await expect(page.locator('body'), way).toHaveAttribute('data-view', 'results');
     await expect(page.locator('#result-accuracy'), way).toHaveText('93');
-    await expect(page.locator('#result-errors'), way).toHaveText('0');
-    await expect(page.locator('#result-chars'), way).toHaveText('13/0/1/0');
+    await expect(page.locator('#result-accuracy-fact'), way).toHaveAttribute('title', firstTryErrors('0'));
+    await expect(page.locator('#result-accuracy-fact'), way).toHaveAttribute('title', finalChars('13/0/1/0'));
     await expect(page.locator('#typing-input'), way).toHaveValue(custom);
     await expect(page.locator('#result-delta'), way).toHaveText('Custom text complete · not counted toward your best');
     await expect.poll(async () => (await storedRuns(page, user.id)).length, way).toBe(Object.keys(ways).indexOf(way) + 1);
@@ -1211,7 +1211,7 @@ test('a doubled mark on a passage’s last letter costs nothing, after a slip to
     await close();
     await expect(page.locator('body'), way).toHaveAttribute('data-view', 'results');
     await expect(page.locator('#result-accuracy'), way).toHaveText('92');
-    await expect(page.locator('#result-chars'), way).toHaveText('12/1/0/0');
+    await expect(page.locator('#result-accuracy-fact'), way).toHaveAttribute('title', finalChars('12/1/0/0'));
     await page.locator('#run-again').click();
     await expect(page.locator('#typing-status')).toHaveText('Ready');
   }

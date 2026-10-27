@@ -1,8 +1,9 @@
 # Practice run
 
 A person lands on the practice page with a three-line passage and a waiting caret, types it, sees the chrome
-fade while they type, and lands on the run card: wpm, accuracy, first-try errors, time, raw wpm,
-consistency, final c/i/e/m, a speed-over-time graph and the conditions line.
+fade while they type, and lands on the run card: wpm, accuracy, time and consistency (accuracy's tooltip
+holds first-try errors and final c/i/e/m), average and best at these conditions once there are two counted
+runs, a speed-over-time trace, the words typed, the actions and the conditions line.
 
 ## Sub-features
 
@@ -10,7 +11,7 @@ consistency, final c/i/e/m, a speed-over-time graph and the conditions line.
 - `run-shape` picks the test shape (time 15/30/60/120, words 10/25/50/100, quote) before typing.
 - `run-typing` starts on the first key; correct letters fill, mistyped letters turn coral with a tint.
 - `run-chrome-fade` fades the dock and rail while `body[data-running]` is set; pointer movement brings them back.
-- `run-results` switches to `body[data-view=results]`: the run card, `Run again` / `Drill “<pair>”` / `Watch replay`, the speed graph and the typed words render on Practice in place of the passage (`#practice-result`). A retest's result is the comparison on Train instead (`body[data-view=train]`, `#comparison-panel`).
+- `run-results` switches to `body[data-view=results]`: one run card holding the score, the speed trace, the typed words and, under a hairline, `Run again` / `Drill “<pair>”` / `Watch replay` with the conditions line, renders on Practice in place of the passage (`#practice-result`). A retest's result is the comparison on Train instead (`body[data-view=train]`, `#comparison-panel`).
 - `run-restart` restarts with Escape or the restart button (`#restart-button`) and draws a new passage.
 
 ## How to get to it (user POV)
@@ -33,10 +34,10 @@ Preconditions:
 - **Full run.** Pick words · 10 and type the passage. Run `$V shot results`. Three shots: `ready` (words 10
   pressed), `mid-run` (half the letters filled, dock and rail faded, check `body[data-running]` passed),
   `results` (run card). `run.json` notes the result: wpm about 120 at the default `--delay 100`, accuracy
-  100, first-try errors 0, `46/0/0/0` for the seeded passage, consistency a number.
+  100, `counts` (accuracy's tooltip) `0 first-try errors · final c/i/e/m 46/0/0/0` for the seeded passage, consistency a number.
 - **Light theme run.** Run `$V shot results --scheme light`. Same checks; the run card sits on warm paper.
 - **Phone run.** Run `$V shot results --width 390 --height 844 --mobile`. The dock sits at the bottom, the run card
-  fills the width, and the actions, graph and words follow below the fold (add `--full-page` to capture it).
+  fills the width, and the trace, words and actions follow below the fold (add `--full-page` to capture it).
 - **Train loop.** Run `$V drive .claude/skills/verify-stilltype/flows/train-d.mjs` (desktop) and again with
   `--width 390 --height 844 --mobile --full-page`. It seeds a signed-in history that keeps missing "ou" and "br" and
   shoots the result on Practice, one-button Train, the comparison after Drill and retest, Train after the loop, and
