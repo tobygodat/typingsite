@@ -56,7 +56,8 @@ export function createRaceReview({ renderText }) {
     lit = leader;
     fx.update(mine, 'correct', false);
     fx.ghost.seek(position);
-    toggle.textContent = playing ? 'Pause' : 'Play';
+    const label = playing ? 'Pause' : 'Play';
+    if (toggle.textContent !== label) toggle.textContent = label;
   }
 
   function tick(now) {
