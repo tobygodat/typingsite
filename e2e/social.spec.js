@@ -25,7 +25,7 @@ async function race(host, guest) {
   await typeRace(host, guest);
 }
 
-// A race already counting down: both type the whole passage, the host first, so the host wins.
+// A quote race already counting down: both type the whole passage, the host first, so the host wins.
 async function typeRace(host, guest) {
   await expect(host.locator('#online-input')).toBeEnabled({ timeout: 12000 });
   await expect(guest.locator('#online-input')).toBeEnabled();
@@ -163,6 +163,7 @@ test('after a race both pick Rematch and the next race starts on its own, the pa
   supabase.addUser('lin@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'host@stilltype.test');
+  await page.locator('#mode-quote').click();
   await openView(page, 'Challenge');
   await page.locator('#online-name').fill('Ada');
   await page.locator('#online-invite-email').fill('lin@stilltype.test');
@@ -263,6 +264,7 @@ test('a guest races again with the same seat and no new link and keeps no tally,
   supabase.addUser('host@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'host@stilltype.test');
+  await page.locator('#mode-quote').click();
   await openView(page, 'Challenge');
   await page.locator('#online-name').fill('Ada');
   const link = await createGuestRace(page);
