@@ -2,12 +2,14 @@ import { test, expect, openApp, openView, signInWithEmail, typeInto } from './fi
 
 test.setTimeout(90000);
 
-// Ada hosts and invites Lin's account; both ready and type the whole passage, Ada first, so Ada wins.
+// Ada hosts a quote race, which ends with its passage rather than on the clock, and invites Lin's account; both
+// ready and type the whole passage, Ada first, so Ada wins.
 async function racePair(page, browser, supabase) {
   supabase.addUser('ada@stilltype.test');
   supabase.addUser('lin@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
+  await page.locator('#mode-quote').click();
   await openView(page, 'Challenge');
   await page.locator('#online-name').fill('Ada');
   await page.locator('#online-invite-email').fill('lin@stilltype.test');

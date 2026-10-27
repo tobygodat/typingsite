@@ -103,7 +103,8 @@ export function createReplayView(dialog) {
     });
     clock.textContent = (position / 1000).toFixed(1);
     drawStats();
-    toggle.textContent = playing ? 'Pause' : 'Play';
+    const label = playing ? 'Pause' : 'Play';
+    if (toggle.textContent !== label) toggle.textContent = label;
     dialog.dataset.state = playing ? 'playing' : position >= length() ? 'done' : 'paused';
   }
 
