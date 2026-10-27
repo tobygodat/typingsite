@@ -24,13 +24,13 @@ if (unknown.length) throw new Error(`E2E_BROWSERS: unknown engine ${unknown.join
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
-  workers: process.env.CI ? undefined : '67%',
+  workers: '67%',
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     baseURL: `http://127.0.0.1:${port}`,
-    trace: process.env.CI ? 'retain-on-failure' : 'off',
+    trace: process.env.CI ? 'on-first-retry' : 'off',
     // The offline shell (sw.js) stays out of the way of the page.route fakes; e2e/pwa-offline.spec.js allows it.
     serviceWorkers: 'block',
   },
