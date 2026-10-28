@@ -124,10 +124,12 @@ export function repairContrast(colors: Record<string, string>): Record<string, s
 // token and nothing else. Dark or light follows the background's luminance whatever the answer said.
 export function cleanTheme(raw: unknown): { name: string; mode: string; colors: Record<string, string> } | null {
   if (!raw || typeof raw !== 'object') return null;
+  // SAFETY: raw is a non-null object (checked above), and both fields stay unknown until checked below.
   const { name, colors } = raw as { name?: unknown; colors?: unknown };
   if (!colors || typeof colors !== 'object') return null;
   const clean: Record<string, string> = {};
   for (const token of BASE_TOKENS) {
+    // SAFETY: colors is a non-null object (checked above), and each value is checked as a hex string next.
     const value = (colors as Record<string, unknown>)[token];
     if (typeof value !== 'string' || !new RegExp(HEX_PATTERN).test(value)) return null;
     clean[token] = value.toLowerCase();

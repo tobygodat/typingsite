@@ -436,7 +436,7 @@ test('explicit duration, layout and keybindings reselects are each recorded as a
   await openSettings(page);
   await openSettings(page, 'shortcuts');
   await page.locator('#keybinding-restart').press('Enter');
-  await expect(page.locator('#keybindings-form [aria-invalid=\"true\"]')).toHaveCount(0);
+  await expect(page.locator('#keybindings-form [aria-invalid="true"]')).toHaveCount(0);
   await expect.poll(() => stamps()?.keybindings).not.toBe(stamp);
 
   expect(supabase.profileFor(user.email).preferences).toMatchObject({ duration: 30, layout: 'qwerty', keybindings });

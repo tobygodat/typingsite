@@ -9,7 +9,7 @@
 // what the row holds, as Progress does, and nothing here keeps clears, clocks or a queue of its own. The
 // numbers are reported by browsers, so they are friendly and unverified. Guests have no row.
 import { request, freshSession, loadSession, AuthError } from './account.js';
-import { CORPUS_VERSION, CORRECTION_POLICIES, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS,
+import { CORPUS_VERSION, CORRECTION_POLICIES, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS,
   conditionKey } from './typing.js';
 import { isValidLength } from './lengths.js';
 import { layoutIds, isDefaultLayout } from './layouts.js';
