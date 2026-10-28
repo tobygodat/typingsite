@@ -1,6 +1,6 @@
 # MVP specification
 
-Status: milestone specification, originally written 21 September 2026. Implementation was authorized on 22 September. Grounded in the [research summary](research/summary.md); `PRODUCT.md` owns audience decisions and `HANDOFF.md` records the current delivery state.
+Status: milestone specification, originally written 21 September 2026. Implementation was authorized on 22 September. Grounded in the [research summary](research/summary.md); `PRODUCT.md` owns audience decisions and the [Linear project](https://linear.app/tobygodat/project/stilltype-6e4e58731700) records the current delivery state.
 
 ## User and promise
 

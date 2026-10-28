@@ -208,7 +208,7 @@ test('the server hands out the app and nothing else', async ({ request }) => {
     expect(response.status(), path).toBe(200);
     expect(response.headers()['content-type'], path).toBe(type);
   }
-  for (const path of ['/HANDOFF.md', '/package.json', '/design/ash/DESIGN.md', '/docs/ui-contract.md', '/src/fonts/geist-400.ttf', '/e2e/fixtures.js', '/src/../server.mjs', '/%2e%2e/server.mjs']) {
+  for (const path of ['/AGENTS.md', '/package.json', '/design/ash/DESIGN.md', '/docs/ui-contract.md', '/src/fonts/geist-400.ttf', '/e2e/fixtures.js', '/src/../server.mjs', '/%2e%2e/server.mjs']) {
     expect((await request.get(path)).status(), path).toBe(404);
   }
 });

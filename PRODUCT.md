@@ -50,9 +50,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 - Condition-aware personal bests, guarded history deletion with immediate undo, explicit insufficient-evidence and interrupted states.
 - A beginner path ("learn to type"): 14 lessons that add keys a few at a time with a finger map, real words from the common-word lists (labelled key pairs where none exist yet), unlocking on one run at 95% accuracy and a gentle speed, then a hand-off to the training loop. Only a physical-keyboard run passes a lesson; a touch run is labelled "touch input" and never unlocks. A lesson passes on the numbers it shows (whole-percent input accuracy and whole wpm, rounded as everywhere else), so 94.5% shown as 95% passes and 94.4% shown as 94% does not; a result never reads "95% · not met". Lessons never count as bests, trends or retests.
 - Self-serve account deletion behind a typed confirmation: the server deletes the account and everything keyed to it first, and only then does the device sign out and clear its copy. A failure changes nothing and says so. There is no undo.
-- Native HTML/CSS/JS modules with no runtime dependencies. `npm run dev` serves on :5173; `npm test` runs the engine checks. Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono are self-hosted in `src/fonts/`.
 - Signed-in retention: newest 24 full attempt traces (within a 2.5 million character trace budget, skipping oversized traces), 1,000 compact run summaries (custom text and word practice keep their newest 50 apart, with no trace), pattern counts on the newest 120 summaries and first-try missed words (up to 12 a run) on the newest 120 runs that count toward "words you keep missing"; comparison summaries remain until cleared. Clear/Undo includes daily history. Guests retain everything only in memory for the tab. Older records keep unknown dates and missing score snapshots explicit.
-- `src/typing.js` owns corpus selection, scoring, replay and pattern evidence; `src/app.js` owns UI orchestration and local persistence.
 
 **Metric contract** (versioned before any data collection):
 - Corrected WPM = correct target characters retained at finish / 5 / elapsed minutes. The optional CPM display is that WPM × 5; storage, scoring, comparisons and condition keys stay in WPM. Elapsed time runs from the first printable input on a monotonic clock and continues when unfocused.
@@ -66,10 +64,9 @@ This is stated in the research as a hypothesis about usability and learning, not
 - Deterministic event replay must reproduce final text, errors, corrections, time and metrics.
 
 **Explicitly undecided:**
-- A framework for later stages. This milestone deliberately retains native modules; see `docs/decisions/2026-09-22-learning-loop.md`.
+- A framework for later stages. This milestone deliberately retains native modules; see `docs/adr/0001-native-browser-stack-and-learning-loop.md`.
 - Retention period, identity/sync needs, and participation terms for any shared or model-training data. Local-only practice proceeds without them.
 - Whether the beginner path should later feed its own evidence into the recommender. Today lessons use their own key-introduction progression and hand off to the weak-pattern recommender once every letter is in.
-- Hosting and deployment target.
 
 **Deferred, not denied:** public matchmaking, seasons, full anti-cheat, learned ranked difficulty, additional languages, rhythm or music mechanics, browser-wide keystroke capture, extension packaging, Zetamac integration, LLM-generated drills. Public ranking requires integrity work before launch.
 

@@ -1,6 +1,6 @@
 # Staged implementation plan
 
-Status: staged roadmap, originally written 21 September 2026. Implementation was authorized on 22 September; the repository now contains a native browser application. See [the implementation decision](decisions/2026-09-22-learning-loop.md) and `HANDOFF.md` for the current delivery state. Hosting and online multiplayer remain future work.
+Status: staged roadmap, originally written 21 September 2026. Implementation was authorized on 22 September; the repository now contains a native browser application. See [ADR 0001](adr/0001-native-browser-stack-and-learning-loop.md) for the implementation decision and the [Linear project](https://linear.app/tobygodat/project/stilltype-6e4e58731700) for the current delivery state.
 
 ## Architecture direction
 
