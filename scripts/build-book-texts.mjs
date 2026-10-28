@@ -76,7 +76,10 @@ function stripIllustrations(text) {
       let j = i;
       for (; j < text.length; j += 1) {
         if (text[j] === '[') depth += 1;
-        else if (text[j] === ']') { depth -= 1; if (depth === 0) break; }
+        else if (text[j] === ']') {
+          depth -= 1;
+          if (depth === 0) break;
+        }
       }
       if (depth !== 0) throw new Error('Unbalanced illustration block');
       i = j + 1;

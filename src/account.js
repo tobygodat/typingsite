@@ -63,7 +63,10 @@ function readJson(key) {
 }
 
 function writeJson(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch { return false; }
 }
 
 function remove(key) {
@@ -577,7 +580,10 @@ export function loadCachedProfileText(userId) {
 }
 
 export function cacheProfileText(userId, text) {
-  try { localStorage.setItem(profileKey(userId), text); return true; } catch { return false; }
+  try {
+    localStorage.setItem(profileKey(userId), text);
+    return true;
+  } catch { return false; }
 }
 
 // ── Merging copies of one account's profile ─────────────────────────────

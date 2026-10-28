@@ -100,7 +100,10 @@ test('Watch replay plays the run the result shows, and a drill whose retest was 
   const pool = quoteCorpus.filter((quote) => quote.difficulty === 'gentle' && quote.text.split(/\s+/).length > 30 && quote.text.split(/\s+/).length <= 60);
   const texts = new Set(pool.map((quote) => quote.text));
   const seen = new Set();
-  const note = async () => { const text = await passageText(page); if (texts.has(text)) seen.add(text); };
+  const note = async () => {
+    const text = await passageText(page);
+    if (texts.has(text)) seen.add(text);
+  };
   await page.clock.install();
   await openApp(page);
   // Before any run there is nothing to replay.

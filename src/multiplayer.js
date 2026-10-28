@@ -95,7 +95,10 @@ export function queueFriendRequests(apply, { load, limit = FRIEND_REQUEST_MS } =
   }
   function queue(request, change = false) {
     waiting += 1;
-    const applied = last.then(() => { waiting -= 1; return go(request, change); });
+    const applied = last.then(() => {
+      waiting -= 1;
+      return go(request, change);
+    });
     last = applied.catch(() => { if (change && !waiting) requests.reload().catch(() => {}); });
     return applied;
   }
@@ -136,14 +139,19 @@ export function parseRaceLink(href) {
   return UUID.test(roomId || '') && TOKEN.test(inviteToken || '') ? { roomId, inviteToken } : null;
 }
 export function clearRaceLink(href) {
-  const url = new URL(href); const hash = new URLSearchParams(url.hash.slice(1));
-  hash.delete('race'); hash.delete('invite'); url.hash = hash.toString(); return url.toString();
+  const url = new URL(href);
+  const hash = new URLSearchParams(url.hash.slice(1));
+  hash.delete('race');
+  hash.delete('invite');
+  url.hash = hash.toString();
+  return url.toString();
 }
 export function makeGuestRaceLink({ roomId, inviteToken }, href = location.href) {
   if (!UUID.test(roomId || '') || !TOKEN.test(inviteToken || '')) throw new AuthError('This race has no guest link.');
   const url = new URL(href);
   for (const key of ['code', 'error', 'error_code', 'error_description']) url.searchParams.delete(key);
-  url.hash = new URLSearchParams({ race: roomId, invite: inviteToken }).toString(); return url.toString();
+  url.hash = new URLSearchParams({ race: roomId, invite: inviteToken }).toString();
+  return url.toString();
 }
 // Only this expiring, tab-scoped reconnect capability is retained for guests, never run history.
 export function rememberRace(credentials) {
@@ -156,7 +164,10 @@ export function recallRace() {
   try {
     const value = JSON.parse(sessionStorage.getItem(RECONNECT_KEY));
     if (!UUID.test(value?.roomId || '') || Date.now() - value.savedAt > 20 * 60 * 1000
-      || (value.guestToken && !TOKEN.test(value.guestToken))) { forgetRace(); return null; }
+      || (value.guestToken && !TOKEN.test(value.guestToken))) {
+        forgetRace();
+        return null;
+      }
     return value;
   } catch { return null; }
 }

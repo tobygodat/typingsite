@@ -143,23 +143,41 @@ export function createKeybindingEditor({ form, status, getBindings, onSave }) {
     const action = button.dataset.record;
     const wasRecording = recording === action;
     stopRecording();
-    if (wasRecording) { feedback('Recording cancelled.'); return; }
+    if (wasRecording) {
+      feedback('Recording cancelled.');
+      return;
+    }
     recording = action;
     button.setAttribute('aria-pressed', 'true');
     feedback('Press a combination. Escape cancels; Tab moves focus. Enter Escape or Tab in the field to bind them.');
   }));
   form.addEventListener('keydown', (event) => {
-    if (!recording && event.key === 'Enter' && event.target.matches('input')) { event.preventDefault(); apply({ reselect: true }); return; }
+    if (!recording && event.key === 'Enter' && event.target.matches('input')) {
+      event.preventDefault();
+      apply({ reselect: true });
+      return;
+    }
     if (!recording || event.isComposing || event.keyCode === 229) return;
-    if (event.key === 'Tab') { stopRecording(); feedback('Recording cancelled.'); return; }
+    if (event.key === 'Tab') {
+      stopRecording();
+      feedback('Recording cancelled.');
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
-    if (event.key === 'Escape') { stopRecording(); feedback('Recording cancelled.'); return; }
+    if (event.key === 'Escape') {
+      stopRecording();
+      feedback('Recording cancelled.');
+      return;
+    }
     if (event.repeat || ['Control', 'Meta', 'Alt', 'Shift', 'AltGraph'].includes(event.key)) return;
     const action = recording;
     const value = [event.ctrlKey && 'Ctrl', event.metaKey && 'Meta', event.altKey && 'Alt', event.shiftKey && 'Shift', event.key].filter(Boolean).join('+');
     const result = parseBinding(value, action);
-    if (result.error) { feedback(result.error); return; }
+    if (result.error) {
+      feedback(result.error);
+      return;
+    }
     input(action).value = result.binding;
     editedActions.add(action);
     stopRecording();

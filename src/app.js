@@ -623,7 +623,10 @@ function currentBestKey() {
 function showBest() {
   const key = currentBestKey();
   // Code runs have their own key but never set a best. (A custom session over code says it isn't counted.)
-  if (key && (attempt?.conditions || conditions()).mode === 'code') { $('best').textContent = 'Code runs aren’t ranked'; return; }
+  if (key && (attempt?.conditions || conditions()).mode === 'code') {
+    $('best').textContent = 'Code runs aren’t ranked';
+    return;
+  }
   const best = key && profile.bests[key];
   setParts($('best'), !key ? 'Not counted' : best ? ['Best · ', speedFigure(best.wpm)] : 'No best yet');
 }
@@ -1990,7 +1993,10 @@ function wireComposition(input, type) {
     scoreAccentPair(type);
     // A new composition: the one that ended unseen sent no commit as plain text.
     if (lostComposition?.type === type) lostComposition = null;
-    if (!acceptingInput(type)) { composition = null; return; }
+    if (!acceptingInput(type)) {
+      composition = null;
+      return;
+    }
     // An accent key's mark starts as a caret after the typed text. A composition over letters already
     // typed (the macOS press-and-hold accent menu, a keyboard re-composing a word) is not new keys.
     const over = event.data || input.value.slice(input.selectionStart, input.selectionEnd);
@@ -4163,8 +4169,15 @@ async function sendGhost(event) {
   const name = $('ghost-name').value.trim();
   $('ghost-offer-error').textContent = '';
   if (!payload || !friend || !session || offerBusy()) return;
-  if (!name) { $('ghost-offer-error').textContent = 'Enter the name your friend will see.'; $('ghost-name').focus(); return; }
-  if (offerSentTo.has(friend.id)) { $('ghost-offer-status').textContent = `Already sent to ${friend.name}.`; return; }
+  if (!name) {
+    $('ghost-offer-error').textContent = 'Enter the name your friend will see.';
+    $('ghost-name').focus();
+    return;
+  }
+  if (offerSentTo.has(friend.id)) {
+    $('ghost-offer-status').textContent = `Already sent to ${friend.name}.`;
+    return;
+  }
   const run = offerRun;
   if (!offerRequests.has(friend.id)) offerRequests.set(friend.id, crypto.randomUUID());
   const requestId = offerRequests.get(friend.id);
@@ -5315,7 +5328,10 @@ async function sendSuggestion(event) {
   event.preventDefault();
   const text = $('suggest-text').value;
   const invalid = account.suggestionRow(text).error;
-  if (invalid) { $('suggest-error').textContent = invalid; return; }
+  if (invalid) {
+    $('suggest-error').textContent = invalid;
+    return;
+  }
   const button = $('send-suggest');
   button.disabled = true;
   button.textContent = 'Sending…';
@@ -5545,7 +5561,10 @@ function bindEvents() {
   const heldAfterStop = () => {
     if (stopHold === null) return false;
     const stamp = now();
-    if (stamp - stopHold >= STOP_HOLD_MS) { stopHold = null; return false; }
+    if (stamp - stopHold >= STOP_HOLD_MS) {
+      stopHold = null;
+      return false;
+    }
     stopHold = stamp;
     return true;
   };
@@ -5653,7 +5672,10 @@ function bindEvents() {
   $('start-next-player').addEventListener('click', () => {
     // A short unblur of the passage, then the typing stage takes over.
     const reveal = () => { $('race-handoff').hidden = true; $('race-handoff').classList.remove('is-revealing'); setupRacePlayer(); };
-    if (reducedMotion.matches) { reveal(); return; }
+    if (reducedMotion.matches) {
+      reveal();
+      return;
+    }
     $('race-handoff').classList.add('is-revealing');
     setTimeout(reveal, 200);
   });

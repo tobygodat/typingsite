@@ -65,7 +65,10 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function waitFor(fn, limitMs = 10000) {
   const end = Date.now() + limitMs;
   while (Date.now() < end) {
-    try { const result = await fn(); if (result) return result; } catch { /* startup */ }
+    try {
+      const result = await fn();
+      if (result) return result;
+    } catch { /* startup */ }
     await sleep(50);
   }
   throw new Error('Timed out waiting for browser/server');

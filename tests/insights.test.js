@@ -816,7 +816,10 @@ test('touch runs are never pooled with physical-keyboard runs: the newest run pi
   const touch = { ...conditions, inputClass: 'touch' };
   const keyboard = { ...conditions, inputClass: 'physical-keyboard' };
   const keys = [missedRun('k1', ['the'], { conditions: keyboard }), missedRun('k2', ['the', 'and'], { conditions: keyboard }), missedRun('k3', ['and'])];
-  const tally = (runs) => { const result = recurringMissedWords(runs); return [result.inputClass, result.runs, result.words.map((w) => [w.word, w.runs])]; };
+  const tally = (runs) => {
+    const result = recurringMissedWords(runs);
+    return [result.inputClass, result.runs, result.words.map((w) => [w.word, w.runs])];
+  };
   // A run without the field counts as a physical keyboard, the default.
   assert.deepEqual(tally(keys), ['physical-keyboard', 3, [['and', 2], ['the', 2]]]);
   // One touch miss of "the" after them doesn't make a third, and touch stands alone.

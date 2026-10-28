@@ -72,9 +72,15 @@ function parseColour(value) {
 // ── WCAG 2 maths ──────────────────────────────────────────────────────────
 
 const over = (top, under, alpha = top[3]) => [0, 1, 2].map((i) => top[i] * alpha + under[i] * (1 - alpha)).concat(1);
-const linear = (v) => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+const linear = (v) => {
+  const s = v / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+};
 const luminance = ([r, g, b]) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
-const ratio = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+const ratio = (a, b) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
 
 // ── The pairs ─────────────────────────────────────────────────────────────
 

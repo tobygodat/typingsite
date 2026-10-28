@@ -612,7 +612,12 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     $('board-bests-none').hidden = shapes.length > 0;
     for (const id of ['board-shape-field', 'board-bests-meta', 'board-bests']) $(id).hidden = !shapes.length;
     const select = $('board-shape');
-    if (!shapes.length) { select.replaceChildren(); $('board-bests').replaceChildren(); listed = ''; return; }
+    if (!shapes.length) {
+      select.replaceChildren();
+      $('board-bests').replaceChildren();
+      listed = '';
+      return;
+    }
     const key = shapes.some((shape) => shape.key === picked) ? picked : defaultShape(shapes, runs(), rows);
     const labels = shapeLabels(shapes);
     // Rebuilt only when the shapes or their names change, so a re-read never disturbs the picker.
@@ -640,7 +645,10 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // aria-disabled, not disabled, while loading: a disabled button would drop keyboard focus.
   async function refresh({ manual = false, quiet = false } = {}) {
     const session = getSession();
-    if (!session) { render(); return; }
+    if (!session) {
+      render();
+      return;
+    }
     const current = ++generation;
     const seq = toggles;
     loading = true;
@@ -667,8 +675,14 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // board request in any tab, or the next load) if that fails. Focus stays where it was.
   async function setShare(on) {
     const session = getSession();
-    if (!session) { render(); return; }
-    if (on === sharing && !turningOn && !unsharing) { render(); return; }
+    if (!session) {
+      render();
+      return;
+    }
+    if (on === sharing && !turningOn && !unsharing) {
+      render();
+      return;
+    }
     const seq = ++toggles;
     if (on) {
       turningOn = true;
@@ -783,7 +797,10 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   }
 
   $('refresh-friends-board').addEventListener('click', () => { if (!loading) refresh({ manual: true }); });
-  $('board-shape').addEventListener('change', (event) => { picked = event.target.value; if (board?.rows) renderBests(board.rows); });
+  $('board-shape').addEventListener('change', (event) => {
+    picked = event.target.value;
+    if (board?.rows) renderBests(board.rows);
+  });
   $('share-board').addEventListener('change', (event) => setShare(event.target.checked));
   $('friends-board-signin').addEventListener('click', signIn);
   $('friends-board-online').addEventListener('click', openOnline);

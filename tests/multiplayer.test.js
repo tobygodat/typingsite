@@ -257,7 +257,10 @@ test('a change that fails is followed by a read of the list, before the next cha
 test('friend-list calls hand their abort signal to fetch', async () => {
   const original = globalThis.fetch;
   const signals = [];
-  globalThis.fetch = async (url, options) => { signals.push(options.signal); return new Response('[]'); };
+  globalThis.fetch = async (url, options) => {
+    signals.push(options.signal);
+    return new Response('[]');
+  };
   try {
     const controller = new AbortController();
     const { signal } = controller;

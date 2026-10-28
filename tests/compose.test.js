@@ -284,7 +284,10 @@ test('loading keeps well-formed records, rebuilt from known fields only', () => 
 
 test('the prompt deck shows every prompt once before repeating, never the current one first', () => {
   let seed = 7;
-  const random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const random = () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
   const ids = COMPOSE_PROMPTS.map((prompt) => prompt.id);
   assert.equal(new Set(ids).size, ids.length, 'ids are unique');
   for (const prompt of COMPOSE_PROMPTS) assert.equal(promptText(prompt.id), prompt.text);

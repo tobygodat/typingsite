@@ -8,7 +8,10 @@ import {
   lessonUnlocked, lessonWords, lessonsComplete, makeupCopy, nextLessonIndex, normalizeLessonProgress, recordLessonRun,
 } from '../src/lessons.js';
 
-const seeded = (seed = 7) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+const seeded = (seed = 7) => () => {
+  seed = (seed * 16807) % 2147483647;
+  return (seed - 1) / 2147483646;
+};
 const listWords = new Set(wordListIds.flatMap((id) => wordList(id)));
 const words = (passage) => passage.text.split(' ');
 

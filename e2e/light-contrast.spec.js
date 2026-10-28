@@ -11,17 +11,29 @@ const rgba = (value) => {
   return [parts[0], parts[1], parts[2], parts[3] ?? 1];
 };
 const over = (top, under, alpha = top[3]) => [0, 1, 2].map((i) => top[i] * alpha + under[i] * (1 - alpha)).concat(1);
-const channel = (v) => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+const channel = (v) => {
+  const s = v / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+};
 const luminance = (c) => 0.2126 * channel(c[0]) + 0.7152 * channel(c[1]) + 0.0722 * channel(c[2]);
-const ratio = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+const ratio = (a, b) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
 
 // Paints `layers` bottom-up (each a computed colour, optionally with an element opacity) and returns the result.
-const stack = (layers) => layers.reduce((under, [value, opacity = 1]) => { const top = rgba(value); return over(top, under, top[3] * opacity); }, [255, 255, 255, 1]);
+const stack = (layers) => layers.reduce((under, [value, opacity = 1]) => {
+  const top = rgba(value);
+  return over(top, under, top[3] * opacity);
+}, [255, 255, 255, 1]);
 
 // The same passage on every run, so the before and after screenshots line up.
 const seedRandom = () => {
   let seed = 20261009;
-  Math.random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  Math.random = () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
 };
 
 const open = async (page, theme) => {

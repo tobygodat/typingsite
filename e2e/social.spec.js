@@ -474,7 +474,10 @@ test('a pressed race control keeps keyboard focus while its request is out, and 
     // The theme follows the emulated scheme through the app's change listener, so wait for it to land.
     const look = () => challenge.evaluate((node) => ({ opacity: getComputedStyle(node).opacity, ring: getComputedStyle(node).outlineColor,
       text: getComputedStyle(document.body).color, theme: document.documentElement.dataset.theme, focusVisible: node.matches(':focus-visible') }));
-    await expect.poll(async () => { const { ring, text, ...rest } = await look(); return { ...rest, ringIsText: ring === text }; })
+    await expect.poll(async () => {
+      const { ring, text, ...rest } = await look();
+      return { ...rest, ringIsText: ring === text };
+    })
       .toEqual({ opacity: '1', ringIsText: true, theme, focusVisible: true });
     const path = process.env.SCREENSHOTS ? `docs/screenshots/social-rematch-flake/challenge-busy-${theme}.png` : testInfo.outputPath(`challenge-busy-${theme}.png`);
     await page.screenshot({ path });
@@ -523,7 +526,10 @@ test('an invitation’s Join race keeps keyboard focus while its join is out, an
   await expect(join).toHaveAttribute('aria-disabled', 'true');
   // A press while it waits does nothing at all: not even a refresh of the invitations.
   await expect(page.locator('#refresh-race-invites')).toBeEnabled();
-  expect(await join.evaluate((node) => { node.click(); return document.getElementById('refresh-race-invites').disabled; })).toBe(false);
+  expect(await join.evaluate((node) => {
+    node.click();
+    return document.getElementById('refresh-race-invites').disabled;
+  })).toBe(false);
   await expect(join).toBeFocused();
   releaseJoin();
   await expect(page.locator('#online-room')).toBeVisible();
@@ -559,7 +565,10 @@ test('while a race request is out, the toast’s and the inbox’s Join wait vis
   await inboxJoin.focus();
   const polls = () => supabase.requests.filter((request) => request.startsWith('POST /rest/v1/rpc/race_action')).length;
   const before = polls();
-  await expect.poll(async () => { await page.evaluate(() => dispatchEvent(new Event('online'))); return polls(); }).toBeGreaterThan(before);
+  await expect.poll(async () => {
+    await page.evaluate(() => dispatchEvent(new Event('online')));
+    return polls();
+  }).toBeGreaterThan(before);
   await expect(inboxJoin).toBeFocused();
   // A click past the dimmed look does nothing, and the inbox stays open on it.
   await inboxJoin.click({ force: true });

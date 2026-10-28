@@ -74,7 +74,10 @@ test('daily goal line and practice calendar render on Progress', async ({ page }
 // toward the low 90s, a few long days past the 10-minute goal, and the last five days all meeting it.
 function seededHistory(now = new Date()) {
   let seed = 7;
-  const random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const random = () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
   const conditions = { mode: 'time', count: null, duration: 60, punctuation: false, quoteLength: null,
     difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
     language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };

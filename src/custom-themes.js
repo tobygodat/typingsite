@@ -53,7 +53,10 @@ export const normalizeHex = (value) => {
 };
 
 const channels = (hex) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
-const linear = (value) => { const s = value / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+const linear = (value) => {
+  const s = value / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+};
 export const luminance = (hex) => {
   const [r, g, b] = channels(hex).map(linear);
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;

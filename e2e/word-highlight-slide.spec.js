@@ -51,7 +51,10 @@ test('slide glides one tint behind the letters, and snaps to a word on the next 
   await expect(page.locator('#word-highlight-slide input:checked')).toHaveValue('false');
   expect(await tinted(page)).toEqual([0]);
   const letters = () => page.locator('#text-display .char').evaluateAll((chars) => chars.slice(0, 60)
-    .map((char) => { const box = char.getBoundingClientRect(); return [box.left, box.top, getComputedStyle(char).color]; }));
+    .map((char) => {
+      const box = char.getBoundingClientRect();
+      return [box.left, box.top, getComputedStyle(char).color];
+    }));
   const before = await letters();
 
   await turnOnSlide(page);

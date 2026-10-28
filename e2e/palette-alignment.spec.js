@@ -23,9 +23,16 @@ function measure() {
 
 function columns() {
   // The ring's geometric edge (stroke centre), the same in every engine: Firefox's client rect includes the stroke.
-  const circleLeft = () => { const svg = document.querySelector('.palette-search svg'); return svg.getBoundingClientRect().left + svg.querySelector('circle').getBBox().x * (svg.getBoundingClientRect().width / svg.viewBox.baseVal.width); };
+  const circleLeft = () => {
+    const svg = document.querySelector('.palette-search svg');
+    return svg.getBoundingClientRect().left + svg.querySelector('circle').getBBox().x * (svg.getBoundingClientRect().width / svg.viewBox.baseVal.width);
+  };
   const rect = (el) => el.getBoundingClientRect();
-  const textLeft = (node) => { const range = document.createRange(); range.selectNodeContents(node); return range.getBoundingClientRect().left; };
+  const textLeft = (node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return range.getBoundingClientRect().left;
+  };
   const all = (selector, edge) => [...document.querySelectorAll(selector)].map(edge);
   return {
     marks: [circleLeft(), ...all('.palette-group', (heading) => textLeft(heading)), ...all('.opt-mark', (mark) => rect(mark).left)],

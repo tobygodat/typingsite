@@ -115,7 +115,10 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
       dialog.close();
       if (restore && returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
     };
-    if (!animate || reducedMotion.matches) { finish(); return; }
+    if (!animate || reducedMotion.matches) {
+      finish();
+      return;
+    }
     dialog.classList.add('is-closing');
     setTimeout(finish, 150);
   }

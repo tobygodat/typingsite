@@ -132,7 +132,10 @@ test('the finger map names each key’s hand and finger to assistive technology,
   await chooseSetting(page, 'keyboard-toggle', true);
   const keyboard = page.locator('#keyboard');
   const key = (letter) => page.locator(`#keyboard .key[data-key="${letter}"]`);
-  const size = (letter) => key(letter).evaluate((node) => { const { width, height } = node.getBoundingClientRect(); return { width, height }; });
+  const size = (letter) => key(letter).evaluate((node) => {
+    const { width, height } = node.getBoundingClientRect();
+    return { width, height };
+  });
   // What assistive technology reads in the keyboard: one line of text, plus the legend when the map is on.
   const spoken = async () => (await keyboard.ariaSnapshot()).replace(/^- text: /, '').split('\n')[0];
   // Off: each key is just its letter, as before.

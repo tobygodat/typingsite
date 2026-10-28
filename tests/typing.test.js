@@ -212,7 +212,10 @@ test('word sessions contain requested number of words and punctuation is optiona
 });
 
 test('numbers mix in only when on, stay seeded, and split condition keys', () => {
-  const seeded = (seed) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const seeded = (seed) => () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
   const plain = makePassage('words', 200, false, seeded(7));
   const mixed = makePassage('words', 200, false, seeded(7), undefined, true);
   assert.doesNotMatch(plain, /\d/);

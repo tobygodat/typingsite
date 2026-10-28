@@ -89,9 +89,18 @@ const failure = (status: number, code: keyof typeof MESSAGES) => reply(status, {
 
 // ── Contrast (WCAG 2), as src/custom-themes.js measures it ───────────────
 const channels = (hex: string) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
-const linear = (value: number) => { const s = value / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
-const luminance = (hex: string) => { const [r, g, b] = channels(hex).map(linear); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
-export const contrast = (a: string, b: string) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+const linear = (value: number) => {
+  const s = value / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+};
+const luminance = (hex: string) => {
+  const [r, g, b] = channels(hex).map(linear);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+export const contrast = (a: string, b: string) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
 const toHex = (rgb: number[]) => `#${rgb.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('')}`;
 const mix = (top: string, under: string, alpha: number) => toHex(channels(top).map((v, i) => v * alpha + channels(under)[i] * (1 - alpha)));
 export const themeMode = (ground: string) => (luminance(ground) > 0.179 ? 'light' : 'dark');

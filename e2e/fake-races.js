@@ -95,7 +95,10 @@ export class FakeRaces {
     this.holds.delete(action);
     const answer = (status, json) => (status === 200 && this.held && this.holding.has(action)
       ? new Promise((release) => this.held.push(release)).then(() => send(status, json)) : send(status, json));
-    const reply = once ? async (status, json) => { await once; return answer(status, json); } : answer;
+    const reply = once ? async (status, json) => {
+      await once;
+      return answer(status, json);
+    } : answer;
     const failure = (message) => reply(400, { message });
     if (action === 'invites') return reply(200, [...this.rooms.values()]
       .filter((room) => room.invitedUser === caller && caller && room.status === 'waiting' && Date.parse(room.expiresAt) > Date.now()
@@ -141,7 +144,10 @@ export class FakeRaces {
     this.snapshot(room, null);
     let player = room.players.find((p) => (caller && p.userId === caller) || (guestToken && p.guestToken === guestToken));
     if (action === 'join') {
-      if (player) { player.lastSeen = Date.now(); return reply(200, { room: this.snapshot(room, player.slot), roomId: id, guestToken: player.guestToken }); }
+      if (player) {
+        player.lastSeen = Date.now();
+        return reply(200, { room: this.snapshot(room, player.slot), roomId: id, guestToken: player.guestToken });
+      }
       if (room.status !== 'waiting') return failure('This race is no longer accepting players.');
       if (room.invitedUser ? room.invitedUser !== caller : room.inviteToken !== data.inviteToken) return failure('This invite is unavailable.');
       if (room.players.length === 2) return failure('This race is full.');

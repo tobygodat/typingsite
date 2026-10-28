@@ -48,7 +48,10 @@ test('code snippets stay inside the typing area at 320px with large text', async
         const area = document.getElementById('typing-wrap').getBoundingClientRect();
         // A space may hang past the edge at a line end, as in prose; letters may not.
         return [...document.querySelectorAll('#text-display .char')].filter((char) => char.textContent !== ' ')
-          .filter((char) => { const box = char.getBoundingClientRect(); return box.left < area.left - 0.5 || box.right > area.right + 0.5; })
+          .filter((char) => {
+            const box = char.getBoundingClientRect();
+            return box.left < area.left - 0.5 || box.right > area.right + 0.5;
+          })
           .map((char) => char.textContent).join('');
       });
       expect(clipped, `${language}: ${await passageText(page)}`).toBe('');

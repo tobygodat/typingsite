@@ -40,7 +40,10 @@ export function greyscale(rgba) {
 }
 
 // WCAG relative luminance of an sRGB colour, and the contrast between two luminances, as the e2e spec measures.
-const channel = (value) => { const s = value / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+const channel = (value) => {
+  const s = value / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+};
 export const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
 export const contrast = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 

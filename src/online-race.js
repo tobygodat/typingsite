@@ -187,7 +187,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     if (busy) return;
     navigate('compete');
     setMode('online');
-    if (room && !terminal(room)) { error('Leave your current race before starting another.'); return; }
+    if (room && !terminal(room)) {
+      error('Leave your current race before starting another.');
+      return;
+    }
     perform(async () => {
       const passage = want ? rematchPassage(conditions) : null;
       const result = await multiplayer.rematchRace(getSession(), from, { want, passage, conditions: passage ? { ...conditions, textId: passage.id } : {} });
@@ -357,8 +360,14 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     changingFriends = true;
     renderBusy();
     error();
-    try { await friendRequests.change(send); return true; }
-    catch (failure) { error(failure.message || 'The race service is unavailable. Try again.'); return false; }
+    try {
+      await friendRequests.change(send);
+      return true;
+    }
+    catch (failure) {
+      error(failure.message || 'The race service is unavailable. Try again.');
+      return false;
+    }
     finally { changingFriends = false; renderBusy(); }
   }
   async function perform(action) {
@@ -367,7 +376,11 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     renderBusy();
     error();
     try { await action(); } catch (failure) { error(failure.message || 'The race service is unavailable. Try again.'); }
-    finally { busy = false; renderBusy(); if (room) renderRoom(); }
+    finally {
+      busy = false;
+      renderBusy();
+      if (room) renderRoom();
+    }
   }
   function resetAttempt() {
     attempt = null;
@@ -688,7 +701,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       if (credentials !== from) return;
       const mine = traces.find((entry) => entry.slot === room.selfSlot)?.trace;
       const theirs = traces.find((entry) => entry.slot !== room.selfSlot)?.trace;
-      if (validTrace(mine) && validTrace(theirs)) { review.show({ text, mine, theirs, name }); return; }
+      if (validTrace(mine) && validTrace(theirs)) {
+        review.show({ text, mine, theirs, name });
+        return;
+      }
       if (read < TRACE_READS) await new Promise((resolve) => { setTimeout(resolve, TRACE_RETRY_MS); });
       if (credentials !== from) return;
     }
@@ -769,7 +785,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     announce(`${name} is on your friends list.`);
   });
   $('online-customize').addEventListener('click', () => {
-    if (customized) { closeCustomize(); return; }
+    if (customized) {
+      closeCustomize();
+      return;
+    }
     buildCustomize();
     customized = raceOptions(practice());
     $('online-options').hidden = false;
@@ -823,7 +842,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     // A new typing font moves every letter.
     relayout: () => fx.relayout(),
     // A live race keeps the Online view; the board waits until it closes.
-    openBoard() { navigate('compete'); if (!room || terminal(room)) setMode('friends'); },
+    openBoard() {
+      navigate('compete');
+      if (!room || terminal(room)) setMode('friends');
+    },
     onViewChange(view) {
       if (view === 'compete') {
         renderHome();

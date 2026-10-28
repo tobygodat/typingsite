@@ -108,7 +108,10 @@ function boardCalls(page) {
 // The summary in the account's own profile row.
 const column = (supabase, user) => supabase.profiles.get(user.id)?.board ?? null;
 // This week's run count in that summary (none yet reads as 0), or null when there is no summary.
-const weekRuns = (supabase, user) => { const board = column(supabase, user); return board ? board.weeks?.[mondayOf()]?.runs ?? 0 : null; };
+const weekRuns = (supabase, user) => {
+  const board = column(supabase, user);
+  return board ? board.weeks?.[mondayOf()]?.runs ?? 0 : null;
+};
 
 function befriend(supabase, owner, friend, name, { fromRace = false } = {}) {
   const list = supabase.races.friends.get(owner.id) || [];

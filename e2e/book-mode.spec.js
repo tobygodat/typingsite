@@ -101,7 +101,10 @@ test('a book page runs with tape mode, the word highlight, the pace caret and so
       resume() { return Promise.resolve(); }
       suspend() { return Promise.resolve(); }
       close() { return Promise.resolve(); }
-      createBuffer(channels, length) { const data = new Float32Array(length); return { getChannelData: () => data }; }
+      createBuffer(channels, length) {
+        const data = new Float32Array(length);
+        return { getChannelData: () => data };
+      }
       createBufferSource() { return node({ start() { window.__clicks += 1; }, stop() {} }); }
       createOscillator() { return node({ frequency: param(), start() {}, stop() {} }); }
       createBiquadFilter() { return node({ frequency: { value: 0 }, Q: { value: 0 } }); }

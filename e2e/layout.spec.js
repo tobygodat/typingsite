@@ -98,7 +98,10 @@ test.describe('narrow run card', () => {
         const style = getComputedStyle(card);
         const box = card.getBoundingClientRect();
         const inner = { left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight) };
-        const rect = (selector) => { const r = document.querySelector(selector).getBoundingClientRect(); return { left: r.left, right: r.right }; };
+        const rect = (selector) => {
+          const r = document.querySelector(selector).getBoundingClientRect();
+          return { left: r.left, right: r.right };
+        };
         const score = document.querySelector('.run-card-score');
         return { page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           overflow: card.scrollWidth - card.clientWidth, score: score.scrollWidth - score.clientWidth,

@@ -257,9 +257,15 @@ for (const [label, viewport] of VIEWPORTS) {
 
 const DARK_THEMES = ['dark', 'terminal', 'midnight', 'nord'];
 const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
-const channel = (v) => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+const channel = (v) => {
+  const s = v / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+};
 const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-const ratio = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+const ratio = (a, b) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
 const over = ([r, g, b, a], under) => [r, g, b].map((value, i) => value * a + under[i] * (1 - a));
 
 // Raised to full height over the brightest image the picture is behind the passage, so wherever it would take the

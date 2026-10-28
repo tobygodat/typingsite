@@ -10,7 +10,10 @@ async function stubAudio(page) {
     const log = { created: 0, closed: 0, state: null, states: [], plays: [], clickGains: [], builtDuring: [] };
     window.__sound = log;
     const node = (extra) => ({ connect(target) { return target; }, disconnect() {}, ...extra });
-    const param = (record) => ({ value: 0, setValueAtTime(value) { record?.(value); return this; }, exponentialRampToValueAtTime() { return this; } });
+    const param = (record) => ({ value: 0, setValueAtTime(value) {
+      record?.(value);
+      return this;
+    }, exponentialRampToValueAtTime() { return this; } });
     class FakeAudioContext {
       constructor() {
         log.created += 1;
@@ -31,8 +34,16 @@ async function stubAudio(page) {
           resolve();
         }));
       }
-      close() { log.closed += 1; this.state = 'closed'; log.state = 'closed'; return Promise.resolve(); }
-      createBuffer(channels, length) { const data = new Float32Array(length); return { getChannelData: () => data }; }
+      close() {
+        log.closed += 1;
+        this.state = 'closed';
+        log.state = 'closed';
+        return Promise.resolve();
+      }
+      createBuffer(channels, length) {
+        const data = new Float32Array(length);
+        return { getChannelData: () => data };
+      }
       createBufferSource() { return node({ buffer: null, start() { log.plays.push('click'); }, stop() {} }); }
       createOscillator() { return node({ type: 'sine', frequency: param(), start() { log.plays.push('tick'); }, stop() {} }); }
       createBiquadFilter() { return node({ type: 'lowpass', frequency: { value: 0 }, Q: { value: 0 } }); }
@@ -50,7 +61,10 @@ const wrongFor = (char) => (char === 'x' ? 'z' : 'x');
 
 // Waits for the one open context that choosing a sound builds, so the next key plays.
 async function soundReady(page) {
-  await expect.poll(async () => { const { created, closed } = await sound(page); return created - closed; }).toBe(1);
+  await expect.poll(async () => {
+    const { created, closed } = await sound(page);
+    return created - closed;
+  }).toBe(1);
 }
 
 // Types the first audible key, which makes no sound itself, and waits for the context it asked for.

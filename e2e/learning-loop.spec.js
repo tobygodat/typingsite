@@ -286,7 +286,10 @@ test('an exhausted quote pool refuses a retest and explains why', async ({ page 
 
   const texts = new Set(pool.map((quote) => quote.text));
   const seen = new Set();
-  const note = async () => { const text = await passageText(page); if (texts.has(text)) seen.add(text); };
+  const note = async () => {
+    const text = await passageText(page);
+    if (texts.has(text)) seen.add(text);
+  };
   await openApp(page);
   await page.locator('#mode-quote').click();
   await note();

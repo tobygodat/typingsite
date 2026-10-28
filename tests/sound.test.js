@@ -33,11 +33,24 @@ function fakeAudio({ state = 'running', failOn = null, autostart = false } = {})
       this.sampleRate = 48000;
       this.destination = node();
     }
-    resume() { log.resumed += 1; return this.later('running'); }
-    suspend() { log.suspended += 1; return this.later('suspended'); }
+    resume() {
+      log.resumed += 1;
+      return this.later('running');
+    }
+    suspend() {
+      log.suspended += 1;
+      return this.later('suspended');
+    }
     later(state) { return settle().then(() => { if (this.state !== 'closed') this.state = state; }); }
-    close() { log.closed += 1; this.state = 'closed'; return Promise.resolve(); }
-    createBuffer(channels, length) { const data = new Float32Array(length); return { getChannelData: () => data }; }
+    close() {
+      log.closed += 1;
+      this.state = 'closed';
+      return Promise.resolve();
+    }
+    createBuffer(channels, length) {
+      const data = new Float32Array(length);
+      return { getChannelData: () => data };
+    }
     createBufferSource() {
       if (failOn === 'play') throw new Error('node limit');
       return node({ buffer: null, start() { log.started.push('click'); }, stop() {} });

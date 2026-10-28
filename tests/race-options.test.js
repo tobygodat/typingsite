@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { RACE_FALLBACK, raceConditions, raceOptions, racePassage } from '../src/race-options.js';
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 
-const seeded = (seed = 1) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+const seeded = (seed = 1) => () => {
+  seed = (seed * 16807) % 2147483647;
+  return (seed - 1) / 2147483646;
+};
 
 test('plain Challenge takes mode, length, punctuation, and for generated text numbers and the word set from practice', () => {
   assert.deepEqual(raceOptions({ mode: 'time', duration: 30, count: 50, punctuation: true, numbers: true, wordList: 'english-1k', quoteLength: 'long' }),

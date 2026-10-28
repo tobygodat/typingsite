@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { makeAdaptive, makePassage } from '../src/typing.js';
 import { wordListIds } from '../src/words.js';
 
-const seeded = (seed) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+const seeded = (seed) => () => {
+  seed = (seed * 16807) % 2147483647;
+  return (seed - 1) / 2147483646;
+};
 // A word as the repeat rule sees it: lowercase, without the marks around it. Numbers and dashes have none.
 const bare = (word) => word.toLowerCase().replace(/^[^a-z]+|[^a-z]+$/g, '');
 const repeats = (text) => text.split(' ').map(bare).filter((word, i, words) => word && (word === words[i - 1] || word === words[i - 2]));
