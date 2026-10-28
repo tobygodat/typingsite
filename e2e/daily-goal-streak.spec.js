@@ -4,8 +4,10 @@ import { test, expect, openApp, chooseWords, completePassage, openView, openProg
 
 // The current streak and today's minutes, in the practice figures under the calendar.
 const streakFigure = (page) => page.locator('#practice-stats .progress-figure').filter({ has: page.locator('dt', { hasText: /^Current streak$/ }) });
+
 async function expectStreak(page, days, today) {
   await expect(streakFigure(page).locator('.figure-value')).toHaveText(`${days} ${days === 1 ? 'day' : 'days'}`);
+
   if (today) await expect(streakFigure(page).locator('.figure-note')).toHaveText(today);
 }
 
@@ -57,6 +59,7 @@ test('daily goal line and practice calendar render on Progress', async ({ page }
   await expect(days.first()).toHaveAttribute('aria-label', /^Sunday, /);
   await page.keyboard.press('ArrowUp');
   await expect(days.first()).toBeFocused();
+
   for (let i = 0; i < 6; i += 1) await page.keyboard.press('ArrowDown');
   await expect(days.nth(6)).toBeFocused();
   await expect(days.nth(6)).toHaveAttribute('aria-label', /^Saturday, /);
@@ -74,19 +77,26 @@ test('daily goal line and practice calendar render on Progress', async ({ page }
 // toward the low 90s, a few long days past the 10-minute goal, and the last five days all meeting it.
 function seededHistory(now = new Date()) {
   let seed = 7;
+
   const random = () => {
     seed = (seed * 16807) % 2147483647;
+
     return (seed - 1) / 2147483646;
   };
+
   const conditions = { mode: 'time', count: null, duration: 60, punctuation: false, quoteLength: null,
     difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
     language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
   const plan = new Map([[0, 11], [1, 12], [2, 10.5], [3, 14], [4, 11], [9, 6], [12, 11], [16, 3]]);
+
   for (let back = 5; back < 70; back += 1) if (!plan.has(back) && random() < 0.42) plan.set(back, 1 + random() * (random() < 0.15 ? 14 : 7));
   const runs = [];
+
   for (const [back, minutes] of [...plan].sort((a, b) => b[0] - a[0])) {
     const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back, 19, 5);
     let left = minutes * 60;
+
     while (left > 15) {
       const seconds = Math.min(left, [30, 45, 60, 60, 90, 120][Math.floor(random() * 6)]);
       const wpm = Math.round(Math.min(95, Math.max(60, 64 + (70 - back) * 0.36 + (random() - 0.5) * 10)));
@@ -98,6 +108,7 @@ function seededHistory(now = new Date()) {
       left -= seconds;
     }
   }
+
   return runs;
 }
 
@@ -123,14 +134,17 @@ test('Progress screenshots with ten weeks of seeded history', async ({ page, sup
   await expect(today).toHaveAttribute('aria-label', /, goal met$/);
   await expect(page.locator('#goal-calendar .goal-day[data-goal="met"]:not([data-level="3"]):not([data-level="4"])')).toHaveCount(0);
   await expect(page.locator('#goal-calendar .goal-day[data-level="3"]:not([data-goal="met"]), #goal-calendar .goal-day[data-level="4"]:not([data-goal="met"])')).toHaveCount(0);
+
   const dot = (cell) => cell.evaluate((node) => {
     const probe = document.body.appendChild(document.createElement('i'));
     probe.style.color = 'var(--accent-ink)';
     const ink = getComputedStyle(probe).color;
     probe.remove();
     const after = getComputedStyle(node, '::after');
+
     return { content: after.content, width: after.width, background: after.backgroundColor, ink };
   });
+
   for (const theme of ['dark', 'light']) {
     await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
     const met = await dot(today);
@@ -138,6 +152,7 @@ test('Progress screenshots with ten weeks of seeded history', async ({ page, sup
     expect(met.width, theme).toBe('4px');
     expect(met.background, theme).toBe(met.ink);
   }
+
   expect((await dot(days.first())).content).toBe('none');
 
   // Focus today from the keyboard (End) so the screenshots show the caption and the focus ring.
@@ -176,11 +191,13 @@ test('the calendar and its longest caption fit a 320px screen', async ({ page, s
   await expect(page.locator('#goal-caption')).toHaveText(/ · goal met$/);
   const width = await page.evaluate(() => document.documentElement.clientWidth);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+
   for (const selector of ['#goal-calendar', '#goal-caption', '#practice-stats']) {
     const box = await page.locator(selector).boundingBox();
     expect(box.x, selector).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width, selector).toBeLessThanOrEqual(width);
   }
+
   // The caption stays on its one reserved line.
   const { height, line } = await page.locator('#goal-caption').evaluate((node) => ({ height: node.getBoundingClientRect().height, line: parseFloat(getComputedStyle(node).lineHeight) }));
   expect(height).toBeLessThanOrEqual(line + 1);
@@ -259,17 +276,21 @@ test('a pre-accounts profile past the summary limit brings its archived practice
   const user = supabase.addUser('legacy-days@stilltype.test');
   const now = new Date();
   const back = (days) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - days, 19, 5);
+
   const conditions = { mode: 'time', count: null, duration: 60, punctuation: false, quoteLength: null,
     difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
     language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
   const record = (id, at, seconds) => ({ id, at: at.toISOString(), kind: 'test', status: 'complete', conditions, textId: id,
     fresh: true, interrupted: false, score: { wpm: 72, accuracy: 96 }, elapsedMs: seconds * 1000, errors: 2, target: null,
     challengeDate: null, patterns: [] });
+
   // Twelve one-minute runs twenty days ago, then the newest 1,000 (fifteen seconds each) over the last ten days.
   const runs = [
     ...Array.from({ length: 12 }, (_, i) => record(`old-${i}`, new Date(back(20).getTime() + i * 90000), 60)),
     ...Array.from({ length: 1000 }, (_, i) => record(`new-${i}`, new Date(back(10 - Math.floor(i / 100)).getTime() + (i % 100) * 30000), 15)),
   ];
+
   await page.addInitScript((profile) => {
     if (sessionStorage.getItem('e2e-seeded')) return;
     sessionStorage.setItem('e2e-seeded', '1');
@@ -300,13 +321,16 @@ test('recorded lessons and composing active time increase the daily practice goa
   await page.clock.install({ time: new Date('2026-10-15T12:00:00Z') });
   await page.clock.pauseAt(new Date('2026-10-15T12:00:01Z'));
   const totals = () => Object.values(supabase.profiles.get(user.id)?.data.practiceDays || {}).reduce((sum, ms) => sum + ms, 0);
+
   const typePaced = async (selector, text, gap) => {
     await page.locator(selector).focus();
+
     for (const letter of text) {
       await page.keyboard.type(letter);
       await page.clock.runFor(gap);
     }
   };
+
   await chooseMore(page, 'open-lessons');
   await page.locator('#lesson-primary').click();
   const lessonText = await page.locator('#accessible-passage').textContent();

@@ -272,6 +272,7 @@ test('the palette opens the custom field, switching mode when needed', async ({ 
     await page.keyboard.press('Enter');
     await expect(field(page)).toBeFocused();
   };
+
   for (const [key, length] of [['Escape', '40'], ['Tab', '50']]) {
     await openFromPalette();
     await field(page).fill('50');
@@ -302,10 +303,13 @@ test('the palette’s custom length after a finished quote draws no quote just t
   await page.locator('#mode-quote').click();
   await chooseQuoteFilter(page, 'length', 'short');
   await completePassage(page);
+
   const seenQuotes = () => page.evaluate(() => {
     const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-profile-v2:'));
+
     return JSON.parse(localStorage.getItem(key)).seenTextIds.filter((id) => !id.startsWith('generated-'));
   });
+
   const before = await seenQuotes();
   expect(before.length).toBeGreaterThan(0);
   await page.keyboard.press('Control+k');
@@ -368,6 +372,7 @@ test('screenshots', async ({ page }, testInfo) => {
   test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1280, height: 800 });
+
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);

@@ -47,6 +47,7 @@ const shotPath = (testInfo, name) => (process.env.SCREENSHOTS
 test('screenshots', async ({ page }, testInfo) => {
   test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.setViewportSize({ width: 1280, height: 800 });
+
   for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);

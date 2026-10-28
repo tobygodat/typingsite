@@ -19,6 +19,7 @@ const PACE_LABELS = { off: 'off', best: 'personal best', average: 'average', las
 const QUOTE_LENGTHS = { 0: 'short', 1: 'medium', 2: 'long', 3: 'long' };
 const FONT_SIZES = [['22', 'small'], ['28', 'medium'], ['36', 'large']];
 const CORRECTION_LABELS = { relaxed: 'free', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
+
 // Monkeytype's three correction settings, strongest first: Stilltype takes one correction rule, so the first
 // that asks for one wins. Failing the run decides its outcome, holding the caret decides how it is typed,
 // and a missing backspace matters least once either of those applies. 'off' and 'normal' ask for none.
@@ -29,6 +30,7 @@ const CORRECTION_SOURCES = [
   // Confidence mode on still allows backspace within a word; Stilltype's no backspace has no such exception.
   ['confidenceMode', { off: null, on: undefined, max: 'no-backspace' }],
 ];
+
 // Monkeytype's names for the layouts Stilltype draws.
 const KEYMAP_LAYOUTS = { qwerty: 'qwerty', dvorak: 'dvorak', colemak: 'colemak', colemak_dh: 'colemak-dh', workman: 'workman' };
 
@@ -39,36 +41,48 @@ const shown = (value) => (Array.isArray(value) ? value.join(', ') : String(value
 
 function luminance(hex) {
   let digits = String(hex).replace(/^#/, '');
+
   if (digits.length === 3 || digits.length === 4) digits = [...digits.slice(0, 3)].map((c) => c + c).join('');
+
   if (!/^[0-9a-f]{6}/i.test(digits)) return null;
+
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(digits.slice(i, i + 2), 16) / 255)
     .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 // Monkeytype's font size is in rem (2 by default); older exports wrote "1", "125", "15", "2", "3", "4".
 function remSize(value) {
   if (typeof value === 'number') return value;
+
   if (typeof value !== 'string' || !/^\d+(\.\d+)?$/.test(value)) return null;
+
   if (/^1\d{1,2}$/.test(value)) return Number(`1.${value.slice(1)}`);
+
   return Number(value);
 }
 
 // Turns pasted text or a file's contents into the export's settings object, or explains why it can't.
 export function parseMonkeytypeExport(text) {
   if (typeof text !== 'string' || !text.trim()) return { error: 'Paste your Monkeytype settings, or choose the file you saved them in.' };
+
   if (text.length > MAX_IMPORT_LENGTH) return { error: 'That’s too long to be a Monkeytype settings export.' };
   let value;
+
   try {
     value = JSON.parse(text.trim());
+
     // A copy that was saved as a JSON string of the export.
     if (typeof value === 'string') value = JSON.parse(value);
   } catch {
     return { error: 'That isn’t valid JSON. In Monkeytype, use Settings → import/export settings → export, then paste all of it.' };
   }
+
   if (!value || typeof value !== 'object' || Array.isArray(value) || !MONKEYTYPE_KEYS.some((key) => key in value)) {
     return { error: 'That doesn’t look like Monkeytype settings. Export them from Monkeytype’s settings page and paste all of it.' };
   }
+
   return { config: value };
 }
 
@@ -79,14 +93,17 @@ export function mapMonkeytypeConfig(config) {
   const mapped = [];
   const skipped = [];
   const has = (key) => Object.hasOwn(config, key) && config[key] !== null && config[key] !== undefined;
+
   const map = (setting, values, value, from) => {
     Object.assign(preferences, values);
     mapped.push({ setting, value, from });
   };
+
   const skip = (setting, from, reason) => skipped.push({ setting, from, reason });
 
   if (has('mode')) {
     const from = `mode: ${shown(config.mode)}`;
+
     if (['time', 'words', 'quote'].includes(config.mode)) map('test mode', { mode: config.mode }, config.mode, from);
     else if (config.mode === 'zen') skip('test mode', from, 'Stilltype has no zen mode.');
     else if (config.mode === 'custom') skip('test mode', from, 'Monkeytype’s export doesn’t include your custom text. Paste it into Custom instead.');
@@ -99,6 +116,7 @@ export function mapMonkeytypeConfig(config) {
     const { key, min, max } = LENGTHS[mode];
     const value = Number(config[mode]);
     const from = `${mode}: ${shown(config[mode])}`;
+
     if (isValidLength(mode, value)) map(setting, { [key]: value }, `${value} ${unit}${isPresetLength(mode, value) ? '' : ' (custom)'}`, from);
     else if (value === 0) skip(setting, from, `Stilltype tests always end: ${mode === 'time' ? `${min} to ${max} seconds` : `${min} to ${max} words`}.`);
     else skip(setting, from, mode === 'time' ? `Stilltype times are whole seconds, ${min} to ${max}.` : `Stilltype word counts are whole numbers, ${min} to ${max}.`);
@@ -111,6 +129,7 @@ export function mapMonkeytypeConfig(config) {
   if (has('language')) {
     const list = WORD_LISTS[config.language];
     const from = `language: ${shown(config.language)}`;
+
     if (list) map('word list', { wordList: list[0] }, list[1], from);
     else skip('word list', from, 'Stilltype has the English top 200, 1k, 5k and 10k lists.');
   }
@@ -120,6 +139,7 @@ export function mapMonkeytypeConfig(config) {
     const lengths = [...new Set([config.quoteLength].flat())];
     const from = `quoteLength: ${shown(config.quoteLength)}`;
     const named = [...new Set(lengths.map((length) => QUOTE_LENGTHS[length]))];
+
     if ([0, 1, 2].every((length) => lengths.includes(length)) || lengths.includes(-1)) map('quote length', { quoteLength: 'any' }, 'any', from);
     else if (named.length === 1 && named[0]) map('quote length', { quoteLength: named[0] }, lengths.includes(3) ? 'long (Stilltype’s longest)' : named[0], from);
     else skip('quote length', from, 'Stilltype picks one quote length, or any.');
@@ -128,18 +148,23 @@ export function mapMonkeytypeConfig(config) {
   // Correction: the strongest rule asked for (CORRECTION_SOURCES); free when every one present is off.
   const sources = CORRECTION_SOURCES.filter(([key]) => has(key))
     .map(([key, policies]) => ({ key, policy: Object.hasOwn(policies, config[key]) ? policies[config[key]] : undefined, from: `${key}: ${shown(config[key])}` }));
+
   const chosen = sources.find((source) => source.policy);
+
   for (const source of sources) {
     if (source === chosen || source.policy === null) continue;
+
     if (source.key === 'confidenceMode' && config.confidenceMode === 'on') skip('correction', source.from, 'Stilltype’s no backspace blocks backspace everywhere; confidence mode on still allows it within a word.');
     else if (source.policy === undefined) skip('correction', source.from, 'No matching value.');
     else skip('correction', source.from, `Stilltype takes one correction rule; ${chosen.from} came first.`);
   }
+
   if (chosen) {
     const approximate = chosen.key === 'stopOnError' && config.stopOnError === 'word' ? ' (Stilltype stops at the letter, not the word)' : '';
     map('correction', { correction: chosen.policy }, CORRECTION_LABELS[chosen.policy] + approximate, chosen.from);
   } else {
     const off = sources.filter((source) => source.policy === null);
+
     if (off.length) map('correction', { correction: 'relaxed' }, CORRECTION_LABELS.relaxed, off.map((source) => source.from).join(', '));
   }
 
@@ -154,13 +179,16 @@ export function mapMonkeytypeConfig(config) {
     ['minWpm', 'minWpmCustomSpeed', 'minWpm', 'minimum speed', MIN_WPM_OPTIONS, ' wpm'],
   ]) {
     if (!has(mode)) continue;
+
     if (config[mode] === 'off') {
       map(setting, { [preference]: 0 }, 'off', `${mode}: off`);
       continue;
     }
+
     const from = config[mode] === 'custom' ? `${mode}: custom, ${custom}: ${shown(config[custom])}` : `${mode}: ${shown(config[mode])}`;
     const wanted = config[mode] === 'custom' && has(custom) ? Number(config[custom]) : NaN;
     const option = options.filter((value) => value && value <= wanted).at(-1);
+
     if (!Number.isFinite(wanted) || wanted <= 0) skip(setting, from, 'No matching value.');
     else if (!option) skip(setting, from, `Stilltype’s lowest minimum is ${options[1]}${unit}.`);
     else map(setting, { [preference]: option }, option === wanted ? `${option}${unit}` : `${option}${unit} (rounded down from ${wanted}${unit})`, from);
@@ -168,6 +196,7 @@ export function mapMonkeytypeConfig(config) {
 
   if (has('repeatQuotes')) {
     const from = `repeatQuotes: ${shown(config.repeatQuotes)}`;
+
     if (config.repeatQuotes === 'off' || config.repeatQuotes === 'typing') map('repeat quotes', { repeatQuotes: config.repeatQuotes === 'typing' }, config.repeatQuotes === 'typing' ? 'on' : 'off', from);
     else skip('repeat quotes', from, 'No matching value.');
   }
@@ -177,9 +206,11 @@ export function mapMonkeytypeConfig(config) {
   if (has('keymapLayout') && config.keymapLayout !== 'overrideSync') {
     const layout = KEYMAP_LAYOUTS[config.keymapLayout];
     const from = `keymapLayout: ${shown(config.keymapLayout)}`;
+
     if (layout) map('keyboard layout', { layout }, layout, from);
     else skip('keyboard layout', from, 'Stilltype draws qwerty, dvorak, colemak, colemak-dh and workman.');
   }
+
   if (has('layout') && !['default', 'qwerty'].includes(config.layout)) {
     skip('keyboard layout', `layout: ${shown(config.layout)}`, 'Stilltype doesn’t remap keys. Switch layouts in your operating system instead.');
   }
@@ -187,6 +218,7 @@ export function mapMonkeytypeConfig(config) {
   if (has('paceCaret')) {
     const pace = PACE[config.paceCaret];
     const from = `paceCaret: ${shown(config.paceCaret)}`;
+
     if (pace) map('pace caret', { paceCaret: pace }, PACE_LABELS[pace], from);
     else skip('pace caret', from, 'Stilltype paces against your best, average, last run or a set speed.');
   }
@@ -194,6 +226,7 @@ export function mapMonkeytypeConfig(config) {
   if (has('paceCaretCustomSpeed')) {
     const speed = Number(config.paceCaretCustomSpeed);
     const from = `paceCaretCustomSpeed: ${shown(config.paceCaretCustomSpeed)}`;
+
     if (Number.isFinite(speed) && speed > 0) {
       const wpm = clampPace(speed);
       map('custom pace', { paceWpm: wpm }, wpm === Math.round(speed) ? `${wpm} wpm` : `${wpm} wpm (Stilltype allows 10–300)`, from);
@@ -203,6 +236,7 @@ export function mapMonkeytypeConfig(config) {
   // Both keep every speed in wpm and only show it in this unit, so the numbers above need no conversion.
   if (has('typingSpeedUnit')) {
     const from = `typingSpeedUnit: ${shown(config.typingSpeedUnit)}`;
+
     if (SPEED_UNITS.includes(config.typingSpeedUnit)) map('speed unit', { speedUnit: config.typingSpeedUnit }, config.typingSpeedUnit, from);
     else skip('speed unit', from, 'Stilltype shows wpm or cpm.');
   }
@@ -210,6 +244,7 @@ export function mapMonkeytypeConfig(config) {
   // Live speed and accuracy are one setting here; Monkeytype has one for each.
   const live = [['liveSpeedStyle', (v) => v !== 'off'], ['liveAccStyle', (v) => v !== 'off'], ['showLiveWpm', (v) => v === true], ['showLiveAcc', (v) => v === true]]
     .filter(([key]) => has(key));
+
   if (live.length) {
     const on = live.some(([key, isOn]) => isOn(config[key]));
     map('live wpm and accuracy', { liveMetrics: on }, on ? 'on' : 'off', live.map(([key]) => `${key}: ${shown(config[key])}`).join(', '));
@@ -223,6 +258,7 @@ export function mapMonkeytypeConfig(config) {
   if (has('fontSize')) {
     const rem = remSize(config.fontSize);
     const from = `fontSize: ${shown(config.fontSize)}`;
+
     if (rem && rem > 0) {
       const [size, name] = rem < 1.75 ? FONT_SIZES[0] : rem < 2.5 ? FONT_SIZES[1] : FONT_SIZES[2];
       map('text size', { fontSize: size }, name, from);
@@ -232,6 +268,7 @@ export function mapMonkeytypeConfig(config) {
   // Monkeytype's letter tape scrolls with every key; Stilltype's tape only steps by whole words.
   if (has('tapeMode')) {
     const from = `tapeMode: ${shown(config.tapeMode)}`;
+
     if (config.tapeMode === 'off') map('one-line tape', { tape: false }, 'off', from);
     else if (config.tapeMode === 'word') map('one-line tape', { tape: true }, 'on', from);
     else if (config.tapeMode === 'letter') map('one-line tape', { tape: true }, 'on (steps by whole words)', from);
@@ -244,14 +281,19 @@ export function mapMonkeytypeConfig(config) {
   const soundOn = (key) => {
     if (!has(key)) return null;
     const value = config[key];
+
     if (value === 'off' || value === false) return false;
+
     if (value === true || (typeof value === 'string' && /^\d+$/.test(value))) return true;
     skip('sound', `${key}: ${shown(value)}`, 'Not a sound.');
+
     return null;
   };
+
   const click = soundOn('playSoundOnClick');
   const error = soundOn('playSoundOnError');
   const soundFrom = [['playSoundOnClick', click], ['playSoundOnError', error]].filter(([, on]) => on !== null).map(([key]) => `${key}: ${shown(config[key])}`).join(', ');
+
   if (click) map('sound', { sound: error ? 'clicks-errors' : 'clicks' }, SOUND_LABELS[error ? 'clicks-errors' : 'clicks'], soundFrom);
   else if (error) skip('sound', soundFrom, 'Stilltype’s error tick plays only with key clicks.');
   else if (click === false) map('sound', { sound: 'off' }, SOUND_LABELS.off, soundFrom);
@@ -259,6 +301,7 @@ export function mapMonkeytypeConfig(config) {
   if (has('soundVolume')) {
     const level = Number(config.soundVolume);
     const from = `soundVolume: ${shown(config.soundVolume)}`;
+
     // A 0–1 fraction, shown on Stilltype's slider in steps of 5%.
     if (Number.isFinite(level) && level >= 0 && level <= 1) {
       const volume = Math.round(level * 20) * 5;
@@ -281,8 +324,11 @@ export function mapMonkeytypeConfig(config) {
 
 export function readMonkeytypeSettings(text) {
   const parsed = parseMonkeytypeExport(text);
+
   if (parsed.error) return parsed;
   const result = mapMonkeytypeConfig(parsed.config);
+
   if (!result.mapped.length) return { ...result, error: 'None of these Monkeytype settings have a Stilltype counterpart, so nothing changed.' };
+
   return result;
 }

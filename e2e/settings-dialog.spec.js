@@ -5,6 +5,7 @@ const dialog = (page) => page.getByRole('dialog', { name: 'Settings', exact: tru
 test('native modal traps focus, keeps the page inert, and restores the opener on every close action', async ({ page }) => {
   await openApp(page);
   const trigger = page.getByRole('button', { name: 'Settings', exact: true });
+
   for (const close of ['Escape', 'Close settings', 'Done']) {
     await trigger.click();
     await expect(dialog(page)).toBeVisible();
@@ -12,10 +13,12 @@ test('native modal traps focus, keeps the page inert, and restores the opener on
     await page.locator('#typing-input').focus();
     await expect(page.locator('#typing-input')).not.toBeFocused();
     await page.locator('#settings-done').focus();
+
     for (let step = 0; step < 16; step += 1) {
       await page.keyboard.press('Tab');
       expect(await dialog(page).evaluate((node) => node.contains(document.activeElement) || document.activeElement === document.body)).toBe(true);
     }
+
     if (close === 'Escape') await page.keyboard.press(close);
     else await dialog(page).getByRole('button', { name: close, exact: true }).click();
     await expect(dialog(page)).toBeHidden();
@@ -30,6 +33,7 @@ test('categories preserve shortcut edits and Escape cancels recording before clo
   await chooseSetting(page, 'focus-toggle', true);
   await openSettings(page, 'shortcuts');
   await page.locator('#keybinding-restart').fill('F2');
+
   for (const category of ['appearance', 'practice', 'keyboard', 'sound', 'shortcuts']) {
     await openSettings(page, category);
     await expect(page.locator(`#settings-${category}`)).toBeVisible();
@@ -37,6 +41,7 @@ test('categories preserve shortcut edits and Escape cancels recording before clo
     await expect(page.locator(`[data-settings-category="${category}"]`)).toHaveCSS('color', 'rgb(143, 209, 138)');
     await expect(page.locator('#settings-dialog .settings-category:visible')).toHaveCount(1);
   }
+
   await chooseSetting(page, 'theme-select', 'light');
   await openSettings(page, 'shortcuts');
   await expect(page.locator('#keybinding-restart')).toHaveValue('F2');
@@ -55,9 +60,11 @@ test('categories preserve shortcut edits and Escape cancels recording before clo
 test('Escape dismisses Settings before its commands binding and cancels recording first', async ({ page }) => {
   await openApp(page);
   await openSettings(page, 'shortcuts');
+
   for (const [action, value] of Object.entries({ restart: 'F2', commands: 'Escape', exitFocus: 'F8' })) {
     await page.locator(`#keybinding-${action}`).fill(value);
   }
+
   await page.locator('#keybinding-restart').press('Enter');
   await expect(page.locator('#keybindings-form [aria-invalid="true"]')).toHaveCount(0);
   await page.getByRole('button', { name: 'Record commands binding', exact: true }).click();
@@ -124,6 +131,7 @@ for (const [key, id, remote, current, query] of [
       const user = supabase.addUser(`${key}-${source}@stilltype.test`);
       await openApp(page);
       await signInWithEmail(page, user.email);
+
       if (key === 'repeatQuotes') await page.locator('#mode-quote').click();
       else await chooseWords(page);
       const text = await passageText(page);
@@ -141,6 +149,7 @@ for (const [key, id, remote, current, query] of [
       await openSettings(page, 'practice');
       await expect(page.locator(`#${id} input:checked`)).toHaveValue(String(current));
       await expect(page.locator('#typing-input')).toHaveValue(typed);
+
       if (source === 'radio') await chooseSetting(page, id, current);
       else {
         await closeSettings(page);
@@ -148,6 +157,7 @@ for (const [key, id, remote, current, query] of [
         await page.locator('#palette-input').fill(query);
         await page.locator('#palette-list [role="option"]', { hasText: query }).click();
       }
+
       await expect.poll(() => supabase.profileFor(user.email)?.preferences?.[key]).toBe(current);
       expect(supabase.profileFor(user.email).preferencesAt[key] > remoteStamp).toBe(true);
       await expect(page.locator('#typing-input')).toHaveValue(typed);
@@ -232,15 +242,19 @@ for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'],
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
     await openSettings(page, 'appearance');
+
     if (width === 1440) {
       const bounds = await dialog(page).boundingBox();
       expect(bounds.width).toBe(1080);
       expect(bounds.height).toBe(704);
       expect(await page.locator('.settings-nav').evaluate((node) => node.getBoundingClientRect().width)).toBe(216);
     }
+
     await page.screenshot({ path: testInfo.outputPath(`settings-${width}-${height}-${theme}.png`) });
+
     for (const category of ['appearance', 'practice', 'keyboard', 'sound', 'shortcuts']) {
       await openSettings(page, category);
+
       if (width === 1440 && category === 'practice') {
         const options = await page.locator('#correction-select .setting-option').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().y));
         expect(options).toHaveLength(5);
@@ -249,8 +263,10 @@ for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'],
         const group = await page.locator('#correction-select').boundingBox();
         expect(label.y + label.height).toBeLessThanOrEqual(group.y);
       }
+
       const footer = await page.locator('.settings-footer').boundingBox();
       const controls = page.locator(`#settings-${category} input, #settings-${category} button`);
+
       for (const control of await controls.all()) {
         if (!(await control.isVisible())) continue;
         await control.scrollIntoViewIfNeeded();
@@ -259,9 +275,11 @@ for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'],
         expect(bounds.x).toBeGreaterThanOrEqual(0);
         expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
       }
+
       expect(await page.locator('.settings-footer').boundingBox()).toEqual(footer);
       await expect(page.locator('#settings-done')).toBeInViewport();
     }
+
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
     await closeSettings(page);
   });

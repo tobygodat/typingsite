@@ -9,26 +9,34 @@ const USERS = { 'token-ada': 'user-ada' };
 // commitsThenFails: deleteUser removes the user and then 'throws' or 'errors', as when its reply is lost.
 function fakeAuth({ deleteError = null, lookupThrows = false, deleteThrows = false, commitsThenFails = null, recheckThrows = false } = {}) {
   const deleted = [];
+
   return {
     deleted,
     async getUser(jwt) {
       if (lookupThrows) throw new Error('auth unreachable');
       const id = USERS[jwt];
+
       return id ? { data: { user: { id } }, error: null } : { data: { user: null }, error: { message: 'invalid JWT' } };
     },
     admin: {
       async deleteUser(id, shouldSoftDelete) {
         if (commitsThenFails) {
           deleted.push({ id, shouldSoftDelete });
+
           if (commitsThenFails === 'throws') throw new Error('connection reset');
+
           return { data: { user: null }, error: { status: 504, message: 'upstream timeout' } };
         }
+
         if (deleteThrows) throw new Error('auth unreachable');
+
         if (!deleteError) deleted.push({ id, shouldSoftDelete });
+
         return { data: { user: null }, error: deleteError };
       },
       async getUserById(id) {
         if (recheckThrows) throw new Error('auth unreachable');
+
         return deleted.some((entry) => entry.id === id)
           ? { data: { user: null }, error: { status: 404, code: 'user_not_found', message: 'User not found' } }
           : { data: { user: { id } }, error: null };
@@ -82,6 +90,7 @@ test('a delete that committed before failing on the way back is reported as done
     assert.equal(response.status, 200, commitsThenFails);
     assert.deepEqual(await response.json(), { deleted: true });
   }
+
   // If the second look fails too, the function can't tell, and says it failed.
   const response = await call(fakeAuth({ commitsThenFails: 'throws', recheckThrows: true }), { authorization: 'Bearer token-ada' });
   assert.equal(response.status, 500);
@@ -91,9 +100,11 @@ test('a delete that committed before failing on the way back is reported as done
 test('browsers get CORS headers on every reply, including the preflight and errors', async () => {
   const preflight = await call(fakeAuth(), { method: 'OPTIONS' });
   assert.equal(preflight.status, 204);
+
   for (const response of [preflight, await call(fakeAuth()), await call(fakeAuth(), { method: 'GET' }), await call(null, { authorization: 'Bearer token-ada' })]) {
     for (const [name, value] of Object.entries(CORS_HEADERS)) assert.equal(response.headers.get(name), value);
   }
+
   assert.match(CORS_HEADERS['Access-Control-Allow-Headers'], /\bapikey\b/);
   assert.match(CORS_HEADERS['Access-Control-Allow-Headers'], /\bauthorization\b/);
 });

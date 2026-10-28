@@ -12,12 +12,14 @@ const $ = (id) => document.getElementById(id);
 
 function nameTag(caret, name) {
   let tag = caret.querySelector('.caret-tag');
+
   if (!tag) {
     tag = document.createElement('span');
     tag.className = 'caret-tag';
     tag.append(document.createElement('span'));
     caret.append(tag);
   }
+
   tag.firstElementChild.textContent = name;
 }
 
@@ -50,21 +52,26 @@ export function createRaceReview({ renderText }) {
     const [mine, theirs] = race.cursors.map((typedAt) => typedAt(position).length);
     const leader = Math.max(mine, theirs);
     textView.ensureForward(leader);
+
     for (let index = Math.min(lit, leader); index < Math.max(lit, leader); index += 1) {
       textView.characters[index].className = index < leader ? 'char correct' : 'char';
     }
+
     lit = leader;
     fx.update(mine, 'correct', false);
     fx.ghost.seek(position);
     const label = playing ? 'Pause' : 'Play';
+
     if (toggle.textContent !== label) toggle.textContent = label;
   }
 
   function tick(now) {
     position = Math.min(race.length, position + (now - lastNow) * speed);
     lastNow = now;
+
     if (position >= race.length) playing = false;
     draw();
+
     if (playing) frame = requestAnimationFrame(tick);
   }
 
@@ -80,6 +87,7 @@ export function createRaceReview({ renderText }) {
   function pause() {
     playing = false;
     cancelAnimationFrame(frame);
+
     if (race && view === 'replay') draw();
   }
 
@@ -95,17 +103,22 @@ export function createRaceReview({ renderText }) {
 
   function select(next) {
     view = next;
+
     for (const [name, button] of Object.entries(views)) button.setAttribute('aria-pressed', String(name === next));
     graph.hidden = next !== 'graph';
     replay.hidden = next !== 'replay';
+
     if (next === 'graph') {
       pause();
       drawGraph(true);
+
       return;
     }
+
     mount();
     // Reduced motion: the finished frame, still; Play stays an explicit choice, as in the solo replay.
     position = reducedMotion.matches ? race.length : 0;
+
     if (reducedMotion.matches) pause();
     else play();
   }

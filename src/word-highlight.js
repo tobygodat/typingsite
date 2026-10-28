@@ -14,10 +14,13 @@ export function normalizeWordHighlight(value) {
 export function wordIndexes(text) {
   const indexes = new Array(text.length);
   let word = 0;
+
   for (let position = 0; position < text.length; position += 1) {
     indexes[position] = word;
+
     if (text[position] === ' ') word += 1;
   }
+
   return indexes;
 }
 
@@ -26,5 +29,6 @@ export function wordIndexes(text) {
 export function wordsAt(indexes, wordCount, position) {
   if (!Number.isInteger(position) || position < 0 || position >= indexes.length) return { current: -1, next: -1 };
   const current = indexes[position];
+
   return { current, next: current + 1 < wordCount ? current + 1 : -1 };
 }

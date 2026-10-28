@@ -11,12 +11,15 @@ test.setTimeout(120000);
 
 const DAILY = { mode: 'quote', duration: null, count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any', wordList: null,
   inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
 const VERSION = dailyVersion(conditionKey(DAILY));
+
 const SHAPES = [
   [{ mode: 'time', duration: 60, count: null, wordList: '200' }, 60000],
   [{ mode: 'time', duration: 30, count: null, wordList: '200' }, 30000],
   [{ mode: 'words', duration: null, count: 25, wordList: '200' }, 19400],
 ];
+
 const MINUTE = 60000;
 
 // Puts an element `offset` pixels below the top of the viewport, clear of the sticky dock.
@@ -34,13 +37,16 @@ async function shot(page, testInfo, name, options = {}) {
 function practiceThisWeek(count, extra = [], shapes = SHAPES) {
   const now = Date.now();
   const monday = Date.parse(`${mondayOf()}T00:00:00Z`);
+
   const runs = Array.from({ length: count }, (_, i) => {
     const [shape, elapsedMs] = shapes[i % shapes.length];
+
     return { id: `seed-${i}`, at: new Date(Math.max(monday + 60000, now - (count - i) * 41 * 60000)).toISOString(),
       kind: 'test', status: 'complete', interrupted: false, fresh: true, textId: `seed-text-${i}`,
       conditions: { ...DAILY, ...shape, punctuation: false, quoteLength: null, difficulty: null },
       score: { wpm: 66 + ((i * 7) % 19), accuracy: 94 + (i % 5) }, elapsedMs, errors: i % 3, target: null, challengeDate: null, patterns: [] };
   });
+
   return [...runs, ...extra];
 }
 
@@ -57,15 +63,19 @@ function seedProfile(supabase, user, runs, { updatedAt = new Date(Date.now() - 3
 // daily under its own date and this practice under its own week, as a summary keys them.
 function shares(supabase, user, { daily = null, week = null } = {}) {
   const at = new Date(Date.now() - 3600000).toISOString();
+
   const keyed = (part, key) => {
     if (!part) return {};
     const { [key]: period, ...numbers } = part;
+
     return { [period]: numbers };
   };
+
   supabase.profiles.set(user.id, { data: profileData([], at), updated_at: at,
     board: { v: BOARD_V, at, days: keyed(daily, 'date'), weeks: keyed(week, 'start') } });
   supabase.board.joined(user.id);
 }
+
 const publish = (supabase, user, daily, seconds, runs) => shares(supabase, user, {
   daily: daily && { date: utcDay(), version: VERSION, ...daily }, week: { start: mondayOf(), seconds, runs } });
 
@@ -89,27 +99,34 @@ async function sharing(page, supabase, user, { runs = [], ...options } = {}) {
 
 // The board's friends_board requests so far.
 const boardRequests = (supabase) => supabase.requests.filter((request) => request === 'POST /rest/v1/rpc/friends_board').length;
+
 // The board actions one page sends from now on.
 function boardActions(page) {
   const actions = [];
   page.on('request', (request) => {
     if (request.url().endsWith('/rest/v1/rpc/friends_board')) actions.push(request.postDataJSON()?.p_action);
   });
+
   return actions;
 }
+
 // The board requests one page sends from now on, each as its action and what it carries.
 function boardCalls(page) {
   const calls = [];
   page.on('request', (request) => {
     if (request.url().endsWith('/rest/v1/rpc/friends_board')) calls.push({ action: request.postDataJSON()?.p_action, data: request.postDataJSON()?.p_data });
   });
+
   return calls;
 }
+
 // The summary in the account's own profile row.
 const column = (supabase, user) => supabase.profiles.get(user.id)?.board ?? null;
+
 // This week's run count in that summary (none yet reads as 0), or null when there is no summary.
 const weekRuns = (supabase, user) => {
   const board = column(supabase, user);
+
   return board ? board.weeks?.[mondayOf()]?.runs ?? 0 : null;
 };
 
@@ -141,6 +158,7 @@ function circle(supabase) {
   publish(supabase, sam, null, 754, 12);
   publish(supabase, ola, { wpm: 105, accuracy: 99, attempts: 1 }, 3000, 40);
   publish(supabase, kai, { wpm: 99, accuracy: 97, attempts: 1 }, 2900, 31);
+
   return { ada };
 }
 
@@ -151,6 +169,7 @@ async function openBoard(page) {
   await openView(page, 'Challenge');
   await page.locator('#challenge-friends').click();
 }
+
 // Refresh does nothing while a read is on its way (a quiet one after a save, say), so it waits for that.
 async function refreshBoard(page) {
   await expect(page.locator('#refresh-friends-board')).not.toHaveAttribute('aria-disabled', 'true');
@@ -210,10 +229,12 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   // Her own profile row carries her summary whether or not she shares; only she can read it.
   await expect.poll(() => weekRuns(supabase, ada)).toBe(24);
   expect(supabase.board.members.has(ada.id)).toBe(false);
+
   if (process.env.SCREENSHOTS) {
     await scrollBelow(page, '#friends-board-heading', 120);
     await shot(page, testInfo, 'board-off-light');
   }
+
   // Turning it on makes her a member, sending no numbers, and the friends who share appear.
   const actions = boardActions(page);
   await page.locator('#share-board').check();
@@ -233,18 +254,21 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   const slip = (at) => (passage[at] === 'q' ? 'w' : 'q');
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await page.locator('#typing-input').focus();
+
   for (const [from, to] of [[0, 60], [60, 150], [150, passage.length]]) {
     if (from) {
       await page.keyboard.type(slip(from));
       await page.keyboard.press('Backspace');
       await page.clock.runFor(240);
     }
+
     for (let at = from; at < to; at += 10) {
       const chunk = passage.slice(at, Math.min(at + 10, to));
       await page.keyboard.type(chunk);
       await page.clock.runFor(120 * chunk.length);
     }
   }
+
   await page.clock.resume();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   const wpm = Number(await page.locator('#result-wpm').textContent());
@@ -295,6 +319,7 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   // Lin, who shares, sees Ada under her own name for her, with the result Ada's row now holds.
   const context = await page.context().browser().newContext();
   const lin = await context.newPage();
+
   try {
     await supabase.attach(lin);
     await openApp(lin);
@@ -390,6 +415,7 @@ test('a save without the summary (an older build) hides it until a load repairs 
     const at = new Date(Date.parse(supabase.profiles.get(ada.id).updated_at) + 1000).toISOString();
     Object.assign(supabase.profiles.get(ada.id), { data: profileData(runs, at, options), updated_at: at });
   };
+
   saveElsewhere(practiceThisWeek(7));
   await refreshBoard(page);
   await expect(page.locator('#friends-board-status')).toHaveText('Updated.');
@@ -402,6 +428,7 @@ test('a save without the summary (an older build) hides it until a load repairs 
   let held = false;
   await page.route(/\/rest\/v1\/profiles\?/, async (route) => {
     if (route.request().method() === 'PATCH') { held = true; await gate; }
+
     await route.fallback();
   });
   await page.reload();
@@ -418,12 +445,14 @@ test('a save without the summary (an older build) hides it until a load repairs 
   // (the profile sync merge adds what an older build's row lacks); that write carries its own summary.
   expect(supabase.profileWrites.every((write) => !write.board || Date.parse(write.board.at) !== Date.parse(sevenAt))).toBe(true);
   const row = supabase.profiles.get(ada.id);
+
   if (Date.parse(row.board?.at) === Date.parse(row.updated_at)) expect(weekRuns(supabase, ada)).toBe(8);
   else {
     expect(column(supabase, ada)).toEqual(stale);
     await openBoard(page);
     await expect(page.locator('#board-week')).toContainText('You — nothing yet this week');
   }
+
   // A load that reads the eight-run row shows it, repaired if it wasn't already.
   await page.reload();
   await expect.poll(() => weekRuns(supabase, ada)).toBe(8);
@@ -454,10 +483,12 @@ test('a board left open reads the new day after 00:00 UTC, and the new week on M
   const ada = supabase.addUser('ada@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');
   const mara = supabase.addUser('mara@stilltype.test');
+
   for (const [friend, name] of [[lin, 'Lin'], [mara, 'Mara']]) {
     befriend(supabase, ada, friend, name);
     befriend(supabase, friend, ada, 'Ada');
   }
+
   const result = (day, wpm) => ({ date: day, version: dailyVersion(conditionKey(DAILY), new Date(`${day}T00:00:00Z`)), wpm, accuracy: 97, attempts: 1 });
   const lastWeek = (seconds, runs) => ({ start: '2026-09-28', seconds, runs });
   shares(supabase, lin, { daily: result('2026-10-03', 78), week: lastWeek(2460, 37) });
@@ -537,6 +568,7 @@ test('F1: a stale device saving after a clear brings no cleared run back, a cloc
   // A correctly timed device of Ada's loads that history, and stays open with it.
   const context = await browser.newContext();
   const stale = await context.newPage();
+
   try {
     await supabase.attach(stale);
     await openApp(stale);
@@ -618,6 +650,7 @@ test('F3: a late board reply, around another device’s clear, still leads to th
   // Meanwhile Ada's other device clears its history and makes one run.
   const context = await browser.newContext();
   const other = await context.newPage();
+
   try {
     await supabase.attach(other);
     await openApp(other);
@@ -788,6 +821,7 @@ test('an opt-out still on its way is not undone by another device, and lands whe
   // the board says; but it shares nothing itself, and turns nothing back on for the account.
   const context = await browser.newContext();
   const other = await context.newPage();
+
   try {
     await supabase.attach(other);
     await openApp(other);
@@ -832,6 +866,7 @@ test('a share held on its way can’t undo an opt-out another device made meanwh
   const laptop = await laptopContext.newPage();
   const linContext = await browser.newContext();
   const linPage = await linContext.newPage();
+
   try {
     await supabase.attach(laptop);
     await openApp(laptop);
@@ -889,6 +924,7 @@ test('a share waiting behind this device’s own opt-out counts only that opt-ou
   await expect(page.locator('#friends-board-lists')).toBeVisible();
   const laptopContext = await browser.newContext();
   const laptop = await laptopContext.newPage();
+
   try {
     await supabase.attach(laptop);
     await openApp(laptop);
@@ -930,16 +966,19 @@ test('sharing turned off in one tab and back on in another shares at the first t
   await openBoard(second);
   await expect(second.locator('#share-board')).toBeChecked();
   const actions = boardActions(page);
+
   for (const fromPalette of [false, true]) {
     if (fromPalette) await openView(page, 'Practice');
     // Off in the second tab, confirmed; the first tab's switch follows at once.
     await second.locator('#share-board').uncheck();
     await expect(second.locator('#friends-board-status')).toHaveText('Your row is off the board.');
+
     if (!fromPalette) await expect(page.locator('#share-board')).not.toBeChecked();
     expect(supabase.board.members.has(ada.id)).toBe(false);
     // On again in the first tab, having seen it off there: it shares with the version the second tab
     // read, so the first try counts. From the palette the board opens too, and the switch overtakes its read.
     const mark = actions.length;
+
     if (fromPalette) {
       await page.bringToFront();
       await page.keyboard.press('Control+k');
@@ -949,6 +988,7 @@ test('sharing turned off in one tab and back on in another shares at the first t
     } else {
       await page.locator('#share-board').check();
     }
+
     await expect(page.locator('#friends-board-lists')).toBeVisible();
     await expect(page.locator('#share-board')).toBeChecked();
     await expect(page.locator('#friends-board-status')).toHaveText('');
@@ -1015,6 +1055,7 @@ test('turning sharing off takes your row off the board at once, and a device tha
   const linPage = await context.newPage();
   const laptopContext = await browser.newContext();
   const laptop = await laptopContext.newPage();
+
   try {
     await supabase.attach(laptop);
     await remembers(laptop, ada);
@@ -1163,9 +1204,11 @@ test('a device whose clock is behind, saving just after 00:00 UTC, still shows t
   // Monday 00:05 UTC: Ada's phone, whose clock is right, played Monday's daily and saved it.
   const monday = '2026-10-05';
   const day = dailyPassage(new Date(`${monday}T00:05:00Z`));
+
   const played = { id: 'phone-daily', at: `${monday}T00:04:00.000Z`, kind: 'daily', status: 'complete', interrupted: false, fresh: true,
     textId: day.sourceTextId, conditions: DAILY, score: { wpm: 82, accuracy: 97 }, elapsedMs: 41200, errors: 1, target: null,
     challengeDate: monday, firstDailyAttempt: true, patterns: [] };
+
   await sharing(page, supabase, ada, { runs: [played], updatedAt: `${monday}T00:05:00.000Z` });
   // At 00:08 on the service she opens her laptop, whose clock is ten minutes slow: still Sunday there.
   supabase.board.now = () => new Date(`${monday}T00:08:00Z`);
@@ -1205,12 +1248,14 @@ test('a board that can’t be read says so once, and the checks after it retry w
     new MutationObserver((records) => { window.statusChanges += records.length; })
       .observe(document.getElementById('friends-board-status'), { childList: true, characterData: true, subtree: true });
   });
+
   for (let check = 0; check < 3; check += 1) {
     const reads = boardRequests(supabase);
     await page.clock.fastForward(30_000);
     await expect.poll(() => boardRequests(supabase)).toBeGreaterThan(reads);
     await expect(page.locator('#refresh-friends-board')).not.toHaveAttribute('aria-disabled', 'true');
   }
+
   expect(await page.evaluate(() => window.statusChanges)).toBe(0);
   await expect(page.locator('#friends-board-status')).toHaveText(message);
   // Refresh is the reader's own request, so it answers: here, that the board is back.
@@ -1322,8 +1367,11 @@ test('sharing switched off, on and off again while the first is on its way keeps
   let shared = false;
   await page.route(/\/rest\/v1\/rpc\/friends_board$/, async (route) => {
     const action = route.request().postDataJSON()?.p_action;
+
     if (action === 'unshare' && shared) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'The board is unavailable.' }) });
+
     if (action === 'share') shared = true;
+
     return route.fallback();
   });
   const actions = boardActions(page);
@@ -1586,6 +1634,7 @@ test('where the browser can’t keep an opt-out, the page keeps it, and sends it
     const setItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function keep(key, value) {
       if (String(key).startsWith('stilltype-board-optout')) throw new DOMException('Blocked', 'QuotaExceededError');
+
       return setItem.call(this, key, value);
     };
   });

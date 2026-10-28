@@ -26,6 +26,7 @@ async function challengeWithGuest(page, browser, supabase) {
   await page.locator('#online-ready').click();
   await guest.locator('#online-ready').click();
   await expect(page.locator('#online-countdown')).toContainText('Starting in');
+
   return { room, context, guest };
 }
 
@@ -35,6 +36,7 @@ test('plain Challenge races the practice setup, both players get the same text, 
   await page.locator('#punctuation-switch').click();
   await expect(page.locator('#create-online-race')).toHaveText('Challenge');
   const { room, context, guest } = await challengeWithGuest(page, browser, supabase);
+
   try {
     expect(room.conditions).toMatchObject({ mode: 'words', count: 10, punctuation: true, duration: 120, correctionPolicy: 'mandatory' });
     expect(room.passage.split(' ')).toHaveLength(10);
@@ -80,6 +82,7 @@ test('Customize opens the practice controls under the buttons and sets this race
   await options.locator('.compact-switch').click();
   await expect(options.getByRole('button', { name: '15 seconds' })).toHaveAttribute('aria-pressed', 'true');
   const { room, context, guest } = await challengeWithGuest(page, browser, supabase);
+
   try {
     expect(room.conditions).toMatchObject({ mode: 'time', duration: 15, punctuation: true });
     expect(room.duration).toBe(15);
@@ -106,6 +109,7 @@ test('with a practice-only mode set, plain Challenge races today\'s medium quote
   await host(page, supabase);
   await chooseMore(page, 'mode-code');
   const { room, context } = await challengeWithGuest(page, browser, supabase);
+
   try {
     expect(room.conditions).toMatchObject({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', duration: 60 });
     expect(room.duration).toBe(60);

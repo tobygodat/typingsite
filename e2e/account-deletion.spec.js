@@ -42,12 +42,14 @@ function seedRaces(supabase, ada, bob) {
     players: [supabase.races.player(1, host.name, host.id), ...(other ? [supabase.races.player(2, other.name, other.id)] : [])],
     ...extra,
   });
+
   const adaRoom = room({ name: 'Ada', id: ada.id }, { name: 'Bob', id: bob.id }, { invitedUser: bob.id, inviteKind: 'account' });
   const bobRoom = room({ name: 'Bob', id: bob.id }, { name: 'Ada', id: ada.id });
   supabase.races.rooms.set(adaRoom.id, adaRoom);
   supabase.races.rooms.set(bobRoom.id, bobRoom);
   supabase.races.friends.set(ada.id, [{ id: randomUUID(), friendId: bob.id, name: 'Bob' }]);
   supabase.races.friends.set(bob.id, [{ id: randomUUID(), friendId: ada.id, name: 'Ada' }, { id: randomUUID(), email: ADA, name: 'Ada' }]);
+
   return { adaRoom, bobRoom };
 }
 
@@ -170,6 +172,7 @@ test('a failed deletion says why and changes nothing on this device', async ({ p
     ['fail', 'Your account couldn’t be deleted just now, so nothing changed. Try again in a moment.'],
     ['blocked', 'Account deletion isn’t available right now, so nothing was deleted. Try again later.'],
   ];
+
   for (const [mode, message] of attempts) {
     supabase.deleteAccount = mode;
     await confirm.click();
@@ -177,11 +180,13 @@ test('a failed deletion says why and changes nothing on this device', async ({ p
     await expect(confirm).toBeEnabled();
     await expect(confirm).toHaveText('Delete account');
     await expect(page.locator('#confirm-delete-input')).toBeFocused();
+
     if (mode === 'missing') {
       await page.mouse.move(5, 5);
       await shot(page, testInfo, 'not-deployed-light');
     }
   }
+
   supabase.offline = true;
   await confirm.click();
   await expect(error).toHaveText('Can’t reach the account service. Check your connection and try again.');
@@ -213,10 +218,12 @@ test('the palette offers deletion to members only, and the dialog fits a phone',
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
+
   const palette = async (query) => {
     await page.locator('#palette-trigger').click();
     await page.locator('#palette-input').fill(query);
   };
+
   await palette('delete account');
   await expect(page.locator('#palette-list')).not.toContainText('delete account');
   await page.keyboard.press('Escape');
@@ -233,6 +240,7 @@ test('the palette offers deletion to members only, and the dialog fits a phone',
   const box = await page.locator('#delete-account-dialog').boundingBox();
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(390);
+
   for (const id of ['#cancel-delete-account', '#confirm-delete-account']) {
     const button = await page.locator(id).boundingBox();
     expect(button.x + button.width).toBeLessThanOrEqual(box.x + box.width);
@@ -240,20 +248,25 @@ test('the palette offers deletion to members only, and the dialog fits a phone',
 
   // At 320px the actions wrap inside the dialog's padding instead of scrolling it sideways.
   await page.setViewportSize({ width: 320, height: 640 });
+
   const fit = await page.evaluate(() => {
     const dialog = document.querySelector('#delete-account-dialog');
     const form = document.querySelector('#delete-account-form');
     const edge = (side) => form.getBoundingClientRect()[side] + (side === 'left' ? 1 : -1) * parseFloat(getComputedStyle(form)[side === 'left' ? 'paddingLeft' : 'paddingRight']);
+
     return {
       scroll: dialog.scrollWidth, client: dialog.clientWidth, left: edge('left'), right: edge('right'),
       boxes: [...form.querySelectorAll('h2, p, input, .btn')].map((node) => node.getBoundingClientRect()).map(({ left, right }) => ({ left, right })),
     };
   });
+
   expect(fit.scroll).toBeLessThanOrEqual(fit.client);
+
   for (const { left, right } of fit.boxes) {
     expect(left).toBeGreaterThanOrEqual(fit.left - 0.5);
     expect(right).toBeLessThanOrEqual(fit.right + 0.5);
   }
+
   await shot(page, testInfo, 'confirm-320');
   await page.setViewportSize({ width: 390, height: 844 });
 

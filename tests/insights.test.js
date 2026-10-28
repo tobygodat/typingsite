@@ -12,11 +12,14 @@ test('missed and slowest words come from first tries and per-word speed', () => 
   // One keystroke every 100 ms, except "on" is slow and "cat" has a wrong first try.
   const events = [];
   let t = 0;
+
   for (let i = 0; i < text.length; i += 1) {
     t += i >= 12 && i <= 13 ? 600 : 100;
+
     if (i === 5) events.push({ type: 'insert', text: 'x', position: i, offsetMs: t - 50 }, { type: 'delete', count: 1, offsetMs: t - 25 });
     events.push({ type: 'insert', text: text[i], position: i, offsetMs: t });
   }
+
   const { missed, slow, timedCount, medianWpm } = missedAndSlowWords({ text, events }, 2);
   assert.deepEqual(missed, ['cat']);
   // "on" took 1200 ms for two letters plus its space: 2 / 5 words in 1.2 s is 20 wpm.
@@ -58,10 +61,12 @@ test('a corrected space does not charge its correction to the next word', () => 
 test('per-word pace counts one interval per character, since the previous kept keystroke', () => {
   const text = 'to table, a cat sat';
   const at = (char, position, offsetMs) => ({ type: 'insert', text: char, position, offsetMs });
+
   // [character, ms since the previous keystroke]; the space before "cat" is mistyped, deleted and
   // retyped, so "cat" starts from the kept space at 5600 ms, and "a" is missed for its space.
   const keys = [['t', 1000], ['o', 100], [' ', 100], ['t', 200], ['a', 200], ['b', 200], ['l', 200], ['e', 200],
     [',', 1000], [' ', 100], ['a', 300]];
+
   const events = [];
   let t = 0;
   keys.forEach(([char, gap], position) => events.push(at(char, position, (t += gap))));
@@ -70,6 +75,7 @@ test('per-word pace counts one interval per character, since the previous kept k
   [...'cat sat'].forEach((char, i) => events.push(at(char, 12 + i, (t += char === ' ' ? 100 : i < 3 ? 150 : 100))));
   const result = missedAndSlowWords({ text, events }, 10);
   const pace = Object.fromEntries(result.slow.map((item) => [item.word, item.wpm]));
+
   for (const [word, wpm, why] of [
     ['to', 120, 'first word: its first key has no interval, so only "o" counts (1 char in 100 ms)'],
     ['table', 60, 'trailing comma left out: t-a-b-l-e, 5 chars in 1000 ms, not 6 in 2000 ms'],
@@ -79,21 +85,26 @@ test('per-word pace counts one interval per character, since the previous kept k
   assert.deepEqual(result.missed, ['a']);
   assert.equal(result.timedCount, 4);
   assert.equal(result.medianWpm, 100, 'clean words only: 60, 80, 120, 120');
+
   // A one-letter first word has no interval at all, so it isn't timed; one mid-run is timed from its
   // space (1 char in 300 ms).
   const short = missedAndSlowWords({ text: 'a go a', events: [at('a', 0, 0), at(' ', 1, 100), at('g', 2, 200),
     at('o', 3, 300), at(' ', 4, 400), at('a', 5, 700)] });
+
   assert.deepEqual(short.slow, [{ word: 'a', wpm: 40 }, { word: 'go', wpm: 120 }]);
   assert.equal(short.timedCount, 2);
 });
 
 test('a dropped leading quote takes its interval with it: "the is timed on h-e', () => {
   const at = (char, position, offsetMs) => ({ type: 'insert', text: char, position, offsetMs });
+
   // 100 ms a key, with a 1 s pause before the key at `pause`.
   const typed = (text, pause) => {
     let t = 0;
+
     return { text, events: [...text].map((char, i) => at(char, i, (t += i === pause ? 1000 : 100))) };
   };
+
   const pace = (result) => Object.fromEntries(result.slow.map((item) => [item.word, item.wpm]));
   // A pause between the quote and "t" is a transition the drilled "the" never types: 2 / 5 in 200 ms.
   const quoted = missedAndSlowWords(typed('say "the cat', 5), 10);
@@ -162,10 +173,12 @@ test('missed-word run records leave out pattern counts nothing reads', () => {
 function typedWithMisses(text, misses) {
   const events = [];
   let t = 0;
+
   for (let i = 0; i < text.length; i += 1) {
     if (misses.includes(i)) events.push({ type: 'insert', text: '~', position: i, offsetMs: (t += 100) }, { type: 'delete', count: 1, offsetMs: (t += 100) });
     events.push({ type: 'insert', text: text[i], position: i, offsetMs: (t += 100) });
   }
+
   return { text, events };
 }
 
@@ -186,11 +199,13 @@ test('punctuation inside a token is kept, never merged into a made-up token', ()
   const { missed, slow } = missedAndSlowWords(typedWithMisses(text, [5, 13]), 10);
   assert.deepEqual(missed, ['9:30', '0.8']); // the "3" and the "."
   assert.ok(slow.some((item) => item.word === '11:40'));
+
   for (const word of [...missed, ...slow.map((item) => item.word)]) assert.ok(!['930', '08', '1140'].includes(word), word);
   assert.deepEqual(missedAndSlowWords(typedWithMisses(text, [12])).missed, ['0.8']); // the "0"
 });
 
 const conditions = { mode: 'words', count: 25, wordList: '1k', corpus: CORPUS_VERSION };
+
 const run = (id, overrides = {}) => ({ id, at: '2026-09-29T12:00:00Z', status: 'complete', kind: 'test',
   conditions, score: { wpm: 60, accuracy: 98 }, patterns: [['th', 12, 2, 10, 140, 20]], ...overrides });
 
@@ -198,6 +213,7 @@ test('trends never mix correction rules, word lists, drills, interruptions, or d
   const runs = [run('a'), run('b', { conditions: { ...conditions, wordList: '5k' } }),
     run('c', { conditions: { ...conditions, correctionPolicy: 'relaxed' } }),
     run('d', { kind: 'drill' }), run('e', { kind: 'daily' }), run('f', { interrupted: true })];
+
   assert.deepEqual(filterRuns(runs.filter(trendRun), conditionKey(conditions)).map((r) => r.id), ['a']);
 });
 
@@ -216,8 +232,10 @@ test('weekly medians require evidence in both weeks, and do not invent dates for
 
 test('recurring targets need multiple runs, and revisit evidence starts after the immediate retest', () => {
   assert.deepEqual(recurringTargets([run('a')], [], conditions), []);
+
   const runs = [run('a'), run('b'), run('drill', { kind: 'drill', target: 'th', at: '2026-09-29T13:00:00Z' }),
     run('retest', { kind: 'retest', at: '2026-09-29T13:01:00Z' })];
+
   const loops = [{ target: 'th', conditions, at: '2026-09-29T13:01:00Z', drillCompleted: true }];
   const immediate = recurringTargets(runs, loops, conditions)[0];
   assert.equal(immediate.review, false);
@@ -259,9 +277,11 @@ test('daily passage is stable within a UTC day, changes at midnight, and states 
 test('original quote pool has fresh choices in every length and difficulty bucket', () => {
   assert.equal(new Set(quoteCorpus.map((q) => q.id)).size, quoteCorpus.length);
   assert.equal(new Set(quoteCorpus.map((q) => q.text)).size, quoteCorpus.length);
+
   for (const quoteLength of ['short', 'medium', 'long']) {
     for (const difficulty of ['gentle', 'steady', 'precise']) {
       const seenIds = [];
+
       for (let i = 0; i < 3; i++) {
         const passage = selectPassage({ mode: 'quote', quoteLength, difficulty, seenIds, random: () => 0 });
         assert.ok(passage?.fresh, `${quoteLength}/${difficulty} needs at least three fresh passages`);
@@ -301,8 +321,10 @@ test('a retest stopped by its baseline\'s minimum is never compared, and its pai
     attempt.events = [...keys].map((key, i) => ({ type: 'insert', text: key, offsetMs: i * 150 }));
     attempt.startedAt = 0;
     attempt.minimums = { wpm: 20 };
+
     return completeAttempt(attempt, { endedAt: keys.length * 150 });
   };
+
   const text = 'the other three think that the';
   const before = typed('before', text, text);
   // As the app stores it: interrupted, with the stop that ended it.
@@ -320,6 +342,7 @@ test('a retest stopped by its baseline\'s minimum is never compared, and its pai
 
 test('daily minutes sum every run on the local day, and the streak counts days meeting the goal', () => {
   const at = (y, m, d, h = 12) => new Date(y, m - 1, d, h).toISOString();
+
   const runs = [
     run('a', { at: at(2026, 10, 8, 9), elapsedMs: 4 * 60000 }),
     run('b', { at: at(2026, 10, 8, 21), elapsedMs: 2 * 60000, kind: 'drill' }),
@@ -329,6 +352,7 @@ test('daily minutes sum every run on the local day, and the streak counts days m
     run('f', { at: null, elapsedMs: 60000 }),
     run('g', { at: at(2026, 10, 7, 15), elapsedMs: 20 * 60000, status: 'interrupted', interrupted: true }),
   ];
+
   const byDay = minutesByDay(runs);
   assert.equal(byDay[dayKey(at(2026, 10, 8))], 6);
   assert.equal(byDay[dayKey(at(2026, 10, 5))], undefined);
@@ -372,6 +396,7 @@ test('custom runs count as practice time, and their time outlives their own rete
 
 test('a run keeps the day it was practised on, whichever time zone reads it later', () => {
   const zone = process.env.TZ;
+
   try {
     // 23:30 on 8 October in Los Angeles is already 9 October in Tokyo.
     process.env.TZ = 'America/Los_Angeles';
@@ -379,11 +404,14 @@ test('a run keeps the day it was practised on, whichever time zone reads it late
     const late = { ...runRecord({ ...attempt, status: 'complete' }, '2026-10-09T06:30:00Z'), elapsedMs: 10 * 60000 };
     assert.equal(late.day, '2026-10-08');
     const newer = Array.from({ length: MAX_RUN_SUMMARIES }, (_, i) => run(`n${i}`, { at: '2026-10-11T18:00:00Z', day: '2026-10-11', elapsedMs: 1000 }));
+
     const readings = ['America/Los_Angeles', 'Asia/Tokyo'].map((tz) => {
       process.env.TZ = tz;
       const kept = retainHistory([late, ...newer]);
+
       return [kept.practiceDays, minutesByDay([late]), minutesByDay(kept.runs, kept.practiceDays)['2026-10-08']];
     });
+
     assert.deepEqual(readings[0], [{ '2026-10-08': 600000 }, { '2026-10-08': 10 }, 10]);
     assert.deepEqual(readings[1], readings[0], 'retained and archived runs land on the same day in both zones');
     // A summary from before days were recorded falls back to its timestamp in the reading zone.
@@ -399,6 +427,7 @@ test('key analysis sums first attempts per key and ranks pairs only with enough 
   const runs = [run('a', { patterns: [['th', 12, 2, 10, 140, 20], ['ah', 4, 1, 0, null, null], ['an', 5, 0, 0, null, null]] }),
     run('b', { patterns: [['th', 8, 0, 4, 120, -5], ['an', 3, 1, 0, null, null]] }),
     run('c', { interrupted: true, patterns: [['th', 50, 50, 0, null, null]] })];
+
   const result = keyAnalysis(runs);
   assert.equal(result.runs, 2);
   assert.deepEqual(result.keys.h, { key: 'h', samples: 24, errors: 3, missRate: 3 / 24, enough: true });
@@ -413,6 +442,7 @@ test('slow-run share counts only runs with enough clean intervals for that pair'
   const runs = [run('timed', { patterns: [['th', 12, 0, 12, 180, 40]] }),
     ...['a', 'b', 'c', 'd'].map((id) => run(id, { patterns: [['th', 12, 3, 9, 150, 10]] })),
     run('none', { patterns: [['he', 12, 4, 0, null, null]] })];
+
   const th = keyAnalysis(runs).pairs.find((p) => p.pair === 'th');
   assert.deepEqual([th.slowRuns, th.timedRuns, th.runs], [1, 1, 5]);
   const he = keyAnalysis(runs).pairs.find((p) => p.pair === 'he');
@@ -464,10 +494,12 @@ test('the standard score keeps its best and a median of recent runs, and waits f
   // Two runs: a best, but no median yet.
   const two = [at(60), at(70)];
   assert.deepEqual(standardScore(two, key), { total: 2, recent: 2, best: 70, median: null, settled: false });
+
   // Other conditions, drills, daily, interrupted and a different recipe or input never count.
   const noise = [run('time'), at(99, { kind: 'drill' }), at(98, { kind: 'daily' }), at(97, { interrupted: true }),
     at(96, { status: 'interrupted' }), at(95, { conditions: { ...standard, recipe: 'standard-v2' } }),
     at(94, { conditions: standardConditions('touch') }), at(93, { conditions: { ...standard, mode: 'time', recipe: undefined } })];
+
   const three = [...two, ...noise, at(64, { kind: 'retest' })];
   assert.deepEqual(standardScore(three, key), { total: 3, recent: 3, best: 70, median: 64, settled: true });
   // The median covers only the newest ten; the best is the one passed in (the stored best) when there is one.
@@ -508,8 +540,10 @@ test('custom run records keep the score but no per-pair patterns', () => {
   const typed = (kind) => {
     const attempt = createAttempt({ id: kind, text: 'the then', kind, conditions });
     [...'the then'].forEach((char, i) => attempt.events.push({ type: 'insert', text: char, position: i, accepted: true, offsetMs: i * 120 }));
+
     return completeAttempt(attempt, { endedAt: 1000 });
   };
+
   const custom = runRecord(typed('custom'));
   assert.equal('patterns' in custom, false);
   assert.equal('keys' in custom, false);
@@ -546,8 +580,10 @@ test('ghost races keep no trace or patterns and never displace practice evidence
   const typed = (id, kind) => {
     const attempt = createAttempt({ id, text: 'the then', kind, conditions });
     [...'the then'].forEach((char, i) => attempt.events.push({ type: 'insert', text: char, position: i, accepted: true, offsetMs: i * 120 }));
+
     return completeAttempt(attempt, { endedAt: 1000 });
   };
+
   const practice = typed('practice', 'test');
   const races = Array.from({ length: 30 }, (_, i) => typed(`g${i}`, 'challenge'));
   // storeAttempt keeps a trace only for a comparable kind, then saveProfile keeps the newest 24.
@@ -565,8 +601,10 @@ test('a profile with only comparable runs is retained exactly as before', () => 
   // The retention rule as it stood before custom text existed (per-key counts age out with patterns).
   const previous = (runs) => {
     const kept = runs.slice(-1000);
+
     return kept.map((r, i) => (i < kept.length - 120 ? { ...r, patterns: [], keys: [] } : r));
   };
+
   const kinds = ['test', 'retest', 'drill', 'daily'];
   const legacy = Array.from({ length: 1100 }, (_, i) => run(String(i), { kind: kinds[i % kinds.length] }));
   legacy[1050] = { ...legacy[1050], patterns: undefined };
@@ -580,22 +618,29 @@ test('a profile with only comparable runs is retained exactly as before', () => 
 // with offsets as Chromium reports them (0.1 ms steps less the start stamp, so most carry float noise).
 function timedTrace(id, seconds, wpm) {
   const passage = selectPassage({ mode: 'time', duration: seconds, random: () => 0.37 });
+
   const attempt = createAttempt({ id, text: passage.text, textId: passage.id,
     conditions: { mode: 'time', duration: seconds, wordList: '200', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION } });
+
   const letters = Math.min(passage.text.length, Math.round((wpm * 5 * seconds) / 60));
   const step = (seconds * 1000) / (letters * 1.1);
   const offset = (n) => Math.round((52345.7 + n * step) * 10) / 10 - 52345.7;
   let n = 0;
+
   for (let position = 0; position < letters; position += 1) {
     if (position % 20 === 7) {
       attempt.events.push({ type: 'insert', text: 'q', position, accepted: true, offsetMs: offset(n += 1) });
       attempt.events.push({ type: 'delete', count: 1, offsetMs: offset(n += 1) });
     }
+
     attempt.events.push({ type: 'insert', text: passage.text[position], position, accepted: true, offsetMs: offset(n += 1) });
   }
+
   attempt.startedAt = 0;
+
   return completeAttempt(attempt, { endedAt: seconds * 1000 });
 }
+
 const size = (value) => JSON.stringify(value).length;
 
 test('a single trace larger than the whole budget is not kept, even as the newest', () => {
@@ -625,6 +670,7 @@ test('a newest trace within the budget is always kept, however large', () => {
   // Exactly at the budget still counts as within it.
   assert.deepEqual(retainTraces([older, fast], { budget: size(fast) }).map((t) => t.id), ['fast']);
 });
+
 test('missed-word practice is not comparable, so it never pushes practice runs out of the pattern window', () => {
   assert.equal(comparableKind('missed'), false);
   assert.equal(comparableKind('custom'), false);
@@ -642,6 +688,7 @@ test('missed-word practice is not comparable, so it never pushes practice runs o
 
 test('only tests, retests and daily runs are measured; a drill is comparable for retention but never measured', () => {
   for (const kind of ['test', 'retest', 'daily']) assert.equal(measuredKind(kind), true, kind);
+
   for (const kind of ['drill', 'missed', 'custom']) assert.equal(measuredKind(kind), false, kind);
   // comparableKind only splits retention budgets, so a drill's synthetic text still counts there.
   assert.equal(comparableKind('drill'), true);
@@ -654,6 +701,7 @@ test('only tests, retests and daily runs are measured; a drill is comparable for
 
 test('evidence runs are complete measured runs, never a daily passage shown before', () => {
   for (const kind of ['test', 'retest', 'daily']) assert.equal(evidenceRun(run(kind, { kind })), true, kind);
+
   for (const kind of ['drill', 'missed', 'custom']) assert.equal(evidenceRun(run(kind, { kind })), false, kind);
   assert.equal(evidenceRun(run('repeat', { kind: 'daily', fresh: false })), false);
   assert.equal(evidenceRun(run('cut', { interrupted: true })), false);
@@ -767,6 +815,7 @@ test('words you keep missing need two runs and rank by runs missed in, then the 
     missedRun('f', []),
     legacy,
   ];
+
   const result = recurringMissedWords(runs);
   assert.equal(result.runs, 6);
   // "there" (3 runs) first; then the words in 2 runs, latest miss first: about and their (run e,
@@ -787,8 +836,10 @@ test('words you keep missing need two runs and rank by runs missed in, then the 
 
 test('word practice, custom text, drills, interruptions and repeat daily text never feed the list', () => {
   const both = (id, overrides = {}) => missedRun(id, ['the', 'and'], overrides);
+
   const excluded = [both('m', { kind: 'missed' }), both('c', { kind: 'custom' }), both('d', { kind: 'drill' }), both('i', { interrupted: true }),
     both('s', { status: 'interrupted' }), both('r', { kind: 'race' }), both('p', { kind: 'daily', fresh: false })];
+
   assert.deepEqual(recurringMissedWords([...excluded, both('only')]), { runs: 1, inputClass: 'physical-keyboard', recurring: 0, words: [] });
   const counted = recurringMissedWords([both('fresh-daily', { kind: 'daily' }), both('retest', { kind: 'retest' })]);
   assert.deepEqual(counted.words.map((w) => [w.word, w.runs]), [['and', 2], ['the', 2]]);
@@ -796,16 +847,19 @@ test('word practice, custom text, drills, interruptions and repeat daily text ne
 
 test('the list counts only the newest 120 counted runs, across all other test conditions', () => {
   const quote = { ...conditions, mode: 'quote', count: null, wordList: null, correctionPolicy: 'relaxed' };
+
   const runs = [
     missedRun('old-1', ['gone']), missedRun('old-2', ['gone']),
     ...Array.from({ length: 120 }, (_, i) => missedRun(`new-${i}`, [i % 2 ? 'odd' : 'even'], { conditions: i % 3 ? conditions : quote })),
     // Uncounted runs after them don't push counted runs out of the window, as stored either.
     ...Array.from({ length: 5 }, (_, i) => missedRun(`drill-${i}`, ['gone'], { kind: 'drill' })),
   ];
+
   for (const result of [recurringMissedWords(runs), recurringMissedWords(retainRuns(runs))]) {
     assert.equal(result.runs, 120);
     assert.deepEqual(result.words.map((w) => [w.word, w.runs]), [['odd', 60], ['even', 60]]);
   }
+
   // At most eight rows by default; `recurring` still says how many qualified.
   const wide = [missedRun('w1', [...'abcdefghij']), missedRun('w2', [...'abcdefghij'])];
   assert.equal(recurringMissedWords(wide).words.length, 8);
@@ -816,10 +870,13 @@ test('touch runs are never pooled with physical-keyboard runs: the newest run pi
   const touch = { ...conditions, inputClass: 'touch' };
   const keyboard = { ...conditions, inputClass: 'physical-keyboard' };
   const keys = [missedRun('k1', ['the'], { conditions: keyboard }), missedRun('k2', ['the', 'and'], { conditions: keyboard }), missedRun('k3', ['and'])];
+
   const tally = (runs) => {
     const result = recurringMissedWords(runs);
+
     return [result.inputClass, result.runs, result.words.map((w) => [w.word, w.runs])];
   };
+
   // A run without the field counts as a physical keyboard, the default.
   assert.deepEqual(tally(keys), ['physical-keyboard', 3, [['and', 2], ['the', 2]]]);
   // One touch miss of "the" after them doesn't make a third, and touch stands alone.
@@ -831,6 +888,7 @@ test('touch runs are never pooled with physical-keyboard runs: the newest run pi
 
 test('runs group by local day, oldest first, with each day\'s medians', () => {
   const run = (id, day, wpm, accuracy, at = `${day}T12:00:00`) => ({ id, day, at, score: { wpm, accuracy } });
+
   const runs = [
     run('b1', '2026-10-03', 60, 95),
     run('a1', '2026-10-01', 50, 90),
@@ -839,6 +897,7 @@ test('runs group by local day, oldest first, with each day\'s medians', () => {
     { id: 'c1', at: '2026-10-05T09:00:00', score: { wpm: 72, accuracy: 96 } },
     { id: 'undated', score: { wpm: 99, accuracy: 100 } },
   ];
+
   const days = runsByDay(runs);
   assert.deepEqual(days.map((d) => d.day), ['2026-10-01', '2026-10-03', '2026-10-05'], 'a run without a day falls back to its timestamp; one without either is left out');
   assert.deepEqual(days[1].runs.map((r) => r.id), ['b1', 'b2', 'b3']);
@@ -849,12 +908,14 @@ test('runs group by local day, oldest first, with each day\'s medians', () => {
 
 test('period stats are medians over the selected runs, with the fastest run as best', () => {
   assert.deepEqual(periodStats([]), { count: 0, wpm: null, accuracy: null, best: null });
+
   const runs = [
     { id: 'old', at: '2026-10-01T10:00:00', score: { wpm: 70, accuracy: 94 } },
     { id: 'mid', at: '2026-10-02T10:00:00', score: { wpm: 60, accuracy: 98 } },
     { id: 'new', at: '2026-10-03T10:00:00', score: { wpm: 70, accuracy: 96 } },
     { id: 'low', at: '2026-10-04T10:00:00', score: { wpm: 50, accuracy: 90 } },
   ];
+
   const stats = periodStats(runs);
   assert.equal(stats.count, 4);
   assert.equal(stats.wpm, 65);
@@ -879,6 +940,7 @@ test('a histogram counts values into round bins, keeping the empty ones between'
 test('test shapes group exact conditions by length, most used variant first', () => {
   const base = { mode: 'words', count: 25, punctuation: false, wordList: '200', correctionPolicy: 'relaxed' };
   const run = (conditions) => ({ conditions: { ...base, ...conditions } });
+
   const shapes = testShapes([
     run({ mode: 'time', duration: 60, count: null }),
     run({ punctuation: true }),
@@ -888,6 +950,7 @@ test('test shapes group exact conditions by length, most used variant first', ()
     run({ mode: 'time', duration: 15, count: null }),
     run({ mode: 'quote', count: null, quoteLength: 'short' }),
   ]);
+
   assert.deepEqual(shapes.filter((s) => s.variants.length).map((s) => s.id), ['words:10', 'words:25', 'time:15', 'time:60', 'quote:short']);
   const words25 = shapes.find((s) => s.id === 'words:25');
   assert.equal(words25.variants.length, 2, 'punctuation is its own condition set, never pooled');
@@ -932,9 +995,11 @@ test('a period is whole local calendar days: 7 days is today and the six before,
 test('every period ends today: a run saved on a day still ahead here waits for its day, in charts and practice alike', () => {
   const today = new Date(2026, 9, 17, 15);
   const runs = [run('today', { day: '2026-10-17' }), run('tomorrow', { day: '2026-10-18' }), run('undated', { at: null })];
+
   for (const days of [7, 30]) {
     assert.deepEqual(filterRuns(runs, conditionKey(conditions), periodWindow(days, today)).map((r) => r.id), ['today'], `${days} days`);
   }
+
   assert.deepEqual(filterRuns(runs, conditionKey(conditions), periodWindow('all', today)).map((r) => r.id), ['today', 'undated'],
     'All has no first day, so an undated run stays, but it still ends today');
   assert.deepEqual(filterRuns(runs, conditionKey(conditions)).map((r) => r.id), ['today', 'tomorrow', 'undated'],
@@ -990,6 +1055,7 @@ test('the conditions line reads every part shown, in the same words the conditio
 test('two condition sets with different keys never share a name, whichever key part they differ by', () => {
   const words = { mode: 'words', count: 25, duration: null, punctuation: false, numbers: false, quoteLength: null, difficulty: null, wordList: '1k',
     inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, strictSpace: false, quickEnd: true };
+
   const bases = [
     words,
     { ...words, mode: 'time', count: null, duration: 60 },
@@ -997,6 +1063,7 @@ test('two condition sets with different keys never share a name, whichever key p
     { ...words, mode: 'code', count: null, codeLanguage: 'js', punctuation: true, wordList: null },
     { ...words, mode: 'standard', count: null, duration: 60, recipe: 'standard-v1', correctionPolicy: 'mandatory' },
   ];
+
   const changes = [
     { punctuation: true }, { punctuation: false }, { numbers: true },
     ...QUOTE_DIFFICULTIES.map((difficulty) => ({ difficulty })),
@@ -1010,13 +1077,16 @@ test('two condition sets with different keys never share a name, whichever key p
     ...layoutIds.map((layout) => ({ layout })),
     ...CODE_LANGUAGES.map((codeLanguage) => ({ codeLanguage })), { recipe: 'standard-v2' },
   ];
+
   // Only the parts a mode writes (src/app.js settingsConditions): a quote has no word count, a words test no difficulty.
   const written = { count: ['words'], duration: ['time'], quoteLength: ['quote'], difficulty: ['quote'], numbers: ['words', 'time'],
     wordList: ['words', 'time'], codeLanguage: ['code'], recipe: ['standard'] };
+
   for (const base of bases) {
     const applies = (change) => Object.keys(change).every((part) => !written[part] || written[part].includes(base.mode));
     const sets = [base, ...changes.filter(applies).map((change) => ({ ...base, ...change }))];
     const names = conditionLabels(sets);
+
     for (let i = 0; i < sets.length; i += 1) {
       for (let j = i + 1; j < sets.length; j += 1) {
         if (conditionKey(sets[i]) === conditionKey(sets[j])) continue;

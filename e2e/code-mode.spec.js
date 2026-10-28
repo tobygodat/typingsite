@@ -13,6 +13,7 @@ function codeErrorTrace(id, at) {
   attempt.startedAt = 0;
   attempt.events = [...text].map((char, position) => ({ type: 'insert', text: position % 4 === 1 ? 'x' : char,
     position, offsetMs: position * 100, accepted: true }));
+
   return { ...completeAttempt(attempt, { endedAt: text.length * 100 }), at, fresh: true };
 }
 
@@ -41,19 +42,24 @@ test('code snippets stay inside the typing area at 320px with large text', async
   await openApp(page);
   await chooseSetting(page, 'font-size', '36');
   await chooseMore(page, 'mode-code');
+
   for (const language of ['js', 'python', 'go', 'rust']) {
     await page.locator(`#code-options [data-language="${language}"]`).click();
+
     for (let i = 0; i < 6; i += 1) {
       const clipped = await page.evaluate(() => {
         const area = document.getElementById('typing-wrap').getBoundingClientRect();
+
         // A space may hang past the edge at a line end, as in prose; letters may not.
         return [...document.querySelectorAll('#text-display .char')].filter((char) => char.textContent !== ' ')
           .filter((char) => {
             const box = char.getBoundingClientRect();
+
             return box.left < area.left - 0.5 || box.right > area.right + 0.5;
           })
           .map((char) => char.textContent).join('');
       });
+
       expect(clipped, `${language}: ${await passageText(page)}`).toBe('');
       await page.locator('#typing-input').focus();
       await page.keyboard.press('Escape');
@@ -108,15 +114,18 @@ test('the palette hides punctuation, numbers and word lists in code mode', async
   await openApp(page);
   await chooseWords(page, 10);
   const options = page.locator('#palette-list [role="option"]');
+
   const search = async (query, count) => {
     await page.locator('#palette-trigger').click();
     await page.keyboard.type(query);
+
     if (count) await expect(options.filter({ hasText: query })).not.toHaveCount(0);
     else await expect(options.filter({ hasText: query })).toHaveCount(0);
     await page.locator('#palette-input').fill('');
     await page.keyboard.press('Escape');
     await expect(page.locator('#palette')).toBeHidden();
   };
+
   await search('punctuation', true);
   await search('numbers', true);
   await search('word list', true);
@@ -170,6 +179,7 @@ test('custom text over code mode keeps its own conditions, and code closes the c
 test('code mode screenshots', async ({ page }, testInfo) => {
   test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.setViewportSize({ width: 1280, height: 800 });
+
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);

@@ -24,8 +24,10 @@ const shape = (mode, length) => ({
 // A small deterministic generator, so word supply checks never depend on luck.
 function seeded(seed = 7) {
   let state = seed;
+
   return () => {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+
     return state / 2 ** 32;
   };
 }
@@ -62,9 +64,11 @@ test('custom input accepts whole numbers within 5–600 s and 5–500 words', ()
 
 test('invalid custom input says plainly what is allowed', () => {
   assert.deepEqual(parseCustomLength('time', ''), { ok: false, message: 'Enter whole seconds, 5 to 600.' });
+
   for (const raw of ['abc', '4.5', '-10', '1e3', '45 words', '3:00']) {
     assert.deepEqual(parseCustomLength('time', raw), { ok: false, message: 'Enter whole seconds, 5 to 600.' }, raw);
   }
+
   assert.deepEqual(parseCustomLength('time', '4'), { ok: false, message: 'Too short: use at least 5 seconds.' });
   assert.deepEqual(parseCustomLength('time', '0'), { ok: false, message: 'Too short: use at least 5 seconds.' });
   assert.deepEqual(parseCustomLength('time', '601'), { ok: false, message: 'Too long: use at most 600 seconds.' });
@@ -112,6 +116,7 @@ test('presets keep one 1,600-word timed passage byte for byte; longer times are 
   assert.equal(timedCharacterSupply(0), 0);
   assert.equal(timedCharacterSupply(120), 3000);
   assert.equal(timedCharacterSupply(600), 15000);
+
   // The text ids makePassage('time', 0, punctuation, seeded(), list, numbers) gives for every list and setting.
   const ids = {
     '200:plain': 'generated-1wd62n5', '200:punctuation': 'generated-1rbaa57', '200:plain+numbers': 'generated-1tb836k', '200:punctuation+numbers': 'generated-swyvyo',
@@ -119,14 +124,17 @@ test('presets keep one 1,600-word timed passage byte for byte; longer times are 
     '5k:plain': 'generated-1dkhwmp', '5k:punctuation': 'generated-c3ml60', '5k:plain+numbers': 'generated-12tgt60', '5k:punctuation+numbers': 'generated-mecc8f',
     '10k:plain': 'generated-aot3wf', '10k:punctuation': 'generated-fmw7vo', '10k:plain+numbers': 'generated-1esjo7l', '10k:punctuation+numbers': 'generated-gxqlvc',
   };
+
   for (const [key, id] of Object.entries(ids)) {
     const [list, setting] = key.split(':');
+
     for (const seconds of [0, ...LENGTHS.time.presets]) {
       const passage = selectPassage({ mode: 'time', duration: seconds, punctuation: setting.startsWith('punctuation'), numbers: setting.endsWith('+numbers'), wordList: list, random: seeded() });
       assert.equal(passage.id, id, `${key} at ${seconds} s`);
       assert.equal(passage.text.split(' ').length, 1600);
     }
   }
+
   // Ten minutes on the shortest list with numbers on: 1,600 words are not enough, so more are drawn after them,
   // the same ones for the same seed, until the finished text holds 15,000 characters and little more.
   const long = makePassage('time', 0, false, seeded(), '200', true, 600);
@@ -143,21 +151,29 @@ const supplyFor = (seconds) => (seconds * 300 * 5) / 60;
 test('every timed passage holds enough text for 300 wpm until the clock runs out, with numbers and punctuation', () => {
   const short = [];
   let combo = 0;
+
   for (const list of wordListIds) for (const numbers of [false, true]) for (const punctuation of [false, true]) {
     combo += 1;
     // Every allowed duration, each on its own seed, then many seeds at 320 s and 600 s, where the 200 list
     // with numbers on used to run a couple of hundred characters short.
     const cases = [];
+
     for (let seconds = LENGTHS.time.min; seconds <= LENGTHS.time.max; seconds += 1) cases.push([seconds, seconds * 16 + combo]);
+
     for (let seed = 1; seed <= 40; seed += 1) cases.push([320, seed], [LENGTHS.time.max, seed]);
+
     for (const [seconds, seed] of cases) {
       const text = makePassage('time', 0, punctuation, seeded(seed), list, numbers, seconds);
+
       if (text.length < supplyFor(seconds)) short.push(`${list} ${punctuation ? 'punctuation' : 'plain'}${numbers ? '+numbers' : ''} ${seconds} s, seed ${seed}: ${text.length} of ${supplyFor(seconds)}`);
     }
+
     // The app's own path passes the duration through to the same passage.
     const { text } = selectPassage({ mode: 'time', duration: LENGTHS.time.max, punctuation, numbers, wordList: list, random: seeded(combo) });
+
     if (text.length < supplyFor(LENGTHS.time.max)) short.push(`selectPassage ${list} ${punctuation ? 'punctuation' : 'plain'}${numbers ? '+numbers' : ''}: ${text.length}`);
   }
+
   assert.equal(short.length, 0, `${short.length} passages run out before the clock, e.g.\n${short.slice(0, 8).join('\n')}`);
 });
 
@@ -167,15 +183,20 @@ function storedTrace(id, mode, length, wpm) {
   const attempt = createAttempt({ id, text: passage.text, textId: passage.id, conditions: shape(mode, length) });
   const keys = mode === 'time' ? Math.min(passage.text.length, Math.round((wpm * 5 * length) / 60)) : passage.text.length;
   let offsetMs = 0;
+
   for (let position = 0; position < keys; position += 1) {
     offsetMs += 60_000 / (wpm * 5);
+
     if (position % 33 === 7) {
       attempt.events.push({ type: 'insert', text: 'q', position, accepted: true, offsetMs });
       attempt.events.push({ type: 'delete', count: 1, offsetMs: offsetMs + 60 });
     }
+
     attempt.events.push({ type: 'insert', text: passage.text[position], position, accepted: true, offsetMs: offsetMs + 120 });
   }
+
   attempt.startedAt = 0;
+
   return completeAttempt(attempt, { endedAt: offsetMs + 120 });
 }
 

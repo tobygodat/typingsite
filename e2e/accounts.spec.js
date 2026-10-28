@@ -140,9 +140,11 @@ test('a member’s saved theme becomes its mode’s pick, and the picks paint be
   await signInWithEmail(page, 'ada@stilltype.test');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
   await openSettings(page);
+
   for (const [id, value] of [['theme-select', 'dark'], ['dark-theme', 'nord'], ['light-theme', 'light']]) {
     await expect(page.locator(`#${id} input:checked`)).toHaveValue(value);
   }
+
   await chooseSetting(page, 'theme-select', 'system');
   await chooseSetting(page, 'light-theme', 'soft');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'soft');
@@ -154,6 +156,7 @@ test('a member’s saved theme becomes its mode’s pick, and the picks paint be
     new MutationObserver(() => window.themesShown.push(document.documentElement.dataset.theme))
       .observe(document, { subtree: true, attributes: true, attributeFilter: ['data-theme'] });
   });
+
   for (const [scheme, theme] of [['light', 'soft'], ['dark', 'nord']]) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.reload();
@@ -165,6 +168,7 @@ test('a member’s saved theme becomes its mode’s pick, and the picks paint be
 
 test('the pre-accounts profile moves into the first empty account', async ({ page, supabase }) => {
   supabase.addUser('ada@stilltype.test');
+
   const legacy = {
     version: 2,
     profileId: 'legacy',
@@ -183,6 +187,7 @@ test('the pre-accounts profile moves into the first empty account', async ({ pag
     seenTextIds: [],
     bests: {},
   };
+
   await page.addInitScript((profile) => {
     if (sessionStorage.getItem('e2e-seeded')) return;
     sessionStorage.setItem('e2e-seeded', '1');

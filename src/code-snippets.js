@@ -1235,19 +1235,25 @@ export function unindent(snippet) {
 
 function textId(text) {
   let hash = 2166136261;
+
   for (let i = 0; i < text.length; i += 1) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+
   return (hash >>> 0).toString(36);
 }
 
 export function codePassage(language = DEFAULT_CODE_LANGUAGE, { seenIds = [], random = Math.random } = {}) {
   const lang = CODE_LANGUAGES.includes(language) ? language : DEFAULT_CODE_LANGUAGE;
   const seen = new Set(seenIds);
+
   const all = CODE_SNIPPETS[lang].map((snippet) => {
     const text = unindent(snippet);
+
     return { id: `code-${lang}-${textId(text)}`, text };
   });
+
   const fresh = all.filter((item) => !seen.has(item.id));
   const pool = fresh.length ? fresh : all;
   const item = pool[Math.floor(random() * pool.length)];
+
   return { ...item, textVersion: `${item.id}@1`, difficulty: 'code', language: lang, fresh: fresh.length > 0, exhausted: fresh.length === 0 };
 }

@@ -23,6 +23,7 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
 // The speed graph is drawn at its container's pixel width, so after a resize the two must agree.
 const speedGraph = (page) => page.locator('#speed-graph').evaluate((graph) => {
   const svg = graph.querySelector('svg');
+
   return {
     container: graph.clientWidth,
     drawn: Number(svg.getAttribute('width')),
@@ -54,6 +55,7 @@ for (const [from, to] of [[{ width: 1280, height: 800 }, { width: 320, height: 5
     await resize(page, from);
     await expect.poll(async () => (await speedGraph(page)).drawn).toBeGreaterThan(graph.drawn);
     expect(await overflow(page)).toBeLessThanOrEqual(0);
+
     if (to.width !== 320) return;
 
     // Progress opened at the desktop width, then narrowed: its trend charts follow the window down.
@@ -61,11 +63,13 @@ for (const [from, to] of [[{ width: 1280, height: 800 }, { width: 320, height: 5
     await expect(page.locator('#progress-trend svg')).toHaveCount(1);
     await resize(page, to);
     expect(await overflow(page), 'Progress').toBeLessThanOrEqual(0);
+
     const trends = await page.locator('#progress-trend .trend-figure').evaluateAll((figures) => figures.map((figure) => ({
       figure: figure.clientWidth,
       shown: figure.querySelector('svg').getBoundingClientRect().width,
       drawn: Number(figure.querySelector('svg').getAttribute('viewBox').split(' ')[2]),
     })));
+
     for (const trend of trends) {
       expect(Math.abs(trend.shown - trend.figure)).toBeLessThanOrEqual(1);
       expect(trend.drawn).toBe(Math.max(280, trend.figure));
@@ -95,15 +99,18 @@ test('screenshots', async ({ page }, testInfo) => {
   await expect(page.locator('#progress-trend svg')).toHaveCount(1);
   await resize(page, { width: 320, height: 568 });
   expect(await overflow(page), 'Progress').toBeLessThanOrEqual(0);
+
   const trends = await page.locator('#progress-trend .trend-figure').evaluateAll((figures) => figures.map((figure) => ({
     figure: figure.clientWidth,
     shown: figure.querySelector('svg').getBoundingClientRect().width,
     drawn: Number(figure.querySelector('svg').getAttribute('viewBox').split(' ')[2]),
   })));
+
   for (const trend of trends) {
     expect(Math.abs(trend.shown - trend.figure)).toBeLessThanOrEqual(1);
     expect(trend.drawn).toBe(Math.max(280, trend.figure));
   }
+
   await page.locator('#progress-trend').evaluate((node) => window.scrollTo(0, node.getBoundingClientRect().top + scrollY - 16));
   await page.screenshot({ path: shot(testInfo, 'progress-320-dark.png') });
 });

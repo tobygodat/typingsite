@@ -7,7 +7,9 @@ import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 test('word highlight is off by default and unknown or missing values fall back to off', () => {
   assert.equal(DEFAULT_WORD_HIGHLIGHT, 'off');
   assert.deepEqual(WORD_HIGHLIGHT_MODES, ['off', 'current', 'next']);
+
   for (const mode of WORD_HIGHLIGHT_MODES) assert.equal(normalizeWordHighlight(mode), mode);
+
   for (const value of [undefined, null, '', 'word', true, 1, 'Current']) assert.equal(normalizeWordHighlight(value), 'off');
 });
 
@@ -23,6 +25,7 @@ test('the profile declares word highlight like other settings: off unless chosen
 test('slide is off unless chosen, and only true turns it on', () => {
   assert.equal(preferencesInUse({}).wordHighlightSlide, false);
   assert.equal(preferencesInUse({ wordHighlightSlide: true }).wordHighlightSlide, true);
+
   for (const value of ['true', 1, null, 'on']) assert.equal(preferencesInUse({ wordHighlightSlide: value }).wordHighlightSlide, false);
   assert.equal(Object.hasOwn(normalizeProfile({ version: 2, preferences: { wordHighlight: 'next' } }).preferences, 'wordHighlightSlide'), false);
 });
@@ -59,22 +62,31 @@ test('punctuation and capitals stay inside their word', () => {
 // The tint sits behind untyped (muted) letters, so it must keep them at WCAG AA in both shipped themes.
 test('the highlight token keeps muted and text letters at 4.5:1 in dark and light', () => {
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+
   const tokens = (selector) => {
     const start = css.indexOf(`${selector} {`);
     assert.ok(start >= 0, selector);
     const body = css.slice(start, css.indexOf('}', start));
+
     return Object.fromEntries([...body.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)].map(([, name, value]) => [name, value.trim()]));
   };
+
   const rgb = (value) => value.replace('#', '').match(/../g).map((pair) => parseInt(pair, 16));
+
   const channel = (value) => {
     const c = value / 255;
+
     return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   };
+
   const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+
   const contrast = (a, b) => {
     const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+
     return (hi + 0.05) / (lo + 0.05);
   };
+
   for (const selector of [':root,\n:root[data-theme="dark"]', ':root[data-theme="light"]']) {
     const set = tokens(selector);
     const share = Number(set['--word-highlight']?.match(/^color-mix\(in oklab, var\(--text\) ([\d.]+)%, transparent\)$/)?.[1]) / 100;

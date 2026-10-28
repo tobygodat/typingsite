@@ -1,6 +1,7 @@
 import { test, expect, chooseWords, completePassage, openApp, openProgressView, openView, passageText, signInWithEmail, storageKeys, typeInto } from './fixtures.js';
 
 const figure = (page, label) => page.locator('#practice-stats .progress-figure').filter({ has: page.locator('dt', { hasText: new RegExp(`^${label}$`) }) });
+
 const totals = (counts) => Object.values(counts || {}).flatMap(Object.values)
   .reduce((sum, [started, finished]) => ({ started: sum.started + started, finished: sum.finished + finished }), { started: 0, finished: 0 });
 
@@ -9,6 +10,7 @@ async function startRun(page) {
   await typeInto(page, (await passageText(page)).slice(0, 6));
   await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
 }
+
 async function restartRun(page) {
   await startRun(page);
   await page.keyboard.press('Escape');

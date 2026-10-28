@@ -39,6 +39,7 @@ test('a correct character deleted and retyped counts once, like the wpm figure',
     { type: 'insert', text: 'd', position: 3, accepted: true, offsetMs: 500 },
     { type: 'insert', text: 'e', position: 4, accepted: true, offsetMs: 600 },
   ];
+
   // Five characters kept in one second is 60 wpm; counting the deleted "b" would give 72.
   assert.deepEqual(speedSeries({ text: 'abcde', events, startedAt: 0, endedAt: 1000 }).points, [{ t: 1, wpm: 60, misses: 0 }]);
 });

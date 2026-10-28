@@ -10,13 +10,17 @@ async function stubAudio(page) {
     const log = { created: 0, closed: 0, state: null, states: [], plays: [], clickGains: [], builtDuring: [] };
     window.__sound = log;
     const node = (extra) => ({ connect(target) { return target; }, disconnect() {}, ...extra });
+
     const param = (record) => ({ value: 0, setValueAtTime(value) {
       record?.(value);
+
       return this;
     }, exponentialRampToValueAtTime() { return this; } });
+
     class FakeAudioContext {
       constructor() {
         log.created += 1;
+
         // window.event is set only while an event is being dispatched, as an input handler is.
         if (window.event) log.builtDuring.push(window.event.type);
         this.state = 'running';
@@ -31,6 +35,7 @@ async function stubAudio(page) {
       settle(state) {
         return new Promise((resolve) => setTimeout(() => {
           if (this.state !== 'closed') { this.state = state; log.state = state; log.states.push(state); }
+
           resolve();
         }));
       }
@@ -38,10 +43,12 @@ async function stubAudio(page) {
         log.closed += 1;
         this.state = 'closed';
         log.state = 'closed';
+
         return Promise.resolve();
       }
       createBuffer(channels, length) {
         const data = new Float32Array(length);
+
         return { getChannelData: () => data };
       }
       createBufferSource() { return node({ buffer: null, start() { log.plays.push('click'); }, stop() {} }); }
@@ -50,6 +57,7 @@ async function stubAudio(page) {
       // The click sets its starting level once; the tick ramps, so only clicks are recorded here.
       createGain() { return node({ gain: param((value) => { if (value > 0.001) log.clickGains.push(value); }) }); }
     }
+
     window.AudioContext = FakeAudioContext;
     window.webkitAudioContext = FakeAudioContext;
   });
@@ -63,6 +71,7 @@ const wrongFor = (char) => (char === 'x' ? 'z' : 'x');
 async function soundReady(page) {
   await expect.poll(async () => {
     const { created, closed } = await sound(page);
+
     return created - closed;
   }).toBe(1);
 }
@@ -94,6 +103,7 @@ async function shot(page, testInfo, name) {
 }
 
 test.beforeEach(async ({ page }) => { await stubAudio(page); });
+
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status !== 'passed') return;
   expect((await sound(page)).builtDuring, 'no AudioContext is built inside an event handler').toEqual([]);
@@ -259,6 +269,7 @@ async function accentKey(page) {
   await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
   await cdp.send('Input.imeSetComposition', { text: '"', selectionStart: 1, selectionEnd: 1 });
   await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Dead', code: 'Quote', windowsVirtualKeyCode: 222 });
+
   return { commit: (text) => cdp.send('Input.insertText', { text }) };
 }
 
@@ -488,6 +499,7 @@ for (const theme of ['dark', 'light']) {
     await expect(page.locator('#sound-volume')).toHaveValue('55');
     await expect(page.locator('#sound-volume-value')).toHaveText('55%');
     await page.evaluate(() => document.activeElement.blur());
+
     if (!process.env.SCREENSHOTS) return;
     await page.mouse.move(0, 400);
     await shot(page, testInfo, `settings-${theme}`);
@@ -498,15 +510,19 @@ const phoneLayout = (page) => page.locator('#settings-dialog').evaluate((dialog)
   const box = dialog.getBoundingClientRect();
   const content = dialog.querySelector('.settings-content');
   const layout = { top: box.top, bottom: box.bottom, insideViewport: box.top >= 0 && box.bottom <= innerHeight, soundTop: document.getElementById('sound-select').getBoundingClientRect().top, covered: [] };
+
   for (const control of dialog.querySelectorAll('input')) {
     if (!control.getClientRects().length) continue;
     (control.closest('.setting-option') || control).scrollIntoView({ block: 'center', behavior: 'instant' });
     const rect = control.getBoundingClientRect();
     const area = content.getBoundingClientRect();
     const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+
     if (rect.top < area.top || rect.bottom > area.bottom || hit !== control) layout.covered.push(control.name || control.id);
   }
+
   content.scrollTop = 0;
+
   return layout;
 });
 
@@ -529,6 +545,7 @@ for (const [width, height] of [[390, 844], [320, 844], [320, 568]]) {
     expect(await phoneLayout(page)).toMatchObject({ insideViewport: true, covered: [] });
     await openSettings(page, 'practice');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+
     if (width === 390) {
       await page.evaluate(() => document.activeElement.blur());
       await shot(page, testInfo, 'settings-mobile');
@@ -556,12 +573,14 @@ async function hostOnlineRace(page, browser, supabase) {
   await page.locator('#online-ready').click();
   await guest.locator('#online-ready').click();
   await expect(page.locator('#online-input')).toBeEnabled({ timeout: 12000 });
+
   return context;
 }
 
 test('an online race ticks a mistyped letter and clicks refused keys and backspaces', async ({ page, browser, supabase }) => {
   test.setTimeout(60000);
   const context = await hostOnlineRace(page, browser, supabase);
+
   try {
     const passage = await page.locator('#online-accessible-passage').textContent();
     await soundReady(page);
@@ -574,6 +593,7 @@ test('an online race ticks a mistyped letter and clicks refused keys and backspa
     // backspace with nothing left to delete click.
     await page.keyboard.type(`${wrongFor(passage[1])}${passage[2]}`);
     await expect(page.locator('#online-help')).toHaveText('Correct the mistyped letter before continuing.');
+
     for (let i = 0; i < 3; i += 1) await page.keyboard.press('Backspace');
     await expect(page.locator('#online-input')).toHaveValue('');
     await page.keyboard.type(passage[0]);

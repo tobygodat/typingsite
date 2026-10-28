@@ -12,6 +12,7 @@ async function hostRace(page, supabase, email = '') {
   await page.locator('#create-online-race').click();
   await expect(page.locator('#online-room')).toBeVisible();
   await expect(page.locator('#challenge-daily')).toBeDisabled();
+
   return [...supabase.races.rooms.values()][0];
 }
 
@@ -23,15 +24,18 @@ async function guestPage(browser, supabase, link) {
   await supabase.attach(guest);
   await guest.goto(link);
   await expect(guest.locator('#online-guest-join')).toBeVisible();
+
   return { context, guest, errors };
 }
 
 test('an account hosts a guest across separate contexts, shares progress, resumes with the word highlight in step, and finishes', async ({ page, browser, supabase }) => {
   test.setTimeout(120_000);
+
   // The online passage marks words through its own input handler and its resume path.
   const tinted = () => page.locator('#online-text-display .word').evaluateAll((nodes) => nodes
     .filter((node) => [...node.children].some((char) => !char.classList.contains('wrong') && getComputedStyle(char).backgroundColor !== 'rgba(0, 0, 0, 0)'))
     .map((node) => Number(node.dataset.wordIndex)));
+
   const room = await hostRace(page, supabase);
   await openSettings(page);
   await chooseSetting(page, 'word-highlight', 'current');
@@ -43,6 +47,7 @@ test('an account hosts a guest across separate contexts, shares progress, resume
   const link = await page.locator('#online-guest-link').inputValue();
   expect(link).toContain(room.id);
   const { context, guest, errors } = await guestPage(browser, supabase, link);
+
   try {
     await guest.locator('#online-guest-name').fill('Lin');
     await guest.locator('#join-online-race').click();
@@ -83,11 +88,13 @@ test('an account hosts a guest across separate contexts, shares progress, resume
     await expect(page.locator('#online-results')).toBeVisible({ timeout: 10000 });
     await expect(guest.locator('#online-results')).toBeVisible();
     await expect(page.locator('#online-results .duel-side')).toHaveCount(2);
+
     // Each sees the same two results, their own on the left.
     for (const [mine, theirs] of [['mine', 'theirs'], ['theirs', 'mine']]) {
       expect(await guest.locator(`#online-duel-${theirs} :is(.duel-speed, .duel-accuracy)`).allTextContents())
         .toEqual(await page.locator(`#online-duel-${mine} :is(.duel-speed, .duel-accuracy)`).allTextContents());
     }
+
     await expect(page.locator('#best')).toHaveText('No best yet');
     expect(supabase.profileFor('host@stilltype.test')).not.toHaveProperty('attempts');
     expect((await page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find((key) => key.startsWith('stilltype-profile-v2:')))).attempts))).toHaveLength(0);
@@ -100,6 +107,7 @@ test('typing opens when the shared countdown ends, without waiting for a poll to
   const room = await hostRace(page, supabase);
   const link = await page.locator('#online-guest-link').inputValue();
   const { context, guest } = await guestPage(browser, supabase, link);
+
   try {
     await guest.locator('#online-guest-name').fill('Lin');
     await guest.locator('#join-online-race').click();
@@ -120,6 +128,7 @@ test('typing opens when the shared countdown ends, without waiting for a poll to
     await typeInto(page, passage.slice(0, 5), '#online-input', { delay: 15 });
     await expect(page.locator('#online-input')).toHaveValue(passage.slice(0, 5));
     supabase.races.holding = new Set();
+
     for (const release of supabase.races.held) release();
     await expect.poll(() => room.players[0].typed).toBe(passage.slice(0, 5));
   } finally { await context.close(); }
@@ -132,6 +141,7 @@ test('account invitations appear only in the invited account inbox', async ({ pa
   const context = await browser.newContext();
   const friend = await context.newPage();
   await supabase.attach(friend);
+
   try {
     await openApp(friend);
     await signInWithEmail(friend, 'friend@stilltype.test');
@@ -152,6 +162,7 @@ test('a guest resumes the same seat after reload and sees host cancellation', as
   await page.reload();
   await expect(page.locator('#online-guest-link')).toHaveValue(link);
   const { context, guest } = await guestPage(browser, supabase, link);
+
   try {
     await guest.locator('#online-guest-name').fill('Lin');
     await guest.locator('#join-online-race').click();
@@ -174,6 +185,7 @@ test('a used guest link cannot replace an occupied seat', async ({ page, browser
   const link = await page.locator('#online-guest-link').inputValue();
   const first = await guestPage(browser, supabase, link);
   const second = await guestPage(browser, supabase, link);
+
   try {
     await first.guest.locator('#online-guest-name').fill('Lin');
     await first.guest.locator('#join-online-race').click();
@@ -188,6 +200,7 @@ test('a used guest link cannot replace an occupied seat', async ({ page, browser
 test('race lobby fits a narrow phone in both themes', async ({ page, supabase }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await hostRace(page, supabase);
+
   for (const theme of ['light', 'dark']) {
     await page.emulateMedia({ colorScheme: theme });
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
@@ -200,6 +213,7 @@ test('an expired guest link explains why it cannot join', async ({ page, browser
   const link = await page.locator('#online-guest-link').inputValue();
   room.expiresAt = new Date(Date.now() - 1000).toISOString();
   const { context, guest } = await guestPage(browser, supabase, link);
+
   try {
     await guest.locator('#online-guest-name').fill('Lin');
     await guest.locator('#join-online-race').click();

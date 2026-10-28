@@ -19,14 +19,17 @@ async function typeHumanly(page, text, { seed = 7, slip = true } = {}) {
   const random = () => (state = (state * 1103515245 + 12345) % 2147483648) / 2147483648;
   const words = text.match(/\S+\s*|\s+/g) || [];
   const slipAt = slip ? Math.floor(words.length * 0.4) : -1;
+
   for (const [index, word] of words.entries()) {
     if (index === slipAt && /^[a-z]/.test(word)) {
       await page.keyboard.type(word[0] === 'e' ? 'r' : 'e');
       await page.waitForTimeout(220);
       await page.keyboard.press('Backspace');
     }
+
     // Each word at its own pace (one driver call per word keeps the pace steady on a busy machine).
     await page.keyboard.type(word, { delay: 70 + random() * 90 });
+
     if (random() < 0.35) await page.waitForTimeout(80 + random() * 220);
   }
 }
@@ -51,6 +54,7 @@ async function command(page, label) {
 const parseSigned = (text) => {
   const match = text.match(/^([+−]?)(\d+(?:\.\d+)?)$/);
   expect(match, text).not.toBeNull();
+
   return [match[1], Number(match[2])];
 };
 
@@ -199,31 +203,40 @@ test('the custom pace is entered in cpm, kept in wpm, and the caret runs at the 
   // The caret's own animation clock: the characters it passes between two frames two seconds apart.
   await page.keyboard.press('Escape');
   await typeInto(page, (await passageText(page)).slice(0, 1));
+
   const cpm = await page.locator('#text-display').evaluate(async (display) => {
     const ghost = display.querySelector('.ghost-caret');
     const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 60;
+
     // Where src/motion.js would place the ghost on each character; it sits on the first one not behind it.
     const place = (char) => {
       let left = 0;
       let top = 0;
+
       for (let node = char; node && node !== display; node = node.offsetParent) {
         left += node.offsetLeft;
         top += node.offsetTop;
       }
+
       return { left, row: Math.floor((top + lineHeight * 0.25) / lineHeight) * lineHeight };
     };
+
     const index = () => {
       const [x, y] = ghost.style.transform.match(/-?[\d.]+(?=px)/g).map(Number);
+
       return [...display.querySelectorAll('.char')].map(place).filter(({ left, row }) => row < y || (row === y && left < x)).length;
     };
+
     const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
     const t1 = await frame();
     const i1 = index();
     await new Promise((resolve) => setTimeout(resolve, 2000));
     const t2 = await frame();
     const i2 = index();
+
     return ((i2 - i1) / (t2 - t1)) * 60000;
   });
+
   expect(Math.abs(cpm - 335), `${Math.round(cpm)} cpm`).toBeLessThanOrEqual(60);
 
   // Back in wpm, the same saved pace reads as 67 wpm in the original range.
@@ -259,10 +272,12 @@ test('a minimum speed is picked and named in cpm, kept in wpm, and the stop reas
   const text = await passageText(page);
   await page.clock.pauseAt(Date.now() + 1000);
   await page.locator('#typing-input').focus();
+
   for (const char of text.slice(0, 22)) {
     await page.keyboard.type(char);
     await page.clock.runFor(200);
   }
+
   await page.clock.runFor(1000);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await page.clock.resume();
@@ -347,6 +362,7 @@ test('a member’s unit is saved with the profile, a guest’s is not, and saved
   // A profile saved before the setting existed reads in wpm.
   const conditions = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
     inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
   const bests = { [conditionKey(conditions)]: { wpm: 72, attemptId: 'earlier', at: '2026-09-29T12:00:00Z' } };
   const user = supabase.addUser('ada@stilltype.test');
   supabase.profiles.set(user.id, { data: { version: 2, preferences: { theme: 'dark' }, attempts: [], runs: [], loops: [], seenTextIds: [], bests, updatedAt: '2026-09-29T12:00:00Z' } });
@@ -372,6 +388,7 @@ async function member(browser, supabase, email) {
   await supabase.attach(page);
   await openApp(page);
   await signInWithEmail(page, email);
+
   return { context, page };
 }
 
@@ -386,6 +403,7 @@ test('an online race’s results and its inbox entry read in the chosen unit', a
   await page.locator('#online-save-friend').uncheck();
   await page.locator('#create-online-race').click();
   const { context, page: lin } = await member(browser, supabase, 'lin@stilltype.test');
+
   try {
     await openView(lin, 'Challenge');
     await lin.locator('#online-name').fill('Lin');
@@ -427,6 +445,7 @@ test('an online race’s results and its inbox entry read in the chosen unit', a
 test('a race result saved before the setting reads in cpm, and what was saved is kept', async ({ page, supabase }) => {
   const user = supabase.addUser('ada@stilltype.test');
   const key = `stilltype-inbox-v1:${user.id}`;
+
   // Exactly what the inbox saved before the speed unit setting: a result was its sentence alone, in wpm.
   const saved = [
     { id: 'result:old-room', kind: 'result', roomId: 'old-room', until: '2026-09-30T12:00:00.000Z', conditions: { mode: 'quote' },
@@ -436,6 +455,7 @@ test('a race result saved before the setting reads in cpm, and what was saved is
       text: 'You beat Lin: 72.5 wpm to 65.', at: '2026-09-29T11:00:00.000Z', read: false },
     { id: 'joined:old-room', kind: 'joined', roomId: 'old-room', text: 'Lin joined your race.', at: '2026-09-29T10:00:00.000Z', read: true },
   ];
+
   await openApp(page);
   await page.evaluate(([name, entries]) => localStorage.setItem(name, JSON.stringify(entries)), [key, saved]);
   await signInWithEmail(page, user.email);
@@ -490,6 +510,7 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
       expect(cpm / 5).toBeGreaterThanOrEqual(40);
       expect(cpm / 5).toBeLessThanOrEqual(110);
       expect(await overflow(page)).toBeLessThanOrEqual(0);
+
       if (viewport.width === 390) await shot(page, testInfo, 'results-mobile');
 
       // A 230 wpm burst would print four digits in cpm; the card still holds it.
@@ -535,6 +556,7 @@ test.describe('short phone 375×553', () => {
     expect(await content.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
     const heights = await page.locator('#settings-practice .preference-row:visible').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
     expect(heights.length).toBeGreaterThanOrEqual(8);
+
     for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
   });
 });
@@ -551,14 +573,17 @@ test('a custom run too quick to time shows no rate in cpm, before or after a uni
   await expect(page.locator('#best')).toHaveText('Not counted');
   await page.clock.pauseAt(new Date('2026-10-01T12:10:00Z'));
   await page.locator('#typing-input').focus();
+
   for (const key of 'hello world') {
     await page.keyboard.type(key);
     await page.clock.runFor(40);
   }
+
   await page.clock.resume();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-delta')).toContainText('not counted toward your best');
   await expect(page.locator('#announcement')).toContainText('Too quick to time');
+
   for (const unit of ['cpm', 'wpm']) {
     if (unit === 'wpm') await command(page, 'speed unit · wpm');
     await expect(page.locator('#speed-unit input:checked')).toHaveValue(unit);
@@ -595,9 +620,11 @@ test('new learning and composing surfaces follow cpm without changing their stor
 test('standard scores display cpm while profile bests remain stored in wpm', async ({ page, supabase }) => {
   const user = supabase.addUser('standard-units@stilltype.test');
   const conditions = standardConditions();
+
   const runs = [58, 63, 61, 66, 64].map((wpm, i) => ({ id: `unit-standard-${i}`, at: new Date(Date.now() - (5 - i) * 86400000).toISOString(),
     kind: 'test', status: 'complete', conditions, textId: `standard-v1-unit${i}`, fresh: true, interrupted: false,
     score: { wpm, accuracy: 98 }, elapsedMs: 60000, ...(i ? { errors: 1 } : {}), patterns: [] }));
+
   supabase.profiles.set(user.id, { data: { version: 2, preferences: { speedUnit: 'cpm' }, attempts: [], runs, loops: [], seenTextIds: [],
     bests: { [conditionKey(conditions)]: { wpm: 66, attemptId: runs[3].id, at: runs[3].at } }, updatedAt: new Date().toISOString() } });
   await openApp(page);
@@ -646,11 +673,13 @@ async function signedInPair(page, context, supabase, email, { finished = false }
   const user = supabase.addUser(email);
   await openApp(page);
   await signInWithEmail(page, user.email);
+
   // Test settings from elsewhere wait while a passage is ready to type; after a run they're taken in at once.
   if (finished) {
     await chooseWords(page, 10);
     await completePassage(page);
   }
+
   const other = await context.newPage();
   await supabase.attach(other);
   await openApp(other);
@@ -659,6 +688,7 @@ async function signedInPair(page, context, supabase, email, { finished = false }
   await chooseSetting(page, 'pace-select', 'custom');
   await expect.poll(() => supabase.profileFor(user.email)?.preferences?.paceCaret, { timeout: 15000 }).toBe('custom');
   await openSettings(other, 'practice');
+
   return { user, other };
 }
 
@@ -755,6 +785,7 @@ test('a unit synced mid-race applies at its end without holding back the race re
 
   await openView(page, 'Challenge');
   await page.locator('#challenge-local').click();
+
   // Both players type the passage; the second stops one letter short when asked, leaving the race running.
   const race = async ({ lastHeld = false } = {}) => {
     await page.locator('#player-one-name').fill('Ada');
@@ -767,8 +798,10 @@ test('a unit synced mid-race applies at its end without holding back the race re
     await expect(page.locator('#race-player')).toHaveText('Lin');
     await expect(page.locator('#race-input')).toBeFocused();
     await typeInto(page, lastHeld ? text.slice(0, -1) : text, '#race-input');
+
     return text;
   };
+
   const leaderboard = page.locator('#race-leaderboard');
   await race();
   await expect(page.locator('.race-result-row')).toHaveCount(2);
@@ -814,20 +847,25 @@ test('a unit change leaves no old unit in the word list, the speed graph or the 
   await typeRun(page, 11);
   await openView(page, 'Progress');
   await expect(page.locator('#progress-trend .trend-dot').first()).toBeAttached();
+
   // Each surface's text and its aria-label and title attributes that name the unit.
   const naming = (unit) => page.evaluate((unit) => Object.fromEntries(['#result-words', '#speed-graph', '#progress-trend'].map((selector) => {
     const found = [];
     const root = document.querySelector(selector);
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+
     for (let node = root; node; node = walker.nextNode()) {
       const texts = node.nodeType === Node.TEXT_NODE ? [node.data] : ['aria-label', 'title'].map((name) => node.getAttribute(name) || '');
       found.push(...texts.filter((text) => new RegExp(`\\b${unit}\\b`, 'i').test(text)));
     }
+
     return [selector, found];
   })), unit);
+
   for (const found of Object.values(await naming('wpm'))) expect(found.length).toBeGreaterThan(0);
   await command(page, 'speed unit · cpm');
   await expect(page.locator('#progress-trend figcaption').first()).toContainText('cpm');
   expect(await naming('wpm')).toEqual({ '#result-words': [], '#speed-graph': [], '#progress-trend': [] });
+
   for (const found of Object.values(await naming('cpm'))) expect(found.length).toBeGreaterThan(0);
 });

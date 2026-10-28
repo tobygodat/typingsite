@@ -4,10 +4,13 @@ import { test, expect, openApp, chooseWords, completePassage, passageText, choos
 // the ten tries and a first-try error a target needs. Returns the pair.
 async function typeWithPairSlip(page, text) {
   const counts = new Map();
+
   for (let index = 1; index < text.length; index += 1) {
     const pair = text.slice(index - 1, index + 1);
+
     if (/^[a-z]{2}$/.test(pair)) counts.set(pair, (counts.get(pair) || 0) + 1);
   }
+
   const [pair, tries] = [...counts].sort((a, b) => b[1] - a[1])[0];
   expect(tries).toBeGreaterThanOrEqual(10);
   const at = text.indexOf(pair) + 1;
@@ -16,6 +19,7 @@ async function typeWithPairSlip(page, text) {
   await page.keyboard.type(text[at] === 'x' ? 'z' : 'x');
   await page.keyboard.press('Backspace');
   await page.keyboard.type(text.slice(at));
+
   return pair;
 }
 
@@ -24,6 +28,7 @@ const seedRandom = () => {
   let seed = 20261023;
   Math.random = () => {
     seed = (seed * 16807) % 2147483647;
+
     return (seed - 1) / 2147483646;
   };
 };

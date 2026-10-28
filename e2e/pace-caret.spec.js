@@ -141,17 +141,23 @@ test('the pace caret glides through each letter instead of hopping between them'
   await page.keyboard.press('Escape');
   const text = await passageText(page);
   await typeInto(page, text.slice(0, 1));
+
   // At 30 wpm a letter takes 400 ms: a hopping caret would hold one place for the whole of it.
   const xs = await page.locator('#text-display .ghost-caret').evaluate((node) => new Promise((resolve) => {
     const seen = [];
+
     const sample = () => {
       seen.push(new DOMMatrix(getComputedStyle(node).transform).m41);
+
       if (seen.length < 24) requestAnimationFrame(sample);
       else resolve(seen);
     };
+
     requestAnimationFrame(sample);
   }));
+
   expect(new Set(xs.map((x) => x.toFixed(1))).size).toBeGreaterThan(8);
+
   for (let i = 1; i < xs.length; i += 1) expect(xs[i] - xs[i - 1]).toBeLessThan(6);
 });
 

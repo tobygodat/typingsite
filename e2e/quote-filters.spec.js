@@ -146,13 +146,16 @@ for (const width of [1280, 1000, 901, 900, 390, 320]) {
     await page.setViewportSize({ width, height: 800 });
     await quotes(page);
     const middle = await page.locator('#quote-options').boundingBox();
+
     if (width >= 1000) {
       const modes = await page.locator('.mode-options').boundingBox();
       const punctuation = await page.locator('#punctuation-switch').boundingBox();
       expect(Math.abs(middle.x - modes.x - modes.width - 24)).toBeLessThan(1);
       expect(Math.abs(punctuation.x - middle.x - middle.width - 24)).toBeLessThan(1);
     }
+
     const passage = await page.locator('#text-display').boundingBox();
+
     for (const name of ['length', 'difficulty']) {
       const trigger = combo(page, name);
       const target = await trigger.boundingBox();
@@ -163,15 +166,19 @@ for (const width of [1280, 1000, 901, 900, 390, 320]) {
       expect(popup.x + popup.width).toBeLessThanOrEqual(width);
       expect(await page.locator('#quote-options').boundingBox()).toEqual(middle);
       expect(await page.locator('#text-display').boundingBox()).toEqual(passage);
+
       for (const option of await list(page, name).getByRole('option').all()) {
         expect((await option.boundingBox()).height).toBeGreaterThanOrEqual(44);
         expect(await option.evaluate((node) => {
           const rect = node.getBoundingClientRect();
+
           return node.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
         })).toBe(true);
       }
+
       await page.keyboard.press('Escape');
     }
+
     const before = await combo(page).boundingBox();
     await chooseQuoteFilter(page, 'length', 'any');
     const after = await combo(page).boundingBox();
@@ -185,12 +192,15 @@ test.describe('touch quote filters', () => {
 
   test('both triggers and menu options keep 44px targets', async ({ page }) => {
     await quotes(page);
+
     for (const name of ['length', 'difficulty']) {
       expect((await combo(page, name).boundingBox()).height).toBeGreaterThanOrEqual(44);
       await combo(page, name).tap();
+
       for (const option of await list(page, name).getByRole('option').all()) {
         expect((await option.boundingBox()).height).toBeGreaterThanOrEqual(44);
       }
+
       await page.keyboard.press('Escape');
     }
   });

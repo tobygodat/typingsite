@@ -13,6 +13,7 @@ const bookConditions = { mode: 'book', duration: null, count: null, punctuation:
 
 test('four books with their first two sections and no more than 150 KB of text', async () => {
   assert.deepEqual(BOOKS.map((book) => book.id), ['alice', 'pride', 'sherlock', 'frankenstein']);
+
   for (const book of BOOKS) assert.equal(BOOK_TEXTS[book.id].length, 2, book.id);
   assert.match(BOOK_TEXTS.pride[0].paragraphs[0], /^It is a truth universally acknowledged, that a single man in possession of a good fortune must be in want of a wife\.$/);
   assert.ok((await stat(new URL('../src/book-texts.js', import.meta.url))).size < 150_000);
@@ -21,6 +22,7 @@ test('four books with their first two sections and no more than 150 KB of text',
 
 test('every page is plain printable ASCII the engine can type, and pages keep every word in order', () => {
   const ids = new Set();
+
   for (const { id } of BOOKS) {
     const pages = openBook(id);
     assert.ok(pages.length > 20, id);
@@ -83,6 +85,7 @@ test('a page number is read back from the page id', () => {
 test('book pages key by book and text version, apart from every other mode', () => {
   const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
     inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
   assert.equal(conditionKey(practice), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
   assert.equal(conditionKey(bookConditions), 'book-alice:::punctuation::::physical-keyboard:relaxed:gutenberg-en-v1:stilltype-metrics-v1');
   assert.notEqual(conditionKey({ ...bookConditions, book: 'pride' }), conditionKey(bookConditions));
@@ -112,6 +115,7 @@ test('normalising Gutenberg text keeps the words and makes them typable', () => 
     '',
     'A second paragraph’s end.',
   ].join('\n');
+
   assert.deepEqual(normalise(raw), ['"Ou est ma chatte?" said Alice--it was very odd... and she ran on.', "A second paragraph's end."]);
   assert.throws(() => normalise('A snowman ☃'), /Unsupported characters/);
 });

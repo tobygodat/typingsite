@@ -18,6 +18,7 @@ const glide = (page, display = '#text-display') => page.locator(display).evaluat
   const start = shape.getBoundingClientRect();
   const end = shape.lastElementChild.getBoundingClientRect();
   const box = word.getBoundingClientRect();
+
   return {
     index: Number(word.dataset.wordIndex),
     off: Math.max(Math.abs(start.left - box.left), Math.abs(end.right - box.right), Math.abs(start.top - box.top), Math.abs(start.height - box.height)),
@@ -50,11 +51,14 @@ test('slide glides one tint behind the letters, and snaps to a word on the next 
   await expect(slideRow(page)).toBeVisible();
   await expect(page.locator('#word-highlight-slide input:checked')).toHaveValue('false');
   expect(await tinted(page)).toEqual([0]);
+
   const letters = () => page.locator('#text-display .char').evaluateAll((chars) => chars.slice(0, 60)
     .map((char) => {
       const box = char.getBoundingClientRect();
+
       return [box.left, box.top, getComputedStyle(char).color];
     }));
+
   const before = await letters();
 
   await turnOnSlide(page);
@@ -77,6 +81,7 @@ test('slide glides one tint behind the letters, and snaps to a word on the next 
   // A miss keeps its coral letter and tint, painted over the glide.
   const wrongKey = words[1][0] === 'x' ? 'z' : 'x';
   await page.keyboard.type(wrongKey);
+
   const miss = await page.locator('#text-display .char.wrong').evaluate((node) => {
     const root = getComputedStyle(document.documentElement);
     const probe = document.createElement('span');
@@ -86,8 +91,10 @@ test('slide glides one tint behind the letters, and snaps to a word on the next 
     probe.style.color = root.getPropertyValue('--danger-soft');
     const soft = getComputedStyle(probe).color;
     probe.remove();
+
     return { color: getComputedStyle(node).color === danger, fill: getComputedStyle(node).backgroundColor === soft };
   });
+
   expect(miss).toEqual({ color: true, fill: true });
   await page.keyboard.press('Backspace');
 
@@ -112,6 +119,7 @@ test('on the one-line tape the glide rides the tape as it steps', async ({ page 
   await expect(page.locator('#typing-wrap')).toHaveAttribute('data-tape-scrolled', 'true');
   await expect.poll(async () => {
     const { index, off, moving } = await glide(page);
+
     return index === 25 && off < 1 && !moving;
   }).toBe(true);
 });

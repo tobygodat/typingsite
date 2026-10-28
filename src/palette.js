@@ -7,18 +7,23 @@ function fuzzyScore(text, query) {
   if (!query) return 1;
   const haystack = text.toLowerCase();
   const direct = haystack.indexOf(query);
+
   if (direct === 0) return 100;
+
   if (direct > 0) return 80 - Math.min(direct, 40) + (haystack[direct - 1] === ' ' ? 10 : 0);
   let score = 0;
   let from = 0;
   let streak = 0;
+
   for (const char of query) {
     const index = haystack.indexOf(char, from);
+
     if (index < 0) return 0;
     streak = index === from ? streak + 1 : 0;
     score += 1 + streak * 2 + (index === 0 || haystack[index - 1] === ' ' ? 3 : 0);
     from = index + 1;
   }
+
   return score;
 }
 
@@ -31,6 +36,7 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     const q = query.trim().toLowerCase();
     const commands = getCommands(q);
     const groups = [...new Set(commands.map((command) => command.group))];
+
     return commands
       .map((command) => ({ command, score: command.secret ? 100 : fuzzyScore(`${command.label} ${command.keywords || ''} ${command.group}`, q) }))
       .filter(({ score, command }) => score > 0 && !command.disabled)
@@ -52,6 +58,7 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
         heading.textContent = group;
         nodes.push(heading);
       }
+
       const option = document.createElement('li');
       option.id = `palette-option-${index}`;
       option.className = `palette-option${command.secret ? ' is-secret' : ''}`;
@@ -67,12 +74,14 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
       text.textContent = command.label;
       label.append(mark, text);
       option.append(label);
+
       if (command.hint) {
         const hint = document.createElement('span');
         hint.className = `opt-hint${command.on ? ' is-on' : ''}`;
         hint.textContent = command.hint;
         option.append(hint);
       }
+
       nodes.push(option);
     });
     list.replaceChildren(...nodes);
@@ -84,16 +93,20 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     if (!items.length) {
       highlight.style.setProperty('--hl-o', '0');
       input.removeAttribute('aria-activedescendant');
+
       return;
     }
+
     active = (index + items.length) % items.length;
     list.querySelectorAll('[role="option"]').forEach((option) => option.setAttribute('aria-selected', String(Number(option.dataset.index) === active)));
     const row = list.querySelector(`#palette-option-${active}`);
     input.setAttribute('aria-activedescendant', row.id);
+
     if (instant) highlight.style.transition = 'none';
     highlight.style.setProperty('--hl-y', `${list.offsetTop + row.offsetTop}px`);
     highlight.style.setProperty('--hl-h', `${row.offsetHeight}px`);
     highlight.style.setProperty('--hl-o', '1');
+
     if (instant) requestAnimationFrame(() => { highlight.style.transition = ''; });
     row.scrollIntoView({ block: 'nearest' });
   }
@@ -110,21 +123,27 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
 
   function close({ restore = true, animate = true } = {}) {
     if (!dialog.open) return;
+
     const finish = () => {
       dialog.classList.remove('is-closing');
       dialog.close();
+
       if (restore && returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
     };
+
     if (!animate || reducedMotion.matches) {
       finish();
+
       return;
     }
+
     dialog.classList.add('is-closing');
     setTimeout(finish, 150);
   }
 
   function run(index = active) {
     const command = items[index];
+
     if (!command) return;
     // Close without the exit animation: the command may need focus outside the modal right away.
     close({ restore: false, animate: false });
@@ -141,10 +160,12 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
   });
   list.addEventListener('pointermove', (event) => {
     const option = event.target.closest('[role="option"]');
+
     if (option && Number(option.dataset.index) !== active) move(Number(option.dataset.index));
   });
   list.addEventListener('click', (event) => {
     const option = event.target.closest('[role="option"]');
+
     if (option) run(Number(option.dataset.index));
   });
   // A press on an option or the backdrop leaves focus in the search field, as Enter and Escape do.

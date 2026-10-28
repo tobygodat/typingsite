@@ -17,11 +17,14 @@ async function openTestContent(page) {
 // Saved standard runs at realistic speeds, one a day up to yesterday, plus an interrupted one that must not count.
 function seededProfile(speeds) {
   const conditions = standardConditions();
+
   const runs = speeds.map((wpm, i) => ({ id: `standard-${i}`, at: new Date(Date.now() - (speeds.length - i) * 86400000).toISOString(), kind: 'test',
     status: 'complete', conditions, textId: `standard-v1-seed${i}`, fresh: true, interrupted: false,
     score: { wpm, accuracy: 96 + (i % 3) }, elapsedMs: 60000, errors: 2 + (i % 4), target: null, challengeDate: null, patterns: [] }));
+
   runs.push({ ...runs.at(-1), id: 'standard-interrupted', status: 'interrupted', interrupted: true, score: { wpm: 91, accuracy: 99 } });
   const best = runs.filter((run) => run.status === 'complete').sort((a, b) => b.score.wpm - a.score.wpm)[0];
+
   return { version: 2, preferences: {}, attempts: [], runs, loops: [], seenTextIds: runs.map((run) => run.textId),
     bests: { [conditionKey(conditions)]: { wpm: best.score.wpm, attemptId: best.id, at: best.at } }, updatedAt: new Date().toISOString() };
 }
@@ -32,15 +35,19 @@ async function typeForAMinute(page, text) {
   await page.locator('#typing-input').focus();
   const delay = 95;
   let at = 0;
+
   while (at < text.length) {
     if (at > 0 && Number(await page.locator('#timer').textContent()) <= 2) break;
+
     if (at === 120) {
       await page.keyboard.type(text[at] === 'q' ? 'w' : 'q', { delay });
       await page.keyboard.press('Backspace', { delay });
     }
+
     await page.keyboard.type(text.slice(at, at + 6), { delay });
     at += 6;
   }
+
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results', { timeout: 15_000 });
   // The speed graph draws in after the run; capture it once it has settled.
   await settle(page);
@@ -193,6 +200,7 @@ test('standard mode, its run card and its Progress headline fit a 320px screen',
   await openView(page, 'Progress');
   await expect(page.locator('#standard-best')).toHaveText('60');
   expect(await overflow(page)).toBeLessThanOrEqual(0);
+
   for (const id of ['#take-standard', '#standard-score-note', '#standard-score-conditions']) {
     const box = await page.locator(id).boundingBox();
     expect(box.x + box.width, id).toBeLessThanOrEqual(320);
@@ -253,25 +261,30 @@ test('a fresh profile can find and start the standard test from Progress', async
   for (const [width, height] of [[1280, 800], [320, 568]]) {
     await page.setViewportSize({ width, height });
     expect(await overflow(page)).toBeLessThanOrEqual(0);
+
     for (const id of ['#take-standard', '#standard-score-note', '#progress-empty .btn-primary']) {
       const box = await page.locator(id).boundingBox();
       expect(box.x + box.width, id).toBeLessThanOrEqual(width);
     }
+
     for (const theme of ['dark', 'light']) {
       await page.emulateMedia({ colorScheme: theme });
       await page.mouse.move(0, 0);
       await page.evaluate(() => window.scrollTo(0, 0));
       await settle(page);
+
       if (width > 320) {
         await page.screenshot({ path: shot(testInfo, `progress-fresh-${theme}.png`) });
         continue;
       }
+
       // At 320px the empty state is below the fold: one shot from the top, one where the two meet.
       await page.screenshot({ path: shot(testInfo, `progress-fresh-320-${theme}.png`) });
       await page.locator('#standard-score-note').evaluate((node) => window.scrollTo(0, node.getBoundingClientRect().top + window.scrollY - 16));
       await page.screenshot({ path: shot(testInfo, `progress-fresh-320-empty-${theme}.png`) });
     }
   }
+
   await page.evaluate(() => window.scrollTo(0, 0));
 
   await page.locator('#take-standard').click();
@@ -323,6 +336,7 @@ test('a standard best that outlives its runs in the kept history says so, not "n
 const AGED_OUT = 'Your best is kept, but your standard runs are older than the newest 1,000 runs that Progress keeps, so the median waits for 3 new ones.';
 const OLDER_BEST = 'Your best comes from a run older than the newest 1,000 runs that Progress keeps.';
 const TOUCH_KEY = conditionKey(standardConditions('touch'));
+
 const touchRun = (wpm, i, base) => ({ ...base, id: `standard-touch-${i}`, at: new Date(Date.now() - (3 - i) * 3600000).toISOString(),
   textId: `standard-v1-touch${i}`, conditions: standardConditions('touch'), score: { wpm, accuracy: 95 } });
 
@@ -340,10 +354,12 @@ test('when only some standard runs are kept, the note counts kept runs and says 
   // the newest 1,000 summaries drops the first standard run, the 66 wpm best, while the best itself stays.
   const data = seededProfile([66, 60]);
   const [first, second] = data.runs;
+
   const daily = Array.from({ length: 999 }, (_, i) => ({ ...second, id: `daily-${i}`, kind: 'daily', textId: `daily-${i}`,
     at: new Date(Date.now() - (999 - i) * 60000).toISOString(), challengeDate: '2026-10-01', firstDailyAttempt: i === 0,
     conditions: { ...standardConditions(), mode: 'time', duration: 30, recipe: undefined, wordList: '200', correctionPolicy: 'relaxed' },
     score: { wpm: 58, accuracy: 97 } }));
+
   data.runs = [first, second, ...daily];
   await openProgressAs(page, supabase, 'partly-aged@stilltype.test', data);
   await expect(page.locator('#standard-best')).toHaveText('66');

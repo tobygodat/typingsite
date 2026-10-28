@@ -6,6 +6,7 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const profile = await mkdtemp(path.join(tmpdir(), 'stilltype-latency-'));
+
 const serverPort = await new Promise((resolve, reject) => {
   const probe = createServer();
   probe.once('error', reject);
@@ -14,6 +15,7 @@ const serverPort = await new Promise((resolve, reject) => {
     probe.close(() => resolve(port));
   });
 });
+
 const browser = spawn(process.env.CHROMIUM || 'chromium', [
   ...(process.env.HEADLESS === '1' ? ['--headless=new'] : ['--ozone-platform=x11']),
   '--no-sandbox', '--disable-dev-shm-usage',
@@ -21,6 +23,7 @@ const browser = spawn(process.env.CHROMIUM || 'chromium', [
   '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--window-size=1280,720',
   'about:blank',
 ], { stdio: 'ignore' });
+
 const server = spawn(process.execPath, ['server.mjs'], {
   cwd: root, env: { ...process.env, PORT: String(serverPort) }, stdio: 'ignore',
 });
@@ -33,9 +36,11 @@ class Cdp {
     this.listeners = new Map();
     this.socket.addEventListener('message', ({ data }) => {
       const message = JSON.parse(data);
+
       if (message.id) {
         const pending = this.pending.get(message.id);
         this.pending.delete(message.id);
+
         if (message.error) pending.reject(new Error(message.error.message));
         else pending.resolve(message.result);
       } else {
@@ -52,6 +57,7 @@ class Cdp {
   }
   send(method, params = {}, sessionId) {
     const id = ++this.id;
+
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       this.socket.send(JSON.stringify({ id, method, params, sessionId }));
@@ -62,19 +68,25 @@ class Cdp {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function waitFor(fn, limitMs = 10000) {
   const end = Date.now() + limitMs;
+
   while (Date.now() < end) {
     try {
       const result = await fn();
+
       if (result) return result;
     } catch { /* startup */ }
+
     await sleep(50);
   }
+
   throw new Error('Timed out waiting for browser/server');
 }
 
 let cdp;
+
 try {
   const port = await waitFor(async () => Number((await readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]));
   await waitFor(async () => (await fetch(`http://127.0.0.1:${serverPort}`)).ok);
@@ -83,15 +95,20 @@ try {
   await cdp.open();
   const { targetInfos } = await cdp.send('Target.getTargets');
   const targetId = targetInfos.find((target) => target.type === 'page')?.targetId;
+
   if (!targetId) throw new Error('No browser page target');
   await cdp.send('Target.activateTarget', { targetId });
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
   const send = (method, params = {}) => cdp.send(method, params, sessionId);
+
   const evaluate = async (expression) => {
     const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.text);
+
     return result.result.value;
   };
+
   await send('Page.enable');
   await send('Runtime.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
@@ -103,6 +120,7 @@ try {
   const displayId = scenario === 'race' ? 'race-text-display' : 'text-display';
   const accessibleId = scenario === 'race' ? 'race-accessible-passage' : 'accessible-passage';
   const wrapSelector = scenario === 'race' ? '.race-typing-wrap' : '#typing-wrap';
+
   if (scenario === 'race') {
     await evaluate(`(() => {
       document.querySelector('[data-nav="compete"]').click();
@@ -112,6 +130,7 @@ try {
     })()`);
     await waitFor(() => evaluate("!document.querySelector('#race-stage').hidden && document.querySelectorAll('#race-text-display .char').length > 50"));
   }
+
   if (process.env.GHOST === '1' && scenario === 'practice') {
     await evaluate(`(() => {
       document.querySelector('#palette-trigger').click();
@@ -122,14 +141,18 @@ try {
     })()`);
     await waitFor(() => evaluate("document.body.dataset.ghost === 'on'"));
   }
+
   const duration = Number(process.env.DURATION || 30);
+
   if (scenario === 'practice' && duration !== 30) {
     await evaluate(`document.querySelector('[data-length="${duration}"]').click()`);
     await waitFor(() => evaluate(`document.querySelector('[data-length="${duration}"]').getAttribute('aria-pressed') === 'true'`));
   }
+
   if (process.env.BENCH_CSS) {
     await evaluate(`(() => { const style = document.createElement('style'); style.textContent = ${JSON.stringify(process.env.BENCH_CSS)}; document.head.append(style); })()`);
   }
+
   await evaluate(`(async () => {
     await document.fonts.ready;
     document.querySelector('#${inputId}').focus();
@@ -173,30 +196,39 @@ try {
   const delay = Number(process.env.KEY_DELAY_MS || 50);
   const correctionAt = Number(process.env.CORRECTION_AT || -1);
   const target = await evaluate(`document.querySelector('#${accessibleId}').textContent.slice(0, ${count})`);
+
   const key = async (char) => {
     const keyCode = char === ' ' ? 32 : char.toUpperCase().charCodeAt(0);
     const code = char === ' ' ? 'Space' : `Key${char.toUpperCase()}`;
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: char, code, text: char, unmodifiedText: char, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: char, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
   };
+
   const backspace = async () => {
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
   };
+
   let correctionVerified = false;
+
   for (let index = 0; index < target.length; index += 1) {
     const char = target[index];
+
     if (index === correctionAt) {
       const wrong = char === 'z' ? 'q' : 'z';
       await key(wrong);
       correctionVerified = await evaluate(`(() => { const node = document.querySelector('#${displayId} .char.wrong'); return !!node && getComputedStyle(node).textDecorationLine.includes('underline'); })()`);
       await backspace();
+
       if (!correctionVerified) throw new Error('Wrong character lacked visible underline');
     }
+
     await key(char);
     await sleep(delay);
   }
+
   await sleep(250);
+
   const result = await evaluate(`(() => {
     const input = document.querySelector('#${inputId}');
     const current = document.querySelector('#${displayId} .char.current');
@@ -210,25 +242,35 @@ try {
       wrapHeight: Math.round(wrap.height), currentWithinWrap: rect ? [Math.round(rect.top - wrap.top), Math.round(rect.bottom - wrap.top)] : null,
     };
   })()`);
+
   if (result.typed !== target) throw new Error(`Typing diverged at ${result.typed.length}/${target.length}`);
+
   if (result.visible !== 'visible') throw new Error('Benchmark tab was hidden; paint measurements are invalid');
+
   if (!result.focused || result.data.blurs) throw new Error(`Benchmark lost focus ${result.data.blurs} times; paint measurements are invalid`);
+
   if (!process.env.ALLOW_UNBOUNDED && result.mountedChars > 1200) throw new Error(`Passage DOM grew beyond bound: ${result.mountedChars} characters`);
+
   if (!result.currentWithinWrap || result.currentWithinWrap[0] < -20 || result.currentWithinWrap[1] > result.wrapHeight + 20) {
     throw new Error(`Current character left typing viewport: ${result.currentWithinWrap}`);
   }
+
   if (process.env.GHOST === '1' && result.spacerHeight > 0 && !result.ghostHidden) {
     throw new Error('Trailing ghost remained visible after its character was trimmed');
   }
+
   if (process.env.SCREENSHOT) {
     const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(process.env.SCREENSHOT, Buffer.from(data, 'base64'));
   }
+
   const summary = (field, offset, records = result.data.records.slice(20)) => {
     const values = records.map((r) => r[field] - r[offset]).filter(Number.isFinite).sort((a, b) => a - b);
     const at = (p) => Number(values[Math.ceil(p * values.length) - 1]?.toFixed(2));
+
     return { samples: values.length, median: at(0.5), p95: at(0.95), p99: at(0.99), max: at(1) };
   };
+
   console.log(JSON.stringify({
     browser: result.browser, viewport: result.viewport, dpr: result.dpr, visible: result.visible, focused: result.focused,
     scenario, durationSeconds: scenario === 'practice' ? duration : null, keys: target.length, intervalMs: delay, correctionVerified,
@@ -247,14 +289,18 @@ try {
       const durations = result.data.events.filter((item) => item.name === 'keydown').map((item) => item.duration).sort((a, b) => a - b);
       const total = result.data.keydowns;
       const upperBound = [...Array(Math.max(0, total - durations.length)).fill(16), ...durations].sort((a, b) => a - b);
+
       return { keydowns: total, reportedAtOrAbove16Ms: durations.length, p95UpperBoundMs: upperBound[Math.ceil(total * 0.95) - 1] ?? null, maxReportedMs: durations.at(-1) ?? null };
     })(),
   }, null, 2));
+
   if (process.env.VERIFY_TRIM_BOUNDARY === '1') {
     if (!result.firstRenderedWord) throw new Error('No trimmed word boundary to backspace across');
     const boundary = target.split(' ').slice(0, result.firstRenderedWord).join(' ').length;
+
     for (let position = target.length; position > boundary; position -= 1) await backspace();
     await sleep(100);
+
     const check = await evaluate(`(() => {
       const current = document.querySelector('#${displayId} .char.current');
       const wrap = document.querySelector('${wrapSelector}').getBoundingClientRect();
@@ -263,10 +309,12 @@ try {
         currentConnected: !!current?.isConnected, currentText: current?.textContent,
         currentWithinWrap: rect ? [Math.round(rect.top - wrap.top), Math.round(rect.bottom - wrap.top)] : null };
     })()`);
+
     if (check.typedLength !== boundary || !check.currentConnected || check.currentText !== ' ' ||
         !check.currentWithinWrap || check.currentWithinWrap[0] < -20 || check.currentWithinWrap[1] > result.wrapHeight + 20) {
       throw new Error(`Trim-boundary backspace lost the caret target: ${JSON.stringify(check)}`);
     }
+
     console.log(JSON.stringify({ trimBoundaryCheck: check }));
   }
 } catch (error) {

@@ -3,11 +3,13 @@
 import { test, expect, openApp, openSettings, signInWithEmail } from './fixtures.js';
 
 const EMAIL = 'themes@stilltype.test';
+
 const GENERATED = {
   name: 'Rainy Tokyo',
   mode: 'dark',
   colors: { ground: '#101422', text: '#e6e9f2', muted: '#9aa3b8', accent: '#ff5fa2', danger: '#ff8a6b', 'accent-ink': '#1a0f14', warning: '#e0b565', ghost: '#7fd1ff' },
 };
+
 const token = (page, name) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(`--${n}`).trim(), name);
 const hex = (page, name) => page.locator(`#theme-hex-${name}`);
 const generateReply = (page, status, body) => page.route('**/functions/v1/generate-theme', (route) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }));
@@ -52,6 +54,7 @@ test('a saved theme is another theme: it syncs, wears before app.js on reload, a
   await openSettings(page, 'appearance');
   await page.locator('#theme-new').click();
   await page.locator('#theme-name').fill('Plum');
+
   for (const [name, value] of [['ground', '#f3ecf6'], ['text', '#2b1d33'], ['muted', '#6a5a73'], ['accent', '#7b3fa0'], ['danger', '#b0302a']]) await hex(page, name).fill(value);
   await page.locator('#theme-save').click();
   // A light background makes it a light theme: system mode shows it while the system is light.
@@ -128,6 +131,7 @@ test('generate fills the editor unsaved, and each failure is one line', async ({
     await expect(page.locator('#theme-generate-status')).toHaveText(body.error);
     await expect(page.locator('#theme-generate')).toBeEnabled();
   }
+
   // The draft from before the failures is still there to save.
   await expect(hex(page, 'accent')).toHaveValue('#ff5fa2');
   await page.locator('#theme-save').click();

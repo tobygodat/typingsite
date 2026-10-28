@@ -44,6 +44,7 @@ export const SYSTEM_PROMPT = [
 ].join('\n');
 
 const HEX_PATTERN = '^#[0-9a-fA-F]{6}$';
+
 export const THEME_SCHEMA = {
   type: 'object',
   properties: {
@@ -73,6 +74,7 @@ export const MESSAGES = {
 };
 
 type UserReply = Promise<{ data: { user: { id: string } | null } | null; error: unknown }>;
+
 export interface ThemeDeps {
   auth: { getUser(jwt: string): UserReply };
   // Counts one generation for the user today; false once the day's limit is reached.
@@ -85,22 +87,30 @@ export interface ThemeDeps {
 function reply(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
 }
+
 const failure = (status: number, code: keyof typeof MESSAGES) => reply(status, { error: MESSAGES[code], code });
 
 // ── Contrast (WCAG 2), as src/custom-themes.js measures it ───────────────
 const channels = (hex: string) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+
 const linear = (value: number) => {
   const s = value / 255;
+
   return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
 };
+
 const luminance = (hex: string) => {
   const [r, g, b] = channels(hex).map(linear);
+
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 };
+
 export const contrast = (a: string, b: string) => {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+
   return (hi + 0.05) / (lo + 0.05);
 };
+
 const toHex = (rgb: number[]) => `#${rgb.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('')}`;
 const mix = (top: string, under: string, alpha: number) => toHex(channels(top).map((v, i) => v * alpha + channels(under)[i] * (1 - alpha)));
 export const themeMode = (ground: string) => (luminance(ground) > 0.179 ? 'light' : 'dark');
@@ -110,10 +120,13 @@ export const themeMode = (ground: string) => (luminance(ground) > 0.179 ? 'light
 function repaired(colour: string, under: (candidate: string) => string, min: number): string {
   if (contrast(colour, under(colour)) >= min) return colour;
   const target = contrast('#ffffff', under(colour)) >= contrast('#000000', under(colour)) ? '#ffffff' : '#000000';
+
   for (let step = 1; step <= 20; step += 1) {
     const candidate = mix(target, colour, step / 20);
+
     if (contrast(candidate, under(candidate)) >= min) return candidate;
   }
+
   return target;
 }
 
@@ -126,6 +139,7 @@ export function repairContrast(colors: Record<string, string>): Record<string, s
   fixed.accent = repaired(fixed.accent, onGround, 3);
   fixed.danger = repaired(fixed.danger, (danger) => mix(danger, fixed.ground, tintShare), 4.5);
   fixed['accent-ink'] = repaired(fixed['accent-ink'], () => fixed.accent, 4.5);
+
   return fixed;
 }
 
@@ -135,24 +149,32 @@ export function cleanTheme(raw: unknown): { name: string; mode: string; colors: 
   if (!raw || typeof raw !== 'object') return null;
   // SAFETY: raw is a non-null object (checked above), and both fields stay unknown until checked below.
   const { name, colors } = raw as { name?: unknown; colors?: unknown };
+
   if (!colors || typeof colors !== 'object') return null;
   const clean: Record<string, string> = {};
+
   for (const token of BASE_TOKENS) {
     // SAFETY: colors is a non-null object (checked above), and each value is checked as a hex string next.
     const value = (colors as Record<string, unknown>)[token];
+
     if (typeof value !== 'string' || !new RegExp(HEX_PATTERN).test(value)) return null;
     clean[token] = value.toLowerCase();
   }
+
   const words = typeof name === 'string' ? name.replace(/[^A-Za-z0-9 '-]/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_NAME).trim() : '';
   const fixed = repairContrast(clean);
+
   return { name: words || 'generated', mode: themeMode(fixed.ground), colors: fixed };
 }
 
 async function callerId(deps: ThemeDeps, request: Request): Promise<string | null> {
   const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('Authorization') ?? '')?.[1];
+
   if (!token) return null;
+
   try {
     const { data, error } = await deps.auth.getUser(token);
+
     return error ? null : data?.user?.id ?? null;
   } catch {
     return null;
@@ -161,18 +183,23 @@ async function callerId(deps: ThemeDeps, request: Request): Promise<string | nul
 
 export async function handleGenerateTheme(request: Request, deps: ThemeDeps | null): Promise<Response> {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
+
   if (request.method !== 'POST') return failure(405, 'method');
+
   if (!deps) return failure(500, 'config');
   const userId = await callerId(deps, request);
+
   if (!userId) return failure(401, 'session');
 
   let vibe = '';
+
   try {
     const body = await request.json();
     vibe = typeof body?.vibe === 'string' ? body.vibe.replace(/\s+/g, ' ').trim() : '';
   } catch {
     // Settled below.
   }
+
   if (!vibe || vibe.length > MAX_VIBE) return failure(400, 'vibe');
 
   try {
@@ -184,6 +211,7 @@ export async function handleGenerateTheme(request: Request, deps: ThemeDeps | nu
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), deps.timeoutMs ?? MODEL_TIMEOUT_MS);
   let answer: { stop_reason?: string; content?: { type: string; text?: string }[] };
+
   try {
     const response = await deps.fetch(ANTHROPIC_URL, {
       method: 'POST',
@@ -197,11 +225,14 @@ export async function handleGenerateTheme(request: Request, deps: ThemeDeps | nu
         output_config: { effort: 'low', format: { type: 'json_schema', schema: THEME_SCHEMA } },
       }),
     });
+
     if (!response.ok) {
       // The status alone: the request carried the vibe, so nothing else of it is logged.
       console.error(`generate-theme: Anthropic answered ${response.status}`);
+
       return failure(502, 'failed');
     }
+
     answer = await response.json();
   } catch {
     return deadline.signal.aborted ? failure(504, 'timeout') : failure(502, 'failed');
@@ -211,12 +242,15 @@ export async function handleGenerateTheme(request: Request, deps: ThemeDeps | nu
 
   if (answer?.stop_reason === 'refusal') return failure(422, 'refused');
   let theme = null;
+
   try {
     const text = answer?.content?.find((block) => block.type === 'text')?.text;
     theme = answer?.stop_reason === 'end_turn' && text ? cleanTheme(JSON.parse(text)) : null;
   } catch {
     // Settled below.
   }
+
   if (!theme) return failure(502, 'failed');
+
   return reply(200, { theme });
 }

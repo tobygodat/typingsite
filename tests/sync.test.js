@@ -11,15 +11,19 @@ import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, conditionKey, createAttempt } from '../src/typing.js';
 
 const minute = (n) => new Date(Date.UTC(2026, 9, 1, 12, 0) + n * 60000).toISOString();
+
 const profile = (over = {}) => ({
   version: 2, profileId: 'p', preferences: { theme: 'system', fontSize: '28' },
   attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, ...over,
 });
+
 const item = (id, n, extra = {}) => ({ id, at: n === null ? null : minute(n), ...extra });
 const ids = (items) => items.map((entry) => entry.id);
+
 // A field mergeSynced has no rule for: version, and any field a newer build added.
 const MERGED_FIELDS = [...Object.keys(HISTORY), 'bests', 'seenTextIds', 'preferences', 'preferencesAt', 'historyClearedAt',
   'appliedClears', 'heardClears', 'historyClearedIds', 'undoneClears', 'updatedAt', 'profileId'];
+
 const passThrough = (copy) => JSON.stringify(Object.keys(copy).filter((key) => !MERGED_FIELDS.includes(key) && copy[key] !== undefined)
   .sort().map((key) => [key, copy[key]]));
 
@@ -57,6 +61,7 @@ test('undated records from older builds sort first (by id), and the fuller copy 
     profile({ runs: [item('old-a', null), item('new', 5, { patterns: [] })] }),
     profile({ runs: [item('old-b', null), item('new', 5, { patterns: [['th', 2, 1, 0, null, null]] })] }),
   );
+
   assert.deepEqual(ids(merged.runs), ['old-a', 'old-b', 'new']);
   assert.equal(merged.runs.at(-1).patterns.length, 1);
 });
@@ -64,6 +69,7 @@ test('undated records from older builds sort first (by id), and the fuller copy 
 test('a merge never lowers a best', () => {
   const local = profile({ bests: { time30: { wpm: 80, at: minute(1) }, words25: { wpm: 60, at: minute(1) } } });
   const cloud = profile({ bests: { time30: { wpm: 70, at: minute(2) }, words25: { wpm: 90, at: minute(2) }, quote: { wpm: 50, at: minute(2) } } });
+
   for (const merged of [mergeSynced(local, cloud), mergeSynced(cloud, local)]) {
     assert.deepEqual(Object.fromEntries(Object.entries(merged.bests).map(([key, best]) => [key, best.wpm])), { time30: 80, words25: 90, quote: 50 });
   }
@@ -99,6 +105,7 @@ test('each setting comes from the side that changed it last', () => {
   // The laptop changed the theme, then the phone the text size, then the laptop the test shape.
   const laptop = profile({ preferences: light, preferencesAt: { theme: minute(1), mode: minute(3) }, updatedAt: minute(9) });
   const phone = profile({ preferences: large, preferencesAt: { fontSize: minute(2), mode: minute(0) }, updatedAt: minute(4) });
+
   for (const merged of [mergeSynced(laptop, phone), mergeSynced(phone, laptop)]) {
     assert.deepEqual(merged.preferences, { theme: 'light', fontSize: '36', mode: 'time' });
     assert.deepEqual(merged.preferencesAt, { theme: minute(1), fontSize: minute(2), mode: minute(3) });
@@ -163,13 +170,16 @@ test('a setting a copy from an older build lacks comes from the copy that has it
   // A tab that read the older copy and saved an unrelated edit stores what it read; another tab or the row
   // reads that in turn.
   const resaved = normalizeProfile(JSON.parse(JSON.stringify({ ...normalizeProfile(older), updatedAt: minute(10) })));
+
   for (const [how, a, b] of [['as stored', chosen, older], ['as read', normalizeProfile(chosen), normalizeProfile(older)],
     ['read after a save', normalizeProfile(chosen), resaved]]) {
     const merged = [mergeSynced(a, b), mergeSynced(b, a)];
+
     for (const copy of merged) assert.deepEqual(settings(copy), expected, how);
     assert.ok(sameProfile(merged[0], merged[1]), how);
     assert.ok(sameProfile(mergeSynced(merged[0], b), merged[0]), how);
   }
+
   // Read, the older copy stores only what it holds, and is used with the default for each setting it lacks.
   assert.deepEqual(normalizeProfile(older).preferences, { theme: 'dark', fontSize: '36' });
   assert.deepEqual(settings({ preferences: preferencesInUse(normalizeProfile(older).preferences) }),
@@ -181,13 +191,16 @@ test('two devices that each tried the same daily before merging keep one first a
   // The laptop tried first; the phone, not yet holding the laptop's copy, labelled its own try first too.
   const laptop = profile({ attempts: [daily('laptop', 2)], runs: [daily('laptop', 2)] });
   const phone = profile({ attempts: [daily('phone', 5)], runs: [daily('phone', 5), daily('other-day', 6, { challengeDate: '2026-10-02' })] });
+
   for (const merged of [mergeSynced(laptop, phone), mergeSynced(phone, laptop)]) {
     for (const name of ['attempts', 'runs']) {
       const first = merged[name].filter((record) => record.challengeDate === '2026-10-01' && record.firstDailyAttempt).map((record) => record.id);
       assert.deepEqual(first, ['laptop'], name);
     }
+
     assert.equal(merged.runs.find((record) => record.id === 'other-day').firstDailyAttempt, true);
   }
+
   // A repeat stays a repeat, and the inputs are not changed.
   const repeat = profile({ runs: [daily('early', 1, { firstDailyAttempt: false })] });
   assert.deepEqual(mergeSynced(repeat, phone).runs.filter((record) => record.firstDailyAttempt).map((record) => record.id), ['other-day']);
@@ -204,9 +217,11 @@ test('a daily attempt either copy knows is a repeat stays one, after its earlier
   // A clear from a device whose clock runs behind, stamped between the two tries, takes the earlier one.
   const cleared = mergeSynced(laptop, profile({ historyClearedAt: minute(3) }));
   assert.deepEqual(ids(cleared.runs), ['later']);
+
   for (const merged of [mergeSynced(cleared, phone), mergeSynced(phone, cleared)]) {
     for (const name of ['attempts', 'runs']) assert.equal(merged[name][0].firstDailyAttempt, false, name);
   }
+
   // Copies that differ only in that label are not the same, so the one that says repeat is sent.
   const repeat = (copy) => ({ ...copy, runs: copy.runs.map((record) => ({ ...record, firstDailyAttempt: false })) });
   assert.equal(sameProfile(phone, repeat(phone)), false);
@@ -216,6 +231,7 @@ test('a daily attempt either copy knows is a repeat stays one, after its earlier
 test('a clear drops what the other side held from before it, without losing later work', () => {
   const marker = minute(10);
   const cleared = profile({ historyClearedAt: marker, runs: [item('after-here', 12, { textId: 'q-after-here' })], seenTextIds: ['q-after-here'] });
+
   // A device that hasn't heard of the clear: older history, plus one run (a daily) after the clear.
   const stale = profile({
     attempts: [item('old-a', 5)],
@@ -224,6 +240,7 @@ test('a clear drops what the other side held from before it, without losing late
     seenTextIds: ['q-old', 'q-shown-only', 'daily-src', 'daily-2026-10-01-v1'],
     bests: { k: { wpm: 99, at: minute(5) }, j: { wpm: 40, at: minute(11) }, legacy: { wpm: 50 } },
   });
+
   for (const merged of [mergeSynced(cleared, stale), mergeSynced(stale, cleared)]) {
     assert.equal(merged.historyClearedAt, marker);
     assert.deepEqual(ids(merged.attempts), []);
@@ -233,6 +250,7 @@ test('a clear drops what the other side held from before it, without losing late
     // Seen ids carry no date: the stale side keeps only those its surviving runs show after the clear.
     assert.deepEqual([...merged.seenTextIds].sort(), ['daily-2026-10-01-v1', 'daily-src', 'q-after-here']);
   }
+
   // A side that has applied the clear keeps everything it holds; nothing is dropped twice.
   const caughtUp = mergeSynced(cleared, stale);
   const later = mergeSynced(caughtUp, profile({ historyClearedAt: marker, runs: [item('other', 13)], seenTextIds: ['q-other'] }));
@@ -247,9 +265,11 @@ test('a run the cleared best had blocked becomes the best once that best is drop
   // The stale device's 60 wpm run came after the clear but didn't beat the 90 wpm best from before it.
   const stale = profile({ runs: [run('old', 1, 90), run('slower', 12, 60), run('drill', 13, 70, { kind: 'drill' })], bests: { [key]: { wpm: 90, attemptId: 'old', at: minute(1) } } });
   const cleared = profile({ historyClearedAt: minute(10) });
+
   for (const merged of [mergeSynced(cleared, stale), mergeSynced(stale, cleared)]) {
     assert.deepEqual(merged.bests, { [key]: { wpm: 60, attemptId: 'slower', at: minute(12) } });
   }
+
   // Without a clear, history alone never changes a best.
   assert.deepEqual(mergeSynced(profile({ runs: [run('a', 1, 99)] }), profile()).bests, {});
 });
@@ -264,6 +284,7 @@ for (const retyped of [false, true]) {
     const T0 = Date.UTC(2026, 9, 12, 9, 0);
     let now = T0;
     Date.now = () => now;
+
     try {
       const run = (id, ms, wpm, extra = {}) => ({ id, at: new Date(ms).toISOString(), kind: 'test', status: 'complete', interrupted: false, conditions, score: { wpm, accuracy: 100 }, textId: `q-${id}`, ...extra });
       const best = (record) => ({ wpm: record.score.wpm, attemptId: record.id, at: record.at });
@@ -282,6 +303,7 @@ for (const retyped of [false, true]) {
       const phone = mergeSynced({ ...phoneCleared, runs: [slow, ...(retyped ? [again] : [])], seenTextIds: ['q-slow'], bests: { [key]: best(slow) } }, tablet);
       assert.equal(phone.bests[key].attemptId, 'far');
       assert.deepEqual([...phone.seenTextIds].sort(), ['q-far', 'q-slow']);
+
       // The laptop's clear reaches the phone: its name takes "far" under the phone's newer marker.
       for (const merged of [mergeSynced(phone, laptop), mergeSynced(laptop, phone)]) {
         assert.equal(merged.historyClearedAt, phoneCleared.historyClearedAt);
@@ -313,6 +335,7 @@ test('undo restores history even after the clear has synced, and a later clear s
   assert.deepEqual(restored.undoneClears, [marker]);
   assert.equal(restored.historyClearedAt, undefined);
   assert.deepEqual(ids(restored.runs), ['r1']);
+
   for (const merged of [mergeSynced(restored, row), mergeSynced(row, restored), mergeSynced(otherDevice, mergeSynced(restored, row))]) {
     assert.deepEqual(ids(merged.runs), ['r1']);
     assert.deepEqual(merged.seenTextIds, ['q1']);
@@ -382,12 +405,14 @@ test('a clock running ahead elsewhere can’t move a clear into the future', () 
   // A phone with a right clock hadn't heard of the clear: it still holds both, and ran again 2 h later.
   const later = { id: 'later', at: hours(2), textId: 'q-later' };
   const phone = profile({ runs: [item('mine', 1), tablet, later], seenTextIds: ['q-tablet', 'q-later'], bests: { k: { wpm: 90, attemptId: 'tablet', at: hours(5) } } });
+
   for (const merged of [mergeSynced(cleared, phone), mergeSynced(phone, cleared)]) {
     assert.deepEqual(ids(merged.runs), ['later']);
     assert.deepEqual(merged.seenTextIds, ['q-later']);
     assert.deepEqual(merged.bests, {});
     assert.deepEqual(merged.historyClearedIds, [[cleared.historyClearedAt, 'tablet']]);
   }
+
   // Undone, the named records come back like any other.
   const restored = mergeSynced(revokeClear(cleared, laptop, cleared.historyClearedAt), phone);
   assert.deepEqual(ids(restored.runs), ['mine', 'later', 'tablet']);
@@ -407,6 +432,7 @@ test('every clear not undone keeps out the records it named, after a newer clear
   assert.ok(laptop.historyClearedAt < phone.historyClearedAt && phone.historyClearedAt < far.at);
   // A copy that heard of neither clear: older history, both named runs, and a run made after both clears.
   const later = { id: 'later', at: hours(1), textId: 'q-later' };
+
   const stale = profile({
     runs: [item('old', 3), far, fast, later],
     seenTextIds: ['q-far', 'q-fast', 'q-later'],
@@ -416,20 +442,24 @@ test('every clear not undone keeps out the records it named, after a newer clear
   const both = mergeSynced(laptop, phone);
   assert.ok(sameProfile(mergeSynced(phone, laptop), both));
   const settled = mergeSynced(both, stale);
+
   for (const merged of [settled, mergeSynced(stale, both), mergeSynced(stale, mergeSynced(phone, laptop))]) {
     assert.deepEqual(ids(merged.runs), ['later']);
     assert.deepEqual(merged.bests, {});
     assert.deepEqual(merged.seenTextIds, ['q-later']);
     assert.ok(sameProfile(merged, settled));
   }
+
   assert.equal(settled.historyClearedAt, phone.historyClearedAt);
   assert.deepEqual(settled.historyClearedIds, [[laptop.historyClearedAt, 'far'], [phone.historyClearedAt, 'fast']]);
+
   // Copies settle: merging any of them in again changes nothing.
   for (const copy of [settled, both, laptop, phone, stale]) assert.ok(sameProfile(mergeSynced(settled, copy), settled));
   // The phone may hear from the stale copy first. The far run is after its own clear, so it stays until
   // the laptop's clear arrives, and then goes.
   const phoneFirst = mergeSynced(phone, stale);
   assert.deepEqual(ids(phoneFirst.runs), ['later', 'far']);
+
   for (const merged of [mergeSynced(phoneFirst, laptop), mergeSynced(laptop, phoneFirst)]) {
     assert.deepEqual(ids(merged.runs), ['later']);
     assert.deepEqual(merged.bests, {});
@@ -439,6 +469,7 @@ test('every clear not undone keeps out the records it named, after a newer clear
   // the far run out of every copy.
   const undone = revokeClear(settled, phoneBefore, phone.historyClearedAt);
   assert.deepEqual(undone.historyClearedIds, [[laptop.historyClearedAt, 'far']]);
+
   for (const merged of [undone, mergeSynced(undone, stale), mergeSynced(stale, undone), mergeSynced(undone, phoneFirst)]) {
     assert.ok(ids(merged.runs).includes('fast'));
     assert.ok(!ids(merged.runs).includes('far'));
@@ -465,10 +496,12 @@ test('a clear keeps out every record it named, more than the cap included', () =
   const cleared = clearProfile(profile({ runs, loops }));
   // A copy that hadn't heard of the clear still holds all of them.
   const stale = profile({ runs, loops });
+
   for (const merged of [mergeSynced(cleared, stale), mergeSynced(stale, cleared)]) {
     assert.deepEqual([merged.runs.length, merged.loops.length], [0, 0]);
     assert.ok(sameProfile(mergeSynced(merged, stale), merged));
   }
+
   assert.equal(cleared.historyClearedIds.length, MAX_RUN_SUMMARIES + 30);
 });
 
@@ -487,11 +520,13 @@ test('a newer clear keeps out every record an older one named, more than 1,000 i
   const undone = revokeClear(again, first, again.historyClearedAt);
   const olderUndone = mergeSynced({ ...again, undoneClears: [first.historyClearedAt] }, again);
   const all = MAX_RUN_SUMMARIES + 30;
+
   for (const [copy, pairs] of [[again, 2 * all], [mergeSynced(again, first), 2 * all], [mergeSynced(first, again), 2 * all], [undone, all], [olderUndone, all]]) {
     for (const merged of [mergeSynced(copy, stale), mergeSynced(stale, copy)]) {
       assert.deepEqual([merged.runs.length, merged.loops.length], [0, 0]);
       assert.ok(sameProfile(mergeSynced(merged, stale), merged));
     }
+
     assert.equal(copy.historyClearedIds.length, pairs);
   }
 });
@@ -502,11 +537,14 @@ test('an undone clear stays undone however many clears follow it', () => {
   const history = profile({ runs: [item('r1', 1)] });
   const first = clearProfile(history);
   let row = revokeClear(first, history, first.historyClearedAt);
+
   for (let n = 0; n < 25; n += 1) {
     const cleared = clearProfile(row);
     row = revokeClear(cleared, row, cleared.historyClearedAt);
   }
+
   assert.equal(row.undoneClears.length, 26);
+
   for (const back of [mergeSynced(first, row), mergeSynced(row, first)]) {
     assert.deepEqual(ids(back.runs), ['r1']);
     assert.equal(back.historyClearedAt, undefined);
@@ -522,6 +560,7 @@ test('a copy that applied a clear undone since answers to an older clear still i
   const laptop = revokeClear(laptopCleared, profile(), minute(20));
   const row = mergeSynced(profile({ historyClearedAt: minute(10), runs: [item('phone-after', 12)] }), laptop);
   assert.equal(row.historyClearedAt, minute(10));
+
   // The tablet's run came before the phone's clear, which the tablet never applied: it stays out.
   for (const merged of [mergeSynced(tablet, row), mergeSynced(row, tablet)]) {
     assert.deepEqual(ids(merged.runs), ['phone-after']);
@@ -559,23 +598,30 @@ test('an undo that arrives with an older clear still in force gives back what th
 
 // A device: its copy and what it holds for Undo. mergeInto() is a pull, or a push that writes the row.
 const device = (copy) => ({ copy, holds: {}, clears: [] });
+
 const mergeInto = (d, other) => {
   ({ merged: d.copy, holds: d.holds } = mergeAndHold(d.holds, d.copy, other));
+
   return d.copy;
 };
+
 const clearOn = (d) => {
   const before = d.copy;
   d.copy = clearProfile(before);
   d.holds = joinHolds(d.holds, { [d.copy.historyClearedAt]: [before] });
   const clear = { marker: d.copy.historyClearedAt, before };
   d.clears.push(clear);
+
   return clear;
 };
+
 const undoOn = (d, { marker, before }) => {
   ({ merged: d.copy, holds: d.holds } = undoClearHere(d.holds, d.copy, marker, before));
   d.clears = d.clears.filter((clear) => clear.marker !== marker);
+
   return d.copy;
 };
+
 const runIds = (copy) => [...ids(copy.runs)].sort();
 
 for (const order of ['older undo first', 'newer undo first']) {
@@ -597,18 +643,23 @@ for (const order of ['older undo first', 'newer undo first']) {
     mergeInto(tablet, row); // the tablet applies it too: what the older clear held must stay
     assert.deepEqual(runIds(tablet.copy), []);
     assert.deepEqual(Object.keys(tablet.holds).sort(), [phoneClear.marker, laptopClear.marker].sort());
+
     const undos = [
       () => { undoOn(phone, phoneClear); row = mergeInto(phone, row); },
       () => { undoOn(laptop, laptopClear); row = mergeInto(laptop, row); },
     ];
+
     for (const step of order === 'older undo first' ? undos : undos.reverse()) {
       step();
       mergeInto(tablet, row);
       row = mergeInto(tablet, row); // the tablet pushes
     }
+
     // Every device settles on everything, once each has pulled.
     for (const d of [phone, laptop, tablet]) row = mergeInto(d, row);
+
     for (const d of [phone, laptop, tablet]) mergeInto(d, row);
+
     for (const d of [phone, laptop, tablet]) {
       assert.deepEqual(runIds(d.copy), ['laptop-mid', 'laptop-old', 'phone-old', 'tablet-unsent']);
       assert.equal(d.copy.historyClearedAt, undefined);
@@ -676,6 +727,7 @@ test('joinHolds keeps both derivations’ holds (a clear made while a push was o
 // A seeded generator, so a failure names a sequence that can be replayed.
 const seeded = (seed) => () => {
   seed = (seed * 1103515245 + 12345) % 2147483648;
+
   return seed / 2147483648;
 };
 
@@ -690,6 +742,7 @@ test('randomised: once every clear is undone, every run made anywhere is everywh
   const unordered = [];
   const lost = [];
   const picks = { numbers: true, paceCaret: 'custom' };
+
   try {
     for (let seed = 1; seed <= 400; seed += 1) {
       const random = seeded(seed);
@@ -698,15 +751,19 @@ test('randomised: once every clear is undone, every run made anywhere is everywh
       const devices = [picks, {}, {}].map((preferences) => device(normalizeProfile(profile({ preferences }))));
       let row = profile({ preferences: {} });
       const made = [];
+
       const pull = (d) => {
         if (passThrough(mergeSynced(d.copy, row)) !== passThrough(mergeSynced(row, d.copy)) && !unordered.includes(seed)) unordered.push(seed);
+
         return mergeInto(d, normalizeProfile(row));
       };
+
       for (let step = 0; step < 40; step += 1) {
         now += 60000;
         const n = Math.floor(random() * 3);
         const d = devices[n];
         const roll = random();
+
         if (roll < 0.35) {
           const id = `r${made.length}`;
           made.push(id);
@@ -717,20 +774,26 @@ test('randomised: once every clear is undone, every run made anywhere is everywh
         else if (roll < 0.8) row = pull(d);
         else pull(d);
       }
+
       for (const d of devices) for (const clear of [...d.clears]) undoOn(d, clear);
+
       for (let round = 0; round < 3; round += 1) for (const d of devices) row = pull(d);
+
       for (const d of devices) {
         const have = new Set(ids(d.copy.runs));
+
         if (made.some((id) => !have.has(id)) || d.copy.historyClearedAt || passThrough(d.copy) !== passThrough(row)) {
           failed.push(seed);
           break;
         }
       }
+
       if ([row, ...devices.map((d) => d.copy)].some((copy) => Object.entries(picks).some(([key, value]) => copy.preferences[key] !== value))) lost.push(seed);
     }
   } finally {
     Date.now = realNow;
   }
+
   assert.deepEqual(failed, []);
   assert.deepEqual(unordered, []);
   assert.deepEqual(lost, []);
@@ -741,6 +804,7 @@ test('an undo undoes only its own clear, even when two clears are stamped the sa
   const T0 = Date.UTC(2026, 9, 12, 9, 0);
   let now = T0;
   Date.now = () => now;
+
   try {
     const run = (id) => ({ id, at: new Date(now).toISOString() });
     // A phone whose clock ran a fortnight ahead cleared and undid at once. Its undone marker stays, and
@@ -781,6 +845,7 @@ test('an undo elsewhere never gives back what a different clear holds here', () 
   const T0 = Date.UTC(2026, 9, 12, 9, 0);
   let now = T0;
   Date.now = () => now;
+
   try {
     const run = (id) => ({ id, at: new Date(now).toISOString() });
     // A tablet whose clock runs a day ahead clears; the row and both devices take it in.
@@ -831,6 +896,7 @@ for (const via of ['a copy that shares the newer marker', 'the older clear’s o
     const T0 = Date.UTC(2026, 9, 12, 9, 0);
     let now = T0;
     Date.now = () => now;
+
     try {
       const stamp = (ms) => new Date(ms).toISOString();
       const trace = (id, ms) => ({ id, at: stamp(ms), kind: 'test', text: `passage ${id}` });
@@ -841,10 +907,12 @@ for (const via of ['a copy that shares the newer marker', 'the older clear’s o
       // A desktop whose clock ran two days ahead made 24 runs, all later than "far" by their stamps. The
       // laptop holds them and the far run's summary: the 24-trace cap left no room for the far run's trace.
       const later = Array.from({ length: MAX_STORED_ATTEMPTS }, (_, n) => [`later${n}`, T0 + 2 * 86400e3 + n * 60e3]);
+
       const laptop = device(capHistory(profile({
         runs: [summary('far', farAt), ...later.map(([id, ms]) => summary(id, ms))],
         attempts: [trace('far', farAt), ...later.map(([id, ms]) => trace(id, ms))],
       })));
+
       assert.ok(!ids(laptop.copy.attempts).includes('far'));
 
       // 09:00: the laptop clears, naming all of them (each is stamped ahead of its clock).
@@ -868,6 +936,7 @@ for (const via of ['a copy that shares the newer marker', 'the older clear’s o
         mergeInto(laptop, desktop.copy);
         mergeInto(phone, laptop.copy);
       }
+
       assert.equal(phone.copy.historyClearedAt, newer.marker);
       assert.deepEqual([ids(phone.copy.runs), ids(phone.copy.attempts)], [[], []]);
 
@@ -896,6 +965,7 @@ test('undoing a newer clear keeps the runs a copy made after an older clear it h
   let now = T0;
   let skew = 0;
   Date.now = () => now + skew;
+
   try {
     const run = (id) => ({ id, at: new Date(Date.now()).toISOString(), kind: 'test' });
     // 09:00: a laptop whose clock runs an hour ahead clears (stamped 10:00); the phone and desktop take it in.
@@ -943,6 +1013,7 @@ test('a clear made on its own still stands after a newer clear made elsewhere is
   const T0 = Date.UTC(2026, 9, 12, 9, 0);
   let now = T0;
   Date.now = () => now;
+
   try {
     const old = { id: 'old', at: new Date(T0 - 3600e3).toISOString(), kind: 'test' };
     const laptop = device(profile({ runs: [old] }));
@@ -965,6 +1036,7 @@ test('a clear made on its own still stands after a newer clear made elsewhere is
     // The laptop's clear still stands: no copy brings back what it removed.
     assert.deepEqual(runIds(row), []);
     assert.equal(row.historyClearedAt, laptop.copy.historyClearedAt);
+
     for (const d of [phone, tablet, laptop]) assert.deepEqual(runIds(mergeInto(d, row)), []);
   } finally {
     Date.now = realNow;
@@ -978,6 +1050,7 @@ test('a clear made before an older clear’s undo arrives keeps out the records 
   const T0 = Date.UTC(2026, 9, 12, 9, 0);
   let now = T0;
   Date.now = () => now;
+
   try {
     // A tablet whose clock runs a day ahead made "far"; the laptop holds it and sends it.
     const far = { id: 'far', at: new Date(T0 + 86400e3).toISOString(), kind: 'test' };
@@ -1013,6 +1086,7 @@ test('randomised, clocks minutes apart: every clear not undone stands everywhere
   // Clocks a whole number of minutes apart, so independent clears often share a millisecond.
   const realNow = Date.now;
   const failed = [];
+
   try {
     for (let seed = 1; seed <= 400; seed += 1) {
       const random = seeded(seed);
@@ -1022,25 +1096,31 @@ test('randomised, clocks minutes apart: every clear not undone stands everywhere
       const devices = [0, 1, 2].map(() => ({ ...device(profile({ preferences: {} })), offset: Math.floor(random() * 5 - 2) * 60000 }));
       let row = profile({ preferences: {} });
       let made = 0;
+
       for (let step = 0; step < 40; step += 1) {
         now += 60000;
         const d = devices[Math.floor(random() * 3)];
         current = d;
         const roll = random();
+
         if (roll < 0.35) d.copy = { ...d.copy, runs: [...d.copy.runs, { id: `r${made++}`, at: new Date(Date.now()).toISOString() }] };
         else if (roll < 0.5) clearOn(d);
         else if (roll < 0.6 && d.clears.length) undoOn(d, d.clears[Math.floor(random() * d.clears.length)]);
         else if (roll < 0.8) row = mergeInto(d, row);
         else mergeInto(d, row);
       }
+
       for (let round = 0; round < 3; round += 1) for (const d of devices) { current = d; row = mergeInto(d, row); }
+
       const standing = devices.flatMap((d) => d.clears.map((clear) => clear.marker));
       const newest = standing.sort().at(-1);
+
       if (standing.some((marker) => (row.undoneClears || []).includes(marker)) || devices.some((d) => d.copy.historyClearedAt !== newest)) failed.push(seed);
     }
   } finally {
     Date.now = realNow;
   }
+
   assert.deepEqual(failed, []);
 });
 
@@ -1053,9 +1133,12 @@ test('randomised: a clear undone leaves every copy as a clear never made would',
   let step = 0;
   crypto.getRandomValues = (bytes) => {
     for (let n = 0; n < bytes.length; n += 1) bytes[n] = ((step * 2654435761) >>> (n * 3)) & 255;
+
     return bytes;
   };
+
   const OFFSETS = [0, -180000, 120000, 3600000, 86400000, 172800000];
+
   const play = (plan, clocks, skip = new Set()) => {
     let now = Date.UTC(2026, 9, 1);
     let clock = 0;
@@ -1067,6 +1150,7 @@ test('randomised: a clear undone leaves every copy as a clear never made would',
       step = n + 1;
       clock = clocks[op.dev];
       const d = devices[op.dev];
+
       if (op.type === 'run') {
         const at = new Date(Date.now()).toISOString();
         d.copy = capHistory({ ...d.copy, runs: [...d.copy.runs, { id: `r${n}`, at }], attempts: [...d.copy.attempts, { id: `r${n}`, at }] });
@@ -1080,20 +1164,26 @@ test('randomised: a clear undone leaves every copy as a clear never made would',
       else if (op.type === 'pull') mergeInto(d, row);
       else mergeInto(d, devices[(op.dev + 1) % devices.length].copy);
     });
+
     for (let round = 0; round < 3; round += 1) devices.forEach((d, k) => { clock = clocks[k]; row = mergeInto(d, row); });
+
     return JSON.stringify(devices.map((d) => [runIds(d.copy), [...ids(d.copy.attempts)].sort()]));
   };
+
   const differ = [];
   let checked = 0;
+
   try {
     for (let seed = 1; seed <= 1500; seed += 1) {
       const random = seeded(seed);
       const clocks = [0, 1, 2].map(() => OFFSETS[Math.floor(random() * OFFSETS.length)]);
       const plan = [];
       let clears = 0;
+
       for (let n = 0; n < 60; n += 1) {
         const dev = Math.floor(random() * 3);
         const roll = random();
+
         if (roll < 0.5) plan.push({ dev, type: 'run' });
         else if (roll < 0.58) plan.push({ dev, type: 'clear', label: clears++ });
         else if (roll < 0.64) plan.push({ dev, type: 'undo', label: Math.floor(random() * Math.max(1, clears)) });
@@ -1101,12 +1191,16 @@ test('randomised: a clear undone leaves every copy as a clear never made would',
         else if (roll < 0.92) plan.push({ dev, type: 'pull' });
         else plan.push({ dev, type: 'take' });
       }
+
       const slowest = Math.min(...clocks);
+
       for (const [i, op] of plan.entries()) {
         if (op.type !== 'clear' || clocks[op.dev] !== slowest) continue;
         const j = plan.findIndex((other, n) => n > i && other.type === 'undo' && other.label === op.label && other.dev === op.dev);
+
         if (j < 0 || plan.slice(i + 1, j).some((other) => other.type === 'clear' || other.type === 'undo')) continue;
         checked += 1;
+
         if (play(plan, clocks) !== play(plan, clocks, new Set([i, j]))) differ.push(seed);
         break;
       }
@@ -1115,6 +1209,7 @@ test('randomised: a clear undone leaves every copy as a clear never made would',
     Date.now = realNow;
     delete crypto.getRandomValues;
   }
+
   assert.ok(checked > 200, `${checked} sequences checked`);
   assert.deepEqual(differ, []);
 });
@@ -1154,6 +1249,7 @@ test('a field this build doesn’t merge comes from the copy saved later, whiche
   assert.deepEqual(onOld.goal, { daily: 10 });
   assert.deepEqual(onNew.goal, { daily: 10 });
   assert.ok(sameProfile(onOld, onNew));
+
   // Saved the same moment, or before saves were stamped: the value that sorts first, on every copy.
   for (const updatedAt of [minute(2), undefined]) {
     const a = profile({ goal: { daily: 5 }, updatedAt });
@@ -1166,6 +1262,7 @@ test('a field this build doesn’t merge comes from the copy saved later, whiche
 test('a field only one copy has survives a merge in either order', () => {
   const lone = profile({ streak: 3, updatedAt: minute(1) });
   const other = profile({ updatedAt: minute(5) });
+
   for (const [a, b] of [[lone, other], [other, lone], [{ ...lone, updatedAt: minute(9) }, other], [other, { ...lone, updatedAt: minute(9) }]]) {
     assert.equal(mergeSynced(a, b).streak, 3);
   }
@@ -1176,10 +1273,12 @@ test('a field only one copy has survives a merge in either order', () => {
 const settle = (copies, rounds = 6) => {
   let row = copies[0];
   const writes = [];
+
   for (let round = 0; round < rounds; round += 1) {
     let wrote = 0;
     copies.forEach((copy, n) => {
       copies[n] = mergeSynced(copy, row);
+
       if (!sameProfile(copies[n], row)) {
         row = copies[n];
         wrote += 1;
@@ -1187,6 +1286,7 @@ const settle = (copies, rounds = 6) => {
     });
     writes.push(wrote);
   }
+
   return { row, writes, copies };
 };
 
@@ -1197,11 +1297,14 @@ test('two devices that disagree on a field this build doesn’t merge settle ins
     // Both saved the same moment.
     [profile({ goal: { daily: 5 }, updatedAt: minute(4) }), profile({ goal: { daily: 10 }, updatedAt: minute(4) })],
   ];
+
   for (const [laptop, phone] of cases) {
     for (const first of [laptop, phone]) {
       const { row, writes, copies } = settle([first, first === laptop ? phone : laptop]);
       assert.deepEqual(writes.slice(2), [0, 0, 0, 0], `writes per round: ${writes}`);
+
       for (const copy of copies) assert.ok(sameProfile(copy, row));
+
       if (laptop.updatedAt < phone.updatedAt) assert.deepEqual(row.goal, { daily: 10 });
     }
   }
@@ -1211,21 +1314,25 @@ test('settings neither copy has stamped, saved the same moment, settle on one va
   const dark = profile({ preferences: { theme: 'dark', fontSize: '28' }, updatedAt: minute(4) });
   const light = profile({ preferences: { theme: 'light', fontSize: '28' }, updatedAt: minute(4) });
   assert.deepEqual(mergeSynced(dark, light).preferences, mergeSynced(light, dark).preferences);
+
   for (const order of [[dark, light], [light, dark]]) {
     const { row, writes, copies } = settle(order);
     assert.deepEqual(writes.slice(2), [0, 0, 0, 0], `writes per round: ${writes}`);
+
     for (const copy of copies) assert.ok(sameProfile(copy, row));
   }
 });
 
 test('one list of history collections drives the caps on save and merge', () => {
   assert.deepEqual(Object.keys(HISTORY), ['attempts', 'runs', 'loops', 'compositions']);
+
   const big = profile({
     attempts: Array.from({ length: 30 }, (_, n) => item(`a${n}`, n)),
     runs: Array.from({ length: MAX_RUN_SUMMARIES + 5 }, (_, n) => item(`r${n}`, n, { patterns: [] })),
     loops: Array.from({ length: 30 }, (_, n) => item(`l${n}`, n)),
     compositions: Array.from({ length: MAX_COMPOSITIONS + 3 }, (_, n) => item(`c${n}`, n)),
   });
+
   capHistory(big);
   assert.equal(big.attempts.length, MAX_STORED_ATTEMPTS);
   assert.equal(big.attempts[0].id, 'a6');
@@ -1244,8 +1351,10 @@ test('stamps move forward even when this clock is behind', () => {
 
 test('sameProfile ignores key order but sees a new record or setting', () => {
   const a = profile({ runs: [item('r1', 1)], preferences: { theme: 'dark', fontSize: '28' }, updatedAt: minute(1) });
+
   const reordered = { updatedAt: minute(1), seenTextIds: [], bests: {}, loops: [], runs: [item('r1', 1)], attempts: [],
     preferences: { fontSize: '28', theme: 'dark' }, profileId: 'p', version: 2 };
+
   assert.ok(sameProfile(a, reordered));
   assert.ok(!sameProfile(a, { ...reordered, runs: [item('r1', 1), item('r2', 2)] }));
   assert.ok(!sameProfile(a, { ...reordered, preferences: { fontSize: '36', theme: 'dark' } }));
@@ -1258,8 +1367,10 @@ test('profile writes are conditional: an update names the version it replaces, a
   let reply = [];
   globalThis.fetch = async (url, init) => {
     calls.push({ url, init });
+
     return { ok: true, status: 200, text: async () => JSON.stringify(reply) };
   };
+
   try {
     const session = { access_token: 't', user: { id: 'u1' } };
     const seen = '2026-10-01T12:00:00.123+00:00';
@@ -1288,18 +1399,24 @@ function finishedTrace(id, n, { keys = 120, kind = 'test' } = {}) {
   const text = 'the quiet harbour kept its boats in rows while the tide went out and came back again '.repeat(3);
   const attempt = createAttempt({ id, text, textId: `generated-${id}`, kind, conditions: { mode: 'time', duration: 30, correctionPolicy: 'relaxed' } });
   let offsetMs = 0;
+
   for (let position = 0; position < keys; position += 1) {
     offsetMs += 90 + ((position * 37) % 70);
+
     if (position % 17 === 5) {
       attempt.events.push({ type: 'insert', text: 'q', position, accepted: true, offsetMs });
       attempt.events.push({ type: 'delete', count: 1, offsetMs: offsetMs += 140 });
       offsetMs += 90;
     }
+
     attempt.events.push({ type: 'insert', text: text[position], position, accepted: true, offsetMs });
   }
+
   attempt.startedAt = 0;
+
   return { ...completeAttempt(attempt, { endedAt: offsetMs }), interrupted: false, unsupportedInput: false, fresh: true, at: minute(n) };
 }
+
 const viaRow = (copy) => normalizeProfile(JSON.parse(JSON.stringify(storedCopy(copy))));
 
 test('stored copies leave out each trace’s summary, and loading rebuilds it exactly', () => {
@@ -1314,6 +1431,7 @@ test('stored copies leave out each trace’s summary, and loading rebuilds it ex
   // Rebuilt from the events exactly as completeAttempt made it, so the trace budget weighs it the same.
   const loaded = viaRow(copy);
   assert.deepEqual(loaded.attempts, copy.attempts);
+
   for (const [n, trace] of loaded.attempts.entries()) assert.equal(JSON.stringify(trace).length, JSON.stringify(traces[n]).length);
   assert.deepEqual(storedCopy(profile()), profile());
   assert.deepEqual(storedCopy({ version: 2 }), { version: 2 });
@@ -1324,6 +1442,7 @@ test('copies holding compact traces settle with each other and with a full copy 
   const laptop = normalizeProfile(profile({ attempts: [...shared, finishedTrace('laptop', 30)], updatedAt: minute(30), mergeStamp: minute(30) }));
   const phone = profile({ attempts: [...shared, finishedTrace('phone', 31), finishedTrace('phone-2', 32)], updatedAt: minute(32), mergeStamp: minute(32) });
   const whole = mergeSynced(laptop, normalizeProfile(phone));
+
   // The phone's copy came through the device cache; an older build wrote its summaries in, and both merge the same.
   for (const row of [viaRow(phone), normalizeProfile(JSON.parse(JSON.stringify(phone)))]) {
     const merged = mergeSynced(laptop, row);
@@ -1345,12 +1464,15 @@ function fakeRow(row = null) {
   const service = { row, writes: 0 };
   globalThis.fetch = async (url, init = {}) => {
     const reply = (value) => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
+
     if (!init.method || init.method === 'GET') return reply(service.row ? [service.row] : []);
     const body = JSON.parse(init.body);
     service.writes += 1;
     service.row = { ...service.row, data: body.data, updated_at: body.updated_at };
+
     return reply([{ updated_at: body.updated_at }]);
   };
+
   return service;
 }
 
@@ -1359,8 +1481,10 @@ async function push(session, local) {
   const cloud = await fetchCloudProfile(session);
   const theirs = cloud ? normalizeProfile(cloud.data) : null;
   const merged = theirs ? mergeSynced(local, theirs) : local;
+
   if (!theirs) await insertCloudProfile(session, merged);
   else if (!sameRow(merged, theirs)) await updateCloudProfile(session, merged, cloud.updated_at);
+
   return merged;
 }
 
@@ -1368,6 +1492,7 @@ test('the account row is sent no recordings; the device cache keeps them, compac
   const originalFetch = globalThis.fetch;
   const store = new Map();
   globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, String(value)), removeItem: (key) => store.delete(key) };
+
   try {
     const service = fakeRow();
     const session = { access_token: 't', user: { id: 'u1' } };
@@ -1389,6 +1514,7 @@ test('the account row is sent no recordings; the device cache keeps them, compac
 
 test('recordings stay on each device: copies settle through the row, and a row synced with recordings keeps merging', async () => {
   const originalFetch = globalThis.fetch;
+
   try {
     const session = { access_token: 't', user: { id: 'u1' } };
     // A row an older build wrote, recordings and all.
@@ -1408,15 +1534,18 @@ test('recordings stay on each device: copies settle through the row, and a row s
     laptop = await push(session, laptop);
     assert.equal(service.writes, 2);
     assert.ok(!('attempts' in service.row.data), 'the row holds no recordings once rewritten');
+
     // Every run summary is everywhere; each device keeps the recordings it holds.
     for (const [name, copy] of Object.entries({ laptop, phone, row: normalizeProfile(service.row.data) })) assert.deepEqual(ids(copy.runs).sort(), ['laptop', 'phone', 's1', 's2'], name);
     assert.deepEqual(ids(laptop.attempts), ['s1', 's2', 'laptop']);
     assert.deepEqual(ids(phone.attempts), ['phone']);
+
     // Settled: more pulls and pushes write nothing.
     for (let round = 0; round < 3; round += 1) {
       laptop = await push(session, laptop);
       phone = await push(session, phone);
     }
+
     assert.equal(service.writes, 2);
     assert.ok(sameRow(laptop, phone));
     assert.ok(!sameProfile(laptop, phone), 'their recordings differ, and stay apart');
@@ -1445,12 +1574,14 @@ test('recordings stay on each device: copies settle through the row, and a row s
 const typed = (over = {}) => ({ mode: 'time', duration: 30, count: null, punctuation: false, numbers: false, quoteLength: null,
   difficulty: null, wordList: 'english-1k', inputClass: 'physical-keyboard', layout: 'qwerty', correctionPolicy: 'relaxed',
   strictSpace: false, quickEnd: true, language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, ...over });
+
 const SETS = [
   typed(), typed({ duration: 60 }), typed({ mode: 'words', duration: null, count: 25 }), typed({ quickEnd: false, inputClass: 'touch' }),
   typed({ mode: 'custom', duration: null, wordList: null, customOrder: 'shuffled' }), typed({ mode: 'custom', duration: null, wordList: null, customOrder: 'random' }),
   { mode: 'time', duration: 30, punctuation: false, wordList: 'english-1k', correctionPolicy: 'relaxed' },
   Object.fromEntries(Object.entries(typed()).reverse()),
 ];
+
 const AFTER = Date.parse(CONDITION_SETS_FROM);
 const BEFORE = AFTER - 1;
 const typedRun = (id, n, set) => item(id, n, { kind: 'test', status: 'complete', fresh: true, conditions: { ...SETS[set] }, score: { wpm: 40 + n, accuracy: 97 } });
@@ -1460,20 +1591,24 @@ const load = (stored) => normalizeProfile(JSON.parse(JSON.stringify(stored)));
 test('from CONDITION_SETS_FROM a stored copy keeps each conditions set once, and loading gives every record back exactly', () => {
   assert.equal(conditionKey(SETS[4]), conditionKey(SETS[5]));
   assert.equal(conditionKey(SETS[0]), conditionKey(SETS[6]));
+
   const copy = normalizeProfile(profile({
     attempts: [finishedTrace('t', 50)],
     runs: Array.from({ length: 48 }, (_, n) => typedRun(`r${n}`, n, n % SETS.length)),
     loops: Array.from({ length: 12 }, (_, n) => typedLoop(`l${n}`, n, (n * 3) % SETS.length)),
   }));
+
   const before = JSON.stringify(copy);
   const stored = storedCopy(copy, AFTER);
   assert.equal(JSON.stringify(copy), before, 'the copy in use is left as it was');
   assert.equal(Object.keys(stored.conditionSets).length, SETS.length);
   assert.deepEqual(Object.values(stored.conditionSets).map((set) => JSON.stringify(set)).sort(), SETS.map((set) => JSON.stringify(set)).sort());
+
   for (const record of [...stored.runs, ...stored.loops]) {
     assert.ok(!('conditions' in record));
     assert.ok(Object.hasOwn(stored.conditionSets, record.conditionSet));
   }
+
   assert.ok(stored.attempts.every((trace) => trace.conditions && !('summary' in trace)), 'recordings keep their own conditions');
   assert.ok(JSON.stringify(stored.runs).length < JSON.stringify(copy.runs).length * 0.5);
   // Loaded, every record is byte for byte what it was, so its condition key, best and comparisons are too.
@@ -1492,6 +1627,7 @@ test('from CONDITION_SETS_FROM a stored copy keeps each conditions set once, and
 test('until CONDITION_SETS_FROM, the row and the device cache are written exactly as builds before it write them', async () => {
   const originalFetch = globalThis.fetch;
   const realNow = Date.now;
+
   try {
     const copy = normalizeProfile(profile({ attempts: [finishedTrace('t', 9)], runs: SETS.map((_, n) => typedRun(`r${n}`, n, n)), loops: [typedLoop('l', 9, 2)] }));
     // Builds before this one wrote the cache as this (src/account.js, storedCopy), and the row as rowCopy.
@@ -1521,36 +1657,45 @@ test('randomised: copies read from compact rows and caches merge exactly as inli
   const inexact = [];
   const unsettled = [];
   const rekeyed = [];
+
   try {
     for (let seed = 1; seed <= 150; seed += 1) {
       const random = seeded(seed);
       let now = AFTER;
       Date.now = () => now;
       const keys = new Map();
+
       const write = (copy) => {
         const compact = storedCopy(copy, random() < 0.75 ? AFTER : BEFORE);
+
         if (JSON.stringify(load(compact)) !== JSON.stringify(load(storedCopy(copy, BEFORE))) && !inexact.includes(seed)) inexact.push(seed);
+
         return JSON.stringify(compact);
       };
+
       const read = (text) => normalizeProfile(JSON.parse(text));
       const tabs = Array.from({ length: 6 }, () => device(normalizeProfile(profile())));
       const caches = [null, null, null];
       let row = null;
       let writes = 0;
+
       const push = (d) => {
         const theirs = row && read(row);
         const merged = theirs ? mergeInto(d, theirs) : d.copy;
+
         if (!theirs || !sameRow(merged, theirs)) {
           row = write(rowCopy(merged));
           writes += 1;
         }
       };
+
       for (let step = 0; step < 50; step += 1) {
         now += 60000;
         const n = Math.floor(random() * tabs.length);
         const d = tabs[n];
         const roll = random();
         const set = Math.floor(random() * SETS.length);
+
         if (roll < 0.3) {
           const id = `r${keys.size}`;
           keys.set(id, conditionKey(SETS[set]));
@@ -1564,14 +1709,19 @@ test('randomised: copies read from compact rows and caches merge exactly as inli
         else if (roll < 0.77) {
           // Tabs of one device share its cache: this tab takes in what is there, then writes it back.
           const cache = caches[n % 3];
+
           if (cache) mergeInto(d, read(cache));
           caches[n % 3] = write(d.copy);
         } else push(d);
       }
+
       for (let round = 0; round < 3; round += 1) for (const d of tabs) push(d);
       const settled = writes;
+
       for (let round = 0; round < 3; round += 1) for (const d of tabs) push(d);
+
       if (writes !== settled || tabs.some((d) => !sameRow(d.copy, read(row)))) unsettled.push(seed);
+
       for (const copy of [read(row), ...tabs.map((d) => d.copy)]) {
         for (const record of [...copy.runs, ...copy.loops]) if (conditionKey(record.conditions) !== keys.get(record.id) && !rekeyed.includes(seed)) rekeyed.push(seed);
       }
@@ -1579,6 +1729,7 @@ test('randomised: copies read from compact rows and caches merge exactly as inli
   } finally {
     Date.now = realNow;
   }
+
   assert.deepEqual(inexact, []);
   assert.deepEqual(unsettled, []);
   assert.deepEqual(rekeyed, []);
@@ -1588,11 +1739,13 @@ test('randomised: copies read from compact rows and caches merge exactly as inli
 // know and writes its own records inline; one it rebuilt from a stored record can carry both.
 test('a row a build from before wrote back after CONDITION_SETS_FROM is read with every run, and settles', async () => {
   const originalFetch = globalThis.fetch;
+
   try {
     const session = { access_token: 't', user: { id: 'u1' } };
     const laptop = normalizeProfile(profile({ runs: [typedRun('a', 1, 0), typedRun('b', 2, 1), typedRun('c', 3, 2)], updatedAt: minute(3), mergeStamp: minute(3) }));
     const compact = JSON.parse(JSON.stringify(withConditionSets(rowCopy(laptop), AFTER)));
     const older = JSON.parse(JSON.stringify(withConditionSets(rowCopy({ ...laptop, runs: laptop.runs.slice(0, 2) }), AFTER)));
+
     const written = {
       ...compact,
       // The table of a copy it held from before run c, saved later, so c's set is not in it.
@@ -1600,6 +1753,7 @@ test('a row a build from before wrote back after CONDITION_SETS_FROM is read wit
       runs: [compact.runs[0], { ...compact.runs[1], conditions: { ...SETS[1] } }, compact.runs[2], typedRun('old', 4, 3)],
       updatedAt: minute(4),
     };
+
     const read = normalizeProfile(written);
     // Run c names a set this copy lacks: it is left out rather than guessed at, so nothing reads a run without conditions.
     assert.deepEqual(ids(read.runs), ['a', 'b', 'old']);
@@ -1614,6 +1768,7 @@ test('a row a build from before wrote back after CONDITION_SETS_FROM is read wit
     assert.deepEqual(ids(copy.runs), ['a', 'b', 'c', 'old']);
     assert.deepEqual(copy.runs.map((run) => conditionKey(run.conditions)), [0, 1, 2, 3].map((set) => conditionKey(SETS[set])));
     assert.deepEqual(normalizeProfile(service.row.data).runs, copy.runs);
+
     for (let round = 0; round < 3; round += 1) copy = await push(session, copy);
     assert.equal(service.writes, 1);
   } finally {
@@ -1623,6 +1778,7 @@ test('a row a build from before wrote back after CONDITION_SETS_FROM is read wit
 
 // Lesson progress (src/lessons.js) is merged lesson by lesson, never taken whole from the copy saved later.
 const result = (n, wpm = 20, accuracy = 96) => ({ wpm, accuracy, at: minute(n), inputClass: 'physical-keyboard' });
+
 test('lesson progress from a stale copy never replaces newer progress, from either side', () => {
   // This device passed lessons 1 and 2; a stale device, saved later, only ever tried lesson 1.
   const here = profile({ updatedAt: minute(10), mergeStamp: minute(10), lessons: { l1: { tries: 2, last: result(3), passed: result(2) }, l2: { tries: 1, last: result(5), passed: result(5) } } });
@@ -1664,9 +1820,11 @@ test('a run’s missed words survive a merge with a copy that lacks them, from e
   const trimmed = item('r', 5, { kind: 'test', status: 'complete', patterns });
   const withWords = profile({ runs: [full] });
   const stale = profile({ runs: [trimmed] });
+
   for (const merged of [mergeSynced(withWords, stale), mergeSynced(stale, withWords)]) {
     assert.deepEqual(merged.runs[0].missedWords, ['the', 'table,']);
   }
+
   assert.ok(sameProfile(mergeSynced(withWords, stale), mergeSynced(stale, withWords)));
   // A clear takes them with the run, and its undo brings the run back with them.
   const cleared = clearProfile(normalizeProfile(withWords));
@@ -1678,8 +1836,10 @@ test('a run’s missed words survive a merge with a copy that lacks them, from e
 test('compositions from a stale copy never drop ones saved elsewhere, a clear takes them, and its undo gives them back', () => {
   const composed = (id, n) => item(id, n, { version: 'stilltype-compose-v1', promptId: null, inputClass: 'physical-keyboard', endedBy: 'done',
     characters: 120, words: 24, keystrokes: 140, backspaces: 6, activeMs: 18000, elapsedMs: 20000, wpm: 40, backspaceRate: 4 });
+
   const here = profile({ updatedAt: minute(10), mergeStamp: minute(10), compositions: [composed('c1', 1), composed('c2', 5)] });
   const stale = profile({ updatedAt: minute(20), mergeStamp: minute(20), compositions: [composed('c1', 1)] });
+
   for (const merged of [mergeSynced(here, stale), mergeSynced(stale, here)]) assert.deepEqual(ids(merged.compositions), ['c1', 'c2']);
   assert.ok(sameProfile(mergeSynced(here, stale), mergeSynced(stale, here)));
   const before = normalizeProfile(here);

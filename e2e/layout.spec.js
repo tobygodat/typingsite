@@ -26,14 +26,17 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
       for (const selector of ['.dock-nav .nav-item', '[data-mode]', '#duration-options button', '#restart-button']) {
         const boxes = await page.locator(selector).evaluateAll((nodes) => nodes.filter((node) => node.offsetParent).map((node) => node.getBoundingClientRect().height));
         expect(boxes.length, selector).toBeGreaterThan(0);
+
         for (const height of boxes) expect(height, selector).toBeGreaterThanOrEqual(44);
       }
 
       // The first-run "Learn to type" link sits inside a sentence and still gives a finger 44px.
       const learnLinks = { Progress: '#progress-empty [data-action="open-lessons"]' };
+
       for (const view of ['Train', 'Progress', 'Challenge']) {
         await openView(page, view);
         expect(await overflow(page), view).toBeLessThanOrEqual(0);
+
         // To 1/100 px: Firefox lays out in 1/60 px units, so a 44px box can measure 43.99999.
         if (learnLinks[view]) expect(Math.round((await page.locator(learnLinks[view]).boundingBox()).height * 100) / 100, view).toBeGreaterThanOrEqual(44);
       }
@@ -42,8 +45,10 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
       if (viewport.width === 320) {
         await openView(page, 'Practice');
         await freshTextCheck(page);
+
         for (const view of ['Progress', 'Train', 'Challenge']) {
           await openView(page, view);
+
           if (view === 'Challenge') await page.locator('#challenge-daily').click();
           expect(await overflow(page), `${view} with a run`).toBeLessThanOrEqual(0);
         }
@@ -63,6 +68,7 @@ for (const width of [320, 360]) test.describe(`live stats at ${width}px`, () => 
     // Written and measured in one task, so the run's own tick can't rewrite them in between: a
     // three-digit speed with every built-in length, and a four-digit cpm against the clock.
     const cases = [['25', '/25', '188', 'wpm'], ['100', '/100', '999', 'wpm'], ['100', '/100', '999', 'cpm'], ['120', 's', '1999', 'cpm']];
+
     for (const shown of cases) {
       const fit = await page.evaluate(([timer, count, speed, unit]) => {
         document.getElementById('timer').textContent = timer;
@@ -71,8 +77,10 @@ for (const width of [320, 360]) test.describe(`live stats at ${width}px`, () => 
         document.querySelector('#live-stats [data-speed-unit]').textContent = unit;
         document.getElementById('live-accuracy').textContent = '100';
         const column = document.getElementById('typing-screen');
+
         return { page: document.documentElement.scrollWidth - document.documentElement.clientWidth, column: column.scrollWidth - column.clientWidth };
       }, shown);
+
       expect(fit, shown.join(' ')).toEqual({ page: 0, column: 0 });
     }
   });
@@ -90,25 +98,32 @@ test.describe('narrow run card', () => {
     // down to --text-numeral-narrow; 361 and 360 sit either side of that step. Narrowing from 390
     // also checks that the speed graph, drawn at its old width, gives the trace back.
     await page.locator('#result-wpm').evaluate((node) => { node.textContent = '188'; });
+
     for (const width of [390, 361, 360, 320]) {
       await page.setViewportSize({ width, height: 640 });
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${width}px page`).toBe(0);
+
       const fit = await page.evaluate(() => {
         const card = document.querySelector('#run-card');
         const style = getComputedStyle(card);
         const box = card.getBoundingClientRect();
         const inner = { left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight) };
+
         const rect = (selector) => {
           const r = document.querySelector(selector).getBoundingClientRect();
+
           return { left: r.left, right: r.right };
         };
+
         const score = document.querySelector('.run-card-score');
+
         return { page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           overflow: card.scrollWidth - card.clientWidth, score: score.scrollWidth - score.clientWidth,
           inner, numeral: rect('#result-wpm'), unit: rect('.run-card-unit'), card: { left: box.left, right: box.right },
           trace: rect('.run-card-graph'), traceOverflow: document.querySelector('.run-card-graph').scrollWidth - document.querySelector('.run-card-graph').clientWidth,
           shell: rect('.app-shell') };
       });
+
       expect(fit.page, `${width}px page`).toBe(0);
       expect(fit.overflow, `${width}px card`).toBe(0);
       expect(fit.score, `${width}px score row`).toBe(0);
@@ -118,6 +133,7 @@ test.describe('narrow run card', () => {
       expect(fit.traceOverflow, `${width}px trace`).toBe(0);
       expect(fit.trace.left, `${width}px trace left`).toBeGreaterThanOrEqual(fit.shell.left - 0.5);
       expect(fit.trace.right, `${width}px trace right`).toBeLessThanOrEqual(fit.shell.right + 0.5);
+
       for (const part of ['numeral', 'unit']) {
         expect(fit[part].left, `${width}px ${part} left`).toBeGreaterThanOrEqual(fit.inner.left);
         expect(fit[part].right, `${width}px ${part} right`).toBeLessThanOrEqual(fit.inner.right);
@@ -134,11 +150,14 @@ for (const [width, height] of [[1280, 800], [390, 844], [320, 568]]) {
 
     test('switching modes moves neither the rail nor the passage', async ({ page }) => {
       await openApp(page);
+
       const place = () => page.evaluate(() => ({
         rail: document.querySelector('.mode-options').getBoundingClientRect().top,
         line: document.querySelector('#compose-form').hidden ? document.querySelector('#text-display .char').getBoundingClientRect().top : null,
       }));
+
       const start = await place();
+
       const modes = [
         ['words', () => page.locator('#mode-words').click()],
         ['quote', () => page.locator('#mode-quote').click()],
@@ -148,11 +167,13 @@ for (const [width, height] of [[1280, 800], [390, 844], [320, 568]]) {
         ['custom text', () => chooseMore(page, 'mode-custom')],
         ['time', () => page.locator('#mode-time').click()],
       ];
+
       for (const [mode, choose] of modes) {
         await choose();
         await page.evaluate(() => window.scrollTo(0, 0));
         const now = await place();
         expect(Math.abs(now.rail - start.rail), `${mode} rail`).toBeLessThanOrEqual(1);
+
         if (['words', 'quote', 'code', 'standard', 'time'].includes(mode)) expect(Math.abs(now.line - start.line), `${mode} passage`).toBeLessThanOrEqual(1);
       }
     });
@@ -167,11 +188,13 @@ test.describe('lesson on a 320x568 phone', () => {
     await chooseMore(page, 'open-lessons');
     await page.locator('#lesson-primary').click();
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'lesson');
+
     const { line, dock, scrolled } = await page.evaluate(() => ({
       line: document.querySelector('#text-display .char').getBoundingClientRect().toJSON(),
       dock: document.querySelector('nav.dock').getBoundingClientRect().top,
       scrolled: window.scrollY,
     }));
+
     expect(scrolled).toBe(0);
     expect(line.top).toBeGreaterThanOrEqual(0);
     expect(line.bottom).toBeLessThanOrEqual(dock);
@@ -195,6 +218,7 @@ test('Literata and Geist Mono load from this origin', async ({ page }) => {
   expect(loaded).toEqual(expect.arrayContaining(['Literata', 'Geist Mono']));
   await expect(page.locator('#text-display')).toHaveCSS('font-family', /^"?Literata/);
   expect(fonts.length).toBeGreaterThan(0);
+
   for (const [path, status] of fonts) expect(status, path).toBe(200);
 });
 
@@ -211,6 +235,7 @@ test('the server hands out the app and nothing else', async ({ request }) => {
     expect(response.status(), path).toBe(200);
     expect(response.headers()['content-type'], path).toBe(type);
   }
+
   for (const path of ['/AGENTS.md', '/package.json', '/design/ash/DESIGN.md', '/docs/ui-contract.md', '/src/fonts/geist-400.ttf', '/e2e/fixtures.js', '/src/../server.mjs', '/%2e%2e/server.mjs']) {
     expect((await request.get(path)).status(), path).toBe(404);
   }

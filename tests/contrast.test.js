@@ -14,16 +14,22 @@ const stylesheet = readFileSync(new URL('../src/styles.css', import.meta.url), '
 function parseRules(css) {
   const source = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const rules = [];
+
   for (const [, prelude, body] of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selectorText = prelude.trim();
+
     if (!selectorText || selectorText.startsWith('@')) continue;
     const declarations = {};
+
     for (const part of body.split(';')) {
       const match = part.match(/^\s*([-\w]+)\s*:\s*([\s\S]+?)\s*$/);
+
       if (match) declarations[match[1]] = match[2];
     }
+
     rules.push({ selectors: selectorText.split(',').map((s) => s.trim().replace(/\s+/g, ' ')), declarations });
   }
+
   return rules;
 }
 
@@ -36,14 +42,17 @@ function themeTokens(css) {
   const pick = (test) => Object.assign({}, ...rules.filter((rule) => rule.selectors.some(test)).map((rule) => Object.fromEntries(Object.entries(rule.declarations).filter(([name]) => name.startsWith('--')))));
   const base = pick((selector) => selector === ':root');
   const names = new Set(rules.flatMap((rule) => rule.selectors.map(themeOf)).filter(Boolean));
+
   return Object.fromEntries([...names].map((name) => [name, { ...base, ...pick((selector) => themeOf(selector) === name) }]));
 }
 
 function resolve(value, tokens, depth = 0) {
   assert.ok(depth < 10, `var() cycle in ${value}`);
+
   return value.replace(/var\(\s*(--[-\w]+)\s*(?:,\s*([^()]*))?\)/g, (_, name, fallback) => {
     const next = tokens[name] ?? fallback;
     assert.ok(next !== undefined, `${name} is not defined`);
+
     return resolve(next.trim(), tokens, depth + 1);
   });
 }
@@ -54,45 +63,60 @@ const channelValue = (part, scale) => (part.endsWith('%') ? (parseFloat(part) / 
 function parseColour(value) {
   const text = value.trim().toLowerCase();
   const hex = text.match(/^#([0-9a-f]{3,8})$/);
+
   if (hex && [3, 4, 6, 8].includes(hex[1].length)) {
     const digits = hex[1].length <= 4 ? [...hex[1]].map((d) => d + d) : hex[1].match(/../g);
     const [r, g, b, a = 'ff'] = digits;
+
     return [r, g, b].map((d) => parseInt(d, 16)).concat(parseInt(a, 16) / 255);
   }
+
   const fn = text.match(/^rgba?\(([^)]*)\)$/);
+
   if (fn) {
     const [channels, alphaPart] = fn[1].includes('/') ? fn[1].split('/') : [fn[1], undefined];
     const parts = channels.split(/[\s,]+/).filter(Boolean);
     const alpha = alphaPart ?? parts[3];
+
     return parts.slice(0, 3).map((p) => channelValue(p, 255)).concat(alpha === undefined ? 1 : channelValue(alpha.trim(), 1));
   }
+
   throw new Error(`Unsupported colour for the contrast check: ${value}`);
 }
 
 // ── WCAG 2 maths ──────────────────────────────────────────────────────────
 
 const over = (top, under, alpha = top[3]) => [0, 1, 2].map((i) => top[i] * alpha + under[i] * (1 - alpha)).concat(1);
+
 const linear = (v) => {
   const s = v / 255;
+
   return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
 };
+
 const luminance = ([r, g, b]) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+
 const ratio = (a, b) => {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+
   return (hi + 0.05) / (lo + 0.05);
 };
 
 // ── The pairs ─────────────────────────────────────────────────────────────
 
 const rules = parseRules(stylesheet);
+
 const plainNumber = (value, where) => {
   assert.match(value, /^(\d*\.)?\d+$/, `${where} opacity must be a plain number to check it`);
+
   return Number(value);
 };
+
 const faded = (colour, opacity) => [...colour.slice(0, 3), colour[3] * opacity];
 
 // The ghost caret is drawn at the opacity of its .ghost-caret rule.
 const ghostOpacity = plainNumber(rules.find((r) => r.selectors.includes('.ghost-caret'))?.declarations.opacity ?? '1', '.ghost-caret');
+
 // Every placeholder rule must set opacity itself, so no browser default fade applies on top of the token.
 const placeholderRules = rules.filter((r) => r.selectors.some((s) => s.endsWith('::placeholder')));
 
@@ -113,6 +137,7 @@ function pairs(tokens) {
   for (const name of ['--text', '--muted', '--accent', '--danger', '--warning']) {
     for (const [surface, bg] of Object.entries(surfaces)) text(`${name} on ${surface}`, colour(name), bg);
   }
+
   // A mistyped letter on its own tint, in the passage and on a hovered danger button in a dialog.
   text('--danger on --danger-soft over ground', colour('--danger'), over(colour('--danger-soft'), ground));
   text('--danger on --danger-soft over raised', colour('--danger'), over(colour('--danger-soft'), raised));
@@ -131,8 +156,10 @@ function pairs(tokens) {
   // Placeholders as the stylesheet paints them: the rule's colour, faded by the rule's opacity. Fields
   // are raised stock, and the palette's search field sits on the raised palette box.
   assert.ok(placeholderRules.some((r) => r.selectors.includes('.input::placeholder')), '.input::placeholder rule not found');
+
   for (const { selectors, declarations } of placeholderRules) {
     const where = selectors.join(', ');
+
     // Reported with the ratios rather than thrown, so a failing run still lists every pair.
     if (!declarations.opacity) list.push({ label: `${where} sets no opacity, so a browser default fade can apply`, value: 0, min: 1 });
     text(`${where} on raised`, faded(parseColour(resolve(declarations.color, tokens)), plainNumber(declarations.opacity ?? '1', where)), raised);
@@ -148,6 +175,7 @@ function pairs(tokens) {
   nonText('caret (--accent) over ground', colour('--accent'), ground);
   nonText('focus ring (--text) against ground', colour('--text'), ground);
   nonText('focus ring (--text) against raised', colour('--text'), raised);
+
   return list;
 }
 
@@ -157,7 +185,9 @@ test('the stylesheet defines ten theme token sets of the same shape', () => {
   assert.deepEqual(Object.keys(themes).sort(), ['dark', 'e-ink', 'light', 'midnight', 'nord', 'paper', 'shadcn', 'soft', 'swiss', 'terminal']);
   // Every theme is the same token set: one that leaves a token out would inherit dark's value for it.
   const own = (name) => [...new Set(rules.filter((rule) => rule.selectors.some((selector) => themeOf(selector) === name)).flatMap((rule) => Object.keys(rule.declarations)))].sort();
+
   for (const name of Object.keys(themes)) assert.deepEqual(own(name), own('dark'), `${name} sets exactly the tokens dark sets`);
+
   for (const [name, tokens] of Object.entries(themes)) {
     for (const token of ['--ground', '--ground-2', '--raised', '--raised-2', '--text', '--muted', '--accent', '--danger', '--danger-soft', '--ghost', '--outline', '--placeholder']) {
       assert.ok(tokens[token], `${name} theme is missing ${token}`);
@@ -185,6 +215,7 @@ test('the parser follows the cascade and reads other colour syntaxes', () => {
         --muted: #3338;
       }
     }`;
+
   const parsed = themeTokens(css);
   assert.deepEqual(Object.keys(parsed).sort(), ['dark', 'light']);
   assert.deepEqual(parseColour(resolve('var(--raised)', parsed.light)), [255, 255, 255, 1]);

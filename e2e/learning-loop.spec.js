@@ -44,6 +44,7 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   const wrap = await page.locator('#typing-wrap').boundingBox();
   await expect.poll(async () => {
     const caret = await page.locator('#text-display .caret').boundingBox();
+
     return caret.y >= wrap.y && caret.y + caret.height <= wrap.y + wrap.height;
   }).toBe(true);
   expect(wrap.height).toBeGreaterThan(0);
@@ -159,6 +160,7 @@ function savedTrace(id, at) {
   attempt.startedAt = 0;
   attempt.events = [...text].map((char, position) => ({ type: 'insert', text: position % 4 === 1 ? 'x' : char,
     position, offsetMs: position * 100, accepted: true }));
+
   return { ...completeAttempt(attempt, { endedAt: text.length * 100 }), at, fresh: true };
 }
 
@@ -184,8 +186,10 @@ test('runs recorded on another device are no baseline: their drill stands alone,
 test('a drill started from saved history, left once, is retested against that history when drilled again', async ({ page, supabase }) => {
   const user = supabase.addUser('saved@stilltype.test');
   const traces = [savedTrace('saved-a', '2026-09-28T12:00:00Z'), savedTrace('saved-b', '2026-09-29T12:00:00Z')];
+
   const data = { version: 2, preferences: {}, attempts: traces,
     runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt: '2026-09-29T12:00:00Z' };
+
   supabase.profiles.set(user.id, { data });
   const profile = () => supabase.profileFor(user.email);
   const beforeIds = () => profile()?.loops?.map((loop) => loop.beforeAttemptId);
@@ -286,21 +290,27 @@ test('an exhausted quote pool refuses a retest and explains why', async ({ page 
 
   const texts = new Set(pool.map((quote) => quote.text));
   const seen = new Set();
+
   const note = async () => {
     const text = await passageText(page);
+
     if (texts.has(text)) seen.add(text);
   };
+
   await openApp(page);
   await page.locator('#mode-quote').click();
   await note();
   await chooseQuoteFilter(page, 'length', 'medium');
   await note();
   await chooseQuoteFilter(page, 'difficulty', 'gentle');
+
   // Every displayed quote is marked seen, so restarting walks the whole pool.
   for (let tries = 0; seen.size < pool.length && tries < pool.length + 3; tries += 1) {
     await note();
+
     if (seen.size < pool.length) await page.locator('#restart-button').click();
   }
+
   expect(seen.size).toBe(pool.length);
 
   await completePassage(page);

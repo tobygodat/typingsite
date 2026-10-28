@@ -9,14 +9,17 @@ import { RATE_FLOOR_MS, replayCursor, replayScoreAt, replaySpan } from './typing
 import { showSpeed, speedFigure, unitLabel } from './units.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
 // Letters mounted from the top visible line: well over three lines at any dialog width.
 const MOUNTED = 480;
 
 export function createReplayView(dialog) {
   const display = dialog.querySelector('#replay-text');
   const clock = dialog.querySelector('#replay-clock');
+
   const [wpmText, accuracyText, errorsText, errorsUnit, statsLabel] = ['wpm', 'accuracy', 'errors', 'errors-unit', 'stats-label']
     .map((id) => dialog.querySelector(`#replay-${id}`));
+
   const toggle = dialog.querySelector('#replay-toggle');
   const speedButton = dialog.querySelector('#replay-speed');
   let attempt = null;
@@ -45,6 +48,7 @@ export function createReplayView(dialog) {
       const node = document.createElement('span');
       node.className = 'char';
       node.textContent = text[from + offset] ?? '';
+
       return node;
     });
     display.replaceChildren(...chars);
@@ -65,6 +69,7 @@ export function createReplayView(dialog) {
   function follow(caret) {
     if (caret < first) mount(0);
     let line = lines.findLastIndex((start) => start <= caret);
+
     while (line >= 2) {
       mount(lines[line - 1]);
       line = lines.findLastIndex((start) => start <= caret);
@@ -79,10 +84,12 @@ export function createReplayView(dialog) {
     const second = done ? Infinity : Math.floor(position / 1000);
     const due = misses.filter((offsetMs) => offsetMs <= span.start + position).length;
     const tick = !scored || scored.second !== second || position < scored.position;
+
     if (!tick && scored.due === due) return;
     scored = { second, due, position };
     const { wpm, accuracy, errors, elapsedMs } = replayScoreAt(attempt, span.start + position);
     const rated = done || elapsedMs >= RATE_FLOOR_MS;
+
     if (tick) showSpeed(wpmText, rated ? wpm : null);
     accuracyText.textContent = rated ? accuracy : '—';
     errorsText.textContent = errors;
@@ -99,11 +106,13 @@ export function createReplayView(dialog) {
       const index = first + offset;
       const letter = index < caret ? (typed[index] === attempt.text[index] ? ' correct' : ' wrong') : '';
       const name = `char${letter}${index === caret ? ' is-caret' : ''}`;
+
       if (drawn[offset] !== name) node.className = drawn[offset] = name;
     });
     clock.textContent = (position / 1000).toFixed(1);
     drawStats();
     const label = playing ? 'Pause' : 'Play';
+
     if (toggle.textContent !== label) toggle.textContent = label;
     dialog.dataset.state = playing ? 'playing' : position >= length() ? 'done' : 'paused';
   }
@@ -111,8 +120,10 @@ export function createReplayView(dialog) {
   function tick(now) {
     position = Math.min(length(), position + (now - lastNow) * speed);
     lastNow = now;
+
     if (position >= length()) playing = false;
     draw();
+
     if (playing) frame = requestAnimationFrame(tick);
   }
 
@@ -128,6 +139,7 @@ export function createReplayView(dialog) {
   function pause() {
     playing = false;
     cancelAnimationFrame(frame);
+
     if (attempt) draw();
   }
 
@@ -159,6 +171,7 @@ export function createReplayView(dialog) {
       // Open first: mounting measures where the lines break.
       dialog.showModal();
       mount(0);
+
       // Reduced motion: open on the finished frame, still; Play remains an explicit choice.
       if (reducedMotion.matches) {
         position = length();

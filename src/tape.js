@@ -7,8 +7,10 @@
 // A stepped word lands this far in, so the end of the previous word stays in view. On a narrow
 // screen or with large text the lead is measured in glyphs instead (see tapeOffset).
 export const TAPE_LEAD = 0.1;
+
 // The tape steps when the caret starts a word past this point, leaving the rest as lookahead.
 export const TAPE_REACH = 0.7;
+
 // Backspacing into the left edge steps back so the caret sits mid-line.
 export const TAPE_BACK = 0.5;
 
@@ -38,15 +40,18 @@ export function tapeOffset({ offset = 0, caret = 0, word = null, width = 0, marg
   const edge = width - margin;
   let next = Math.max(0, Number.isFinite(offset) ? offset : 0);
   const visible = caret - next;
+
   if (realign) {
     if (visible > edge || visible < guard) next = (word ? word.left : caret) - lead;
   } else if (word && (word.left - next > reach || word.right - next > edge)) {
     // A new word that starts late or would run off the edge: bring it to the lead in one step.
     next = word.left - lead;
   }
+
   // A word longer than the line: step inside it, a chunk at a time.
   if (caret - next > edge) next = caret - lead;
   // Backspacing into the left edge: step back.
   else if (caret - next < guard) next = caret - width * TAPE_BACK;
+
   return Math.max(0, Math.round(next));
 }

@@ -12,21 +12,25 @@ async function typeWithMisses(page, text, delay) {
   const words = text.split(' ');
   const missed = new Set();
   await page.locator('#typing-input').focus();
+
   for (const [index, raw] of words.entries()) {
     const typed = index < words.length - 1 ? `${raw} ` : raw;
     const word = bare(raw);
     // A lowercase letter, so the miss is recorded as the bare word (a capital would keep "The").
     const at = TARGETS.includes(word) && !missed.has(word) ? [...raw].findIndex((char) => /\p{Ll}/u.test(char)) : -1;
+
     if (at < 0) {
       await page.keyboard.type(typed, { delay });
       continue;
     }
+
     missed.add(word);
     await page.keyboard.type(typed.slice(0, at), { delay });
     await page.keyboard.type(typed[at] === 'x' ? 'z' : 'x', { delay });
     await page.keyboard.press('Backspace', { delay });
     await page.keyboard.type(typed.slice(at), { delay });
   }
+
   return missed;
 }
 
@@ -37,6 +41,7 @@ async function keepMissing(page) {
   await page.mouse.move(40, 40);
   await page.locator('#palette-trigger').click();
   await page.keyboard.type('practice words you keep missing');
+
   return page.locator('#palette-list .palette-option', { hasText: 'practice words you keep missing' });
 }
 
@@ -45,6 +50,7 @@ async function keepMissingCount(page) {
   const count = await option.count() ? Number((await option.locator('.opt-hint').textContent()).match(/^(\d+) words$/)[1]) : 0;
   await page.keyboard.press('Escape');
   await expect(page.locator('#palette')).toBeHidden();
+
   return count;
 }
 
@@ -64,13 +70,17 @@ test('words missed across runs build the palette’s list, which starts an uncou
   const tally = new Map();
   let runs = 0;
   const recurring = () => [...tally].filter(([, n]) => n >= 2);
+
   // At least three runs, so the counts can differ between words.
   while (runs < 3 || recurring().length < 2) {
     expect(runs, 'two target words recur within a few short quotes').toBeLessThan(6);
+
     if (runs) await page.locator('#run-again').click();
+
     for (const word of await typeWithMisses(page, await passageText(page), 0)) tally.set(word, (tally.get(word) || 0) + 1);
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
     runs += 1;
+
     // One run is no list yet: no word has been missed twice.
     if (runs === 1) expect(await keepMissingCount(page)).toBe(0);
   }
@@ -91,6 +101,7 @@ test('words missed across runs build the palette’s list, which starts an uncou
   expect(practice.length).toBe(40);
   // Past eight, words tied with the eighth may be left out; every word ranked above it is in.
   const cut = words.length > 8 ? words[7][1] : 0;
+
   for (const [word, n] of words) if (n > cut) expect(practice).toContain(word);
   await typeInto(page, practice.join(' '));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
@@ -115,6 +126,7 @@ test('words missed across runs build the palette’s list, which starts an uncou
 const conditions = { mode: 'words', count: 25, duration: null, punctuation: false, quoteLength: null,
   difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
   language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
 const TEXT = 'their house is near the river because their road runs along the river bank because it is quiet and their garden is small';
 
 // A finished 25-word run at about 80 wpm, with a fixed miss on the second letter of each word in `missed`.
@@ -123,15 +135,18 @@ function trace(id, at, missed, kind = 'test') {
   attempt.startedAt = 0;
   const misses = new Set();
   let start = 0;
+
   for (const word of TEXT.split(' ')) {
     if (missed.includes(word)) misses.add(start + 1);
     start += word.length + 1;
   }
+
   let t = 0;
   [...TEXT].forEach((char, position) => {
     if (misses.has(position)) attempt.events.push({ type: 'insert', text: 'x', position, offsetMs: (t += 150), accepted: true }, { type: 'delete', count: 1, offsetMs: (t += 150) });
     attempt.events.push({ type: 'insert', text: char, position, offsetMs: (t += 150), accepted: true });
   });
+
   return { ...completeAttempt(attempt, { endedAt: t }), at, fresh: true };
 }
 
@@ -145,9 +160,11 @@ test('signed in, the list rides the synced run summaries, starts from the palett
   // Settings and a best that match the seeded 25-word runs, as that person's account would hold.
   const top = traces.map((t) => runRecord(t)).reduce((a, b) => (b.score.wpm > a.score.wpm ? b : a));
   const bests = { [conditionKey(conditions)]: { wpm: top.score.wpm, attemptId: top.id, at: top.at } };
+
   const data = { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: traces,
     runs: [legacy, ...traces.map((t) => runRecord(t)), practice], loops: [], seenTextIds: traces.map((t) => t.textId), bests,
     updatedAt: new Date(Date.now() - 60000).toISOString() };
+
   supabase.profiles.set(user.id, { data });
   expect(missedWords).toEqual(['their', 'house']);
   expect(top.score.wpm).toBeGreaterThanOrEqual(40);
@@ -199,6 +216,7 @@ test('signed in, the list rides the synced run summaries, starts from the palett
     await page.locator('#confirm-clear-input').fill('clear');
     await page.locator('#confirm-clear').click();
   };
+
   // Start the practice, then clear history before typing it; Undo brings the list back.
   await practiseKeepMissing(page);
   await clear();
@@ -259,17 +277,21 @@ async function holdNextProfileFetch(page) {
     held = true;
     asked();
     await gate;
+
     return route.fallback();
   });
+
   return { fetched, release };
 }
 
 test('the palette’s list follows a sync: runs from another device join it, and a clear from elsewhere empties it', async ({ page, supabase }) => {
   const user = supabase.addUser('stale@stilltype.test');
   const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+
   // Saved as this build saves (mergeStamp), so copies merge rather than the later one replacing the other.
   const row = (traces, updatedAt, extra = {}) => ({ data: { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: traces,
     runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt, mergeStamp: updatedAt, ...extra } });
+
   supabase.profiles.set(user.id, row([trace('a', day(4), ['their', 'because']), trace('b', day(3), ['their', 'because'])], day(3)));
   await openApp(page);
   // Recorded on this device (the runs saved meanwhile below come from another, recordings left there).

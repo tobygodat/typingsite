@@ -8,12 +8,15 @@
 import { test, expect, openApp, openView, chooseWords, completePassage } from './fixtures.js';
 
 const args = ['--blink-settings=primaryPointerType=4,availablePointerTypes=6,primaryHoverType=2,availableHoverTypes=3'];
+
 const pointers = {
   chromium: process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM, args } : { args },
   firefox: { firefoxUserPrefs: { 'ui.primaryPointerCapabilities': 6, 'ui.allPointerCapabilities': 7 } },
   webkit: {},
 };
+
 test.use({ launchOptions: [async ({ browserName }, use) => use(pointers[browserName]), { scope: 'worker' }] });
+
 test.skip(({ browserName }) => browserName === 'webkit', 'WebKit can’t start with a coarse pointer beside a fine one');
 
 const MIN = 44;
@@ -25,18 +28,24 @@ const hitArea = (locator) => locator.evaluate((el) => {
   const x = Math.round(box.left + box.width / 2);
   const y = Math.round(box.top + box.height / 2);
   const owns = (px, py) => el.contains(document.elementFromPoint(px, py));
+
   const run = (dx, dy) => {
     let d = 1;
+
     while (d <= 64 && owns(x + dx * d, y + dy * d)) d += 1;
+
     return d - 1;
   };
+
   return owns(x, y) ? [run(-1, 0) + run(1, 0) + 1, run(0, -1) + run(0, 1) + 1] : [0, 0];
 });
 
 test('a fine primary pointer with a touchscreen beside it still gets 44px targets at desktop width', async ({ page }) => {
   await openApp(page);
+
   const media = await page.evaluate(() => Object.fromEntries(['(pointer: fine)', '(hover: hover)', '(pointer: coarse)', '(any-pointer: coarse)']
     .map((query) => [query, matchMedia(query).matches])));
+
   expect(media).toEqual({ '(pointer: fine)': true, '(hover: hover)': true, '(pointer: coarse)': false, '(any-pointer: coarse)': true });
 
   // The footer link: 34px of text and padding, grown to 50 by its transparent reach.

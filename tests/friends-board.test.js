@@ -6,14 +6,19 @@ import { dailyPassage } from '../src/insights.js';
 
 const daily = { mode: 'quote', duration: null, count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any',
   wordList: null, inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
 const dailyKey = conditionKey(daily);
 const words = { ...daily, mode: 'words', count: 25, quoteLength: null, difficulty: null, wordList: '200', punctuation: false };
+
 // Friday 9 October 2026, 15:00 UTC: the week began on Monday 5 October.
 const now = new Date('2026-10-09T15:00:00Z');
+
 const run = (id, overrides = {}) => ({ id, at: '2026-10-09T12:00:00Z', status: 'complete', kind: 'test', interrupted: false,
   conditions: words, score: { wpm: 70, accuracy: 97 }, elapsedMs: 30000, challengeDate: null, ...overrides });
+
 const dailyRun = (id, wpm, accuracy, overrides = {}) => run(id, { kind: 'daily', conditions: daily, challengeDate: '2026-10-09',
   score: { wpm, accuracy }, elapsedMs: 41000, ...overrides });
+
 const session = { user: { id: 'ada' }, access_token: 'account-token', expires_at: 9999999999 };
 
 test('weeks start on Monday 00:00 UTC, whatever the local day', () => {
@@ -35,6 +40,7 @@ test('each day’s daily result is its best completed physical-keyboard attempt,
     dailyRun('impossible', 900, 100),
     run('practice', { score: { wpm: 130, accuracy: 100 } }),
   ];
+
   assert.deepEqual(boardSummary(runs, dailyKey).days, {
     '2026-10-09': { version: dailyVersion(dailyKey, now), wpm: 78, accuracy: 97, attempts: 3 },
     '2026-10-08': { version: dailyVersion(dailyKey, new Date('2026-10-08T00:00:00Z')), wpm: 110, accuracy: 99, attempts: 1 },
@@ -61,6 +67,7 @@ test('practice time counts completed, uninterrupted runs in the week (from Monda
     run('abandoned', { status: 'interrupted', elapsedMs: 9000 }),
     run('undated', { at: null, elapsedMs: 9000 }),
   ];
+
   assert.deepEqual(boardSummary(runs, dailyKey).weeks, { '2026-10-05': { seconds: 135, runs: 3 }, '2026-09-28': { seconds: 120, runs: 1 } });
   assert.deepEqual(boardSummary([], dailyKey), { days: {}, weeks: {}, bests: {} });
 });
@@ -77,6 +84,7 @@ test('practice time is the week’s whole completed seconds: the runs’ time su
 
 test('custom-text runs count in neither the daily nor practice time, as Progress counts none of them', () => {
   const custom = { ...words, mode: 'custom', count: null, wordList: null, customOrder: 'as-written' };
+
   const runs = [
     run('today', { elapsedMs: 30000 }),
     dailyRun('daily', 80, 96, { elapsedMs: 45000 }),
@@ -84,6 +92,7 @@ test('custom-text runs count in neither the daily nor practice time, as Progress
     run('custom-as-daily', { kind: 'custom', conditions: daily, challengeDate: '2026-10-09', elapsedMs: 40000, score: { wpm: 150, accuracy: 100 } }),
     run('custom-only-week', { kind: 'custom', conditions: custom, at: '2026-09-29T12:00:00Z', elapsedMs: 50000 }),
   ];
+
   const summary = boardSummary(runs, dailyKey);
   assert.deepEqual(summary.weeks, { '2026-10-05': { seconds: 75, runs: 2 } });
   assert.deepEqual(summary.days, { '2026-10-09': { version: dailyVersion(dailyKey, now), wpm: 80, accuracy: 96, attempts: 1 } });
@@ -92,18 +101,22 @@ test('custom-text runs count in neither the daily nor practice time, as Progress
 test('each run counts in its own day and week, whatever the writing device’s clock says', () => {
   // Monday 12 October: a phone with a correct clock played Monday's daily at 00:05 UTC and practised.
   const monday = new Date('2026-10-12T00:05:00Z');
+
   const runs = [
     dailyRun('monday-daily', 82, 97, { challengeDate: '2026-10-12', at: '2026-10-12T00:04:00Z' }),
     run('sunday-practice', { at: '2026-10-11T22:00:00Z', elapsedMs: 600000 }),
   ];
+
   const expected = {
     days: { '2026-10-12': { version: dailyVersion(dailyKey, monday), wpm: 82, accuracy: 97, attempts: 1 } },
     weeks: { '2026-10-12': { seconds: 41, runs: 1 }, '2026-10-05': { seconds: 600, runs: 1 } },
   };
+
   // A laptop ten minutes slow (still Sunday) and one ten minutes fast write the same summary as the
   // phone: the service, on Monday, finds Monday's daily and this week's practice in each.
   for (const clock of ['2026-10-11T23:58:00Z', '2026-10-12T00:08:00Z', '2026-10-12T00:18:00Z']) {
     mock.timers.enable({ apis: ['Date'], now: Date.parse(clock) });
+
     try {
       assert.equal(new Date().toISOString(), new Date(clock).toISOString());
       const { days, weeks } = boardSummary(runs, dailyKey);
@@ -115,6 +128,7 @@ test('each run counts in its own day and week, whatever the writing device’s c
 test('a summary keeps only the latest two days and weeks', () => {
   const runs = ['2026-10-07', '2026-10-08', '2026-10-09'].map((day, index) => dailyRun(`daily-${day}`, 70 + index, 97,
     { challengeDate: day, at: `${day}T12:00:00Z` }));
+
   runs.push(run('older', { at: '2026-09-23T12:00:00Z' }), run('last-week', { at: '2026-10-01T12:00:00Z' }));
   const summary = boardSummary(runs, dailyKey);
   assert.deepEqual(Object.keys(summary.days), ['2026-10-09', '2026-10-08']);
@@ -138,6 +152,7 @@ test('board order: fastest daily first, accuracy breaks a tie, nobody-yet last; 
     { name: 'Kai', daily: { wpm: 88, accuracy: 94, attempts: 1 }, week: { seconds: 0, runs: 0 } },
     { name: 'Ana', daily: null, week: { seconds: 300, runs: 2 } },
   ];
+
   assert.deepEqual(dailyOrder(rows).map((row) => row.name || 'you'), ['Kai', 'Lin', 'you', 'Ana', 'Sam']);
   assert.deepEqual(weekOrder(rows).map((row) => row.name || 'you'), ['Lin', 'you', 'Ana', 'Kai', 'Sam']);
 });
@@ -147,8 +162,10 @@ test('the board sends no numbers: reading, sharing (with only the sharing versio
   const calls = [];
   globalThis.fetch = async (url, options) => {
     calls.push({ url, headers: options.headers, data: JSON.parse(options.body) });
+
     return new Response(JSON.stringify({ date: '2026-10-09', weekStart: '2026-10-05', sharing: true, sharingVersion: 3, nextDay: 32400, rows: [] }));
   };
+
   try {
     const read = await readBoard(session);
     await startSharing(session, versionOf(read));
@@ -169,6 +186,7 @@ test('the board sends no numbers: reading, sharing (with only the sharing versio
 test('a reply’s sharing version is a whole number, or none', () => {
   assert.equal(versionOf({ sharingVersion: 0 }), 0);
   assert.equal(versionOf({ sharingVersion: 41 }), 41);
+
   for (const value of [undefined, null, -1, 1.5, '3', Number.MAX_SAFE_INTEGER + 2, NaN]) assert.equal(versionOf({ sharingVersion: value }), null);
   assert.equal(versionOf(null), null);
 });
@@ -177,12 +195,15 @@ test('a device keeps whether the account shares with the version that said so, i
   assert.equal(sharingValue(true, 7), '1:7');
   assert.equal(sharingValue(false, 0), '0:0');
   assert.equal(sharingValue(false, null), '0', 'an opt-out not confirmed yet has no version');
+
   for (const [value, version] of [[true, 7], [false, 0], [false, null], [true, Number.MAX_SAFE_INTEGER]]) {
     assert.deepEqual(readSharing(sharingValue(value, version)), { sharing: value, version });
   }
+
   // Kept by a build before the version: the state, and no version, so a share reads the board first.
   assert.deepEqual(readSharing('1'), { sharing: true, version: null });
   assert.deepEqual(readSharing('0'), { sharing: false, version: null });
+
   for (const junk of [null, undefined, '', 'true', '2', '1:', '1:-1', '1:1.5', '1:x', '0:9007199254740993', '0:12345678901234567', ' 1:3', '1:3 ']) {
     assert.deepEqual(readSharing(junk), { sharing: null, version: null });
   }
@@ -245,6 +266,7 @@ test('setting the clock back while the board is open doesn’t hold the midnight
 test('a service without the board migration says it is being set up', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ message: 'Could not find the function public.friends_board(p_action, p_data) in the schema cache' }), { status: 404 });
+
   try {
     await assert.rejects(readBoard(session), /being set up/);
   } finally { globalThis.fetch = original; }

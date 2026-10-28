@@ -52,6 +52,7 @@ test('numbers live in test content settings, default off, and keep practice best
   await page.locator('.conditions-disclosure > summary').click();
   const variants = page.getByRole('combobox', { name: 'Conditions', exact: true });
   await expect(variants.locator('option')).toHaveCount(2);
+
   for (const label of await variants.locator('option').allTextContents()) {
     await variants.selectOption({ label });
     await expect(page.locator('#run-history .run-row')).toHaveCount(1);
@@ -169,6 +170,7 @@ test('test content and its numbers switch work by keyboard at 320px', async ({ p
 test('screenshots', async ({ page }, testInfo) => {
   test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.setViewportSize({ width: 1280, height: 800 });
+
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
@@ -179,6 +181,7 @@ test('screenshots', async ({ page }, testInfo) => {
     await page.keyboard.press('Escape');
     await page.screenshot({ path: shot(testInfo, `mode-bar-${theme}.png`) });
   }
+
   await page.emulateMedia({ colorScheme: 'dark' });
   await chooseWords(page, 10);
   await completePassage(page);

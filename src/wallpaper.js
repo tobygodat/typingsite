@@ -15,8 +15,10 @@ const LEVELS = 4;
 const WASH_SCALE = 8;
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 const KEY = 'wallpaper';
+
 // The contrast floor: letters at least 4.5:1, the caret at least 3:1; mistyped letters sit on their tint.
 const INKS = [['--text', '', 4.5], ['--muted', '', 4.5], ['--danger', '--danger-soft', 4.5], ['--accent', '', 3]];
+
 // Samples per region at most, so a check costs about the same on any screen.
 const SAMPLES = 8192;
 const LOOK = 'wallpaper-look';
@@ -25,25 +27,34 @@ const LOOK = 'wallpaper-look';
 export function greyscale(rgba) {
   const luma = new Uint8ClampedArray(rgba.length / 4);
   const counts = new Uint32Array(256);
+
   for (let i = 0; i < luma.length; i++) {
     luma[i] = 0.2126 * rgba[i * 4] + 0.7152 * rgba[i * 4 + 1] + 0.0722 * rgba[i * 4 + 2];
     counts[luma[i]]++;
   }
+
   const clip = luma.length * 0.02;
   let low = 0;
   let high = 255;
+
   for (let seen = counts[0]; low < 255 && seen <= clip; seen += counts[++low]);
+
   for (let seen = counts[255]; high > 0 && seen <= clip; seen += counts[--high]);
+
   if (high <= low) return luma;
+
   for (let i = 0; i < luma.length; i++) luma[i] = ((luma[i] - low) * 255) / (high - low);
+
   return luma;
 }
 
 // WCAG relative luminance of an sRGB colour, and the contrast between two luminances, as the e2e spec measures.
 const channel = (value) => {
   const s = value / 255;
+
   return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
 };
+
 export const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
 export const contrast = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 
@@ -55,12 +66,16 @@ function eachCell({ width, height }, cols, rows, visit) {
   const scale = Math.max(cols / width, rows / height);
   const left = (width - cols / scale) / 2;
   const top = (height - rows / scale) / 2;
+
   const span = (start, cell, limit) => {
     const from = Math.min(limit - 1, Math.floor(start + cell / scale));
+
     return [from, Math.min(limit, Math.max(from + 1, Math.floor(start + (cell + 1) / scale)))];
   };
+
   for (let y = 0; y < rows; y++) {
     const [y0, y1] = span(top, y, height);
+
     for (let x = 0; x < cols; x++) visit(x, y, ...span(left, x, width), y0, y1);
   }
 }
@@ -71,11 +86,13 @@ export function ditherMask(image, cols, rows) {
   const mask = new Uint8ClampedArray(cols * rows * 4);
   eachCell(image, cols, rows, (x, y, x0, x1, y0, y1) => {
     let sum = 0;
+
     for (let sy = y0; sy < y1; sy++) for (let sx = x0; sx < x1; sx++) sum += image.luma[sy * image.width + sx];
     const value = sum / ((y1 - y0) * (x1 - x0) * 255);
     const level = Math.min(LEVELS - 1, Math.floor(value * (LEVELS - 1) + (BAYER[(y % 4) * 4 + (x % 4)] + 0.5) / 16));
     mask[(y * cols + x) * 4 + 3] = (level * 255) / (LEVELS - 1);
   });
+
   return mask;
 }
 
@@ -84,12 +101,15 @@ export function colourGrid({ width, height, data }, cols, rows) {
   const grid = new Uint8ClampedArray(cols * rows * 4);
   eachCell({ width, height }, cols, rows, (x, y, x0, x1, y0, y1) => {
     const sum = [0, 0, 0];
+
     for (let sy = y0; sy < y1; sy++) {
       for (let sx = x0; sx < x1; sx++) for (let c = 0; c < 3; c++) sum[c] += data[(sy * width + sx) * 4 + c];
     }
+
     const at = (y * cols + x) * 4;
     grid.set([...sum.map((total) => total / ((y1 - y0) * (x1 - x0))), 255], at);
   });
+
   return grid;
 }
 
@@ -100,16 +120,21 @@ export function smoothScale(grid, cols, rows, scale) {
   const width = cols * scale;
   const height = rows * scale;
   const out = new Uint8ClampedArray(width * height * 4);
+
   const axis = (at, count) => {
     const u = Math.min(count - 1, Math.max(0, (at + 0.5) / scale - 0.5));
     const from = Math.floor(u);
     const t = u - from;
+
     return [from, Math.min(count - 1, from + 1), t * t * (3 - 2 * t)];
   };
+
   for (let y = 0; y < height; y++) {
     const [y0, y1, v] = axis(y, rows);
+
     for (let x = 0; x < width; x++) {
       const [x0, x1, u] = axis(x, cols);
+
       for (let c = 0; c < 4; c++) {
         const top = grid[(y0 * cols + x0) * 4 + c] * (1 - u) + grid[(y0 * cols + x1) * 4 + c] * u;
         const bottom = grid[(y1 * cols + x0) * 4 + c] * (1 - u) + grid[(y1 * cols + x1) * 4 + c] * u;
@@ -117,12 +142,14 @@ export function smoothScale(grid, cols, rows, scale) {
       }
     }
   }
+
   return out;
 }
 
 // A stored look, or the default (dither, sharp, full strength, ending at the countdown): anything unreadable falls back field by field.
 export function readLook(saved) {
   const number = (value, min, max, fallback) => (Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback);
+
   return {
     style: STYLES.includes(saved?.style) ? saved.style : 'dither',
     blur: number(saved?.blur, 0, BLUR_MAX, 0),
@@ -141,6 +168,7 @@ function stored(mode, use) {
       const transaction = db.transaction('files', mode);
       const requests = [use(transaction.objectStore('files'))].flat();
       transaction.oncomplete = () => { db.close(); resolve(requests.map((request) => request.result)); };
+
       transaction.onerror = transaction.onabort = () => { db.close(); reject(transaction.error); };
     };
   });
@@ -148,6 +176,7 @@ function stored(mode, use) {
 
 function canvas(width, height) {
   const node = Object.assign(document.createElement('canvas'), { width, height });
+
   return [node, node.getContext('2d', { willReadFrequently: true })];
 }
 
@@ -161,6 +190,7 @@ async function readImage(file, blob) {
   context.imageSmoothingQuality = 'high';
   context.drawImage(bitmap, 0, 0, node.width, node.height);
   bitmap.close();
+
   return { pixels: context.getImageData(0, 0, node.width, node.height), blob: blob ?? (await encode(node, 'image/webp')) };
 }
 
@@ -169,12 +199,15 @@ async function readImage(file, blob) {
 async function readStored(saved) {
   if (saved.bytes) {
     const blob = new Blob([saved.bytes], { type: saved.type });
+
     return readImage(blob, blob);
   }
+
   const [node, context] = canvas(saved.width, saved.height);
   const pixels = context.createImageData(saved.width, saved.height);
   saved.luma.forEach((value, i) => pixels.data.set([value, value, value, 255], i * 4));
   context.putImageData(pixels, 0, 0);
+
   return { pixels, blob: await encode(node, 'image/webp') };
 }
 
@@ -197,7 +230,9 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     luma = null;
     drawn = '';
     remove.hidden = !image;
+
     for (const row of rows) row.hidden = !image;
+
     if (image) return draw();
     source = null;
     halo();
@@ -215,6 +250,7 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     URL.revokeObjectURL(url);
     url = URL.createObjectURL(blob);
     layer.style.setProperty('--wallpaper-image', `url("${url}")`);
+
     if (size) layer.style.setProperty('--wallpaper-size', size);
     layer.dataset.style = look.style;
     layer.dataset.shown = '';
@@ -223,20 +259,25 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
 
   function draw() {
     layer.hidden = false;
+
     if (look.style === 'regular') {
       if (drawn === 'regular') return;
       drawn = 'regular';
+
       return publish(image.blob, drawn, '', image.pixels);
     }
+
     const dither = look.style === 'dither';
     const cell = parseFloat(getComputedStyle(layer).getPropertyValue(dither ? '--wallpaper-pitch' : '--wallpaper-cell'));
     const cols = Math.ceil(layer.clientWidth / cell);
     const lines = Math.ceil(innerHeight / cell);
     const size = `${cols * cell}px ${lines * cell}px`;
     const key = `${look.style} ${size}`;
+
     if (!cols || !lines || key === drawn) return;
     drawn = key;
     const { width, height } = image.pixels;
+
     if (dither) luma ??= greyscale(image.pixels.data);
     const scale = dither ? 1 : WASH_SCALE;
     const pixels = dither ? ditherMask({ width, height, luma }, cols, lines) : smoothScale(colourGrid(image.pixels, cols, lines), cols, lines, scale);
@@ -249,11 +290,13 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
   function apply() {
     selectSetting('wallpaper-style', look.style);
     blur.disabled = look.style === 'dither';
+
     for (const [control, value, label] of [[blur, look.blur, `${look.blur} px`], [opacity, look.opacity, `${look.opacity}%`], [reach, look.reach, `${look.reach}%`]]) {
       control.value = String(value);
       control.setAttribute('aria-valuetext', label);
       control.style.setProperty('--fill', `${((value - control.min) / (control.max - control.min)) * 100}%`);
     }
+
     layer.style.setProperty('--wallpaper-blur', `${look.blur}px`);
     layer.style.setProperty('--wallpaper-opacity', String(look.opacity / 100));
     layer.style.setProperty('--wallpaper-reach', String(look.reach / 100));
@@ -268,6 +311,7 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     swatch.fillStyle = getComputedStyle(probe).color;
     swatch.fillRect(0, 0, 1, 1);
     const [r, g, b, a] = swatch.getImageData(0, 0, 1, 1).data;
+
     return [r, g, b, a / 255];
   }
 
@@ -278,52 +322,68 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
   function halo() {
     const strength = layer.hidden || layer.dataset.shown === undefined || !source ? 0
       : (look.opacity / 100) * (document.body.dataset.running === 'true' ? parseFloat(getComputedStyle(layer).getPropertyValue('--wallpaper-dim')) : 1);
+
     const height = layer.getBoundingClientRect().height;
+
     const stops = [...getComputedStyle(layer).maskImage.matchAll(/rgba?\(([^)]*)\)\s+([\d.]+)%/g)]
       .map(([, rgb, at]) => [(Number(at) / 100) * height, Number(rgb.match(/[\d.]+/g)[3] ?? 1)]);
+
     const fade = (y) => {
       const next = stops.findIndex(([at]) => at > y);
+
       if (next === 0) return stops[0][1];
+
       if (next === -1) return stops.at(-1)?.[1] ?? 0;
       const [[y0, a0], [y1, a1]] = [stops[next - 1], stops[next]];
+
       return a0 + ((y - y0) / (y1 - y0)) * (a1 - a0);
     };
+
     const ground = colour('var(--ground)');
     const inks = INKS.map(([ink, tint, floor]) => [colour(`var(${ink})`), tint && colour(`var(${tint})`), floor]);
     const tint = colour('color-mix(in oklab, var(--accent) var(--wallpaper-tint), var(--ground))');
     const light = getComputedStyle(document.documentElement).colorScheme === 'light';
     const spread = source?.cell ? 0 : 3 * look.blur;
+
     const [scale, left, top] = source?.cell ? [source.cell, 0, 0] : (() => {
       if (!source) return [1, 0, 0];
       const width = layer.clientWidth + 4 * look.blur;
       const tall = innerHeight + 4 * look.blur;
       const fit = Math.max(width / source.width, tall / source.height);
+
       return [fit, (width - source.width * fit) / 2 - 2 * look.blur, (tall - source.height * fit) / 2 - 2 * look.blur];
     })();
+
     for (const node of reading) {
       const rect = node.getBoundingClientRect();
       const alpha = rect.height ? strength * fade(rect.top) : 0;
       let readable = alpha <= 0;
+
       if (!readable) {
         const span = (from, to, size) => [Math.max(0, Math.floor(from)), Math.min(size, Math.ceil(to))];
         const [x0, x1] = span((rect.left - spread - left) / scale, (rect.right + spread - left) / scale, source.width);
         const [y0, y1] = span((rect.top - spread - top) / scale, (rect.bottom + spread - top) / scale, source.height);
         const step = Math.max(1, Math.ceil(Math.sqrt(((x1 - x0) * (y1 - y0)) / SAMPLES)));
         readable = true;
+
         for (let y = y0; readable && y < y1; y += step) {
           for (let x = x0; readable && x < x1; x += step) {
             const at = (y * source.width + x) * 4;
             const dots = source.data[at + 3] / 255;
+
             const behind = source.cell
               ? over([...tint.slice(0, 3), alpha * (light ? 1 - dots : dots)], ground)
               : over([source.data[at], source.data[at + 1], source.data[at + 2], alpha], ground);
+
             readable = inks.every(([ink, under, floor]) => {
               const surface = under ? over(under, behind) : behind;
+
               return contrast(luminance(over(ink, surface)), luminance(surface)) >= floor;
             });
           }
         }
       }
+
       if (readable) delete node.dataset.halo;
       else node.dataset.halo = '';
     }
@@ -335,32 +395,41 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
   // the layer is fixed; a hidden practice screen keeps the last.
   function measure() {
     const surface = surfaces.map((node) => node.getBoundingClientRect()).find((rect) => rect.height);
+
     if (surface) layer.style.setProperty('--wallpaper-top', `${surface.top}px`);
     halo();
   }
+
   const observer = new ResizeObserver(measure);
+
   for (const node of [...surfaces, ...reading]) observer.observe(node);
   const changed = (records) => { if (records.some((record) => record.target.getAttribute(record.attributeName) !== record.oldValue)) halo(); };
+
   new MutationObserver(changed).observe(document.body, { attributes: true, attributeOldValue: true, attributeFilter: ['data-running', 'data-view'] });
   new MutationObserver(changed).observe(document.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: ['data-theme', 'style', 'class'] });
   addEventListener('scroll', measure, { passive: true });
   addEventListener('resize', () => {
     measure();
     clearTimeout(timer);
+
     if (image) timer = setTimeout(draw, 150);
   });
 
   input.addEventListener('change', async () => {
     const [file] = input.files;
     input.value = '';
+
     if (!file) return;
     let next;
+
     try {
       next = await readImage(file);
     } catch {
       error.hidden = false;
+
       return;
     }
+
     error.hidden = true;
     show(next);
     const bytes = await next.blob.arrayBuffer();
@@ -377,6 +446,7 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     look = { ...look, style: value };
     apply();
     save();
+
     if (image) draw();
   });
 
@@ -393,6 +463,7 @@ export function createWallpaper({ layer, input, remove, error, style, blur, opac
     .then(async ([saved, savedLook]) => {
       if (!saved || image) return;
       const next = await readStored(saved);
+
       if (image) return;
       look = readLook(savedLook);
       apply();

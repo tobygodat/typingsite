@@ -14,6 +14,7 @@ export const BOOKS = [
   { id: 'sherlock', name: 'sherlock holmes' },
   { id: 'frankenstein', name: 'frankenstein' },
 ];
+
 export const bookIds = BOOKS.map((book) => book.id);
 export const bookName = (id) => BOOKS.find((book) => book.id === id)?.name || 'book';
 
@@ -23,7 +24,9 @@ const ABBREVIATION = /^(?:Mr|Mrs|Dr|St|Messrs|Mme)\.$/;
 
 function endsSentence(word, next) {
   if (!/[.!?]['")]*$/.test(word)) return false;
+
   if (ABBREVIATION.test(word.replace(/^["'(]+/, ''))) return false;
+
   return /^["'(]*[A-Z]/.test(next);
 }
 
@@ -36,6 +39,7 @@ const COST = { paragraph: 0, sentence: 8, clause: 20, quoted: 30, anywhere: 60 }
 
 function breakCosts(paragraphs) {
   const words = [];
+
   for (const paragraph of paragraphs) {
     const list = paragraph.split(' ');
     let quoted = false;
@@ -43,12 +47,14 @@ function breakCosts(paragraphs) {
       for (const char of word) if (char === '"') quoted = !quoted;
       const next = list[i + 1];
       let cost = COST.anywhere;
+
       if (next === undefined) cost = COST.paragraph;
       else if (endsSentence(word, next)) cost = quoted ? COST.quoted : COST.sentence;
       else if (!quoted && endsClause(word)) cost = COST.clause;
       words.push({ word, cost });
     });
   }
+
   return words;
 }
 
@@ -58,19 +64,25 @@ export function paginate(paragraphs, { min, target, max } = PAGE_WORDS) {
   const words = breakCosts(paragraphs);
   const pages = [];
   let start = 0;
+
   while (start < words.length) {
     let end = words.length;
+
     if (end - start > max) {
       // Leave at least a minimum page behind, so a section never ends on a scrap.
       let best = Infinity;
+
       for (let candidate = start + min; candidate <= Math.min(start + max, words.length - min); candidate += 1) {
         const cost = words[candidate - 1].cost + Math.abs(candidate - start - target);
+
         if (cost < best) { best = cost; end = candidate; }
       }
     }
+
     pages.push(words.slice(start, end).map((item) => item.word).join(' '));
     start = end;
   }
+
   return pages;
 }
 
@@ -80,13 +92,16 @@ const opened = new Map();
 // its text, so a change to the text or the pagination gives new ids.
 export function openBook(id) {
   if (!BOOK_TEXTS[id]) return null;
+
   if (!opened.has(id)) {
     const pages = BOOK_TEXTS[id].flatMap((section, s) => paginate(section.paragraphs).map((text, p) => ({
       id: `book-${id}-c${s + 1}p${p + 1}-${textId(text).replace(/^generated-/, '')}`, book: id, text,
     })));
+
     pages.forEach((page, index) => { page.page = index; });
     opened.set(id, pages);
   }
+
   return opened.get(id);
 }
 
@@ -96,12 +111,16 @@ export function openBook(id) {
 // the book starts again at page 1.
 export function bookPlace(runs, id) {
   const pages = openBook(id);
+
   for (let i = runs.length - 1; i >= 0; i -= 1) {
     const run = runs[i];
+
     if (run.conditions?.mode !== 'book' || run.conditions.book !== id || run.status !== 'complete' || run.interrupted) continue;
     const index = pages.findIndex((page) => page.id === run.textId);
+
     if (index >= 0) return (index + 1) % pages.length;
   }
+
   return 0;
 }
 
@@ -109,5 +128,6 @@ export function bookPlace(runs, id) {
 export function bookPage(textId) {
   const id = /^book-([a-z]+)-/.exec(textId || '')?.[1];
   const index = id && openBook(id) ? openBook(id).findIndex((page) => page.id === textId) : -1;
+
   return index < 0 ? null : index + 1;
 }

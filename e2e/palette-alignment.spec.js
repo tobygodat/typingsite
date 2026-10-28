@@ -12,6 +12,7 @@ function measure() {
   const highlight = rect(document.querySelector('.palette-highlight'));
   const row = document.querySelector('#palette-list [aria-selected="true"]');
   const hint = row.querySelector('.opt-hint');
+
   return {
     name: row.querySelector('.opt-text').textContent,
     top: highlight.top - rect(row).top,
@@ -25,15 +26,21 @@ function columns() {
   // The ring's geometric edge (stroke centre), the same in every engine: Firefox's client rect includes the stroke.
   const circleLeft = () => {
     const svg = document.querySelector('.palette-search svg');
+
     return svg.getBoundingClientRect().left + svg.querySelector('circle').getBBox().x * (svg.getBoundingClientRect().width / svg.viewBox.baseVal.width);
   };
+
   const rect = (el) => el.getBoundingClientRect();
+
   const textLeft = (node) => {
     const range = document.createRange();
     range.selectNodeContents(node);
+
     return range.getBoundingClientRect().left;
   };
+
   const all = (selector, edge) => [...document.querySelectorAll(selector)].map(edge);
+
   return {
     marks: [circleLeft(), ...all('.palette-group', (heading) => textLeft(heading)), ...all('.opt-mark', (mark) => rect(mark).left)],
     text: [rect(document.querySelector('#palette-input')).left, ...all('.opt-text', (text) => rect(text).left)],
@@ -58,11 +65,13 @@ test('every selected row is centred in its highlight, and the palette keeps one 
   expect(grid.groups).toEqual([...new Set(grid.groups)]);
 
   const count = await page.locator('#palette-list [role="option"]').count();
+
   for (let index = 0; index < count; index += 1) {
     if (index) await page.keyboard.press('ArrowDown');
     await expect(page.locator(`#palette-option-${index}`)).toHaveAttribute('aria-selected', 'true');
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const row = await page.evaluate(measure);
+
     for (const part of ['top', 'label', 'mark', 'hint']) {
       expect(Math.abs(row[part]), `${part} of "${row.name}" (row ${index})`).toBeLessThanOrEqual(1);
     }

@@ -4,6 +4,7 @@ import { test, expect, openApp, openView, openSettings, chooseWords, completePas
 
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/keyboard-layouts/${name}.png` : testInfo.outputPath(`${name}.png`));
 const row = (page, index) => page.locator(`#keyboard .key-row:nth-child(${index}) .key`);
+
 // The label printed on each cap: its first text node (with the finger map on, visually hidden words follow it).
 const legend = async (page, index) => (await row(page, index).evaluateAll((keys) => keys.map((key) => key.firstChild.textContent))).join('');
 
@@ -92,12 +93,15 @@ test('the finger map names each key’s finger, bands alternate fingers, splits 
   const [f, d, s, a] = await Promise.all(['f', 'd', 's', 'a'].map(background));
   expect([f !== d, d !== s, s !== a, f === s, d === a]).toEqual([true, true, true, true, true]);
   expect(await background('f')).toBe(await background('j'));
+
   // The right hand starts a little apart from the left.
   const gap = await page.evaluate(() => {
     const [g, h] = ['g', 'h'].map((k) => document.querySelector(`#keyboard .key[data-key="${k}"]`).getBoundingClientRect());
     const [f, gg] = ['f', 'g'].map((k) => document.querySelector(`#keyboard .key[data-key="${k}"]`).getBoundingClientRect());
+
     return { hands: h.left - g.right, keys: gg.left - f.right };
   });
+
   expect(gap.hands).toBeGreaterThan(gap.keys);
 
   // Colemak-DH keeps the angle mod: x sits under the ring finger, z stretches to the index.
@@ -132,10 +136,13 @@ test('the finger map names each key’s hand and finger to assistive technology,
   await chooseSetting(page, 'keyboard-toggle', true);
   const keyboard = page.locator('#keyboard');
   const key = (letter) => page.locator(`#keyboard .key[data-key="${letter}"]`);
+
   const size = (letter) => key(letter).evaluate((node) => {
     const { width, height } = node.getBoundingClientRect();
+
     return { width, height };
   });
+
   // What assistive technology reads in the keyboard: one line of text, plus the legend when the map is on.
   const spoken = async () => (await keyboard.ariaSnapshot()).replace(/^- text: /, '').split('\n')[0];
   // Off: each key is just its letter, as before.
@@ -173,11 +180,14 @@ test('a drill keeps its target keys marked on the new legend', async ({ page }) 
   const targets = page.locator('#keyboard .key.target');
   await expect(targets).toHaveCount(2);
   expect(await targets.evaluateAll((keys) => keys.map((key) => key.dataset.key))).toEqual(['h', 't']);
+
   // With the finger map on, a target still looks different from an untargeted key on the same finger.
   const look = (letter) => page.locator(`#keyboard .key[data-key="${letter}"]`).evaluate((node) => {
     const style = getComputedStyle(node);
+
     return { finger: node.dataset.finger, color: style.color, background: style.backgroundColor };
   });
+
   for (const [target, other] of [['t', 'g'], ['h', 'r']]) {
     const [a, b] = await Promise.all([look(target), look(other)]);
     expect(a.finger).toBe(b.finger);
@@ -257,9 +267,11 @@ test.describe('on a touch screen', () => {
 
 test('a saved profile from before layouts reads as QWERTY and keeps its best', async ({ page, supabase }) => {
   const user = supabase.addUser('legacy@stilltype.test');
+
   // Preferences and bests exactly as master saved them: no layout anywhere.
   const legacyKey = conditionKey({ mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null,
     wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en' });
+
   expect(legacyKey).toBe('time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
   supabase.profiles.set(user.id, { data: { version: 2, preferences: { mode: 'time', duration: 30, wordList: '200', keyboard: true, stopOnError: false },
     attempts: [], runs: [], loops: [], seenTextIds: [], bests: { [legacyKey]: { wpm: 72, attemptId: 'old', at: '2026-09-20T12:00:00Z' } }, updatedAt: '2026-09-20T12:00:00Z' } });
@@ -318,6 +330,7 @@ test('custom text keeps master’s custom key on any layout, and a layout change
 test('screenshots: Dvorak with the finger map, settings, and a result', async ({ page }, testInfo) => {
   test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   test.setTimeout(90_000);
+
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
@@ -355,12 +368,15 @@ test('screenshot: settings on a phone', async ({ page }, testInfo) => {
 
   await page.setViewportSize({ width: 320, height: 700 });
   await chooseSetting(page, 'layout-select', 'colemak-dh');
+
   const fit = await page.locator('#layout-select').evaluate((group) => {
     const box = group.getBoundingClientRect();
+
     return { inside: box.left >= 0 && box.right <= innerWidth,
       optionFits: [...group.querySelectorAll('.setting-option span')].every((option) => option.scrollWidth <= option.clientWidth),
       overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
   });
+
   expect(fit).toEqual({ inside: true, optionFits: true, overflow: 0 });
 });
 

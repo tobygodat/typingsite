@@ -196,6 +196,7 @@ test('text too short to time is refused, and a short phrase is accepted', async 
   await typeInto(page, 'hello world');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   const seconds = parseFloat(await page.locator('#result-time').textContent());
+
   if (seconds < 1) {
     await expect(page.locator('#result-wpm')).toHaveText('—');
     await expect(page.locator('.run-card-graph')).toBeHidden();
@@ -214,10 +215,12 @@ test('a run too quick to time shows no word pace either, but still marks the mis
   // 40 ms a key on a paused clock: the whole run takes 400 ms, so every word has a sub-second pace to leak.
   await page.clock.pauseAt(new Date('2026-10-01T12:10:00Z'));
   await page.locator('#typing-input').focus();
+
   for (const key of 'hellp world') {
     await page.keyboard.type(key);
     await page.clock.runFor(40);
   }
+
   await page.clock.resume();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-wpm')).toHaveText('—');
@@ -233,8 +236,10 @@ test('a run too quick to time shows no word pace either, but still marks the mis
   await history.first().focus();
   await page.keyboard.press('ArrowRight');
   await expect(detail).toHaveText('“world” · no pace');
+
   const shown = await page.locator('#result-words').evaluate((node) => [node.textContent,
     ...[...node.querySelectorAll('[role="option"]')].flatMap((word) => [word.title, word.getAttribute('aria-label')])].join(' '));
+
   expect(shown).not.toContain('wpm');
 });
 
@@ -321,6 +326,7 @@ const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/cu
 test('screenshots', async ({ page }, testInfo) => {
   test.skip(!process.env.SCREENSHOTS, 'docs screenshots only; run with SCREENSHOTS=1');
   await page.setViewportSize({ width: 1280, height: 800 });
+
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
@@ -329,6 +335,7 @@ test('screenshots', async ({ page }, testInfo) => {
     await page.locator('#custom-text').fill('Paste anything you like to practise on: a paragraph from a book, an email you keep retyping, or a list of tricky words.');
     await page.screenshot({ path: shot(testInfo, `panel-${theme}`) });
   }
+
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.locator('#custom-use').click();
   await expect(page.locator('#condition-line')).toContainText('custom text');

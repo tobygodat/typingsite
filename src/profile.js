@@ -111,14 +111,20 @@ export function validPreferences(value) {
   value.quickEnd = value.quickEnd !== false;
   value.correction = correctionPreference(value);
   value.stopOnError = value.correction === 'mandatory';
+
   if (!DAILY_GOALS.includes(value.dailyGoal)) value.dailyGoal = 0;
+
   if (!MIN_ACCURACY_OPTIONS.includes(value.minAccuracy)) value.minAccuracy = 0;
+
   if (!MIN_WPM_OPTIONS.includes(value.minWpm)) value.minWpm = 0;
+
   if (!wordListIds.includes(value.wordList)) value.wordList = DEFAULT_WORD_LIST;
   value.sound = normalizeSoundMode(value.sound);
   value.soundVolume = normalizeSoundVolume(value.soundVolume);
   value.speedUnit = normalizeSpeedUnit(value.speedUnit);
+
   if (!CODE_LANGUAGES.includes(value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
+
   if (!bookIds.includes(value.book)) value.book = DEFAULT_BOOK;
   value.wordHighlight = normalizeWordHighlight(value.wordHighlight);
   value.wordHighlightSlide = value.wordHighlightSlide === true;
@@ -133,17 +139,22 @@ export function validPreferences(value) {
   delete value.restartKey;
   const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
   value.customText = customTextProblem(customText) ? '' : customText;
+
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
+
   if (!PACE_MODES.includes(value.paceCaret)) value.paceCaret = 'off';
   value.paceWpm = clampPace(value.paceWpm);
+
   // A custom theme's id is kept even when the list lacks it (it may arrive from another copy); the app
   // shows the mode's default until it does.
   if (!DARK_THEMES.includes(value.darkTheme) && !isCustomId(value.darkTheme)) value.darkTheme = 'dark';
+
   if (!LIGHT_THEMES.includes(value.lightTheme) && !isCustomId(value.lightTheme)) value.lightTheme = 'light';
   value.customThemes = normalizeCustomThemes(value.customThemes);
   // Whether the friends board shares is kept by the board alone (src/friends-board.js), never in the
   // synced profile, so a copy saved by an earlier build is dropped rather than synced back.
   delete value.shareBoard;
+
   return normalizeLengthPreferences(value);
 }
 
@@ -158,8 +169,11 @@ function storedPreferences(raw) {
   const stored = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const valid = preferencesInUse(stored);
   const normalized = Object.fromEntries(Object.keys(stored).filter((key) => key !== 'restartKey').map((key) => [key, valid[key]]));
+
   if (!Object.hasOwn(stored, 'keybindings') && Object.hasOwn(stored, 'restartKey')) normalized.keybindings = normalizeKeybindings(null, stored.restartKey);
+
   if (Object.hasOwn(stored, 'stopOnError') && !Object.hasOwn(stored, 'correction')) normalized.correction = valid.correction;
+
   return normalized;
 }
 
@@ -174,17 +188,23 @@ export function normalizeProfile(stored) {
   const preferencesAt = { ...parsed.preferencesAt };
   const oldChoice = preferencesAt.stopOnError || '';
   const newChoice = preferencesAt.correction || '';
+
   if (Object.hasOwn(rawPreferences, 'stopOnError') && (!Object.hasOwn(rawPreferences, 'correction') || oldChoice > newChoice)) {
     rawPreferences.correction = correctionPreference({ stopOnError: rawPreferences.stopOnError });
+
     if (oldChoice) preferencesAt.correction = oldChoice;
   }
+
   const traces = Array.isArray(parsed.attempts) ? parsed.attempts.map(withSummary) : [];
+
   const records = Array.isArray(parsed.runs) ? parsed.runs : traces.map((trace) => {
     // Older traces did not have wall-clock dates. Preserve unknown dates rather than invent them.
     const loop = parsed.loops?.find((l) => l.afterAttemptId === trace.id);
     const best = Object.values(parsed.bests || {}).find((b) => b.attemptId === trace.id);
+
     return runRecord(trace, trace.at || loop?.at || best?.at || null);
   });
+
   return {
     ...emptyProfile(),
     ...parsed,

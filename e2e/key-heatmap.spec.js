@@ -15,11 +15,15 @@ function trace(id, at) {
   let o = 0; let u = 0; let t = 0;
   attempt.events = [...text].map((char, position) => {
     let typed = char;
+
     if (char === 'o' && o++ % 2 === 0) typed = 'p';
+
     if (char === 'u' && u++ % 3 === 0) typed = 'y';
     t += char === 'o' ? 260 : 120;
+
     return { type: 'insert', text: typed, position, offsetMs: t, accepted: true };
   });
+
   return { ...completeAttempt(attempt, { endedAt: t + 120 }), at, fresh: true };
 }
 
@@ -77,12 +81,15 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   await expect(pairRow('ro').locator('td').nth(2)).toHaveText(/^—/);
   await expect(pairRow('ro').locator('td').nth(2)).toHaveAttribute('title', 'No run has 10 clean intervals for this pair yet');
   await expect(pairRow('do').locator('td').nth(2)).toHaveText('2 of 2');
+
   // Each error rate has a bar scaled to the highest rate in the table.
   const bars = await rows.evaluateAll((trs) => trs.map((tr) => ({
     rate: parseFloat(tr.cells[1].textContent), width: tr.querySelector('.pair-bar').getBoundingClientRect().width })));
+
   const top = bars.reduce((a, b) => (b.rate > a.rate ? b : a));
   expect(top.width).toBeGreaterThan(0);
   expect(bars.some((bar) => bar.rate < top.rate)).toBe(true);
+
   for (const bar of bars) expect(bar.width).toBeCloseTo((top.width * bar.rate) / top.rate, 0);
   await expect(rows.first().locator('.pair-bar')).toHaveAttribute('aria-hidden', 'true');
 
@@ -183,13 +190,17 @@ test.describe('coarse pointer at 320px', () => {
     const targets = await section.locator('a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')
       .evaluateAll((nodes) => nodes.filter((node) => node.offsetParent).map((node) => {
         const box = node.getBoundingClientRect();
+
         return { id: node.id || node.tagName, width: box.width, height: box.height };
       }));
+
     expect(targets.map((t) => t.id)).toEqual(['key-select']);
+
     for (const target of targets) {
       expect(target.width, target.id).toBeGreaterThanOrEqual(44);
       expect(target.height, target.id).toBeGreaterThanOrEqual(44);
     }
+
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
     // Narrow screens stack the pairs under the keyboard, and the legend wraps inside the column.
     const keyboardBox = await heatmap.boundingBox();

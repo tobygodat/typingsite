@@ -3,9 +3,12 @@ import { test, expect, openApp, openView, openProgressView, signInWithEmail } fr
 
 const NOW = new Date('2026-10-17T15:00:00');
 const daysAgo = (days, hour = 12) => new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() - days, hour).toISOString();
+
 const conditions = (extra = {}) => ({ mode: 'words', count: 25, duration: null, punctuation: false, numbers: false, quoteLength: null, difficulty: null,
   wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, ...extra });
+
 let n = 0;
+
 const run = (days, wpm, accuracy, extra) => ({ id: `run-${n += 1}`, at: daysAgo(days, 9 + (n % 8)), kind: 'test', status: 'complete', interrupted: false, fresh: true,
   conditions: conditions(extra), textId: `text-${n}`, score: { wpm, accuracy }, elapsedMs: 20000, errors: 1, target: null, challengeDate: null, patterns: [] });
 
@@ -160,15 +163,20 @@ test('practice notes count in the singular for one run, and in the plural otherw
 test('at 390px a pill row fades only at an edge with more of the row past it', async ({ page, supabase }) => {
   await openProgress(page, supabase);
   await page.setViewportSize({ width: 390, height: 844 });
+
   const fades = (id) => page.locator(`#${id}`).evaluate((row) => {
     const style = getComputedStyle(row);
+
     return [style.getPropertyValue('--fade-start'), style.getPropertyValue('--fade-end')];
   });
+
   // Without scroll timelines (Firefox today) every row keeps the plain fade at its right edge instead.
   if (!(await page.evaluate(() => CSS.supports('animation-timeline: scroll()')))) {
     await expect(page.locator('#progress-tabs')).toHaveCSS('mask-image', /^linear-gradient\(to right, .+, (transparent|rgba\(0, 0, 0, 0\))\)$/);
+
     return;
   }
+
   await expect.poll(() => fades('progress-period')).toEqual(['0px', '0px']);
   await expect.poll(() => fades('progress-tabs')).toEqual(['0px', '40px']);
   await page.locator('#progress-tabs').evaluate((row) => { row.scrollLeft = row.scrollWidth; });
@@ -270,10 +278,13 @@ test('quote sets that differ only by the punctuation setting say so on the condi
 
 test('changing a period, test or condition keeps focus on its control', async ({ page, supabase }) => {
   await openProgress(page, supabase);
+
   const focused = () => page.evaluate(() => {
     const node = document.activeElement;
+
     return { text: node.textContent, group: node.parentElement?.getAttribute('aria-label') || '', pressed: node.getAttribute('aria-pressed') };
   });
+
   await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }).focus();
   await page.keyboard.press('Enter');
   expect(await focused()).toEqual({ text: '7 days', group: 'Period', pressed: 'true' });
@@ -319,11 +330,14 @@ test('across midnight on 7 days, the overview and the chart move to the new day 
   const drawn = await page.locator('#progress-trend svg').getAttribute('viewBox');
   await page.setViewportSize({ width: 1000, height: 900 });
   await expect(page.locator('#progress-trend svg')).not.toHaveAttribute('viewBox', drawn);
+
   const outside = await page.locator('#progress-trend svg').evaluate((svg) => {
     const rule = svg.querySelector('.trend-rule');
     const [left, right] = [Number(rule.getAttribute('x1')), Number(rule.getAttribute('x2'))];
+
     return [...svg.querySelectorAll('.trend-runs circle')].map((dot) => Number(dot.getAttribute('cx'))).filter((x) => x < left || x > right);
   });
+
   expect(outside).toEqual([]);
 });
 
@@ -342,12 +356,15 @@ test('All runs from the first run to today, like 7 and 30 days', async ({ page, 
   await openProgress(page, supabase, [run(12, 50, 95), run(6, 60, 95), run(3, 70, 95)]);
   await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: 'All' }).click();
   await expect(page.locator('#progress-trend .trend-dot')).toHaveCount(3);
+
   const share = await page.locator('#progress-trend svg').evaluate((svg) => {
     const rule = svg.querySelector('.trend-rule');
     const [left, right] = [Number(rule.getAttribute('x1')), Number(rule.getAttribute('x2'))];
     const xs = [...svg.querySelectorAll('.trend-runs circle')].map((dot) => Number(dot.getAttribute('cx')));
+
     return (Math.max(...xs) - left) / (right - left);
   });
+
   expect(share).toBeCloseTo(9 / 12, 2);
 });
 
@@ -361,6 +378,7 @@ test('with only practice to show, the panel stands alone, without tab semantics'
 
 test('duration and period share a row with a compact overview and conditions disclosed on demand', async ({ page, supabase }, testInfo) => {
   const timed = { mode: 'time', count: null, duration: 15 };
+
   const list = [
     run(4, 45, 94),
     run(3, 55, 95, { ...timed, wordList: null, corpus: 'original-en-v3' }),
@@ -368,6 +386,7 @@ test('duration and period share a row with a compact overview and conditions dis
     run(1, 65, 97, { ...timed, wordList: null, corpus: 'original-en-v3', correctionPolicy: 'mandatory' }),
     run(0, 70, 98, timed),
   ];
+
   await page.emulateMedia({ colorScheme: 'dark' });
   await openProgress(page, supabase, list);
   const variants = page.locator('#progress-variants');
@@ -397,6 +416,7 @@ test('duration and period share a row with a compact overview and conditions dis
   await expect(variants).toBeFocused();
   await expect(variants.locator('option')).toHaveCount(4);
   const seen = new Set();
+
   for (const label of await variants.locator('option').allTextContents()) {
     await variants.selectOption({ label });
     await expect(variants).toBeFocused();
@@ -409,8 +429,10 @@ test('duration and period share a row with a compact overview and conditions dis
     await expect(figure(page, '30 days')).toContainText(`${expected.score.wpm} wpm`);
     await expect(page.locator('#progress-conditions')).toBeVisible();
   }
+
   expect(seen.size).toBe(4);
   await disclosure.click();
+
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await page.setViewportSize({ width: 320, height: 760 });

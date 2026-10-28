@@ -30,8 +30,10 @@ test('RPC requests send the correct role and keep invite tokens out of subsequen
     const data = JSON.parse(options.body);
     calls.push({url,headers:options.headers,data});
     const room = {id:roomId,selfSlot:2,passage:'The shared passage.',conditions:{textId:'quote-id'},players:[{slot:2,sequence:12}]};
+
     return new Response(JSON.stringify(data.p_action === 'join' ? {roomId,guestToken,room} : data.p_action === 'create' ? {roomId,inviteToken,room} : room));
   };
+
   try {
     const created = await createRace(session,{passage:{id:'quote-id',text:'The shared passage.'},displayName:'Host'});
     assert.equal(calls[0].headers.Authorization,'Bearer account-token');
@@ -53,6 +55,7 @@ test('reconnect credentials expire within the tab without storing any run profil
   const original = globalThis.sessionStorage;
   const values = new Map();
   globalThis.sessionStorage = {getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
+
   try {
     rememberRace({roomId,guestToken});
     assert.equal(recallRace().guestToken,guestToken);
@@ -72,8 +75,10 @@ test('friend races send only the friend id, and rematches keep the guest seat', 
     const data = JSON.parse(options.body);
     calls.push(data);
     const room = {id:roomId,selfSlot:2,passage:'A fresh passage.',conditions:{textId:'next'},players:[{slot:2,sequence:0}]};
+
     return new Response(JSON.stringify(['friends','befriend'].includes(data.p_action) ? [] : {roomId,guestToken,room}));
   };
+
   try {
     await createRace(session,{passage:{id:'q',text:'The shared passage.'},displayName:'Host',inviteEmail:'typed@example.com',friendId:roomId});
     assert.equal(calls[0].p_data.friendId,roomId);
@@ -105,8 +110,10 @@ test('friend races send only the friend id, and rematches keep the guest seat', 
 function friendService() {
   const sent = [];
   const send = (name) => (signal) => new Promise((resolve, reject) => { sent.push({ name, signal, resolve, reject }); });
+
   return { sent, send, names: () => sent.map((request) => request.name) };
 }
+
 const settle = () => new Promise((resolve) => { setImmediate(resolve); });
 
 test('a removal made while a save is still out is sent after it, so the save’s reply can’t bring the friend back', async () => {
@@ -259,8 +266,10 @@ test('friend-list calls hand their abort signal to fetch', async () => {
   const signals = [];
   globalThis.fetch = async (url, options) => {
     signals.push(options.signal);
+
     return new Response('[]');
   };
+
   try {
     const controller = new AbortController();
     const { signal } = controller;

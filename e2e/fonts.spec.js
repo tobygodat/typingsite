@@ -31,6 +31,7 @@ const caretOnLetter = (page) => page.evaluate(() => {
   context.font = `${style.fontWeight} 1000px ${style.fontFamily}`;
   const baseline = glyph.top + (context.measureText('H').fontBoundingBoxAscent / 1000) * size;
   const box = wrap.getBoundingClientRect();
+
   return {
     x: (bar.left + bar.right) / 2 - glyph.left,
     top: baseline - bar.top - 0.985 * size,
@@ -91,6 +92,7 @@ for (const font of ['literata', 'fira-code']) {
       await page.evaluate(() => document.fonts.ready.then(() => undefined));
       const text = await passageText(page);
       let stop = Math.min(140, text.length - 2);
+
       while (!/[a-z]/i.test(text[stop])) stop -= 1;
       await typeInto(page, text.slice(0, stop), '#typing-input', { delay: 15 });
       await page.waitForTimeout(500);

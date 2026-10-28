@@ -32,6 +32,7 @@ test('each account keeps its own device cache', () => {
 
 test('the pre-accounts profile folds into an account without losing either side', () => {
   const profile = (over) => ({ preferences: { theme: 'system' }, attempts: [], loops: [], seenTextIds: [], bests: {}, ...over });
+
   const legacy = profile({
     preferences: { theme: 'light' },
     attempts: [{ id: 'a1' }, { id: 'shared' }],
@@ -39,6 +40,7 @@ test('the pre-accounts profile folds into an account without losing either side'
     seenTextIds: ['q1', 'q2'],
     bests: { time30: { wpm: 80 }, words25: { wpm: 60 } },
   });
+
   const fresh = mergeProfiles(profile(), legacy);
   assert.equal(fresh.preferences.theme, 'light', 'an empty account takes the old settings');
 
@@ -53,6 +55,7 @@ test('the pre-accounts profile folds into an account without losing either side'
 // Archived practice days hold the time of runs retention dropped, so they can't be matched by run id.
 const practiced = (id, back, minutes) => ({ id, at: new Date(2026, 9, 8 - back, 12).toISOString(), kind: 'test',
   status: 'complete', interrupted: false, elapsedMs: minutes * 60000 });
+
 const stored = (runs) => ({ preferences: {}, attempts: [], loops: [], seenTextIds: [], bests: {}, ...retainHistory(runs) });
 
 test('an empty account takes the pre-accounts archive of practice days as it is', () => {
@@ -72,6 +75,7 @@ test('two archives of one history merge by the larger day total, never the sum, 
   const longer = stored(history);
   const shorter = stored(history.slice(0, MAX_RUN_SUMMARIES + 10));
   const truth = minutesByDay(history);
+
   for (const [base, extra] of [[longer, shorter], [shorter, longer]]) {
     const merged = mergeProfiles(base, extra);
     assert.deepEqual(minutesByDay(merged.runs, merged.practiceDays), truth);
@@ -98,6 +102,7 @@ test('an account whose only history is composing keeps its own settings on impor
   for (const key of ['attempts', 'runs', 'loops', 'compositions']) {
     assert.equal(mergeProfiles(profile({ [key]: [{ id: 'x' }] }), legacy).preferences.theme, 'system', key);
   }
+
   assert.equal(mergeProfiles(profile({ seenTextIds: ['q1'] }), legacy).preferences.theme, 'light');
   // A profile saved before composing existed has no compositions list and is still new.
   const older = profile();
@@ -108,6 +113,7 @@ test('an account whose only history is composing keeps its own settings on impor
 
 test('a suggestion stores only trimmed text and a known view', () => {
   assert.deepEqual(suggestionRow('  dvorak layout  ', 'practice'), { row: { body: 'dvorak layout', view: 'practice' } });
+
   for (const view of ['results', 'progress', 'compete', 'learn']) assert.equal(suggestionRow('idea', view).row.view, view);
   // Train is stored under the name its screen had when the table was made.
   assert.equal(suggestionRow('idea', 'train').row.view, 'results');
@@ -125,6 +131,7 @@ test('a stale copy of the session gives way to the newest stored one instead of 
   const originalFetch = globalThis.fetch;
   globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
   globalThis.fetch = async () => { throw new Error('no refresh expected'); };
+
   try {
     const stale = { access_token: 'old', refresh_token: 'used', expires_at: 1, user: { id: 'u1' } };
     assert.equal((await freshSession(stale)).refresh_token, 'rotated');
@@ -146,6 +153,7 @@ test('refreshing a session another tab has signed out of never touches the sessi
   globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
   const old = { access_token: 'a', refresh_token: 'a-refresh', expires_at: 1, user: { id: 'u1' } };
   const reply = (status, body) => async () => ({ ok: status < 300, status, text: async () => JSON.stringify(body) });
+
   try {
     // The old account's refresh token was ended by its sign-out: refused, but the other account stays.
     globalThis.fetch = reply(400, { error: 'invalid_grant' });
@@ -178,8 +186,10 @@ test('a refresh that lands after the same account signed in again keeps the new 
   // Another tab signs out and in again while the refresh is out.
   globalThis.fetch = async () => {
     store.set('stilltype-session-v1', signedInAgain);
+
     return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: 'a2', refresh_token: 'a-refresh-2', expires_in: 3600, user: { id: 'u1' } }) };
   };
+
   try {
     assert.equal((await freshSession(JSON.parse(old))).refresh_token, 'a-refresh-2');
     assert.equal(store.get('stilltype-session-v1'), signedInAgain);
@@ -199,14 +209,18 @@ test('signing out touches only what is still that account’s', async () => {
   globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
   globalThis.fetch = async (url, { headers }) => {
     logouts.push(headers.Authorization);
+
     return { ok: true, status: 204, text: async () => '' };
   };
+
   const sent = '{"version":2,"runs":[]}';
+
   const device = (stored) => new Map([
     ...(stored ? [['stilltype-session-v1', JSON.stringify(session(stored))]] : []),
     [profileKey('u1'), sent],
     [profileKey('u2'), '{"version":2}'],
   ]);
+
   try {
     // Everything sent, and the cache still holds exactly the copy sent: the session, the cache and any
     // marker go.
@@ -214,6 +228,7 @@ test('signing out touches only what is still that account’s', async () => {
     store.set(signedOutKey('u1'), 'true');
     await signOut(session('u1'), { sentText: sent });
     assert.deepEqual([...store.keys()], [profileKey('u2')]);
+
     // The cache holds another copy (another tab saved since), or nothing was confirmed sent: it stays,
     // marked, for the next sign-in.
     for (const sentText of ['{"version":2,"runs":[{"id":"r"}]}', null]) {
@@ -223,10 +238,12 @@ test('signing out touches only what is still that account’s', async () => {
       assert.equal(store.get(signedOutKey('u1')), 'true');
       assert.equal(store.get(profileKey('u1')), sent);
     }
+
     // The session had expired (none stored): only the marker is left.
     store = device(null);
     await signOut(session('u1'));
     assert.deepEqual([...store.keys()].sort(), [profileKey('u1'), profileKey('u2'), signedOutKey('u1')].sort());
+
     // Another tab signed in as someone else meanwhile: that session and both caches stay, and nothing is
     // marked, whichever way this sign-out ended.
     for (const sentText of [sent, null]) {
@@ -235,6 +252,7 @@ test('signing out touches only what is still that account’s', async () => {
       await signOut(session('u1'), { sentText });
       assert.deepEqual([...store.entries()], before);
     }
+
     assert.equal(logouts.length, 6);
   } finally {
     globalThis.localStorage = originalStorage;
@@ -250,8 +268,10 @@ test('a sign-in gets an id that its refreshes keep, stored or not', async () => 
   let issued = 0;
   globalThis.fetch = async () => {
     issued += 1;
+
     return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: `a${issued}`, refresh_token: `r${issued}`, expires_in: 3600, user: { id: 'u1' } }) };
   };
+
   try {
     const first = await signIn('ada@stilltype.test', 'pw');
     const second = await signIn('ada@stilltype.test', 'pw');
@@ -290,8 +310,10 @@ test('signing out leaves a newer sign-in to the same account alone, and ends its
   globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
   globalThis.fetch = async (url, { headers }) => {
     logouts.push(headers.Authorization);
+
     return { ok: true, status: 204, text: async () => '' };
   };
+
   try {
     // A guest tab signed in to the account since: nothing is touched or marked, and no logout goes out,
     // since it would end every session of the account, that one included.
@@ -301,6 +323,7 @@ test('signing out leaves a newer sign-in to the same account alone, and ends its
       await signOut(session('mine', 'm'), { sentText });
       assert.deepEqual([...store.entries()], before);
     }
+
     assert.deepEqual(logouts, []);
     // Its own sign-in, refreshed since by another tab: removed, and logged out with the device's copy.
     store = new Map([[SESSION_KEY, JSON.stringify(session('mine', 'm2'))], [profileKey('u1'), sent]]);
@@ -327,6 +350,7 @@ test('a sign-out that sent everything names the copy it sent before removing it'
     removeItem: (key) => { writes.push(['remove', key]); store.delete(key); },
   };
   globalThis.fetch = async () => ({ ok: true, status: 204, text: async () => '' });
+
   try {
     await signOut(session, { sentText: sent });
     // Other tabs hear the marker first, so each knows which copy the removal after it was meant to take.
@@ -380,6 +404,7 @@ test('what a sign-out removed unsent goes back into the cache, merged with anyth
   const store = new Map();
   globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
   const copy = (ids) => JSON.stringify({ version: 2, profileId: 'p', preferences: {}, attempts: [], runs: ids.map((id, n) => ({ id, at: `2026-10-01T12:0${n}:00.000Z` })), loops: [], seenTextIds: [], bests: {} });
+
   try {
     const sentText = copy(['a']);
     assert.equal(restoreUnsent('u1', sentText, textStamp(sentText), sentText), false);
@@ -411,6 +436,7 @@ test('a clear an older build saved is kept when this build merges an older copy,
   // Synced before the clear: two runs, a loop, a best, and a passage shown but never typed.
   const older = olderBuild({ attempts: [record('r1', 1)], runs: [record('r1', 1), record('r2', 2)], loops: [record('l2', 2)],
     seenTextIds: ['t-r1', 't-r2', 'shown'], bests: best('r2', 2, 60), updatedAt: minute(3) });
+
   for (const cleared of [
     // Cleared at minute 5 with nothing since (the account row, or the clearing device's cache when its push failed).
     olderBuild({ updatedAt: minute(5) }),
@@ -435,6 +461,7 @@ test('once merged, an older build’s clear keeps out every copy saved before it
   const oldest = olderBuild({ runs: [record('r0', 0), record('r1', 1)], seenTextIds: ['t-r0'], bests: best('r0', 0, 70), updatedAt: minute(2) });
   // A copy this build saved before the clear, with a run the clearing device never saw.
   const unsent = thisBuild({ runs: [record('r1', 1), record('r4', 4)], seenTextIds: ['t-r1', 't-r4'], bests: best('r4', 4, 80), updatedAt: minute(4) });
+
   for (const copy of [oldest, unsent]) {
     for (const merged of [mergeSynced(copy, saved), mergeSynced(saved, copy), mergeSynced(mergeSynced(copy, older), saved),
       mergeSynced(mergeSynced(saved, older), copy)]) {
@@ -443,11 +470,13 @@ test('once merged, an older build’s clear keeps out every copy saved before it
       assert.deepEqual(merged.seenTextIds, ['t-r6']);
     }
   }
+
   // A save made later by a copy that never heard of the clear replaced it under whole-copy sync, keeping
   // only its own runs; here it replaces it too, and the run made after the clear stays as well. (A clear
   // made on this build holds against such a save: see the last test below.)
   const stale = olderBuild({ ...older, runs: [...older.runs, record('r9', 9)], updatedAt: minute(9) });
   const offline = thisBuild({ ...older, runs: [...older.runs, record('r8', 8)], updatedAt: minute(8) });
+
   for (const [copy, runs] of [[stale, ['r1', 'r2', 'r6', 'r9']], [offline, ['r1', 'r2', 'r6', 'r8']]]) {
     for (const merged of [mergeSynced(copy, saved), mergeSynced(saved, copy)]) assert.deepEqual(recordIds(merged).runs, runs);
   }
@@ -456,9 +485,11 @@ test('once merged, an older build’s clear keeps out every copy saved before it
 test('copies that took the same start from an older build’s copy merge as union, seen passages included', () => {
   const row = mergeSynced(olderBuild({ runs: [record('r1', 1)], seenTextIds: ['t-r1'], updatedAt: minute(2) }),
     olderBuild({ runs: [record('r1', 1)], seenTextIds: ['t-r1'], updatedAt: minute(2) }));
+
   // One tab showed a passage it never typed; the other saved a run later.
   const shown = { ...row, seenTextIds: [...row.seenTextIds, 'shown'], updatedAt: minute(3), mergeStamp: minute(3) };
   const ran = { ...row, runs: [...row.runs, record('r4', 4)], seenTextIds: [...row.seenTextIds, 't-r4'], updatedAt: minute(4), mergeStamp: minute(4) };
+
   for (const merged of [mergeSynced(shown, ran), mergeSynced(ran, shown)]) {
     assert.deepEqual(recordIds(merged).runs, ['r1', 'r4']);
     assert.deepEqual([...merged.seenTextIds].sort(), ['shown', 't-r1', 't-r4']);
@@ -469,6 +500,7 @@ test('a copy this build saved, then an older build cleared and saved, is that bu
   const synced = thisBuild({ runs: [record('r1', 1), record('r2', 2)], bests: best('r2', 2, 60), updatedAt: minute(3) });
   // The older build kept the fields it doesn't know, mergeStamp included, and stamped its own save.
   const cleared = { ...synced, runs: [], bests: {}, seenTextIds: [], updatedAt: minute(5) };
+
   for (const merged of [mergeSynced(synced, cleared), mergeSynced(cleared, synced)]) {
     assert.deepEqual(merged.runs, []);
     assert.deepEqual(merged.bests, {});
@@ -479,20 +511,26 @@ test('copies older builds saved with no clear between them keep at least what la
   // Each device ran once without the other hearing of it. Whole-copy sync kept only the later save's run.
   const row = olderBuild({ runs: [record('r1', 1), record('r2', 2), record('phone', 4)], updatedAt: minute(5) });
   const device = olderBuild({ runs: [record('r1', 1), record('r2', 2), record('laptop', 3)], updatedAt: minute(3) });
+
   for (const [a, b] of [[row, device], [device, row], [row, { ...device, updatedAt: minute(6) }], [{ ...device, updatedAt: minute(6) }, row]]) {
     assert.deepEqual(recordIds(mergeSynced(a, b)).runs, ['r1', 'r2', 'laptop', 'phone']);
   }
+
   // This build only removes history with a clear marker: its newer copy lacking a run is no clear.
   const lacking = thisBuild({ runs: [record('r2', 2), record('later', 7)], updatedAt: minute(7) });
+
   for (const merged of [mergeSynced(device, lacking), mergeSynced(lacking, device)]) {
     assert.deepEqual(recordIds(merged).runs, ['r1', 'r2', 'laptop', 'later']);
   }
+
   // A phone ran offline before the laptop's first run reached the account, and saved last. The account
   // row (the laptop's) starts later than the phone's runs, but the phone's later save outranks it, as it
   // did under whole-copy sync, which kept the phone's runs and dropped the laptop's.
   const laptop = mergeSynced(olderBuild({ runs: [record('l1', 12)], updatedAt: minute(20) }),
     olderBuild({ runs: [record('l1', 12), record('l2', 26)], updatedAt: minute(26) }));
+
   const phone = olderBuild({ runs: [record('p1', 2), record('p2', 5), record('p3', 30)], updatedAt: minute(30) });
+
   for (const merged of [mergeSynced(laptop, phone), mergeSynced(phone, laptop)]) {
     assert.deepEqual(recordIds(merged).runs, ['p1', 'p2', 'l1', 'l2', 'p3']);
   }
@@ -502,6 +540,7 @@ test('a clear made on this build holds against a later save from an older build 
   const marker = `${minute(5)}~abcdefgh`;
   const cleared = thisBuild({ historyClearedAt: marker, runs: [record('r6', 6)], updatedAt: minute(6) });
   const stale = olderBuild({ runs: [record('r1', 1), record('r2', 2), record('r7', 7)], updatedAt: minute(7) });
+
   for (const merged of [mergeSynced(cleared, stale), mergeSynced(stale, cleared)]) {
     assert.deepEqual(recordIds(merged).runs, ['r6', 'r7']);
     assert.equal(merged.historyClearedAt, marker);
@@ -518,8 +557,10 @@ async function withAccountService(handler, run) {
   globalThis.fetch = async (url, init = {}) => {
     const path = new URL(url).pathname;
     calls.push({ path, method: init.method || 'GET', authorization: init.headers?.Authorization, signal: init.signal });
+
     return handler(path, init);
   };
+
   try {
     await run(calls, store);
   } finally {
@@ -542,6 +583,7 @@ test('deleting an account is one authenticated call to the delete-account functi
 
 test('a failed deletion says what happened, never the platform’s raw text', async () => {
   const cases = [[404, DELETE_COPY.missing], [401, DELETE_COPY.session], [403, DELETE_COPY.session], [500, DELETE_COPY.failed], [546, DELETE_COPY.failed]];
+
   for (const [status, message] of cases) {
     await withAccountService(() => reply(status, { message: 'raw platform text' }), async () => {
       await assert.rejects(deleteAccount(liveSession()), { message });
@@ -552,8 +594,10 @@ test('a failed deletion says what happened, never the platform’s raw text', as
 test('with no reply, deletion says nothing was deleted only once the account is confirmed to exist', async () => {
   const blocked = (userReply) => (path) => {
     if (path === DELETE_ACCOUNT_PATH) throw new TypeError('Failed to fetch');
+
     return userReply();
   };
+
   await withAccountService(blocked(() => reply(200, { id: 'u1' })), async (calls) => {
     await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.unavailable });
     assert.deepEqual(calls.map((call) => call.path), [DELETE_ACCOUNT_PATH, '/auth/v1/user']);
@@ -561,11 +605,14 @@ test('with no reply, deletion says nothing was deleted only once the account is 
   await withAccountService(blocked(() => { throw new TypeError('Failed to fetch'); }), async () => {
     await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.offline });
   });
+
   // A timed-out request is no reply too.
   const timedOut = (path) => {
     if (path === DELETE_ACCOUNT_PATH) throw new DOMException('The operation timed out.', 'TimeoutError');
+
     return reply(200, { id: 'u1' });
   };
+
   await withAccountService(timedOut, async () => {
     await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.unavailable });
   });
@@ -573,11 +620,14 @@ test('with no reply, deletion says nothing was deleted only once the account is 
 
 test('an account the Auth server no longer knows counts as deleted, whatever the function answered', async () => {
   const gone = () => reply(403, { code: 403, error_code: 'user_not_found', msg: 'User from sub claim in JWT does not exist' });
+
   // Deleted by this request, then the reply was lost.
   const lost = (path) => {
     if (path === DELETE_ACCOUNT_PATH) throw new TypeError('Failed to fetch');
+
     return gone();
   };
+
   await withAccountService(lost, async (calls) => {
     await deleteAccount(liveSession());
     assert.deepEqual(calls.map((call) => call.path), [DELETE_ACCOUNT_PATH, '/auth/v1/user']);
@@ -597,6 +647,7 @@ test('an account the Auth server no longer knows counts as deleted, whatever the
 
 test('a server error is settled by the Auth server, since the account may already be gone', async () => {
   const gone = () => reply(403, { code: 403, error_code: 'user_not_found', msg: 'User from sub claim in JWT does not exist' });
+
   // Any 5xx: the function's own 500 (deleteUser may have committed before its reply was lost), a
   // gateway's 502, 503 or 504, or the platform's 546.
   for (const status of [500, 502, 503, 504, 546]) {
@@ -613,6 +664,7 @@ test('a server error is settled by the Auth server, since the account may alread
       await assert.rejects(deleteAccount(liveSession()), { message: DELETE_COPY.failed });
     });
   }
+
   // Clear refusals that aren't about the token are answered as they are, without asking Auth.
   for (const [status, message] of [[404, DELETE_COPY.missing], [400, DELETE_COPY.failed], [405, DELETE_COPY.failed], [429, DELETE_COPY.failed]]) {
     await withAccountService((path) => (path === DELETE_ACCOUNT_PATH ? reply(status, {}) : gone()), async (calls) => {
@@ -639,8 +691,10 @@ test('an ended session is reported before anything reaches the function', async 
 function answerAfter(init, ms, answer) {
   return new Promise((resolve, reject) => {
     const { signal } = init;
+
     if (signal?.aborted) return reject(signal.reason);
     signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+
     if (ms !== undefined) setTimeout(() => { try { resolve(answer()); } catch (error) { reject(error); } }, ms);
   });
 }
@@ -658,8 +712,10 @@ async function timedDeletion(t, handler, session) {
   globalThis.fetch = (url, init = {}) => {
     const path = new URL(url).pathname;
     calls.push(path);
+
     return handler(path, init);
   };
+
   t.after(() => {
     globalThis.localStorage = originalStorage;
     globalThis.fetch = originalFetch;
@@ -669,6 +725,7 @@ async function timedDeletion(t, handler, session) {
   const before = [...store.entries()];
   deleteAccount(current).then(() => { outcome.settled = true; }, (error) => { outcome.settled = true; outcome.error = error; });
   await flush();
+
   // Advances in one-second steps, so a step that ends partway through starts the next one in time.
   const advance = async (ms) => {
     for (let left = ms; left > 0; left -= 1000) {
@@ -676,6 +733,7 @@ async function timedDeletion(t, handler, session) {
       await flush();
     }
   };
+
   return { outcome, calls, advance, unchanged: () => assert.deepEqual([...store.entries()], before) };
 }
 
@@ -700,6 +758,7 @@ test('the refresh, the function call and the check after it share one 30-second 
   const slowRefresh = (path, init) => (path === '/auth/v1/token'
     ? answerAfter(init, 10000, () => reply(200, { access_token: 'new', refresh_token: 'next', expires_in: 3600, user: { id: 'u1', email: 'ada@stilltype.test' } }))
     : answerAfter(init));
+
   const { outcome, calls, advance } = await timedDeletion(t, slowRefresh, expiredAt);
   await advance(29999);
   assert.equal(outcome.settled, false);
@@ -715,6 +774,7 @@ test('a check that runs out of time is never taken for a deletion', async (t) =>
   const dropped = (path, init) => (path === DELETE_ACCOUNT_PATH
     ? answerAfter(init, 20000, () => { throw new TypeError('Failed to fetch'); })
     : answerAfter(init));
+
   const { outcome, calls, advance, unchanged } = await timedDeletion(t, dropped, liveAt);
   await advance(29999);
   assert.equal(outcome.settled, false);
@@ -729,6 +789,7 @@ test('a server error whose check runs out of time is never taken for a deletion'
   const serverError = (path, init) => (path === DELETE_ACCOUNT_PATH
     ? answerAfter(init, 5000, () => reply(500, { error: 'raw platform text' }))
     : answerAfter(init));
+
   const { outcome, calls, advance, unchanged } = await timedDeletion(t, serverError, liveAt);
   await advance(29999);
   assert.equal(outcome.settled, false);
@@ -743,6 +804,7 @@ test('a check that answers before the deadline still confirms a deletion whose r
   const lostThenGone = (path, init) => (path === DELETE_ACCOUNT_PATH
     ? answerAfter(init, 20000, () => { throw new TypeError('Failed to fetch'); })
     : answerAfter(init, 5000, () => reply(403, { code: 403, error_code: 'user_not_found', msg: 'User from sub claim in JWT does not exist' })));
+
   const { outcome, advance } = await timedDeletion(t, lostThenGone, liveAt);
   await advance(25000);
   assert.equal(outcome.settled, true);
@@ -768,7 +830,9 @@ test('forgetting a deleted account marks it signed out before the session goes, 
     const changes = [];
     const { setItem, removeItem } = globalThis.localStorage;
     globalThis.localStorage.setItem = (key, value) => { changes.push(['set', key]); setItem(key, value); };
+
     globalThis.localStorage.removeItem = (key) => { changes.push(['remove', key]); removeItem(key); };
+
     forgetAccount(liveSession());
     assert.deepEqual(changes, [['set', signedOutKey('u1')], ['remove', SESSION_KEY], ['remove', profileKey('u1')], ['remove', signedOutKey('u1')]]);
     assert.deepEqual([...store.keys()], []);

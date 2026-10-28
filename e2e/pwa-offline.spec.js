@@ -15,14 +15,17 @@ async function ownServer() {
       probe.close(() => resolve(free));
     });
   });
+
   const server = spawn(process.execPath, ['server.mjs'], { env: { ...process.env, PORT: String(port) }, stdio: 'ignore' });
   const url = `http://127.0.0.1:${port}/`;
   await expect.poll(() => fetch(url).then((response) => response.status, () => 0)).toBe(200);
+
   return { url, stop: () => new Promise((resolve) => (server.exitCode === null ? server.once('exit', resolve).kill() : resolve())) };
 }
 
 async function goOffline(page) {
   const server = await ownServer();
+
   try {
     await openApp(page, server.url);
     await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
@@ -31,6 +34,7 @@ async function goOffline(page) {
   } finally {
     await server.stop();
   }
+
   expect(await fetch(server.url).then(() => 'reachable', () => 'unreachable')).toBe('unreachable');
   const response = await page.reload();
   expect(response.fromServiceWorker()).toBe(true);
@@ -63,11 +67,13 @@ test('a deploy reaches a page the worker already controls', async ({ page, conte
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
   await page.reload();
   expect(await page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+
   // context.route also sees the worker's own fetches, so this stands in for the next deploy.
   const deploy = (path, extra) => context.route(path, async (route) => {
     const response = await route.fetch();
     await route.fulfill({ response, body: `${await response.text()}\n${extra}\n` });
   });
+
   await deploy('**/src/styles.css', ':root { --deployed: next; }');
   await deploy('**/src/app.js', "document.documentElement.dataset.deployed = 'next';");
   const response = await page.reload();

@@ -27,7 +27,9 @@ test('the paint script, settings and stylesheet offer exactly the fonts src/font
   const radios = (name) => [...html.matchAll(new RegExp(`name="${name}" value="([a-z-]+)"`, 'g'))].map((match) => match[1]);
   assert.deepEqual(radios('typing-font'), TYPING_FONTS);
   assert.deepEqual(radios('app-font'), APP_FONTS);
+
   for (const font of TYPING_FONTS.filter((id) => id !== DEFAULT_FONT)) assert.match(css, new RegExp(`:root\\[data-typing-font="${font}"\\] \\{ --font-typing: `));
+
   for (const font of APP_FONTS.filter((id) => id !== DEFAULT_FONT)) assert.match(css, new RegExp(`:root\\[data-app-font="${font}"\\] \\{ --font-app: `));
 });
 

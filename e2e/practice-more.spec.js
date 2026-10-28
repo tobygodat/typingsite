@@ -8,16 +8,20 @@ test('modes, lengths and punctuation float in separate groups; "more" names the 
   const rail = page.locator('.practice-rail');
   await expect(rail).toHaveCSS('border-top-style', 'none');
   let previous;
+
   for (const group of ['.mode-options', '#duration-options', '#punctuation-switch']) {
     await expect(rail.locator(group)).toBeVisible();
     await expect(rail.locator(group)).toHaveCSS('border-top-style', 'solid');
     const box = await rail.locator(group).boundingBox();
+
     if (previous) {
       expect(box.x).toBeGreaterThan(previous.x + previous.width);
       expect(box.y).toBe(previous.y);
     }
+
     previous = box;
   }
+
   // Only time, words and quote show until "more" opens.
   await expect(page.locator('.mode-more-menu')).toBeHidden();
   await expect(page.locator('#mode-more-label')).toHaveText('more');
@@ -33,6 +37,7 @@ test('modes, lengths and punctuation float in separate groups; "more" names the 
   const summary = await page.locator('#mode-more-label').boundingBox();
   await expect.poll(async () => {
     const pill = await page.locator('.mode-options > .glide-pill').boundingBox();
+
     return Math.abs(pill.x - summary.x) + Math.abs(pill.width - summary.width);
   }).toBeLessThan(2);
 
@@ -65,10 +70,12 @@ test('at 320px the open menu stays on screen and above the lengths', async ({ pa
   expect(menu.x).toBeGreaterThanOrEqual(0);
   expect(menu.x + menu.width).toBeLessThanOrEqual(320);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+
   // Every item is the topmost thing under its own centre, so nothing after the row covers it.
   for (const item of await page.locator('.mode-more-menu button').all()) {
     expect(await item.evaluate((node) => {
       const box = node.getBoundingClientRect();
+
       return node.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
     })).toBe(true);
   }
@@ -88,6 +95,7 @@ for (const width of [1280, 390]) {
     expect(filters.y).toBeGreaterThanOrEqual(setup.y);
     expect(filters.y + filters.height).toBeLessThanOrEqual(setup.y + setup.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+
     if (width > 900) {
       const modes = await page.locator('.mode-options').boundingBox();
       const punctuation = await page.locator('#punctuation-switch').boundingBox();
@@ -96,22 +104,27 @@ for (const width of [1280, 390]) {
       expect(filters.x).toBeGreaterThanOrEqual(modes.x + modes.width);
       expect(filters.x + filters.width).toBeLessThanOrEqual(punctuation.x);
     }
+
     for (const [mode, panel] of PANELS) {
       await page.locator('#mode-more-label').click();
       await page.locator(`#mode-${mode}`).click();
       await expect(page.locator(panel)).toBeVisible();
+
       // The standard recipe may sit inside the controls' box (on a phone it takes the lengths' row);
       // it still clears every visible control.
       const overlaps = await page.locator(panel).evaluate((node) => {
         const a = node.getBoundingClientRect();
+
         return [...document.querySelectorAll('.practice-controls :is(.segmented, .compact-switch)')]
           .filter((control) => control !== node && control.checkVisibility({ visibilityProperty: true }))
           .filter((control) => {
             const b = control.getBoundingClientRect();
+
             return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
           })
           .map((control) => control.id || control.className);
       });
+
       expect(overlaps, `${mode} options clear the controls`).toEqual([]);
     }
   });

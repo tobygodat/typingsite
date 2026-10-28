@@ -23,6 +23,7 @@ const COLUMN_FINGERS = [
   ['left', 'pinky'], ['left', 'ring'], ['left', 'middle'], ['left', 'index'], ['left', 'index'],
   ['right', 'index'], ['right', 'index'], ['right', 'middle'], ['right', 'ring'], ['right', 'pinky'],
 ];
+
 // With the angle mod the left hand's bottom row moves one finger inward: ring, middle, index, index, index.
 const ANGLE_FINGERS = [
   ['left', 'ring'], ['left', 'middle'], ['left', 'index'], ['left', 'index'], ['left', 'index'],
@@ -47,18 +48,24 @@ export function layoutLabel(id) {
 // Rows of { key, hand, finger, column } for the legend, ending with the space bar (both thumbs).
 export function keyboardRows(id) {
   const layout = LAYOUTS[normalizeLayout(id)];
+
   const rows = layout.rows.map((row, rowIndex) => [...row].map((key, column) => {
     const [hand, finger] = (layout.angle && rowIndex === 2 ? ANGLE_FINGERS : COLUMN_FINGERS)[column];
+
     return { key, hand, finger, column };
   }));
+
   return [...rows, [{ key: ' ', hand: 'both', finger: 'thumb', column: 0 }]];
 }
 
 export function fingerFor(id, character) {
   const char = String(character || '').toLowerCase();
+
   for (const row of keyboardRows(id)) {
     const key = row.find((entry) => entry.key === char);
+
     if (key) return { hand: key.hand, finger: key.finger };
   }
+
   return null;
 }

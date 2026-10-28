@@ -35,9 +35,8 @@
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "anti-slop/require-readable-spacing": "error",
 
-    // Off until the blank-line autofix lands in its own PR (TOB-213); 4,800 whitespace edits here would conflict with every open branch.
-    "anti-slop/require-readable-spacing": "off",
     // Off until the 32 call sites are rewritten one at a time with tests (TOB-213); a blind rewrite risks key order in synced profiles.
     "anti-slop/no-conditional-empty-object-spread": "off",
     // Off until the 25 call sites are rewritten with tests (TOB-213); iterator helpers need Safari 18.4+, which the app does not require.
