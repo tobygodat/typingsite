@@ -4,18 +4,15 @@ Focused typing, explained practice, and friendly online and local competition. T
 
 ## Run locally
 
-Node.js 20 or newer. The app itself has no dependencies; `npm install` is only needed for the browser tests.
+Node.js 20 or newer. The app itself has no dependencies; `npm install` brings in only the browser tests and the linter.
 
 ```sh
-npm run dev
+npm run dev        # http://localhost:5173
 npm test
-npm run build   # static build in dist/, served by Cloudflare (wrangler.jsonc)
-npm run test:e2e   # Playwright browser verification (e2e/), after npm install
+npm run test:e2e   # Playwright, after npm install
 ```
 
-The browser tests need a Chromium: run `npx playwright install chromium` once, or point `CHROMIUM` at a system build (`CHROMIUM=/usr/bin/chromium npm run test:e2e`, or `/usr/local/bin/chromium` on a cloud machine). They serve the app on `127.0.0.1:4173` and fake Supabase, so no account or network is touched. `npm run test:e2e:firefox`, `test:e2e:webkit` and `test:e2e:all` run them in Firefox and WebKit too, after `npx playwright install firefox webkit`.
-
-Open [localhost:5173](http://localhost:5173). The interface and solo practice run in the browser. Accounts and online races use Supabase. Fonts are bundled: Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono.
+The interface and solo practice run in the browser. Accounts and online races use Supabase. Fonts are bundled: Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono. [Conventions](docs/CONVENTIONS.md) covers the browser tests, CI and deploys.
 
 ## Use it
 
@@ -43,20 +40,16 @@ Challenge opens **Online** play. Sign in to host, enter a race name, then either
 
 A guest link admits one opponent. After joining, a separate tab-scoped credential lets that guest reconnect without allowing someone else with the invitation link to take their seat. Leaving closes the room for both players. These are friendly, unranked races; scores never enter personal progress or bests. Choose **One keyboard** for the original local challenge.
 
-The backend migration is in `supabase/migrations/20260930085227_online_races.sql`; deploy it to the Supabase project configured in `src/account.js` before serving the updated frontend. It provides one `race_action` RPC over protected private tables, so static hosting needs no WebSocket server or new runtime dependency. See [online race implementation and verification](docs/online-races.md).
-
-Account deletion runs in the Edge Function `supabase/functions/delete-account/`. Deploy it with `supabase functions deploy delete-account`, keeping the default JWT verification. Apply `supabase/migrations/20261009140000_forget_deleted_race_opener.sql` with it (`supabase db push`): every foreign key to `auth.users` already cascades, and that migration clears the one user id kept as text, the quota key on rooms. `supabase/tests/account-deletion.sql` checks both. Until it is deployed, Delete my account reports that deletion isn't switched on yet and deletes nothing.
-
-CI and the deploy of `master` run on a self-hosted GitHub Actions runner on tobygdesktop (see [HANDOFF.md](HANDOFF.md)). Run `npm run test:e2e` before merging.
-
 ## Measurement and implementation
 
 Corrected WPM counts correct retained characters divided by five and elapsed minutes. Input accuracy counts correct printable insertions out of all printable insertions, preserving errors after correction. First-attempt errors and clean pair timings are retained separately. Timing uses a monotonic clock; interruptions exclude a run from comparable results. See [PRODUCT.md](PRODUCT.md) for the contract.
 
-The app uses native HTML/CSS/JavaScript. Its visual system, Afterimage (Literata on warm near-black or paper, one green accent, a still typing surface), is set by the tokens at the top of `src/styles.css` and described in [DESIGN.md](DESIGN.md). Corpus v5 has 39 original quotes, at least three in every length/difficulty bucket, plus a broader real-word drill vocabulary. Difficulty labels describe the text; they are not calibrated performance scores. The former Ash system (`design/ash/`) and the canvas artboards remain historical reference, not served code.
+The app uses native HTML/CSS/JavaScript. Its visual system, Afterimage (Literata on warm near-black or paper, one green accent, a still typing surface), is set by the tokens at the top of `src/styles.css` and described in [DESIGN.md](DESIGN.md). The former Ash system (`design/ash/`) and the canvas artboards remain historical reference, not served code.
 
-- [Current handoff](HANDOFF.md)
-- [Implementation decision](docs/decisions/2026-09-22-learning-loop.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Conventions: run, test, deploy](docs/CONVENTIONS.md)
+- [Decisions](docs/adr/)
+- [Online races](docs/online-races.md)
 - [Browser verification](docs/verification/2026-09-29-browser.md)
 - [MVP specification](docs/mvp-spec.md)
 - [Staged roadmap](docs/implementation-plan.md)

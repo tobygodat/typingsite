@@ -118,7 +118,6 @@ export async function request(path, { method = 'GET', body, token, headers = {},
         ...headers,
       },
       body: body ? JSON.stringify(body) : undefined,
-      signal,
     });
     text = await response.text();
   } catch {
@@ -970,7 +969,7 @@ export function revokeClear(current, before, marker) {
 // its own clear's undo only, so a newer clear never drops what an older one holds.
 const holdCopy = (list_, copy) => (list_.some((held) => held === copy || sameProfile(held, copy)) ? list_ : [...list_, copy]);
 export function joinHolds(a, b) {
-  const out = { ...(a || {}) };
+  const out = { ...a };
   for (const [marker, copies] of Object.entries(b || {})) for (const copy of copies) out[marker] = holdCopy(out[marker] || [], copy);
   return out;
 }
@@ -992,7 +991,7 @@ const heldIds = (copy) => {
 // it was taken from (only its summary, once the 24-trace cap has dropped the trace). Returns
 // { merged, holds }; the caller keeps holds in memory.
 export function mergeAndHold(holds, local, cloud) {
-  holds = { ...(holds || {}) };
+  holds = { ...holds };
   let merged = mergeSynced(local, cloud);
   const sides = [local, cloud];
   // Every held clear now undone gives back what it held, as far as clears still in force allow.

@@ -35,6 +35,7 @@ function reply(status: number, body: Record<string, unknown>): Response {
 async function userGone(auth: AccountAuth, userId: string): Promise<boolean> {
   try {
     const { data, error } = await auth.admin.getUserById(userId);
+    // SAFETY: Auth errors carry an optional numeric status and string code; anything else fails both checks below.
     const { status, code } = (error ?? {}) as { status?: number; code?: string };
     return !data?.user && (code === 'user_not_found' || status === 404);
   } catch {

@@ -7,6 +7,7 @@
     "dev": "node server.mjs",
     "start": "node server.mjs",
     "build": "node scripts/build-static.mjs",
+    "lint": "oxlint --deny-warnings",
     "test": "node --test",
     "test:e2e": "playwright test",
     "test:e2e:firefox": "E2E_BROWSERS=firefox playwright test",
@@ -15,6 +16,8 @@
     "test:e2e:quick": "playwright test e2e/typing.spec.js e2e/layout.spec.js e2e/chrome.spec.js e2e/practice-more.spec.js e2e/touch-targets.spec.js e2e/learning-loop.spec.js e2e/quick-restart.spec.js e2e/light-contrast.spec.js e2e/code-mode.spec.js"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0"
+    "@oxlint/plugins": "1.90.0",
+    "@playwright/test": "^1.63.0",
+    "oxlint": "1.90.0"
   }
 }

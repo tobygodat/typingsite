@@ -170,8 +170,8 @@ const withSummary = (trace) => (trace && !trace.summary && Array.isArray(trace.e
 export function normalizeProfile(stored) {
   if (stored?.version !== 2) return emptyProfile();
   const parsed = withoutConditionSets(stored);
-  const rawPreferences = { ...(parsed.preferences || {}) };
-  const preferencesAt = { ...(parsed.preferencesAt || {}) };
+  const rawPreferences = { ...parsed.preferences };
+  const preferencesAt = { ...parsed.preferencesAt };
   const oldChoice = preferencesAt.stopOnError || '';
   const newChoice = preferencesAt.correction || '';
   if (Object.hasOwn(rawPreferences, 'stopOnError') && (!Object.hasOwn(rawPreferences, 'correction') || oldChoice > newChoice)) {

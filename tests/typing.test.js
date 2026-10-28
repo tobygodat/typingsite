@@ -747,7 +747,7 @@ test('standard text is fresh per seed, reproducible from it, and follows the v1 
     assert.match(passage.text, /^[A-Z][^.?"]*[.?] "[A-Z][^"]*[.?]" [A-Z]/);
     const generated = passage.text.replace(/"/g, '').split(' ');
     assert.ok(generated.some((word) => /^\d+[,.?]?$/.test(word)), 'some numbers');
-    assert.ok(generated.some((word) => /,$/.test(word)) && generated.some((word) => /\.$/.test(word)), 'commas and full stops');
+    assert.ok(generated.some((word) => word.endsWith(',')) && generated.some((word) => word.endsWith('.')), 'commas and full stops');
     const words = generated.map((word) => word.replace(/[,.?]$/, '')).filter((word) => !/^\d+$/.test(word));
     // Every word, the quote's included, comes from the lists: nothing is drawn from the quote corpus.
     assert.ok(words.every((word) => word === 'I' || vocabulary.has(word.toLowerCase())), 'only list words');

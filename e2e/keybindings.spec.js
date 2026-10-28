@@ -8,7 +8,7 @@ async function editBindings(page, values) {
 async function saveBindings(page) {
   await openSettings(page, 'shortcuts');
   await page.locator('#keybinding-restart').press('Enter');
-  await expect(page.locator('#keybindings-form [aria-invalid=\"true\"]')).toHaveCount(0);
+  await expect(page.locator('#keybindings-form [aria-invalid="true"]')).toHaveCount(0);
   await page.keyboard.press('Escape');
 }
 

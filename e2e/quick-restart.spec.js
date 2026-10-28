@@ -4,7 +4,7 @@ async function setRestart(page, binding) {
   await openSettings(page, 'shortcuts');
   await page.locator('#keybinding-restart').fill(binding);
   await page.locator('#keybinding-restart').press('Enter');
-  await expect(page.locator('#keybindings-form [aria-invalid=\"true\"]')).toHaveCount(0);
+  await expect(page.locator('#keybindings-form [aria-invalid="true"]')).toHaveCount(0);
 }
 
 test('tab as the restart key resets the passage once while held, and escape no longer restarts', async ({ page }) => {

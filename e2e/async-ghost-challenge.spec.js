@@ -58,7 +58,7 @@ const ghostX = (page) => page.locator('#text-display .ghost-caret').evaluate((no
 
 // Lets one held reply go (a release from the fake's `held`) and gives the page a moment to act on it.
 async function letGo(page, release, action, id = null) {
-  const landed = page.waitForResponse((response) => /\/rpc\/challenge_action$/.test(response.url())
+  const landed = page.waitForResponse((response) => response.url().endsWith('/rpc/challenge_action')
     && response.request().postDataJSON().p_action === action && (!id || response.request().postDataJSON().p_id === id));
   release();
   await landed;
@@ -494,7 +494,7 @@ test('a slow send for an earlier run never re-enables Send while a newer run is 
   await expect.poll(() => supabase.challenges.held.length).toBe(2);
 
   // The first reply lands: the second send still owns the button.
-  const firstReply = page.waitForResponse((response) => /\/rpc\/challenge_action$/.test(response.url())
+  const firstReply = page.waitForResponse((response) => response.url().endsWith('/rpc/challenge_action')
     && response.request().postDataJSON().p_action === 'send');
   supabase.challenges.held.shift()();
   await firstReply;
@@ -609,7 +609,7 @@ test('a ghost race reply that lands after Run again and a finished practice run 
   await expect(page.locator('#ghost-result')).toBeHidden();
   await expect(page.locator('#ghost-offer')).toBeVisible();
 
-  const reply = page.waitForResponse((response) => /\/rpc\/challenge_action$/.test(response.url())
+  const reply = page.waitForResponse((response) => response.url().endsWith('/rpc/challenge_action')
     && response.request().postDataJSON().p_action === 'finish');
   supabase.challenges.held.shift()();
   await reply;
@@ -686,7 +686,7 @@ async function linArrives(page) {
 
 // Asks the inbox to poll now and waits for the listing it reads.
 async function pollInbox(page) {
-  const listed = page.waitForResponse((response) => /\/rpc\/challenge_action$/.test(response.url())
+  const listed = page.waitForResponse((response) => response.url().endsWith('/rpc/challenge_action')
     && response.request().postDataJSON().p_action === 'list');
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await listed;
@@ -763,7 +763,7 @@ test('a Race reply that lands after an online room opened, or while one is being
   await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
   await expectOffer(page, 'Ada');
   // The room's reply opens it as usual, with no ghost race left behind it.
-  const opened = page.waitForResponse((response) => /\/rpc\/race_action$/.test(response.url())
+  const opened = page.waitForResponse((response) => response.url().endsWith('/rpc/race_action')
     && response.request().postDataJSON().p_action === 'create');
   roomReply();
   await opened;
@@ -1012,7 +1012,7 @@ test('a Race that fails while Lin types a run says so once the run ends', async 
   await page.locator('#inbox-list [data-inbox-action="challenge"]').click();
   await expect.poll(() => gets).toBe(1);
   await typeInto(page, text.slice(0, 12), '#typing-input', { delay: 90 });
-  const failed = page.waitForResponse((response) => /\/rpc\/challenge_action$/.test(response.url()) && response.status() === 503);
+  const failed = page.waitForResponse((response) => response.url().endsWith('/rpc/challenge_action') && response.status() === 503);
   answer();
   await failed;
   await page.waitForTimeout(500);
@@ -1151,7 +1151,7 @@ test('a friend list that fails after a newer one arrived leaves the newer list a
   await summary.click();
   await expect(page.locator('#ghost-friend option')).toHaveText(['Lin']);
   await expect(page.locator('#send-ghost')).toBeEnabled();
-  const failed = page.waitForEvent('requestfailed', (request) => /\/rpc\/race_action$/.test(request.url()));
+  const failed = page.waitForEvent('requestfailed', (request) => request.url().endsWith('/rpc/race_action'));
   fail();
   await failed;
   await page.waitForTimeout(500);

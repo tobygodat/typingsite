@@ -389,6 +389,16 @@ A 600px opaque raised panel with 22px corners over a flat dim. It has a 62px sea
 ### Toasts
 Opaque raised pills of 16px radius at the bottom centre, with a status dot and 15px text, rising 6px over 200ms.
 
+## Motion
+
+Motion is fluid. It is welcome on the typing surface during a run, as well as in chrome and after it, wherever it makes speed, position or progress easier to follow. Examples are the spring caret, the pace caret gliding at its speed, a ghost race gliding between a friend's keys, and the line scroll. Nothing has to stay rigid or static. The chrome still fades out after the first keystroke (`body[data-running]`), and comes back on pointer movement, finish or restart. `src/motion.js` and `src/graph.js` are presentational, and scoring never reads from them.
+
+### Named Rules
+- **The Smooth Rule.** Animate transform and opacity, one animation frame at a time.
+- **The Reading Rule.** Motion never moves or hides the letters someone is reading.
+- **The Token Rule.** Durations come from the `--dur-*` tokens. Add a token before using a new one.
+- **The Reduced Motion Rule.** Everything scales to zero under `prefers-reduced-motion`.
+
 ## Do's and Don'ts
 
 ### Do:

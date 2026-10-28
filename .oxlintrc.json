@@ -1,0 +1,76 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": [
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".impeccable/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
+    "design/**",
+    "dist/**",
+    "tools/oxlint/anti-slop/**"
+  ],
+  "jsPlugins": [
+    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }
+  ],
+  "rules": {
+    "oxc/no-accumulating-spread": "error",
+    "anti-slop/no-reduce-accumulator-copy": "error",
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-unknown-parameters": "error",
+    "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-unsafe-dictionary-type": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+
+    // Off until the blank-line autofix lands in its own PR (TOB-213); 4,800 whitespace edits here would conflict with every open branch.
+    "anti-slop/require-readable-spacing": "off",
+    // Off until the 32 call sites are rewritten one at a time with tests (TOB-213); a blind rewrite risks key order in synced profiles.
+    "anti-slop/no-conditional-empty-object-spread": "off",
+    // Off until the 25 call sites are rewritten with tests (TOB-213); iterator helpers need Safari 18.4+, which the app does not require.
+    "anti-slop/no-array-filter-map": "off",
+    // "Shape" is Stilltype's domain term for a test's mode and length (testShapes, shapeBests), not a structural label.
+    "anti-slop/no-shape-in-symbol-names": "off",
+    // Plain JavaScript has no static types, so typeof is how stored profiles and server replies are parsed at the boundary.
+    "anti-slop/no-runtime-typeof": "off",
+    // Spreads copy live NodeLists before the loop removes children, which this rule reads as useless.
+    "unicorn/no-useless-spread": "off",
+    // new Array(n).fill() sizes a buffer more plainly than Array.from({ length: n }).
+    "unicorn/no-new-array": "off",
+    // request() sends a body only when a caller passes one, which this rule can't see through the default method.
+    "unicorn/no-invalid-fetch-options": "off",
+    "eslint/no-unused-vars": ["warn", { "ignoreRestSiblings": true, "varsIgnorePattern": "^_" }]
+  },
+  "overrides": [
+    {
+      "files": ["supabase/functions/**"],
+      "rules": {
+        // cleanTheme is the boundary parser for the model's reply, so it takes unknown by design.
+        "anti-slop/no-unknown-parameters": "off",
+        // JSON reply bodies and header maps are open records by nature.
+        "anti-slop/no-unsafe-dictionary-type": "off",
+        "anti-slop/no-known-value-widening": "off"
+      }
+    },
+    {
+      "files": ["scripts/measure-profile.mjs"],
+      "rules": {
+        // The benchmark times expressions whose results it discards on purpose.
+        "eslint/no-unused-expressions": "off"
+      }
+    }
+  ]
+}
