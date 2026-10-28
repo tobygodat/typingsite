@@ -9,17 +9,21 @@ import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+
 const block = (selector) => {
   const start = css.indexOf(`${selector} {`);
   assert.ok(start >= 0, `${selector} is in the stylesheet`);
+
   return css.slice(start, css.indexOf('}', start));
 };
+
 const tokensIn = (body) => [...body.matchAll(/--([\w-]+):/g)].map((match) => match[1]);
 
 const DARK = {
   ground: '#0f0f0e', text: '#ece8e1', muted: '#a39e96', accent: '#8fd18a', danger: '#ff8a6b',
   'accent-ink': '#0f1a0e', warning: '#e0b565', ghost: '#b9c3ff',
 };
+
 const theme = (overrides = {}) => ({ id: 'custom-a', name: 'Dusk', colors: { ...DARK }, ...overrides });
 
 test('the editor covers every colour token the built-in themes define, and only those', () => {
@@ -31,12 +35,15 @@ test('the editor covers every colour token the built-in themes define, and only 
 
 test('every derived tint follows its source in both dark and light unless the theme sets it', () => {
   const shared = tokensIn(block(':root[data-theme][data-custom]'));
+
   for (const mode of ['dark', 'light']) {
     const derived = new Set([...shared, ...tokensIn(block(`:root[data-theme="${mode}"][data-custom]`))]);
+
     // The backdrop and word highlight are dark's or light's own; the word highlight already follows --text.
     for (const token of THEME_TOKENS.filter((t) => t.derived && !['backdrop', 'word-highlight'].includes(t.name))) {
       assert.ok(derived.has(token.name), `${token.name} derives in ${mode}`);
     }
+
     for (const token of derived) assert.ok(THEME_TOKENS.find((t) => t.name === token)?.derived, `${token} is a derived token`);
   }
 });
@@ -48,6 +55,7 @@ test('a stored list keeps whole themes only: hex for every base token, known tok
     theme({ id: 'custom-c', name: '   ' }),
     theme({ id: 'dark' }),
   ])));
+
   assert.deepEqual(kept, []);
   const fixed = readCustomThemes(normalizeCustomThemes([theme({ name: '  Rainy   night ', colors: { ...DARK, accent: '#ABCDEF', 'accent-soft': '#112233', bogus: '#000000' } }), theme()]));
   assert.deepEqual(fixed, [{ id: 'custom-a', name: 'Rainy night', colors: { ...DARK, accent: '#abcdef', 'accent-soft': '#112233' } }]);
@@ -87,15 +95,18 @@ function prePaint({ preferences, light = false } = {}) {
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
   const style = new Map();
   const root = { dataset: { theme: 'dark' }, style: { setProperty: (name, value) => style.set(name, value) } };
+
   const storage = {
     'stilltype-session-v1': JSON.stringify({ user: { id: 'u1' } }),
     'stilltype-profile-v2:u1': JSON.stringify({ version: 2, preferences }),
   };
+
   vm.runInNewContext(script, {
     document: { documentElement: root },
     localStorage: { getItem: (key) => storage[key] ?? null },
     matchMedia: () => ({ matches: light }),
   });
+
   return { theme: root.dataset.theme, custom: Object.hasOwn(root.dataset, 'custom'), style: Object.fromEntries(style) };
 }
 

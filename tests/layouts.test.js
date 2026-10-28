@@ -27,6 +27,7 @@ const practice = { mode: 'time', duration: 30, count: null, punctuation: false, 
 
 test('QWERTY and legacy runs keep master’s condition key byte for byte', () => {
   assert.equal(conditionKey(practice), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
+
   const shapes = [
     practice,
     { ...practice, mode: 'words', duration: null, count: 25, wordList: '1k', punctuation: true },
@@ -34,6 +35,7 @@ test('QWERTY and legacy runs keep master’s condition key byte for byte', () =>
     { ...practice, inputClass: 'touch' },
     {},
   ];
+
   for (const shape of shapes) {
     const legacy = { ...shape };
     delete legacy.layout;
@@ -47,8 +49,10 @@ test('every other layout gets its own key, so bests and retests never mix layout
   const keys = layoutIds.map((layout) => conditionKey({ ...practice, layout }));
   assert.equal(new Set(keys).size, layoutIds.length);
   assert.equal(conditionKey({ ...practice, layout: 'dvorak' }), `${masterConditionKey(practice)}:layout-dvorak`);
+
   const run = (id, layout, textId) => ({ id, textId, status: 'complete', kind: 'test', metricVersion: METRIC_VERSION,
-    conditions: { ...practice, ...(layout ? { layout } : {}) } });
+    conditions: layout ? { ...practice, layout } : { ...practice } });
+
   assert.equal(comparable(run('a', 'dvorak', 'one'), run('b', 'qwerty', 'two')), false);
   assert.equal(comparable(run('a', 'dvorak', 'one'), run('b', 'dvorak', 'two')), true);
   assert.equal(comparable(run('a', null, 'one'), run('b', 'qwerty', 'two')), true);
@@ -56,10 +60,12 @@ test('every other layout gets its own key, so bests and retests never mix layout
 
 test('progress filters and recurring evidence stay within one layout; legacy runs count as QWERTY', () => {
   const summary = (id, layout, at) => ({ id, at, status: 'complete', kind: 'test', fresh: true,
-    conditions: { ...practice, ...(layout ? { layout } : {}) }, score: { wpm: 60, accuracy: 97 },
+    conditions: layout ? { ...practice, layout } : { ...practice }, score: { wpm: 60, accuracy: 97 },
     patterns: [['th', 12, 2, 10, 140, 20]] });
+
   const runs = [summary('legacy', null, '2026-10-01T10:00:00Z'), summary('qwerty', 'qwerty', '2026-10-02T10:00:00Z'),
     summary('dvorak', 'dvorak', '2026-10-03T10:00:00Z')];
+
   assert.deepEqual(filterRuns(runs, conditionKey({ ...practice, layout: 'qwerty' })).map((r) => r.id), ['legacy', 'qwerty']);
   assert.deepEqual(filterRuns(runs, conditionKey({ ...practice, layout: 'dvorak' })).map((r) => r.id), ['dvorak']);
   assert.equal(recurringTargets(runs, [], { ...practice, layout: 'qwerty' })[0]?.runs, 2);
@@ -68,6 +74,7 @@ test('progress filters and recurring evidence stay within one layout; legacy run
 
 test('each layout labels the thirty main keys with all 26 letters once', () => {
   assert.deepEqual(layoutIds, ['qwerty', 'dvorak', 'colemak', 'colemak-dh', 'workman']);
+
   for (const id of layoutIds) {
     const rows = keyboardRows(id);
     assert.equal(rows.length, 4, id);
@@ -78,6 +85,7 @@ test('each layout labels the thirty main keys with all 26 letters once', () => {
     assert.ok(keys.filter((key) => !/[a-z]/.test(key)).every((key) => ";,./'".includes(key)), `${id} punctuation`);
     assert.deepEqual(rows[3][0], { key: ' ', hand: 'both', finger: 'thumb', column: 0 });
   }
+
   assert.equal(keyboardRows('qwerty')[0].map((entry) => entry.key).join(''), 'qwertyuiop');
   assert.equal(keyboardRows('dvorak')[1].map((entry) => entry.key).join(''), 'aoeuidhtns');
   assert.equal(keyboardRows('colemak')[1].map((entry) => entry.key).join(''), 'arstdhneio');
@@ -87,6 +95,7 @@ test('each layout labels the thirty main keys with all 26 letters once', () => {
 
 test('the finger map follows touch-typing columns, with the angle mod on Colemak-DH', () => {
   const home = (id) => keyboardRows(id)[1].map((entry) => `${entry.hand[0]}${entry.finger[0]}`).join(' ');
+
   for (const id of layoutIds) assert.equal(home(id), 'lp lr lm li li ri ri rm rr rp', id);
   assert.deepEqual(fingerFor('qwerty', 'f'), { hand: 'left', finger: 'index' });
   assert.deepEqual(fingerFor('qwerty', 'J'), { hand: 'right', finger: 'index' });

@@ -13,6 +13,7 @@ test('speed unit defaults to wpm and rejects anything else', () => {
   assert.equal(DEFAULT_SPEED_UNIT, 'wpm');
   assert.equal(normalizeSpeedUnit('cpm'), 'cpm');
   assert.equal(normalizeSpeedUnit('wpm'), 'wpm');
+
   // Old profiles have no speed unit at all; a hand-edited one may hold junk.
   for (const value of [undefined, null, '', 'CPM', 'kph', 5]) assert.equal(normalizeSpeedUnit(value), 'wpm');
 });
@@ -52,6 +53,7 @@ test('a figure entered in the chosen unit goes back to wpm, the inverse of the d
   // Unrounded: the caller keeps whole wpm, so 333 cpm becomes 67 wpm and reads back as 335 cpm.
   assert.equal(wpmFromSpeed(333, 'cpm'), 66.6);
   assert.equal(speedValue(Math.round(wpmFromSpeed(333, 'cpm')), 'cpm'), 335);
+
   for (const wpm of [10, 67, 300]) assert.equal(wpmFromSpeed(speedValue(wpm, 'cpm'), 'cpm'), wpm);
 });
 
@@ -67,6 +69,7 @@ test('a unit template names the unit and keeps text only its unit shows', () => 
 test('the speed unit is not a test condition, so bests and retests keep matching', () => {
   const conditions = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
     inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
   const key = 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1';
   assert.equal(conditionKey(conditions), key);
   assert.equal(conditionKey({ ...conditions, speedUnit: 'cpm' }), key);
@@ -91,12 +94,14 @@ test('a ghost race result reads back from the sentence resultText writes, whatev
     for (const role of ['sent', 'received']) {
       const challenge = { role, name, duration: null, conditions: { mode: 'words', count: 25 },
         sender: { wpm: 72, elapsedMs: 44000, correct: 130 }, result: { wpm: 65, elapsedMs: 41200, correct: 125 } };
+
       const text = resultText(challenge);
       const [mine, theirs] = role === 'sent' ? [72, 65] : [65, 72];
       assert.equal(resultParts(text, (wpm) => `${wpm} wpm`).join(''), text);
       assert.equal(resultParts(text, cpm).join(''), text.replace(`you ${mine} wpm, ${name} ${theirs} wpm.`, `you ${mine * 5} cpm, ${name} ${theirs * 5} cpm.`));
     }
   }
+
   assert.equal(resultParts('Older result text', cpm), null);
   assert.equal(resultParts('Ada’s run: a tie · you 072 wpm, Ada 72 wpm.', cpm), null);
 });

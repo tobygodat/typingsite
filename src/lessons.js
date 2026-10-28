@@ -9,13 +9,17 @@ import { wordList, wordListIds } from './words.js';
 import { CORPUS_VERSION, textId } from './typing.js';
 
 const LESSON_VERSION = 'lessons-v1';
+
 // One completed run at or above both numbers unlocks the next lesson. Accuracy is the same rounded
 // input accuracy the app shows, so a run displayed as 95% passes.
 export const LESSON_ACCURACY = 95;
+
 // About a minute of typing at the speed targets below.
 export const LESSON_LENGTH = 60;
+
 // A smaller pool of real words is topped up with key pairs, so a lesson never repeats a handful of words.
 const MIN_WORDS = 20;
+
 // Short, common words only: beginners are learning reaches, not spelling.
 const MAX_WORD_LENGTH = 7;
 const POOL_SIZE = 40;
@@ -35,6 +39,7 @@ export const FINGER_ZONES = [
 export function fingerFor(key) {
   if (key === ' ') return 'thumbs';
   const zone = FINGER_ZONES.find((item) => item.keys.includes(key));
+
   return zone ? `${zone.hand} ${zone.finger}` : null;
 }
 
@@ -64,29 +69,37 @@ export function lessonKeys(index) {
 }
 
 let ranked = null;
+
 // All list words in frequency order: the 200 list first, then words new in 1k, 5k and 10k.
 function rankedWords() {
   if (!ranked) ranked = [...new Set(wordListIds.flatMap((id) => wordList(id)))];
+
   return ranked;
 }
 
 // Real words from the lists that use only the letters learned so far, most common first.
 export function lessonWords(index) {
   const letters = new Set(lessonKeys(index).filter((key) => /^[a-z]$/.test(key)));
+
   return rankedWords().filter((word) => word.length <= MAX_WORD_LENGTH && [...word].every((char) => letters.has(char)));
 }
 
 // Repetitions of the new keys alone, with each other, and with the most recently learned keys.
 function keyPairs(keys, others) {
   const pairs = keys.map((key) => key + key);
+
   for (const a of keys) for (const b of keys) if (a !== b) pairs.push(a + b);
+
   for (const a of keys) for (const b of others.slice(-4)) pairs.push(a + b, b + a);
+
   return pairs;
 }
 
 function pick(items, random, previous) {
   let index = Math.floor(random() * items.length) % items.length;
+
   if (items[index] === previous && items.length > 1) index = (index + 1) % items.length;
+
   return items[index];
 }
 
@@ -99,13 +112,16 @@ function lessonPlan(index) {
   const review = pool.filter((word) => !lesson.keys.some((key) => word.includes(key))).slice(0, POOL_SIZE);
   // Keys that real words can't practise yet, such as ; or a letter only one or two words contain.
   const thin = lesson.keys.filter((_, i) => byKey[i].length < 3);
+
   return { lesson, byKey, focus, review, pairKeys: pool.length < MIN_WORDS ? lesson.keys : thin };
 }
 
 // What a lesson is made of: key pairs only, key pairs then words, or words only.
 export function lessonMakeup(index) {
   const { focus, pairKeys } = lessonPlan(index);
+
   if (!focus.length) return 'pairs';
+
   return pairKeys.length ? 'mixed' : 'words';
 }
 
@@ -113,22 +129,29 @@ export function lessonPassage(index, random = Math.random) {
   const { lesson, byKey, focus, review, pairKeys } = lessonPlan(index);
   const items = [];
   const length = () => items.join(' ').length;
+
   if (pairKeys.length) {
     const learned = lessonKeys(index).filter((key) => !pairKeys.includes(key));
     const pairs = keyPairs(pairKeys, learned);
     const budget = focus.length ? LESSON_LENGTH / 2 : LESSON_LENGTH;
     // Each new key on its own first, then a random mix.
     items.push(...pairs.slice(0, pairKeys.length));
+
     while (length() < budget) items.push(pick(pairs, random, items.at(-1)));
   }
+
   const pairCount = items.length;
+
   // A word for each new key first, so none is left out, then roughly two such words per review word.
   for (const list of byKey) if (list.length) items.push(pick(list, random, items.at(-1)));
+
   while (focus.length && length() < LESSON_LENGTH) {
     const source = review.length && (items.length - pairCount) % 3 === 2 ? review : focus;
     items.push(pick(source, random, items.at(-1)));
   }
+
   const text = items.join(' ');
+
   return {
     id: `lesson-${lesson.id}-${textId(text)}`,
     textVersion: `lesson-${lesson.id}@${LESSON_VERSION}`,
@@ -148,14 +171,18 @@ export function lessonPassage(index, random = Math.random) {
 export function makeupCopy(index, passage = null) {
   const makeup = lessonMakeup(index);
   const words = passage?.words ? `${passage.words} real words` : 'real words';
+
   if (makeup === 'pairs') return `Key pairs only (repetitions, not words)${passage ? '.' : ': no word in the common-word lists uses just these keys yet.'}`;
+
   if (makeup === 'mixed') return `Key pairs first (repetitions, not words), then ${words}${passage ? '.' : ' from the common-word lists.'}`;
+
   return `${words[0].toUpperCase()}${words.slice(1)} from the common-word lists, using only keys you’ve learned.`;
 }
 
 export function makeupShort(index, passage = null) {
   const makeup = lessonMakeup(index);
   const words = passage?.words ? `${passage.words} real words` : 'real words';
+
   return makeup === 'pairs' ? 'key pairs' : makeup === 'mixed' ? `key pairs + ${words}` : words;
 }
 
@@ -163,12 +190,14 @@ export function lessonOutcome(index, score) {
   const wpmTarget = LESSONS[index].wpm;
   const accuracyMet = score.accuracy >= LESSON_ACCURACY;
   const speedMet = score.wpm >= wpmTarget;
+
   return { accuracyMet, speedMet, passed: accuracyMet && speedMet, accuracyTarget: LESSON_ACCURACY, wpmTarget };
 }
 
 // The first lesson not yet passed; LESSONS.length once every letter is in.
 export function nextLessonIndex(progress = {}) {
   const index = LESSONS.findIndex((lesson) => !progress[lesson.id]?.passed);
+
   return index < 0 ? LESSONS.length : index;
 }
 
@@ -181,6 +210,7 @@ const PHYSICAL = 'physical-keyboard';
 // Records from before input classes were stored are physical-keyboard runs.
 function scoreRecord(value) {
   if (!value || typeof value !== 'object' || !Number.isFinite(value.wpm) || !Number.isFinite(value.accuracy)) return null;
+
   return { wpm: value.wpm, accuracy: value.accuracy, at: typeof value.at === 'string' ? value.at : null, inputClass: value.inputClass === 'touch' ? 'touch' : PHYSICAL };
 }
 
@@ -189,9 +219,12 @@ const physicalOnly = (record) => (record?.inputClass === PHYSICAL ? record : nul
 // Old profiles have no lesson field; anything unrecognised is dropped rather than trusted.
 export function normalizeLessonProgress(value) {
   const progress = {};
+
   if (!value || typeof value !== 'object') return progress;
+
   for (const lesson of LESSONS) {
     const entry = value[lesson.id];
+
     if (!entry || typeof entry !== 'object') continue;
     progress[lesson.id] = {
       tries: Number.isInteger(entry.tries) && entry.tries > 0 ? entry.tries : 0,
@@ -199,6 +232,7 @@ export function normalizeLessonProgress(value) {
       passed: physicalOnly(scoreRecord(entry.passed)),
     };
   }
+
   return progress;
 }
 
@@ -213,5 +247,6 @@ export function recordLessonRun(progress, index, score, at = new Date().toISOStr
   const record = { wpm: score.wpm, accuracy: score.accuracy, at, inputClass: inputClass === 'touch' ? 'touch' : PHYSICAL };
   const passes = outcome.passed && record.inputClass === PHYSICAL;
   const entry = { tries: previous.tries + 1, last: record, passed: previous.passed || (passes ? record : null) };
+
   return { progress: { ...progress, [lesson.id]: entry }, outcome, firstPass: passes && !previous.passed, recorded: true };
 }

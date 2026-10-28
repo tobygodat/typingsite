@@ -29,6 +29,7 @@ test('a current export maps each setting that has a Stilltype counterpart', () =
   assert.ok(mapped.find((row) => row.setting === 'correction' && row.value === 'stop on error' && row.from === 'stopOnError: letter'));
   // Every mapped value is one Stilltype keeps as it is.
   const inUse = preferencesInUse(preferences);
+
   for (const [key, value] of Object.entries(preferences)) assert.equal(inUse[key], value, key);
 });
 
@@ -37,6 +38,7 @@ test('an older export (string font size and speed, number quote length, showLive
     mode: 'time', time: 30, quoteLength: 0, fontSize: '125', paceCaret: 'custom', paceCaretCustomSpeed: '70',
     showLiveWpm: false, showLiveAcc: true, theme: 'serika',
   });
+
   assert.deepEqual(preferences, {
     mode: 'time', duration: 30, quoteLength: 'short', fontSize: '22', paceCaret: 'custom', paceWpm: 70, liveMetrics: true, theme: 'light',
   });
@@ -47,6 +49,7 @@ test('values with no Stilltype counterpart are skipped with a reason and change 
     mode: 'zen', time: 700, words: 0, language: 'german', quoteLength: [0, 2], paceCaret: 'daily', repeatQuotes: 'always',
     keymapLayout: 'azerty', layout: 'dvorak',
   });
+
   assert.deepEqual(preferences, {});
   assert.deepEqual(skipped.map((row) => row.setting), [
     'test mode', 'time length', 'word count', 'word list', 'quote length', 'repeat quotes', 'keyboard layout', 'keyboard layout', 'pace caret',
@@ -138,6 +141,7 @@ test('strict space, quick end, minimums, repeat quotes and the keymap layout car
     strictSpace: true, quickEnd: false, minAcc: 'custom', minAccCustom: 95, minWpm: 'custom', minWpmCustomSpeed: 75,
     repeatQuotes: 'typing', keymapLayout: 'colemak_dh', layout: 'default',
   });
+
   assert.deepEqual(preferences, { strictSpace: true, quickEnd: false, minAccuracy: 95, minWpm: 60, repeatQuotes: true, layout: 'colemak-dh' });
   assert.deepEqual(skipped, []);
   // A minimum between Stilltype's values rounds down, so it never stops a run Monkeytype would have let continue.
@@ -154,6 +158,7 @@ test('strict space, quick end, minimums, repeat quotes and the keymap layout car
   assert.equal(mapMonkeytypeConfig({ keymapLayout: 'workman', layout: 'qwerty' }).skipped.length, 0);
 
   const inUse = preferencesInUse(preferences);
+
   for (const [key, value] of Object.entries(preferences)) assert.equal(inUse[key], value, key);
 });
 
@@ -184,6 +189,7 @@ test('typing sounds and their volume carry over; an error sound alone is skipped
   assert.equal(mapMonkeytypeConfig({ soundVolume: 'loud' }).skipped[0].setting, 'sound volume');
 
   const inUse = preferencesInUse(both.preferences);
+
   for (const [key, value] of Object.entries(both.preferences)) assert.equal(inUse[key], value, key);
 });
 
@@ -193,6 +199,7 @@ test('the speed unit carries over as wpm or cpm, and speeds stay the wpm Monkeyt
   assert.ok(mapped.find((row) => row.setting === 'speed unit' && row.value === 'cpm' && row.from === 'typingSpeedUnit: cpm'));
   assert.equal(preferencesInUse(preferences).speedUnit, 'cpm');
   assert.equal(mapMonkeytypeConfig({ typingSpeedUnit: 'wpm' }).preferences.speedUnit, 'wpm');
+
   for (const unit of ['wps', 'cps', 'wph']) {
     const { preferences: none, skipped } = mapMonkeytypeConfig({ typingSpeedUnit: unit });
     assert.deepEqual(none, {});

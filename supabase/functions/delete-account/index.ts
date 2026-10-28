@@ -8,6 +8,7 @@ import { handleDeleteAccount } from './handler.ts';
 
 const url = Deno.env.get('SUPABASE_URL');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
 const auth = url && serviceKey
   ? createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } }).auth
   : null;

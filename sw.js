@@ -7,6 +7,7 @@
 // answer a navigation. scripts/build-static.mjs stamps VERSION with a hash of the built files, so each
 // deploy installs a fresh cache and drops the old.
 const VERSION = 'stilltype-shell-v1';
+
 const SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -76,9 +77,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
   // Supabase and every other origin go straight to the network, uncached.
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   const key = request.mode === 'navigate' ? '/' : url.pathname;
+
   // Font choices other than the default are left out of the precache and kept once a page has used them.
   if (!SHELL.includes(key) && !key.startsWith('/src/fonts/')) return;
   event.respondWith(fetch(request)
@@ -87,6 +90,7 @@ self.addEventListener('fetch', (event) => {
         const copy = response.clone();
         event.waitUntil(caches.open(VERSION).then((cache) => cache.put(key, copy)));
       }
+
       return response;
     })
     .catch(() => caches.match(key)));

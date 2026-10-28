@@ -27,6 +27,7 @@ test('a read-back sentence rewords to the saved text in wpm and converts in cpm'
     assert.ok(race, text);
     assert.equal(raceResultText(race), text);
   }
+
   const cpm = (wpm, options) => formatSpeed(wpm, options, 'cpm');
   assert.equal(raceResultParts(parseLegacyRaceResult('You beat Lin: 72 wpm to 65.'), cpm).join(''), 'You beat Lin: 360 cpm to 325.');
 });
@@ -55,6 +56,7 @@ test('anything that is not exactly the legacy sentence is left as text', () => {
     'Lin joined your race.',
     '',
   ]) assert.equal(parseLegacyRaceResult(text), null, text);
+
   for (const value of [undefined, null, 72, {}, ['You beat Lin: 72 wpm to 65.']]) assert.equal(parseLegacyRaceResult(value), null);
 });
 
@@ -75,7 +77,9 @@ test('entries that are current, unreadable or not results come back unchanged', 
   const cpm = legacy('You beat Lin: 360 cpm to 325.');
   const invite = { id: 'invite:r', kind: 'invite', roomId: 'r', text: 'You beat Lin: 72 wpm to 65.' };
   const joined = { id: 'joined:r', kind: 'joined', roomId: 'r', text: 'Lin joined your race.' };
+
   for (const entry of [current, odd, cpm, invite, joined, null, undefined]) assert.equal(normalizeInboxEntry(entry), entry);
+
   // Unreadable entries have no scores, so they are shown as written.
   for (const entry of [odd, cpm, invite, joined]) assert.equal(raceResultOf(entry), null);
   assert.equal(raceResultOf(current), current.race);
@@ -117,6 +121,7 @@ test('the tally reads mine first and raises the winner\'s figure; without one th
   assert.deepEqual(tallyView([1, 3], 'lost'), { mine: 1, theirs: 3, raised: 'theirs' });
   assert.deepEqual(tallyView([2, 2], 'tied'), { mine: 2, theirs: 2, raised: null });
   assert.deepEqual(tallyView([0, 0], 'tied'), { mine: 0, theirs: 0, raised: null });
+
   // A guest on either side, or a service from before tallies.
   for (const tally of [null, undefined, [], [1], [1, '2'], [1.5, 0], { mine: 1, theirs: 0 }]) assert.equal(tallyView(tally, 'won'), null);
 });

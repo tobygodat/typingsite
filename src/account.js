@@ -19,7 +19,9 @@ export class AuthError extends Error {}
 
 function base64url(bytes) {
   let text = '';
+
   for (const byte of bytes) text += String.fromCharCode(byte);
+
   return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
@@ -36,8 +38,11 @@ export function parseAuthRedirect(href) {
   const url = new URL(href);
   const hash = new URLSearchParams(url.hash.slice(1));
   const error = url.searchParams.get('error_description') || hash.get('error_description') || url.searchParams.get('error') || hash.get('error');
+
   if (error) return { kind: 'error', message: error.replace(/\+/g, ' ') };
+
   if (url.searchParams.get('code')) return { kind: 'code', code: url.searchParams.get('code') };
+
   if (hash.get('access_token')) {
     return {
       kind: 'tokens',
@@ -46,15 +51,19 @@ export function parseAuthRedirect(href) {
       expires_in: Number(hash.get('expires_in')) || 3600,
     };
   }
+
   return null;
 }
 
 // The address without auth parameters, so a reload never replays a used code.
 export function cleanRedirectUrl(href) {
   const url = new URL(href);
+
   for (const key of ['code', 'error', 'error_code', 'error_description']) url.searchParams.delete(key);
   const hash = new URLSearchParams(url.hash.slice(1));
+
   if (['access_token', 'error', 'error_description'].some((key) => hash.has(key))) url.hash = '';
+
   return url.toString();
 }
 
@@ -63,7 +72,11 @@ function readJson(key) {
 }
 
 function writeJson(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+
+    return true;
+  } catch { return false; }
 }
 
 function remove(key) {
@@ -72,6 +85,7 @@ function remove(key) {
 
 export function loadSession() {
   const session = readJson(SESSION_KEY);
+
   return session?.user?.id && session.refresh_token ? session : null;
 }
 
@@ -79,19 +93,23 @@ export function loadSession() {
 // refresh of the sign-in they share from a new sign-in there (a guest tab signing in to the same account).
 // Sessions stored before sign-ins had one have none, and count as one sign-in.
 function sessionFrom(data, signInId) {
-  return {
+  const session = {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: data.expires_at || Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
     user: { id: data.user.id, email: data.user.email || '' },
-    ...(signInId ? { signInId } : {}),
   };
+
+  if (signInId) session.signInId = signInId;
+
+  return session;
 }
 
 export const sameSignIn = (a, b) => Boolean(a?.user?.id) && a.user.id === b?.user?.id && a.signInId === b?.signInId;
 
 function storeSession(session) {
   writeJson(SESSION_KEY, session);
+
   return session;
 }
 
@@ -105,79 +123,98 @@ const REQUEST_TIMEOUT_MS = 15000;
 export async function request(path, { method = 'GET', body, token, headers = {}, signal: callerSignal } = {}) {
   const timeout = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
   const signal = timeout && callerSignal && typeof AbortSignal.any === 'function' ? AbortSignal.any([timeout, callerSignal]) : callerSignal || timeout;
+  const sentHeaders = { apikey: SUPABASE_KEY };
+
+  if (token) sentHeaders.Authorization = `Bearer ${token}`;
+
+  if (body) sentHeaders['Content-Type'] = 'application/json';
   let response;
   let text;
+
   try {
     response = await fetch(`${SUPABASE_URL}${path}`, {
       method,
       signal,
-      headers: {
-        apikey: SUPABASE_KEY,
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-        ...headers,
-      },
+      headers: Object.assign(sentHeaders, headers),
       body: body ? JSON.stringify(body) : undefined,
     });
     text = await response.text();
   } catch {
     throw new AuthError('Can’t reach the account service. Check your connection.');
   }
+
   let data = null;
+
   try { data = text ? JSON.parse(text) : null; } catch {}
+
   if (!response.ok) {
     const message = data?.msg || data?.error_description || data?.message || data?.error || `Request failed (${response.status}).`;
     const error = new AuthError(message);
     error.status = response.status;
     // Auth errors name themselves in error_code (code is the HTTP status there); PostgREST's in code.
     const code = data?.error_code || data?.code;
+
     if (code) error.code = code;
     throw error;
   }
+
   return data;
 }
 
 export async function signUp(email, password, redirectTo) {
   const data = await request(`/auth/v1/signup?redirect_to=${encodeURIComponent(redirectTo)}`, { method: 'POST', body: { email, password } });
+
   // With email confirmation on, Supabase returns the user without a session.
   if (data?.access_token) return { session: storeSignIn(data) };
+
   return { confirm: true };
 }
 
 export async function signIn(email, password) {
   const data = await request('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } });
+
   return storeSignIn(data);
 }
 
 // Asks first, so a provider that is not configured yet gives a sentence rather than a raw error page.
 export async function startGoogleSignIn(redirectTo) {
   const settings = await request('/auth/v1/settings');
+
   if (!settings?.external?.google) throw new AuthError('Google sign-in isn’t switched on yet. Use an email and password for now.');
   const verifier = createVerifier();
   writeJson(VERIFIER_KEY, verifier);
+
   const params = new URLSearchParams({
     provider: 'google',
     redirect_to: redirectTo,
     code_challenge: await challengeFor(verifier),
     code_challenge_method: 's256',
   });
+
   location.assign(`${SUPABASE_URL}/auth/v1/authorize?${params}`);
 }
 
 // Finishes a Google or email-link return. Returns the new session, or null if the URL carries none.
 export async function completeRedirect(href) {
   const redirect = parseAuthRedirect(href);
+
   if (!redirect) return null;
   history.replaceState(history.state, '', cleanRedirectUrl(href));
+
   if (redirect.kind === 'error') throw new AuthError(redirect.message);
+
   if (redirect.kind === 'code') {
     const verifier = readJson(VERIFIER_KEY);
     remove(VERIFIER_KEY);
+
     if (!verifier) throw new AuthError('That sign-in link has expired. Try again.');
     const data = await request('/auth/v1/token?grant_type=pkce', { method: 'POST', body: { auth_code: redirect.code, code_verifier: verifier } });
+
     return storeSignIn(data);
   }
+
   const user = await request('/auth/v1/user', { token: redirect.access_token });
+
   return storeSignIn({ ...redirect, user });
 }
 
@@ -189,14 +226,18 @@ export async function freshSession(session = loadSession(), { signal } = {}) {
   // copy would be rejected and end the session, so the newest stored one wins. Two refreshes in
   // the same second share an expiry, and storage always holds the later of them, so a tie goes to it.
   const stored = loadSession();
+
   if (stored?.user?.id === session.user?.id && stored.expires_at >= session.expires_at) session = stored;
+
   if (session.expires_at - 60 > Date.now() / 1000) return session;
+
   try {
     const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token }, signal });
     // Stored only over the session it refreshed: another tab may have signed out, or in as someone else
     // (the same account included, whose new session that sign-out's logout didn't end), since this tab
     // read it. Either way it is still the sign-in it refreshed.
     const refreshed = sessionFrom(data, session.signInId);
+
     return loadSession()?.refresh_token === session.refresh_token ? storeSession(refreshed) : refreshed;
   } catch (error) {
     // A rejected refresh token means the session is over; a network failure keeps it for later. Only the
@@ -213,9 +254,11 @@ export async function freshSession(session = loadSession(), { signal } = {}) {
 // around that removal, see signOut.) A session that only expired leaves none, so its tabs keep caching
 // for the next sign-in.
 export const signedOutKey = (userId) => `stilltype-signed-out:${userId}`;
+
 export function signedOut(userId) {
   try { return localStorage.getItem(signedOutKey(userId)) !== null; } catch { return false; }
 }
+
 export const clearSignedOut = (userId) => remove(signedOutKey(userId));
 
 // Touches only what is still this sign-in's: another tab may have signed out, or in as anyone (the same
@@ -231,22 +274,28 @@ export const clearSignedOut = (userId) => remove(signedOutKey(userId));
 export async function signOut(session, { sentText = null } = {}) {
   const userId = session?.user?.id;
   const stored = loadSession();
+
   if (stored && stored.user.id === userId && !sameSignIn(stored, session)) return;
   const held = stored?.user.id === userId ? stored : null;
+
   if (userId && (!stored || held)) {
     const settled = sentText !== null && loadCachedProfileText(userId) === sentText;
+
     // Written before the session goes, so a tab that hears of the sign-out finds it.
     if (!settled) writeJson(signedOutKey(userId), true);
+
     if (held) {
       // Heard by every tab before the removal.
       if (settled) writeJson(signedOutKey(userId), { sent: textStamp(sentText) });
       remove(SESSION_KEY);
+
       if (settled) {
         remove(profileKey(userId));
         clearSignedOut(userId);
       }
     }
   }
+
   // With the device's copy of this sign-in, when it holds one: another tab may have refreshed it since.
   try { await request('/auth/v1/logout', { method: 'POST', token: (held || session)?.access_token }); } catch {}
 }
@@ -255,13 +304,16 @@ export async function signOut(session, { sentText = null } = {}) {
 function cyrb53(text) {
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
+
   for (let i = 0; i < text.length; i += 1) {
     const code = text.charCodeAt(i);
     h1 = Math.imul(h1 ^ code, 2654435761);
     h2 = Math.imul(h2 ^ code, 1597334677);
   }
+
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+
   return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
@@ -271,6 +323,7 @@ export const textStamp = (text) => `${text.length.toString(36)}:${cyrb53(text).t
 const storedProfile = (text) => {
   try {
     const data = JSON.parse(text);
+
     return data?.version === 2 ? withoutConditionSets(data) : null;
   } catch {
     return null;
@@ -284,8 +337,10 @@ const storedProfile = (text) => {
 export function unsentCopy(removedText, sent, savedText) {
   const removed = storedProfile(removedText);
   const saved = storedProfile(savedText);
+
   if (removed && textStamp(removedText) === sent
     && (!saved || savedText === removedText || sameProfile(mergeSynced(removed, saved), removed))) return null;
+
   return removed && saved ? mergeSynced(removed, saved) : (removed || saved);
 }
 
@@ -293,8 +348,10 @@ export function unsentCopy(removedText, sent, savedText) {
 // marker: every tab of the account has already followed the sign-out. Returns whether it wrote.
 export function restoreUnsent(userId, removedText, sent, savedText) {
   const copy = unsentCopy(removedText, sent, savedText);
+
   if (!copy) return false;
   const stored = storedProfile(loadCachedProfileText(userId));
+
   return cacheProfileText(userId, JSON.stringify(storedCopy(stored ? mergeSynced(stored, copy) : copy)));
 }
 
@@ -331,6 +388,7 @@ async function accountGone(current, signal) {
 export async function deleteAccount(session) {
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), DELETE_TIMEOUT_MS);
+
   try {
     return await deleteBefore(session, deadline.signal);
   } finally {
@@ -341,6 +399,7 @@ export async function deleteAccount(session) {
 // Each step gets whatever time is left before the deadline; a step it cuts off counts as no reply.
 async function deleteBefore(session, signal) {
   let current;
+
   try {
     current = await freshSession(session, { signal });
   } catch (error) {
@@ -348,27 +407,35 @@ async function deleteBefore(session, signal) {
     const ended = error.status >= 400 && error.status < 500;
     throw new AuthError(ended ? DELETE_COPY.session : error.status ? DELETE_COPY.failed : DELETE_COPY.offline);
   }
+
   if (!current) throw new AuthError(DELETE_COPY.session);
   let status = 0;
+
   try {
     await request(DELETE_ACCOUNT_PATH, { method: 'POST', token: current.access_token, body: {}, signal });
+
     return;
   } catch (error) {
     status = error.status || 0;
   }
+
   if (status === 404) throw new AuthError(DELETE_COPY.missing);
   const refused = status === 401 || status === 403;
   // Any 5xx is ambiguous: the function's 500 when deleteUser committed but its reply was lost, or a
   // gateway's 502, 503 or 504 after the function finished. Other answers are clear refusals.
   const serverError = status >= 500;
+
   if (status && !refused && !serverError) throw new AuthError(DELETE_COPY.failed);
   // A refused token, a server error or no reply (a function that isn't deployed can fail this way in
   // a browser, when the platform's not-found reply has no CORS headers). Each time the account may
   // already be gone: deleted by this request when its reply was lost, or from another device. The
   // Auth server settles it, within what is left of the deadline.
   const gone = await accountGone(current, signal);
+
   if (gone) return;
+
   if (refused) throw new AuthError(DELETE_COPY.session);
+
   if (serverError) throw new AuthError(DELETE_COPY.failed);
   // Say nothing was deleted only if the account is confirmed to still exist.
   throw new AuthError(gone === false ? DELETE_COPY.unavailable : DELETE_COPY.offline);
@@ -377,23 +444,31 @@ async function deleteBefore(session, signal) {
 // A theme from a short vibe: the generate-theme Edge Function (supabase/functions/generate-theme) asks
 // Claude for one and returns { name, mode, colors } unsaved. Throws an AuthError with one short line.
 export const GENERATE_THEME_PATH = '/functions/v1/generate-theme';
+
 export const THEME_COPY = {
   session: 'Sign in again to generate a theme.',
   failed: 'Couldn’t generate a theme. Try again.',
   offline: 'Can’t reach the theme service. Try again.',
 };
+
 const THEME_ERRORS = ['vibe', 'limit', 'refused', 'timeout', 'failed', 'config', 'session'];
+
 export async function generateTheme(session, vibe) {
   let current;
+
   try {
     current = await freshSession(session);
   } catch {
     throw new AuthError(THEME_COPY.session);
   }
+
   if (!current) throw new AuthError(THEME_COPY.session);
+
   try {
     const data = await request(GENERATE_THEME_PATH, { method: 'POST', token: current.access_token, body: { vibe } });
+
     if (!data?.theme) throw new AuthError(THEME_COPY.failed);
+
     return data.theme;
   } catch (error) {
     // The function's own errors are already one short line; a gateway's or no reply aren't.
@@ -408,8 +483,10 @@ export async function generateTheme(session, vibe) {
 // nothing about the account stays on the device.
 export function forgetAccount(session) {
   const userId = session?.user?.id;
+
   if (userId) writeJson(signedOutKey(userId), true);
   remove(SESSION_KEY);
+
   if (userId) {
     remove(profileKey(userId));
     clearSignedOut(userId);
@@ -424,6 +501,7 @@ export function forgetAccount(session) {
 export async function fetchCloudProfile(session) {
   const rows = await request(`/rest/v1/profiles?select=*&user_id=eq.${session.user.id}`, { token: session.access_token });
   const row = rows?.[0] || null;
+
   return row && Array.isArray(row.data?.runs) ? { ...row, data: rowCopy(row.data) } : row;
 }
 
@@ -432,6 +510,7 @@ export async function fetchCloudProfile(session) {
 // counts as its time (see clearProfile).
 export function stampAfter(...stamps) {
   const times = stamps.map((stamp) => Date.parse(typeof stamp === 'string' ? stamp.split('~')[0] : stamp) + 1).filter(Number.isFinite);
+
   return new Date(Math.max(Date.now(), ...times)).toISOString();
 }
 
@@ -448,7 +527,9 @@ const refusesBoard = (error) => error?.status === 400 && ['PGRST204', '23514'].i
 // longer matches the row, which the board then hides (and repairBoard mends).
 async function withBoard(board, at, send) {
   let column;
+
   try { column = board && !boardOff ? board(at) : undefined; } catch { column = undefined; }
+
   if (column !== undefined) {
     try {
       return await send({ board: column });
@@ -457,6 +538,7 @@ async function withBoard(board, at, send) {
       boardOff = true;
     }
   }
+
   return send({});
 }
 
@@ -464,24 +546,28 @@ async function withBoard(board, at, send) {
 // supabase/migrations). Resolves to the new updated_at, or null when another writer got there first.
 export async function updateCloudProfile(session, data, seenAt, { board } = {}) {
   const at = stampAfter(seenAt);
+
   const rows = await withBoard(board, at, (column) => request(`/rest/v1/profiles?user_id=eq.${session.user.id}&updated_at=eq.${encodeURIComponent(seenAt)}&select=updated_at`, {
     method: 'PATCH',
     token: session.access_token,
     headers: { Prefer: 'return=representation' },
     body: { data: withConditionSets(rowCopy(data)), updated_at: at, ...column },
   }));
+
   return rows?.[0]?.updated_at || null;
 }
 
 // Creates the row only if the account has none. Null means another writer created it first.
 export async function insertCloudProfile(session, data, { board } = {}) {
   const at = new Date().toISOString();
+
   const rows = await withBoard(board, at, (column) => request('/rest/v1/profiles?select=updated_at', {
     method: 'POST',
     token: session.access_token,
     headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
     body: { user_id: session.user.id, data: withConditionSets(rowCopy(data)), updated_at: at, ...column },
   }));
+
   return rows?.[0]?.updated_at || null;
 }
 
@@ -490,6 +576,7 @@ export async function insertCloudProfile(session, data, { board } = {}) {
 // moved since is left alone, and that write carries its own summary. True when it was sent.
 export async function repairBoard(session, board, at) {
   if (boardOff) return false;
+
   try {
     await request(`/rest/v1/profiles?user_id=eq.${session.user.id}&updated_at=eq.${encodeURIComponent(at)}`, {
       method: 'PATCH',
@@ -497,10 +584,12 @@ export async function repairBoard(session, board, at) {
       headers: { Prefer: 'return=minimal' },
       body: { board },
     });
+
     return true;
   } catch (error) {
     if (!refusesBoard(error)) throw error;
     boardOff = true;
+
     return false;
   }
 }
@@ -520,19 +609,24 @@ export function withoutConditionSets(copy) {
   const { conditionSets, ...rest } = copy;
   const sets = conditionSets && typeof conditionSets === 'object' ? conditionSets : {};
   const named = (record) => record && typeof record === 'object' && 'conditionSet' in record;
+
   for (const name of CONDITIONED) {
     if (!Array.isArray(rest[name]) || !rest[name].some(named)) continue;
     rest[name] = rest[name].flatMap((record) => {
       if (!named(record)) return [record];
+
       if (record.conditions) {
         const { conditionSet, ...inline } = record;
+
         return [inline];
       }
+
       // A set this copy lacks (a tab on a build from before kept another copy's table): the record is left
       // out here, and comes back from any copy that holds it whole.
       return Object.hasOwn(sets, record.conditionSet) ? [renamed(record, 'conditionSet', 'conditions', { ...sets[record.conditionSet] })] : [];
     });
   }
+
   return rest;
 }
 
@@ -541,25 +635,30 @@ export function withConditionSets(profile, now = Date.now()) {
   const copy = { ...withoutConditionSets(profile) };
   const sets = {};
   const texts = {};
+
   for (const name of CONDITIONED) {
     if (!Array.isArray(copy[name])) continue;
     copy[name] = copy[name].map((record) => {
       if (!record?.conditions || typeof record.conditions !== 'object') return record;
       const text = JSON.stringify(record.conditions);
       const stamp = textStamp(text);
+
       // Two sets with one stamp: the second stays inline.
       if (texts[stamp] !== undefined && texts[stamp] !== text) return record;
       texts[stamp] = text;
       sets[stamp] = record.conditions;
+
       return renamed(record, 'conditions', 'conditionSet', stamp);
     });
   }
+
   return Object.keys(sets).length ? { ...copy, conditionSets: sets } : copy;
 }
 
 // The copy written to the device cache. A trace's summary is the replay of its own events (completeAttempt)
 // and over half its size, so it is left out and rebuilt on load (normalizeProfile).
 const withoutSummary = ({ summary, ...trace }) => trace;
+
 export const storedCopy = (profile, now = Date.now()) => withConditionSets(Array.isArray(profile?.attempts)
   ? { ...profile, attempts: profile.attempts.map((trace) => (trace?.summary ? withoutSummary(trace) : trace)) } : profile, now);
 
@@ -577,7 +676,11 @@ export function loadCachedProfileText(userId) {
 }
 
 export function cacheProfileText(userId, text) {
-  try { localStorage.setItem(profileKey(userId), text); return true; } catch { return false; }
+  try {
+    localStorage.setItem(profileKey(userId), text);
+
+    return true;
+  } catch { return false; }
 }
 
 // ── Merging copies of one account's profile ─────────────────────────────
@@ -604,7 +707,9 @@ const recordId = (item) => String(item.id ?? JSON.stringify(item));
 export function capHistory(profile) {
   Object.assign(profile, retainHistory(list(profile.runs), validPracticeDays(profile.practiceDays)));
   profile.runCounts = retainRunCounts(profile.runCounts);
+
   for (const [name, { keep }] of Object.entries(HISTORY)) if (name !== 'runs') profile[name] = keep(list(profile[name]));
+
   return profile;
 }
 
@@ -626,11 +731,14 @@ const beatsBest = (a, b) => !b || a.wpm > b.wpm || (a.wpm === b.wpm
 // of a clock (every run and loop, at most, after a clock corrected far backward), and its undo drops them.
 const namedPairs = (side) => list(side.historyClearedIds).flatMap((entry) => {
   const [marker, id] = typeof entry === 'string' ? [side.historyClearedAt, entry] : Array.isArray(entry) ? entry : [];
+
   return marker && typeof marker === 'string' && id && typeof id === 'string' ? [[marker, id]] : [];
 });
+
 const liveNamed = (pairs, undone) => [...new Map(pairs.filter(([marker]) => !undone.includes(marker))
   .map((pair) => [JSON.stringify(pair), pair])).values()]
   .sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]));
+
 // The ids a copy's clears named (a merged or cleared copy holds only clears not undone).
 export const clearedIds = (profile) => new Set(namedPairs(profile).map(([, id]) => id));
 
@@ -641,26 +749,33 @@ export const clearedIds = (profile) => new Set(namedPairs(profile).map(([, id]) 
 // its newest marker is undone, a copy still answers to the older clears it had applied, and to those it
 // only heard of as one that never applied them; none is forgotten.
 const isMarker = (marker) => typeof marker === 'string' && marker !== '';
+
 function clearsOf(side, undone) {
   const live = (marker) => isMarker(marker) && !undone.includes(marker);
   const applied = new Set([side.historyClearedAt, ...list(side.appliedClears)].filter(live));
   const heard = new Set([...applied, ...list(side.heardClears), ...namedPairs(side).map(([marker]) => marker)].filter(live));
+
   return { applied, heard };
 }
+
 // The clears a copy has applied, undone ones included: the training a tab offers was checked against them.
 export const clearsApplied = (profile) => new Set([profile.historyClearedAt, ...list(profile.appliedClears)].filter(isMarker));
+
 // Writes a copy's clears: the newest as historyClearedAt, and the older ones it applied or only heard of.
 function setClears(profile, clearedAt, applied, heard) {
   const older = (marker) => marker < clearedAt;
+
   const fields = {
     historyClearedAt: clearedAt,
     appliedClears: [...applied].filter(older).sort(),
     heardClears: [...heard].filter((marker) => older(marker) && !applied.has(marker)).sort(),
   };
+
   for (const [field, value] of Object.entries(fields)) {
     if (value?.length) profile[field] = value;
     else delete profile[field];
   }
+
   return profile;
 }
 
@@ -682,15 +797,23 @@ export function clearProfile(profile) {
   const marker = `${stampAfter(profile.historyClearedAt, ...undone, ...heard)}~${base64url(crypto.getRandomValues(new Uint8Array(6)))}`;
   const known = liveNamed(namedPairs(profile), undone);
   const ahead = new Set(known.map(([, id]) => id));
+
   for (const [name, { at }] of Object.entries(HISTORY)) {
     for (const item of list(profile[name])) if ((item[at] || '') > marker && item.id) ahead.add(String(item.id));
   }
+
   for (const best of Object.values(profile.bests || {})) if ((best?.at || '') > marker && best.attemptId) ahead.add(String(best.attemptId));
   const named = liveNamed([...known, ...[...ahead].map((id) => [marker, id])], undone);
-  const cleared = setClears({ ...profile, bests: {}, seenTextIds: [], practiceDays: {}, runCounts: {}, ...(profile.lessons ? { lessons: {} } : {}) }, marker, heard, heard);
+  const emptied = { ...profile, bests: {}, seenTextIds: [], practiceDays: {}, runCounts: {} };
+
+  if (profile.lessons) emptied.lessons = {};
+  const cleared = setClears(emptied, marker, heard, heard);
+
   for (const name of Object.keys(HISTORY)) cleared[name] = [];
+
   if (named.length) cleared.historyClearedIds = named;
   else delete cleared.historyClearedIds;
+
   return cleared;
 }
 
@@ -707,10 +830,12 @@ const stampsOf = (side) => (side.preferencesAt && typeof side.preferencesAt === 
 // (an older build) comes from the side that has it, whichever was saved later: reading a copy
 // (normalizeProfile) leaves out what it lacks rather than filling in a default that would count as a choice.
 const valueOrder = (value) => JSON.stringify(value) ?? '';
+
 // Whether `theirs` wins over `mine` given each one's stamp: the later stamp, then the value that sorts
 // first, so both sides of a merge pick the same one.
 const takesTheirs = (myStamp, theirStamp, mine, theirs) => theirStamp > myStamp
   || (theirStamp === myStamp && valueOrder(theirs) < valueOrder(mine));
+
 function mergePreferences(local, cloud) {
   const mine = local.preferences || {};
   const theirs = cloud.preferences || {};
@@ -718,14 +843,19 @@ function mergePreferences(local, cloud) {
   const theirStamps = stampsOf(cloud);
   const preferences = {};
   const preferencesAt = {};
+
   for (const key of new Set([...Object.keys(mine), ...Object.keys(theirs)])) {
     const a = myStamps[key] || '';
     const b = theirStamps[key] || '';
+
     const fromCloud = a || b ? takesTheirs(a, b, mine[key], theirs[key])
       : takesTheirs(local.updatedAt || '', cloud.updatedAt || '', mine[key], theirs[key]);
+
     preferences[key] = (fromCloud ? theirs[key] : mine[key]) ?? (fromCloud ? mine[key] : theirs[key]);
+
     if (a || b) preferencesAt[key] = a > b ? a : b;
   }
+
   return { preferences, preferencesAt };
 }
 
@@ -734,10 +864,12 @@ function mergePreferences(local, cloud) {
 // daily attempt either copy labels a repeat stays one: the copy that says first may be from before its
 // device held the earlier try, which a clear can since have taken from every copy.
 const fullness = (record) => [record.patterns?.length || 0, Array.isArray(record.missedWords) ? 1 : 0];
+
 const fuller = (held, other) => {
   const [heldPatterns, heldWords] = fullness(held);
   const [otherPatterns, otherWords] = fullness(other);
   const kept = otherPatterns > heldPatterns || (otherPatterns === heldPatterns && otherWords > heldWords) ? other : held;
+
   return kept.firstDailyAttempt && (held.firstDailyAttempt === false || other.firstDailyAttempt === false)
     ? { ...kept, firstDailyAttempt: false } : kept;
 };
@@ -750,8 +882,10 @@ const fuller = (held, other) => {
 export function stampProfile(profile, at = new Date().toISOString()) {
   profile.updatedAt = at;
   profile.mergeStamp = at;
+
   return profile;
 }
+
 const stampOf = (value) => (typeof value === 'string' ? value : '');
 const savedByOlderBuild = (side) => stampOf(side.updatedAt) !== '' && side.mergeStamp !== side.updatedAt;
 
@@ -759,9 +893,12 @@ const savedByOlderBuild = (side) => stampOf(side.updatedAt) !== '' && side.merge
 // and no later than its last save.
 function historyStart(side) {
   let start = stampOf(side.updatedAt);
+
   const dates = [...Object.entries(HISTORY).flatMap(([name, { at }]) => list(side[name]).map((item) => item[at])),
     ...Object.values(side.bests || {}).filter(Boolean).map((best) => best.at)];
+
   for (const date of dates) if (stampOf(date) < start) start = stampOf(date);
+
   return start;
 }
 
@@ -785,18 +922,24 @@ const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 
 // kept). Ties break on the numbers, so every copy settles on the same result whichever side merges.
 function survivingLessons(lessons, after) {
   const kept = {};
+
   for (const [id, entry] of Object.entries(lessons && typeof lessons === 'object' ? lessons : {})) {
     if (!entry || typeof entry !== 'object' || !after(entry.last?.at)) continue;
     kept[id] = { ...entry, passed: entry.passed && after(entry.passed.at) ? entry.passed : null };
   }
+
   return kept;
 }
+
 const resultOrder = (a, b) => compare(a.at || '', b.at || '') || compare(a.wpm ?? 0, b.wpm ?? 0)
   || compare(a.accuracy ?? 0, b.accuracy ?? 0) || compare(String(a.inputClass ?? ''), String(b.inputClass ?? ''));
+
 const laterResult = (a, b) => (!a ? b || null : !b ? a : resultOrder(a, b) >= 0 ? a : b);
 const earlierResult = (a, b) => (!a ? b || null : !b ? a : resultOrder(a, b) <= 0 ? a : b);
+
 function mergeLessons(mine = {}, theirs = {}) {
   const merged = {};
+
   for (const id of [...new Set([...Object.keys(mine), ...Object.keys(theirs)])].sort()) {
     const [a, b] = [mine[id], theirs[id]];
     merged[id] = !a || !b ? a || b : {
@@ -805,6 +948,7 @@ function mergeLessons(mine = {}, theirs = {}) {
       passed: earlierResult(a.passed || null, b.passed || null),
     };
   }
+
   return merged;
 }
 
@@ -859,12 +1003,16 @@ export function mergeSynced(local, cloud) {
   const clearedAt = [...heard].sort().at(-1) || '';
   const named = liveNamed([...namedPairs(local), ...namedPairs(cloud)], undone);
   const namedIds = new Set(named.map(([, id]) => id));
+
   const shownBy = (items) => {
     const shown = new Set();
+
     for (const item of items) {
       if (item.textId) shown.add(item.textId);
+
       if (item.challengeDate) shown.add(dailyChallengeId(item.challengeDate));
     }
+
     return shown;
   };
 
@@ -877,14 +1025,19 @@ export function mergeSynced(local, cloud) {
     // earlier, by the later start of the copy saved later (legacyClearedAt).
     const stale = Boolean(clearedAt) && !applied.has(clearedAt);
     const behind = saved < 0 && start < legacyAt;
+
     const after = (stamp, id) => !namedIds.has(String(id ?? '')) && (!stale || (stamp || '') > clearedAt)
       && (!behind || (stamp || '') > legacyAt);
+
     const kept = {};
     const taken = [];
+
     for (const [name, { at }] of Object.entries(HISTORY)) {
       kept[name] = [];
+
       for (const item of list(side[name])) (after(item[at], item.id) ? kept[name] : taken).push(item);
     }
+
     const bests = Object.entries(side.bests || {}).filter(([, best]) => best);
     kept.bests = Object.fromEntries(bests.filter(([, best]) => after(best.at, best.attemptId)));
     kept.rebest = stale || Object.keys(kept.bests).length < bests.length;
@@ -897,61 +1050,82 @@ export function mergeSynced(local, cloud) {
     kept.practiceDays = Object.fromEntries(Object.entries(validPracticeDays(side.practiceDays)).filter(([day]) => !cutoffDay || day > cutoffDay));
     kept.runCounts = keepDays(side.runCounts, (day) => !cutoffDay || day > cutoffDay);
     kept.stale = stale;
+
     return kept;
   };
+
   const mine = surviving(local, clears[0], later, starts[0]);
   const theirs = surviving(cloud, clears[1], -later, starts[1]);
 
   const merged = { ...cloud, ...local };
+
   for (const key of Object.keys(merged)) {
     if (MERGED_FIELDS.has(key)) continue;
     const [mineValue, theirValue] = [local[key], cloud[key]];
+
     if (mineValue === undefined || (theirValue !== undefined
       && takesTheirs(local.updatedAt || '', cloud.updatedAt || '', mineValue, theirValue))) merged[key] = theirValue;
   }
+
   for (const [name, { at, keep }] of Object.entries(HISTORY)) {
     const byId = new Map();
+
     for (const item of [...mine[name], ...theirs[name]]) {
       const id = recordId(item);
       byId.set(id, byId.has(id) ? fuller(byId.get(id), item) : item);
     }
+
     // Settled before the caps, so the day's earliest attempt is found even if the cap then drops it.
     const union = settleDailyFirsts([...byId.values()].sort((a, b) => compare(a[at] || '', b[at] || '') || compare(recordId(a), recordId(b))));
+
     if (name === 'runs') Object.assign(merged, retainHistory(union, mergePracticeDays(mine, theirs, union)));
     else merged[name] = keep(union);
   }
+
   merged.bests = { ...theirs.bests };
+
   for (const [key, best] of Object.entries(mine.bests)) {
     if (beatsBest(best, merged.bests[key])) merged.bests[key] = best;
   }
+
   // On a side whose best a clear took, that best may have kept a later run from becoming one. With the old
   // best gone, that run is the best it would have been: the same rule storeAttempt uses.
   for (const run of [mine, theirs].filter((kept) => kept.rebest).flatMap((kept) => kept.runs)) {
     const key = conditionKey(run.conditions);
     const best = { wpm: run.score?.wpm, attemptId: run.id, at: run.at };
+
     if (trendRun(run) && Number.isFinite(best.wpm) && beatsBest(best, merged.bests[key])) merged.bests[key] = best;
   }
+
   merged.seenTextIds = [...new Set([...mine.seenTextIds, ...theirs.seenTextIds])];
   merged.runCounts = mergeRunCounts(mine.runCounts, theirs.runCounts);
+
   if (local.lessons !== undefined || cloud.lessons !== undefined) merged.lessons = mergeLessons(mine.lessons, theirs.lessons);
 
   const { preferences, preferencesAt } = mergePreferences(local, cloud);
   merged.preferences = preferences;
+
   if (Object.keys(preferencesAt).length) merged.preferencesAt = preferencesAt;
   else delete merged.preferencesAt;
   const answered = new Set([...heard].filter((marker) => [mine, theirs].every((kept, n) => kept.stale || clears[n].applied.has(marker))));
   setClears(merged, clearedAt, answered, heard);
+
   if (named.length) merged.historyClearedIds = named;
   else delete merged.historyClearedIds;
+
   if (undone.length) merged.undoneClears = undone;
   else delete merged.undoneClears;
+
   if (legacyAt) merged.legacyClearedAt = legacyAt;
   else delete merged.legacyClearedAt;
   const updatedAt = [local.updatedAt, cloud.updatedAt].filter(Boolean).sort().at(-1);
+
   if (updatedAt) stampProfile(merged, updatedAt);
   else delete merged.mergeStamp;
   const profileId = [local.profileId, cloud.profileId].filter(Boolean).sort()[0];
+
   if (profileId) merged.profileId = profileId;
+
   return merged;
 }
 
@@ -960,6 +1134,7 @@ export function mergeSynced(local, cloud) {
 // copy that heard of it applies it again. Anything added anywhere since the clear is kept.
 export function revokeClear(current, before, marker) {
   const undone = [...list(before.undoneClears), ...list(current.undoneClears), ...(marker ? [marker] : [])];
+
   return mergeSynced({ ...before, undoneClears: undone }, current);
 }
 
@@ -968,17 +1143,23 @@ export function revokeClear(current, before, marker) {
 // merge would apply one copy's clear to another and drop what the hold is for. Each list is released by
 // its own clear's undo only, so a newer clear never drops what an older one holds.
 const holdCopy = (list_, copy) => (list_.some((held) => held === copy || sameProfile(held, copy)) ? list_ : [...list_, copy]);
+
 export function joinHolds(a, b) {
   const out = { ...a };
+
   for (const [marker, copies] of Object.entries(b || {})) for (const copy of copies) out[marker] = holdCopy(out[marker] || [], copy);
+
   return out;
 }
 
 // The ids a copy holds that a clear's named pairs can take: its records', and those its bests point to.
 const heldIds = (copy) => {
   const ids = new Set();
+
   for (const name of Object.keys(HISTORY)) for (const item of list(copy[name])) if (item.id !== undefined && item.id !== null) ids.add(String(item.id));
+
   for (const best of Object.values(copy.bests || {})) if (best?.attemptId) ids.add(String(best.attemptId));
+
   return ids;
 };
 
@@ -996,29 +1177,37 @@ export function mergeAndHold(holds, local, cloud) {
   const sides = [local, cloud];
   // Every held clear now undone gives back what it held, as far as clears still in force allow.
   const released = Object.keys(holds).filter((marker) => list(merged.undoneClears).includes(marker));
+
   for (const marker of released) {
     for (const copy of holds[marker]) {
       merged = mergeSynced({ ...copy, undoneClears: [...new Set([...list(copy.undoneClears), ...list(merged.undoneClears)])] }, merged);
       sides.push(copy);
     }
+
     delete holds[marker];
   }
+
   const marker = merged.historyClearedAt;
   const pairs = namedPairs(merged);
   const undone = list(merged.undoneClears);
   const knowing = (side) => (undone.length ? { ...side, undoneClears: undone } : side);
+
   for (const side of sides) {
     const ids = pairs.length ? heldIds(side) : new Set();
     const by = new Set(pairs.filter(([, id]) => ids.has(id)).map(([clear]) => clear));
+
     if (marker && !clearsOf(side, undone).applied.has(marker)) by.add(marker);
+
     for (const clear of by) holds[clear] = holdCopy(holds[clear] || [], knowing(side));
   }
+
   return { merged, holds };
 }
 
 // Undo here of the clear `marker`, made in this tab from `before`: released with everything held for it.
 export function undoClearHere(holds, current, marker, before) {
   const undone = { ...current, undoneClears: [...new Set([...list(current.undoneClears), marker])] };
+
   return mergeAndHold(joinHolds(holds, { [marker]: [before] }), undone, undone);
 }
 
@@ -1026,8 +1215,10 @@ export function undoClearHere(holds, current, marker, before) {
 // same signature hold the same records, bests, seen passages and settings.
 export function syncSignature(profile) {
   const sorted = (object) => Object.keys(object || {}).sort().map((key) => [key, object[key]]);
+
   const rest = Object.keys(profile).filter((key) => profile[key] !== undefined && !(key in HISTORY)
     && !['bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt', 'practiceDays', 'runCounts'].includes(key)).sort();
+
   return JSON.stringify([
     Object.keys(HISTORY).map((name) => list(profile[name]).map((item) => [item.id, item.patterns?.length ?? null, item.firstDailyAttempt ?? null])),
     sorted(profile.bests).map(([key, best]) => [key, best?.wpm, best?.at, best?.attemptId]),
@@ -1047,8 +1238,10 @@ export const sameProfile = (a, b) => syncSignature(a) === syncSignature(b);
 // A copy is compared with the row by what the row holds, so recordings held here never call for a write.
 export const rowCopy = (profile) => {
   const { attempts, ...rest } = profile || {};
+
   return rest;
 };
+
 export const sameRow = (a, b) => sameProfile(rowCopy(a), rowCopy(b));
 
 // Folds a one-off import (the pre-accounts profile) into a profile: runs and loops by id, the higher best.
@@ -1056,11 +1249,14 @@ export const sameRow = (a, b) => sameProfile(rowCopy(a), rowCopy(b));
 export function mergeProfiles(base, extra) {
   const byId = (items) => [...new Map(items.map((item) => [item.id, item])).values()];
   const bests = { ...extra.bests };
+
   for (const [key, best] of Object.entries(base.bests)) {
     if (!bests[key] || best.wpm >= bests[key].wpm) bests[key] = best;
   }
+
   const baseIsNew = Object.keys(HISTORY).every((key) => !base[key]?.length) && !Object.keys(base.practiceDays || {}).length;
   const runs = byId([...(extra.runs || []), ...(base.runs || [])]);
+
   return {
     ...base,
     preferences: baseIsNew ? extra.preferences : base.preferences,
@@ -1078,12 +1274,14 @@ export function mergeProfiles(base, extra) {
 export function takeLegacyProfile() {
   const legacy = readJson(LEGACY_PROFILE_KEY);
   remove(LEGACY_PROFILE_KEY);
+
   return legacy;
 }
 
 // Feature suggestions: sent as the anonymous role even when signed in, so a suggestion is never tied
 // to an account. The table accepts inserts only; nothing can be read back through the API.
 export const MAX_SUGGESTION = 1000;
+
 // Every value body[data-view] takes; the table's feature_suggestions_view_check holds the same list.
 // Train shared the results screen when the table was made, so it is stored as "results" too.
 const SUGGESTION_VIEWS = new Set(['practice', 'results', 'progress', 'compete', 'learn']);
@@ -1092,14 +1290,18 @@ const SUGGESTION_VIEW_NAMES = { train: 'results' };
 // The row to store, or the sentence to show instead.
 export function suggestionRow(text, view) {
   const body = typeof text === 'string' ? text.trim() : '';
+
   if (!body) return { error: 'Write a suggestion first.' };
+
   if (body.length > MAX_SUGGESTION) return { error: `Keep it under ${MAX_SUGGESTION} characters.` };
   const name = SUGGESTION_VIEW_NAMES[view] || view;
+
   return { row: { body, view: SUGGESTION_VIEWS.has(name) ? name : null } };
 }
 
 export async function sendSuggestion(text, view) {
   const { row, error } = suggestionRow(text, view);
+
   if (error) throw new AuthError(error);
   await request('/rest/v1/feature_suggestions', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: row });
 }

@@ -101,7 +101,11 @@ test('a book page runs with tape mode, the word highlight, the pace caret and so
       resume() { return Promise.resolve(); }
       suspend() { return Promise.resolve(); }
       close() { return Promise.resolve(); }
-      createBuffer(channels, length) { const data = new Float32Array(length); return { getChannelData: () => data }; }
+      createBuffer(channels, length) {
+        const data = new Float32Array(length);
+
+        return { getChannelData: () => data };
+      }
       createBufferSource() { return node({ start() { window.__clicks += 1; }, stop() {} }); }
       createOscillator() { return node({ frequency: param(), start() {}, stop() {} }); }
       createBiquadFilter() { return node({ frequency: { value: 0 }, Q: { value: 0 } }); }
@@ -129,6 +133,7 @@ test('a book page runs with tape mode, the word highlight, the pace caret and so
 
 test('the rail and passage sit where quote mode puts them, at desktop and phone widths', async ({ page }, testInfo) => {
   test.setTimeout(240_000);
+
   for (const [width, height] of [[1280, 800], [390, 844], [320, 568]]) {
     await page.setViewportSize({ width, height });
     await openApp(page);
@@ -142,8 +147,10 @@ test('the rail and passage sit where quote mode puts them, at desktop and phone 
     expect((await page.locator('#typing-wrap').boundingBox()).y, `${width} passage`).toBe(quote.y);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width} no sideways scroll`).toBe(true);
   }
+
   for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme });
+
     for (const [width, height, name] of [[1280, 800, 'desktop'], [390, 844, 'phone']]) {
       await page.setViewportSize({ width, height });
       await openApp(page);

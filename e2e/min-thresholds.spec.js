@@ -13,6 +13,7 @@ const withMisses = (text) => [...text].map((char, i) => (i % 6 === 5 ? (char ===
 // busy the machine is: 200 ms a key is 60 wpm.
 async function typeAtPace(page, text, msPerKey = 200) {
   await page.locator('#typing-input').focus();
+
   for (const char of text) {
     await page.keyboard.type(char);
     await page.clock.runFor(msPerKey);
@@ -252,6 +253,7 @@ for (const end of ['last character', 'timer']) {
     await page.setViewportSize({ width: 1280, height: 1100 });
     await page.clock.install();
     await openApp(page);
+
     if (end === 'timer') await page.locator('#duration-options [data-length="15"]').click();
     else await chooseWords(page, 10);
     await openSettings(page, 'practice');
@@ -263,6 +265,7 @@ for (const end of ['last character', 'timer']) {
     // neither run reaches, so only the end of the run can judge it.
     const text = await passageText(page);
     await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
+
     if (end === 'timer') {
       // Seventy-five keys fill the 15 s; the typist keeps going for five more, then Enter.
       await typeAtPace(page, withMisses(text.slice(0, 80)));
@@ -270,15 +273,19 @@ for (const end of ['last character', 'timer']) {
       await typeAtPace(page, withMisses(text));
       await page.keyboard.press(' ');
     }
+
     await page.keyboard.press('Enter');
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
     await expect(page.locator('#result-delta')).toHaveText('Under your minimum · not counted');
     await expect(page.locator('#result-comparison-note')).toHaveText('Finished under your 98% minimum accuracy, so it isn’t counted.');
+
     if (end === 'last character') {
       await expect(page.locator('#announcement')).toHaveText(/^Finished under your 98% minimum accuracy\. \d+ wpm, \d+% accuracy\.$/);
       await expect(page.locator('#best')).toHaveText('No best yet');
     }
+
     await expect(page.locator('#run-again')).toBeFocused();
+
     if (end === 'timer') await expect(page.locator('#result-time')).toHaveText('15.0 s');
 
     // Once the typist has paused, Enter starts the next run.
@@ -308,6 +315,7 @@ for (const [keys, ending] of [[74, 'at the buzzer'], [66, 'a second before it']]
     await page.clock.runFor(3000);
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
     await page.clock.resume();
+
     if (keys === 74) {
       await expect(page.locator('#result-time')).toHaveText('15.0 s');
       await expect(page.locator('#result-wpm')).toHaveText('59');
@@ -319,6 +327,7 @@ for (const [keys, ending] of [[74, 'at the buzzer'], [66, 'a second before it']]
       await expect(page.locator('#result-delta')).toHaveText('Interrupted · not counted');
       await expect(page.locator('#result-comparison-note')).toHaveText('Stopped: speed fell below 60 wpm, so it isn’t counted.');
     }
+
     await expect(page.locator('#best')).toHaveText('No best yet');
   });
 }
@@ -402,6 +411,7 @@ test.describe('390px, then 320px', () => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await openApp(page);
     const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
     for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
       await page.setViewportSize(viewport);
       await openSettings(page, 'practice');
@@ -410,10 +420,12 @@ test.describe('390px, then 320px', () => {
       await expect(page.locator('#minimum-note')).toHaveText('min 95% accuracy · min 40 wpm');
       expect(await overflow()).toBeLessThanOrEqual(0);
       const dialog = await page.locator('#settings-dialog').boundingBox();
+
       for (const id of ['#min-accuracy', '#min-wpm']) {
         const box = await page.locator(id).boundingBox();
         expect(box.x + box.width, id).toBeLessThanOrEqual(dialog.x + dialog.width);
       }
+
       const focus = page.locator('#focus-toggle');
       await focus.scrollIntoViewIfNeeded();
       const focusRow = await focus.boundingBox();
@@ -424,6 +436,7 @@ test.describe('390px, then 320px', () => {
       const lengths = await page.locator('#duration-options').boundingBox();
       const note = await page.locator('#minimum-note').boundingBox();
       expect(note.y).toBeGreaterThanOrEqual(lengths.y + lengths.height);
+
       if (viewport.width === 390) await shot(page, testInfo, 'settings-mobile');
       await closeSettings(page);
       await expect(page.locator('#settings-dialog')).toBeHidden();

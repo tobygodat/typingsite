@@ -30,6 +30,7 @@ async function typeLesson(page, options = {}) {
   const text = await passageText(page);
   await typeInto(page, text, '#typing-input', options);
   await expect(body(page)).toHaveAttribute('data-view', 'learn');
+
   return text;
 }
 
@@ -49,22 +50,28 @@ async function penPress(page, selector) {
 function lessonProfile(count, updatedAt = '2026-10-08T12:00:00Z') {
   const lessons = Object.fromEntries(LESSONS.slice(0, count).map((lesson, i) => {
     const record = { wpm: 13 + i * 2, accuracy: 96 + (i % 4), at: `2026-10-0${1 + (i % 7)}T18:${10 + i}:00Z` };
+
     return [lesson.id, { tries: 1 + (i % 3), last: record, passed: record }];
   }));
+
   return { version: 2, preferences: {}, attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, lessons, updatedAt };
 }
 
 // Another device's save, as this build makes one (mergeStamp): copies merge, so lesson progress only goes
 // with a clear (`historyClearedAt`), and comes back with that clear's undo (`undoneClears`).
 function savedElsewhere(count, updatedAt, { clear = false, undone = [] } = {}) {
-  return { ...lessonProfile(count, updatedAt), mergeStamp: updatedAt, undoneClears: undone,
-    ...(clear ? { historyClearedAt: `${updatedAt}~elsewhere` } : {}) };
+  const profile = { ...lessonProfile(count, updatedAt), mergeStamp: updatedAt, undoneClears: undone };
+
+  if (clear) profile.historyClearedAt = `${updatedAt}~elsewhere`;
+
+  return profile;
 }
 
 // A signed-in learner who passed the first `count` lessons.
 function learner(supabase, email, count) {
   const user = supabase.addUser(email);
   supabase.profiles.set(user.id, { data: lessonProfile(count) });
+
   return user;
 }
 
@@ -432,10 +439,12 @@ test.describe('on a touch screen', () => {
   test('the footer shows the best for the run’s input class, and a tap on a ready run switches it', async ({ page, supabase }) => {
     const shape = { mode: 'words', count: 10, punctuation: false, numbers: false, wordList: DEFAULT_WORD_LIST, correctionPolicy: 'relaxed' };
     const seeded = (wpm) => ({ wpm, attemptId: `seed-${wpm}`, at: '2026-10-08T12:00:00Z' });
+
     const bests = {
       [conditionKey({ ...shape, inputClass: 'physical-keyboard' })]: seeded(72),
       [conditionKey({ ...shape, inputClass: 'touch' })]: seeded(41),
     };
+
     const user = supabase.addUser('footer-best-touch@stilltype.test');
     supabase.profiles.set(user.id, { data: { ...lessonProfile(LESSONS.length), bests, preferences: { mode: 'words', count: 10 } } });
     await openApp(page);
@@ -501,6 +510,7 @@ test.describe('on a touch screen', () => {
     await page.keyboard.press('Escape');
     await expect(page.locator('#typing-input')).toHaveValue('');
     await expect(page.locator('#condition-line')).toContainText('touch input');
+
     for (const char of await passageText(page)) await insertPlainText(page, char);
     await expect(body(page)).toHaveAttribute('data-view', 'learn');
     await expect(page.locator('#lesson-status')).toHaveText('touch input');
@@ -541,12 +551,15 @@ test('a clear from another device that locks the current lesson replaces it, or 
     await route.fallback();
   });
   const clears = [];
+
   const cloud = (count, minutes) => {
     const at = new Date(Date.now() + minutes * 60000).toISOString();
+
     // No progress means the other device cleared its history; progress back means it undid that clear.
     if (!count) clears.push(`${at}~elsewhere`);
     supabase.profiles.set(user.id, { data: savedElsewhere(count, at, { clear: !count, undone: count ? [...clears] : clears.slice(0, -1) }) });
   };
+
   const reloadHeld = async () => {
     held = true;
     release = null;
@@ -686,6 +699,7 @@ test('a device that saves after another device passed a lesson keeps that pass',
   await signInWithEmail(page, user.email);
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const stale = await context.newPage();
+
   try {
     await supabase.attach(stale);
     await openApp(stale);
@@ -763,6 +777,7 @@ test('a key-pair lesson is labelled, and its finger map stays in view on a lapto
     fits: document.querySelector('#keyboard .finger-thumbs').getBoundingClientRect().bottom <= innerHeight
       && document.querySelector('#keyboard .finger-label').getBoundingClientRect().bottom <= innerHeight,
   }));
+
   await page.setViewportSize({ width: 1280, height: 721 });
   expect(await inView()).toEqual({ scrollY: 0, fits: true });
   const text = await passageText(page);
@@ -792,17 +807,20 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
     await expect(page.locator('#lesson-keyboard')).toBeVisible();
     await expect(page.locator('#lesson-keyboard .finger-label-short').first()).toBeVisible();
     await expect(page.locator('#lesson-keyboard .finger-legend')).toBeVisible();
+
     if (viewport.width === 390) {
       // The mobile dock covers the foot of the viewport; centre the finger map above it.
       await page.locator('#lesson-keyboard').evaluate((node) => node.scrollIntoView({ block: 'center', behavior: 'instant' }));
       await shot(page, testInfo, 'mobile-learn-dark');
     }
+
     await startLesson(page, 1);
     await expect(page.locator('#keyboard')).toBeVisible();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
     const keyboard = await page.locator('#keyboard').boundingBox();
     expect(keyboard.x).toBeGreaterThanOrEqual(0);
     expect(keyboard.x + keyboard.width).toBeLessThanOrEqual(viewport.width);
+
     if (viewport.width === 390) {
       await page.locator('#typing-input').blur();
       await shot(page, testInfo, 'mobile-lesson-dark');

@@ -30,6 +30,7 @@ test('ordered dither keeps the average brightness and varies dot to dot', () => 
     const mask = levels(ditherMask({ width: 16, height: 16, luma: new Uint8ClampedArray(256).fill(grey) }, 16, 16));
     const mean = mask.reduce((sum, value) => sum + value, 0) / mask.length;
     assert.ok(Math.abs(mean - grey) <= 12, `grey ${grey} averages ${mean}`);
+
     if (grey > 0 && grey < 255 && grey % 85) assert.ok(new Set(mask).size > 1, `grey ${grey} is dithered`);
   }
 });
@@ -39,6 +40,7 @@ test('the image covers the dots: cropped to the middle, never stretched', () => 
   const width = 40;
   const luma = new Uint8ClampedArray(width * 20).map((_, i) => (i % width < width / 2 ? 0 : 255));
   const mask = levels(ditherMask({ width, height: 20, luma }, 8, 8));
+
   for (let y = 0; y < 8; y++) {
     assert.deepEqual(mask.slice(y * 8, y * 8 + 4), [0, 0, 0, 0]);
     assert.deepEqual(mask.slice(y * 8 + 4, y * 8 + 8), [255, 255, 255, 255]);
@@ -55,10 +57,13 @@ test('a small image still fills a large grid', () => {
 test('colourGrid averages each cell in colour, opaque, cropped like cover', () => {
   // Left half red, right half blue, twice as wide as tall: a 2 × 1 grid shows one colour per half.
   const width = 8;
+
   const data = new Uint8ClampedArray(width * 4 * 4).map((_, i) => {
     const x = (i / 4 | 0) % width;
+
     return [x < 4 ? 255 : 0, 0, x < 4 ? 0 : 255, 255][i % 4];
   });
+
   assert.deepEqual([...colourGrid({ width, height: 4, data }, 2, 1)], [255, 0, 0, 255, 0, 0, 255, 255]);
   const mixed = colourGrid({ width, height: 4, data }, 1, 1);
   assert.deepEqual([...mixed], [128, 0, 128, 255]);
@@ -71,6 +76,7 @@ test('smoothScale keeps each cell centre, blends between them and holds flat at 
   assert.equal(out.length, 16 * 8 * 4);
   assert.equal(red(0), 0);
   assert.equal(red(15), 200);
+
   for (let x = 1; x < 16; x++) assert.ok(red(x) >= red(x - 1), `rises at ${x}`);
   assert.ok(red(7) > 0 && red(8) < 200);
   assert.equal(red(7) + red(8), 200);

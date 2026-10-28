@@ -8,6 +8,7 @@ async function member(browser, supabase, email) {
   await supabase.attach(page);
   await openApp(page);
   await signInWithEmail(page, email);
+
   return { context, page };
 }
 
@@ -16,6 +17,7 @@ async function createGuestRace(page) {
   await page.locator('#create-online-race').click();
   const field = page.locator('#online-guest-link');
   await expect(field).toHaveValue(/#race=[0-9a-f-]+&invite=[0-9a-f]+$/);
+
   return field.inputValue();
 }
 
@@ -68,6 +70,7 @@ test('a saved friend is challenged without retyping their email, and the challen
 
   // The invited account sees a toast top right and an unread envelope, from any screen.
   const { context, page: lin } = await member(browser, supabase, 'lin@stilltype.test');
+
   try {
     const toast = lin.locator('#challenge-toast');
     await expect(toast).toBeVisible({ timeout: 12000 });
@@ -173,6 +176,7 @@ test('after a race both pick Rematch and the next race starts on its own, the pa
   await expect(page.locator('#online-room')).toBeVisible();
   const first = [...supabase.races.rooms.values()][0];
   const { context, page: lin } = await member(browser, supabase, 'lin@stilltype.test');
+
   try {
     await openView(lin, 'Challenge');
     await lin.locator('#online-name').fill('Lin');
@@ -242,6 +246,7 @@ test('after a race both pick Rematch and the next race starts on its own, the pa
     await page.evaluate(() => {
       const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-inbox-v1:'));
       const entries = JSON.parse(localStorage.getItem(key));
+
       for (const entry of entries) if (entry.kind === 'result') entry.until = new Date(Date.now() + 4000).toISOString();
       localStorage.setItem(key, JSON.stringify(entries));
     });
@@ -271,6 +276,7 @@ test('a guest races again with the same seat and no new link and keeps no tally,
   const context = await browser.newContext();
   const guest = await context.newPage();
   await supabase.attach(guest);
+
   try {
     await guest.goto(link);
     await expect(guest.locator('#online-guest-join')).toBeVisible();
@@ -310,13 +316,16 @@ test('a guest races again with the same seat and no new link and keeps no tally,
 const saveFriend = (supabase, owner, email) => new Promise((resolve) => {
   supabase.races.handle(owner.id, { p_action: 'befriend', p_data: { email } }, resolve);
 });
+
 const challengeFrom = (supabase, host, email) => new Promise((resolve) => {
   supabase.races.handle(host.id, { p_action: 'create', p_data: {
     passage: 'The quick brown fox jumps over the lazy dog, twice over.', conditions: {}, displayName: 'Kim', inviteEmail: email,
   } }, resolve);
 });
+
 // The request held for this action has reached the service (its answer is still held).
 const arrived = (supabase, action) => expect.poll(() => supabase.races.holds.has(action)).toBe(false);
+
 // Counts how often a list's rows are drawn again from now on.
 async function countRedraws(page, selector) {
   const key = `redraws:${selector}`;
@@ -324,8 +333,10 @@ async function countRedraws(page, selector) {
     window[name] = 0;
     new MutationObserver(() => { window[name] += 1; }).observe(list, { childList: true });
   }, key);
+
   return () => page.evaluate((name) => window[name], key);
 }
+
 // Visible CSS transitions (a theme's cross-fade) finish before a measurement or a picture.
 const settleTransitions = (page) => page.evaluate(() => Promise.all(document.getAnimations()
   .filter((animation) => animation instanceof CSSTransition && animation.effect?.target?.checkVisibility())
@@ -459,37 +470,49 @@ test('a pressed race control keeps keyboard focus while its request is out, and 
   releaseRead();
   await expect.poll(redraws).toBeGreaterThan(0);
   await expect(challenge).toBeFocused();
+
   for (const control of ['#create-online-race', '[data-accept-invite]', '[data-race-friend]']) {
     for (const button of await page.locator(control).all()) await expect(button).toHaveAttribute('aria-disabled', 'true');
   }
+
   // Removing a friend is not a race request, so it doesn't wait for one.
   for (const button of await page.locator('[data-remove-friend]').all()) await expect(button).not.toHaveAttribute('aria-disabled');
   await page.evaluate(() => scrollTo(0, document.getElementById('online-invite-email').getBoundingClientRect().top + scrollY - 100));
+
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await settleTransitions(page);
     // The others are dimmed as disabled. The pressed one dims its colours instead of the whole box,
     // so its focus ring stays at full strength in the text colour.
     expect(await page.getByRole('button', { name: 'Challenge kim' }).evaluate((node) => getComputedStyle(node).opacity)).toBe('0.38');
+
     // The theme follows the emulated scheme through the app's change listener, so wait for it to land.
     const look = () => challenge.evaluate((node) => ({ opacity: getComputedStyle(node).opacity, ring: getComputedStyle(node).outlineColor,
       text: getComputedStyle(document.body).color, theme: document.documentElement.dataset.theme, focusVisible: node.matches(':focus-visible') }));
-    await expect.poll(async () => { const { ring, text, ...rest } = await look(); return { ...rest, ringIsText: ring === text }; })
+
+    await expect.poll(async () => {
+      const { ring, text, ...rest } = await look();
+
+      return { ...rest, ringIsText: ring === text };
+    })
       .toEqual({ opacity: '1', ringIsText: true, theme, focusVisible: true });
     const path = process.env.SCREENSHOTS ? `docs/screenshots/social-rematch-flake/challenge-busy-${theme}.png` : testInfo.outputPath(`challenge-busy-${theme}.png`);
     await page.screenshot({ path });
   }
+
   // Pressing it again sends nothing more; focus is still there.
   await page.keyboard.press('Enter');
   await expect(challenge).toBeFocused();
   // Under the pointer a waiting control stays as it is: no hover fill, and no press.
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const background = (button) => button.evaluate((node) => getComputedStyle(node).backgroundColor);
+
   for (const button of [page.getByRole('button', { name: 'Challenge kim' }), page.locator('#create-online-race')]) {
     const atRest = await background(button);
     await button.hover();
     expect(await background(button)).toBe(atRest);
   }
+
   await page.mouse.down();
   expect(await page.locator('#create-online-race').evaluate((node) => getComputedStyle(node).transform)).toBe('none');
   await page.mouse.up();
@@ -523,7 +546,11 @@ test('an invitation’s Join race keeps keyboard focus while its join is out, an
   await expect(join).toHaveAttribute('aria-disabled', 'true');
   // A press while it waits does nothing at all: not even a refresh of the invitations.
   await expect(page.locator('#refresh-race-invites')).toBeEnabled();
-  expect(await join.evaluate((node) => { node.click(); return document.getElementById('refresh-race-invites').disabled; })).toBe(false);
+  expect(await join.evaluate((node) => {
+    node.click();
+
+    return document.getElementById('refresh-race-invites').disabled;
+  })).toBe(false);
   await expect(join).toBeFocused();
   releaseJoin();
   await expect(page.locator('#online-room')).toBeVisible();
@@ -559,7 +586,11 @@ test('while a race request is out, the toast’s and the inbox’s Join wait vis
   await inboxJoin.focus();
   const polls = () => supabase.requests.filter((request) => request.startsWith('POST /rest/v1/rpc/race_action')).length;
   const before = polls();
-  await expect.poll(async () => { await page.evaluate(() => dispatchEvent(new Event('online'))); return polls(); }).toBeGreaterThan(before);
+  await expect.poll(async () => {
+    await page.evaluate(() => dispatchEvent(new Event('online')));
+
+    return polls();
+  }).toBeGreaterThan(before);
   await expect(inboxJoin).toBeFocused();
   // A click past the dimmed look does nothing, and the inbox stays open on it.
   await inboxJoin.click({ force: true });
@@ -581,6 +612,7 @@ test('a friend list that failed to load, then loads empty, shows its usual copy 
   await page.route(/\/rest\/v1\/rpc\/race_action$/, (route) => {
     if (failed || route.request().postDataJSON()?.p_action !== 'friends') return route.fallback();
     failed = true;
+
     return route.abort('internetdisconnected');
   });
   await signInWithEmail(page, 'host@stilltype.test');
@@ -603,8 +635,10 @@ test('the inbox sits beside the account button without touching the dock', async
   // The unread badge counts in the same tabular Literata figures as every other numeral.
   const badge = await page.locator('#inbox-count').evaluate((node) => getComputedStyle(node).fontVariantNumeric);
   expect(badge).toContain('tabular-nums');
+
   for (const width of [320, 390, 761, 800, 900, 901, 1000, 1280]) {
     await page.setViewportSize({ width, height: 760 });
+
     for (const theme of ['light', 'dark']) {
       await page.emulateMedia({ colorScheme: theme });
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
@@ -615,8 +649,10 @@ test('the inbox sits beside the account button without touching the dock', async
       const beside = inbox.x + inbox.width <= account.x + 1 && Math.abs(inbox.y - account.y) < 1;
       const under = inbox.y >= account.y + account.height && Math.abs(inbox.x + inbox.width - account.x - account.width) < 1;
       expect(beside || under, `inbox placed by the account at ${width}`).toBe(true);
+
       if (width > 760) expect(inbox.x, `inbox clears the dock at ${width}`).toBeGreaterThanOrEqual(dock.x + dock.width);
     }
+
     await page.locator('#inbox-trigger').click();
     const popover = await page.locator('.inbox-popover').boundingBox();
     expect(popover.x, `inbox popover inside the viewport at ${width}`).toBeGreaterThanOrEqual(0);
@@ -624,6 +660,7 @@ test('the inbox sits beside the account button without touching the dock', async
     await page.keyboard.press('Escape');
     await expect(page.locator('.inbox-popover')).toBeHidden();
   }
+
   // From the keyboard too, opening one corner panel closes the other.
   await page.locator('#account-trigger').focus();
   await page.keyboard.press('Enter');

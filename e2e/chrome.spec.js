@@ -2,8 +2,10 @@
 import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, storageKeys, chooseSetting, closeSettings } from './fixtures.js';
 
 const html = (page) => page.locator('html');
+
 // index.html carries a light and a dark theme-color meta; the app sets both to the resolved theme.
 const themeColor = (page) => page.locator('meta[name="theme-color"]').first();
+
 async function pressSequence(page) {
   for (const key of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a']) {
     await page.keyboard.press(key);
@@ -90,10 +92,12 @@ test.describe('theme', () => {
 test('settings apply their display preferences', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
+
   for (const [size, px] of [['22', '29px'], ['36', '44px'], ['28', '36px']]) {
     await chooseSetting(page, 'font-size', size);
     await expect(page.locator('#text-display')).toHaveCSS('font-size', px);
   }
+
   await chooseSetting(page, 'live-toggle', true);
   await expect(page.locator('body')).toHaveAttribute('data-live-metrics', 'true');
   await chooseSetting(page, 'keyboard-toggle', true);
@@ -219,9 +223,11 @@ test('chrome fades while typing and returns on pointer movement and finish', asy
   await typeInto(page, text.slice(0, 3));
 
   await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+
   for (const selector of ['.dock-zone', '.corner', '.practice-controls', '.site-footer', '.shortcut-row']) {
     await expect(page.locator(selector)).toHaveCSS('opacity', '0');
   }
+
   await expect(page.locator('#text-display')).toHaveCSS('opacity', '1');
 
   // Layout jitter under 4px is ignored; a real nudge brings the chrome back.
@@ -245,11 +251,13 @@ test.describe('reduced motion', () => {
   test('every duration collapses to (effectively) zero', async ({ page }) => {
     await openApp(page);
     await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--motion-scale').trim())).toBe('0');
+
     for (const selector of ['.dock-zone', '#text-display']) {
       const durations = await page.locator(selector).evaluate((node) => getComputedStyle(node).transitionDuration.split(', '));
       // styles.css pins transitions to 1ms so transitionend still fires.
       expect(durations.every((value) => parseFloat(value) <= 0.001), `${selector} ${durations}`).toBe(true);
     }
+
     // The speed graph stays visible with no drawing animation.
     await chooseWords(page, 10);
     await completePassage(page);
@@ -269,6 +277,7 @@ test.describe('reduced motion', () => {
 test('a palette jump puts focus on the new screen’s heading, or in the passage on Practice', async ({ page }) => {
   await openApp(page);
   await page.locator('#account-trigger').focus();
+
   for (const [query, label, target] of [['challenge', 'challenge', '#compete-heading'], ['progress', 'progress', '#progress-heading'],
     ['train', 'train', '#train-heading'], ['practice', 'practice', '#typing-input']]) {
     await page.keyboard.press('Control+k');

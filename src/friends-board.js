@@ -18,13 +18,16 @@ import { comparableKind, conditionParts, dailyPassage, trendRun, validRun } from
 import { speedFigure, unitLabel } from './units.js';
 
 const DAY_MS = 86400000;
+
 // The service shows nothing outside these, so they are never written.
 const MAX_WPM = 400;
 const MAX_ATTEMPTS = 1000;
 const MAX_RUNS = 10000;
 export const MAX_SHAPES = 16;
+
 // A plus joins the text part's settings (`plain+numbers`), so it is allowed too.
 const KEY_PATTERN = /^[A-Za-z0-9:._+-]{1,200}$/;
+
 // The app's own test shapes: timed, word-count and quote tests.
 const SHAPE_MODES = ['time', 'words', 'quote'];
 const $ = (id) => document.getElementById(id);
@@ -39,6 +42,7 @@ export const utcDay = (date = new Date()) => date.toISOString().slice(0, 10);
 // Monday 00:00 UTC of the week holding `date`, as YYYY-MM-DD.
 export function weekStart(date = new Date()) {
   const midnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+
   return utcDay(new Date(midnight - ((date.getUTCDay() + 6) % 7) * DAY_MS));
 }
 
@@ -64,6 +68,7 @@ export function shareableBest(run) {
 // recently run.
 export function shapeBests(runs) {
   const shapes = new Map();
+
   for (const run of runs) {
     if (!shareableBest(run)) continue;
     const at = Date.parse(run.at);
@@ -73,11 +78,14 @@ export function shapeBests(runs) {
     entry.runs += 1;
     entry.last = Math.max(entry.last, at);
     const best = entry.best;
+
     if (!best || wpm > best.wpm || (wpm === best.wpm && (accuracy > best.accuracy || (accuracy === best.accuracy && at < best.at)))) {
       entry.best = { wpm, accuracy, at };
     }
+
     shapes.set(key, entry);
   }
+
   return Object.fromEntries([...shapes]
     .sort(([keyA, a], [keyB, b]) => Number(Boolean(shapeOf(keyB))) - Number(Boolean(shapeOf(keyA)))
       || b.runs - a.runs || b.last - a.last || (keyA < keyB ? -1 : 1))
@@ -89,6 +97,7 @@ export function shapeBests(runs) {
 // today (or this week), so two cover a reader on either side of a midnight.
 const PERIODS = 2;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 // The latest PERIODS keys of a map of periods, newest first.
 const latest = (periods) => [...periods.keys()].sort().reverse().slice(0, PERIODS);
 
@@ -106,13 +115,17 @@ const latest = (periods) => [...periods.keys()].sort().reverse().slice(0, PERIOD
 export function boardSummary(runs, dailyKey) {
   const dailies = new Map();
   const weeks = new Map();
+
   for (const run of runs) {
     if (!validRun(run) || !comparableKind(run.kind)) continue;
+
     if (run.kind === 'daily' && DATE.test(run.challengeDate ?? '') && conditionKey(run.conditions) === dailyKey && run.score?.wpm <= MAX_WPM) {
       if (!dailies.has(run.challengeDate)) dailies.set(run.challengeDate, []);
       dailies.get(run.challengeDate).push(run);
     }
+
     const at = run.at ? Date.parse(run.at) : NaN;
+
     if (Number.isNaN(at)) continue;
     const start = weekStart(new Date(at));
     const week = weeks.get(start) || { ms: 0, runs: 0 };
@@ -120,10 +133,12 @@ export function boardSummary(runs, dailyKey) {
     week.runs += 1;
     weeks.set(start, week);
   }
+
   return {
     days: Object.fromEntries(latest(dailies).map((day) => {
       const attempts = dailies.get(day);
       const best = [...attempts].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
+
       return [day, { version: dailyVersion(dailyKey, new Date(`${day}T00:00:00Z`)), wpm: best.score.wpm, accuracy: best.score.accuracy,
         attempts: Math.min(attempts.length, MAX_ATTEMPTS) }];
     })),
@@ -152,18 +167,27 @@ export function shapeOf(key) {
   const suffix = parts.splice(11);
   const layoutPart = suffix.at(-1)?.startsWith('layout-') ? suffix.pop() : null;
   const layout = layoutPart?.startsWith('layout-') ? layoutPart.slice(7) : null;
+
   if (suffix.some((part) => !['strict-space', 'quick-end-off'].includes(part))) return null;
+
   if (parts.length !== 11 || (layoutPart && (!layoutIds.includes(layout) || isDefaultLayout(layout)))) return null;
   const [mode, duration, count, text, quoteLength, difficulty, wordList, inputClass, correctionPolicy, corpus, metricVersion] = parts;
   // Numbers ride on the text part (`plain+numbers`), and only on generated tests; a quote ignores them.
   const numbers = text.endsWith('+numbers');
   const punctuation = numbers ? text.slice(0, -'+numbers'.length) : text;
+
   const conditions = { mode, duration: Number(duration) || null, count: Number(count) || null, punctuation: punctuation === 'punctuation',
     numbers, quoteLength: quoteLength || null, difficulty: difficulty || null, wordList: wordList || null, inputClass, correctionPolicy,
-    language: 'en', corpus, metricVersion, ...(layout ? { layout } : {}),
-    ...(suffix.includes('strict-space') ? { strictSpace: true } : {}),
-    ...(suffix.includes('quick-end-off') ? { quickEnd: false } : {}) };
+    language: 'en', corpus, metricVersion };
+
+  if (layout) conditions.layout = layout;
+
+  if (suffix.includes('strict-space')) conditions.strictSpace = true;
+
+  if (suffix.includes('quick-end-off')) conditions.quickEnd = false;
+
   const quote = mode === 'quote';
+
   const written = SHAPE_MODES.includes(mode)
     && (mode === 'time' ? isValidLength('time', conditions.duration) : !duration)
     && (mode === 'words' ? isValidLength('words', conditions.count) : !count)
@@ -171,11 +195,14 @@ export function shapeOf(key) {
       : !quoteLength && !difficulty && wordListIds.includes(wordList))
     && INPUT_CLASSES.includes(inputClass) && CORRECTION_POLICIES.includes(correctionPolicy)
     && corpus === CORPUS_VERSION && metricVersion === METRIC_VERSION;
+
   return written && conditionKey(conditions) === key ? conditions : null;
 }
+
 // A key's shape without its corpus and metric version, to tell "another version of this shape".
 const shapePart = (key) => {
   const parts = String(key).split(':');
+
   return [...parts.slice(0, 9), ...parts.slice(11)].join(':');
 };
 
@@ -184,6 +211,7 @@ const shapePart = (key) => {
 export function boardShapes(rows) {
   const keys = new Set(rows.flatMap((row) => Object.keys(row.bests || {})).filter((key) => shapeOf(key)));
   const length = (shape) => shape.duration || shape.count || 0;
+
   return [...keys].map((key) => ({ key, conditions: shapeOf(key) })).sort((a, b) => SHAPE_MODES.indexOf(a.conditions.mode) - SHAPE_MODES.indexOf(b.conditions.mode)
     || length(a.conditions) - length(b.conditions) || Number(a.conditions.numbers) - Number(b.conditions.numbers)
     || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
@@ -194,21 +222,28 @@ export function boardShapes(rows) {
 // keys can differ by it alone.
 function describedParts(conditions) {
   const part = conditionParts(conditions);
+
   if (conditions.mode !== 'quote') return part;
   const { language, length, text, ...rest } = part;
+
   return { language, length, text, setting: conditions.punctuation ? 'on' : 'off', ...rest };
 }
+
 // The setting, named short in the picker and in full under it.
 const named = (name, value, full = false) => (name === 'setting' ? `punctuation ${full ? 'setting ' : ''}${value}` : value);
+
 // A quote has no word list (its language part is plain "english"), and only a quote has that setting, so
 // each is compared, and named, only between the shapes it belongs to.
 const belongs = (name, conditions) => (name === 'language' ? conditions.mode !== 'quote' : name !== 'setting' || conditions.mode === 'quote');
+
 // Each listed shape's parts, and which parts tell the listed shapes apart.
 function tellApart(shapes) {
   const described = shapes.map((shape) => describedParts(shape.conditions));
   const names = [...new Set(described.flatMap((part) => Object.keys(part)))];
+
   const differs = new Set(names.filter((name) => new Set(described.filter((part, index) => belongs(name, shapes[index].conditions))
     .map((part) => part[name])).size > 1));
+
   return { described, names, differs };
 }
 
@@ -217,10 +252,13 @@ function tellApart(shapes) {
 // shapes listed, so what tells two apart comes before a narrow picker cuts the rest off.
 export function shapeLabels(shapes) {
   const { described, names, differs } = tellApart(shapes);
+
   const order = ['length', 'text', 'setting', ...names].filter((name, index, all) => all.indexOf(name) === index
     && (name === 'length' || name === 'text' || differs.has(name)));
-  return described.map((part, index) => order.filter((name) => belongs(name, shapes[index].conditions) && part[name] !== undefined)
-    .map((name) => named(name, part[name])).join(' · '));
+
+  return described.map((part, index) => order
+    .flatMap((name) => (belongs(name, shapes[index].conditions) && part[name] !== undefined ? [named(name, part[name])] : []))
+    .join(' · '));
 }
 
 // What the picker's name for the picked shape leaves out, and only where it isn't the usual: a word list
@@ -228,11 +266,13 @@ export function shapeLabels(shapes) {
 // rules are already in the app's parts only away from their defaults. Versions never differ on the
 // board (boardShapes keeps the current ones), so they aren't named.
 const USUAL = { language: ['english 200', 'english'], input: ['physical keyboard'], correction: ['continue on error'] };
+
 export function shapeDescription(shapes, key) {
   const { described, differs } = tellApart(shapes);
   const index = shapes.findIndex((shape) => shape.key === key);
   const part = described[index] || {};
   const shown = ['length', 'text', 'setting', ...differs].filter((name) => name === 'length' || name === 'text' || differs.has(name));
+
   return Object.entries(part).filter(([name, value]) => !shown.includes(name) && !['setting', 'corpus', 'metric'].includes(name)
     && !USUAL[name]?.includes(value)).map(([name, value]) => named(name, value, true)).join(' · ');
 }
@@ -241,12 +281,15 @@ export function shapeDescription(shapes, key) {
 // people on the board have a best on, then the first listed.
 export function defaultShape(shapes, runs, rows) {
   const counts = new Map();
+
   for (const run of runs) {
     if (!shareableBest(run)) continue;
     const key = conditionKey(run.conditions);
     counts.set(key, (counts.get(key) || 0) + 1);
   }
+
   const holders = (key) => rows.filter((row) => row.bests?.[key]).length;
+
   return [...shapes].sort((a, b) => (counts.get(b.key) || 0) - (counts.get(a.key) || 0) || holders(b.key) - holders(a.key))[0]?.key ?? null;
 }
 
@@ -256,8 +299,10 @@ export function bestsOrder(rows, key) {
   const placed = rows.map((row) => {
     const best = row.bests?.[key] ?? null;
     const otherVersion = !best && Object.keys(row.bests || {}).some((other) => other !== key && !shapeOf(other) && shapePart(other) === shapePart(key));
+
     return { ...row, best, otherVersion };
   });
+
   return placed.sort((a, b) => Number(Boolean(b.best)) - Number(Boolean(a.best))
     || (b.best?.wpm ?? 0) - (a.best?.wpm ?? 0) || (b.best?.accuracy ?? 0) - (a.best?.accuracy ?? 0) || byName(a, b));
 }
@@ -271,17 +316,21 @@ export function bestsOrder(rows, key) {
 // is harmless: it shows the same day, with a new `nextDay`.
 export const nextRead = (reply, wall = Date.now(), mono = performance.now()) => (Number.isFinite(reply?.nextDay)
   ? { wall: wall + reply.nextDay * 1000, mono: mono + reply.nextDay * 1000 } : null);
+
 export const readDue = (at, wall = Date.now(), mono = performance.now()) => !at || wall >= at.wall || mono >= at.mono;
 
 // Under a minute in seconds, then minutes: one decimal below ten, whole above. Never rounded up.
 export function practiceTime(seconds) {
   if (!seconds) return { value: '0', unit: 'min' };
+
   if (seconds < 60) return { value: String(seconds), unit: 's' };
   const minutes = seconds / 60;
+
   return { value: minutes < 10 ? (Math.floor(minutes * 10) / 10).toFixed(1) : String(Math.floor(minutes)), unit: 'min' };
 }
 
 const label = (row) => (row.self ? 'You' : row.name || 'Friend');
+
 // Level rows list you first, then by name.
 const byName = (a, b) => Number(Boolean(b.self)) - Number(Boolean(a.self)) || label(a).localeCompare(label(b));
 
@@ -303,21 +352,27 @@ export function weekOrder(rows) {
 // ':' and the version), so a tab that adopts what another tab read adopts the version that goes with it.
 // A value without a version (kept by an earlier build) has none; anything else is nothing known.
 export const sharingValue = (value, version) => `${value ? 1 : 0}${Number.isSafeInteger(version) && version >= 0 ? `:${version}` : ''}`;
+
 export function readSharing(value) {
   const kept = /^([01])(?::(\d{1,16}))?$/.exec(typeof value === 'string' ? value : '');
   const version = kept?.[2] === undefined ? null : Number(kept[2]);
+
   return kept && (version === null || Number.isSafeInteger(version)) ? { sharing: kept[1] === '1', version } : { sharing: null, version: null };
 }
+
 const sharingKey = (session) => `stilltype-board-sharing:${session.user.id}`;
+
 function knownSharing(session) {
   try { return readSharing(localStorage.getItem(sharingKey(session))); } catch { return readSharing(null); }
 }
+
 function rememberSharing(session, value, version = null) {
   try {
     if (value === null) localStorage.removeItem(sharingKey(session));
     else localStorage.setItem(sharingKey(session), sharingValue(value, version));
   } catch {}
 }
+
 // An opt-out the service hasn't confirmed yet, kept on this device across reloads until it has. Any tab
 // of the device sends it, before any other board request. Until then this device's profile saves write
 // no summary (src/app.js), so it shows nothing new. Each opt-out is kept under its own id, and a
@@ -328,25 +383,34 @@ function rememberSharing(session, value, version = null) {
 // this browser can't keep one in localStorage, this page keeps it until it is confirmed (or the page closes).
 const optOutKey = (session) => `stilltype-board-optout:${session.user.id}`;
 const keptInPage = new Map();
+
 function optOutId(session) {
   try {
     const id = localStorage.getItem(optOutKey(session));
+
     if (id !== null) return id;
   } catch {}
+
   return keptInPage.get(session.user.id) ?? null;
 }
+
 export const optOutPending = (session) => optOutId(session) !== null;
+
 function rememberOptOut(session) {
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
   try {
     localStorage.setItem(optOutKey(session), id);
     keptInPage.delete(session.user.id);
   } catch { keptInPage.set(session.user.id, id); }
 }
+
 function settleOptOut(session, id) {
   try { if (localStorage.getItem(optOutKey(session)) === id) localStorage.removeItem(optOutKey(session)); } catch {}
+
   if (keptInPage.get(session.user.id) === id) keptInPage.delete(session.user.id);
 }
+
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const OFF = 'Your row is off the board.';
 const PENDING = 'Your row comes off once the board can be reached.';
@@ -362,15 +426,18 @@ async function call(session, action, data = {}) {
   // Background polls may have rotated the refresh token; the newest stored copy for this account wins.
   const stored = loadSession();
   const active = await freshSession(stored?.user?.id === session.user.id ? stored : session);
+
   try {
     return await request('/rest/v1/rpc/friends_board', { method: 'POST', token: active.access_token, body: { p_action: action, p_data: data } });
   } catch (error) {
     if (error.status === 404 || /schema cache|could not find.*function/i.test(error.message)) {
       throw new AuthError('The friends board is being set up. Please try again shortly.');
     }
+
     throw error;
   }
 }
+
 // No numbers travel: the service reads them from each account's own profile row. A share carries only
 // the sharing version it is based on (see versionOf), and an opt-out only the id it is kept under here
 // (the service takes one without a valid id as a new opt-out; the board never sends one).
@@ -388,20 +455,27 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // Signed out: this device stops keeping whether the account shares.
   let closed = false;
   const isSharing = () => sharing === true;
+
   // `at` is the sharing version of the reply that said so, kept beside it for this device's other tabs.
   function setSharing(value, at = null) {
     sharing = value;
+
     if (at !== null) latest = at;
     const session = getSession();
+
     if (session && !closed) rememberSharing(session, value, at);
   }
+
   // What this browser's tabs keep (see knownSharing).
   const keptHere = () => (getSession() && !closed ? knownSharing(getSession()) : { sharing: null, version: null });
+
   // The newest sharing version this browser holds: the one this tab took last, or the one its tabs keep.
   function held() {
     const kept = keptHere().version;
+
     return latest === null ? kept : kept === null ? latest : Math.max(latest, kept);
   }
+
   // Sharing state only moves forward. A reply's state counts only if its version is newer than any this
   // browser holds: a slow reply, answered before another tab (or device) changed sharing and arriving
   // after this browser learned of that change, changes neither the switch nor what the tabs keep, and
@@ -410,18 +484,25 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   function adoptReply(result) {
     const at = versionOf(result);
     const newest = held();
+
     if (typeof result?.sharing === 'boolean' && (newest === null || (at !== null && at > newest))) {
       setSharing(result.sharing, at);
+
       return true;
     }
+
     const kept = keptHere();
+
     if (kept.sharing !== null && kept.version !== null && (latest === null || kept.version > latest)) {
       sharing = kept.sharing;
       latest = kept.version;
+
       if (!sharesWaiting) version = kept.version;
     }
+
     return false;
   }
+
   let loading = false;
   let board = null;
   let generation = 0;
@@ -453,17 +534,21 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   function took(result) {
     const at = versionOf(result);
     const newest = held();
+
     if (at !== null && newest !== null && at < newest) return;
     board = result;
     rollAt = nextRead(result) ?? rollAt;
+
     if (!sharesWaiting && at !== null && (version === null || at > version)) version = at;
   }
+
   // The reply to this tab's own change: one step past the version it knew means nothing else came in
   // between, so the version after it is known too. Anything more stays unknown until this tab takes a
   // board, and a share sent meanwhile is refused rather than counting a change this tab never showed.
   function stepped(result) {
     if (version !== null && versionOf(result) === version + 1) version += 1;
   }
+
   // Every reply says whether this account shares, and that is what this tab goes by: another device may
   // have turned it on or off. A reply that crossed a switch here, or came while an opt-out made on this
   // device is unconfirmed, doesn't count, and nor does one older than what this browser holds (see
@@ -473,22 +558,28 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   function learn(result, seq) {
     if (typeof result?.sharing !== 'boolean' || seq !== toggles || unsharing) return;
     const was = sharing;
+
     if (!adoptReply(result)) {
       // What another tab kept, taken instead: that tab says what changed.
       if (sharing !== was) note = '';
+
       return;
     }
+
     if (!result.sharing && was) note = ELSEWHERE;
     else if (result.sharing && !was) note = '';
   }
 
   // The switch's requests go one at a time, in order, so the service keeps the last choice made here.
   let switching = Promise.resolve();
+
   const inTurn = (task) => {
     const next = switching.catch(() => {}).then(task);
     switching = next;
+
     return next;
   };
+
   // The opt-out, sent now with the id it is kept under. Once the service confirms it, that opt-out is
   // settled on this device. This tab is off the board then, unless its switch has moved since, or a newer
   // opt-out is still kept. What it now knows is kept before the opt-out is settled, so the other tabs,
@@ -497,48 +588,63 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // an opt-out sent then would be a new one, and would undo the share. It reads the board instead.
   async function unshareNow(session, seq = toggles) {
     const id = optOutId(session);
+
     if (id === null) {
       unsharing = false;
+
       return readBoard(session);
     }
+
     const result = await stopSharing(session, id);
     stepped(result);
     const newest = optOutId(session);
+
     if (seq === toggles && (newest === null || newest === id)) {
       unsharing = false;
       adoptReply(result);
       note = '';
       took(result);
     }
+
     settleOptOut(session, id);
+
     return result;
   }
+
   function removeRow(session) {
     const seq = toggles;
+
     return inTurn(() => unshareNow(session, seq));
   }
+
   // Sharing was turned off on this device and the service hasn't confirmed it.
   function optedOut() {
     unsharing = true;
     turningOn = false;
+
     if (sharing) sharing = false;
     board = null;
   }
+
   // An opt-out made in another tab, re-read before any board request here: this tab stops too, and sends
   // it with that request. One this tab still waits on that is no longer kept was confirmed (by a share
   // ahead of it, or by another tab): there is nothing left to send. True while one is unconfirmed.
   function optingOut(session) {
     const pending = optOutPending(session);
+
     if (!unsharing && pending) {
       optedOut();
+
       if (visible) render();
     } else if (unsharing && !pending) unsharing = false;
+
     return unsharing;
   }
 
   function row(entry, value, unit, detail) {
     const item = document.createElement('li');
     item.className = 'board-row';
+
     if (entry.self) item.dataset.self = 'true';
     const name = document.createElement('span');
     name.className = 'board-name';
@@ -549,17 +655,20 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     number.className = 'num';
     number.append(value);
     measure.append(number);
+
     if (unit) {
       const suffix = document.createElement('span');
       suffix.className = 'board-unit';
       suffix.append(unit);
       measure.append(' ', suffix);
     }
+
     const note = document.createElement('span');
     note.className = 'board-detail num';
     note.textContent = detail;
     // The spaces keep the row reading as words ("Lin 78 wpm 96% accuracy"); a grid ignores them.
     item.append(name, ' ', measure, ' ', note);
+
     return item;
   }
 
@@ -568,6 +677,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
 
   // The status line last asked for, kept when another tab's change re-renders the board.
   let shown = '';
+
   function render(status = '') {
     shown = status;
     const signedIn = Boolean(getSession());
@@ -581,14 +691,18 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     $('friends-board-off').hidden = !signedIn || switchedOn() || sharing === null;
     // A live region: written only when the words change, so nothing is announced twice.
     const text = signedIn ? status || (!shared && !turningOn ? note : '') : '';
+
     if ($('friends-board-status').textContent !== text) $('friends-board-status').textContent = text;
     // A daily result from another build (another passage, corpus or scoring) is not compared; its row says so.
     const version = board?.date && dailyVersion(dailyKey(), new Date(`${board.date}T00:00:00Z`));
+
     const rows = shared && board?.sharing && board.rows
       ? board.rows.map((entry) => (entry.daily && entry.daily.version !== version ? { ...entry, daily: null, otherVersion: true } : entry))
       : null;
+
     $('friends-board-lists').hidden = !rows;
     $('friends-board-empty').hidden = !rows || rows.some((entry) => !entry.self);
+
     if (!rows) return;
     $('board-daily-meta').textContent = board.date;
     $('board-daily').replaceChildren(...dailyOrder(rows).map((entry) => (entry.daily
@@ -597,6 +711,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     $('board-week').replaceChildren(...weekOrder(rows).map((entry) => {
       if (!entry.week) return row(entry, '—', '', 'nothing yet this week');
       const time = practiceTime(entry.week.seconds);
+
       return row(entry, time.value, time.unit, plural(entry.week.runs, 'run'));
     }));
     renderBests(board.rows);
@@ -606,26 +721,39 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // opens on the default (see defaultShape).
   let picked = null;
   let listed = '';
+
   // Bests on one shape at a time: only rows whose key is exactly the picked one are compared.
   function renderBests(rows) {
     const shapes = boardShapes(rows);
     $('board-bests-none').hidden = shapes.length > 0;
+
     for (const id of ['board-shape-field', 'board-bests-meta', 'board-bests']) $(id).hidden = !shapes.length;
     const select = $('board-shape');
-    if (!shapes.length) { select.replaceChildren(); $('board-bests').replaceChildren(); listed = ''; return; }
+
+    if (!shapes.length) {
+      select.replaceChildren();
+      $('board-bests').replaceChildren();
+      listed = '';
+
+      return;
+    }
+
     const key = shapes.some((shape) => shape.key === picked) ? picked : defaultShape(shapes, runs(), rows);
     const labels = shapeLabels(shapes);
     // Rebuilt only when the shapes or their names change, so a re-read never disturbs the picker.
     const signature = JSON.stringify(shapes.map((shape, index) => [shape.key, labels[index]]));
+
     if (signature !== listed) {
       listed = signature;
       select.replaceChildren(...shapes.map((shape, index) => {
         const option = document.createElement('option');
         option.value = shape.key;
         option.textContent = labels[index];
+
         return option;
       }));
     }
+
     if (select.value !== key) select.value = key;
     $('board-bests-meta').textContent = shapeDescription(shapes, key);
     $('board-bests-meta').hidden = !$('board-bests-meta').textContent;
@@ -640,14 +768,23 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // aria-disabled, not disabled, while loading: a disabled button would drop keyboard focus.
   async function refresh({ manual = false, quiet = false } = {}) {
     const session = getSession();
-    if (!session) { render(); return; }
+
+    if (!session) {
+      render();
+
+      return;
+    }
+
     const current = ++generation;
     const seq = toggles;
     loading = true;
     $('refresh-friends-board').setAttribute('aria-disabled', 'true');
+
     if (!quiet) render(board ? '' : 'Loading the board…');
+
     try {
       const result = optingOut(session) ? await removeRow(session) : await readBoard(session);
+
       if (current !== generation || seq !== toggles) return;
       learn(result, seq);
       took(result);
@@ -667,9 +804,21 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // board request in any tab, or the next load) if that fails. Focus stays where it was.
   async function setShare(on) {
     const session = getSession();
-    if (!session) { render(); return; }
-    if (on === sharing && !turningOn && !unsharing) { render(); return; }
+
+    if (!session) {
+      render();
+
+      return;
+    }
+
+    if (on === sharing && !turningOn && !unsharing) {
+      render();
+
+      return;
+    }
+
     const seq = ++toggles;
+
     if (on) {
       turningOn = true;
       note = '';
@@ -679,28 +828,36 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
       // shows: off. One made after it (switching off again, here or in another tab) goes after it.
       const kept = optOutId(session);
       sharesWaiting += 1;
+
       try {
         const result = await inTurn(async () => {
           const off = kept !== null && optOutId(session) === kept ? await unshareNow(session, seq) : null;
+
           // Never blind: a tab that has read no version reads it now (that opt-out's reply is such a read).
           if (version === null) version = versionOf(off ?? await readBoard(session));
           const reply = await startSharing(session, version);
+
           // A refused share moved nothing.
           if (reply?.sharing) stepped(reply);
+
           return reply;
         }).finally(() => { sharesWaiting -= 1; });
+
         if (seq !== toggles) return;
         turningOn = false;
         // What the reply says, unless this browser already holds newer (see adoptReply).
         adoptReply(result);
+
         if (sharing !== true) {
           // Refused: sharing was turned off elsewhere after this browser last read it. It stays off.
           unsharing = optOutPending(session);
           note = ELSEWHERE;
           took(result);
           render();
+
           return;
         }
+
         unsharing = false;
         took(result);
         render();
@@ -714,12 +871,16 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
         unsharing = optOutPending(session);
         render(failure.message || 'Sharing couldn’t be turned on. Try again.');
       }
+
       return;
     }
+
     stopHere(session);
     render();
+
     try {
       await removeRow(session);
+
       if (seq !== toggles) return;
       // Off, unless an opt-out made since (in another tab) is still on its way.
       render(unsharing ? PENDING : OFF);
@@ -745,15 +906,21 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   function adopt(kept) {
     if (kept.version !== null && latest !== null && kept.version <= latest) return false;
     sharing = kept.sharing;
+
     if (kept.version !== null) latest = kept.version;
+
     if (!sharesWaiting) version = kept.version;
+
     return true;
   }
+
   // Another tab of this browser changed what this device keeps: an opt-out (made, or settled), or
   // whether the account shares.
   function onStorage(event) {
     const session = getSession();
+
     if (!session || closed || !event.key) return;
+
     if (event.key === optOutKey(session)) {
       if (event.newValue) optingOut(session);
       else if (unsharing) {
@@ -761,6 +928,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
         // said it was still on its way says which.
         unsharing = false;
         adopt(knownSharing(session));
+
         if (shown.endsWith(PENDING)) shown = sharing ? '' : OFF;
       }
     } else if (event.key === sharingKey(session)) {
@@ -768,22 +936,30 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
       const kept = knownSharing(session);
       const value = kept.sharing;
       const changed = value !== sharing;
+
       if (!adopt(kept) || !changed) return;
       note = '';
+
       if (value && visible) {
         // Turned on there: the switch shows it at once, and the board reads again to show the rows.
         board = null;
         render();
         refresh({ quiet: true });
+
         return;
       }
     } else return;
+
     // The status line stays: a change made in another tab doesn't take back what this one said.
     if (visible) render(shown);
   }
 
   $('refresh-friends-board').addEventListener('click', () => { if (!loading) refresh({ manual: true }); });
-  $('board-shape').addEventListener('change', (event) => { picked = event.target.value; if (board?.rows) renderBests(board.rows); });
+  $('board-shape').addEventListener('change', (event) => {
+    picked = event.target.value;
+
+    if (board?.rows) renderBests(board.rows);
+  });
   $('share-board').addEventListener('change', (event) => setShare(event.target.checked));
   $('friends-board-signin').addEventListener('click', signIn);
   $('friends-board-online').addEventListener('click', openOnline);
@@ -797,7 +973,9 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     // shares; one that knows learns of changes elsewhere from its next board request.
     resume() {
       const session = getSession();
+
       if (!session) return;
+
       if (optingOut(session)) removeRow(session).then(() => { if (visible) refresh({ quiet: true }); }, () => {});
       else if (sharing === null && !turningOn && !loading) refresh({ quiet: true });
     },
@@ -806,12 +984,14 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     // What the switch shows: true or false, or null while this device doesn't know yet.
     get sharing() {
       if (!getSession()) return null;
+
       return !turningOn && !unsharing && sharing === null ? null : switchedOn();
     },
     // Signing out: what this device knew of the account's sharing goes with it. An opt-out still
     // unconfirmed stays, and goes out the next time the account signs in here.
     signOut() {
       const session = getSession();
+
       if (session) rememberSharing(session, null);
       closed = true;
     },
@@ -819,11 +999,15 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     // account's board rows went with it).
     forget() {
       const session = getSession();
+
       if (session) {
         rememberSharing(session, null);
+
         try { localStorage.removeItem(optOutKey(session)); } catch {}
+
         keptInPage.delete(session.user.id);
       }
+
       closed = true;
     },
     // Switching to the board and arriving on the screen can both ask at once; one request answers both.

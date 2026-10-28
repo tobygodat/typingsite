@@ -56,15 +56,18 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
 
   function setText(element, value) {
     const text = String(value);
+
     if (element.textContent !== text) element.textContent = text;
   }
 
   function nextPrompt() {
     deckIndex += 1;
+
     if (deckIndex >= deck.length) {
       deck = promptDeck(Math.random, promptId);
       deckIndex = 0;
     }
+
     promptId = deck[deckIndex];
     $('compose-prompt').textContent = promptText(promptId);
   }
@@ -97,6 +100,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
     const track = $('compose-progress');
     track.setAttribute('aria-valuenow', String(percent));
     let label = `${left} seconds left`;
+
     if (startedAt === null) label = 'Not started';
     else if (ended) label = `Ended after ${LIMIT_S - left} seconds`;
     track.setAttribute('aria-valuetext', label);
@@ -104,6 +108,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
 
   function tick() {
     renderClock();
+
     if (elapsed() >= COMPOSE_LIMIT_MS) finish('time');
   }
 
@@ -124,13 +129,17 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
   // whatever its input type, fails closed: the session is unsupported input and is never scored.
   function record(inputType, data) {
     if (unsupported) return;
+
     // A counted key that changed nothing (for example at the length cap) is not a keystroke.
     if (keyedEdit(inputType) && input.value === typed) return;
     const kind = keyedChange(typed, input.value, { inputType, data });
+
     if (!kind) {
       markUnsupported();
+
       return;
     }
+
     keys.push({ type: kind, at: now() - startedAt });
     typed = input.value;
     playKeySound(kind === 'delete' ? KEY_OUTCOME.delete : KEY_OUTCOME.correct);
@@ -138,8 +147,11 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
 
   function resultHeading(summary, endedBy, counted) {
     if (state === 'interrupted') return 'Interrupted · not saved';
+
     if (unsupported) return 'IME input · not measured or saved';
+
     if (!counted) return summary.activeMs < COMPOSE_MIN_ACTIVE_MS ? 'Too short to measure · not saved' : 'No text left to measure · not saved';
+
     return endedBy === 'time' ? `Time’s up at ${LIMIT_S} s` : `Finished after ${Math.round(summary.elapsedMs / 1000)} s`;
   }
 
@@ -154,6 +166,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
       `Backspace rate: ${summary.backspaces} of ${summary.keystrokes} ${summary.keystrokes === 1 ? 'keystroke was' : 'keystrokes were'} backspace or delete, held repeats included. `
       + 'Never compared with copy tests, and never a best.');
     let status = notice;
+
     if (counted) {
       if (saved === false) status = 'Couldn’t save on this device.';
       else status = signedIn() ? 'Saved to your history: these numbers, not your words.' : 'Kept for this tab: these numbers, not your words.';
@@ -162,6 +175,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
         ? `A speed needs at least ${COMPOSE_MIN_ACTIVE_MS / 1000} s of active typing.`
         : 'The field was empty at the end, so there is no speed.';
     }
+
     setText($('compose-saved'), status);
     $('compose-result').hidden = false;
     $('compose-footer').hidden = true;
@@ -172,6 +186,7 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
     clearInterval(ticker);
     ticker = 0;
     const elapsedMs = endedBy === 'time' ? COMPOSE_LIMIT_MS : elapsed();
+
     // A field that no longer holds what the keys built was changed with no input event at all.
     if (input.value !== typed) markUnsupported();
     // Only the recorded text is ever scored; an unsupported session just shows what the field holds.
@@ -186,10 +201,13 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
     renderClock();
     setRunning(false);
     const counted = state === 'complete' && !unsupported && summary.measurable;
+
     const saved = counted
       ? save(compositionRecord(summary, { id: uid(), at: new Date().toISOString(), promptId, inputClass, endedBy }))
       : null;
+
     renderResult(summary, { endedBy, counted, saved });
+
     if (focus) $('compose-next').focus();
     announce(counted
       ? `${formatSpeed(summary.wpm)} free-typing speed, ${summary.backspaceRate}% backspace rate.${saved === false ? ' Couldn’t save on this device.' : ''}`
@@ -222,25 +240,33 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
     renderPrivacy();
     renderClock();
     setRunning(false);
+
     if (focus) input.focus({ preventScroll: true });
   }
 
   input.addEventListener('beforeinput', (event) => {
     if (state === 'complete' || state === 'interrupted') {
       event.preventDefault();
+
       return;
     }
+
     if (state === 'running' && elapsed() >= COMPOSE_LIMIT_MS) {
       event.preventDefault();
       finish('time');
+
       return;
     }
+
     const type = event.inputType || '';
+
     if (type.includes('Composition') || event.isComposing) return;
     // Typing and deleting at the caret are measured; anything else that changes the text is refused.
     const refused = refusedEdit({ inputType: type, data: event.data, selectionStart: input.selectionStart, selectionEnd: input.selectionEnd });
+
     if (!refused) return;
     event.preventDefault();
+
     // A refusal the browser can't cancel lands anyway, uncounted, so nothing after it is measured.
     if (!event.defaultPrevented) markUnsupported();
     else showNotice(COMPOSE_NOTICES[refused]);
@@ -250,16 +276,20 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
   input.addEventListener('input', (event) => {
     if (state === 'complete' || state === 'interrupted') return;
     const type = event.inputType || '';
+
     if (state === 'ready') start();
+
     if (type.includes('Composition') || event.isComposing) markUnsupported();
     else record(type, event.data);
     done.disabled = false;
+
     if (!notice) setText($('compose-help'), '');
     setRunning(true);
   });
 
   input.addEventListener('compositionstart', () => {
     if (state === 'complete' || state === 'interrupted') return;
+
     if (state === 'ready') start();
     markUnsupported();
   });
@@ -268,8 +298,10 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       finish('done');
+
       return;
     }
+
     // A held key would type faster than any hand; Backspace may repeat, since deleting isn't speed.
     if (event.repeat && (event.key.length === 1 || event.key === 'Enter') && state !== 'complete' && state !== 'interrupted') {
       event.preventDefault();
@@ -279,10 +311,12 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
 
   input.addEventListener('paste', (event) => {
     event.preventDefault();
+
     if (state === 'ready' || state === 'running') showNotice(COMPOSE_NOTICES.paste);
   });
   input.addEventListener('drop', (event) => {
     event.preventDefault();
+
     if (state === 'ready' || state === 'running') showNotice(COMPOSE_NOTICES.edit);
   });
 
@@ -328,10 +362,12 @@ export function createCompose({ setRunning, announce, save, signedIn, uid, playK
     // Focus loss, the palette or the suggestion dialog mid-way: it can finish, but it won't be saved.
     interrupt(message, { end = false } = {}) {
       if (state !== 'running') return;
+
       if (!interrupted) {
         interrupted = true;
         showNotice(message, { sticky: true });
       }
+
       // Ended by leaving the screen: the result waits there, and focus stays where you went.
       if (end) finish('done', { focus: false });
     },

@@ -6,26 +6,33 @@ const ERROR_LENGTH = 'minimum errors'.length;
 async function expectUniformErrorBand(page, testInfo, name) {
   // A fresh miss fades its tint in (1ms under reduced motion, still a frame of the old tint), so sample it settled.
   await page.locator('#text-display .wrong').evaluateAll((nodes) => Promise.all(nodes.flatMap((node) => node.getAnimations({ subtree: true })).map((animation) => animation.finished.catch(() => {}))));
+
   const boxes = await page.locator('#text-display .wrong').evaluateAll((nodes) => nodes.map((node) => {
     const rect = node.getBoundingClientRect();
     const style = getComputedStyle(node, node.parentElement.classList.contains('word') ? null : '::before');
+
     return {
       left: rect.left, right: rect.right,
       top: node.parentElement.classList.contains('word') ? rect.top : rect.top + parseFloat(style.top),
       height: parseFloat(style.height),
     };
   }));
+
   expect(boxes.length).toBeGreaterThan(1);
+
   for (const box of boxes) {
     expect(box.top).toBeCloseTo(boxes[0].top, 1);
     expect(box.height).toBeCloseTo(boxes[0].height, 1);
   }
+
   const left = Math.ceil(boxes[0].left) + 2;
   const right = Math.floor(boxes.at(-1).right) - 2;
+
   const band = await page.screenshot({ clip: {
     x: left, y: Math.floor(boxes[0].top + boxes[0].height) - 2,
     width: right - left, height: 1,
   } });
+
   const colors = await page.evaluate(async (base64) => {
     const image = new Image();
     image.src = `data:image/png;base64,${base64}`;
@@ -36,8 +43,10 @@ async function expectUniformErrorBand(page, testInfo, name) {
     const context = canvas.getContext('2d');
     context.drawImage(image, 0, 0);
     const pixels = context.getImageData(0, 0, image.width, 1).data;
+
     return [...new Set(Array.from({ length: image.width }, (_, index) => [...pixels.slice(index * 4, index * 4 + 4)].join(',')))];
   }, band.toString('base64'));
+
   await testInfo.attach(name, { body: band, contentType: 'image/png' });
   expect(colors, 'the error tint stays uniform across every letter and space join').toHaveLength(1);
 }
@@ -67,6 +76,7 @@ for (const colorScheme of ['dark', 'light']) {
       for (let index = 0; index < ERROR_LENGTH - 3; index += 1) await page.keyboard.press('Backspace');
       await expect(page.locator('#text-display .wrong')).toHaveCount(3);
       await expectUniformErrorBand(page, testInfo, 'after backspacing');
+
       for (let index = 0; index < 3; index += 1) await page.keyboard.press('Backspace');
       await expect(page.locator('#text-display .wrong')).toHaveCount(0);
       await page.keyboard.type(TEXT);

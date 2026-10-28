@@ -18,6 +18,7 @@ async function extraPage(owner, supabase, errors) {
   page.on('console', (message) => {
     if (message.type() === 'error' && !/supabase\.co/.test(message.location().url)) errors.push(message.text());
   });
+
   return page;
 }
 
@@ -26,6 +27,7 @@ async function device(browser, supabase, errors) {
   const page = await extraPage(context, supabase, errors);
   await openApp(page);
   await signInWithEmail(page, EMAIL);
+
   return { context, page };
 }
 
@@ -35,6 +37,7 @@ async function finishRun(page, delay = 0) {
   await chooseWords(page, 10);
   await typeInto(page, await passageText(page), '#typing-input', { delay });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+
   return Number(await page.locator('#result-wpm').textContent());
 }
 
@@ -48,6 +51,7 @@ async function expectStandaloneDrill(page) {
 
 const cachedProfile = (page) => page.evaluate(() => {
   const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-profile-v2:'));
+
   return JSON.parse(localStorage.getItem(key));
 });
 
@@ -107,14 +111,17 @@ test('from CONDITION_SETS_FROM the row and the device cache keep each conditions
   const slow = await finishRun(page, 60);
   await expect.poll(() => supabase.profiles.get(user.id)?.data?.runs?.length).toBe(2);
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
   for (const stored of [supabase.profiles.get(user.id).data, await cachedProfile(page)]) {
     expect(Object.keys(stored.conditionSets)).toHaveLength(1);
     expect(stored.runs.map((run) => [run.conditions, run.conditionSet in stored.conditionSets])).toEqual([[undefined, true], [undefined, true]]);
   }
+
   expect(cloud(supabase).runs.map((run) => run.conditions.count)).toEqual([10, 10]);
   await expectBothRuns(page, { runs: 2, best: Math.max(fast, slow) });
   await expect(page.locator('#run-history .run-row').first()).toContainText('10 words');
   const writes = supabase.profileWrites.length;
+
   for (let round = 0; round < 3; round += 1) await page.evaluate(() => dispatchEvent(new Event('online')));
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
   expect(supabase.profileWrites.length).toBe(writes);
@@ -127,6 +134,7 @@ test('two devices: a stale device’s push keeps the other device’s run, highe
   await openApp(page);
   await signInWithEmail(page, EMAIL);
   const { context, page: phone } = await device(browser, supabase, errors);
+
   try {
     await phone.emulateMedia({ colorScheme: 'dark' });
     const fast = await finishRun(phone);
@@ -180,6 +188,7 @@ test('a clear on one device is not undone by a stale device’s next push', asyn
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
   const [cleared] = runIds(cloud(supabase));
   const { context, page: phone } = await device(browser, supabase, errors);
+
   try {
     await openView(phone, 'Progress');
     await expect(phone.locator('#run-history .run-row')).toHaveCount(1);
@@ -217,6 +226,7 @@ test('undo brings history back after the clear has synced, even on a device that
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
   const [kept] = runIds(cloud(supabase));
   const { context, page: phone } = await device(browser, supabase, errors);
+
   try {
     await openView(phone, 'Progress');
     await expect(phone.locator('#run-history .run-row')).toHaveCount(1);
@@ -346,6 +356,7 @@ test('on load, newer test conditions from the account replace an untouched passa
   await chooseWords(page, 10);
   await expect.poll(() => cloud(supabase)?.preferences.count).toBe(10);
   const { context, page: phone } = await device(browser, supabase, errors);
+
   try {
     await chooseWords(phone, 25);
     await expect.poll(() => cloud(supabase).preferences.count).toBe(25);
@@ -490,6 +501,7 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
     const other = await extraPage(context, supabase, errors);
     await openApp(other);
     await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
     if (mine === 'custom') {
       await openSettings(page);
       await chooseSetting(page, 'pace-select', 'custom');
@@ -505,6 +517,7 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
     await finishDrill(page);
 
     await openSettings(other, 'practice');
+
     if (mine === 'custom') {
       await expect(other.locator('#pace-select input:checked')).toHaveValue('custom');
       await other.locator('#pace-wpm').fill('120');
@@ -514,6 +527,7 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
       await chooseSetting(other, 'pace-select', 'best');
       await expect.poll(() => cloud(supabase)?.preferences.paceCaret, { timeout: 15000 }).toBe('best');
     }
+
     await expect(page.locator('#pace-select input:checked')).toHaveValue(mine);
 
     await page.keyboard.press('Control+k');
@@ -525,6 +539,7 @@ for (const [mine, theirs] of [['off', 'personal best'], ['custom', 'custom at 12
     await expect(page.locator('#comparison-panel')).toBeVisible();
 
     await expect(page.locator('#pace-select input:checked')).toHaveValue(mine);
+
     if (mine === 'custom') await expect(page.locator('#pace-label')).toHaveText('pace 80 wpm');
     const expected = mine === 'custom' ? { paceCaret: 'custom', paceWpm: 80 } : { paceCaret: 'off' };
     await expect.poll(() => cloud(supabase)?.preferences, { timeout: 15000 }).toMatchObject(expected);
@@ -612,8 +627,10 @@ test('using the custom text already shown keeps it over different text waiting f
 test('a row an older build saved later keeps the settings it lacks from the copy that has them', async ({ page, supabase }) => {
   const user = supabase.addUser(EMAIL);
   const empty = { version: 2, profileId: 'p', attempts: [], runs: [], loops: [], seenTextIds: [], bests: {} };
+
   const kept = { ...empty, preferences: { theme: 'system', fontSize: '28', numbers: true, paceCaret: 'custom', paceWpm: 120 },
     updatedAt: new Date(Date.now() - 3600000).toISOString() };
+
   supabase.profiles.set(user.id, { data: { ...empty, preferences: { theme: 'system', fontSize: '36' }, updatedAt: new Date(Date.now() - 60000).toISOString() } });
   // Kept on this device from an earlier session, and merged with the row at sign-in and on load.
   await page.addInitScript(([key, text]) => {
@@ -638,10 +655,13 @@ test('a row an older build saved later keeps the settings it lacks from the copy
 // only merging writes, and its own updatedAt.
 const MERGE_ONLY = ['preferencesAt', 'mergeStamp', 'legacyClearedAt', 'historyClearedAt', 'appliedClears', 'heardClears',
   'historyClearedIds', 'undoneClears'];
+
 const savedByOlderBuild = (data, updatedAt, over = {}) => ({
   ...Object.fromEntries(Object.entries(data).filter(([key]) => !MERGE_ONLY.includes(key))), ...over, updatedAt,
 });
+
 const CLEARED = { attempts: [], runs: [], loops: [], seenTextIds: [], bests: {} };
+
 const seedCache = (page, userId, data) => page.addInitScript(([key, text]) => {
   if (sessionStorage.getItem('older-copy')) return;
   sessionStorage.setItem('older-copy', '1');
@@ -679,6 +699,7 @@ for (const where of ['account row', 'device cache']) {
     const older = { ...run, id: 'older-run', at: new Date(Date.parse(run.at) - 60000).toISOString() };
     const oldest = savedByOlderBuild(populated, new Date(Date.parse(older.at) + 1000).toISOString(), { attempts: [], runs: [older], bests: {} });
     const context = await browser.newContext();
+
     try {
       const phone = await extraPage(context, supabase, errors);
       await seedCache(phone, user.id, oldest);
@@ -726,6 +747,7 @@ test('undo brings back a run the clearing device never saw, after another device
   await finishRun(page);
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
   const { context, page: phone } = await device(browser, supabase, errors);
+
   try {
     // The phone's run reaches the account; the laptop, never hidden or reloaded, doesn't pull it.
     await finishRun(phone);
@@ -806,10 +828,12 @@ for (const when of ['prepared', 'running']) {
     await page.locator('#result-drill').click();
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
     const drill = await passageText(page);
+
     if (when === 'running') await typeInto(page, drill.slice(0, 5));
 
     await chooseWords(other, 25);
     await expect.poll(() => cloud(supabase)?.preferences.count).toBe(25);
+
     if (when === 'prepared') await typeInto(page, drill.slice(0, 5));
     await page.clock.fastForward(30_000);
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
@@ -869,6 +893,7 @@ test('hiding a tab sends nothing; a run it could not send waits in the device ca
   await page.route(/\/rest\/v1\/profiles/, (route) => {
     if (route.request().method() === 'GET') return route.fallback();
     writes.push(route.request().method());
+
     return route.abort();
   });
   // Hidden straight after the run, while its push is still waiting: hiding itself writes nothing.
@@ -899,6 +924,7 @@ test('a tab puts back a run that another tab’s write from an older read left o
   const other = await extraPage(context, supabase, errors);
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
   // Offline: the device cache is the only copy of a run until the connection returns.
   for (const tab of [page, other]) await tab.route(/\/rest\/v1\/profiles/, (route) => route.abort());
   const key = (await storageKeys(page)).find((name) => name.startsWith('stilltype-profile-v2:'));
@@ -909,8 +935,10 @@ test('a tab puts back a run that another tab’s write from an older read left o
   // Two saves at the same moment: the other tab picked a text size from the copy it read before this
   // tab's run landed, so its write leaves the run out.
   const now = new Date().toISOString();
+
   const stale = { ...before, preferences: { ...before.preferences, fontSize: '36' },
     preferencesAt: { ...before.preferencesAt, fontSize: now }, updatedAt: now, mergeStamp: now };
+
   await other.evaluate(([name, text]) => localStorage.setItem(name, text), [key, JSON.stringify(stale)]);
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   await expect.poll(async () => (await cachedProfile(other)).runs.length).toBe(1);
@@ -944,6 +972,7 @@ for (const kind of ['daily', 'interrupted']) {
     await finishRun(page);
     await expect.poll(() => runIds(cloud(supabase)).length).toBe(1);
     const { context, page: phone } = await device(browser, supabase, errors);
+
     try {
       await clearHistoryIn(page);
       await expect.poll(() => cloud(supabase)?.historyClearedAt).toBeTruthy();
@@ -956,9 +985,11 @@ for (const kind of ['daily', 'interrupted']) {
       } else {
         await phone.locator('#restart-button').click();
       }
+
       // The save of the passage shown goes up and merges the clear before anything is typed.
       await expect.poll(async () => (await cachedProfile(phone))?.historyClearedAt).toBeTruthy();
       const text = await passageText(phone);
+
       if (kind === 'daily') {
         await typeInto(phone, text);
         await expect(phone.locator('body')).toHaveAttribute('data-view', 'results');
@@ -969,10 +1000,12 @@ for (const kind of ['daily', 'interrupted']) {
         await typeInto(phone, text.slice(0, 3));
         await openView(phone, 'Progress');
       }
+
       const data = await cachedProfile(phone);
       const run = data.runs.at(-1);
       expect(run.kind).toBe(kind === 'daily' ? 'daily' : 'test');
       expect(data.seenTextIds).toContain(run.textId);
+
       if (kind === 'daily') expect(data.seenTextIds).toContain(`daily-${run.challengeDate}-v1`);
       expect(errors).toEqual([]);
     } finally {
@@ -1050,6 +1083,7 @@ test('an older clear that names the run on show withdraws its drill and retest u
   const stamps = row.data.runs.map((record) => Date.parse(record.at)).filter(Number.isFinite);
   const newer = new Date(Math.min(...stamps) - 5000).toISOString();
   const older = new Date(Math.min(...stamps) - 60000).toISOString();
+
   const pull = async (data) => {
     row.data = data;
     row.updated_at = new Date().toISOString().replace('Z', '+00:00');
@@ -1086,6 +1120,7 @@ test('a newer clear undone elsewhere leaves the run on show made after an older 
   await signInWithEmail(page, EMAIL);
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
   const row = () => supabase.profiles.get(user.id);
+
   const pull = async (data) => {
     row().data = data;
     row().updated_at = new Date().toISOString().replace('Z', '+00:00');
@@ -1168,6 +1203,7 @@ test('undo right after a clear keeps a run saved while an earlier write was stil
       heldWrite();
       await gate;
     }
+
     await route.fallback();
   });
   let writes = 0;
@@ -1198,6 +1234,7 @@ test('signing out while the account service never answers still finishes and kee
     await stalled;
     await route.fallback().catch(() => {});
   });
+
   try {
     await finishRun(page);
     const userId = (await storageKeys(page)).find((key) => key.startsWith('stilltype-profile-v2:'));
@@ -1214,6 +1251,7 @@ test('signing out while the account service never answers still finishes and kee
     // Its requests time out on the page's clock, moved on a second at a time until it gives up on them.
     await expect.poll(async () => {
       if (abandoned === undefined) await page.clock.runFor(1000);
+
       return abandoned !== undefined;
     }, { intervals: [100], timeout: 20000 }).toBe(true);
     await signedOut;
@@ -1264,6 +1302,7 @@ function memberCalls(page) {
   page.on('request', (request) => {
     if (/supabase\.co/.test(request.url()) && request.headers().authorization) calls.push(`${request.method()} ${new URL(request.url()).pathname}`);
   });
+
   return calls;
 }
 
@@ -1285,6 +1324,7 @@ for (const next of [null, EMAIL, 'second@stilltype.test']) {
   const then = !next ? 'as a guest' : next === EMAIL ? 'as the same account, signed in again' : 'as the account signed in since';
   test(`a tab mid-run when another signs out having sent everything finishes the run, then starts again ${then}`, async ({ page, context, supabase }) => {
     supabase.addUser(EMAIL);
+
     if (next && next !== EMAIL) supabase.addUser(next);
     const errors = [];
     await openApp(page);
@@ -1304,11 +1344,13 @@ for (const next of [null, EMAIL, 'second@stilltype.test']) {
     await Promise.all([page.waitForEvent('load'), page.locator('#account-signout').click()]);
     await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
     expect(await storageKeys(page)).toEqual([]);
+
     if (next) await signInWithEmail(page, next);
 
     // The run goes on undisturbed and ends as usual; the tab then follows the device's session.
     await expect(other.locator('body')).toHaveAttribute('data-running', 'true');
     await other.keyboard.type(text.slice(3));
+
     if (next) {
       await expect(other.locator('#account')).toHaveAttribute('data-state', 'member');
       await expect(other.locator('#account-email')).toHaveText(next);
@@ -1321,8 +1363,10 @@ for (const next of [null, EMAIL, 'second@stilltype.test']) {
       await expect(other.locator('#account')).toHaveAttribute('data-state', 'guest');
       await expectNoMemberCalls(other, calls);
     }
+
     // A run finished after the sign-out reaches no account.
     expect(runIds(supabase.profileFor(EMAIL))).toEqual([]);
+
     if (next) expect(runIds(supabase.profileFor(next))).toEqual([]);
     expect(errors).toEqual([]);
   });
@@ -1332,6 +1376,7 @@ for (const next of ['second@stilltype.test', EMAIL]) {
   const who = next === EMAIL ? 'the same account' : 'another account';
   test(`a sign-out overtaken mid-run by a sign-out and sign-in to ${who} in another tab leaves the new session alone`, async ({ page, context, supabase }) => {
     supabase.addUser(EMAIL);
+
     if (next !== EMAIL) supabase.addUser(next);
     const errors = [];
     await openApp(page);
@@ -1402,6 +1447,7 @@ async function besideGuestTab(page, context, supabase, errors) {
   page.on('request', (request) => {
     if (/\/auth\/v1\/logout/.test(request.url())) logouts.push(request.headers().authorization);
   });
+
   return { other, logouts };
 }
 
@@ -1474,11 +1520,13 @@ const staleSignOut = (page, sentText) => page.evaluate((sent) => {
   localStorage.removeItem('stilltype-session-v1');
   localStorage.removeItem(`stilltype-profile-v2:${userId}`);
   localStorage.removeItem(`stilltype-signed-out:${userId}`);
+
   return `stilltype-profile-v2:${userId}`;
 }, textStamp(sentText));
 
 const cachedText = (page) => page.evaluate(() => {
   const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-profile-v2:'));
+
   return localStorage.getItem(key);
 });
 
@@ -1495,6 +1543,7 @@ async function twoTabsSynced(page, context, supabase, errors) {
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
   await other.route(/\/rest\/v1\/profiles/, (route) => route.abort());
+
   return { other, sentText: await cachedText(page) };
 }
 
@@ -1576,6 +1625,7 @@ const overwrittenSignOut = (page, sentText) => page.evaluate(({ text, sent }) =>
   hear(cacheKey, text, null);
   localStorage.removeItem(markerKey);
   hear(markerKey, marker, null);
+
   return cacheKey;
 }, { text: sentText, sent: textStamp(sentText) });
 

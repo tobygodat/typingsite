@@ -11,6 +11,7 @@ const dotBox = (d) => ({ left: d.x - d.r, top: d.y - d.r, right: d.x + d.r, bott
 test('a callout clears the run dots crowding the spot above its point', () => {
   const dots = [{ x: 300, y: 150, r: 4 }, { x: 300, y: 125, r: 2.5 }, { x: 290, y: 118, r: 2.5 }, { x: 312, y: 112, r: 2.5 }];
   const [box] = placeCallouts([{ x: 300, y: 150, width: 80, height: 18 }], { dots, bounds, gap });
+
   for (const dot of dots) assert.ok(!overlaps(grown(box), dotBox(dot)), `clears the dot at ${dot.x},${dot.y}`);
   assert.ok(box.left >= 0 && box.right <= 600 && box.top >= 0 && box.bottom <= 300, 'stays inside the chart');
 });
@@ -19,6 +20,7 @@ test('a callout never sits on the line through its point', () => {
   const segments = [[[200, 100], [300, 150]], [[300, 150], [400, 60]]];
   const [box] = placeCallouts([{ x: 300, y: 150, width: 90, height: 18 }], { segments, bounds, gap });
   const g = grown(box);
+
   // Sample each segment finely: no sample falls inside the grown box.
   for (const [[x1, y1], [x2, y2]] of segments) {
     for (let t = 0; t <= 1; t += 0.01) {

@@ -4,9 +4,11 @@
 
 export const COMPOSE_VERSION = 'stilltype-compose-v1';
 export const COMPOSE_LIMIT_MS = 60_000;
+
 // A gap longer than this between two keys is thinking, not typing, and is left out of active time.
 // It matches the pause cut-off the copy-test pair timings use.
 export const COMPOSE_PAUSE_MS = 2000;
+
 // Less active typing than this is too little to call a speed.
 export const COMPOSE_MIN_ACTIVE_MS = 5000;
 export const MAX_COMPOSITIONS = 100;
@@ -35,11 +37,14 @@ export function promptText(id) {
 // deck can't hand back the prompt that was just on screen.
 export function promptDeck(random = Math.random, avoid = null) {
   const ids = COMPOSE_PROMPTS.map((prompt) => prompt.id);
+
   for (let i = ids.length - 1; i > 0; i -= 1) {
     const j = Math.floor(random() * (i + 1));
     [ids[i], ids[j]] = [ids[j], ids[i]];
   }
+
   if (ids.length > 1 && ids[0] === avoid) [ids[0], ids[1]] = [ids[1], ids[0]];
+
   return ids;
 }
 
@@ -58,11 +63,13 @@ export function countWords(text) {
 // Backspace and Delete, and Ctrl/⌥+Backspace or Delete for a word, which counts as one deleting key.
 const KEYED_INSERTS = new Set(['insertText', 'insertLineBreak', 'insertParagraph']);
 const KEYED_DELETES = new Set(['deleteContentBackward', 'deleteContentForward', 'deleteWordBackward', 'deleteWordForward']);
+
 // Line deletes (⌘+Backspace, Ctrl+Shift+Backspace) are keys too, but one can clear the whole field.
 const LINE_DELETE = /^delete(?:(?:Soft|Hard)Line(?:Backward|Forward)|EntireSoftLine)$/;
 
 export function keyedEdit(inputType) {
   if (KEYED_INSERTS.has(inputType)) return 'insert';
+
   return KEYED_DELETES.has(inputType) ? 'delete' : null;
 }
 
@@ -72,13 +79,18 @@ export function keyedEdit(inputType) {
 // any key typed or deleted over a selection (it would silently replace the whole selection).
 export function refusedEdit({ inputType = '', data = null, selectionStart = 0, selectionEnd = 0 } = {}) {
   if (inputType === 'insertFromPaste' || inputType === 'insertFromPasteAsQuotation') return 'paste';
+
   if (LINE_DELETE.test(inputType)) return 'lineDelete';
+
   if (!keyedEdit(inputType)) return 'edit';
+
   if (inputType === 'insertText' && data && [...data].length !== 1) return 'multiCharacter';
+
   return selectionStart === selectionEnd ? null : 'selection';
 }
 
 const WORD_DELETES = new Set(['deleteWordBackward', 'deleteWordForward']);
+
 const GRAPHEMES = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
   ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
   : null;
@@ -98,20 +110,27 @@ export function graphemeCount(text, segmenter = GRAPHEMES) {
 // refused, and is never counted.
 export function keyedChange(before, after, { inputType = '', data = null } = {}) {
   const kind = keyedEdit(inputType);
+
   if (!kind) return null;
   const was = [...String(before)];
   const is = [...String(after)];
   let start = 0;
+
   while (start < was.length && start < is.length && was[start] === is[start]) start += 1;
   let end = 0;
+
   while (end < was.length - start && end < is.length - start && was[was.length - 1 - end] === is[is.length - 1 - end]) end += 1;
   const removed = was.slice(start, was.length - end).join('');
   const added = is.slice(start, is.length - end).join('');
+
   if (kind === 'delete') {
     if (!removed || added) return null;
+
     return (WORD_DELETES.has(inputType) ? countWords(removed) <= 1 : graphemeCount(removed) === 1) ? 'delete' : null;
   }
+
   const reported = inputType === 'insertText' ? data : '\n';
+
   return !removed && [...added].length === 1 && added === reported ? 'insert' : null;
 }
 
@@ -123,14 +142,18 @@ export function activeTime(times, pauseMs = COMPOSE_PAUSE_MS) {
   let typing = 0;
   let gaps = 0;
   let pauses = 0;
+
   for (let i = 1; i < times.length; i += 1) {
     const gap = times[i] - times[i - 1];
+
     if (gap < 0) continue;
+
     if (gap <= pauseMs) {
       typing += gap;
       gaps += 1;
     } else pauses += 1;
   }
+
   return gaps ? typing + pauses * (typing / gaps) : 0;
 }
 
@@ -146,6 +169,7 @@ export function composeSummary({ keys = [], text = '', elapsedMs = 0 } = {}) {
   const activeMs = Math.round(activeTime(keys.map((key) => key.at)));
   const characters = countCharacters(text);
   const measurable = activeMs >= COMPOSE_MIN_ACTIVE_MS && characters > 0;
+
   return {
     version: COMPOSE_VERSION,
     characters,
@@ -169,13 +193,16 @@ export function compositionRecord(summary, { id, at, promptId, inputClass = 'phy
     promptId: promptText(promptId) ? promptId : null,
     inputClass: inputClass === 'touch' ? 'touch' : 'physical-keyboard',
     endedBy: endedBy === 'time' ? 'time' : 'done' };
+
   for (const key of COUNTS) record[key] = summary[key];
+
   return record;
 }
 
 // Loading keeps only well-formed records, rebuilt from known fields, so nothing else rides along.
 export function normalizeCompositions(list) {
   if (!Array.isArray(list)) return [];
+
   return list
     .filter((item) => item && typeof item === 'object' && typeof item.id === 'string'
       && COUNTS.every((key) => Number.isFinite(item[key]) && item[key] >= 0))

@@ -63,13 +63,16 @@ export function drawCaret(input) {
   function sideFor(at, end, start, top) {
     if (settled?.at === at) return settled.side;
     let side = 'start';
+
     if (move.side) side = move.side;
     else if ('x' in move) side = Math.abs(end.x - move.x) < Math.abs(start.x - move.x) ? 'end' : 'start';
     else if ('y' in move) {
       const off = (spot) => Math.abs(top + spot.y + spot.height / 2 - move.y);
       side = off(end) < off(start) ? 'end' : 'start';
     }
+
     settled = { at, side };
+
     return side;
   }
 
@@ -79,11 +82,15 @@ export function drawCaret(input) {
 
   function update() {
     const at = input.selectionStart;
+
     if (!focused || input.readOnly || input.disabled || at === null || at !== input.selectionEnd || !input.getClientRects().length) {
       hide();
+
       return;
     }
+
     const style = getComputedStyle(input);
+
     for (const name of MIRRORED) mirror.style.setProperty(name, style.getPropertyValue(name));
     const borders = parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
     mirror.style.width = `${input.clientWidth + borders}px`;
@@ -107,34 +114,44 @@ export function drawCaret(input) {
     mirror.textContent = value.slice(0, at);
     let start = null;
     let end = null;
+
     if (lineStart || !lineEnd) {
       marker.textContent = (lineEnd ? '\u200B' : '') + value.slice(at);
       mirror.append(marker);
       start = marker.getClientRects()[0] || marker.getBoundingClientRect();
     }
+
     if (!lineStart) {
       const range = document.createRange();
       range.setStart(mirror.firstChild, value.lastIndexOf('\n', at - 1) + 1);
       range.setEnd(mirror.firstChild, at);
       const rects = range.getClientRects();
       const last = rects[rects.length - 1];
+
       if (last) end = { left: last.right, top: last.top, height: last.height };
     }
+
     const origin = mirror.getBoundingClientRect();
+
     const place = (rect) => rect && ({
       x: rect.left - origin.left - input.clientLeft - input.scrollLeft,
       y: rect.top - origin.top - input.clientTop - input.scrollTop,
       height: rect.height,
     });
+
     start = place(start);
     end = place(end);
     // The writing never stays in the page beyond the field itself.
     mirror.textContent = '';
+
     if (!start && !end) {
       hide();
+
       return;
     }
+
     let spot = start || end;
+
     if (start && end && Math.abs(start.y - end.y) > start.height / 2) {
       spot = sideFor(at, end, start, field.top + input.clientTop) === 'end' ? end : start;
     }
@@ -158,11 +175,13 @@ export function drawCaret(input) {
       moved({ x: 'x' in move ? move.x : lastX });
     }
     else if (event.key.length === 1 || AT_CARET.has(event.key)) moved({ side: 'start' });
+
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') arrow = { key: event.key, at: input.selectionStart };
   });
   input.addEventListener('keyup', (event) => {
     if (event.key === arrow?.key && input.selectionStart === arrow.at) moved({ side: arrow.key === 'ArrowLeft' ? 'end' : 'start' });
     arrow = null;
+
     if (focused) update();
   });
   input.addEventListener('pointerdown', (event) => moved({ y: event.clientY }));
@@ -170,11 +189,13 @@ export function drawCaret(input) {
     moved({ side: event.inputType?.startsWith('insert') ? 'end' : 'start' });
     update();
   });
+
   for (const type of ['select', 'scroll', 'compositionupdate', 'compositionend']) input.addEventListener(type, update);
   // Arrow keys, clicks and drags move the selection without an input event; a click can also keep
   // the offset and change only the line it is shown on.
   document.addEventListener('selectionchange', () => { if (focused) update(); });
   input.addEventListener('pointerup', () => { if (focused) update(); });
+
   // A new window width or text size wraps the writing again; a late font changes letter widths.
   if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (focused) update(); }).observe(input);
   document.fonts?.addEventListener?.('loadingdone', () => { if (focused) update(); });

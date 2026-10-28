@@ -7,6 +7,7 @@ import { defineConfig, devices } from '@playwright/test';
 // Chromium runs by default. E2E_BROWSERS picks engines (comma-separated, or `all`), so a plain
 // `npx playwright test` stays Chromium-only; Firefox and WebKit need `npx playwright install firefox webkit`.
 const port = Number(process.env.E2E_PORT || 4173);
+
 // WebKit runs slowest, so it goes first and holds at most a third of the cores (the per-project cap below).
 const engines = {
   webkit: devices['Desktop Safari'],
@@ -16,9 +17,11 @@ const engines = {
   },
   firefox: devices['Desktop Firefox'],
 };
+
 const wanted = (process.env.E2E_BROWSERS || 'chromium').split(',').map((name) => name.trim());
 const names = wanted.includes('all') ? Object.keys(engines) : wanted;
 const unknown = names.filter((name) => !engines[name]);
+
 if (unknown.length) throw new Error(`E2E_BROWSERS: unknown engine ${unknown.join(', ')} (chromium, firefox, webkit or all)`);
 
 export default defineConfig({

@@ -24,8 +24,10 @@ import { conditionKey } from '../src/typing.js';
 // Keys typed `gap` ms apart, with `pauses` (index → extra ms before that key).
 function keysFor(types, gap = 200, pauses = {}) {
   let at = 0;
+
   return [...types].map((type, index) => {
     if (index > 0) at += gap + (pauses[index] || 0);
+
     return { type: type === '<' ? 'delete' : 'insert', at };
   });
 }
@@ -45,6 +47,7 @@ test('active time counts every gap longer than the pause cut-off as the average 
 test('writing in bursts is measured at the speed of the keys, not faster', () => {
   // 26 bursts of three keys 100 ms apart (10 keys a second, 120 wpm), with 2.1 s between bursts.
   const times = [];
+
   for (let burst = 0; burst < 26; burst += 1) for (let key = 0; key < 3; key += 1) times.push(burst * 2300 + key * 100);
   const keys = times.map((at) => ({ type: 'insert', at }));
   const summary = composeSummary({ keys, text: 'ab '.repeat(26), elapsedMs: times.at(-1) + 100 });
@@ -54,6 +57,7 @@ test('writing in bursts is measured at the speed of the keys, not faster', () =>
   assert.ok(summary.wpm >= 120 && summary.wpm <= 122, `${summary.wpm} wpm`);
   // Word at a time: six keys 200 ms apart (60 wpm), then 2.5 s of thought.
   const words = [];
+
   for (let word = 0; word < 10; word += 1) for (let key = 0; key < 6; key += 1) words.push({ type: 'insert', at: word * 3500 + key * 200 });
   const paced = composeSummary({ keys: words, text: 'word, '.repeat(10), elapsedMs: words.at(-1).at + 200 });
   assert.equal(paced.wpm, Math.round(60 / 5 / (59 * 200 / 60_000)));
@@ -95,31 +99,38 @@ test('backspace rate counts deleting keys against every key, and deleted text is
 
 test('only single keys at the caret are counted; cut, line deletes and other edits are refused', () => {
   const at = (inputType, extra = {}) => refusedEdit({ inputType, selectionStart: 7, selectionEnd: 7, ...extra });
+
   // Backspace and Delete, by letter or by word, are one deleting key each.
   for (const type of ['deleteContentBackward', 'deleteContentForward', 'deleteWordBackward', 'deleteWordForward']) {
     assert.equal(keyedEdit(type), 'delete', type);
     assert.equal(at(type), null, type);
   }
+
   for (const type of ['insertText', 'insertLineBreak', 'insertParagraph']) {
     assert.equal(keyedEdit(type), 'insert', type);
     assert.equal(at(type, { data: type === 'insertText' ? 'a' : null }), null, type);
   }
+
   assert.equal(at('insertText', { data: 'é' }), null, 'one accented character is one key');
   assert.equal(at('insertText', { data: '👍' }), null, 'one emoji is one key');
 
   // A cut can remove any selection with one key, so it is refused and counts nothing.
   assert.equal(at('deleteByCut'), 'edit');
   assert.equal(keyedEdit('deleteByCut'), null);
+
   for (const type of ['deleteSoftLineBackward', 'deleteSoftLineForward', 'deleteHardLineBackward', 'deleteHardLineForward', 'deleteEntireSoftLine']) {
     assert.equal(at(type), 'lineDelete', type);
     assert.equal(keyedEdit(type), null, type);
   }
+
   for (const type of ['insertFromPaste', 'insertFromPasteAsQuotation']) assert.equal(at(type), 'paste', type);
+
   for (const type of ['deleteByDrag', 'deleteContent', 'insertFromDrop', 'insertReplacementText', 'insertTranspose',
     'insertFromYank', 'historyUndo', 'historyRedo', 'formatBold', 'insertLink', '']) {
     assert.equal(at(type), 'edit', type || '(none)');
     assert.equal(keyedEdit(type), null, type || '(none)');
   }
+
   assert.equal(at('insertText', { data: 'two words' }), 'multiCharacter');
   assert.equal(at('insertText', { data: 'ab' }), 'multiCharacter');
 });
@@ -159,6 +170,7 @@ test('a key counts only when the field changed by exactly that key; any other ch
     assert.equal(change('I made teh tea', 'I made the tea', type, 'the'), null, type || '(none)');
     assert.equal(change('Tea', 'Teas', type, 's'), null, type || '(none)');
   }
+
   // A counted type whose change is not that one key: several characters, a replacement, the
   // wrong character, an insert that also deletes, a delete that adds or spans words, or nothing.
   assert.equal(change('Tea', 'Tea and more', 'insertText', ' and more'), null);
@@ -182,6 +194,7 @@ test('a typed character counts only when the browser reports that same character
   assert.equal(change('a', 'ab', 'insertText', undefined), null, 'missing');
   assert.equal(change('a', 'ab', 'insertText', ''), null, 'empty');
   assert.equal(change('a', 'ab', 'insertText', 'x'), null, 'another character');
+
   // Enter reports no character; its line break is checked instead.
   for (const type of ['insertLineBreak', 'insertParagraph']) {
     assert.equal(change('a', 'a\n', type, null), 'insert', type);
@@ -200,11 +213,13 @@ test('Backspace and Delete remove one character; only a word delete may remove u
   assert.equal(change('alpha beta', 'a beta', 'deleteContentBackward'), null);
   assert.equal(change('alpha beta', 'abeta', 'deleteContentForward'), null);
   assert.equal(change('ab', '', 'deleteContentBackward'), null);
+
   // One character is one grapheme, however many code points it takes, or one part of it.
   for (const character of ['é', 'é', '😀', '👍🏽', '👨‍👩‍👧', '🇬🇧', '\n', ' ']) {
     assert.equal(change(`ab${character}`, 'ab', 'deleteContentBackward'), 'delete', JSON.stringify(character));
     assert.equal(change(`${character}ab`, 'ab', 'deleteContentForward'), 'delete', JSON.stringify(character));
   }
+
   assert.equal(change('aé', 'ae', 'deleteContentBackward'), 'delete', 'just the accent');
   assert.equal(change('ab😀😀', 'ab', 'deleteContentBackward'), null, 'two emoji');
   // Ctrl/⌥ word deletes may remove one word, with its spacing, and no more.
@@ -212,6 +227,7 @@ test('Backspace and Delete remove one character; only a word delete may remove u
   assert.equal(change('alpha beta', ' beta', 'deleteWordForward'), 'delete');
   assert.equal(change('alpha beta', '', 'deleteWordBackward'), null);
   assert.equal(change('alpha beta gamma', 'alpha gamma', 'deleteWordForward'), 'delete');
+
   // Any other delete type is not a counted key, even when it removes a single character.
   for (const type of ['deleteSoftLineBackward', 'deleteSoftLineForward', 'deleteHardLineBackward', 'deleteHardLineForward',
     'deleteEntireSoftLine', 'deleteByCut', 'deleteByDrag', 'deleteContent']) {
@@ -261,6 +277,7 @@ test('the stored record holds numbers and labels only, never the writing', () =>
     'inputClass', 'keystrokes', 'promptId', 'version', 'words', 'wpm',
   ]);
   assert.ok(!JSON.stringify(record).includes('private'));
+
   for (const [key, value] of Object.entries(record)) {
     if (typeof value === 'string') assert.ok(['id', 'at', 'version', 'promptId', 'inputClass', 'endedBy'].includes(key), key);
   }
@@ -284,16 +301,25 @@ test('loading keeps well-formed records, rebuilt from known fields only', () => 
 
 test('the prompt deck shows every prompt once before repeating, never the current one first', () => {
   let seed = 7;
-  const random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+
+  const random = () => {
+    seed = (seed * 16807) % 2147483647;
+
+    return (seed - 1) / 2147483646;
+  };
+
   const ids = COMPOSE_PROMPTS.map((prompt) => prompt.id);
   assert.equal(new Set(ids).size, ids.length, 'ids are unique');
+
   for (const prompt of COMPOSE_PROMPTS) assert.equal(promptText(prompt.id), prompt.text);
+
   for (let round = 0; round < 50; round += 1) {
     const avoid = ids[round % ids.length];
     const deck = promptDeck(random, avoid);
     assert.deepEqual([...deck].sort(), [...ids].sort());
     assert.notEqual(deck[0], avoid);
   }
+
   assert.equal(promptText('missing'), null);
 });
 

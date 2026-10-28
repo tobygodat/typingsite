@@ -27,46 +27,65 @@ const EXEMPT = [
 function measure({ root, exempt }) {
   const CONTROLS = 'label.setting-option, button, a[href], input:not([type="hidden"]), select, textarea, summary, '
     + '[role="button"], [role="switch"], [role="tab"], [role="option"], [tabindex="0"]';
+
   const describe = (el) => {
     const classes = (el.getAttribute('class') || '').trim().split(/\s+/).filter(Boolean).map((c) => `.${c}`).join('');
     const text = (el.getAttribute('aria-label') || el.textContent || el.getAttribute('placeholder') || '').replace(/\s+/g, ' ').trim();
+
     return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${classes}${text ? ` “${text.slice(0, 36)}”` : ''}`;
   };
+
   const controls = [];
+
   for (const el of (document.querySelector('dialog:modal') || document.querySelector(root)).querySelectorAll(CONTROLS)) {
     // Hidden from everyone, faded out mid-run, or not taking pointer input: not a target right now.
     if (el.closest('[aria-hidden="true"], [inert]')) continue;
+
     if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+
     if (getComputedStyle(el).pointerEvents === 'none') continue;
+
     if (exempt.some((selector) => el.matches(selector))) continue;
     el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
     const box = [...el.getClientRects()].sort((a, b) => b.width * b.height - a.width * a.height)[0];
+
     if (!box?.width || !box.height) continue;
     const cx = box.left + box.width / 2;
     const cy = box.top + box.height / 2;
+
     // Off-screen until focused (the skip link): not something a finger can reach.
     if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) continue;
     // A tap on a checkbox's label toggles it, so the label is part of its target.
     const labels = ['checkbox', 'radio'].includes(el.type) ? [...el.labels] : [];
+
     const owns = (x, y) => {
       const hit = document.elementFromPoint(x, y);
+
       return Boolean(hit) && (el.contains(hit) || labels.some((label) => label.contains(hit)));
     };
+
     // Whole device pixels along the row and the column through the centre that land on the
     // target, up to 64 each way: the hit width and height.
     const x = Math.round(cx);
     const y = Math.round(cy);
+
     const run = (dx, dy) => {
       let d = 1;
+
       while (d <= 64 && owns(x + dx * d, y + dy * d)) d += 1;
+
       return d - 1;
     };
+
     const centred = owns(x, y);
+
     const blocker = (dx, dy) => {
       const d = run(dx, dy) + 1;
       const hit = document.elementFromPoint(x + dx * d, y + dy * d);
+
       return hit && !hit.contains(el) ? describe(hit) : null;
     };
+
     controls.push({
       control: describe(el),
       box: [Math.round(box.width * 10) / 10, Math.round(box.height * 10) / 10],
@@ -75,7 +94,9 @@ function measure({ root, exempt }) {
         : [describe(document.elementFromPoint(x, y) || document.body)],
     });
   }
+
   window.scrollTo({ top: 0, behavior: 'instant' });
+
   return controls;
 }
 
@@ -95,7 +116,9 @@ async function sweep(page, state, root = 'body') {
   await settle(page);
   const controls = await page.evaluate(measure, { root, exempt: EXEMPT.map((entry) => entry.selector) });
   expect(controls.length, `${state}: controls found`).toBeGreaterThan(0);
+
   if (process.env.TOUCH_REPORT) for (const c of controls) console.log(`${state}\t${c.control}\tbox ${c.box.join('×')}\thit ${c.hit.join('×')}`);
+
   return controls.filter((c) => c.hit[0] < MIN || c.hit[1] < MIN)
     .map((c) => `${state}: ${c.control} — box ${c.box.join('×')}, hit ${c.hit.join('×')}${c.blockers.length ? `, meets ${c.blockers.join(', ')}` : ''}`);
 }
@@ -111,11 +134,13 @@ function errorTrace(id, at) {
   attempt.startedAt = 0;
   attempt.events = [...text].map((char, position) => ({ type: 'insert', text: position % 4 === 1 ? 'x' : char,
     position, offsetMs: position * 100, accepted: true }));
+
   return { ...completeAttempt(attempt, { endedAt: text.length * 100 }), at, fresh: true };
 }
 
 // The PR's pictures: written to docs/ only when SCREENSHOTS is set.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/touch-targets/${name}.png` : testInfo.outputPath(`${name}.png`));
+
 // A run at a steady pace with one corrected slip, so the graph has a mistake on it.
 async function typeRun(page, delay) {
   const text = await passageText(page);
@@ -149,6 +174,7 @@ for (const theme of ['dark', 'light']) {
       await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
       await settle(page);
       await page.screenshot({ path: shot(testInfo, `inline-controls-390-${theme}`) });
+
       if (theme === 'dark') {
         // The same screen with each grown control's hit area outlined.
         const outline = await page.addStyleTag({ content: '.footer-link::after, .run-detail summary::after { outline: 1px dashed var(--accent); }' });
@@ -160,6 +186,7 @@ for (const theme of ['dark', 'light']) {
       // shared CPU adds its own time to each key, so the delay is retuned if a run misses.
       await page.setViewportSize({ width: 320, height: 640 });
       let fast = 0;
+
       for (let attempt = 0, delay = 104; attempt < 4 && !(fast >= 100 && fast <= 110); attempt += 1) {
         if (attempt) delay = Math.round(delay * fast / 105);
         await openView(page, 'Practice');
@@ -167,6 +194,7 @@ for (const theme of ['dark', 'light']) {
         await typeRun(page, delay);
         fast = Number(await page.locator('#result-wpm').textContent());
       }
+
       expect(fast).toBeGreaterThanOrEqual(100);
       expect(fast).toBeLessThanOrEqual(110);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
@@ -209,6 +237,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       small.push(...await sweep(page, 'results, manual drill open'));
       // The ghost race offer, where a run offers one (signed in only).
       const offer = page.locator('.manual-panel > summary', { hasText: 'Challenge a friend' });
+
       if (await offer.isVisible()) {
         await offer.click();
         small.push(...await sweep(page, 'results, challenge offer open'));
@@ -223,6 +252,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await closeSettings(page);
   await page.locator('#exit-focus').click();
       await expect(page.locator('#exit-focus')).toBeHidden();
+
       if (await page.locator('#settings-dialog').getAttribute('open') !== null) await closeSettings(page);
       await expect(page.locator('#settings-dialog')).toBeHidden();
 
@@ -303,11 +333,13 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await openView(page, 'Progress');
       await expect(page.locator('#progress-trend .trend-dot').first()).toBeVisible();
       small.push(...await sweep(page, 'progress'));
+
       // Every view's own controls, one panel at a time.
       for (const view of ['Accuracy', 'Consistency', 'Practice', 'Keys', 'Speed']) {
         await openProgressView(page, view);
         small.push(...await sweep(page, `progress, ${view.toLowerCase()} view`));
       }
+
       await page.locator('#run-history .run-summary').first().click();
       small.push(...await sweep(page, 'progress, run open'));
       await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '10 words' }).click();
@@ -376,8 +408,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       // The exempt points: each owns its centre, is at least 44px tall and fills the gap it has.
       const gaps = await page.locator('#progress-trend .trend-hit').evaluateAll((hits) => hits.map((hit) => {
         const svg = hit.ownerSVGElement;
+
         return parseFloat(hit.style.getPropertyValue('--trend-step')) * svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
       }));
+
       expect(Math.min(...gaps)).toBeLessThan(MIN);
       const points = await page.evaluate(measure, { root: '#progress-trend', exempt: [] });
       expect(points).toHaveLength(14);

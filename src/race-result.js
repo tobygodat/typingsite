@@ -15,6 +15,7 @@ export const raceResultText = (race) => raceResultParts(race).join('');
 // How a race went for `mine`, as its results show it: more wpm wins, and accuracy breaks a wpm tie.
 export function raceOutcome(mine, theirs) {
   const ahead = (mine.wpm || 0) - (theirs.wpm || 0) || (mine.accuracy ?? 100) - (theirs.accuracy ?? 100);
+
   return ahead > 0 ? 'won' : ahead < 0 ? 'lost' : 'tied';
 }
 
@@ -24,6 +25,7 @@ export const RACE_LEADS = { won: 'You beat', lost: 'You raced', tied: 'You tied 
 // Null when there is no tally to show: a guest on either side, or a service without one.
 export function tallyView(tally, outcome) {
   if (!Array.isArray(tally) || tally.length !== 2 || !tally.every(Number.isSafeInteger)) return null;
+
   return { mine: tally[0], theirs: tally[1], raised: outcome === 'won' ? 'mine' : outcome === 'lost' ? 'theirs' : null };
 }
 
@@ -38,6 +40,7 @@ export function rematchControls(mine, theirs) {
 }
 
 const score = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
 const validRace = (race) => typeof race?.lead === 'string' && typeof race.opponent === 'string'
   && Array.isArray(race.wpm) && race.wpm.length === 2 && race.wpm.every(score);
 
@@ -57,13 +60,17 @@ const LEGACY_RESULT = /^(You tied with|You beat|You raced) (.+): (0|[1-9]\d*) wp
 export function parseLegacyRaceResult(text) {
   if (typeof text !== 'string') return null;
   const match = LEGACY_RESULT.exec(text);
+
   if (!match) return null;
   const [, lead, opponent, mine, theirs] = match;
   const wpm = [Number(mine), Number(theirs)];
+
   if (!wpm.every(Number.isSafeInteger)) return null;
   const agrees = lead === 'You tied with' ? wpm[0] === wpm[1] : lead === 'You beat' ? wpm[0] >= wpm[1] : wpm[0] <= wpm[1];
+
   if (!agrees) return null;
   const race = { lead, opponent, wpm };
+
   return raceResultText(race) === text ? race : null;
 }
 
@@ -73,5 +80,6 @@ export function parseLegacyRaceResult(text) {
 export function normalizeInboxEntry(entry) {
   if (entry?.kind !== 'result' || entry.race !== undefined) return entry;
   const race = parseLegacyRaceResult(entry.text);
+
   return race ? { ...entry, race } : entry;
 }

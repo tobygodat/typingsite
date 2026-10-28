@@ -13,12 +13,14 @@ function run(keys, { text = passage, step = 150, end = null, kind = 'test', cond
   let typed = 0;
   [...keys].forEach((key, index) => {
     const offsetMs = index * step + 0.4;
+
     if (key === '\b') { attempt.events.push({ type: 'delete', count: 1, offsetMs }); typed -= 1; }
     else { attempt.events.push({ type: 'insert', text: key, position: typed, accepted: true, offsetMs }); typed += 1; }
   });
   attempt.startedAt = 0;
   attempt.endedAt = end ?? (keys.length - 1) * step + 0.4;
   attempt.status = 'complete';
+
   return attempt;
 }
 
@@ -58,6 +60,7 @@ test('a recorded run encodes to whole milliseconds and replays to the same text,
 
 test('a slip onto a key the passage can\u2019t contain is sent as a stand-in that replays to the same score', () => {
   const text = 'hello world again';
+
   for (const slip of ['ö', '\u00a0', 'é']) {
     const attempt = run(`he${slip}\bllo world again`, { text });
     const trace = encodeTrace(attempt);
@@ -69,6 +72,7 @@ test('a slip onto a key the passage can\u2019t contain is sent as a stand-in tha
     assert.deepEqual(decoded.score, original.score);
     assert.equal(scoreTrace(trace, text).finished, true);
   }
+
   // Left in under continue on error, it still never matches, even where the passage has a tilde.
   const tilde = 'a~b c d e f';
   const kept = encodeTrace(run('aöb c d e f', { text: tilde, conditions: { mode: 'words', count: 5, correctionPolicy: 'relaxed' } }));
@@ -126,7 +130,9 @@ test('only finished practice, retest and daily runs can be sent', () => {
   const custom = run(passage, { kind: 'custom', conditions: { mode: 'custom', duration: null, count: null, correctionPolicy: 'mandatory', customOrder: 'as-written' } });
   assert.equal(challengePayload(custom), null);
   SENDABLE_KINDS.push('custom');
+
   try { assert.equal(challengePayload(custom), null); } finally { SENDABLE_KINDS.pop(); }
+
   // Stop on error finishes only on the exact text; continue on error finishes at its length.
   const slip = passage.slice(0, -1) + '!';
   assert.equal(challengePayload(run(slip)), null);
@@ -150,6 +156,7 @@ test('a challenge carries only conditions this app can set up again, and a recei
   assert.deepEqual(challengeConditions(daily, null), daily);
   // No key is required: a row with fewer keys is raced with what it says.
   assert.deepEqual(challengeConditions({}, null), {});
+
   // A wrong type, a key this app doesn't know or a value it never sends is refused, never thrown on.
   for (const bad of [{ corpus: {} }, { mode: 'words', wordList: 200 }, { mode: 'words', colour: 'red' }, { mode: 'words', count: '10' },
     { mode: 'words', count: 2.5 }, { mode: 'words', punctuation: 'yes' }, { mode: 'words', inputClass: 'voice' }, { mode: 'sprint' },
@@ -157,6 +164,7 @@ test('a challenge carries only conditions this app can set up again, and a recei
     { mode: 'words', textId: 5 }, JSON.parse('{"__proto__": {"mode": "words"}}'), null, [], 'words']) {
     assert.equal(challengeConditions(bad, null), null, JSON.stringify(bad));
   }
+
   // A timed run says so, on the challenge's own clock; any other run has none.
   assert.equal(challengeConditions({ mode: 'time', duration: 30 }, null), null);
   assert.equal(challengeConditions({ mode: 'time', duration: 30 }, 15), null);
@@ -165,9 +173,11 @@ test('a challenge carries only conditions this app can set up again, and a recei
   assert.equal(challengeConditions({ mode: 'time', duration: 45 }, 45), null);
   // A run whose own conditions the service would refuse is never offered.
   assert.equal(challengePayload(run(passage, { conditions: { ...browserConditions, punctuation: null } })), null);
+
   // The inbox claims no shape for conditions it can't read.
   const received = { role: 'received', name: 'Ada', duration: null, conditions: { corpus: {} },
     sender: { wpm: 72, elapsedMs: 44000, correct: 130 }, result: { wpm: 65, elapsedMs: 41200, correct: 125 } };
+
   assert.equal(offerText(received), 'Ada challenged you to beat their run.');
   assert.equal(resultText(received), 'Ada’s run: you finished first · you 65 wpm, Ada 72 wpm.');
 });
@@ -175,13 +185,16 @@ test('a challenge carries only conditions this app can set up again, and a recei
 test('a passage race is led by the earlier finish, a timed race by the text kept, and both are worded once', () => {
   const sent = { role: 'sent', name: 'Lin', duration: null, conditions: { mode: 'words', count: 25 },
     sender: { wpm: 72, elapsedMs: 44000, correct: 130 }, result: { wpm: 65, elapsedMs: 41200, correct: 125 } };
+
   assert.equal(challengeOutcome(sent), 'recipient');
   assert.equal(resultText(sent), 'Lin raced your 25-word run: Lin finished first · you 72 wpm, Lin 65 wpm.');
   const received = { ...sent, role: 'received', name: 'Ada' };
   assert.equal(resultText(received), 'Ada’s 25-word run: you finished first · you 65 wpm, Ada 72 wpm.');
   assert.equal(offerText(received), 'Ada challenged you to beat their 25-word run.');
+
   const timed = { ...received, duration: 30, conditions: { mode: 'time', duration: 30 },
     sender: { ...received.sender, elapsedMs: 30000 }, result: { ...received.result, elapsedMs: 30000 } };
+
   assert.equal(challengeOutcome(timed), 'sender');
   assert.equal(resultText(timed), 'Ada’s 30-second run: Ada typed further · you 65 wpm, Ada 72 wpm.');
   assert.equal(outcomeRule(timed), 'Same 30 s clock: more correct text kept leads.');
@@ -195,6 +208,7 @@ test('a passage race is led by the earlier finish, a timed race by the text kept
 test('under continue on error, a quick finish full of mistakes doesn\u2019t beat a clean run', () => {
   const daily = { role: 'received', name: 'Ada', duration: null, conditions: { mode: 'quote', sourceKind: 'daily', correctionPolicy: 'relaxed' },
     sender: { wpm: 88, accuracy: 100, elapsedMs: 6300, correct: 46 }, result: { wpm: 0, accuracy: 0, elapsedMs: 2859, correct: 0 } };
+
   assert.equal(challengeOutcome(daily), 'sender');
   assert.equal(resultText(daily), 'Ada’s daily run: Ada typed faster · you 0 wpm, Ada 88 wpm.');
   assert.equal(outcomeRule(daily), 'More correct characters per minute leads.');
@@ -229,8 +243,10 @@ test('sending posts only the request id, the friend, the name and the run', asyn
   const calls = [];
   globalThis.fetch = async (url, options) => {
     calls.push({ url, headers: options.headers, data: JSON.parse(options.body) });
+
     return new Response(JSON.stringify({ id: 'c1', status: 'open' }));
   };
+
   try {
     const session = { user: { id: 'ada' }, access_token: 'token', refresh_token: 'r', expires_at: 9999999999 };
     const payload = challengePayload(run(passage));

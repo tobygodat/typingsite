@@ -31,6 +31,7 @@ export function wpmFromSpeed(value, unit = shown) {
 // so a float remainder like 0.30000000000000004 reads 0.3 and a tiny one reads 0, unsigned.
 export function signedNumber(value) {
   const rounded = Number(Number(value).toFixed(1));
+
   return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded)}`;
 }
 
@@ -39,6 +40,7 @@ export function signedNumber(value) {
 export function formatSpeed(wpm, { bare = false, signed = false, whole = false } = {}, unit = shown) {
   const value = speedValue(wpm, unit);
   const number = signed ? signedNumber(value) : whole ? String(Math.round(value)) : `${Number(value.toFixed(1))}`;
+
   return bare ? number : `${number} ${normalizeSpeedUnit(unit)}`;
 }
 
@@ -52,9 +54,12 @@ export function unitText(template, unit = shown) {
 export function showSpeed(node, wpm) {
   if (wpm === null || wpm === undefined) delete node.dataset.wpm;
   else node.dataset.wpm = wpm;
+
   if (node.localName === 'data') node.value = wpm ?? '';
   const text = wpm === null || wpm === undefined ? '—' : formatSpeed(wpm, { bare: 'bare' in node.dataset, signed: 'signed' in node.dataset, whole: 'whole' in node.dataset });
+
   if (node.textContent !== text) node.textContent = text;
+
   return node;
 }
 
@@ -63,9 +68,13 @@ export function showSpeed(node, wpm) {
 // of a row off a figure inside one.
 export function speedFigure(wpm, { bare = false, signed = false, whole = false } = {}) {
   const node = document.createElement('data');
+
   if (bare) node.dataset.bare = '';
+
   if (signed) node.dataset.signed = '';
+
   if (whole) node.dataset.whole = '';
+
   return showSpeed(node, wpm);
 }
 
@@ -74,6 +83,7 @@ export function unitLabel(template = '') {
   const node = document.createElement('span');
   node.dataset.speedUnit = template;
   node.textContent = unitText(template || '{unit}');
+
   return node;
 }
 
@@ -82,9 +92,11 @@ export function unitLabel(template = '') {
 // is almost always the person's own, and one synced from another device mid-session is rare.
 export function showSpeedUnit(unit) {
   const next = normalizeSpeedUnit(unit);
+
   if (next === shown) return false;
   shown = next;
   document.querySelectorAll('[data-wpm]').forEach((node) => showSpeed(node, Number(node.dataset.wpm)));
   document.querySelectorAll('[data-speed-unit]').forEach((node) => { node.textContent = unitText(node.dataset.speedUnit || '{unit}'); });
+
   return true;
 }

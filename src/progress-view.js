@@ -3,14 +3,19 @@ import { dayKey, histogram, quantile, runsByDay } from './insights.js';
 import { speedValue, unitText } from './units.js';
 
 const svgNS = 'http://www.w3.org/2000/svg';
+
 const svgNode = (name, attrs) => {
   const node = document.createElementNS(svgNS, name);
+
   for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+
   return node;
 };
+
 const svgText = (text, attrs) => {
   const node = svgNode('text', attrs);
   node.textContent = text;
+
   return node;
 };
 
@@ -25,6 +30,7 @@ function chartHeight(figure, width) {
   const style = getComputedStyle(figure);
   const max = parseFloat(style.getPropertyValue('--chart-height')) || 400;
   const min = parseFloat(style.getPropertyValue('--chart-height-min')) || 240;
+
   return Math.round(Math.max(min, Math.min(max, width / 2.5)));
 }
 
@@ -34,14 +40,18 @@ export function gridlines(values, minStep, ceiling) {
   const finite = values.filter(Number.isFinite);
   const low = finite.length ? Math.min(...finite) : 0;
   const high = finite.length ? Math.max(...finite) : 0;
+
   for (let scale = 1; scale <= 1e12; scale *= 10) {
     for (const step of [1, 2, 5].map((n) => n * scale)) {
       if (step < minStep) continue;
       let base = Math.floor(low / step) * step;
+
       if (base + 2 * step > ceiling) base = Math.max(0, ceiling - 2 * step);
+
       if (base <= low && base + 2 * step >= high) return [base, base + step, base + 2 * step];
     }
   }
+
   return [low, (low + high) / 2, high];
 }
 
@@ -55,15 +65,20 @@ function roundTicks(values, ceiling = Infinity) {
   const step = [1, 2, 5, 10].map((n) => n * power).find((n) => span / n <= 4);
   const ticks = [];
   const top = Math.min(ceiling, Math.ceil(high / step) * step);
+
   for (let v = Math.floor(low / step) * step; v < top + step / 2; v += step) ticks.push(Number(Math.min(v, ceiling).toFixed(6)));
+
   if (ticks.length === 1) ticks.unshift(Number((ticks[0] - step).toFixed(6)));
+
   return ticks;
 }
 
 const dayDate = (day) => {
   const [year, month, date] = day.split('-').map(Number);
+
   return new Date(year, month - 1, date);
 };
+
 const dayOffset = (from, day) => Math.round((dayDate(day) - dayDate(from)) / 86400000);
 
 // Where each day (oldest first) sits across a plot `plot` wide from `left`: by its offset in calendar days
@@ -73,11 +88,14 @@ export function dayPositions(days, [first, last], left, plot) {
   const span = dayOffset(first, last);
   const xs = days.map((day) => left + (span ? (dayOffset(first, day) / span) * plot : plot / 2));
   const gaps = xs.map((x, i) => Math.min(i ? x - xs[i - 1] : Infinity, i < xs.length - 1 ? xs[i + 1] - x : Infinity));
+
   return { xs, gaps: gaps.map((gap) => (Number.isFinite(gap) ? gap : plot)) };
 }
+
 const shortDate = (day) => dayDate(day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const latestRun = (runs) => runs.reduce((last, run) => ((run.at || '') >= (last.at || '') ? run : last));
 const unitName = () => unitText('{unit}');
+
 // Speeds on the charts read whole, like the figures above them, rounded once after converting to the
 // unit shown; accuracy keeps one decimal at most.
 const shownSpeed = (value) => Math.round(value);
@@ -89,13 +107,16 @@ function chartFigure(container, title, { note = '', subline = '', legend = false
   figure.className = 'trend-figure';
   const caption = document.createElement('figcaption');
   caption.append(title);
+
   if (note) {
     const span = document.createElement('span');
     span.className = 'trend-caption-note';
     span.textContent = note;
     caption.append(' ', span);
   }
+
   figure.append(caption);
+
   if (legend) {
     const key = document.createElement('p');
     key.className = 'trend-legend';
@@ -103,15 +124,19 @@ function chartFigure(container, title, { note = '', subline = '', legend = false
     key.innerHTML = '<span class="legend-line"></span>daily median <span class="legend-dot"></span>a run';
     figure.append(key);
   }
+
   if (subline) {
     const line = document.createElement('p');
     line.className = 'trend-subline';
     line.textContent = subline;
     figure.append(line);
   }
+
   container.append(figure);
+
   return figure;
 }
+
 const figureWidth = (figure, fallback = 640) => Math.max(280, figure.clientWidth || fallback);
 
 const METRICS = {
@@ -121,22 +146,28 @@ const METRICS = {
 
 const boxesOverlap = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 const grow = (box, by) => ({ left: box.left - by, top: box.top - by, right: box.right + by, bottom: box.bottom + by });
+
 // Liang–Barsky: does the segment from a to b pass through the box?
 function segmentCrosses([x1, y1], [x2, y2], box) {
   const dx = x2 - x1;
   const dy = y2 - y1;
   let from = 0;
   let to = 1;
+
   for (const [p, q] of [[-dx, x1 - box.left], [dx, box.right - x1], [-dy, y1 - box.top], [dy, box.bottom - y1]]) {
     if (p === 0) {
       if (q < 0) return false;
       continue;
     }
+
     const t = q / p;
+
     if (p < 0) from = Math.max(from, t);
     else to = Math.min(to, t);
+
     if (from > to) return false;
   }
+
   return true;
 }
 
@@ -146,15 +177,20 @@ function segmentCrosses([x1, y1], [x2, y2], box) {
 // Returns the boxes { left, top, right, bottom }. With no clear spot, the one with the fewest collisions wins.
 export function placeCallouts(callouts, { dots = [], segments = [], bounds, gap = CALLOUT_GAP }) {
   const placed = [];
+
   const collisions = (box) => {
     const clear = grow(box, gap);
+
     return dots.filter((d) => boxesOverlap(clear, { left: d.x - d.r, top: d.y - d.r, right: d.x + d.r, bottom: d.y + d.r })).length
       + segments.filter(([a, b]) => segmentCrosses(a, b, clear)).length
       + placed.filter((other) => boxesOverlap(clear, other)).length;
   };
+
   const inside = (box) => box.left >= bounds.left && box.right <= bounds.right && box.top >= bounds.top && box.bottom <= bounds.bottom;
+
   for (const { x, y, width, height } of callouts) {
     const spots = [];
+
     for (const d of [10, 18, 28, 40, 56, 76, 100, 130]) {
       const above = y - d - height;
       const below = y + d;
@@ -165,18 +201,25 @@ export function placeCallouts(callouts, { dots = [], segments = [], bounds, gap 
         [x - width - d, beside], [x + d, beside],
       );
     }
+
     let best = null;
+
     for (const [left, top] of spots) {
       const box = { left, top, right: left + width, bottom: top + height };
+
       if (!inside(box)) continue;
       const hits = collisions(box);
+
       if (!best || hits < best.hits) best = { box, hits };
+
       if (!hits) break;
     }
+
     const box = best?.box || { left: Math.max(bounds.left, Math.min(x - width / 2, bounds.right - width)), top: bounds.top, right: 0, bottom: bounds.top + height };
     box.right = box.left + width;
     placed.push(box);
   }
+
   return placed;
 }
 
@@ -185,8 +228,11 @@ function measureText(chart, text) {
   const node = svgText(text, { x: 0, y: 0, class: 'trend-callout', 'aria-hidden': 'true' });
   chart.append(node);
   let box = null;
+
   try { box = node.getBBox(); } catch { box = null; }
+
   if (!box?.width) box = { x: 0, y: -14, width: text.length * 7, height: 18 };
+
   return { node, box };
 }
 
@@ -197,6 +243,7 @@ function measureText(chart, text) {
 export function renderTrend(container, runs, onSelect, metric = 'wpm', { period = null } = {}) {
   container.replaceChildren();
   const days = runsByDay(runs);
+
   if (!days.length) return;
   const spec = METRICS[metric];
   const unit = metric === 'wpm' ? unitName() : 'percent accuracy';
@@ -211,22 +258,27 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', { period 
   const low = Math.min(lines[0], ...dots);
   const high = Math.max(lines[2], ...dots);
   const runCount = dots.length;
+
   const chart = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, role: 'group',
     'aria-label': `${spec.title}: the median of each day's runs, ${days.length} ${days.length === 1 ? 'day' : 'days'} and ${runCount} ${runCount === 1 ? 'run' : 'runs'}. Select a point for that day's latest run.` });
+
   const plot = width - LEFT - RIGHT;
   const range = [period?.from ?? days[0].day, period?.to ?? days.at(-1).day];
   const { xs, gaps } = dayPositions(days.map((day) => day.day), range, LEFT, plot);
   const xOf = (i) => xs[i];
   const yOf = (v) => (high === low ? (TOP + bottom) / 2 : bottom - ((v - low) / (high - low)) * (bottom - TOP));
+
   // A point's hit area is 44px tall and no wider than the gap to its nearer neighbour, so hit areas
   // never overlap and a tap opens the point under it. A chart with points closer than a 44px target
   // is marked dense: each run is also a full-size row in the run history below.
   if (Math.min(...gaps) < 44) chart.classList.add('trend-dense');
+
   for (const v of lines) {
     const y = yOf(v);
     chart.append(svgNode('line', { x1: LEFT, x2: width - RIGHT, y1: y, y2: y, class: 'trend-rule' }),
       svgText(`${v}${spec.suffix}`, { x: width - RIGHT + 12, y: y + 4, class: 'trend-label' }));
   }
+
   const runDots = svgNode('g', { class: 'trend-runs', 'aria-hidden': 'true' });
   const dotMarks = [];
   days.forEach((day, i) => {
@@ -264,26 +316,34 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', { period 
   const named = (i) => `${spec.shown(values[i])}${spec.suffix}`;
   const isToday = days[last].day === (period?.to ?? dayKey(new Date()));
   const callouts = [[last, `${named(last)} ${isToday ? 'today' : `on ${shortDate(days[last].day)}`}${best === last && days.length > 1 ? ', best day' : ''}`]];
+
   if (best !== last) callouts.push([best, `${named(best)} on ${shortDate(days[best].day)}`]);
   const texts = callouts.map(([i, text]) => ({ i, ...measureText(chart, text) }));
+
   const boxes = placeCallouts(texts.map(({ i, box }) => ({ x: points[i][0], y: points[i][1], width: box.width, height: box.height })), {
     dots: [...dotMarks, ...points.map(([x, y]) => ({ x, y, r: 4 }))],
     segments: points.slice(1).map((point, i) => [points[i], point]),
     bounds: { left: 0, top: 0, right: width - RIGHT, bottom },
   });
+
   texts.forEach(({ node, box }, n) => {
     node.setAttribute('x', String(boxes[n].left - box.x));
     node.setAttribute('y', String(boxes[n].top - box.y));
   });
   // The dates at either end of the axis, and the one halfway where the chart is wide enough to keep three apart.
   const span = dayOffset(...range);
+
   const dateAt = (offset) => {
     const day = dayDate(range[0]);
     day.setDate(day.getDate() + offset);
+
     return shortDate(dayKey(day));
   };
+
   const ticks = span ? [[0, LEFT, 'start'], [span, width - RIGHT, 'end']] : [[0, LEFT + plot / 2, 'middle']];
+
   if (span >= 4 && width >= 480) ticks.push([Math.round(span / 2), LEFT + (Math.round(span / 2) / span) * plot, 'middle']);
+
   for (const [offset, x, textAnchor] of ticks) chart.append(svgText(dateAt(offset), { x, y: height - 6, 'text-anchor': textAnchor, class: 'trend-label' }));
 }
 
@@ -297,12 +357,15 @@ const SPREAD_BOTTOM = 170;
 export function renderSpread(container, runs) {
   container.replaceChildren();
   const speeds = runs.map((run) => run.score.wpm);
+
   if (!speeds.length) return;
   const unit = unitName();
   const [q1, mid, q3] = [0.25, 0.5, 0.75].map((p) => quantile(speeds, p));
+
   const spread = speeds.length >= 4
     ? `Half your runs fall between ${shownSpeed(speedValue(q1))} and ${shownSpeed(speedValue(q3))} ${unit}.`
     : '';
+
   const left = chartFigure(container, 'How your runs spread', { subline: spread });
   const right = chartFigure(container, 'Speed against accuracy');
   drawHistogram(left, speeds, { q1, mid, q3, unit });
@@ -318,17 +381,23 @@ function drawHistogram(figure, speeds, { q1, mid, q3, unit }) {
   const tallest = Math.max(...bins.map((bin) => bin.count));
   const yOf = (count) => SPREAD_BOTTOM - (count / tallest) * (SPREAD_BOTTOM - SPREAD_TOP - 8);
   const range = (wpm) => shownSpeed(speedValue(wpm));
+
   const chart = svgNode('svg', { viewBox: `0 0 ${width} ${SPREAD_HEIGHT}`, role: 'img',
     'aria-label': `${speeds.length} ${speeds.length === 1 ? 'run' : 'runs'} by speed, from ${range(Math.min(...speeds))} to ${range(Math.max(...speeds))} ${unit}. Median ${range(mid)} ${unit}${speeds.length >= 4 ? `; half the runs between ${range(q1)} and ${range(q3)} ${unit}` : ''}.` });
+
   if (speeds.length >= 4) {
     chart.append(svgNode('rect', { x: xOf(q1), y: SPREAD_TOP, width: Math.max(1, xOf(q3) - xOf(q1)), height: SPREAD_BOTTOM - SPREAD_TOP, class: 'spread-band' }));
+
     for (const edge of [q1, q3]) chart.append(svgNode('line', { x1: xOf(edge), x2: xOf(edge), y1: SPREAD_TOP, y2: SPREAD_BOTTOM, class: 'spread-band-edge' }));
   }
+
   const barWidth = width / bins.length;
+
   for (const bin of bins) {
     if (!bin.count) continue;
     chart.append(svgNode('rect', { x: xOf(bin.from) + 1, y: yOf(bin.count), width: Math.max(1, barWidth - 2), height: SPREAD_BOTTOM - yOf(bin.count), class: 'spread-bar' }));
   }
+
   chart.append(svgNode('line', { x1: 0, x2: width, y1: SPREAD_BOTTOM, y2: SPREAD_BOTTOM, class: 'trend-rule' }));
   const midX = xOf(mid);
   chart.append(svgNode('line', { x1: midX, x2: midX, y1: SPREAD_TOP - 6, y2: SPREAD_BOTTOM, class: 'spread-median' }),
@@ -360,12 +429,15 @@ function drawScatter(figure, runs, unit) {
   const [yLo, yHi] = [yLines[0], yLines.at(-1)];
   const xOf = (v) => left + 6 + ((v - xLo) / (xHi - xLo || 1)) * (width - left - 12);
   const yOf = (v) => SPREAD_BOTTOM - 6 - ((v - yLo) / (yHi - yLo || 1)) * (SPREAD_BOTTOM - SPREAD_TOP - 12);
+
   const chart = svgNode('svg', { viewBox: `0 0 ${width} ${SPREAD_HEIGHT}`, role: 'img',
     'aria-label': `Speed against accuracy for ${runs.length} ${runs.length === 1 ? 'run' : 'runs'}: speed from ${shownSpeed(Math.min(...xs))} to ${shownSpeed(Math.max(...xs))} ${unit}, accuracy from ${shownAccuracy(Math.min(...ys))}% to ${shownAccuracy(Math.max(...ys))}%.` });
+
   for (const v of yLines) {
     const y = yOf(v);
     chart.append(svgNode('line', { x1: left, x2: width, y1: y, y2: y, class: 'trend-rule' }), svgText(`${v}%`, { x: 0, y: y + 4, class: 'trend-label' }));
   }
+
   for (const v of xLines) chart.append(svgText(String(v), { x: xOf(v), y: SPREAD_HEIGHT - 6, 'text-anchor': 'middle', class: 'trend-label' }));
   const dots = svgNode('g', { class: 'scatter-runs' });
   runs.forEach((run, i) => dots.append(svgNode('circle', { cx: xOf(xs[i]), cy: yOf(ys[i]), r: 3 })));
@@ -380,6 +452,7 @@ const STRIP_BOTTOM = 70;
 // Completed runs of every kind on each day of the period, oldest first.
 export function renderRunsPerDay(container, perDay) {
   container.replaceChildren();
+
   if (!perDay.length) return;
   const figure = chartFigure(container, 'Runs per day');
   const width = figureWidth(figure);
@@ -387,8 +460,10 @@ export function renderRunsPerDay(container, perDay) {
   const total = perDay.reduce((sum, d) => sum + d.runs, 0);
   const active = perDay.filter((d) => d.runs).length;
   const step = width / perDay.length;
+
   const chart = svgNode('svg', { viewBox: `0 0 ${width} ${STRIP_HEIGHT}`, role: 'img',
     'aria-label': `Runs per day from ${shortDate(perDay[0].day)} to ${shortDate(perDay.at(-1).day)}: ${total} ${total === 1 ? 'run' : 'runs'} on ${active} ${active === 1 ? 'day' : 'days'}, at most ${most} in a day.` });
+
   perDay.forEach((d, i) => {
     if (!d.runs) return;
     const height = (d.runs / most) * (STRIP_BOTTOM - STRIP_TOP);
@@ -396,6 +471,7 @@ export function renderRunsPerDay(container, perDay) {
   });
   chart.append(svgNode('line', { x1: 0, x2: width, y1: STRIP_BOTTOM, y2: STRIP_BOTTOM, class: 'trend-rule' }));
   const ends = perDay.length === 1 ? [[perDay[0], width / 2, 'middle']] : [[perDay[0], 0, 'start'], [perDay.at(-1), width, 'end']];
+
   for (const [d, x, anchor] of ends) chart.append(svgText(shortDate(d.day), { x, y: STRIP_HEIGHT - 6, 'text-anchor': anchor, class: 'trend-label' }));
   figure.append(chart);
 }
@@ -404,9 +480,12 @@ export function renderRunsPerDay(container, perDay) {
 // whose week starts in it. The first column is named only when its month has room before the next.
 export function monthLabels(days) {
   const months = [];
+
   for (let i = 0; i < days.length; i += 7) months.push(dayDate(days[i]));
+
   return months.map((day, col) => {
     const starts = col ? months[col - 1].getMonth() !== day.getMonth() : months[1]?.getMonth() === day.getMonth();
+
     return starts ? day.toLocaleDateString(undefined, { month: 'short' }) : '';
   });
 }

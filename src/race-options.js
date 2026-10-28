@@ -7,9 +7,11 @@ import { LENGTHS } from './lengths.js';
 
 // Today's race, and what a practice-only setup falls back to: a medium quote on a 60-second clock.
 export const RACE_FALLBACK = Object.freeze({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', duration: 60 });
+
 // A word or quote race ends at the end of its passage, with this clock as its limit.
 const PASSAGE_CLOCK = 120;
 const MIN_WORDS = 10;
+
 // The service keeps a passage of 40 to 8000 characters. A timed race keeps enough text for 400 wpm on its clock.
 const MAX_TEXT = 8000;
 const CHARS_PER_SECOND = 400 * 5 / 60;
@@ -19,14 +21,21 @@ const CHARS_PER_SECOND = 400 * 5 / 60;
 // standard test are practice's own, so with any of them set the race is today's default.
 export function raceOptions(practice = {}) {
   const { mode, duration, count, punctuation, numbers, wordList, quoteLength, difficulty, adaptive, session } = practice;
+
   if (!['time', 'words', 'quote'].includes(mode) || (adaptive && mode !== 'quote') || (session && session !== 'practice')) return { ...RACE_FALLBACK };
+
   if (mode === 'quote') return { mode, quoteLength: quoteLength || 'any', difficulty: difficulty || 'any' };
   const spec = LENGTHS[mode];
   const length = mode === 'time' ? duration : count;
   // The service takes at least 40 characters, which fewer than ten words may not reach.
   const least = mode === 'words' ? MIN_WORDS : spec.min;
-  return { mode, [spec.key]: Number.isInteger(length) && length <= spec.max ? Math.max(least, length) : spec.fallback,
-    punctuation: Boolean(punctuation), numbers: Boolean(numbers), ...(wordList ? { wordList } : {}) };
+
+  const options = { mode, [spec.key]: Number.isInteger(length) && length <= spec.max ? Math.max(least, length) : spec.fallback,
+    punctuation: Boolean(punctuation), numbers: Boolean(numbers) };
+
+  if (wordList) options.wordList = wordList;
+
+  return options;
 }
 
 // The room's conditions: the options, the race clock (`duration`) and the rules every online race keeps.
@@ -39,10 +48,16 @@ export function raceConditions(options) {
 // cut at a word boundary to what 400 wpm types on its clock.
 export function racePassage(conditions, { seenIds = [], random = Math.random } = {}) {
   const { mode, count, punctuation = false, numbers = false, wordList, quoteLength = 'any', difficulty = 'any', duration } = conditions;
-  const passage = selectPassage({ mode, count, duration: mode === 'time' ? duration : 0, punctuation, numbers,
-    quoteLength, difficulty, seenIds, random, ...(wordList ? { wordList } : {}) });
+
+  const wanted = { mode, count, duration: mode === 'time' ? duration : 0, punctuation, numbers, quoteLength, difficulty, seenIds, random };
+
+  if (wordList) wanted.wordList = wordList;
+  const passage = selectPassage(wanted);
+
   const limit = Math.min(MAX_TEXT, mode === 'time' ? Math.ceil(duration * CHARS_PER_SECOND) : MAX_TEXT);
+
   if (passage.text.length <= limit) return passage;
   const end = passage.text.lastIndexOf(' ', limit);
+
   return { ...passage, text: passage.text.slice(0, end > 0 ? end : limit) };
 }

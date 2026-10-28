@@ -33,11 +33,13 @@ async function racePair(page, browser, supabase) {
   await typeInto(lin, passage, '#online-input', { delay: 5 });
   await expect(page.locator('#online-results')).toBeVisible({ timeout: 10000 });
   await expect(lin.locator('#online-results')).toBeVisible({ timeout: 10000 });
+
   return { context, lin, passage };
 }
 
 test('under the results, Graph shows both racers\' speed and Replay plays the passage with both carets', async ({ page, browser, supabase }) => {
   const { context, lin, passage } = await racePair(page, browser, supabase);
+
   try {
     // Graph is the default: one chart, your line in the accent and theirs in the text colour.
     await expect(page.locator('#online-review')).toBeVisible();
@@ -47,14 +49,17 @@ test('under the results, Graph shows both racers\' speed and Replay plays the pa
     const lines = page.locator('#online-duel-graph path.graph-line');
     await expect(lines).toHaveCount(2);
     const colours = await lines.evaluateAll((paths) => paths.map((path) => getComputedStyle(path).stroke));
+
     const [accent, text] = await page.evaluate(() => ['--accent', '--text'].map((name) => {
       const probe = document.createElement('span');
       probe.style.color = `var(${name})`;
       document.body.append(probe);
       const colour = getComputedStyle(probe).color;
       probe.remove();
+
       return colour;
     }));
+
     expect(colours.sort()).toEqual([accent, text].sort());
     await expect(page.locator('#online-duel-graph path.graph-line-theirs')).toHaveCSS('stroke', text);
 
@@ -95,6 +100,7 @@ test('under the results, Graph shows both racers\' speed and Replay plays the pa
 test('reduced motion opens the replay on its last frame, still, with Play left to the person', async ({ page, browser, supabase }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const { context, passage } = await racePair(page, browser, supabase);
+
   try {
     await page.locator('#online-show-replay').click();
     await expect(page.locator('#online-replay-toggle')).toHaveText('Play');
@@ -105,6 +111,7 @@ test('reduced motion opens the replay on its last frame, still, with Play left t
 test('a race without both traces, such as one from before them, shows no Graph or Replay', async ({ page, browser, supabase }) => {
   supabase.races.dropTraces = true;
   const { context, lin } = await racePair(page, browser, supabase);
+
   try {
     await expect(page.locator('#online-duel-mine')).toHaveAttribute('data-outcome', 'won');
     await page.waitForTimeout(1500);

@@ -3,8 +3,10 @@ import { test, expect, openApp, openSettings, chooseWords, passageText, typeInto
 async function editBindings(page, values) {
   await openSettings(page);
   await openSettings(page, 'shortcuts');
+
   for (const [action, value] of Object.entries(values)) await page.locator(`#keybinding-${action}`).fill(value);
 }
+
 async function saveBindings(page) {
   await openSettings(page, 'shortcuts');
   await page.locator('#keybinding-restart').press('Enter');
@@ -26,14 +28,17 @@ test('modified restart requires exact modifiers, preserves typing, and ignores r
   await page.keyboard.press('Control+e');
   await page.keyboard.press('Control+Shift+Alt+e');
   await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, 3));
+
   for (const extra of [{ isComposing: true }, { keyCode: 229 }, { altGraph: true }]) {
     await page.locator('#typing-input').evaluate((input, extra) => {
       const event = new KeyboardEvent('keydown', { key: 'E', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true, ...extra });
+
       if (extra.altGraph) Object.defineProperty(event, 'getModifierState', { value: () => true });
       input.dispatchEvent(event);
     }, extra);
     await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, 3));
   }
+
   await page.keyboard.press('Control+Shift+e');
   await expect(page.locator('#typing-input')).toHaveValue('');
   text = await passageText(page);
@@ -46,6 +51,7 @@ test('modified restart requires exact modifiers, preserves typing, and ignores r
 
 test('conflicts and invalid combinations leave saved bindings untouched, and can be swapped atomically', async ({ page }) => {
   await openApp(page);
+
   for (const [action, value, message] of [['restart', 'Ctrl+K', 'Already used'], ['restart', 'Shift+Tab', 'reserved'], ['restart', 'a', 'Printable keys'],
     ['restart', 'Ctrl+R', 'reserved'], ['restart', 'Ctrl+Alt+E', 'AltGr'], ['commands', 'Mod+Alt+K', 'AltGr']]) {
     await editBindings(page, { [action]: value });
@@ -54,6 +60,7 @@ test('conflicts and invalid combinations leave saved bindings untouched, and can
     await expect(page.locator(`#keybinding-${action}-error`)).toContainText(message);
     await expect(page.locator('#restart-key-hint')).toHaveText('esc');
   }
+
   await editBindings(page, { restart: 'Mod+K', commands: 'F2' });
   await saveBindings(page);
   await typeInto(page, (await passageText(page)).slice(0, 2));
@@ -202,9 +209,11 @@ test('keybindings controls remain reachable at 320px', async ({ page }, testInfo
   await editBindings(page, {});
   await page.locator('#keybinding-commands').scrollIntoViewIfNeeded();
   await expect(page.locator('#keybinding-commands')).toBeVisible();
+
   for (const height of await page.locator('.keybindings-category .btn').evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height))) {
     expect(height).toBeGreaterThanOrEqual(44);
   }
+
   const bounds = await page.locator('#settings-dialog').boundingBox();
   expect(bounds.x).toBeGreaterThanOrEqual(0);
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);

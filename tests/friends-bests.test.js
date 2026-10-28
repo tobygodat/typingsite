@@ -11,30 +11,39 @@ import { boardBests } from '../e2e/fake-board.js';
 
 const base = { mode: 'time', duration: 60, count: null, punctuation: false, numbers: false, quoteLength: null, difficulty: null, wordList: '200',
   inputClass: 'physical-keyboard', correctionPolicy: 'mandatory', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
 const time60 = base;
 const time30 = { ...base, duration: 30 };
 const words25 = { ...base, mode: 'words', duration: null, count: 25, correctionPolicy: 'relaxed' };
 const quote = { ...base, mode: 'quote', duration: null, wordList: null, quoteLength: 'medium', difficulty: 'any' };
 const touch60 = { ...base, inputClass: 'touch' };
 const key = conditionKey;
+
 const run = (id, overrides = {}) => ({ id, at: '2026-10-09T12:00:00Z', status: 'complete', kind: 'test', interrupted: false,
   conditions: time60, score: { wpm: 70, accuracy: 97 }, elapsedMs: 60000, challengeDate: null, ...overrides });
+
 const score = (wpm, accuracy) => ({ score: { wpm, accuracy } });
+
 // Every test shape this build can write, as src/app.js conditions() writes them from the app's own
 // option lists: each mode with its own fields, and none of the others'. Numbers apply to generated
 // tests only; a quote always records them off.
 function writtenShapes() {
   const shapes = [];
+
   for (const inputClass of INPUT_CLASSES) for (const correctionPolicy of CORRECTION_POLICIES) for (const punctuation of [false, true]) {
     const common = { punctuation, numbers: false, quoteLength: null, difficulty: null, inputClass, correctionPolicy, language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
     for (const numbers of [false, true]) for (const wordList of wordListIds) {
       for (const duration of TEST_DURATIONS) shapes.push({ ...common, numbers, mode: 'time', duration, count: null, wordList });
+
       for (const count of TEST_COUNTS) shapes.push({ ...common, numbers, mode: 'words', duration: null, count, wordList });
     }
+
     for (const quoteLength of QUOTE_LENGTHS) {
       for (const difficulty of QUOTE_DIFFICULTIES) shapes.push({ ...common, mode: 'quote', duration: null, count: null, quoteLength, difficulty, wordList: null });
     }
   }
+
   return shapes;
 }
 
@@ -53,6 +62,7 @@ test('only runs that can set a personal best are shared: completed, uninterrupte
     run('undated', { at: null, ...score(111, 99) }),
     run('impossible', score(401, 100)),
   ];
+
   assert.deepEqual(shapeBests(runs), { [key(time60)]: { wpm: 75, accuracy: 94, date: '2026-10-09' } });
 });
 
@@ -80,14 +90,17 @@ test('a shape’s best is the fastest run, then the more accurate, then the earl
     run('words', { conditions: words25, at: '2026-10-08T23:30:00Z', ...score(58, 92) }),
     run('touch', { conditions: touch60, ...score(49, 90) }),
   ];
+
   assert.deepEqual(shapeBests(runs), {
     [key(time60)]: { wpm: 81, accuracy: 97, date: '2026-10-05' },
     [key(words25)]: { wpm: 58, accuracy: 92, date: '2026-10-08' },
     [key(touch60)]: { wpm: 49, accuracy: 90, date: '2026-10-09' },
   });
+
   // Whichever device writes the summary, and whatever its clock reads, the dates are the runs' own.
   for (const clock of ['2026-10-08T23:50:00Z', '2026-10-12T10:00:00Z', '2025-01-01T00:00:00Z']) {
     mock.timers.enable({ apis: ['Date'], now: Date.parse(clock) });
+
     try { assert.equal(shapeBests(runs)[key(words25)].date, '2026-10-08', clock); } finally { mock.timers.reset(); }
   }
 });
@@ -96,17 +109,22 @@ test('at most 16 shapes are shared: the ones with the most runs, then the most r
   // Twenty shapes this build writes, numbered from 1: the first fourteen run three times, the rest once.
   const shape = (number) => writtenShapes()[number - 1];
   const runs = [];
+
   for (let number = 1; number <= 20; number += 1) {
     for (let i = 0; i < (number <= 14 ? 3 : 1); i += 1) runs.push(run(`${number}-${i}`, { conditions: shape(number), at: `2026-10-0${1 + (number % 9)}T12:00:00Z` }));
   }
+
   const bests = shapeBests(runs);
   assert.equal(Object.keys(bests).length, MAX_SHAPES);
+
   for (let number = 1; number <= 14; number += 1) assert.ok(key(shape(number)) in bests);
   // Of the six run once, the two most recent stay: the 17th (on the 9th) and the 16th (on the 8th).
   assert.ok(key(shape(17)) in bests && key(shape(16)) in bests);
+
   for (const number of [15, 18, 19, 20]) assert.ok(!(key(shape(number)) in bests));
   // The service shows every one of them.
   assert.deepEqual(boardBests(bests), bests);
+
   for (const shape of Object.keys(bests)) assert.match(shape, /^[A-Za-z0-9:._+-]{1,200}$/, 'the service accepts the key');
 });
 
@@ -118,10 +136,12 @@ test('a best keeps the date of its own run, and the service shows it whatever th
     run('ahead', { conditions: time30, at: '2026-10-16T10:00:00Z', ...score(72, 95) }),
     run('behind', { conditions: words25, at: '2025-12-31T23:00:00Z', ...score(90, 99) }),
   ];
+
   const { bests } = boardSummary(runs, 'daily-key');
   assert.deepEqual(bests, { [key(time60)]: { wpm: 70, accuracy: 95, date: '2026-10-08' }, [key(time30)]: { wpm: 72, accuracy: 95, date: '2026-10-16' },
     [key(words25)]: { wpm: 90, accuracy: 99, date: '2025-12-31' } });
   assert.deepEqual(boardBests(bests), bests);
+
   for (let days = -400; days <= 400; days += 37) {
     const at = new Date(Date.parse('2026-10-09T15:00:00Z') + days * 86400000).toISOString();
     const withRun = boardSummary([...runs, run(`d${days}`, { at, ...score(99, 99) })], 'daily-key').bests;
@@ -131,9 +151,11 @@ test('a best keeps the date of its own run, and the service shows it whatever th
 
 test('the 16 shapes shared are this build’s first, however many runs another version’s have', () => {
   const runs = [];
+
   for (let seconds = 1; seconds <= 16; seconds += 1) {
     for (let i = 0; i < 5; i += 1) runs.push(run(`old-${seconds}-${i}`, { conditions: { ...time60, duration: seconds, corpus: 'original-en-v4' } }));
   }
+
   runs.push(run('current-1', score(74, 96)), run('current-2', { conditions: words25 }));
   const bests = shapeBests(runs);
   assert.equal(Object.keys(bests).length, MAX_SHAPES);
@@ -163,6 +185,7 @@ test('a condition key is compared only when this build writes it the same way', 
     { ...time60, numbers: true }, { ...words25, punctuation: true, numbers: true }]) {
     assert.deepEqual(shapeOf(key(conditions)) && key(shapeOf(key(conditions))), key(conditions));
   }
+
   // Numbers ride on the text part, and keys without them stay as they were before the toggle.
   assert.equal(key({ ...time60, numbers: true }), key(time60).replace(':plain:', ':plain+numbers:'));
   assert.equal(shapeOf(key({ ...time60, numbers: true })).numbers, true);
@@ -185,16 +208,20 @@ test('a condition key is compared only when this build writes it the same way', 
 test('every key this build can write is listed, read back as the conditions it was written from', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const wordList = html.match(/<fieldset[^>]*id="word-list"[^>]*>([^]*?)<\/fieldset>/)[1];
+
   const offeredWords = [...wordList.matchAll(/<input[^>]*value="([^"]*)"[^>]*>/g)]
-    .filter(([input]) => !input.includes(' disabled')).map(([, value]) => value);
+    .flatMap(([input, value]) => (input.includes(' disabled') ? [] : [value]));
+
   assert.deepEqual(offeredWords, wordListIds);
   const shapes = writtenShapes();
   assert.equal(new Set(shapes.map((conditions) => key(conditions))).size, shapes.length);
+
   for (const conditions of shapes) assert.deepEqual(shapeOf(key(conditions)), conditions, key(conditions));
 });
 
 test('a key that reads back the same but holds a value this build never writes is never listed', () => {
   const words10 = { ...words25, count: 10 };
+
   const never = [
     // An input class, quote filter, word list, length or correction policy the app doesn't offer.
     { ...time60, inputClass: 'stylus' },
@@ -218,6 +245,7 @@ test('a key that reads back the same but holds a value this build never writes i
     { ...time60, wordList: null },
     { ...quote, difficulty: null },
   ];
+
   for (const conditions of never) {
     // Each key has the eleven parts, and read part by part and written again by the app's own
     // conditionKey it is the same key...
@@ -229,6 +257,7 @@ test('a key that reads back the same but holds a value this build never writes i
     // ...but names a shape this build never writes, so the picker never offers it.
     assert.equal(shapeOf(key(conditions)), null, key(conditions));
   }
+
   const bests = Object.fromEntries(never.map((conditions) => [key(conditions), { wpm: 99, accuracy: 99, date: '2026-10-08' }]));
   assert.deepEqual(boardShapes([{ name: 'Lin', bests }]), []);
 });
@@ -239,6 +268,7 @@ test('the picker lists comparable shapes in order and names each by what tells i
     { name: 'Lin', bests: { [key(quote)]: { wpm: 66, accuracy: 96, date: '2026-10-02' }, [key(time30)]: { wpm: 90, accuracy: 96, date: '2026-10-02' },
       [key({ ...time60, metricVersion: 'stilltype-metrics-v0' })]: { wpm: 99, accuracy: 99, date: '2026-09-02' } } },
   ];
+
   const shapes = boardShapes(rows);
   assert.deepEqual(shapes.map((shape) => shape.key), [key(time30), key(time60), key(words25), key(quote)]);
   // Length and text first, then what differs: a quote's missing word list is not a difference.
@@ -302,6 +332,7 @@ test('the picker opens on the shape you have the most runs on, then the one most
 
 test('rows on a shape: fastest first, accuracy breaks a tie, another build’s best is never compared', () => {
   const best = (wpm, accuracy) => ({ wpm, accuracy, date: '2026-10-05' });
+
   const rows = [
     { self: true, bests: { [key(time60)]: best(78, 96) } },
     { name: 'Lin', bests: { [key(time60)]: best(78, 98), [key(time30)]: best(110, 99) } },
@@ -309,6 +340,7 @@ test('rows on a shape: fastest first, accuracy breaks a tie, another build’s b
     { name: 'Sam', bests: {} },
     { name: 'Kai', bests: { [key(time60)]: best(91, 93) } },
   ];
+
   const ordered = bestsOrder(rows, key(time60));
   assert.deepEqual(ordered.map((row) => row.name || 'you'), ['Kai', 'Lin', 'you', 'Ana', 'Sam']);
   assert.deepEqual(ordered.map((row) => row.best?.wpm ?? null), [91, 78, 78, null, null]);
@@ -322,6 +354,7 @@ test('the fake service reads bests as the migration does: each shape on its own,
     e: at(84, 97, '2026-10-9'), 'f g': good, h: '84', i: [84], j: { ...good, note: 'x' } }), { a: good, j: good });
   assert.deepEqual(boardBests(Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`k${i}`, good]))), {});
   assert.equal(Object.keys(boardBests(Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`k${i}`, good])))).length, 16);
+
   for (const value of [null, undefined, [], 'fast', 7]) assert.deepEqual(boardBests(value), {});
 });
 
@@ -332,11 +365,14 @@ test('the bests migration changes board_numbers only by adding the bests', () =>
   const board = readFileSync(new URL('../supabase/migrations/20261009120000_friends_board.sql', import.meta.url), 'utf8');
   const bests = readFileSync(new URL('../supabase/migrations/20261009150000_friends_bests.sql', import.meta.url), 'utf8');
   const signature = 'function race_private.board_numbers(p_board jsonb, p_at timestamptz, p_today date, p_week date)';
+
   const body = (text, prefix) => {
     const start = text.indexOf(`${prefix}${signature}`);
     assert.ok(start >= 0, `${prefix}${signature} is defined`);
+
     return text.slice(start + prefix.length, text.indexOf('\nend $$;', start) + '\nend $$;'.length);
   };
+
   const earlier = body(board, 'create ');
   const later = body(bests, 'create or replace ');
   const returned = "  return jsonb_build_object('daily', v_daily, 'week', v_week);";

@@ -4,6 +4,7 @@
 import { test, expect, openApp, openView, chooseWords, completePassage, phone } from './fixtures.js';
 
 const box = (page, selector) => page.locator(selector).boundingBox();
+
 // Instant typing scores five-digit speeds that no run reaches, and those widen the run card; a fast
 // person's pace keeps the score to three digits.
 const atPace = { delay: 25 };
@@ -14,10 +15,13 @@ async function tabIntoTrace(page) {
   // Run again's focus brought it into view below the score, so the page has scrolled and the trace lies above it.
   expect(await page.evaluate(() => scrollY), 'focus scrolled the page').toBeGreaterThan(0);
   const inWords = () => page.evaluate(() => !!document.activeElement.closest('#result-words'));
+
   for (let presses = 0; presses < 6 && !(await inWords()); presses++) await page.keyboard.press('Shift+Tab');
   expect(await inWords(), 'a trace word has focus').toBe(true);
+
   return page.evaluate(() => {
     const word = document.activeElement.getBoundingClientRect();
+
     return { top: word.top, bottom: word.bottom };
   });
 }
@@ -31,14 +35,17 @@ async function expectNoPrint(page) {
   await expect(page.locator('#start-drill')).toBeVisible();
   await expect(page.locator('#train-last')).toBeHidden();
   await expect(page.locator('#comparison-panel')).toBeHidden();
+
   const view = await page.locator('#train-screen').evaluate((screen) => {
     const style = getComputedStyle(screen);
     const box = (selector) => document.querySelector(selector).getBoundingClientRect();
     const centre = (rect) => rect.left + rect.width / 2;
+
     return { content: screen.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
       block: box('#train-next').width, middle: centre(box('#train-next')),
       heading: centre(box('#train-heading')), drill: centre(box('#start-drill')) };
   });
+
   expect(Math.abs(view.block - view.content), 'the drill block spans the content width').toBeLessThanOrEqual(1);
   expect(Math.abs(view.heading - view.middle), 'heading centred').toBeLessThanOrEqual(1);
   expect(Math.abs(view.drill - view.middle), 'button centred').toBeLessThanOrEqual(1);
@@ -182,11 +189,14 @@ test.describe('phone', () => {
     await openApp(page);
     await chooseWords(page, 10);
     await completePassage(page);
+
     const word = await page.locator('#result-words [role="option"]').first().evaluate((node) => {
       window.scrollTo(0, 0);
       node.scrollIntoView({ block: 'nearest' });
+
       return { bottom: node.getBoundingClientRect().bottom, scrolled: scrollY };
     });
+
     const dock = await box(page, 'nav.dock');
     expect(word.scrolled, 'the word started below the fold').toBeGreaterThan(0);
     expect(word.bottom).toBeLessThanOrEqual(dock.y);

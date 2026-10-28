@@ -5,12 +5,14 @@ import { test, expect, openApp, openView, passageText, typeInto, chooseWords, co
 async function typeWithMisses(page, text, wordIndexes, delay = 0) {
   const words = text.split(' ');
   await page.locator('#typing-input').focus();
+
   for (const [index, word] of words.entries()) {
     if (wordIndexes.includes(index)) {
       const miss = word[0] === 'x' ? 'z' : 'x';
       await page.keyboard.type(miss, { delay });
       await page.keyboard.press('Backspace', { delay });
     }
+
     await page.keyboard.type(index < words.length - 1 ? `${word} ` : word, { delay });
   }
 }
@@ -25,6 +27,7 @@ async function finishWithTwoMisses(page, delay = 0) {
   const second = words.findIndex((word, index) => index > first && word !== words[first]);
   await typeWithMisses(page, text, [first, second], delay);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+
   return [words[first], words[second]];
 }
 
@@ -46,6 +49,7 @@ test('missed and slowest words become their own uncounted practice run', async (
   const practice = (await passageText(page)).split(' ');
   expect(practice.length).toBe(40);
   expect(new Set(practice).size).toBe(count);
+
   for (const word of missed) expect(practice).toContain(word);
   await expect(page.locator('#condition-line')).toContainText('missed words · not counted');
   await expect(page.locator('#session-kicker')).toHaveText('missed words');
@@ -191,6 +195,7 @@ test('a daily passage shown before offers no word practice', async ({ page }) =>
   // Two whole daily passages take longer than the default 30 s on a slow machine.
   test.setTimeout(60_000);
   await openApp(page);
+
   const daily = async () => {
     await openView(page, 'Challenge');
     await page.locator('#challenge-daily').click();
@@ -201,6 +206,7 @@ test('a daily passage shown before offers no word practice', async ({ page }) =>
     await typeWithMisses(page, text, [1, words.findIndex((word, index) => index > 1 && word !== words[1])]);
     await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   };
+
   // The first attempt is on fresh text, so its misses are offered.
   await daily();
   await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete');
@@ -295,11 +301,13 @@ test('a missed capital is practised as written, and the run doesn’t say punctu
   // Generated punctuation sometimes adds contractions, quotes, brackets or dashes; draw again until it adds only
   // capitals and sentence marks, so the practice that follows has no mark of its own.
   let text = await passageText(page);
+
   for (let tries = 0; tries < 30 && /[^\p{L}\p{N} ,.?!]/u.test(text); tries += 1) {
     await page.locator('#restart-button').click();
     await expect.poll(() => passageText(page)).not.toBe(text);
     text = await passageText(page);
   }
+
   expect(text).not.toMatch(/[^\p{L}\p{N} ,.?!]/u);
   // Generated punctuation capitalises the first word, with nothing after it: miss only its capital.
   const capital = text.split(' ')[0];
@@ -327,6 +335,7 @@ test('screenshots', async ({ page }) => {
   // Two runs typed at a human pace take most of the default 30 s.
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1280, height: 1000 });
+
   for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
     // ~130ms per key is roughly 90 wpm, so the card shows a believable run.
@@ -337,6 +346,7 @@ test('screenshots', async ({ page }) => {
     await page.locator('#run-card').evaluate((card) => card.scrollIntoView({ block: 'end', behavior: 'instant' }));
     await page.evaluate(() => window.scrollBy(0, 24));
     await page.screenshot({ path: shot(`run-card-${scheme}`) });
+
     if (scheme === 'dark') {
       await page.locator('#practice-words').click();
       await expect(page.locator('#session-kicker')).toHaveText('missed words');

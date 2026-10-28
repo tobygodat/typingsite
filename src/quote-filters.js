@@ -11,6 +11,7 @@ export function createQuoteFilters({ filters, read, commit }) {
   let draft = null;
   let search = '';
   let searchAt = 0;
+
   const widgets = filters.map(({ root, key, id, label, values, names = {} }) => {
     const name = (value) => names[value] || value;
     const host = document.createElement('div');
@@ -21,6 +22,7 @@ export function createQuoteFilters({ filters, read, commit }) {
     root.append(host);
     const trigger = host.firstElementChild;
     const menu = host.lastElementChild;
+
     const options = values.map((value) => {
       const option = document.createElement('div');
       option.id = `${id}-${value}`;
@@ -34,8 +36,10 @@ export function createQuoteFilters({ filters, read, commit }) {
         draft.index = values.indexOf(value);
         finish(true);
       });
+
       return option;
     });
+
     const widget = { key, values, name, trigger, menu, options };
     trigger.addEventListener('click', () => {
       if (draft?.widget === widget) dismiss();
@@ -45,6 +49,7 @@ export function createQuoteFilters({ filters, read, commit }) {
     trigger.addEventListener('blur', () => {
       if (draft?.widget === widget) finish(false);
     });
+
     return widget;
   });
 
@@ -60,6 +65,7 @@ export function createQuoteFilters({ filters, read, commit }) {
 
   function refresh() {
     dismiss();
+
     for (const { key, values, name, trigger, options } of widgets) {
       const current = read()[key];
       trigger.querySelector('.quote-filter-current').textContent = name(current);
@@ -75,6 +81,7 @@ export function createQuoteFilters({ filters, read, commit }) {
     const { widget, index } = draft;
     const value = widget.values[index];
     dismiss();
+
     if (value === read()[widget.key]) return;
     commit(widget.key, value, { focus, trigger: widget.trigger });
     refresh();
@@ -102,21 +109,31 @@ export function createQuoteFilters({ filters, read, commit }) {
   function keydown(event, widget) {
     if (event.isComposing || event.ctrlKey || event.metaKey) return;
     const { key } = event;
+
     if (event.altKey && !['ArrowDown', 'ArrowUp'].includes(key)) return;
+
     if (key === 'Tab') {
       if (draft) finish(false);
+
       return;
     }
+
     if (key === 'Escape') {
       if (draft) { event.preventDefault(); dismiss(); }
+
       return;
     }
+
     const printable = key.length === 1 && key !== ' ' && !event.altKey;
+
     if (!printable && !['ArrowDown', 'ArrowUp', 'Home', 'End', 'PageUp', 'PageDown', 'Enter', ' '].includes(key)) return;
     event.preventDefault();
+
     if (event.repeat && ['Enter', ' '].includes(key)) return;
     const wasOpen = draft?.widget === widget;
+
     if (!wasOpen) open(widget);
+
     if (printable) {
       const now = performance.now();
       search = now - searchAt > 1000 ? key.toLowerCase() : search + key.toLowerCase();
@@ -124,8 +141,10 @@ export function createQuoteFilters({ filters, read, commit }) {
       const repeated = [...search].every((char) => char === search[0]);
       const prefix = repeated ? search[0] : search;
       const start = repeated ? draft.index + 1 : 0;
+
       for (let i = 0; i < widget.values.length; i += 1) {
         const index = (start + i) % widget.values.length;
+
         if (widget.name(widget.values[index]).startsWith(prefix)) { highlight(index); break; }
       }
     } else if (wasOpen && (key === 'Enter' || key === ' ' || (key === 'ArrowUp' && event.altKey))) finish(true);
@@ -143,5 +162,6 @@ export function createQuoteFilters({ filters, read, commit }) {
   window.addEventListener('blur', dismiss);
   window.addEventListener('resize', dismiss);
   refresh();
+
   return { refresh, dismiss };
 }

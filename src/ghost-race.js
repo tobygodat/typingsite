@@ -9,20 +9,24 @@ import { comparableKind } from './insights.js';
 
 const TRACE_VERSION = 1;
 export const MAX_TRACE_KEYS = 6000;
+
 // The service measures its JSON text, which spaces every array item.
 const MAX_TRACE_BYTES = 65536;
 const MAX_CHALLENGE_TEXT = 4000;
 export const CHALLENGE_DAYS = 7;
+
 // Runs a challenge can be made from. Drills are exercises; a ghost race is already a reply.
 export const SENDABLE_KINDS = ['test', 'retest', 'daily'];
 const DELETE = '\b';
 const TIMED = [15, 30, 60, 120];
+
 // A timed challenge keeps enough text for someone typing 400 wpm for the whole clock.
 const CHARS_PER_SECOND = 400 * 5 / 60;
 
 // A character outside printable ASCII never matches a challenge passage, so it is sent as an ASCII
 // stand-in that differs from the letter expected there: the replay keeps the same length and errors.
 export const standIn = (expected) => (expected === '~' ? '^' : '~');
+
 // An emoji or other astral character fills two places in the replay, which one key can't stand for.
 const ASTRAL = /[\u{10000}-\u{10FFFF}]/u;
 
@@ -37,9 +41,11 @@ export function encodeTrace(attempt) {
   const steps = [];
   let last = 0;
   let typed = 0;
+
   for (const event of attempt.events || []) {
     if (event.type === 'focus-lost' || event.type === 'composition') return null;
     let chars;
+
     if (event.type === 'delete') chars = DELETE.repeat(Math.max(1, event.count || 1));
     else if (event.type === 'insert') {
       // The compact form has no way to say "counted but not kept", so such a run is not encoded.
@@ -47,23 +53,29 @@ export function encodeTrace(attempt) {
       chars = event.text;
     } else continue;
     const at = Math.max(last, Math.round(event.offsetMs - origin));
+
     for (const char of chars) {
       let key = char;
+
       if (event.type === 'delete') typed = Math.max(0, typed - 1);
       else {
         if (!/^[ -~]$/.test(char)) {
           if (char === text[typed]) return null;
           key = standIn(text[typed]);
         }
+
         if (typed < text.length) typed += 1;
       }
+
       keys += key;
       steps.push(at - last);
       last = at;
     }
   }
+
   if (!keys.length || keys.length > MAX_TRACE_KEYS) return null;
   const trace = { v: TRACE_VERSION, k: keys, t: steps, e: Math.max(last, Math.round((attempt.endedAt ?? last) - origin)) };
+
   return traceBytes(trace) <= MAX_TRACE_BYTES ? trace : null;
 }
 
@@ -89,21 +101,27 @@ export function traceAttempt(trace, text) {
   let typed = 0;
   [...trace.k].forEach((key, index) => {
     at += trace.t[index];
+
     if (key === DELETE) {
       typed = Math.max(0, typed - 1);
       events.push({ type: 'delete', count: 1, offsetMs: at });
+
       return;
     }
+
     // Where the key landed, as a recorded run keeps it: the speed graph reads it to tell hits from misses.
     events.push({ type: 'insert', text: key, position: typed, accepted: true, offsetMs: at });
+
     if (typed < text.length) typed += 1;
   });
+
   return { text, events, startedAt: 0, endedAt: trace.e, conditions: {} };
 }
 
 export function scoreTrace(trace, text, { relaxed = false } = {}) {
   const replay = replayAttempt(traceAttempt(trace, text));
   const correct = [...replay.typed].filter((char, index) => char === text[index]).length;
+
   return {
     wpm: replay.score.wpm,
     accuracy: replay.score.accuracy,
@@ -120,10 +138,12 @@ export function ghostPoints(trace, textLength) {
   let typed = 0;
   [...trace.k].forEach((key, index) => {
     at += trace.t[index];
+
     if (key === DELETE) typed = Math.max(0, typed - 1);
     else if (typed < textLength) typed += 1;
     points.push([at, typed]);
   });
+
   return points;
 }
 
@@ -135,6 +155,7 @@ const challengeDuration = (conditions = {}) => conditions.mode === 'time' && TIM
 const oneOf = (...values) => (value) => values.includes(value);
 const orNull = (rule) => (value) => value === null || rule(value);
 const isBoolean = (value) => typeof value === 'boolean';
+
 const CONDITION_RULES = {
   mode: oneOf('time', 'words', 'quote'),
   // Checked against the challenge's own clock in challengeConditions.
@@ -160,20 +181,25 @@ const CONDITION_RULES = {
 // A timed run says so, on the challenge's own clock (`duration`); any other run has no clock.
 export function challengeConditions(conditions, duration = null) {
   if (!conditions || typeof conditions !== 'object' || Array.isArray(conditions)) return null;
+
   if (duration !== null && !TIMED.includes(duration)) return null;
   const known = Object.entries(conditions).every(([key, value]) => Object.hasOwn(CONDITION_RULES, key) && CONDITION_RULES[key](value));
+
   if (!known || (conditions.mode === 'time') !== (duration !== null) || (conditions.duration ?? null) !== duration) return null;
+
   return { ...conditions };
 }
 
 function furthestTyped(attempt) {
   let typed = 0;
   let furthest = 0;
+
   for (const event of attempt.events || []) {
     if (event.type === 'delete') typed = Math.max(0, typed - Math.max(1, event.count || 1));
     else if (event.type === 'insert' && event.accepted !== false) typed = Math.min(attempt.text.length, typed + event.text.length);
     furthest = Math.max(furthest, typed);
   }
+
   return furthest;
 }
 
@@ -181,9 +207,11 @@ function furthestTyped(attempt) {
 // types, so it is cut at a word boundary past the sender's furthest point, with room to spare.
 export function challengeText(attempt) {
   const duration = challengeDuration(attempt.conditions);
+
   if (!duration) return attempt.text;
   const limit = Math.max(furthestTyped(attempt), Math.min(Math.ceil(duration * CHARS_PER_SECOND), MAX_CHALLENGE_TEXT - 50));
   const end = attempt.text.indexOf(' ', limit);
+
   return end < 0 ? attempt.text : attempt.text.slice(0, end);
 }
 
@@ -193,28 +221,40 @@ export function challengePayload(attempt) {
   if (!attempt || attempt.status !== 'complete' || attempt.interrupted || !comparableKind(attempt.kind)
     || !SENDABLE_KINDS.includes(attempt.kind)) return null;
   const trace = encodeTrace(attempt);
+
   if (!trace) return null;
   const passage = challengeText(attempt);
+
   if (passage.length < 10 || passage.length > MAX_CHALLENGE_TEXT || !/^[ -~]+$/.test(passage)) return null;
   const duration = challengeDuration(attempt.conditions);
   // Only conditions the service accepts and a friend's app can set up again.
   const source = { ...attempt.conditions, textId: attempt.textId, sourceKind: attempt.kind };
+
   if (source.strictSpace === false) delete source.strictSpace;
+
   if (source.quickEnd === true) delete source.quickEnd;
+
   if (source.layout === 'qwerty') delete source.layout;
   const conditions = challengeConditions(source, duration);
+
   if (!conditions) return null;
   const relaxed = attempt.conditions?.correctionPolicy === 'relaxed';
   const score = scoreTrace(trace, passage, { relaxed });
+
   if (!duration && !score.finished) return null;
+
   if (duration && trace.e !== duration * 1000) return null;
+
   return { passage, duration, conditions, trace, score };
 }
 
 function describeShape(conditions = {}, duration = null) {
   if (conditions.sourceKind === 'daily') return 'daily';
+
   if (duration) return `${duration}-second`;
+
   if (conditions.mode === 'words' && conditions.count) return `${conditions.count}-word`;
+
   return 'quote';
 }
 
@@ -222,7 +262,9 @@ function describeShape(conditions = {}, duration = null) {
 // id is never trusted, so a ghost race can't mark other text as seen or file a quote under a new id.
 export function challengeTextId(passage, conditions = {}) {
   const quote = quoteCorpus.find((item) => item.text === passage);
+
   if (quote) return quote.id;
+
   return conditions?.sourceKind === 'daily' ? `daily-${textId(passage)}` : textId(passage);
 }
 
@@ -233,6 +275,7 @@ export function challengeOutcome({ sender, result }) {
   if (!sender || !result) return null;
   const pace = (score) => (score.elapsedMs > 0 ? score.correct / score.elapsedMs : 0);
   const lead = pace(result) - pace(sender);
+
   return lead > 0 ? 'recipient' : lead < 0 ? 'sender' : 'tie';
 }
 
@@ -241,17 +284,20 @@ export function challengeOutcome({ sender, result }) {
 export function leadVerb({ duration, sender, result }, leader) {
   if (duration) return 'typed further';
   const [lead, other] = leader === 'recipient' ? [result, sender] : [sender, result];
+
   return lead.elapsedMs < other.elapsedMs ? 'finished first' : 'typed faster';
 }
 
 export function outcomeRule({ duration, conditions }) {
   if (duration) return `Same ${duration} s clock: more correct text kept leads.`;
+
   return conditions?.correctionPolicy === 'relaxed' ? 'More correct characters per minute leads.' : 'The earlier finish leads.';
 }
 
 // "25-word " for a listed challenge, or nothing when its conditions can't be read: no shape is claimed then.
 function shapeOf(challenge) {
   const conditions = challengeConditions(challenge.conditions, challenge.duration ?? null);
+
   return conditions ? `${describeShape(conditions, challenge.duration)} ` : '';
 }
 
@@ -262,6 +308,7 @@ export function offerText(challenge) {
 // "Lin raced your 25-word run: Lin finished first · you 72 wpm, Lin 65 wpm."
 export function resultText(challenge) {
   const leader = challengeOutcome(challenge);
+
   if (!leader) return '';
   const shape = shapeOf(challenge);
   const self = challenge.role === 'received' ? 'recipient' : 'sender';
@@ -271,6 +318,7 @@ export function resultText(challenge) {
   const verb = leader === 'tie' ? '' : leadVerb(challenge, leader);
   const who = leader === 'tie' ? 'a tie' : leader === self ? `you ${verb}` : `${them} ${verb}`;
   const subject = self === 'recipient' ? `${them}’s ${shape}run` : `${them} raced your ${shape}run`;
+
   return `${subject}: ${who} · you ${mine} wpm, ${them} ${theirs} wpm.`;
 }
 
@@ -278,8 +326,10 @@ export function resultText(challenge) {
 // chosen unit), or null for text that isn't one. The name can hold anything, "60 wpm" included; it opens
 // the sentence and comes again before the last speed, so the two must agree.
 const RESULT_SPEEDS = /^((.+?)(?:’s | raced your ).* · you )(0|[1-9]\d*) wpm, \2 (0|[1-9]\d*) wpm\.$/s;
+
 export function resultParts(text, figure) {
   const match = RESULT_SPEEDS.exec(text);
+
   return match && [match[1], figure(Number(match[3])), `, ${match[2]} `, figure(Number(match[4])), '.'];
 }
 
@@ -288,6 +338,7 @@ async function call(session, action, id = null, data = {}) {
   // A background poll may have rotated the refresh token; the newest stored session wins.
   const stored = loadSession();
   const active = await freshSession(stored?.user?.id === session.user.id ? stored : session);
+
   try {
     return await request('/rest/v1/rpc/challenge_action', {
       method: 'POST', token: active?.access_token, body: { p_action: action, p_id: id, p_data: data },
@@ -296,6 +347,7 @@ async function call(session, action, id = null, data = {}) {
     if (error.status === 404 || /schema cache|could not find.*function/i.test(error.message)) {
       throw new AuthError('Ghost races are being set up. Please try again shortly.');
     }
+
     throw error;
   }
 }
@@ -303,6 +355,7 @@ async function call(session, action, id = null, data = {}) {
 export const listChallenges = (session) => session ? call(session, 'list') : Promise.resolve([]);
 export const getChallenge = (session, id) => call(session, 'get', id);
 export const finishChallenge = (session, id, trace) => call(session, 'finish', id, { trace });
+
 // `requestId` is made once per run and friend and repeated on a retry, so a send whose reply was
 // lost is stored once; finishing again likewise returns the result already stored.
 export function sendChallenge(session, { friendId, displayName, payload, requestId }) {

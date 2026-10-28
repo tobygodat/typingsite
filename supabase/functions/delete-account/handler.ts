@@ -11,6 +11,7 @@ export const CORS_HEADERS: Record<string, string> = {
 
 // The calls this function makes on supabase-js's auth client, created with the service key.
 type UserReply = Promise<{ data: { user: { id: string } | null } | null; error: unknown }>;
+
 export interface AccountAuth {
   getUser(jwt: string): UserReply;
   admin: {
@@ -37,6 +38,7 @@ async function userGone(auth: AccountAuth, userId: string): Promise<boolean> {
     const { data, error } = await auth.admin.getUserById(userId);
     // SAFETY: Auth errors carry an optional numeric status and string code; anything else fails both checks below.
     const { status, code } = (error ?? {}) as { status?: number; code?: string };
+
     return !data?.user && (code === 'user_not_found' || status === 404);
   } catch {
     return false;
@@ -45,29 +47,38 @@ async function userGone(auth: AccountAuth, userId: string): Promise<boolean> {
 
 export async function handleDeleteAccount(request: Request, auth: AccountAuth | null): Promise<Response> {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
+
   if (request.method !== 'POST') return reply(405, { error: MESSAGES.method });
+
   if (!auth) return reply(500, { error: MESSAGES.config });
   const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('Authorization') ?? '')?.[1];
+
   if (!token) return reply(401, { error: MESSAGES.session });
 
   // The Auth server checks the token, so an expired, signed-out or forged one never names a user,
   // and nothing in the request body can choose whose account goes.
   let userId: string | undefined;
+
   try {
     const { data, error } = await auth.getUser(token);
+
     if (!error) userId = data?.user?.id;
   } catch {
     return reply(500, { error: MESSAGES.failed });
   }
+
   if (!userId) return reply(401, { error: MESSAGES.session });
 
   // A hard delete: a soft delete keeps the auth.users row, so none of the cascades would run.
   try {
     const { error } = await auth.admin.deleteUser(userId, false);
+
     if (!error) return reply(200, { deleted: true });
   } catch {
     // Settled below.
   }
+
   if (await userGone(auth, userId)) return reply(200, { deleted: true });
+
   return reply(500, { error: MESSAGES.failed });
 }

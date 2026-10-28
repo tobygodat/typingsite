@@ -7,6 +7,7 @@ const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/wo
 
 const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 const background = (locator) => locator.evaluate((node) => getComputedStyle(node).backgroundColor);
+
 // Indexes of the words that actually paint a tint (it sits on their letters, skipping a miss).
 const tinted = (page, display = '#text-display') => page.locator(`${display} .word`).evaluateAll((nodes) => nodes
   .filter((node) => [...node.children].some((char) => !char.classList.contains('wrong') && getComputedStyle(char).backgroundColor !== 'rgba(0, 0, 0, 0)'))
@@ -73,6 +74,7 @@ test('a miss inside the highlighted word keeps exactly its own coral tint', asyn
   await typeInto(page, wrongKey);
   const miss = page.locator('#text-display .word.word-current > .char.wrong');
   await expect(miss).toHaveCount(1);
+
   // The word tint skips the miss, so it shows the plain danger-soft tint over whatever the passage
   // sits on (a theme may put it on a card), while the word's other letters keep the word tint.
   const colors = await miss.evaluate((node) => {
@@ -85,11 +87,13 @@ test('a miss inside the highlighted word keeps exactly its own coral tint', asyn
     const soft = getComputedStyle(probe).color;
     probe.remove();
     const others = [...node.parentElement.children].filter((char) => char !== node);
+
     return {
       color: getComputedStyle(node).color, danger, fill: getComputedStyle(node).backgroundColor, image: getComputedStyle(node).backgroundImage, soft,
       othersTinted: others.every((char) => getComputedStyle(char).backgroundColor !== 'rgba(0, 0, 0, 0)'),
     };
   });
+
   expect(colors.color).toBe(colors.danger);
   expect(colors.fill).toBe(colors.soft);
   expect(colors.image).toBe('none');
@@ -213,6 +217,7 @@ test.describe('screenshots', () => {
     await expect(page.locator('#text-display .char.wrong')).toHaveCount(1);
     // Let the caret spring and the chrome fade settle before the shot.
     await page.waitForTimeout(400);
+
     return index;
   }
 

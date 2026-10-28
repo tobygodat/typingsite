@@ -16,6 +16,7 @@ export const test = base.extend({
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('console', (message) => {
       const fromFake = /supabase\.co/.test(message.location().url) || /^\[JavaScript Error: "Cross-Origin Request Blocked: .* https:\/\/\w+\.supabase\.co\//.test(message.text());
+
       if (message.type() === 'error' && !fromFake) errors.push(message.text());
     });
     await use(errors);
@@ -56,6 +57,7 @@ export async function insertPlainText(page, text) {
   if (page.context().browser().browserType().name() !== 'firefox') return page.keyboard.insertText(text);
   await page.evaluate((data) => {
     const field = document.activeElement;
+
     if (!field.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data }))) return;
     field.setRangeText(data, field.selectionStart, field.selectionEnd, 'end');
     field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data }));
@@ -75,6 +77,7 @@ export async function completePassage(page, options) {
   const text = await passageText(page);
   await typeInto(page, text, undefined, options);
   await expect(page.locator('body')).toHaveAttribute('data-view', /^(results|train)$/);
+
   return text;
 }
 
@@ -98,12 +101,14 @@ export async function freshTextCheck(page) {
   await finishDrill(page);
   const retest = await completePassage(page);
   await expect(page.locator('#comparison-panel')).toBeVisible();
+
   return { baseline, retest };
 }
 
 // Code, standard, compose, custom text and lessons sit behind "more" in the practice controls.
 export async function chooseMore(page, id) {
   await closeSettings(page);
+
   if ((await page.locator('#mode-more').getAttribute('open')) === null) await page.locator('#mode-more-label').click();
   await page.locator(`#${id}`).click();
 }
@@ -125,12 +130,15 @@ export async function openProgressView(page, name) {
 
 export async function openSettings(page, category) {
   const dialog = page.locator('#settings-dialog');
+
   if (!(await dialog.isVisible())) {
     await page.mouse.move(5, 5);
     await page.mouse.move(40, 40);
     await page.locator('#settings-trigger').click();
   }
+
   await expect(dialog).toBeVisible();
+
   if (category) await dialog.locator(`[data-settings-category="${category}"]`).click();
 }
 
@@ -142,9 +150,11 @@ export async function chooseSetting(page, id, value) {
   const control = page.locator(`#${id}`);
   const category = await control.evaluate((group) => group.closest('.settings-category').id.replace('settings-', ''));
   await openSettings(page, category);
+
   const option = typeof value === 'object'
     ? control.getByRole('radio', { name: value.label, exact: true })
     : control.locator(`input[value="${value}"]`);
+
   await expect(option).toBeEnabled();
   await option.locator('..').click();
 }

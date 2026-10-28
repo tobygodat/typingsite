@@ -10,18 +10,23 @@ const $ = (id) => document.getElementById(id);
 // Returns the token set it wears over, or null.
 export function wearColors(root, colors) {
   for (const token of THEME_TOKENS) root.style.removeProperty(`--${token.name}`);
+
   if (!colors) {
     delete root.dataset.custom;
+
     return null;
   }
+
   for (const [token, hex] of Object.entries(colors)) root.style.setProperty(`--${token}`, hex);
   root.dataset.custom = '';
+
   return themeMode(colors);
 }
 
 // One radio per saved custom theme, after the built-in ones in its mode's row; edit shows while one is on show.
 export function showThemeOptions(themes, shown) {
   for (const option of document.querySelectorAll('[data-custom-option]')) option.remove();
+
   for (const theme of themes) {
     const mode = themeMode(theme.colors);
     const label = document.createElement('label');
@@ -33,21 +38,27 @@ export function showThemeOptions(themes, shown) {
     label.append(input, span);
     $(`${mode}-theme`).append(label);
   }
+
   $('theme-edit').hidden = !themes.some((theme) => theme.id === shown);
   $('theme-new').disabled = themes.length >= MAX_CUSTOM_THEMES;
 }
 
 // The colour a token resolves to on screen, as an opaque hex: translucent tokens over the background.
 const canvas = document.createElement('canvas');
+
 canvas.width = 1;
+
 canvas.height = 1;
+
 const paint = canvas.getContext('2d', { willReadFrequently: true });
+
 function resolvedHex(probe, token, under = '#ffffff') {
   probe.style.color = `var(--${token})`;
   paint.fillStyle = under;
   paint.fillRect(0, 0, 1, 1);
   paint.fillStyle = getComputedStyle(probe).color;
   paint.fillRect(0, 0, 1, 1);
+
   return `#${[...paint.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
@@ -61,6 +72,7 @@ export function createThemeEditor({ themes, currentTheme, preview, save, signedI
   let generating = false;
 
   const rows = new Map();
+
   for (const token of THEME_TOKENS) {
     const row = document.createElement('div');
     row.className = 'theme-color';
@@ -81,6 +93,7 @@ export function createThemeEditor({ themes, currentTheme, preview, save, signedI
     });
     hex.addEventListener('input', () => {
       const value = normalizeHex(hex.value);
+
       if (!hex.value.trim() && token.derived) delete draft.colors[token.name];
       else if (!value) return hex.setAttribute('aria-invalid', 'true');
       else picker.value = draft.colors[token.name] = value;
@@ -96,13 +109,16 @@ export function createThemeEditor({ themes, currentTheme, preview, save, signedI
   function update() {
     preview(draft.colors);
     const ground = resolvedHex(probe, 'ground');
+
     for (const { token, picker, hex } of rows.values()) {
       if (!token.derived || draft.colors[token.name]) continue;
       const shown = resolvedHex(probe, token.name, ground);
       picker.value = shown;
       hex.placeholder = shown;
     }
+
     const issues = contrastIssues(draft.colors);
+
     for (const { name, min } of READABLE) rows.get(name).issue.textContent = issues[name] ? `${issues[name]}:1, needs ${min}:1` : '';
   }
 
@@ -111,8 +127,10 @@ export function createThemeEditor({ themes, currentTheme, preview, save, signedI
       const value = draft.colors[token.name] || '';
       hex.value = value;
       hex.removeAttribute('aria-invalid');
+
       if (value) picker.value = value;
     }
+
     $('theme-name').value = draft.name;
     $('theme-name').removeAttribute('aria-invalid');
     update();
@@ -128,6 +146,7 @@ export function createThemeEditor({ themes, currentTheme, preview, save, signedI
   function syncAccount() {
     const member = signedIn();
     $('theme-vibe').disabled = !member;
+
     if (!generating) $('theme-generate').textContent = member ? 'generate' : 'sign in';
   }
 
@@ -136,6 +155,7 @@ export function createThemeEditor({ themes, currentTheme, preview, save, signedI
       draft = null;
       preview(null);
     }
+
     const saved = themes().find((theme) => theme.id === id);
     const current = themes().find((theme) => theme.id === currentTheme());
     const base = saved || current;
@@ -147,6 +167,7 @@ export function createThemeEditor({ themes, currentTheme, preview, save, signedI
     $('theme-delete').hidden = !saved;
     $('theme-generate-status').textContent = '';
     $('theme-vibe').value = '';
+
     for (const button of [$('theme-new'), $('theme-edit')]) button.setAttribute('aria-expanded', String(button === from));
     syncAccount();
     show();
@@ -158,23 +179,31 @@ export function createThemeEditor({ themes, currentTheme, preview, save, signedI
     if (!draft) return;
     draft = null;
     form.hidden = true;
+
     for (const button of [$('theme-new'), $('theme-edit')]) button.setAttribute('aria-expanded', 'false');
+
     if (!saved) preview(null);
     const back = opener?.isConnected && !opener.hidden && !opener.disabled ? opener : $('theme-new').disabled ? $('theme-select').querySelector('input:checked') : $('theme-new');
+
     if (focus) back?.focus();
   }
 
   async function runGenerate() {
     if (!signedIn()) return signIn();
     const vibe = $('theme-vibe').value.replace(/\s+/g, ' ').trim();
+
     if (!vibe || generating) return $('theme-vibe').focus();
     setGenerating(true);
     $('theme-generate-status').textContent = '';
+
     try {
       const theme = await generate(vibe);
+
       if (!draft) return;
       const colors = {};
+
       for (const token of BASE_TOKENS) colors[token] = normalizeHex(theme?.colors?.[token]);
+
       if (BASE_TOKENS.some((token) => !colors[token])) throw new Error('Couldn’t generate a theme. Try again.');
       draft.colors = colors;
       draft.name = cleanThemeName(theme.name) || draft.name;
@@ -210,10 +239,13 @@ export function createThemeEditor({ themes, currentTheme, preview, save, signedI
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const name = cleanThemeName(draft.name);
+
     if (!name) {
       $('theme-name').setAttribute('aria-invalid', 'true');
+
       return $('theme-name').focus();
     }
+
     const theme = { id: draft.id ?? newThemeId(), name, colors: { ...draft.colors } };
     const next = draft.id ? themes().map((kept) => (kept.id === draft.id ? theme : kept)) : [...themes(), theme];
     close({ saved: true, focus: false });

@@ -7,6 +7,7 @@ test('the footer version opens What’s new by keyboard and returns focus on Esc
   await openApp(page);
   await expect(version(page)).toHaveText('v0.2.0');
   await version(page).focus();
+
   for (const key of ['Enter', 'Space']) {
     await page.keyboard.press(key);
     await expect(panel(page)).toBeVisible();
@@ -17,6 +18,7 @@ test('the footer version opens What’s new by keyboard and returns focus on Esc
     await expect(panel(page)).toBeHidden();
     await expect(version(page)).toBeFocused();
   }
+
   await version(page).click();
   await page.locator('#release-close').click();
   await expect(panel(page)).toBeHidden();

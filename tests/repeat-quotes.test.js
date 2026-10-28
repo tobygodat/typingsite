@@ -10,6 +10,7 @@ const quote = (overrides) => selectPassage({ mode: 'quote', quoteLength: 'short'
 test('by default a seen quote waits until every matching quote has been shown', () => {
   assert.equal(bucket.length, 3);
   const [seen, ...unseen] = bucket;
+
   for (const random of [() => 0, () => 0.5, () => 0.99]) {
     const passage = quote({ seenIds: [seen], random });
     assert.ok(unseen.includes(passage.id));
@@ -17,6 +18,7 @@ test('by default a seen quote waits until every matching quote has been shown', 
     assert.equal(passage.exhausted, false);
     assert.deepEqual(quote({ seenIds: [seen], random, allowRepeats: false }), passage, 'off is the default');
   }
+
   // Every matching quote seen: the old fallback still repeats, labelled and exhausted.
   const exhausted = quote({ seenIds: bucket, random: () => 0 });
   assert.equal(exhausted.id, bucket[0]);
@@ -46,8 +48,10 @@ test('repeats apply to quotes only; generated text is still chosen fresh', () =>
 
 test('repeated text is never either side of a comparable retest', () => {
   const conditions = { mode: 'quote', quoteLength: 'short', difficulty: 'gentle', corpus: CORPUS_VERSION };
+
   const run = (textId, kind, fresh, wpm) => ({ status: 'complete', kind, textId, fresh, interrupted: false, metricVersion: 'stilltype-metrics-v1',
     conditions, summary: { score: { wpm, accuracy: 98 } } });
+
   assert.equal(compareAttempts(run('a', 'test', true, 60), run('b', 'retest', true, 62)).comparable, true);
   assert.equal(compareAttempts(run('a', 'test', false, 80), run('b', 'retest', true, 62)).comparable, false, 'a familiar baseline would flatter it');
   assert.equal(compareAttempts(run('a', 'test', true, 60), run('b', 'retest', false, 70)).comparable, false);
@@ -61,6 +65,7 @@ function trace(id, fresh) {
   const attempt = createAttempt({ id, text, textId: 'quote-1', kind: 'test', conditions: { mode: 'quote' } });
   attempt.startedAt = 0;
   attempt.events = [...text].map((char, position) => ({ type: 'insert', text: position % 4 === 1 ? 'x' : char, position, offsetMs: position * 100, accepted: true }));
+
   return { ...completeAttempt(attempt, { endedAt: text.length * 100 }), fresh };
 }
 
@@ -71,6 +76,7 @@ test('repeated text adds no pattern evidence, so one quote cannot flood the reco
 });
 
 const conditions = { mode: 'quote', quoteLength: 'short', difficulty: 'gentle', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION };
+
 const summary = (id, overrides = {}) => ({ id, at: '2026-10-08T12:00:00Z', status: 'complete', kind: 'test', textId: 'short-gentle-01', fresh: true,
   conditions, score: { wpm: 70, accuracy: 98 }, patterns: [['th', 12, 2, 10, 140, 20]], ...overrides });
 
@@ -82,7 +88,7 @@ test('repeated runs are listed in Progress but stay out of bests, trends and wee
   assert.equal(trendRun(repeated), false);
   assert.equal(trendRun(fresh), true);
   assert.equal(trendRun(summary('legacy', { fresh: undefined })), true);
-  assert.deepEqual([fresh, repeated].filter(trendRun).map((r) => r.id), ['fresh']);
+  assert.deepEqual([fresh, repeated].flatMap((r) => (trendRun(r) ? [r.id] : [])), ['fresh']);
   const date = new Date('2026-10-09T12:00:00Z');
   const lastWeek = summary('last-week', { at: '2026-09-30T12:00:00Z', textId: 'short-gentle-02', score: { wpm: 60, accuracy: 98 } });
   assert.equal(weeklyChange([lastWeek, fresh, repeated], conditionKey(conditions), date).wpm, 10, 'the 95 on repeated text is ignored');
@@ -98,6 +104,7 @@ test('repeated runs never become recurring targets or revisit evidence', () => {
 test('a repeat chases the best earlier run on the same passage and conditions', () => {
   const current = summary('now', { fresh: false, score: { wpm: 90, accuracy: 99 } });
   assert.equal(passageBest([], current), null);
+
   const runs = [
     summary('first', { score: { wpm: 72, accuracy: 97 } }),
     summary('second', { fresh: false, score: { wpm: 81, accuracy: 98 } }),
@@ -107,6 +114,7 @@ test('a repeat chases the best earlier run on the same passage and conditions', 
     summary('drill', { kind: 'drill', score: { wpm: 99, accuracy: 99 } }),
     current,
   ];
+
   assert.equal(passageBest(runs, current).id, 'second');
 });
 
@@ -134,6 +142,7 @@ test('custom text is excluded by kind as well as by freshness: never listed, tre
   const later = summary('later-retest', { kind: 'retest', fresh: false });
   assert.equal(trendRun(fresh), true);
   NON_COMPARABLE_KINDS.add('retest');
+
   try {
     assert.equal(practiceRun(fresh), false);
     assert.equal(trendRun(fresh), false);
@@ -141,6 +150,7 @@ test('custom text is excluded by kind as well as by freshness: never listed, tre
   } finally {
     NON_COMPARABLE_KINDS.delete('retest');
   }
+
   assert.equal(trendRun(fresh), true);
 });
 

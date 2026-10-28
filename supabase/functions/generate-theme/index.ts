@@ -10,6 +10,7 @@ import { DAILY_LIMIT, handleGenerateTheme } from './handler.ts';
 const url = Deno.env.get('SUPABASE_URL');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+
 const client = url && serviceKey
   ? createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
   : null;
@@ -18,7 +19,9 @@ const deps = client && apiKey ? {
   auth: client.auth,
   async claim(userId: string) {
     const { data, error } = await client.rpc('claim_theme_generation', { p_user: userId, p_limit: DAILY_LIMIT });
+
     if (error) throw error;
+
     return data === true;
   },
   apiKey,

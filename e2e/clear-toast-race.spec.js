@@ -7,6 +7,7 @@ test('an earlier Undo timeout never hides a new clear confirmation', async ({ pa
   await completePassage(page);
   await page.clock.install({ time: new Date('2026-10-15T12:00:00Z') });
   await page.clock.pauseAt(new Date('2026-10-15T12:00:01Z'));
+
   const clear = async () => {
     await openView(page, 'Progress');
     await page.locator('#clear-history').click();
@@ -14,6 +15,7 @@ test('an earlier Undo timeout never hides a new clear confirmation', async ({ pa
     await page.locator('#confirm-clear').click();
     await expect(page.locator('#undo-clear')).toBeVisible();
   };
+
   await clear();
   await page.locator('#undo-clear').click();
   await clear();

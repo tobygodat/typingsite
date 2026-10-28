@@ -12,6 +12,7 @@ function errorTrace(id, at) {
   attempt.startedAt = 0;
   attempt.events = [...text].map((char, position) => ({ type: 'insert', text: position % 4 === 1 ? 'x' : char,
     position, offsetMs: position * 100, accepted: true }));
+
   return { ...completeAttempt(attempt, { endedAt: text.length * 100 }), at, fresh: true };
 }
 

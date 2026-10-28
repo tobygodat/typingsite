@@ -21,6 +21,7 @@ async function shortGentleQuotes(page) {
   await chooseQuoteFilter(page, 'length', 'short');
   await chooseQuoteFilter(page, 'difficulty', 'gentle');
   await expect(page.locator('#input-help')).toHaveText('');
+
   return passageText(page);
 }
 
@@ -51,27 +52,33 @@ async function clearHistory(page) {
 // about 73 and 96 wpm.
 async function typeQuote(page, msPerKey = 0) {
   const text = await passageText(page);
+
   if (!msPerKey) await typeInto(page, text);
   else {
     await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1000);
     await page.locator('#typing-input').focus();
+
     for (const word of text.match(/\S+\s*/g)) {
       await page.keyboard.type(word);
       await page.clock.fastForward(word.length * msPerKey);
     }
+
     await page.clock.resume();
   }
+
   await expect(page.locator('body')).toHaveAttribute('data-view', /^(results|train)$/);
 }
 
 test('off by default: unseen quotes come first, and an exhausted pool says it is repeating', async ({ page }) => {
   await openApp(page);
   const shown = [await shortGentleQuotes(page)];
+
   for (let i = 0; i < 2; i += 1) {
     await page.locator('#restart-button').click();
     await expect(page.locator('#input-help')).toHaveText('');
     shown.push(await passageText(page));
   }
+
   expect(new Set(shown).size).toBe(3);
   await page.locator('#restart-button').click();
   expect(shown).toContain(await passageText(page));
@@ -125,6 +132,7 @@ test('custom text is never labelled repeated text, keeps its passage when repeat
     await typeInto(page, text);
     await expect(page.locator('#result-conditions')).toHaveText(/^custom text · /);
     await expect(page.locator('#result-delta')).toHaveText('Custom text complete · not counted toward your best');
+
     if (i === 0) {
       await page.locator('#run-again').click();
       expect(await passageText(page)).toBe(text);
@@ -309,11 +317,13 @@ test('clearing history relabels an exhausted-pool repeat, and undo puts the labe
   await expect(page.locator('#input-help')).toHaveText('');
   await expect(page.locator('#condition-line')).not.toContainText('repeated text');
   const shown = [repeated];
+
   for (let i = 0; i < 2; i += 1) {
     await page.locator('#restart-button').click();
     await expect(page.locator('#input-help')).toHaveText('');
     shown.push(await passageText(page));
   }
+
   expect(new Set(shown).size).toBe(3);
   await page.locator('#restart-button').click();
   await expect(page.locator('#input-help')).toHaveText(EXHAUSTED);

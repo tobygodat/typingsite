@@ -6,13 +6,16 @@ export const SOUND_MODES = ['off', 'clicks', 'clicks-errors'];
 export const SOUND_LABELS = { off: 'off', clicks: 'clicks', 'clicks-errors': 'clicks + error tick' };
 export const DEFAULT_SOUND_MODE = 'off';
 export const DEFAULT_SOUND_VOLUME = 50;
+
 // What scoring made of one key: an accepted letter, a mistyped letter, a backspace, or a key refused
 // because stop on error is waiting for a correction.
 export const KEY_OUTCOME = Object.freeze({ correct: 'correct', wrong: 'wrong', delete: 'delete', blocked: 'blocked' });
 const KEY_OUTCOMES = Object.values(KEY_OUTCOME);
+
 // Peak gain at full volume. Both voices are short and sit well below full scale.
 const CLICK_PEAK = 0.9;
 const TICK_PEAK = 0.45;
+
 // A key outside a run, and the end of a run, suspend the context once the last key's voice (0.1 s at
 // most) has played out.
 const REST_AFTER_MS = 250;
@@ -24,6 +27,7 @@ export function normalizeSoundMode(value) {
 // Volume is a whole percentage, 0–100. Anything else (missing, text, NaN) falls back to the default.
 export function normalizeSoundVolume(value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SOUND_VOLUME;
+
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
@@ -32,8 +36,11 @@ export function normalizeSoundVolume(value) {
 // under stop on error is a click: the tick already marked the letter that needs fixing.
 export function soundFor(mode, volume, outcome) {
   if (!SOUND_MODES.includes(mode) || mode === 'off') return null;
+
   if (typeof volume !== 'number' || !(volume > 0)) return null;
+
   if (!KEY_OUTCOMES.includes(outcome)) return null;
+
   return outcome === KEY_OUTCOME.wrong && mode === 'clicks-errors' ? 'tick' : 'click';
 }
 
@@ -43,12 +50,14 @@ export function soundFor(mode, volume, outcome) {
 // in the key outranks the rest; a key whose every character was refused is blocked.
 export function keyOutcome(changes) {
   if (changes.some((change) => change.correct === false)) return KEY_OUTCOME.wrong;
+
   return changes.every((change) => change.blocked) ? KEY_OUTCOME.blocked : KEY_OUTCOME.correct;
 }
 
 // Loudness follows the square of the slider so the low end stays usable.
 export function gainFor(volume) {
   const level = normalizeSoundVolume(volume) / 100;
+
   return level * level;
 }
 
@@ -56,7 +65,9 @@ function noiseBuffer(context) {
   const length = Math.max(1, Math.round(context.sampleRate * 0.04));
   const buffer = context.createBuffer(1, length, context.sampleRate);
   const data = buffer.getChannelData(0);
+
   for (let i = 0; i < length; i += 1) data[i] = Math.random() * 2 - 1;
+
   return buffer;
 }
 
@@ -126,11 +137,13 @@ export function createSounds({ settings, running = () => false, AudioContextClas
 
   const audible = () => {
     const { mode, volume } = settings();
+
     return soundFor(mode, volume, 'correct') !== null;
   };
 
   const request = (method) => {
     asked = method === 'resume' ? 'awake' : 'asleep';
+
     try { Promise.resolve(context[method]()).catch(() => {}); } catch {}
   };
 
@@ -141,12 +154,15 @@ export function createSounds({ settings, running = () => false, AudioContextClas
     noise = null;
     asked = null;
     failed = false;
+
     if (!closing) return;
+
     try { Promise.resolve(closing.close?.()).catch(() => {}); } catch {}
   }
 
   function reconcile() {
     if (context?.state === 'closed') { context = null; noise = null; }
+
     if (want === 'closed') release();
     else if (!context) queueBuild();
     else if (want === 'awake' && (asked !== 'awake' || context.state !== 'running')) request('resume');
@@ -155,6 +171,7 @@ export function createSounds({ settings, running = () => false, AudioContextClas
 
   function build() {
     if (context || failed || want === 'closed' || !audible()) return;
+
     try {
       context = new AudioContextClass({ latencyHint: 'interactive' });
       noise = noiseBuffer(context);
@@ -165,9 +182,12 @@ export function createSounds({ settings, running = () => false, AudioContextClas
       context = null;
       noise = null;
       failed = true;
+
       try { Promise.resolve(broken?.close?.()).catch(() => {}); } catch {}
+
       return;
     }
+
     reconcile();
   }
 
@@ -176,6 +196,7 @@ export function createSounds({ settings, running = () => false, AudioContextClas
     pending = true;
     defer(() => {
       pending = false;
+
       try { build(); } catch {}
     });
   }
@@ -185,16 +206,22 @@ export function createSounds({ settings, running = () => false, AudioContextClas
     try {
       const { mode, volume } = settings();
       const kind = soundFor(mode, volume, outcome);
+
       if (!kind) {
         sync();
+
         return null;
       }
+
       want = 'awake';
       reconcile();
       rest();
+
       if (!context) return null;
+
       if (kind === 'tick') playTick(context, gainFor(volume));
       else playClick(context, gainFor(volume), noise);
+
       return kind;
     } catch {
       return null;
@@ -208,6 +235,7 @@ export function createSounds({ settings, running = () => false, AudioContextClas
   function prepare() {
     try {
       if (!audible()) return;
+
       if (want === 'closed') want = 'asleep';
       reconcile();
     } catch {}
@@ -224,6 +252,7 @@ export function createSounds({ settings, running = () => false, AudioContextClas
 
   function suspend() {
     clearTimeout(resting);
+
     if (want === 'closed') return;
     want = 'asleep';
     reconcile();

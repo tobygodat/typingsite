@@ -10,26 +10,35 @@ import * as board from '../src/friends-board.js';
 
 const { boardColumn, boardCurrent, boardSummary, nextRead, utcDay, weekStart } = board;
 const { insertCloudProfile, repairBoard, updateCloudProfile } = account;
+
 const words = { mode: 'words', duration: null, count: 25, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
   inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
 const dailyKey = conditionKey({ ...words, mode: 'quote', count: null, punctuation: true, quoteLength: 'medium', difficulty: 'any', wordList: null });
 const session = { user: { id: 'ada' }, access_token: 'account-token', expires_at: 9999999999 };
 const MINUTE = 60000;
+
 // A time `offset` from now, kept inside this UTC week so the runs always count as this week's.
 function thisWeek(offset) {
   const monday = Date.parse(`${weekStart()}T00:00:00Z`);
+
   return new Date(Math.min(Math.max(Date.now() + offset, monday + MINUTE), monday + 7 * 86400000 - MINUTE)).toISOString();
 }
+
 const run = (id, at) => ({ id, at, status: 'complete', kind: 'test', interrupted: false, conditions: words,
   score: { wpm: 70, accuracy: 97 }, elapsedMs: 30000, challengeDate: null });
+
 const copy = (runs) => ({ version: 2, runs });
 const boardOf = (data) => (at) => boardColumn(data.runs, dailyKey, at);
+
 // A save as the app makes one (src/app.js pushOnce): a write conditional on the row's version as read, or
 // the first row. `api` is the stand-in in use; without one (a stubbed fetch), the first row.
 let currentApi = null;
+
 function save(data, options = {}) {
   const board = 'board' in options ? options.board : boardOf(data);
   const row = currentApi?.rows.get('ada');
+
   return row ? updateCloudProfile(session, data, row.updated_at, { board }) : insertCloudProfile(session, data, { board });
 }
 
@@ -43,42 +52,59 @@ function profilesApi({ holdFirst = false } = {}) {
   let release;
   const held = new Promise((resolve) => { release = resolve; });
   let holding = holdFirst;
+
   const fetch = async (url, options) => {
     const { pathname, searchParams } = new URL(url);
     const body = options.body ? JSON.parse(options.body) : null;
     requests.push({ method: options.method, pathname, updatedAt: searchParams.get('updated_at'), body });
+
     const answer = async (written, status) => {
       if (holding) { holding = false; await held; }
+
       if (!/return=representation/.test(options.headers?.Prefer || '')) return new Response(null, { status: status === 201 ? 201 : 204 });
+
       return new Response(JSON.stringify(written.map((row) => ({ updated_at: row.updated_at }))), { status });
     };
+
     if (options.method === 'POST' && pathname === '/rest/v1/profiles') {
       if (rows.has(body.user_id)) return answer([], 201);
       rows.set(body.user_id, { ...body });
+
       return answer([rows.get(body.user_id)], 201);
     }
+
     if (options.method === 'PATCH' && pathname === '/rest/v1/profiles') {
       const row = rows.get(searchParams.get('user_id').replace(/^eq\./, ''));
       const matches = row && Date.parse(row.updated_at) === Date.parse(searchParams.get('updated_at').replace(/^eq\./, ''));
+
       if (matches) Object.assign(row, body);
+
       return answer(matches ? [row] : [], 200);
     }
+
     return new Response(JSON.stringify({ message: 'unexpected' }), { status: 404 });
   };
+
   return { fetch, rows, requests, release };
 }
+
 async function withApi(api, task) {
   const original = globalThis.fetch;
   globalThis.fetch = api.fetch;
   currentApi = api;
+
   try { return await task(); } finally { globalThis.fetch = original; currentApi = null; }
 }
+
 // Today's and this week's parts of a summary, as the service picks them.
 const parts = (summary) => ({ daily: summary.days[utcDay()] ?? null, week: summary.weeks[weekStart()] ?? null });
+
 // What a reader is shown of a row, as the service shows it: the summary only while it describes the row.
 const shown = (row) => (boardCurrent(row) ? parts(row.board) : null);
+
 // What Progress shows from the same row.
 const progress = (row) => parts(boardSummary(row.data.runs, dailyKey));
+
 // This week's run count a reader is shown (none yet reads as 0).
 const weekRuns = (row) => shown(row)?.week?.runs ?? 0;
 
@@ -111,14 +137,18 @@ test('finding 2: clear and undo twice with the first save’s reply held, and th
   const api = profilesApi({ holdFirst: true });
   const full = copy([run('a', thisWeek(-3 * MINUTE)), run('b', thisWeek(-2 * MINUTE)), run('c', thisWeek(-MINUTE))]);
   const cleared = copy([]);
+
   const saves = await withApi(api, async () => {
     const first = save(cleared);
     // The first clear's reply is still on its way when the undo, the second clear and its undo are saved.
     const later = [];
+
     for (const data of [full, cleared, full]) later.push(await save(data));
     api.release();
+
     return [await first, ...later];
   });
+
   const row = api.rows.get('ada');
   assert.equal(saves.length, 4);
   assert.deepEqual(shown(row), progress(row));
@@ -128,6 +158,7 @@ test('finding 2: clear and undo twice with the first save’s reply held, and th
   // device to settle later.
   const writes = api.requests.filter((request) => request.body?.data);
   assert.deepEqual(writes.map((request) => request.body.board.weeks[weekStart()]?.runs ?? 0), [0, 3, 0, 3]);
+
   for (const write of writes) assert.equal(write.body.board.at, write.body.updated_at);
 });
 
@@ -184,6 +215,7 @@ test('a repair writes only the summary, and only while the row is still the vers
 test('a write refused for another reason still fails, board or not', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ code: '42501', message: 'new row violates row-level security policy for table "profiles"' }), { status: 403 });
+
   try {
     await assert.rejects(save(copy([])), /row-level security/);
   } finally { globalThis.fetch = original; }
@@ -213,11 +245,14 @@ test('a project without the board column keeps syncing: the write goes again wit
   globalThis.fetch = async (url, options) => {
     const body = options.body ? JSON.parse(options.body) : null;
     bodies.push({ method: options.method, body });
+
     if (body && 'board' in body) {
       return new Response(JSON.stringify({ code: 'PGRST204', details: null, hint: null, message: 'Could not find the \'board\' column of \'profiles\' in the schema cache' }), { status: 400 });
     }
+
     return new Response(null, { status: 201 });
   };
+
   try {
     await save(copy([run('a', thisWeek(-MINUTE))]));
     assert.equal(bodies.length, 2);

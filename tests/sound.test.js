@@ -17,10 +17,12 @@ import {
 // change state only once the audio thread has acted, on a later task (settle). With autostart, a new
 // context reports 'suspended' and starts running by itself on the next task, as Firefox and WebKit do.
 const settle = () => new Promise((resolve) => setImmediate(resolve));
+
 function fakeAudio({ state = 'running', failOn = null, autostart = false } = {}) {
   const log = { created: 0, closed: 0, resumed: 0, suspended: 0, started: [], gains: [], ramps: [], options: [], contexts: [] };
   const param = () => ({ value: 0, setValueAtTime(v) { log.gains.push(v); }, exponentialRampToValueAtTime(v) { log.ramps.push(v); } });
   const node = (extra = {}) => ({ connect(target) { return target; }, ...extra });
+
   class FakeContext {
     constructor(options) {
       if (failOn === 'construct') throw new Error('no audio device');
@@ -28,24 +30,44 @@ function fakeAudio({ state = 'running', failOn = null, autostart = false } = {})
       log.options.push(options);
       log.contexts.push(this);
       this.state = autostart ? 'suspended' : state;
+
       if (autostart) this.later('running');
       this.currentTime = 0;
       this.sampleRate = 48000;
       this.destination = node();
     }
-    resume() { log.resumed += 1; return this.later('running'); }
-    suspend() { log.suspended += 1; return this.later('suspended'); }
+    resume() {
+      log.resumed += 1;
+
+      return this.later('running');
+    }
+    suspend() {
+      log.suspended += 1;
+
+      return this.later('suspended');
+    }
     later(state) { return settle().then(() => { if (this.state !== 'closed') this.state = state; }); }
-    close() { log.closed += 1; this.state = 'closed'; return Promise.resolve(); }
-    createBuffer(channels, length) { const data = new Float32Array(length); return { getChannelData: () => data }; }
+    close() {
+      log.closed += 1;
+      this.state = 'closed';
+
+      return Promise.resolve();
+    }
+    createBuffer(channels, length) {
+      const data = new Float32Array(length);
+
+      return { getChannelData: () => data };
+    }
     createBufferSource() {
       if (failOn === 'play') throw new Error('node limit');
+
       return node({ buffer: null, start() { log.started.push('click'); }, stop() {} });
     }
     createOscillator() { return node({ type: 'sine', frequency: param(), start() { log.started.push('tick'); }, stop() {} }); }
     createBiquadFilter() { return node({ type: 'lowpass', frequency: { value: 0 }, Q: { value: 0 } }); }
     createGain() { return node({ gain: param() }); }
   }
+
   return { log, FakeContext };
 }
 
@@ -71,6 +93,7 @@ test('off and volume 0 are silent; the tick is only for a mistyped letter with t
     assert.equal(soundFor('clicks', 0, outcome), null);
     assert.equal(soundFor('clicks-errors', 0, outcome), null);
   }
+
   assert.equal(soundFor('clicks', 50, 'correct'), 'click');
   assert.equal(soundFor('clicks', 50, 'wrong'), 'click');
   assert.equal(soundFor('clicks', 50, 'delete'), 'click');
@@ -112,6 +135,7 @@ test('gain rises with volume, is zero at 0 and full at 100', () => {
 // Stands in for "after the key has painted": queued callbacks run only when the test flushes them.
 function deferQueue() {
   const queue = [];
+
   return { defer: (callback) => queue.push(callback), flush: () => queue.splice(0).forEach((callback) => callback()), get size() { return queue.length; } };
 }
 

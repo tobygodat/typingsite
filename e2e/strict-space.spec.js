@@ -9,16 +9,19 @@ const DRILL_NOTE = 'drills end on the clock';
 const DAILY_NOTE = 'the daily keeps its own rules';
 const RETEST_NOTE = 'a retest keeps its baseline’s rules';
 const RACE_NOTE = 'a race keeps the same rules for both players';
+
 // A realistic typing pace for the runs that end up in screenshots.
 const PACE = { delay: 140 };
 
 async function setSwitch(page, id, on) {
   await openSettings(page, 'practice');
+
   if (id === 'stop-on-error-toggle') {
     await chooseSetting(page, 'correction-select', on ? 'mandatory' : 'relaxed');
   } else {
     await chooseSetting(page, id, on);
   }
+
   await closeSettings(page);
   await expect(page.locator('#settings-dialog')).toBeHidden();
 }

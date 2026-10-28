@@ -14,6 +14,7 @@ async function finishRun(page) {
   await page.keyboard.press('Backspace');
   await page.keyboard.type(text.slice(at), { delay: 75 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+
   return { text, at };
 }
 
@@ -36,11 +37,13 @@ test('the run card shows consistency, the counts behind accuracy and the words t
   // The word holding the fixed miss is marked with the coral token and its tint.
   const missIndex = text.slice(0, at).split(' ').length - 1;
   await expect(page.locator('#result-words .word-miss')).toHaveCount(1);
+
   const cue = await words.nth(missIndex).evaluate((node) => ({
     color: getComputedStyle(node).color,
     background: getComputedStyle(node).backgroundColor,
     danger: getComputedStyle(document.documentElement).getPropertyValue('--danger-soft').trim(),
   }));
+
   expect(cue.background).toBe(cue.danger);
   await expect(words.last()).toHaveAttribute('title', /^\d+ wpm$/);
   // Static: nothing in the list animates.
@@ -72,19 +75,23 @@ test('the words list is one tab stop whose words show their pace by keyboard', a
   await expect(detail).toBeEmpty();
   await expect(detail).toBeHidden();
   await expect(list.locator('[tabindex="0"]')).toHaveCount(1);
+
   // Finish focuses "run again" at the card's foot; Shift+Tab walks back to the list's one stop.
   for (let i = 0; i < 12 && !(await words.first().evaluate((node) => node === document.activeElement)); i += 1) {
     await page.keyboard.press('Shift+Tab');
   }
+
   await expect(words.first()).toBeFocused();
   const firstWord = await words.first().textContent();
   await expect(detail).toHaveText(new RegExp(`^“${firstWord}” · (\\d+ wpm|no pace)$`));
   await expect(words.first()).toHaveAttribute('aria-label', new RegExp(`^${firstWord}, (\\d+ wpm|no pace)$`));
+
   const ring = await words.first().evaluate((node) => ({
     visible: node.matches(':focus-visible'),
     style: getComputedStyle(node).outlineStyle,
     width: getComputedStyle(node).outlineWidth,
   }));
+
   expect(ring).toEqual({ visible: true, style: 'solid', width: '2px' });
   await page.keyboard.press('ArrowRight');
   await expect(words.nth(1)).toBeFocused();
@@ -123,12 +130,14 @@ function statSpill(page) {
     const card = document.getElementById('run-card');
     const box = card.getBoundingClientRect();
     const pad = parseFloat(getComputedStyle(card).paddingLeft);
+
     return [...card.querySelectorAll('.run-card-facts dd')].flatMap((node) => {
       const range = document.createRange();
       range.selectNodeContents(node);
       const cell = node.getBoundingClientRect();
       const text = range.getBoundingClientRect();
       const out = text.right > cell.right + 0.5 || text.left < box.left + pad - 0.5 || text.right > box.right - pad + 0.5;
+
       return out ? [`${node.parentElement.querySelector('dt').textContent}: ${node.textContent}`] : [];
     });
   });
@@ -150,6 +159,7 @@ test.describe('narrow phone', () => {
     // Larger than any run here reaches: a 120 s timed run, typed fast with many slips.
     await page.evaluate(() => {
       const set = (id, html) => { document.getElementById(id).innerHTML = html; };
+
       set('result-time', '120.0<b> s</b>');
       set('result-accuracy', '100');
       set('result-consistency', '100');

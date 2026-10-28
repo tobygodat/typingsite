@@ -1274,6 +1274,8 @@ const cache = new Map();
 
 export function wordList(id = DEFAULT_WORD_LIST) {
   const key = Object.hasOwn(sources, id) ? id : DEFAULT_WORD_LIST;
+
   if (!cache.has(key)) cache.set(key, sources[key].trim().split(/\s+/));
+
   return cache.get(key);
 }

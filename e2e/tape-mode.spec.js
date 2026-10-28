@@ -21,11 +21,15 @@ async function setTape(page, on) {
 // The tape and caret after the next frames have measured, in px from the visible left edge.
 const tapeState = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
   const display = document.getElementById('text-display');
+
   const leftOf = (node) => {
     let left = 0;
+
     for (let at = node; at && at !== display; at = at.offsetParent) left += at.offsetLeft;
+
     return left;
   };
+
   const match = /translateX\((-?[\d.]+)px\)/.exec(display.style.transform);
   const offset = match ? -Number(match[1]) : 0;
   const current = display.querySelector('.char.current');
@@ -52,10 +56,13 @@ const lineState = (page) => page.evaluate(() => new Promise((resolve) => request
   const offset = match ? -Number(match[1]) : 0;
   const view = display.parentElement.clientWidth;
   const words = {};
+
   for (const word of display.querySelectorAll('.word')) {
     const x = word.getBoundingClientRect().left - origin;
+
     if (x >= offset - view && x <= offset + view) words[word.dataset.wordIndex] = x;
   }
+
   const spacer = display.querySelector('.passage-spacer');
   resolve({ typed: document.getElementById('typing-input').value.length, offset, spacerEnd: spacer ? spacer.getBoundingClientRect().right - origin : null, words });
 }))));
@@ -68,12 +75,14 @@ async function trace(page, text) {
   await page.locator('#typing-input').focus();
   let previous = await tapeState(page);
   const states = [];
+
   for (const char of text) {
     await page.keyboard.type(char);
     const state = await tapeState(page);
     states.push({ ...state, stepped: state.offset !== previous.offset });
     previous = state;
   }
+
   return states;
 }
 
@@ -137,10 +146,12 @@ test('the tape steps by whole words near the right edge, never per letter', asyn
   expect(steps.length).toBeGreaterThan(1);
   // Far fewer steps than words, so the line holds still for several words at a time.
   expect(steps.length).toBeLessThan(text.split(' ').length / 3);
+
   for (const state of states) {
     expect(state.caret).toBeGreaterThanOrEqual(0);
     expect(state.caret).toBeLessThanOrEqual(state.width);
   }
+
   for (const step of steps) {
     // Only on reaching a new word, which lands a tenth of the way in.
     expect(step.word?.start).toBe(true);
@@ -149,6 +160,7 @@ test('the tape steps by whole words near the right edge, never per letter', asyn
     const before = states[states.indexOf(step) - 1];
     expect(before.caret).toBeGreaterThan(before.width * 0.6);
   }
+
   await expect(page.locator('#typing-wrap')).toHaveAttribute('data-tape-scrolled', 'true');
 
   // A solid caret and instant letter states while typing.
@@ -158,11 +170,14 @@ test('the tape steps by whole words near the right edge, never per letter', asyn
 
   // Backspacing past the last step into the left edge steps back, and the caret stays in view.
   const back = [];
+
   for (let index = 0; index < states.at(-1).typed - steps.at(-1).typed + 6; index += 1) {
     await page.keyboard.press('Backspace');
     back.push(await tapeState(page));
   }
+
   expect(back.some((state, index) => state.offset < (index ? back[index - 1].offset : states.at(-1).offset))).toBe(true);
+
   for (const state of back) {
     expect(state.caret).toBeGreaterThanOrEqual(0);
     expect(state.caret).toBeLessThanOrEqual(state.width);
@@ -178,9 +193,11 @@ test('trimming and remounting passed words moves nothing on the line', async ({ 
   const text = await passageText(page);
   // Across each trim (every 160 characters), every word that stays keeps its exact x.
   let previous;
+
   for (const [from, to] of [[150, 170], [310, 330]]) {
     await typeInto(page, text.slice(previous?.typed ?? 0, from));
     previous = await lineState(page);
+
     for (const char of text.slice(from, to)) {
       await page.keyboard.type(char);
       const state = await lineState(page);
@@ -188,16 +205,20 @@ test('trimming and remounting passed words moves nothing on the line', async ({ 
       previous = state;
     }
   }
+
   expect(previous.spacerEnd).toBeGreaterThan(0);
+
   // Backspacing a long way: no blank stretch where the spacer would show, and the words come
   // back exactly where they were.
   while (previous.spacerEnd !== null && previous.typed > 0) {
     await page.keyboard.press('Backspace');
     const state = await lineState(page);
     expect(drift(previous, state), `typed ${state.typed}`).toBeLessThan(0.05);
+
     if (state.spacerEnd !== null) expect(state.spacerEnd - state.offset, `typed ${state.typed}`).toBeLessThanOrEqual(12);
     previous = state;
   }
+
   expect(previous.typed).toBeGreaterThan(0);
 });
 
@@ -214,13 +235,16 @@ test('word highlight tints the word under the caret, in view, after each step', 
   const states = await trace(page, text);
   expect(states.some((state) => state.stepped)).toBe(true);
   await page.waitForFunction(() => document.getElementById('text-display').getAnimations().length === 0);
+
   const highlight = await page.evaluate(() => {
     const display = document.getElementById('text-display');
     const area = document.getElementById('typing-wrap').getBoundingClientRect();
     const tinted = [...display.querySelectorAll('.word')].filter((word) => getComputedStyle(word.firstElementChild).backgroundColor !== 'rgba(0, 0, 0, 0)');
     const box = tinted[0]?.getBoundingClientRect();
+
     return { count: tinted.length, holdsCaret: Boolean(tinted[0]?.querySelector('.char.current')), left: box && box.left - area.left, right: box && box.right - area.left, width: area.width };
   });
+
   expect(highlight.count).toBe(1);
   expect(highlight.holdsCaret).toBe(true);
   expect(highlight.left).toBeGreaterThanOrEqual(0);
@@ -238,10 +262,12 @@ test('a code snippet runs on the tape as one line, caret in view', async ({ page
   const text = snippet.slice(0, Math.min(120, snippet.length - 1));
   const states = await trace(page, text);
   expect(states.at(-1).typed).toBe(text.length);
+
   for (const state of states) {
     expect(state.caret).toBeGreaterThanOrEqual(0);
     expect(state.caret).toBeLessThanOrEqual(state.width);
   }
+
   expect(await overflow(page)).toBe(0);
 });
 
@@ -300,14 +326,19 @@ for (const easing of [false, true]) test(`leaving a scrolled ghost race for the 
   const display = page.locator('#text-display');
   const scrollY = () => display.evaluate((node) => new DOMMatrix(getComputedStyle(node).transform).m42);
   await page.locator('#typing-input').focus();
+
   for (const word of passage.split(' ')) {
     await page.keyboard.type(`${word} `);
+
     if ((await scrollY()) < 0) break;
   }
+
   await expect.poll(scrollY).toBeLessThan(0);
+
   if (easing) {
     // A slow scroll, so the switch below lands while it is still easing back to the first line.
     await display.evaluate((node) => node.style.setProperty('--dur-quick', '4s'));
+
     while (await display.evaluate((node) => node.style.transform !== '')) await page.keyboard.press('Backspace');
   }
 
@@ -315,15 +346,19 @@ for (const easing of [false, true]) test(`leaving a scrolled ghost race for the 
   await page.evaluate(() => {
     window.tapeFrames = [];
     const node = document.getElementById('text-display');
+
     const sample = () => {
       if (document.body.dataset.tape === 'true') window.tapeFrames.push(new DOMMatrix(getComputedStyle(node).transform).m42);
+
       if (window.tapeFrames.length < 30) requestAnimationFrame(sample);
     };
+
     requestAnimationFrame(sample);
   });
   await page.keyboard.press('Control+k');
   await page.keyboard.type('standard');
   await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('standard test · 60 seconds');
+
   if (easing) expect(await display.evaluate((node) => node.getAnimations().length)).toBeGreaterThan(0);
   await page.keyboard.press('Enter');
   await expect(page.locator('body')).toHaveAttribute('data-tape', 'true');
@@ -348,6 +383,7 @@ test('the pace caret rides the tape and keeps gliding through a step', async ({ 
   const text = await passageText(page);
   const states = await trace(page, text.slice(0, 120));
   expect(states.some((state) => state.stepped)).toBe(true);
+
   // On screen, the pace caret sits at its place on the line less the tape's scroll: it moves with the line.
   const ride = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
     const display = document.getElementById('text-display');
@@ -357,6 +393,7 @@ test('the pace caret rides the tape and keeps gliding through a step', async ({ 
     const screen = node.getBoundingClientRect().left - document.getElementById('typing-wrap').getBoundingClientRect().left;
     resolve({ along, expected: along + scroll, screen });
   })));
+
   const first = await ride();
   expect(Math.abs(first.screen - first.expected)).toBeLessThanOrEqual(1);
   // Still gliding: the pace caret keeps moving along the line between keys.
@@ -385,10 +422,12 @@ test.describe('narrow phone with large text', () => {
     expect(wordWidth).toBeGreaterThan(width * 0.8);
 
     const states = await trace(page, text.slice(0, longest.length * 2 + 6));
+
     for (const state of states) {
       expect(state.caret).toBeGreaterThanOrEqual(0);
       expect(state.caret).toBeLessThanOrEqual(state.width);
     }
+
     const steps = states.filter((state) => state.stepped);
     expect(steps.some((step) => !step.word?.start)).toBe(true);
     expect(steps.length).toBeLessThan(states.length / 4);
@@ -405,8 +444,10 @@ test.describe('narrow phone with large text', () => {
     await chooseWords(page, 50);
     const text = await passageText(page);
     await typeInto(page, text.slice(0, 120));
+
     for (let index = 0; index < 100; index += 1) {
       await page.keyboard.press('Backspace');
+
       // The letter Backspace would delete next, in px from the visible left edge.
       const left = await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
         const display = document.getElementById('text-display');
@@ -416,6 +457,7 @@ test.describe('narrow phone with large text', () => {
         const before = letters[letters.indexOf(display.querySelector('.char.current')) - 1];
         resolve(before ? before.getBoundingClientRect().left - display.getBoundingClientRect().left - offset : null);
       }))));
+
       if (left !== null) expect(left, `after ${index + 1} backspaces`).toBeGreaterThanOrEqual(11.5);
     }
   });
@@ -433,11 +475,14 @@ test.describe('reduced motion', () => {
     const text = await passageText(page);
     await page.locator('#typing-input').focus();
     let state = await tapeState(page);
+
     for (const char of text) {
       await page.keyboard.type(char);
       state = await tapeState(page);
+
       if (state.offset > 0) break;
     }
+
     expect(state.offset).toBeGreaterThan(0);
     const shown = await page.locator('#text-display').evaluate((node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).m41);
     expect(shown).toBe(-state.offset);
@@ -498,6 +543,7 @@ test('switching layouts mid-run keeps the run going and the caret in view', asyn
   const wrap = await page.locator('#typing-wrap').boundingBox();
   await expect.poll(async () => {
     const caret = await page.locator('#text-display .caret').boundingBox();
+
     return caret.y >= wrap.y && caret.y + caret.height <= wrap.y + wrap.height;
   }).toBe(true);
   await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, 450));
@@ -515,12 +561,15 @@ test('turning the tape off mid-run lands the three lines on the caret’s line a
   await page.evaluate(() => {
     window.lineFrames = [];
     const node = document.getElementById('text-display');
+
     const sample = () => {
       if (document.body.dataset.tape === 'false') {
         window.lineFrames.push({ shown: new DOMMatrix(getComputedStyle(node).transform).m42, set: node.style.transform, moving: node.getAnimations().length });
       }
+
       if (window.lineFrames.length < 30) requestAnimationFrame(sample);
     };
+
     requestAnimationFrame(sample);
   });
   await page.mouse.move(5, 5);
@@ -532,6 +581,7 @@ test('turning the tape off mid-run lands the three lines on the caret’s line a
   expect(landed.length).toBeGreaterThan(0);
   // On line 2 or later, so the three lines scroll up to it.
   expect(-landed[0].shown).toBeGreaterThan(0);
+
   for (const frame of landed) expect(frame.shown).toBeCloseTo(-Number(/translateY\(-([\d.]+)px\)/.exec(frame.set)[1]), 1);
   expect(frames.filter((frame) => frame.moving)).toEqual([]);
   await expect(page.locator('#typing-status')).toHaveText('In progress');
@@ -572,6 +622,7 @@ test.describe('phone', () => {
     await setTape(page, true);
     await midRun(page);
     expect(await overflow(page)).toBeLessThanOrEqual(0);
+
     if (process.env.SCREENSHOTS) await page.screenshot({ path: shotPath(testInfo, 'tape-mobile') });
   });
 });

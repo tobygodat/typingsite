@@ -8,7 +8,12 @@ import {
   lessonUnlocked, lessonWords, lessonsComplete, makeupCopy, nextLessonIndex, normalizeLessonProgress, recordLessonRun,
 } from '../src/lessons.js';
 
-const seeded = (seed = 7) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+const seeded = (seed = 7) => () => {
+  seed = (seed * 16807) % 2147483647;
+
+  return (seed - 1) / 2147483646;
+};
+
 const listWords = new Set(wordListIds.flatMap((id) => wordList(id)));
 const words = (passage) => passage.text.split(' ');
 
@@ -17,6 +22,7 @@ test('lessons introduce keys a few at a time, home row first, until every letter
   const letters = LESSONS.flatMap((lesson) => lesson.keys).filter((key) => /[a-z]/.test(key));
   assert.equal(new Set(letters).size, letters.length, 'each letter is introduced once');
   assert.deepEqual([...letters].sort().join(''), 'abcdefghijklmnopqrstuvwxyz');
+
   for (const lesson of LESSONS) assert.ok(lesson.keys.length <= 2 && lesson.wpm >= 10 && lesson.wpm <= 15, lesson.id);
   assert.equal(new Set(LESSONS.map((lesson) => lesson.id)).size, LESSONS.length);
 });
@@ -24,6 +30,7 @@ test('lessons introduce keys a few at a time, home row first, until every letter
 test('the finger map gives every lesson key exactly one finger', () => {
   const mapped = FINGER_ZONES.flatMap((zone) => zone.keys);
   assert.equal(new Set(mapped).size, mapped.length);
+
   for (const key of LESSONS.flatMap((lesson) => lesson.keys)) assert.ok(mapped.includes(key), key);
   assert.equal(fingerFor('f'), 'left index');
   assert.equal(fingerFor('j'), 'right index');
@@ -34,11 +41,13 @@ test('the finger map gives every lesson key exactly one finger', () => {
 test('lesson words are real list words made only of learned letters', () => {
   for (let index = 0; index < LESSONS.length; index += 1) {
     const allowed = new Set(lessonKeys(index));
+
     for (const word of lessonWords(index)) {
       assert.ok(listWords.has(word), `${word} is in a word list`);
       assert.ok([...word].every((char) => allowed.has(char)), `${word} uses only lesson ${index + 1} keys`);
     }
   }
+
   // Nothing real is spelled with the first home-row keys alone, so those lessons are pairs only.
   assert.deepEqual([0, 1, 2].map((index) => lessonWords(index).length), [0, 0, 0]);
   assert.ok(lessonWords(3).includes('salad'));
@@ -75,15 +84,18 @@ test('every lesson passage is about a minute long, uses only learned keys and pr
     const passage = lessonPassage(index, seeded(index + 3));
     const allowed = new Set([...lessonKeys(index), ' ']);
     assert.ok(passage.text.length >= LESSON_LENGTH && passage.text.length < LESSON_LENGTH + 12, `${index}: ${passage.text}`);
+
     for (let seed = 1; seed <= 50; seed += 1) {
       const { text } = lessonPassage(index, seeded(seed));
       assert.ok([...text].every((char) => allowed.has(char)), `lesson ${index + 1}, seed ${seed}: ${text}`);
     }
+
     for (const key of LESSONS[index].keys) assert.ok(passage.text.includes(key), `${index} practises ${key}`);
     assert.equal(passage.words + passage.pairs, words(passage).length);
     words(passage).slice(passage.pairs).forEach((word) => assert.ok(listWords.has(word), `${index}: ${word}`));
     assert.equal(passage.corpus, CORPUS_VERSION);
   }
+
   assert.equal(lessonPassage(5, seeded(1)).text, lessonPassage(5, seeded(1)).text, 'seeded passages are deterministic');
 });
 
@@ -168,12 +180,15 @@ test('progress is complete once every lesson is passed, and old or damaged profi
 
 test('lesson runs never become pattern evidence, comparisons, trends or recurring targets', () => {
   const lessonConditions = { mode: 'lesson', lesson: 'ei', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
   const typed = (id, kind) => {
     const text = 'like life feel side';
     const attempt = createAttempt({ id, text, textId: `t-${id}`, kind, conditions: lessonConditions });
     attempt.events = [...text].map((char, i) => ({ type: 'insert', text: char === 'f' ? 'x' : char, position: i, accepted: true, offsetMs: i * 150 }));
+
     return completeAttempt(attempt, { endedAt: text.length * 150 });
   };
+
   const lesson = typed('l1', 'lesson');
   assert.equal(summarizePatterns([lesson]).attemptCount, 0);
   assert.equal(summarizePatterns([typed('t1', 'test')]).attemptCount, 1);
@@ -187,6 +202,7 @@ test('practice condition keys are unchanged by the lesson kind', () => {
   // The default practice key, byte for byte as on master, so existing bests and retests still match.
   const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
     inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+
   assert.equal(conditionKey(practice), `time:30::plain:::200:physical-keyboard:relaxed:${CORPUS_VERSION}:${METRIC_VERSION}`);
   assert.notEqual(conditionKey({ ...practice, mode: 'lesson', duration: null, wordList: null, lesson: 'fj' }), conditionKey(practice));
 });

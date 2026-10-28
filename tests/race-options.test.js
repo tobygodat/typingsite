@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { RACE_FALLBACK, raceConditions, raceOptions, racePassage } from '../src/race-options.js';
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 
-const seeded = (seed = 1) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+const seeded = (seed = 1) => () => {
+  seed = (seed * 16807) % 2147483647;
+
+  return (seed - 1) / 2147483646;
+};
 
 test('plain Challenge takes mode, length, punctuation, and for generated text numbers and the word set from practice', () => {
   assert.deepEqual(raceOptions({ mode: 'time', duration: 30, count: 50, punctuation: true, numbers: true, wordList: 'english-1k', quoteLength: 'long' }),
@@ -26,6 +30,7 @@ test('a practice-only setup falls back to today\'s race: a medium quote on a 60-
     { mode: 'words', count: 25, session: 'drill' }, {}, undefined]) {
     assert.deepEqual(raceOptions(practice), RACE_FALLBACK, JSON.stringify(practice));
   }
+
   // Adaptive only shapes generated text, so a quote race keeps the quote setup.
   assert.equal(raceOptions({ mode: 'quote', quoteLength: 'long', adaptive: true }).mode, 'quote');
   const fallback = raceConditions(raceOptions({ mode: 'code' }));
@@ -48,9 +53,12 @@ test('a race passage is printable ASCII the service takes, and a timed one holds
     const { text } = racePassage(conditions, { random: seeded(7) });
     assert.match(text, /^[ -~]{40,8000}$/, JSON.stringify(options));
     assert.ok(!text.endsWith(' '));
+
     if (options.mode === 'time') assert.ok(text.length >= Math.min(7900, conditions.duration * 400 * 5 / 60 - 20), `${options.duration}s: ${text.length}`);
+
     if (options.mode === 'words') assert.equal(text.split(' ').length, options.count);
   }
+
   // The same conditions and seed make the same text; the host sends it, so both racers type exactly that.
   const conditions = raceConditions({ mode: 'time', duration: 30, punctuation: true });
   assert.equal(racePassage(conditions, { random: seeded(3) }).text, racePassage(conditions, { random: seeded(3) }).text);
@@ -59,5 +67,6 @@ test('a race passage is printable ASCII the service takes, and a timed one holds
 test('a rematch passage keeps the race\'s conditions and avoids the text just raced', () => {
   const conditions = raceConditions({ mode: 'quote', quoteLength: 'short', difficulty: 'any' });
   const first = racePassage(conditions, { random: seeded(5) });
+
   for (let seed = 1; seed < 20; seed += 1) assert.notEqual(racePassage(conditions, { seenIds: [first.id], random: seeded(seed) }).id, first.id);
 });

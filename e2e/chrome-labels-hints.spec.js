@@ -24,6 +24,7 @@ test.describe('challenge tabs', () => {
       await page.emulateMedia({ colorScheme: scheme });
       await openApp(page);
       await openView(page, 'Challenge');
+
       for (const id of MODES) {
         await page.locator(`#${id}`).click();
         await expect(page.locator('.challenge-modes [aria-pressed="true"]')).toHaveCount(1);
@@ -53,18 +54,23 @@ test.describe('dock labels at 320px', () => {
   test('each visible word is in its accessible name, and none clips', async ({ page }) => {
     await openApp(page);
     const items = page.getByRole('navigation', { name: 'Main navigation' }).locator('.nav-item');
+
     const visible = await items.evaluateAll((buttons) => buttons.map((button) => [...button.childNodes]
-      .filter((node) => node.nodeType === Node.TEXT_NODE || node.getBoundingClientRect().width > 1)
-      .map((node) => node.textContent).join('').trim()));
+      .flatMap((node) => (node.nodeType === Node.TEXT_NODE || node.getBoundingClientRect().width > 1 ? [node.textContent] : []))
+      .join('').trim()));
+
     expect(visible).toEqual(['type', 'train', 'track', 'race']);
     const names = ['type practice', 'train', 'track progress', 'race challenge'];
+
     for (const [index, name] of names.entries()) {
       await expect(items.nth(index)).toHaveAccessibleName(name);
       expect(name.startsWith(visible[index])).toBe(true);
     }
+
     for (const overflow of await items.evaluateAll((buttons) => buttons.map((button) => button.scrollWidth - button.clientWidth))) {
       expect(overflow).toBeLessThanOrEqual(0);
     }
+
     // The full word stays in the name, so the specs' openView(page, 'Progress') still finds it.
     await openView(page, 'Progress');
     await expect(page.locator('body')).toHaveAttribute('data-view', 'progress');
@@ -74,6 +80,7 @@ test.describe('dock labels at 320px', () => {
 test('dock names are the visible words at 1280px', async ({ page }) => {
   await openApp(page);
   const items = page.getByRole('navigation', { name: 'Main navigation' }).locator('.nav-item');
+
   for (const [index, name] of ['practice', 'train', 'progress', 'challenge'].entries()) {
     await expect(items.nth(index)).toHaveAccessibleName(name);
     await expect(items.nth(index)).toHaveText(name, { useInnerText: true });

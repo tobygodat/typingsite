@@ -33,12 +33,14 @@ test('a word longer than the line steps inside the word, a chunk at a time', () 
   let offset = tapeOffset({ offset: 0, caret: 300, word, width, margin });
   assert.equal(offset, 300 - lead);
   const offsets = new Set([offset]);
+
   // Twenty-pixel letters through the whole word.
   for (let caret = 320; caret <= 1800; caret += 20) {
     offset = tapeOffset({ offset, caret, width, margin });
     offsets.add(offset);
     assert.ok(caret - offset >= 0 && caret - offset <= width - margin, `caret ${caret} at ${caret - offset}`);
   }
+
   // 74 letters, a handful of steps.
   assert.ok(offsets.size > 1 && offsets.size <= 3, `${offsets.size} positions`);
 });
@@ -82,6 +84,7 @@ test('on a narrow screen with large text, a correction just after a step holds t
   assert.ok(offset > 760, 'stepped');
   // The space and an "m" before the new word sit clear of the fade.
   assert.ok(1000 - 8 - 31 - offset >= phone.fade, `${1000 - 8 - 31 - offset}`);
+
   // Backspace onto the space, then onto that last letter, then type both again: no step back.
   for (const caret of [992, 961, 992, 1000]) assert.equal(tapeOffset({ offset, caret, ...phone }), offset, `caret ${caret}`);
 });
@@ -89,13 +92,16 @@ test('on a narrow screen with large text, a correction just after a step holds t
 test('on a narrow screen with large text, backspacing keeps the letter before the caret clear of the fade', () => {
   let offset = 2000;
   let steps = 0;
+
   for (let caret = 2250; caret >= 400; caret -= 16) {
     const next = tapeOffset({ offset, caret, ...phone });
+
     if (next !== offset) steps += 1;
     offset = next;
     // Room for one more glyph (about the margin) between the fade and the caret.
     assert.ok(caret - offset >= phone.fade + phone.margin - 0.5, `caret ${caret} at ${caret - offset}`);
   }
+
   // A step at a time, each one at least a third of the line apart.
   assert.ok(steps <= Math.ceil(1850 / (phone.width / 3)), `${steps} steps`);
 });
@@ -105,14 +111,18 @@ test('text too large for the line still steps by chunks, never on every key', ()
   const huge = { width: 288, margin: 100, fade: 12 };
   let offset = 3000;
   let previousStep = Infinity;
+
   for (let caret = 3200; caret >= 1000; caret -= 20) {
     const next = tapeOffset({ offset, caret, ...huge });
+
     if (next !== offset) {
       assert.ok(previousStep - caret > 20, `stepped again at ${caret}`);
       previousStep = caret;
     }
+
     offset = next;
   }
+
   // Forward, a step lands the word inside the line and no step back follows.
   const forward = tapeOffset({ offset: 0, caret: 250, word: at(250, 60), ...huge });
   assert.ok(250 - forward > 0 && 250 - forward <= huge.width / 2);

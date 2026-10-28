@@ -61,6 +61,7 @@ function evenRun(text, msPerChar, misses = {}) {
   attempt.events = [...text].map((char, i) => ({ type: 'insert', text: misses[i] ?? char, offsetMs: i * msPerChar }));
   attempt.startedAt = 0;
   attempt.endedAt = (text.length - 1) * msPerChar;
+
   return attempt;
 }
 
@@ -90,6 +91,7 @@ test('consistency is 100 minus the CV of per-second speed, and empty under three
   assert.equal(consistency(uneven), 6);
   // Keys held back by stop-on-error are still typing: a steady hand stays steady.
   const stalled = evenRun('a'.repeat(41), 100);
+
   for (let i = 20; i < 30; i += 1) stalled.events[i].type = 'blocked-insert';
   assert.equal(consistency(stalled), 100);
 });
@@ -196,23 +198,32 @@ test('the new stats leave the versioned metrics untouched', () => {
   rawWpm(attempt); consistency(attempt); characterBreakdown(attempt); wordHistory(attempt);
   assert.equal(JSON.stringify(replayAttempt(attempt).score), before);
 });
+
 test('speed counts correct characters at five characters per word', () => {
   assert.deepEqual(metrics('hello world', 'hello worxd', 11, 1, 30000), {wpm:4, accuracy:91});
 });
+
 test('correcting a mistake does not erase historical errors', () => {
   assert.deepEqual(editStats('he', 'hex', 'hello'), {attempts:1, mistakes:1});
   assert.deepEqual(editStats('hex', 'he', 'hello'), {attempts:0, mistakes:0});
   assert.deepEqual(editStats('he', 'hel', 'hello'), {attempts:1, mistakes:0});
   assert.deepEqual(metrics('hello', 'hello', 6, 1, 6000), {wpm:10, accuracy:83});
 });
+
 test('empty run has a finite score', () => assert.deepEqual(metrics('', '', 0, 0, 0), {wpm:0, accuracy:100}));
+
 test('word sessions contain requested number of words and punctuation is optional', () => {
   assert.equal(makePassage('words', 25, false).split(' ').length, 25);
   assert.equal(makePassage('words', 10, true, () => 0), 'The the. The the. The the. The the. The the.');
 });
 
 test('numbers mix in only when on, stay seeded, and split condition keys', () => {
-  const seeded = (seed) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const seeded = (seed) => () => {
+    seed = (seed * 16807) % 2147483647;
+
+    return (seed - 1) / 2147483646;
+  };
+
   const plain = makePassage('words', 200, false, seeded(7));
   const mixed = makePassage('words', 200, false, seeded(7), undefined, true);
   assert.doesNotMatch(plain, /\d/);
@@ -222,6 +233,7 @@ test('numbers mix in only when on, stay seeded, and split condition keys', () =>
   assert.doesNotMatch(makePassage('time', 0, true, seeded(3)), /\d/);
   // A short passage that draws no numbers still gets one.
   assert.equal(makePassage('words', 1, false, () => 0.99, undefined, true), '9999');
+
   for (let seed = 1; seed <= 200; seed += 1) assert.match(makePassage('words', 10, false, seeded(seed), undefined, true), /\d/);
   const base = { mode: 'words', count: 10, punctuation: false };
   assert.notEqual(conditionKey(base), conditionKey({ ...base, numbers: true }));
@@ -272,6 +284,7 @@ test('an accent-key commit is one or two typed keys; IME text is not', () => {
     ['ˇs', ['ˇ', 's']], ['˙z', ['˙', 'z']], ['\u0323q', ['\u0323', 'q']],
     ['', []],
   ]) assert.deepEqual(composedKeys(text), keys, JSON.stringify(text));
+
   // Kana punctuation (ー ・ ゛ ゠) is Script=Common, but only a kana IME types it.
   for (const text of ['ab', 'ni', '"hi', '你', 'あ', 'ㅎ', '한', 'ａ', '。', 'ー', '・', '゛', '゠', '"ー', '\n', '"\n']) {
     assert.equal(composedKeys(text), null, JSON.stringify(text));
@@ -303,15 +316,18 @@ test('every mark and letter a real accent key commits is still typed', () => {
   for (const mark of ['"', "'", '`', '~', '^', '´', '¨', '°', 'ˇ', '˙', '˛', '˘', '˝', '¸', '¯', '˚', 'ˆ', '˜']) {
     assert.deepEqual(composedKeys(mark), [mark], mark);
   }
+
   // A composed letter, or BÉPO's currency key (€). Its Greek key (α) types no Latin letter: see below.
   for (const letter of ['ä', 'é', 'è', 'ê', 'ë', 'ï', 'ñ', 'ã', 'õ', 'ç', 'å', 'ø', 'ů', 'ő', 'ű', 'ž', 'č', 'ř', 'ě', 'ż', 'ą', 'ę', 'ł', 'ś', 'ẽ', 'ŵ', '€']) {
     assert.deepEqual(composedKeys(letter), [letter], letter);
   }
+
   // The mark and the key it doesn't combine with: Windows US-International sends ~e, not ẽ. A layout's
   // own keys (AZERTY's ², £ and §) can follow a mark too.
   for (const pair of ['^q', '~e', '`x', '¨k', '´t', '°x', 'ˇx', '˙q', '˛b', '¸k', '˝a', "'1", '"#', '"é', '~~', '^ ', '¨²', '^£', '´§']) {
     assert.deepEqual(composedKeys(pair), [...pair], pair);
   }
+
   // Punctuation, symbols and spaces past Latin-1 that Latin layouts' own keys type, alone or after a mark
   // (a slip, but keys): Windows US-International's AltGr+0 (’), macOS Option+Shift+- (—) and Option+[ (“),
   // Linux's dead circumflex then 4 (⁴), a no-break space, an ellipsis, ≠ and the middle dot.
@@ -326,6 +342,7 @@ test('a one-letter commit from another script’s input method is not an accent 
   for (const text of ['अ', 'ㅎ', 'ש', 'ж', 'α', 'ก', 'ع', '"ж', '´अ', 'ˇש', '¨α']) {
     assert.equal(composedKeys(text), null, JSON.stringify(text));
   }
+
   // Nor another script's digits or punctuation (Devanagari, Arabic), or East Asian forms no script owns:
   // the ideographic space, CJK punctuation, vertical, small and full-width forms.
   for (const text of ['१', '٣', '।', '،', '"।', '　', '"　', '、', '〜', '︐', '﹐', '＄']) {
@@ -341,6 +358,7 @@ test('only a composition an accent key opened is scored as one', () => {
     { key: 'Dead', preview: '"' }, { key: 'Dead', preview: '¤' }, { key: 'Dead' },
     { key: 'Process', preview: '^' }, { preview: '´' }, { preview: '¨' }, { preview: '\u0301' },
   ]) assert.equal(accentComposition(origin), true, JSON.stringify(origin));
+
   // An input method's composition opens on what it composes (Pinyin, Telex, Hindi, Korean, Russian, kana),
   // whatever it commits in the end: one letter from it is still not a key press.
   for (const origin of [
@@ -358,12 +376,16 @@ test('a key a commit carries past the passage end is a mistake against the last 
   const run = (extra, slip = false) => {
     const attempt = createAttempt({ id: 'e', text: 'go"', textId: 'e', conditions: {} });
     attempt.events = [...'go"'].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: position * 100 }));
+
     if (slip) attempt.events.unshift({ type: 'insert', text: 'x', position: 0, accepted: true, offsetMs: 0 }, { type: 'delete', count: 1, offsetMs: 0 });
     const carried = extra === null ? null : carriedKey(attempt, extra, 200);
+
     if (carried) attempt.events.push(carried);
     attempt.startedAt = 0;
+
     return completeAttempt(attempt, { endedAt: 200 });
   };
+
   const wrong = run('h');
   assert.equal(wrong.typed, 'go"');
   assert.deepEqual(wrong.events.at(-1), { type: 'insert', text: 'h', position: 2, accepted: false, offsetMs: 200 });
@@ -401,11 +423,14 @@ test('a mark and letter committed together replay like two key presses', () => {
     const attempt = createAttempt({ id: 'q', text: 'say "hi"', textId: 'q', conditions: {} });
     attempt.events = [...'say "hi"'].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: offsets[position] }));
     attempt.startedAt = 0;
+
     return completeAttempt(attempt, { endedAt: 1000 });
   };
+
   // Typed as separate keys, then with the mark and "h" committed together at 400 ms (the "h" key).
   const keys = run([0, 80, 160, 240, 320, 400, 480, 560]);
   const commit = run([0, 80, 160, 240, 400, 400, 480, 560]);
+
   for (const field of ['typed', 'insertions', 'correctInsertions', 'mistakes', 'score']) assert.deepEqual(commit.summary[field], keys.summary[field], field);
   assert.deepEqual(commit.summary.firstAttempts.map((entry) => entry.correct), keys.summary.firstAttempts.map((entry) => entry.correct));
   // The shared commit time gives "h a 0 ms interval; pattern evidence (letter pairs only) never sees it.
@@ -458,6 +483,7 @@ test('generated passages draw from the selected common-word list', async () => {
   assert.equal(wordList('1k').length, 1000);
   assert.ok(wordList('5k').length > 4500 && wordList('10k').length > 9000);
   assert.equal(wordList('unknown'), wordList('200'));
+
   for (const id of wordListIds) {
     const words = new Set(wordList(id));
     assert.equal(words.size, wordList(id).length);
@@ -467,6 +493,7 @@ test('generated passages draw from the selected common-word list', async () => {
     const passage = makePassage('time', 0, false, random, id).split(' ');
     assert.ok(passage.every((word) => words.has(word)));
   }
+
   const bank = wordList(DEFAULT_WORD_LIST);
   assert.match(makePassage('words', 10, true, () => (bank.indexOf('i') + 0.5) / bank.length), /\bI\b/);
   assert.notEqual(conditionKey({ mode: 'time', wordList: '1k' }), conditionKey({ mode: 'time', wordList: '5k' }));
@@ -474,36 +501,46 @@ test('generated passages draw from the selected common-word list', async () => {
 
 test('every code snippet unindents to a non-empty single line the engine accepts', async () => {
   const { CODE_LANGUAGES, CODE_SNIPPETS, MAX_CODE_TOKEN, codePassage, unindent } = await import('../src/code-snippets.js');
+
   for (const language of CODE_LANGUAGES) {
     assert.ok(CODE_SNIPPETS[language].length >= 6, language);
+
     for (const snippet of CODE_SNIPPETS[language]) {
       const text = unindent(snippet);
       assert.ok(text.length > 0, snippet);
       assert.match(text, /^[\x20-\x7e]+$/u, text);
       assert.doesNotMatch(text, /^ | $| {2}/u, text);
+
       for (const token of text.split(' ')) assert.ok(token.length <= MAX_CODE_TOKEN, token);
     }
+
     assert.equal(codePassage(language).language, language);
     const seenIds = [];
+
     for (const _ of CODE_SNIPPETS[language]) {
       const next = codePassage(language, { seenIds });
       assert.deepEqual([next.fresh, next.exhausted], [true, false], language);
       seenIds.push(next.id);
     }
+
     const repeat = codePassage(language, { seenIds });
     assert.deepEqual([repeat.fresh, repeat.exhausted], [false, true], language);
   }
+
   assert.notEqual(conditionKey({ mode: 'code', codeLanguage: 'js' }), conditionKey({ mode: 'code', codeLanguage: 'go' }));
   assert.notEqual(conditionKey({ mode: 'code', codeLanguage: 'js' }), conditionKey({ mode: 'words', count: 25 }));
 
   // A code token is no word to practise: a missed code run records no missed words, a prose run does.
   const { runRecord } = await import('../src/insights.js');
+
   const missed = (conditions) => {
     const attempt = createAttempt({ id: 'c', text: 'const total', textId: 'c', conditions });
     attempt.startedAt = 0;
     attempt.events = [...'cxnst total'].map((char, position) => ({ type: 'insert', text: char, position, offsetMs: position * 100, accepted: true }));
+
     return runRecord({ ...completeAttempt(attempt, { endedAt: 1100 }), kind: 'test', fresh: true }).missedWords;
   };
+
   assert.equal(missed({ mode: 'code', codeLanguage: 'js', correctionPolicy: 'relaxed' }), undefined);
   assert.deepEqual(missed({ mode: 'time', duration: 30, correctionPolicy: 'relaxed' }), ['const']);
 });
@@ -512,15 +549,19 @@ test('each code language has at least 24 distinct snippets of 30 to 60 seconds a
   const { CODE_LANGUAGES, CODE_SNIPPETS, MIN_CODE_CHARS, MAX_CODE_CHARS, codePassage, unindent } = await import('../src/code-snippets.js');
   const charsAt100Wpm = (seconds) => (100 * 5 * seconds) / 60;
   assert.deepEqual([MIN_CODE_CHARS, MAX_CODE_CHARS], [charsAt100Wpm(30), charsAt100Wpm(60)]);
+
   for (const language of CODE_LANGUAGES) {
     const texts = CODE_SNIPPETS[language].map(unindent);
     assert.ok(texts.length >= 24, `${language} has ${texts.length} snippets`);
     assert.equal(new Set(texts).size, texts.length, `${language} repeats a snippet`);
+
     for (const text of texts) {
       assert.ok(text.length >= MIN_CODE_CHARS && text.length <= MAX_CODE_CHARS, `${language}, ${text.length} characters: ${text}`);
     }
+
     // Fresh snippets come first, so a run of tests repeats none until the pool is spent.
     const seenIds = [];
+
     for (let i = 0; i < 24; i += 1) seenIds.push(codePassage(language, { seenIds }).id);
     assert.equal(new Set(seenIds).size, 24, language);
   }
@@ -546,11 +587,13 @@ test('minimums wait out a five-second, twenty-character grace and judge the show
 
 test('the opening can\'t fail an accuracy minimum: two misses alone never cross it after the grace', () => {
   assert.deepEqual([80, 90, 95, 98].map(accuracyGraceCharacters), [20, 20, 40, 100]);
+
   for (const minimum of [80, 90, 95, 98]) {
     const characters = accuracyGraceCharacters(minimum);
     const twoMisses = metrics('x'.repeat(characters), 'x'.repeat(characters), characters, 2, 60000);
     assert.ok(twoMisses.accuracy >= minimum, `${minimum}%: ${twoMisses.accuracy}% after ${characters} characters`);
   }
+
   // One opening typo, then perfect typing at 60 wpm: 25 characters by five seconds reads 96%.
   const typo = { wpm: 60, accuracy: 96 };
   assert.equal(minimumMissed({ accuracy: 98 }, typo, { elapsedMs: 5000, insertions: 25 }), null);
@@ -565,6 +608,7 @@ test('minimums never enter the conditions key, so bests and retests keep matchin
   // conditions() in app.js for the default 30 s practice test; the key is byte-identical to before minimums.
   const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
     inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en', corpus: 'original-en-v5', metricVersion: 'stilltype-metrics-v1' };
+
   const key = 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v5:stilltype-metrics-v1';
   assert.equal(conditionKey(practice), key);
   assert.equal(conditionKey({ ...practice, minimums: { accuracy: 95, wpm: 40 } }), key);
@@ -581,12 +625,15 @@ test('minimums never enter the conditions key, so bests and retests keep matchin
 test('the duration is the end of a timed run: a miss there is an end-of-run failure, a second earlier a live stop', () => {
   // A 15 s run under a 60 wpm minimum, a key every 190 ms: 74 keys read 63 wpm at 14 s and 59 at 15 s.
   const text = 'the quiet light moves across the room and the world carries on for a moment';
+
   const typed = (keys) => {
     const attempt = createAttempt({ id: 't', text, textId: 'one', conditions: { mode: 'time', duration: 15, correctionPolicy: 'relaxed' } });
     attempt.events = [...text.slice(0, keys)].map((char, i) => ({ type: 'insert', text: char, offsetMs: i * 190 }));
     attempt.startedAt = 0;
+
     return (endedAt) => replayAttempt({ ...attempt, endedAt });
   };
+
   const minimums = { wpm: 60 };
   const run = typed(74);
   assert.equal(run(14000).score.wpm, 63);
@@ -675,14 +722,17 @@ test('replayCursor matches replayAttempt at every prefix of the events', () => {
   let seed = 11;
   const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const pick = (items) => items[Math.floor(random() * items.length)];
+
   for (let run = 0; run < 40; run += 1) {
     const text = makePassage('words', 12, run % 2 === 0, random);
     const attempt = createAttempt({ id: `p${run}`, text });
     let offsetMs = 0;
     let length = 0;
+
     for (let i = 0; i < 120; i += 1) {
       offsetMs += pick([0, 1, 37, 120]);
       const roll = random();
+
       // Every event shape the recorder writes, plus the ones replayAttempt skips or truncates.
       const event = roll < 0.55 ? { type: 'insert', text: random() < 0.8 ? text[length] || 'z' : 'x', position: length, accepted: true }
         : roll < 0.62 ? { type: 'insert', text: pick(['ab', 'q', '\n', '', 'é']) }
@@ -690,9 +740,11 @@ test('replayCursor matches replayAttempt at every prefix of the events', () => {
         : roll < 0.72 ? { type: 'blocked-insert', text: 'y', position: Math.max(0, length - 1) }
         : roll < 0.88 ? { type: 'delete', count: pick([1, 1, 2, 5, undefined, 0, -1]) }
         : { type: pick(['focus-lost', 'composition']) };
+
       attempt.events.push({ ...event, offsetMs });
       length = replayAttempt(attempt).typed.length;
     }
+
     const typedAt = replayCursor(attempt);
     attempt.events.forEach((event, index) => {
       // Events sharing an offset come due together, so compare at the last one of each offset.
@@ -710,6 +762,7 @@ test('replayCursor matches replayAttempt at every prefix of the events', () => {
 test('condition keys without a standard recipe stay byte-identical', () => {
   const practice = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null,
     wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en' };
+
   assert.equal(conditionKey(practice), 'time:30::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
   assert.equal(conditionKey({ ...practice, recipe: null }), conditionKey(practice));
   assert.equal(conditionKey({}), ':::plain::::physical-keyboard:mandatory:original-en-v6:stilltype-metrics-v1');
@@ -733,6 +786,7 @@ test('the standard test is its own condition, versioned by recipe', () => {
 test('standard text is fresh per seed, reproducible from it, and follows the v1 recipe', async () => {
   const { wordList } = await import('../src/words.js');
   const vocabulary = new Set([...wordList('1k'), ...wordList('5k'), ...wordList('10k')]);
+
   for (const seed of [0, 1, 7, 2026, 4294967295]) {
     const passage = standardPassage(seed);
     assert.equal(passage.text, standardPassage(seed).text);
@@ -756,6 +810,7 @@ test('standard text is fresh per seed, reproducible from it, and follows the v1 
     assert.ok(words.some((word) => !lower.has(word.toLowerCase())), 'reaches the 10k band');
     assert.ok(words.filter((word) => wordList('1k').includes(word.toLowerCase())).length > words.length / 2, 'mostly common words');
   }
+
   assert.notEqual(standardPassage(1).text, standardPassage(2).text);
   // Pinned output: if this changes, the recipe changed, so bump STANDARD_VERSION (or CORPUS_VERSION for list edits).
   assert.equal(textId(standardPassage(1).text), 'generated-1a2f41n');
@@ -783,6 +838,7 @@ test('custom text keeps only what an English keyboard types, one unit per letter
   assert.equal(clean('ＡＢＣ\u00A0ﬁne'), 'ABC fine');
   // Accents on Latin letters fold to the plain letter, composed or not.
   assert.equal(clean('café résumé nai\u0308ve'), 'cafe resume naive');
+
   for (const text of ['gra\u034Fph', 'ok\uFE0F', 'café', '“quoted”']) assert.equal(untypableCharacter(clean(text)), null);
   // Visible characters outside the alphabet survive normalising so they can be named and refused.
   assert.equal(untypableCharacter(clean('go 🚀 now')), '🚀');
@@ -802,12 +858,14 @@ test('reordered custom text is never longer than the validated source', () => {
   assert.equal(source.length, 3000);
   const limit = Math.min(source.length, CUSTOM_MAX);
   let drewLong = 0;
+
   for (let seed = 1; seed <= 500; seed += 1) {
     let state = seed;
     const random = () => ((state = (state * 16807) % 2147483647) / 2147483647);
     const randomOrder = orderCustomText(source, 'random', random);
     // Within the budget, and filled to it: a word that doesn't fit is skipped, not the end of the passage.
     assert.ok(randomOrder.length >= limit - 1 && randomOrder.length <= limit, `seed ${seed}: ${randomOrder.length}`);
+
     if (randomOrder.includes(long)) drewLong += 1;
     const lopsided = orderCustomText(`${'a'.repeat(2998)} b`, 'random', random);
     assert.ok(lopsided.length >= 2999 && lopsided.length <= 3000, `seed ${seed}: ${lopsided.length}`);
@@ -815,6 +873,7 @@ test('reordered custom text is never longer than the validated source', () => {
     assert.equal(shuffled.length, source.length);
     assert.deepEqual(shuffled.split(' ').sort(), source.split(' ').sort());
   }
+
   assert.ok(drewLong > 0, 'the long word is still drawn sometimes');
   assert.equal(orderCustomText(source, 'as-written'), source);
   assert.equal(orderCustomText('', 'random'), '');
@@ -884,14 +943,18 @@ test('a newer stop-on-error edit from an older client beats a stale correction p
   const { mergeSynced } = await import('../src/account.js');
   const first = '2026-10-14T01:00:00.000Z';
   const second = '2026-10-14T02:00:00.000Z';
+
   const newerBuild = normalizeProfile({ version: 2, preferences: { correction: 'fail-any', stopOnError: false },
     preferencesAt: { correction: first, stopOnError: first } });
+
   const olderBuild = normalizeProfile({ version: 2, preferences: { correction: 'fail-any', stopOnError: true },
     preferencesAt: { correction: first, stopOnError: second } });
+
   for (const merged of [mergeSynced(newerBuild, olderBuild), mergeSynced(olderBuild, newerBuild)]) {
     assert.equal(merged.preferences.correction, 'mandatory');
     assert.equal(merged.preferencesAt.correction, second);
   }
+
   assert.equal(newerBuild.preferences.correction, 'fail-any');
 });
 
@@ -935,12 +998,14 @@ test('quick end on finishes on the last letter; off waits on a mistake in the la
   assert.equal(passageComplete(run({ quickEnd: false }), 'the cat'), true);
   // A space typed into the last word is a mistake in it too.
   assert.equal(awaitingSubmit(run({ quickEnd: false }), 'the c t'), true);
+
   // Stop on error already needs every letter; quick end changes nothing there or in a timed run.
   for (const conditions of [{ correctionPolicy: 'mandatory' }, { correctionPolicy: 'mandatory', quickEnd: false }]) {
     assert.equal(passageComplete(run(conditions), 'the cax'), false);
     assert.equal(awaitingSubmit(run(conditions), 'the cax'), false);
     assert.equal(passageComplete(run(conditions), 'the cat'), true);
   }
+
   assert.equal(passageComplete(run({ mode: 'time', quickEnd: false }), 'the cax'), true);
   assert.equal(awaitingSubmit(run({ mode: 'time', quickEnd: false }), 'the cax'), false);
 });
@@ -962,6 +1027,7 @@ test('a refused space is scored as a wrong key at its position without shifting 
     { type: 'insert', text: 'h', position: 1, accepted: true, offsetMs: 100 },
     { type: 'insert', text: ' ', position: 2, accepted: spaceAccepted, offsetMs: 200 },
   ];
+
   // Strict space: the early space is refused, so "e cat" still lines up.
   const strict = createAttempt({ id: 's', text: 'the cat', textId: 'one', conditions: { ...defaults, strictSpace: true } });
   strict.events = [...keys(false), ...[...'e cat'].map((text, i) => ({ type: 'insert', text, position: 2 + i, accepted: true, offsetMs: 300 + i * 100 }))];

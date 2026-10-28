@@ -6,17 +6,22 @@ import { normalizeProfile } from '../src/profile.js';
 import { createRunCounter, mergeRunCounts, retainRunCounts, runCountTotals, validRunCounts } from '../src/run-counts.js';
 
 const today = dayKey(new Date());
+
 const profile = (over = {}) => ({
   version: 2, profileId: 'p', preferences: {}, attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, runCounts: {}, ...over,
 });
+
 const totals = (copy) => runCountTotals(copy.runCounts);
+
 // A tab: its own copy of the profile and its own counter, as each page load has.
 let minted = 0;
 const tab = (copy) => ({ copy: structuredClone(copy), counter: createRunCounter(() => `c${(minted += 1)}`) });
+
 // A run typed in a tab: started at the first key, and finished or not (a restart, an abandoned run, a failure).
 function run(t, { finished = true, day = today } = {}) {
   const { counts, ticket } = t.counter.start(t.copy.runCounts, day);
   t.copy.runCounts = counts;
+
   if (finished) t.copy.runCounts = t.counter.finish(t.copy.runCounts, ticket);
 }
 
@@ -41,9 +46,12 @@ test('two tabs and two devices counting at once merge to the exact sum, in any o
   const row = profile();
   // Each device's tabs read the same cached copy, then count runs concurrently, unaware of each other.
   const [laptop1, laptop2, phone1, phone2] = [tab(row), tab(row), tab(row), tab(row)];
+
   for (let n = 0; n < 3; n += 1) run(laptop1, { finished: n !== 1 });
+
   for (let n = 0; n < 5; n += 1) run(laptop2, { finished: n % 2 === 0 });
   run(phone1, { finished: false });
+
   for (let n = 0; n < 4; n += 1) run(phone2);
   const truth = { started: 13, finished: 9 };
 
@@ -57,10 +65,12 @@ test('two tabs and two devices counting at once merge to the exact sum, in any o
 
   // Stale copies keep arriving: tabs that saved before merging, the row before either push, the caches.
   let settled = account;
+
   for (const stale of [laptop1.copy, laptop2.copy, phone1.copy, phone2.copy, row, laptopCache, phoneCache, account]) {
     settled = mergeSynced(settled, stale);
     settled = mergeSynced(stale, settled);
   }
+
   assert.deepEqual(totals(settled), truth, 'nothing counts twice');
   assert.ok(sameProfile(settled, account), 'copies settle');
 
@@ -75,6 +85,7 @@ test('two tabs and two devices counting at once merge to the exact sum, in any o
 test('a clear takes the counts, a stale copy cannot bring them back, and Undo restores them with runs counted since', () => {
   const laptop = tab(profile());
   const phone = tab(profile());
+
   for (let n = 0; n < 4; n += 1) run(laptop, { finished: n < 3 });
   run(phone);
   run(phone, { finished: false });
