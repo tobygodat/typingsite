@@ -519,7 +519,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     };
     $('online-room-status').textContent = copy[room.status] ?? 'Connecting to the race…';
     $('online-ready').hidden = room.status !== 'waiting';
-    $('online-ready').textContent = me?.ready ? 'Not ready' : 'Ready to race';
+    const readyLabel = me?.ready ? 'Not ready' : 'Ready to race';
+    if ($('online-ready').textContent !== readyLabel) $('online-ready').textContent = readyLabel;
     $('online-stage').hidden = !['countdown', 'racing'].includes(room.status);
     $('online-players').hidden = room.status === 'finished';
     if (room.status !== 'waiting') $('online-account-invite-status').hidden = true;
