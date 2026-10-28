@@ -88,7 +88,7 @@ test('repeated runs are listed in Progress but stay out of bests, trends and wee
   assert.equal(trendRun(repeated), false);
   assert.equal(trendRun(fresh), true);
   assert.equal(trendRun(summary('legacy', { fresh: undefined })), true);
-  assert.deepEqual([fresh, repeated].filter(trendRun).map((r) => r.id), ['fresh']);
+  assert.deepEqual([fresh, repeated].flatMap((r) => (trendRun(r) ? [r.id] : [])), ['fresh']);
   const date = new Date('2026-10-09T12:00:00Z');
   const lastWeek = summary('last-week', { at: '2026-09-30T12:00:00Z', textId: 'short-gentle-02', score: { wpm: 60, accuracy: 98 } });
   assert.equal(weeklyChange([lastWeek, fresh, repeated], conditionKey(conditions), date).wpm, 10, 'the 95 on repeated text is ignored');

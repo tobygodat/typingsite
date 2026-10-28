@@ -210,7 +210,7 @@ test('every key this build can write is listed, read back as the conditions it w
   const wordList = html.match(/<fieldset[^>]*id="word-list"[^>]*>([^]*?)<\/fieldset>/)[1];
 
   const offeredWords = [...wordList.matchAll(/<input[^>]*value="([^"]*)"[^>]*>/g)]
-    .filter(([input]) => !input.includes(' disabled')).map(([, value]) => value);
+    .flatMap(([input, value]) => (input.includes(' disabled') ? [] : [value]));
 
   assert.deepEqual(offeredWords, wordListIds);
   const shapes = writtenShapes();

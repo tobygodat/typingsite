@@ -228,7 +228,11 @@ for (const [label, viewport] of VIEWPORTS) {
       // A strip down the left edge, where nothing is drawn over the layer, from the top of the reading band to the
       // bottom of the footer: how far each row is from the bare ground.
       const span = await page.evaluate(() => {
-        const rects = [...document.querySelectorAll('#typing-form, .shortcut-row, .site-footer > *')].map((node) => node.getBoundingClientRect()).filter((rect) => rect.height);
+        const rects = [...document.querySelectorAll('#typing-form, .shortcut-row, .site-footer > *')].flatMap((node) => {
+          const rect = node.getBoundingClientRect();
+
+          return rect.height ? [rect] : [];
+        });
 
         return { top: Math.min(...rects.map((rect) => rect.top)), bottom: Math.max(...rects.map((rect) => rect.bottom)) };
       });
@@ -316,9 +320,15 @@ async function passageContrast(page) {
   // The lines of letters on screen: the display's box also holds the rule and controls below them.
   const box = await page.evaluate(() => {
     const frame = document.querySelector('#text-display').getBoundingClientRect();
-    const rects = [...document.querySelectorAll('#text-display .char')].map((char) => char.getBoundingClientRect()).filter((rect) => rect.height);
+
+    const rects = [...document.querySelectorAll('#text-display .char')].flatMap((char) => {
+      const rect = char.getBoundingClientRect();
+
+      return rect.height ? [rect] : [];
+    });
+
     const lines = [...new Set(rects.map((rect) => rect.top))].sort((a, b) => a - b).slice(0, 3);
-    const bottom = Math.max(...rects.filter((rect) => lines.includes(rect.top)).map((rect) => rect.bottom));
+    const bottom = Math.max(...rects.flatMap((rect) => (lines.includes(rect.top) ? [rect.bottom] : [])));
 
     return { x: frame.left, y: lines[0], width: frame.width, height: bottom - lines[0] };
   });

@@ -36,14 +36,12 @@
     "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-safety-comment-for-type-assertion": "error",
     "anti-slop/require-readable-spacing": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-array-filter-map": "error",
 
-    // Off until the 32 call sites are rewritten one at a time with tests (TOB-213); a blind rewrite risks key order in synced profiles.
-    "anti-slop/no-conditional-empty-object-spread": "off",
-    // Off until the 25 call sites are rewritten with tests (TOB-213); iterator helpers need Safari 18.4+, which the app does not require.
-    "anti-slop/no-array-filter-map": "off",
-    // "Shape" is Stilltype's domain term for a test's mode and length (testShapes, shapeBests), not a structural label.
+    // "Shape" is Stilltype's term for a test's mode and length, shared with docs/ui-contract.md, DOM ids (#board-shape) and UI copy; renaming 356 symbols would split the code from that contract.
     "anti-slop/no-shape-in-symbol-names": "off",
-    // Plain JavaScript has no static types, so typeof is how stored profiles and server replies are parsed at the boundary.
+    // typeof is how plain JS parses stored profiles and server replies (104 sites); the rule's only escape, allowInTypeGuards, needs TypeScript type predicates.
     "anti-slop/no-runtime-typeof": "off",
     // Spreads copy live NodeLists before the loop removes children, which this rule reads as useless.
     "unicorn/no-useless-spread": "off",

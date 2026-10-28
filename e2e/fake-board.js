@@ -117,7 +117,11 @@ export class FakeBoard {
       const profile = this.auth.profiles.get(account);
       const numbers = profile ? boardNumbers(profile.board, profile.updated_at, date, weekStart) : null;
 
-      return { ...fields, daily: numbers?.daily ?? null, week: numbers?.week ?? null, ...(numbers ? { bests: numbers.bests } : {}) };
+      const row = { ...fields, daily: numbers?.daily ?? null, week: numbers?.week ?? null };
+
+      if (numbers) row.bests = numbers.bests;
+
+      return row;
     };
 
     // Someone who doesn't share sees nobody, and nobody sees them.

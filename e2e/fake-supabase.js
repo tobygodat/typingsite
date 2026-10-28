@@ -291,7 +291,9 @@ export class FakeSupabase {
 
         if (!row) return reply(200, []);
         // select=*: every column the project has (the friends board's `board` once its migration is in).
-        const full = { user_id: caller, data: row.data, updated_at: row.updated_at, ...(this.boardColumnMissing ? {} : { board: row.board ?? null }) };
+        const full = { user_id: caller, data: row.data, updated_at: row.updated_at };
+
+        if (!this.boardColumnMissing) full.board = row.board ?? null;
         const select = url.searchParams.get('select');
 
         return reply(200, [select && select !== '*' ? pick(full, select) : full]);

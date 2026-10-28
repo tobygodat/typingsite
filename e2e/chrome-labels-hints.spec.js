@@ -56,8 +56,8 @@ test.describe('dock labels at 320px', () => {
     const items = page.getByRole('navigation', { name: 'Main navigation' }).locator('.nav-item');
 
     const visible = await items.evaluateAll((buttons) => buttons.map((button) => [...button.childNodes]
-      .filter((node) => node.nodeType === Node.TEXT_NODE || node.getBoundingClientRect().width > 1)
-      .map((node) => node.textContent).join('').trim()));
+      .flatMap((node) => (node.nodeType === Node.TEXT_NODE || node.getBoundingClientRect().width > 1 ? [node.textContent] : []))
+      .join('').trim()));
 
     expect(visible).toEqual(['type', 'train', 'track', 'race']);
     const names = ['type practice', 'train', 'track progress', 'race challenge'];

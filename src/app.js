@@ -473,17 +473,22 @@ function announce(message) {
 // The person's own test settings. The standard test ignores them, but a race or the daily
 // challenge started while standard is selected still uses them (minus the recipe).
 function settingsConditions(inputClass = 'physical-keyboard') {
-  return {
+  const value = {
     mode: prefs.mode,
     duration: prefs.mode === 'time' ? prefs.duration : null,
     count: prefs.mode === 'words' ? prefs.count : null,
-    punctuation: prefs.punctuation,
+    punctuation: prefs.mode === 'code' || prefs.mode === 'book' || prefs.punctuation,
     numbers: ['quote', 'code', 'book'].includes(prefs.mode) ? false : Boolean(prefs.numbers),
     quoteLength: prefs.mode === 'quote' ? prefs.quoteLength : null,
     difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
     wordList: ['quote', 'code', 'book'].includes(prefs.mode) ? null : prefs.wordList,
-    ...(prefs.mode === 'code' ? { codeLanguage: prefs.codeLanguage, punctuation: true } : {}),
-    ...(prefs.mode === 'book' ? { book: prefs.book, punctuation: true } : {}),
+  };
+
+  if (prefs.mode === 'code') value.codeLanguage = prefs.codeLanguage;
+
+  if (prefs.mode === 'book') value.book = prefs.book;
+
+  return Object.assign(value, {
     inputClass,
     layout: inputLayout(inputClass),
     correctionPolicy: prefs.correction,
@@ -492,7 +497,7 @@ function settingsConditions(inputClass = 'physical-keyboard') {
     language: 'en',
     corpus: prefs.mode === 'book' ? BOOK_VERSION : CORPUS_VERSION,
     metricVersion: METRIC_VERSION,
-  };
+  });
 }
 
 function conditions(inputClass = 'physical-keyboard') {
@@ -569,7 +574,7 @@ function stopReason(stop) {
 function describeRules(value) {
   const { strictSpace, quickEnd } = conditionParts(value);
 
-  return [strictSpace, quickEnd].filter(Boolean).map((rule) => ` · ${rule}`).join('');
+  return [strictSpace, quickEnd].flatMap((rule) => (rule ? [` · ${rule}`] : [])).join('');
 }
 
 // A drill is always DRILL_SECONDS of generated text, whatever the baseline was. Its conditions record
@@ -4581,7 +4586,7 @@ const ghostInputLabel = (value) => inputOf(value) === 'touch' ? 'touch input' : 
 function ghostConditions() {
   const source = ghostRace.conditions || {};
 
-  return { ...Object.fromEntries(GHOST_CONDITION_KEYS.filter((key) => key in source).map((key) => [key, source[key]])),
+  return { ...Object.fromEntries(GHOST_CONDITION_KEYS.flatMap((key) => (key in source ? [[key, source[key]]] : []))),
     inputClass: 'physical-keyboard' };
 }
 

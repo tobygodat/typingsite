@@ -64,7 +64,13 @@ export class FakeRaces {
   }
 
   friendList(owner) {
-    return (this.friends.get(owner) || []).map(({ id, name, email, friendId }) => ({ id, name, account: Boolean(friendId), ...(email ? { email } : {}) }))
+    return (this.friends.get(owner) || []).map(({ id, name, email, friendId }) => {
+      const friend = { id, name, account: Boolean(friendId) };
+
+      if (email) friend.email = email;
+
+      return friend;
+    })
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -86,11 +92,16 @@ export class FakeRaces {
       duration: room.duration, startAt: room.startAt, expiresAt: room.expiresAt,
       serverNow: new Date(now).toISOString(), selfSlot: slot, inviteKind: room.inviteKind,
       rematchOf: room.rematchOf || null, rematchId: room.rematchId || null, tally: this.tally(room, slot),
-      players: room.players.map(({ userId, guestToken, typed, sequence, keystrokes, errors, lastSeen, correct, trace, ...player }) => ({
-        ...player, connected: now - lastSeen < 10000, account: Boolean(userId),
-        friend: Boolean(userId) && (this.friends.get(room.players.find((p) => p.slot === slot)?.userId) || []).some((f) => f.friendId === userId),
-        ...(player.slot === slot ? { typed, sequence, keystrokes, errors } : {}),
-      })),
+      players: room.players.map(({ userId, guestToken, typed, sequence, keystrokes, errors, lastSeen, correct, trace, ...player }) => {
+        const seen = {
+          ...player, connected: now - lastSeen < 10000, account: Boolean(userId),
+          friend: Boolean(userId) && (this.friends.get(room.players.find((p) => p.slot === slot)?.userId) || []).some((f) => f.friendId === userId),
+        };
+
+        if (player.slot === slot) Object.assign(seen, { typed, sequence, keystrokes, errors });
+
+        return seen;
+      }),
     };
   }
 
@@ -117,10 +128,11 @@ export class FakeRaces {
     const failure = (message) => reply(400, { message });
 
     if (action === 'invites') return reply(200, [...this.rooms.values()]
-      .filter((room) => room.invitedUser === caller && caller && room.status === 'waiting' && Date.parse(room.expiresAt) > Date.now()
-        && !room.players.some((p) => p.userId === caller && p.lastSeen > 0))
-      .map((room) => ({ id: room.id, hostName: room.players.find((p) => p.userId !== caller).name, createdAt: room.createdAt,
-        expiresAt: room.expiresAt, rematch: Boolean(room.rematchOf) })));
+      .flatMap((room) => (room.invitedUser === caller && caller && room.status === 'waiting' && Date.parse(room.expiresAt) > Date.now()
+        && !room.players.some((p) => p.userId === caller && p.lastSeen > 0)
+        ? [{ id: room.id, hostName: room.players.find((p) => p.userId !== caller).name, createdAt: room.createdAt,
+          expiresAt: room.expiresAt, rematch: Boolean(room.rematchOf) }]
+        : [])));
 
     if (['friends', 'befriend', 'unfriend'].includes(action) && !id) {
       if (!caller) return failure('Sign in to keep a friend list.');

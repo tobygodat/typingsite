@@ -46,9 +46,13 @@ async function action(session, type, credentials = {}, data = {}, signal) {
 export function createRace(session, { passage, conditions = {}, displayName, inviteEmail = '', friendId = '' }) {
   if (!session?.user?.id) throw new AuthError('Sign in to host an online race.');
 
-  return action(session, 'create', {}, { passage: typeof passage === 'string' ? passage : passage?.text,
+  const race = { passage: typeof passage === 'string' ? passage : passage?.text,
     conditions: { ...conditions, textId: conditions.textId || passage?.id }, displayName,
-    inviteEmail: friendId ? '' : inviteEmail.trim(), ...(friendId ? { friendId } : {}) });
+    inviteEmail: friendId ? '' : inviteEmail.trim() };
+
+  if (friendId) race.friendId = friendId;
+
+  return action(session, 'create', {}, race);
 }
 
 // Picks Rematch on a closed race, or takes the pick back (want: false). When both seats have picked, the
@@ -56,8 +60,14 @@ export function createRace(session, { passage, conditions = {}, displayName, inv
 // reply's `roomId` is another room only when this seat moves into it: a service from before picks opens or
 // joins the rematch at the first ask.
 export function rematchRace(session, credentials, { want = true, passage, conditions = {} }) {
-  return action(session, 'rematch', credentials, { want, ...(passage ? { passage: typeof passage === 'string' ? passage : passage.text,
-    conditions: { ...conditions, textId: passage.id || conditions.textId } } : {}) });
+  const ask = { want };
+
+  if (passage) {
+    ask.passage = typeof passage === 'string' ? passage : passage.text;
+    ask.conditions = { ...conditions, textId: passage.id || conditions.textId };
+  }
+
+  return action(session, 'rematch', credentials, ask);
 }
 
 // Both racers' keystroke traces once the race is finished, in seat order: [{ slot, trace }].
@@ -168,7 +178,11 @@ export function updateRaceProgress(session, credentials, { typed, keystrokes, er
   const sequence = (sequences.get(key) || 0) + 1;
   sequences.set(key, sequence);
 
-  return action(session, 'progress', credentials, { typed, keystrokes, errors, finished, sequence, ...(trace ? { trace } : {}) });
+  const progress = { typed, keystrokes, errors, finished, sequence };
+
+  if (trace) progress.trace = trace;
+
+  return action(session, 'progress', credentials, progress);
 }
 
 export const leaveRace = (session, credentials) => action(session, 'leave', credentials);
@@ -204,9 +218,14 @@ export function makeGuestRaceLink({ roomId, inviteToken }, href = location.href)
 export function rememberRace(credentials) {
   if (!UUID.test(credentials?.roomId || '')) return;
 
-  try { sessionStorage.setItem(RECONNECT_KEY, JSON.stringify({ roomId: credentials.roomId,
-    ...(credentials.guestToken ? { guestToken: credentials.guestToken } : {}),
-    ...(credentials.inviteToken ? { inviteToken: credentials.inviteToken } : {}), savedAt: Date.now() })); } catch {}
+  const saved = { roomId: credentials.roomId };
+
+  if (credentials.guestToken) saved.guestToken = credentials.guestToken;
+
+  if (credentials.inviteToken) saved.inviteToken = credentials.inviteToken;
+  saved.savedAt = Date.now();
+
+  try { sessionStorage.setItem(RECONNECT_KEY, JSON.stringify(saved)); } catch {}
 }
 
 export function recallRace() {

@@ -146,7 +146,7 @@ test.describe('narrow run card', () => {
 // keep the passage's first line where it was.
 for (const [width, height] of [[1280, 800], [390, 844], [320, 568]]) {
   test.describe(`modes at ${width}x${height}`, () => {
-    test.use({ viewport: { width, height }, ...(width < 760 ? phone : {}) });
+    test.use(width < 760 ? { viewport: { width, height }, ...phone } : { viewport: { width, height } });
 
     test('switching modes moves neither the rail nor the passage', async ({ page }) => {
       await openApp(page);
@@ -214,7 +214,7 @@ test('Literata and Geist Mono load from this origin', async ({ page }) => {
   const fonts = [];
   page.on('response', (response) => { if (/\/src\/fonts\//.test(response.url())) fonts.push([new URL(response.url()).pathname, response.status()]); });
   await openApp(page);
-  const loaded = await page.evaluate(() => [...document.fonts].filter((face) => face.status === 'loaded').map((face) => face.family.replace(/"/g, '')));
+  const loaded = await page.evaluate(() => [...document.fonts].flatMap((face) => (face.status === 'loaded' ? [face.family.replace(/"/g, '')] : [])));
   expect(loaded).toEqual(expect.arrayContaining(['Literata', 'Geist Mono']));
   await expect(page.locator('#text-display')).toHaveCSS('font-family', /^"?Literata/);
   expect(fonts.length).toBeGreaterThan(0);

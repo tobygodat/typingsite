@@ -335,7 +335,11 @@ test('across midnight on 7 days, the overview and the chart move to the new day 
     const rule = svg.querySelector('.trend-rule');
     const [left, right] = [Number(rule.getAttribute('x1')), Number(rule.getAttribute('x2'))];
 
-    return [...svg.querySelectorAll('.trend-runs circle')].map((dot) => Number(dot.getAttribute('cx'))).filter((x) => x < left || x > right);
+    return [...svg.querySelectorAll('.trend-runs circle')].flatMap((dot) => {
+      const x = Number(dot.getAttribute('cx'));
+
+      return x < left || x > right ? [x] : [];
+    });
   });
 
   expect(outside).toEqual([]);

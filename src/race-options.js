@@ -30,8 +30,12 @@ export function raceOptions(practice = {}) {
   // The service takes at least 40 characters, which fewer than ten words may not reach.
   const least = mode === 'words' ? MIN_WORDS : spec.min;
 
-  return { mode, [spec.key]: Number.isInteger(length) && length <= spec.max ? Math.max(least, length) : spec.fallback,
-    punctuation: Boolean(punctuation), numbers: Boolean(numbers), ...(wordList ? { wordList } : {}) };
+  const options = { mode, [spec.key]: Number.isInteger(length) && length <= spec.max ? Math.max(least, length) : spec.fallback,
+    punctuation: Boolean(punctuation), numbers: Boolean(numbers) };
+
+  if (wordList) options.wordList = wordList;
+
+  return options;
 }
 
 // The room's conditions: the options, the race clock (`duration`) and the rules every online race keeps.
@@ -45,8 +49,10 @@ export function raceConditions(options) {
 export function racePassage(conditions, { seenIds = [], random = Math.random } = {}) {
   const { mode, count, punctuation = false, numbers = false, wordList, quoteLength = 'any', difficulty = 'any', duration } = conditions;
 
-  const passage = selectPassage({ mode, count, duration: mode === 'time' ? duration : 0, punctuation, numbers,
-    quoteLength, difficulty, seenIds, random, ...(wordList ? { wordList } : {}) });
+  const wanted = { mode, count, duration: mode === 'time' ? duration : 0, punctuation, numbers, quoteLength, difficulty, seenIds, random };
+
+  if (wordList) wanted.wordList = wordList;
+  const passage = selectPassage(wanted);
 
   const limit = Math.min(MAX_TEXT, mode === 'time' ? Math.ceil(duration * CHARS_PER_SECOND) : MAX_TEXT);
 

@@ -51,7 +51,7 @@ test('every other layout gets its own key, so bests and retests never mix layout
   assert.equal(conditionKey({ ...practice, layout: 'dvorak' }), `${masterConditionKey(practice)}:layout-dvorak`);
 
   const run = (id, layout, textId) => ({ id, textId, status: 'complete', kind: 'test', metricVersion: METRIC_VERSION,
-    conditions: { ...practice, ...(layout ? { layout } : {}) } });
+    conditions: layout ? { ...practice, layout } : { ...practice } });
 
   assert.equal(comparable(run('a', 'dvorak', 'one'), run('b', 'qwerty', 'two')), false);
   assert.equal(comparable(run('a', 'dvorak', 'one'), run('b', 'dvorak', 'two')), true);
@@ -60,7 +60,7 @@ test('every other layout gets its own key, so bests and retests never mix layout
 
 test('progress filters and recurring evidence stay within one layout; legacy runs count as QWERTY', () => {
   const summary = (id, layout, at) => ({ id, at, status: 'complete', kind: 'test', fresh: true,
-    conditions: { ...practice, ...(layout ? { layout } : {}) }, score: { wpm: 60, accuracy: 97 },
+    conditions: layout ? { ...practice, layout } : { ...practice }, score: { wpm: 60, accuracy: 97 },
     patterns: [['th', 12, 2, 10, 140, 20]] });
 
   const runs = [summary('legacy', null, '2026-10-01T10:00:00Z'), summary('qwerty', 'qwerty', '2026-10-02T10:00:00Z'),

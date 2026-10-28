@@ -43,7 +43,7 @@ export const THEME_TOKENS = [
   { name: 'backdrop', label: 'backdrop', derived: true },
 ];
 
-export const BASE_TOKENS = THEME_TOKENS.filter((token) => !token.derived).map((token) => token.name);
+export const BASE_TOKENS = THEME_TOKENS.flatMap((token) => (token.derived ? [] : [token.name]));
 const TOKEN_NAMES = new Set(THEME_TOKENS.map((token) => token.name));
 
 const HEX = /^#[0-9a-f]{6}$/;

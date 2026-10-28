@@ -146,8 +146,9 @@ export function mapMonkeytypeConfig(config) {
   }
 
   // Correction: the strongest rule asked for (CORRECTION_SOURCES); free when every one present is off.
-  const sources = CORRECTION_SOURCES.filter(([key]) => has(key))
-    .map(([key, policies]) => ({ key, policy: Object.hasOwn(policies, config[key]) ? policies[config[key]] : undefined, from: `${key}: ${shown(config[key])}` }));
+  const sources = CORRECTION_SOURCES.flatMap(([key, policies]) => (has(key)
+    ? [{ key, policy: Object.hasOwn(policies, config[key]) ? policies[config[key]] : undefined, from: `${key}: ${shown(config[key])}` }]
+    : []));
 
   const chosen = sources.find((source) => source.policy);
 
@@ -292,7 +293,9 @@ export function mapMonkeytypeConfig(config) {
 
   const click = soundOn('playSoundOnClick');
   const error = soundOn('playSoundOnError');
-  const soundFrom = [['playSoundOnClick', click], ['playSoundOnError', error]].filter(([, on]) => on !== null).map(([key]) => `${key}: ${shown(config[key])}`).join(', ');
+
+  const soundFrom = [['playSoundOnClick', click], ['playSoundOnError', error]]
+    .flatMap(([key, on]) => (on === null ? [] : [`${key}: ${shown(config[key])}`])).join(', ');
 
   if (click) map('sound', { sound: error ? 'clicks-errors' : 'clicks' }, SOUND_LABELS[error ? 'clicks-errors' : 'clicks'], soundFrom);
   else if (error) skip('sound', soundFrom, 'Stilltype’s error tick plays only with key clicks.');

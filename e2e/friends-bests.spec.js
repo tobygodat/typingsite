@@ -397,7 +397,9 @@ test.describe('phone', () => {
 
     // Nothing in the section is cut off: every line fits its column.
     const clipped = await page.locator('#friends-board-lists .board-bests').evaluate((section) => [...section.querySelectorAll('*')]
-      .filter((node) => node.scrollWidth > node.clientWidth + 1 && getComputedStyle(node).overflow !== 'visible' && node.tagName !== 'SELECT').map((node) => node.id || node.className));
+      .flatMap((node) => (node.scrollWidth > node.clientWidth + 1 && getComputedStyle(node).overflow !== 'visible' && node.tagName !== 'SELECT'
+        ? [node.id || node.className]
+        : [])));
 
     expect(clipped).toEqual([]);
     const select = await page.locator('#board-shape').boundingBox();

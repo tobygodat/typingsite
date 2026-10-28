@@ -116,13 +116,12 @@ for (const width of [1280, 390]) {
         const a = node.getBoundingClientRect();
 
         return [...document.querySelectorAll('.practice-controls :is(.segmented, .compact-switch)')]
-          .filter((control) => control !== node && control.checkVisibility({ visibilityProperty: true }))
-          .filter((control) => {
+          .flatMap((control) => {
+            if (control === node || !control.checkVisibility({ visibilityProperty: true })) return [];
             const b = control.getBoundingClientRect();
 
-            return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-          })
-          .map((control) => control.id || control.className);
+            return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom ? [control.id || control.className] : [];
+          });
       });
 
       expect(overlaps, `${mode} options clear the controls`).toEqual([]);

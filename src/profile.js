@@ -205,11 +205,15 @@ export function normalizeProfile(stored) {
     return runRecord(trace, trace.at || loop?.at || best?.at || null);
   });
 
-  return {
+  const profile = {
     ...emptyProfile(),
     ...parsed,
     preferences: storedPreferences(rawPreferences),
-    ...(Object.keys(preferencesAt).length ? { preferencesAt } : {}),
+  };
+
+  if (Object.keys(preferencesAt).length) profile.preferencesAt = preferencesAt;
+
+  return Object.assign(profile, {
     attempts: retainTraces(settleDailyFirsts(traces)),
     ...retainHistory(settleDailyFirsts(records), validPracticeDays(parsed.practiceDays)),
     runCounts: retainRunCounts(parsed.runCounts),
@@ -220,5 +224,5 @@ export function normalizeProfile(stored) {
     bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
     lessons: normalizeLessonProgress(parsed.lessons),
     compositions: normalizeCompositions(parsed.compositions),
-  };
+  });
 }

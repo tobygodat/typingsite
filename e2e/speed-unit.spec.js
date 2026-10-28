@@ -224,7 +224,11 @@ test('the custom pace is entered in cpm, kept in wpm, and the caret runs at the 
     const index = () => {
       const [x, y] = ghost.style.transform.match(/-?[\d.]+(?=px)/g).map(Number);
 
-      return [...display.querySelectorAll('.char')].map(place).filter(({ left, row }) => row < y || (row === y && left < x)).length;
+      return [...display.querySelectorAll('.char')].filter((char) => {
+        const { left, row } = place(char);
+
+        return row < y || (row === y && left < x);
+      }).length;
     };
 
     const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
@@ -621,9 +625,16 @@ test('standard scores display cpm while profile bests remain stored in wpm', asy
   const user = supabase.addUser('standard-units@stilltype.test');
   const conditions = standardConditions();
 
-  const runs = [58, 63, 61, 66, 64].map((wpm, i) => ({ id: `unit-standard-${i}`, at: new Date(Date.now() - (5 - i) * 86400000).toISOString(),
-    kind: 'test', status: 'complete', conditions, textId: `standard-v1-unit${i}`, fresh: true, interrupted: false,
-    score: { wpm, accuracy: 98 }, elapsedMs: 60000, ...(i ? { errors: 1 } : {}), patterns: [] }));
+  const runs = [58, 63, 61, 66, 64].map((wpm, i) => {
+    const run = { id: `unit-standard-${i}`, at: new Date(Date.now() - (5 - i) * 86400000).toISOString(),
+      kind: 'test', status: 'complete', conditions, textId: `standard-v1-unit${i}`, fresh: true, interrupted: false,
+      score: { wpm, accuracy: 98 }, elapsedMs: 60000 };
+
+    if (i) run.errors = 1;
+    run.patterns = [];
+
+    return run;
+  });
 
   supabase.profiles.set(user.id, { data: { version: 2, preferences: { speedUnit: 'cpm' }, attempts: [], runs, loops: [], seenTextIds: [],
     bests: { [conditionKey(conditions)]: { wpm: 66, attemptId: runs[3].id, at: runs[3].at } }, updatedAt: new Date().toISOString() } });

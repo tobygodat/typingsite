@@ -48,7 +48,7 @@ export function speedSeries(attempt) {
     if (accepted) kept.push({ at, hit });
   }
 
-  const hits = kept.filter((key) => key.hit).map((key) => key.at);
+  const hits = kept.flatMap((key) => (key.hit ? [key.at] : []));
 
   const points = misses.map((missed, index) => {
     const t = Math.min(durationMs, (index + 1) * step);

@@ -93,13 +93,16 @@ export function loadSession() {
 // refresh of the sign-in they share from a new sign-in there (a guest tab signing in to the same account).
 // Sessions stored before sign-ins had one have none, and count as one sign-in.
 function sessionFrom(data, signInId) {
-  return {
+  const session = {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: data.expires_at || Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
     user: { id: data.user.id, email: data.user.email || '' },
-    ...(signInId ? { signInId } : {}),
   };
+
+  if (signInId) session.signInId = signInId;
+
+  return session;
 }
 
 export const sameSignIn = (a, b) => Boolean(a?.user?.id) && a.user.id === b?.user?.id && a.signInId === b?.signInId;
@@ -120,6 +123,11 @@ const REQUEST_TIMEOUT_MS = 15000;
 export async function request(path, { method = 'GET', body, token, headers = {}, signal: callerSignal } = {}) {
   const timeout = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
   const signal = timeout && callerSignal && typeof AbortSignal.any === 'function' ? AbortSignal.any([timeout, callerSignal]) : callerSignal || timeout;
+  const sentHeaders = { apikey: SUPABASE_KEY };
+
+  if (token) sentHeaders.Authorization = `Bearer ${token}`;
+
+  if (body) sentHeaders['Content-Type'] = 'application/json';
   let response;
   let text;
 
@@ -127,12 +135,7 @@ export async function request(path, { method = 'GET', body, token, headers = {},
     response = await fetch(`${SUPABASE_URL}${path}`, {
       method,
       signal,
-      headers: {
-        apikey: SUPABASE_KEY,
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-        ...headers,
-      },
+      headers: Object.assign(sentHeaders, headers),
       body: body ? JSON.stringify(body) : undefined,
     });
     text = await response.text();
@@ -801,7 +804,10 @@ export function clearProfile(profile) {
 
   for (const best of Object.values(profile.bests || {})) if ((best?.at || '') > marker && best.attemptId) ahead.add(String(best.attemptId));
   const named = liveNamed([...known, ...[...ahead].map((id) => [marker, id])], undone);
-  const cleared = setClears({ ...profile, bests: {}, seenTextIds: [], practiceDays: {}, runCounts: {}, ...(profile.lessons ? { lessons: {} } : {}) }, marker, heard, heard);
+  const emptied = { ...profile, bests: {}, seenTextIds: [], practiceDays: {}, runCounts: {} };
+
+  if (profile.lessons) emptied.lessons = {};
+  const cleared = setClears(emptied, marker, heard, heard);
 
   for (const name of Object.keys(HISTORY)) cleared[name] = [];
 

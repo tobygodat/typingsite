@@ -479,7 +479,11 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     generation += 1;
     clearTimeout(pollTimer);
     resetAttempt();
-    credentials = { roomId: result.roomId || result.room.id, ...(result.guestToken ? { guestToken: result.guestToken } : {}), ...(result.inviteToken ? { inviteToken: result.inviteToken } : {}) };
+    credentials = { roomId: result.roomId || result.room.id };
+
+    if (result.guestToken) credentials.guestToken = result.guestToken;
+
+    if (result.inviteToken) credentials.inviteToken = result.inviteToken;
     multiplayer.rememberRace(credentials);
     joinLink = null;
     forgetPendingInvite();

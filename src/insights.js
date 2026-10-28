@@ -59,16 +59,21 @@ export function runRecord(attempt, at = attempt.at || null) {
     day: at ? dayKey(at) : null,
     conditions: attempt.conditions, textId: attempt.textId, fresh: attempt.fresh,
     interrupted: Boolean(attempt.interrupted || attempt.unsupportedInput || attempt.stopped),
-    // Practice minimums are labelled on the run, not keyed into its conditions.
-    ...(attempt.minimums ? { minimums: attempt.minimums } : {}),
-    ...(attempt.stopped ? { stopped: attempt.stopped } : {}),
+  };
+
+  // Practice minimums are labelled on the run, not keyed into its conditions.
+  if (attempt.minimums) record.minimums = attempt.minimums;
+
+  if (attempt.stopped) record.stopped = attempt.stopped;
+  Object.assign(record, {
     score: replay.score, elapsedMs: replay.elapsedMs,
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
     firstDailyAttempt: attempt.firstDailyAttempt,
-    // Adaptive practice is drill-kind: kept apart from bests, trends, baselines and pattern evidence.
-    ...(attempt.adaptive ? { adaptive: true } : {}),
-  };
+  });
+
+  // Adaptive practice is drill-kind: kept apart from bests, trends, baselines and pattern evidence.
+  if (attempt.adaptive) record.adaptive = true;
 
   // Pattern counts only feed recurring targets, which never read custom text or missed-word practice.
   if (!comparableKind(attempt.kind)) return record;
@@ -107,7 +112,11 @@ export function retainRuns(runs) {
     // Drop missed words rather than empty them: an empty list would read as a run with no misses.
     const { missedWords, ...rest } = run;
 
-    return { ...(trimWords ? rest : run), ...(trimPatterns ? { patterns: [], keys: [] } : {}) };
+    const kept = { ...(trimWords ? rest : run) };
+
+    if (trimPatterns) Object.assign(kept, { patterns: [], keys: [] });
+
+    return kept;
   });
 }
 
@@ -344,8 +353,11 @@ const CONDITION_PARTS = [
 export function conditionParts(conditions, sets = []) {
   const differs = (part) => sets.some((other) => part.text(other) !== part.text(conditions));
 
-  return Object.fromEntries(CONDITION_PARTS.filter((part) => (part.shown ? part.shown(conditions) || differs(part) : part.text(conditions)))
-    .map((part) => [part.name, part.text(conditions)]));
+  return Object.fromEntries(CONDITION_PARTS.flatMap((part) => {
+    const shown = part.shown ? part.shown(conditions) || differs(part) : part.text(conditions);
+
+    return shown ? [[part.name, part.text(conditions)]] : [];
+  }));
 }
 
 // Names for the condition sets at one length: each set's reading of every part the sets disagree on
@@ -460,8 +472,9 @@ export function recurringTargets(runs, loops, compatibleConditions) {
     }
   }
 
-  return [...pairs.values()].filter((p) => p.observations >= 10 && (p.errorRuns >= 2 || p.slowRuns >= 2))
-    .map((p) => {
+  return [...pairs.values()]
+    .flatMap((p) => {
+      if (!(p.observations >= 10 && (p.errorRuns >= 2 || p.slowRuns >= 2))) return [];
       const checks = loops.filter((l) => l.target === p.pair && conditionKey(l.conditions) === key);
       const lastCheck = checks.at(-1);
 
@@ -472,8 +485,8 @@ export function recurringTargets(runs, loops, compatibleConditions) {
       const laterRuns = eligible.filter((r) => lastPracticed && r.at > lastPracticed && r.fresh !== false);
       const laterObservations = laterRuns.reduce((n, r) => n + (r.patterns?.find((v) => v[0] === p.pair)?.[1] || 0), 0);
 
-      return { ...p, lastPracticed, lastCheck, laterObservations, laterRuns: laterRuns.length,
-        review: Boolean(lastPracticed && laterObservations >= 10) };
+      return [{ ...p, lastPracticed, lastCheck, laterObservations, laterRuns: laterRuns.length,
+        review: Boolean(lastPracticed && laterObservations >= 10) }];
     })
     .sort((a, b) => Number(b.review) - Number(a.review) || b.errors / b.observations - a.errors / a.observations
       || b.slowRuns - a.slowRuns || a.pair.localeCompare(b.pair));
@@ -741,7 +754,11 @@ export function keyAnalysis(runs, limit = 8) {
     runs: recent.length,
     pairDerivedRuns,
     keys: Object.fromEntries([...keys.values()].map((k) => [k.key, rate(k)])),
-    pairs: [...pairs.values()].map(rate).filter((p) => p.enough && (p.errors > 0 || p.slowRuns > 0))
+    pairs: [...pairs.values()].flatMap((v) => {
+      const p = rate(v);
+
+      return p.enough && (p.errors > 0 || p.slowRuns > 0) ? [p] : [];
+    })
       .sort((a, b) => b.missRate - a.missRate || b.slowRuns - a.slowRuns || b.samples - a.samples || a.pair.localeCompare(b.pair))
       .slice(0, limit),
   };
@@ -825,7 +842,7 @@ export function missedAndSlowWords(attempt, slowLimit = 5) {
     const tries = [];
 
     for (let i = start; i < end; i += 1) if (first.has(i)) tries.push(first.get(i));
-    const misses = tries.filter((item) => !item.correct).map((item) => item.position - start);
+    const misses = tries.flatMap((item) => (item.correct ? [] : [item.position - start]));
 
     // The spaces after a word are part of typing it: a wrong first try there marks the word.
     for (let i = end; raw && attempt.text[i] === ' '; i += 1) if (first.get(i)?.correct === false) misses.push(i - start);

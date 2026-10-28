@@ -60,8 +60,11 @@ function lessonProfile(count, updatedAt = '2026-10-08T12:00:00Z') {
 // Another device's save, as this build makes one (mergeStamp): copies merge, so lesson progress only goes
 // with a clear (`historyClearedAt`), and comes back with that clear's undo (`undoneClears`).
 function savedElsewhere(count, updatedAt, { clear = false, undone = [] } = {}) {
-  return { ...lessonProfile(count, updatedAt), mergeStamp: updatedAt, undoneClears: undone,
-    ...(clear ? { historyClearedAt: `${updatedAt}~elsewhere` } : {}) };
+  const profile = { ...lessonProfile(count, updatedAt), mergeStamp: updatedAt, undoneClears: undone };
+
+  if (clear) profile.historyClearedAt = `${updatedAt}~elsewhere`;
+
+  return profile;
 }
 
 // A signed-in learner who passed the first `count` lessons.

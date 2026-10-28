@@ -1084,7 +1084,7 @@ test('two condition sets with different keys never share a name, whichever key p
 
   for (const base of bases) {
     const applies = (change) => Object.keys(change).every((part) => !written[part] || written[part].includes(base.mode));
-    const sets = [base, ...changes.filter(applies).map((change) => ({ ...base, ...change }))];
+    const sets = [base, ...changes.flatMap((change) => (applies(change) ? [{ ...base, ...change }] : []))];
     const names = conditionLabels(sets);
 
     for (let i = 0; i < sets.length; i += 1) {

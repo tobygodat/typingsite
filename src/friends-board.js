@@ -178,9 +178,13 @@ export function shapeOf(key) {
 
   const conditions = { mode, duration: Number(duration) || null, count: Number(count) || null, punctuation: punctuation === 'punctuation',
     numbers, quoteLength: quoteLength || null, difficulty: difficulty || null, wordList: wordList || null, inputClass, correctionPolicy,
-    language: 'en', corpus, metricVersion, ...(layout ? { layout } : {}),
-    ...(suffix.includes('strict-space') ? { strictSpace: true } : {}),
-    ...(suffix.includes('quick-end-off') ? { quickEnd: false } : {}) };
+    language: 'en', corpus, metricVersion };
+
+  if (layout) conditions.layout = layout;
+
+  if (suffix.includes('strict-space')) conditions.strictSpace = true;
+
+  if (suffix.includes('quick-end-off')) conditions.quickEnd = false;
 
   const quote = mode === 'quote';
 
@@ -252,8 +256,9 @@ export function shapeLabels(shapes) {
   const order = ['length', 'text', 'setting', ...names].filter((name, index, all) => all.indexOf(name) === index
     && (name === 'length' || name === 'text' || differs.has(name)));
 
-  return described.map((part, index) => order.filter((name) => belongs(name, shapes[index].conditions) && part[name] !== undefined)
-    .map((name) => named(name, part[name])).join(' · '));
+  return described.map((part, index) => order
+    .flatMap((name) => (belongs(name, shapes[index].conditions) && part[name] !== undefined ? [named(name, part[name])] : []))
+    .join(' · '));
 }
 
 // What the picker's name for the picked shape leaves out, and only where it isn't the usual: a word list
