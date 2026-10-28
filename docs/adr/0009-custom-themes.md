@@ -1,6 +1,6 @@
 # 0009. Custom themes: stored as JSON text, contrast advised, prompts never kept
 
-Status: Accepted, 2026-10-23. Carried over from `HANDOFF.md`'s decisions to preserve.
+Status: Accepted, 2026-10-23.
 
 ## Context
 

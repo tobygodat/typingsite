@@ -1,6 +1,6 @@
 # 0006. Keystroke recordings stay on the device
 
-Status: Accepted, 2026-10-23. Carried over from `HANDOFF.md`'s decisions to preserve; the sign-out rule is Toby's call on TOB-144.
+Status: Accepted, 2026-10-23. The sign-out rule is Toby's call on TOB-144.
 
 ## Context
 

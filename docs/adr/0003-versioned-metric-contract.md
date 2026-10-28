@@ -1,6 +1,6 @@
 # 0003. The metric contract is versioned
 
-Status: Accepted, 2026-10-23. Carried over from `HANDOFF.md`'s decisions to preserve.
+Status: Accepted, 2026-10-23.
 
 ## Context
 

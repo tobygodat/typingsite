@@ -1,6 +1,6 @@
 # 0008. Account data cascades from auth.users
 
-Status: Accepted, 2026-10-23. Carried over from `HANDOFF.md`'s decisions to preserve.
+Status: Accepted, 2026-10-23.
 
 ## Context
 

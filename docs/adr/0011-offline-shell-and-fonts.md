@@ -1,6 +1,6 @@
 # 0011. A network-first offline shell, and only two fonts by default
 
-Status: Accepted, 2026-10-23. Carried over from `HANDOFF.md`'s decisions to preserve.
+Status: Accepted, 2026-10-23.
 
 ## Context
 

@@ -1,6 +1,6 @@
 # 0004. Condition keys decide what counts as the same test
 
-Status: Accepted, 2026-10-23. Carried over from `HANDOFF.md`'s decisions to preserve.
+Status: Accepted, 2026-10-23.
 
 ## Context
 

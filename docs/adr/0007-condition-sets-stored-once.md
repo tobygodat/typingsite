@@ -1,6 +1,6 @@
 # 0007. Condition sets are stored once per profile
 
-Status: Accepted, 2026-10-23. Carried over from `HANDOFF.md`'s decisions to preserve.
+Status: Accepted, 2026-10-23.
 
 ## Context
 

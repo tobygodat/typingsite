@@ -1,6 +1,6 @@
 # 0010. The background image stays on the device and never costs legibility
 
-Status: Accepted, 2026-10-24. Carried over from `HANDOFF.md`'s decisions to preserve.
+Status: Accepted, 2026-10-24.
 
 ## Context
 
