@@ -81,13 +81,16 @@ export async function completePassage(page, options) {
   return text;
 }
 
-// A drill lasts 30 seconds and then starts its retest. The clock is faked from here on (a spec that faked
-// it already keeps its own), a few letters start the drill and its 30 seconds are skipped. Installed this late,
-// WebKit's faked performance.now() jumps back and a touch drill never ends, so a phone-viewport spec
-// installs the clock before openApp.
+// A drill lasts 30 seconds and then starts its retest. The clock is faked from here on, a few letters start
+// the drill and its 30 seconds are skipped. A spec that faked it already keeps its own: a second install
+// doesn't fail, it moves the page back to the real date, and runs the spec dated near its own date then
+// fall out of Progress's 30 days. Installed this late, WebKit's faked performance.now() jumps back and a
+// touch drill never ends, so a phone-viewport spec installs the clock before openApp.
 export async function finishDrill(page) {
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-  await page.clock.install().catch(() => {});
+  const pageNow = await page.evaluate(() => Date.now());
+
+  if (Math.abs(pageNow - Date.now()) < 60_000) await page.clock.install();
   await typeInto(page, (await passageText(page)).slice(0, 4));
   await page.clock.fastForward(30_000);
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');

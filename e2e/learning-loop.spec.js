@@ -165,6 +165,8 @@ function savedTrace(id, at) {
 }
 
 test('runs recorded on another device are no baseline: their drill stands alone, quietly', async ({ page, supabase }) => {
+  // The saved runs are dated, and Progress opens on the last 30 days.
+  await page.clock.install({ time: new Date('2026-09-30T12:00:00Z') });
   const user = supabase.addUser('elsewhere@stilltype.test');
   const traces = [savedTrace('away-a', '2026-09-28T12:00:00Z'), savedTrace('away-b', '2026-09-29T12:00:00Z')];
   // The row as a device that recorded them left it before recordings stopped syncing.

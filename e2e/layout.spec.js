@@ -57,7 +57,7 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
   });
 }
 
-for (const width of [320, 360]) test.describe(`live stats at ${width}px`, () => {
+for (const width of [320, 360, 361, 375, 390, 414, 431]) test.describe(`live stats at ${width}px`, () => {
   test.use({ viewport: { width, height: 640 }, ...phone });
 
   test('the widest built-in figures fit mid-run without widening the column', async ({ page }) => {
@@ -66,8 +66,9 @@ for (const width of [320, 360]) test.describe(`live stats at ${width}px`, () => 
     await typeInto(page, (await passageText(page)).slice(0, 20));
     await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
     // Written and measured in one task, so the run's own tick can't rewrite them in between: a
-    // three-digit speed with every built-in length, and a four-digit cpm against the clock.
-    const cases = [['25', '/25', '188', 'wpm'], ['100', '/100', '999', 'wpm'], ['100', '/100', '999', 'cpm'], ['120', 's', '1999', 'cpm']];
+    // three-digit speed with every built-in length, and a four-digit cpm against the clock and against
+    // the longest custom word count.
+    const cases = [['25', '/25', '188', 'wpm'], ['100', '/100', '999', 'wpm'], ['100', '/100', '999', 'cpm'], ['120', 's', '1999', 'cpm'], ['500', '/500', '1999', 'cpm']];
 
     for (const shown of cases) {
       const fit = await page.evaluate(([timer, count, speed, unit]) => {
@@ -85,6 +86,41 @@ for (const width of [320, 360]) test.describe(`live stats at ${width}px`, () => 
     }
   });
 });
+
+// A long run's card is taller than what is left under the rail, so the page scrolls to show it
+// (focusResult in src/app.js): whole and clear of the bottom edge where it fits, else its actions.
+for (const [name, viewport, touch] of [['a 1440x900 desktop', { width: 1440, height: 900 }, {}], ['a 1280x720 desktop', { width: 1280, height: 720 }, {}], ['a 390x844 phone', { width: 390, height: 844 }, phone]]) {
+  test.describe(`finished long run on ${name}`, () => {
+    test.use({ viewport, ...touch });
+
+    test('the score and every action show, clear of the bottom edge and the dock', async ({ page }) => {
+      await openApp(page);
+      await chooseWords(page, 100);
+      await typeInto(page, await passageText(page));
+      await expect(page.locator('#run-card')).toBeVisible();
+      await expect(page.locator('#run-again')).toBeFocused();
+
+      const seen = await page.evaluate(() => {
+        const edges = (node) => node.getBoundingClientRect();
+        const dock = edges(document.querySelector('.dock'));
+        // The dock floats over the page at the top on a desktop and at the bottom on a phone.
+        const [ceiling, floor] = dock.top < innerHeight / 2 ? [dock.bottom, innerHeight] : [0, dock.top];
+        const actions = [...document.querySelectorAll('.result-buttons .btn:not([hidden])')].map(edges);
+
+        return {
+          score: edges(document.getElementById('result-wpm')).top - ceiling,
+          actions: floor - Math.max(...actions.map((box) => box.bottom)),
+          card: innerHeight - edges(document.getElementById('run-card')).bottom,
+        };
+      });
+
+      expect(seen.score, 'score below the dock').toBeGreaterThanOrEqual(0);
+      expect(seen.actions, 'actions above the floor').toBeGreaterThanOrEqual(8);
+
+      if (!touch.hasTouch) expect(seen.card, 'card foot above the bottom edge').toBeGreaterThanOrEqual(8);
+    });
+  });
+}
 
 test.describe('narrow run card', () => {
   test.use({ viewport: { width: 320, height: 640 }, ...phone });
