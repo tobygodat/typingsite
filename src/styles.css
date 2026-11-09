@@ -1392,6 +1392,11 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 .segmented.compact #custom-length:not(.is-active) { font: 400 var(--text-small)/1 var(--font-app); }
 .segmented .custom-length-input { width: var(--space-16); color: var(--text); text-align: center; }
 .custom-length-input::placeholder { color: var(--muted); opacity: 1; }
+/* Beside a pointer the word "custom" gets the presets' breathing room, so it doesn't crowd the frame's edge. */
+@media (min-width: 761px) {
+  .segmented.compact #custom-length, .segmented .custom-length-input { min-width: calc(var(--space-16) + var(--space-2)); }
+  .segmented .custom-length-input { width: calc(var(--space-16) + var(--space-2)); }
+}
 /* A coral hairline, as on other fields, paired with the message's words; no tint, so the
    placeholder keeps its contrast. */
 .custom-length-input[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--danger); }
@@ -2433,6 +2438,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   background: linear-gradient(180deg, var(--card-top), var(--card-bottom));
   display: grid;
   gap: var(--space-8);
+  /* A finished run scrolls the card clear of the bottom edge (focusResult in src/app.js). */
+  scroll-margin-bottom: var(--space-6);
 }
 
 /* The actions under a hairline, the conditions line set against them on the right. */
@@ -2444,6 +2451,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4) var(--space-6);
+  /* When the whole card doesn't fit under the dock, the row still shows the card's foot below it. */
+  scroll-margin-bottom: calc(var(--space-8) + var(--space-4));
 }
 .result-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .result-buttons .btn { font-size: var(--text-body); font-weight: 400; }
@@ -2841,6 +2850,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .figure-value { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--text-display); font-weight: 300; line-height: 1.1; letter-spacing: -0.02em; white-space: nowrap; }
 #progress-stats .figure-value { font-size: var(--text-title); }
 .figure-value [data-speed-unit], .figure-unit { color: var(--muted); font-size: var(--text-body); letter-spacing: 0; }
+/* A percent sign sits closer to its number than a word does. */
+.figure-percent { margin-inline-start: calc(var(--space-1) * -1); }
 .figure-note { color: var(--muted); font-size: var(--text-small); }
 /* Progress opens on the filtered runs: the filters and the period's figures, then the views, ruled off
    from the standard score below. */
@@ -3062,6 +3073,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 .challenge-modes { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-8); }
 .challenge-modes [aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+/* Online opens under the same rule as Daily, Friends and One keyboard, so the tabs never lose their floor. */
+#online-challenge { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
 .online-copy { color: var(--muted); font-size: var(--text-small); }
 .online-optional { font-size: var(--text-fine); }
 .online-setup { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-6); }
@@ -3701,7 +3714,12 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   /* The run card stacks: the score over its facts, the conditions line under the actions. */
   .run-card { padding: var(--space-6); gap: var(--space-6); }
   .run-card-head { grid-template-columns: minmax(0, 1fr); }
-  .result-actions { padding-top: var(--space-6); }
+  /* The page's scroll padding already keeps the row clear of the dock. */
+  .result-actions { padding-top: var(--space-6); scroll-margin-bottom: 0; }
+  /* Run again takes the row; the drill and the replay share the next, so the actions stay above the dock. */
+  .result-buttons { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .result-buttons .btn, .result-buttons .btn:not(.btn-ghost) { min-width: 0; padding-inline: var(--space-2); }
+  .result-buttons .btn-primary, .result-buttons .btn[hidden] + .btn, .result-buttons .btn:has(+ .btn[hidden]) { grid-column: 1 / -1; }
   .result-actions .condition-copy { text-align: start; }
   .train-block { padding-top: var(--space-16); }
   .train-block h1 { font-size: 38px; }
@@ -3716,6 +3734,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 }
 
 @media (max-width: 360px) {
+  /* "Drill and retest" is wider than half the card. */
+  .result-buttons { grid-template-columns: 1fr; }
   /* Eighteen weeks fill the 288px column, so the weekday names give way. */
   .goal-weekdays { display: none; }
   .goal-chart { grid-template-columns: auto; grid-template-areas: "months" "calendar"; }
@@ -3727,9 +3747,18 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .nav-item { padding: 0 2px; font-size: 13px; }
   .nav-label-full { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .nav-label-short { display: inline; }
-  /* Three-digit speed (cpm), timer and accuracy side by side. */
-  body[data-session="practice"] .live-stats { gap: var(--space-4); }
-  /* At 40px a three-digit speed beside a word count ("25/25") is wider than the 288px column. */
+}
+
+/* Phones: a word count ("100/100") beside a three-digit speed, or a four-digit cpm, is wider than the
+   column at practice's 32px gaps. The three figures spread across the column instead, as a drill's do,
+   and the gap only has to keep them apart. e2e/layout.spec.js measures the widest figures. */
+@media (max-width: 430px) {
+  .live-stats,
+  body[data-session="practice"] .live-stats { justify-content: space-between; gap: var(--space-2); }
+}
+
+/* At 40px a four-digit cpm beside a word count is wider than the column up to 371px. */
+@media (max-width: 374px) {
   .live-stat strong { font-size: var(--text-title); }
 }
 

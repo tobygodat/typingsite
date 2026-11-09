@@ -2834,13 +2834,21 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
 }
 
 // The next step takes focus when it fits on screen below the score, clear of the dock; otherwise the
-// heading does, so the score never scrolls away.
+// heading does, so the score never scrolls away. The page then shows as much around the focused step
+// as fits with the score: the whole card with its margin, else the whole action row, else the step alone
+// (so the card never rests on the bottom edge, and the other actions never hide behind a phone's dock).
 function focusResult(control) {
   const root = getComputedStyle(document.documentElement);
   const room = innerHeight - (parseFloat(root.scrollPaddingTop) || 0) - (parseFloat(root.scrollPaddingBottom) || 0);
-  const target = control.getBoundingClientRect().bottom - $('result-wpm').getBoundingClientRect().top <= room ? control : $('results-heading');
+  const scoreTop = $('result-wpm').getBoundingClientRect().top;
+  const fits = (node, from = scoreTop) => node.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(node).scrollMarginBottom) || 0) - from <= room;
+  const card = $('run-card');
+  const target = fits(control) ? control : $('results-heading');
+  const row = control.closest('.result-actions');
+  const widest = fits(card, card.getBoundingClientRect().top) ? card : fits(row) ? row : control;
+
   target.focus({ preventScroll: true });
-  target.scrollIntoView({ block: 'nearest' });
+  (target === control ? widest : target).scrollIntoView({ block: 'nearest' });
 }
 
 // Draw after the results view is shown so the graph has its size.
@@ -3413,7 +3421,10 @@ function renderSecondaryStats(completed) {
   const replay = completed.summary;
   const chars = characterBreakdown(completed, replay);
   const errors = replay.firstAttempts.filter((item) => !item.correct).length;
-  $('result-consistency').textContent = consistency(completed, replay) ?? '—';
+  const steady = consistency(completed, replay) ?? null;
+  $('result-consistency').textContent = steady ?? '—';
+  // A run under three seconds has no consistency, and a dash takes no unit.
+  $('result-consistency').nextElementSibling.hidden = steady === null;
   $('result-accuracy-fact').title = `${plural(errors, 'first-try error')} · final c/i/e/m ${chars.correct}/${chars.incorrect}/${chars.extra}/${chars.missed}`;
   renderWords(completed, replay);
 }
@@ -4131,7 +4142,7 @@ function renderOverview(runs, week, period) {
     figure('This week', speed(thisWeek.wpm), runsCopy(thisWeek.count)),
     figure('Last week', speed(lastWeek.wpm), runsCopy(lastWeek.count)),
     figure(periodName, speed(stats.wpm), runsCopy(stats.count)),
-    figure('Accuracy', stats.count ? `${Number(stats.accuracy.toFixed(1))}%` : '—', stats.count ? accuracyNote : 'no runs'),
+    figure('Accuracy', stats.count ? [element('span', String(Number(stats.accuracy.toFixed(1)))), element('span', '%', 'figure-unit figure-percent')] : '—', stats.count ? accuracyNote : 'no runs'),
     figure('Best run', stats.count ? speed(stats.best.score.wpm) : '—', stats.best?.at ? new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : stats.count ? 'date unavailable' : 'no runs'),
   );
 }
