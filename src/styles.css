@@ -1392,11 +1392,6 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 .segmented.compact #custom-length:not(.is-active) { font: 400 var(--text-small)/1 var(--font-app); }
 .segmented .custom-length-input { width: var(--space-16); color: var(--text); text-align: center; }
 .custom-length-input::placeholder { color: var(--muted); opacity: 1; }
-/* Beside a pointer the word "custom" gets the presets' breathing room, so it doesn't crowd the frame's edge. */
-@media (min-width: 761px) {
-  .segmented.compact #custom-length, .segmented .custom-length-input { min-width: calc(var(--space-16) + var(--space-2)); }
-  .segmented .custom-length-input { width: calc(var(--space-16) + var(--space-2)); }
-}
 /* A coral hairline, as on other fields, paired with the message's words; no tint, so the
    placeholder keeps its contrast. */
 .custom-length-input[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--danger); }
