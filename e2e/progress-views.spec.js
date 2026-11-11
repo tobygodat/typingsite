@@ -1,7 +1,7 @@
 // Progress, "What changed" (TOB-420): the lead, what moved it, the small charts, and every view one step away.
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { englishFrequency } from '../src/learner.js';
-import { test, expect, openApp, openView, openProgressDetail, openProgressView, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, openProgressDetail, openProgressView, signInWithEmail, completePassage } from './fixtures.js';
 
 // A Saturday afternoon: this week is Oct 11 to 17, the week before Oct 4 to 10.
 const NOW = new Date('2026-10-17T15:00:00');
@@ -382,6 +382,43 @@ test('Clear history and Undo: the overview follows both at once, and a merge fro
   await page.evaluate(() => { document.activeElement?.blur(); dispatchEvent(new Event('online')); });
   await expect(lead(page).sentence).toHaveText('79 this week, 73 the week before');
   await expect(lead(page).sample).toHaveText('medians of 9 and 7 runs');
+});
+
+// Two tabs of one account share the device cache, so each hears the other's saves (followHistory).
+test('in another tab, a run, a clear and its undo reach the overview at once, and an open row and keyboard focus stay', async ({ page, context, supabase }) => {
+  await openProgress(page, supabase, weekRuns(), { extra: { preferences: { mode: 'words', count: 25, wordList: '1k' } } });
+  const other = await context.newPage();
+  await other.clock.install({ time: NOW });
+  await supabase.attach(other);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  const drill = page.getByRole('button', { name: 'Drill “ex”' });
+  await drill.focus();
+
+  // A run typed in the other tab: the lead counts it, and focus stays on the same row's button.
+  await completePassage(other);
+  await expect(other.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(lead(page).sample).toHaveText('medians of 7 and 7 runs');
+  await expect(page.getByRole('button', { name: 'Drill “ex”' })).toBeFocused();
+
+  // A run row open in the runs view stays open, with focus, while the other tab clears and undoes.
+  await openProgressDetail(page, 'runs');
+  const row = page.locator('#run-history .run-row').first();
+  await row.locator('summary').click();
+  await openView(other, 'Progress');
+  await other.locator('#clear-history').click();
+  await other.locator('#confirm-clear-input').fill('clear');
+  await other.locator('#confirm-clear').click();
+  await expect(page.locator('#progress-empty')).toBeAttached();
+  await expect.poll(() => page.locator('#week-lead').isHidden()).toBe(true);
+  await expect(row).toHaveAttribute('open', '');
+  await expect(row.locator('summary')).toBeFocused();
+  // Back on the overview, the cleared history shows.
+  await page.locator('#progress-back').click();
+  await expect(page.locator('#progress-empty')).toBeVisible();
+  await other.locator('#undo-clear').click();
+  await expect(lead(page).sample).toHaveText('medians of 7 and 7 runs');
+  await expect(page.locator('#week-movers .mover-unit').first()).toHaveText('ex');
 });
 
 test('quote sets that differ only by the punctuation setting say so on the conditions line, as their options do', async ({ page, supabase }) => {

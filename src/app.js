@@ -4206,6 +4206,22 @@ function runRow(run) {
 function renderHistory() {
   // One moment for the whole page, so the week, every figure, chart and list read the same days.
   const date = new Date();
+  const { source, key, span, runRows, loops } = renderOverview(date);
+  renderStandardScore();
+  renderTraining();
+  renderGoal(date);
+  renderKeys(source ? filterRuns(profile.runs, key, span) : []);
+  listedRuns = [...runRows].reverse();
+  renderRunRows();
+  renderLoops(loops);
+  renderComposeHistory();
+  showProgressDetail();
+}
+
+// The overview, and the conditions it reads: the lead, what moved it, the small charts and the quiet links. Every
+// change to the history redraws it (followHistory, through renderWeek), whatever the page shows; the detail views
+// wait for renderHistory, so a row someone has open there stays open.
+function renderOverview(date) {
   historyDay = dayKey(date);
   const listed = profile.runs.filter(practiceRun);
   const hasProgress = listed.length > 0 || profile.loops.length > 0;
@@ -4264,25 +4280,16 @@ function renderHistory() {
   $('clear-history').disabled = !hasHistory;
 
   if (progressState.detail && !links[progressState.detail]) progressState.detail = '';
-  renderStandardScore();
-  renderTraining();
-  renderGoal(date);
-  renderKeys(source ? filterRuns(profile.runs, key, span) : []);
-  listedRuns = [...runRows].reverse();
-  renderRunRows();
-  renderLoops(loops);
-  renderComposeHistory();
-  showProgressDetail();
+
+  return { source, key, span, runRows, loops };
 }
 
-// The week's lead and what moved it, built again where only the learner's inputs changed (the train focus, or history
-// that followHistory brings), so open run rows and the charts stay as they are.
+// A change to the history (followHistory) or the train focus, on Progress: the overview follows at once, with focus
+// kept where it was. The detail view on show keeps its rows until it is left.
 function renderWeek() {
-  const source = variantConditions();
-  progressWeek = weekChange({ runs: profile.runs, loops: profile.loops, practiceDays: profile.practiceDays, key: source ? progressState.key : '', conditions: source,
-    focus: prefs.trainFocus, goal: prefs.dailyGoal, period: progressState.period, now: Date.now() });
-  renderLead(progressWeek.lead);
-  renderMovers(progressWeek, source);
+  renderOverview(new Date());
+
+  if (!progressState.detail) drawProgressView();
 }
 
 // The lead: the change in speed, this week against the week before, with the two medians beside it and one line of
@@ -4345,6 +4352,8 @@ function renderLead(lead) {
 // and focus that ranked it.
 function renderMovers(week, source) {
   const open = progressState.moversOpen;
+  // A redraw keeps keyboard focus on the same row's control, or on the page's heading when that row has gone.
+  const held = $('week-movers').contains(document.activeElement) ? document.activeElement.closest('li')?.dataset.unit ?? 'practice' : null;
 
   const rows = week.movers.map((mover, i) => {
     const row = moverRow(mover, source, week.recommendation);
@@ -4360,6 +4369,8 @@ function renderMovers(week, source) {
   $('more-movers').hidden = extra < 1;
   $('more-movers').textContent = open ? 'Fewer' : `${extra} more`;
   $('more-movers').setAttribute('aria-expanded', String(open));
+
+  if (held) (rows.find((row) => (row.dataset.unit ?? 'practice') === held && !row.hidden)?.querySelector('button') || $('progress-heading')).focus();
 }
 
 function statusWord(word, tone) {
@@ -4404,7 +4415,8 @@ function practiceRow(practice) {
   const open = element('button', 'practice', 'mover-unit mover-link');
   open.type = 'button';
   open.setAttribute('aria-label', 'practice calendar');
-  open.addEventListener('click', () => openProgressDetail('calendar', { opener: open }));
+  // The row is drawn again on the way back, so the way back finds its new button.
+  open.addEventListener('click', () => openProgressDetail('calendar', { opener: () => $('week-movers').querySelector('.is-practice .mover-link') }));
   const streak = practice.streak ? `${plural(practice.streak, 'day')} in a row${practice.goal ? ` at ${practice.goal} min` : ''}` : '';
   const change = changeLine(goalMinutes(practice.previous), `${goalMinutes(practice.current)} min`, streak && `· ${streak}`, 'mover-change num');
   row.append(open, change, statusWord(practice.status, 'neutral'), element('span', '', 'mover-action'));
@@ -4514,7 +4526,8 @@ function closeProgressDetail() {
   const back = detailOpener;
   progressState.detail = '';
   detailOpener = null;
-  showProgressDetail();
+  // What changed while the view was open (a merge or a clear elsewhere) shows on the way back.
+  renderHistory();
   const opener = typeof back === 'function' ? back() : back;
   (opener?.isConnected && !opener.hidden ? opener : $('progress-heading')).focus();
 }

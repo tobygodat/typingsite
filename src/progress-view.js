@@ -356,6 +356,7 @@ const WEEK_LABELS = 40;
 const WEEK_END = 104;
 
 export function renderWeekChart(container, runs, metric, { period = null, onOpen }) {
+  const focused = container.contains(document.activeElement);
   container.replaceChildren();
   const days = runsByDay(runs);
 
@@ -412,6 +413,9 @@ export function renderWeekChart(container, runs, metric, { period = null, onOpen
   for (const [text, tx, anchor] of ticks) chart.append(svgText(text, { x: tx, y: height - 4, 'text-anchor': anchor, class: 'trend-label' }));
   button.append(chart);
   container.append(button);
+
+  // Drawn again for a new width, unit or history, the chart keeps keyboard focus.
+  if (focused) button.focus();
 }
 
 const SPREAD_HEIGHT = 200;
