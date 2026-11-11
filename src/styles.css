@@ -3336,6 +3336,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   font-size: var(--text-rank);
   line-height: 1.05;
   letter-spacing: -0.02em;
+  /* The gradient paints only inside the box, so the box reaches below the descenders ("Tempest", "Whisper"). */
+  padding-bottom: 0.25em;
+  margin-bottom: -0.25em;
   background: linear-gradient(180deg, var(--rc-ink), var(--rc-a));
   -webkit-background-clip: text;
   background-clip: text;

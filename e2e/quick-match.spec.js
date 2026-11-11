@@ -114,6 +114,21 @@ test('a ranked account reads its rank on the rating line, and a win that crosses
     await expect(card(page, 'rating')).toHaveCSS('color', 'rgb(238, 246, 247)');
     await expect(card(page, 'delta')).toHaveCSS('color', 'rgb(134, 240, 168)');
     await expect(page.locator('#online-rank-card')).toHaveAttribute('aria-hidden', 'true');
+
+    // The rank name is painted by a gradient clipped to its text, which stops at the box: the box has to reach
+    // below a descender, or the "p" of Tempest and Whisper is cut flat.
+    const room = await card(page, 'rank').evaluate((el) => {
+      const mark = el.appendChild(Object.assign(document.createElement('span'), { style: 'display:inline-block;width:0;height:0' }));
+      const below = el.getBoundingClientRect().bottom - mark.getBoundingClientRect().bottom;
+      const style = getComputedStyle(el);
+      const ink = Object.assign(document.createElement('canvas').getContext('2d'), { font: `${style.fontWeight} ${style.fontSize} ${style.fontFamily}` });
+
+      mark.remove();
+
+      return below - ink.measureText('p').actualBoundingBoxDescent;
+    });
+
+    expect(room).toBeGreaterThanOrEqual(0);
     await expect(page.getByRole('status').filter({ hasText: 'Rated win.' })).toHaveCount(1);
     // The wind moves while motion is allowed.
     await page.locator('#online-rank-card').scrollIntoViewIfNeeded();
