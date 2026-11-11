@@ -101,6 +101,7 @@ export default async ({ page, h, shot, note, check, fake }) => {
 
     // The conditions control, open.
     await page.locator('.conditions-disclosure > summary').click();
+    await h.settle();
     await shot('conditions-open');
     await page.locator('.conditions-disclosure > summary').click();
 
