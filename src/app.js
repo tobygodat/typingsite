@@ -34,7 +34,6 @@ import {
   allowsBackspace,
   failureFor,
   failureAtEnd,
-  recommendTarget,
   refusesSpace,
   replayAttempt,
   selectPassage,
@@ -238,7 +237,6 @@ let onlineRace = null;
 let inbox = null;
 let friendsBoard = null;
 let baselineAttempt = null;
-let activeRecommendation = null;
 let selectedTarget = null;
 let trainingContext = null;
 let resultBestBefore = null;
@@ -393,10 +391,13 @@ function saveChoice(...keys) {
   return saveProfile();
 }
 
+// How Train trains: what it ranks on, the drill's length and whether a retest follows.
+const TRAINING_PREFERENCES = ['trainFocus', 'drillSeconds', 'retest'];
+
 // Settings that never enter a run's conditions: how things look, and how Train trains. Everything else is a test
 // condition.
 const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal',
-  'trainFocus', 'drillSeconds', 'retest'];
+  ...TRAINING_PREFERENCES];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -438,11 +439,14 @@ function followStoredPreferences({ conditions = !attemptPrepared() } = {}) {
   const json = JSON.stringify(next);
 
   if (json === livePreferences) return;
+  const before = prefs;
   prefs = validPreferences(next);
   livePreferences = JSON.stringify(prefs);
   applyPreferences();
 
   if (changedConditions) setModeControls();
+
+  if (TRAINING_PREFERENCES.some((key) => prefs[key] !== before[key])) showTraining();
 }
 
 // Caps Lock warning: read from the modifier state on each key event in the typing field.
@@ -2961,7 +2965,6 @@ function showResult(completed) {
 }
 
 function renderResults(completed, saved) {
-  activeRecommendation ||= recommendTarget([], completed.conditions);
   const replay = completed.summary;
   const counted = completed.status === 'complete';
   showResult(completed);
@@ -2982,11 +2985,6 @@ function renderResults(completed, saved) {
   const unsaved = saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.';
   setParts($('result-comparison-note'), [uncounted, uncounted && unsaved ? ' ' : '', unsaved]);
 
-  if (sessionKind === 'practice' || sessionKind === 'daily') {
-    activeRecommendation = trainingRecommendation(completed.conditions, completed);
-    selectedTarget = activeRecommendation.target;
-  }
-
   renderResultDrill(completed);
   // A counted book page moves the place on, so running again types the next page.
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again'
@@ -3004,8 +3002,9 @@ function renderResults(completed, saved) {
 // A counted practice run on repeated text: saved and listed, never a best, trend or retest baseline.
 const repeatedResult = (completed) => completed?.status === 'complete' && completed.kind === 'test' && completed.fresh === false;
 
-// The result's second action. After a counted run it starts the drill and retest loop for the run's
-// recommendation; after an adaptive run, a fresh-text retest against the newest normal run at these
+// The result's second action. After a counted run it starts the drill and retest loop for what the recommender
+// names now at the run's conditions, under the training settings in use, and drills what it names; after a
+// failed drill, that drill again; after an adaptive run, a fresh-text retest against the newest normal run at these
 // conditions, or a plain test when there is none. Custom text and ghost races are never mined for targets
 // or kept as a baseline, so they offer neither. Word practice isn't compared either, but like a drill it
 // leads on to a retest of the run its words came from.
@@ -3017,13 +3016,16 @@ function renderResultDrill(completed) {
 
   if (completed.adaptive) {
     button.textContent = baselineFor(completed.conditions) ? 'Retest on fresh text' : 'Retest';
+    button.onclick = startAdaptiveRetest;
 
     return;
   }
 
-  activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
-  const target = activeRecommendation.target;
+  if (button.hidden) return;
+  const recommendation = failedDrill(completed) ? trainingContext.recommendation : trainingRecommendation(completed.conditions, completed);
+  const { target } = recommendation;
   button.textContent = failedDrill(completed) ? 'Try drill again' : target ? `Drill “${target}”` : prefs.retest ? 'Drill and retest' : 'Drill';
+  button.onclick = () => startDrill(recommendation);
 }
 
 const COMPARISON_HEADINGS = {
@@ -3109,11 +3111,12 @@ function renderComparison(before, after, saved) {
       beforeAttemptId: before.id,
       afterAttemptId: after.id,
       target: selectedTarget,
-      recommendationKind: trainingContext?.recommendationKind || activeRecommendation?.kind || 'manual',
-      // Which policy and version picked the target (learner-decay-timing@1, counting@1), or null when picked by hand.
-      policy: trainingContext ? trainingContext.policy ?? null : activeRecommendation?.policy ?? null,
+      recommendationKind: trainingContext?.recommendationKind || 'manual',
+      // Which policy and version ranked the target (learner-decay-timing@1, counting@1), or null when it was typed
+      // by hand or drilled again from a past loop.
+      policy: trainingContext?.policy ?? null,
       // The training focus it was ranked for (balanced, accuracy, speed), beside the policy.
-      focus: trainingContext ? trainingContext.focus ?? null : activeRecommendation?.focus ?? null,
+      focus: trainingContext?.focus ?? null,
       // What the target was named for, so a slow pair reads back pace even when the retest timed none of it.
       targetBasis: trainedTarget ? (was?.basis === 'slow' ? 'slow' : 'errors') : null,
       drillCompleted: Boolean(trainingContext?.drillCompleted),
@@ -3131,15 +3134,21 @@ function renderComparison(before, after, saved) {
   renderHistory();
 }
 
+// What the comparison's Next was last drawn for: the unit just trained and the retest's conditions, or none when
+// no fair retest could run. A training setting changed while the comparison shows draws it again for the same.
+let comparisonNext = { trained: null, source: null };
+
 // The next unit in the recommender's queue at the retest's conditions, other than the one just trained.
-function renderComparisonNext(trained, source) {
-  const next = source && trainingRecommendation(source).queue.find((item) => item.unit !== trained);
+function renderComparisonNext(trained = comparisonNext.trained, source = comparisonNext.source) {
+  comparisonNext = { trained, source };
+  const recommendation = source ? trainingRecommendation(source) : null;
+  const next = recommendation?.queue.find((item) => item.unit !== trained);
   const button = $('comparison-next');
   button.hidden = !next;
 
   if (!next) return;
   button.textContent = `Next: “${next.unit}”`;
-  button.onclick = () => practiceTarget(next.unit, source, next.was);
+  button.onclick = () => practiceTarget(next.unit, source, recommendation);
 }
 
 // Train from the dock: the next drill for the current conditions, worked out from saved history by the
@@ -3179,9 +3188,15 @@ function startAdaptiveRetest() {
 function renderTrain() {
   $('comparison-panel').hidden = true;
   $('train-next').hidden = false;
-  const { recommendation, source } = trainPlan();
+  const { recommendation, baseline, source } = trainPlan();
   const target = recommendation.target;
   $('train-heading').textContent = recommendation.title;
+  // Train's one button: the drill it names, then the retest, then the comparison.
+  $('start-drill').onclick = () => {
+    baselineAttempt = baseline;
+    startDrill(recommendation);
+  };
+
   const words = target ? evidenceWords(target, source) : [];
   $('train-words').hidden = !words.length;
   $('train-words').replaceChildren(...words.map((word) => {
@@ -3283,26 +3298,18 @@ function lastLoopCopy(loop, source) {
     : `${loop.target} · ${before}% → ${after}% missed since you drilled it`;
 }
 
-// Train's one button: the drill, then the retest, then the comparison.
-function startTrainDrill() {
-  const { recommendation, baseline } = trainPlan();
-  activeRecommendation = recommendation;
-  baselineAttempt = baseline;
-  startDrill();
-}
-
-function startDrill() {
-  // startDaily() drops the recommendation, so a stale Start drill falls back to a general drill.
-  activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
-  selectedTarget = activeRecommendation.target || null;
+// A drill of what `recommendation` names, then the retest unless the retest setting is off. The drill keeps the
+// recommendation, its length and the retest setting it started with.
+function startDrill(recommendation) {
+  selectedTarget = recommendation.target || null;
   const mismatch = baselineAttempt ? layoutMismatch(baselineAttempt.conditions) : "";
 
   if (mismatch) baselineAttempt = null;
   const source = baselineAttempt?.conditions;
 
   if (source) restoreConditions(source);
-  trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', policy: activeRecommendation?.policy || null,
-    focus: activeRecommendation?.focus || null, baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false, was: activeRecommendation?.was || null,
+  trainingContext = { recommendation, target: selectedTarget, recommendationKind: recommendation.kind, policy: recommendation.policy || null,
+    focus: recommendation.focus || null, baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false, was: recommendation.was || null,
     retest: prefs.retest };
   const drill = drillPassage();
   trainingContext.drill = { target: selectedTarget, duration: prefs.drillSeconds, wordList: prefs.wordList, textVersion: drill.textVersion };
@@ -3605,10 +3612,10 @@ function openHistoryRun(id) {
   if (row) { row.open = true; row.scrollIntoView({ block: 'center', behavior: 'instant' }); row.querySelector('summary').focus(); }
 }
 
-function targetButton(target, source, was) {
+function targetButton(target, source, ranked) {
   const button = element('button', `Practice “${target}” again`, 'btn btn-secondary');
   button.type = 'button';
-  button.addEventListener('click', () => practiceTarget(target, source, was));
+  button.addEventListener('click', () => practiceTarget(target, source, ranked));
 
   return button;
 }
@@ -3626,18 +3633,14 @@ function retainedBaseline(source = null) {
   }) || null;
 }
 
-// A unit's counts as the learner queues it at `source` conditions, which the comparison reads back.
-const queuedEvidence = (unit, source) => trainingRecommendation(source).queue.find((item) => item.unit === unit)?.was ?? null;
-
-// A drill on a target picked from a list: Patterns across runs, a past loop, or the comparison's next unit, each
-// bringing the counts it was queued on.
-function practiceTarget(target, source, was = queuedEvidence(target, source)) {
+// A drill on a target picked from a list. Patterns across runs and the comparison's Next pass the recommendation
+// whose queue they show, so the loop records the policy and focus that queued it; a past loop's target was picked
+// by hand. Either way the drill brings the counts the learner queues it on, which the comparison reads back.
+function practiceTarget(target, source, ranked = null) {
   baselineAttempt = retainedBaseline({ ...source, layout: inputLayout(source.inputClass) });
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
-  selectedTarget = target;
-  activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
-    evidence: summarizePatterns(profile.attempts, 20, source), was, policy: null };
-  startDrill();
+  const was = (ranked || trainingRecommendation(source)).queue.find((item) => item.unit === target)?.was ?? null;
+  startDrill({ kind: 'manual', target, title: `Practice “${target}”`, was, policy: ranked?.policy ?? null, focus: ranked?.focus ?? null });
 }
 
 // The recommender's pick for `source` conditions. The run just finished always counts toward its own
@@ -3651,7 +3654,7 @@ function trainingRecommendation(source, current = null) {
 // A drill's text: the target's words, or, for a general drill with units ranked for it, words leaning
 // toward them.
 function drillPassage() {
-  return makeDrill(selectedTarget, prefs.wordList, activeRecommendation?.lean || []);
+  return makeDrill(selectedTarget, prefs.wordList, trainingContext?.recommendation?.lean || []);
 }
 
 // Patterns across runs: the learner's queue at the chosen conditions' keyboard, as Train reads it, each unit with
@@ -3660,7 +3663,8 @@ function renderTraining() {
   const source = conditionOptions($('training-conditions'), profile.runs.filter((r) => validRun(r)
     && ['test', 'retest', 'daily'].includes(r.kind)), conditions());
 
-  const { queue } = trainingRecommendation(source);
+  const recommendation = trainingRecommendation(source);
+  const { queue } = recommendation;
   $('training-memory-note').textContent = queue.length ? '' : 'Not enough evidence yet.';
   $('training-targets').replaceChildren(...queue.slice(0, 8).map(({ unit, was }) => {
     const row = element('article', '', 'training-target');
@@ -3669,7 +3673,7 @@ function renderTraining() {
     const loop = [...profile.loops].reverse().find((item) => item.target === unit && keyboardOf(item.conditions) === keyboardOf(source));
 
     if (loop) copy.append(element('p', `Last practiced ${dateCopy(loop.at)}. Last retest: ${loop.comparison.state}.`));
-    row.append(copy, targetButton(unit, source, was));
+    row.append(copy, targetButton(unit, source, recommendation));
 
     return row;
   }));
@@ -4352,7 +4356,6 @@ function startDaily() {
   if (race.attempt?.status === 'running') markRaceInterrupted();
   baselineAttempt = null;
   trainingContext = null;
-  activeRecommendation = null;
   resetSession('daily', { focus: true });
 }
 
@@ -4759,7 +4762,6 @@ async function startGhostRace(id) {
   // As with the daily: someone else's text ends any drill-and-retest cycle in progress.
   baselineAttempt = null;
   trainingContext = null;
-  activeRecommendation = null;
   inbox?.settle(`challenge:${id}`);
   resetSession('challenge', { focus: true });
 }
@@ -5209,7 +5211,6 @@ function forgetTraining() {
   baselineAttempt = null;
   trainingContext = null;
   selectedTarget = null;
-  activeRecommendation = null;
   // The practised words came from the cleared runs, so Run again starts a normal test.
   wordsPassage = null;
   showSpeed($('result-wpm'), null);
@@ -6564,8 +6565,6 @@ function bindEvents() {
   coarsePointer.addEventListener('change', () => renderKeys(heatRuns));
   $('training-conditions').addEventListener('change', renderTraining);
   $('start-daily').addEventListener('click', startDaily);
-  $('start-drill').addEventListener('click', startTrainDrill);
-  $('result-drill').addEventListener('click', () => (shownResult?.adaptive ? startAdaptiveRetest() : startDrill()));
   // A finished retest is a run like any other, so its card waits on Practice with everything a result offers.
   $('comparison-back').addEventListener('click', () => {
     if (shownResult?.kind !== 'retest' || shownResult !== attempt) {
@@ -6587,13 +6586,8 @@ function bindEvents() {
     $('manual-target-error').textContent = valid ? '' : 'Use 1–8 letters, no spaces or punctuation.';
 
     if (!valid) return;
-    selectedTarget = normalizeManualTarget(raw);
-    activeRecommendation = {
-      kind: 'manual',
-      target: selectedTarget,
-      title: `Practice “${selectedTarget}”`,
-    };
-    startDrill();
+    const target = normalizeManualTarget(raw);
+    startDrill({ kind: 'manual', target, title: `Practice “${target}”` });
   });
 
   $('ghost-offer').addEventListener('toggle', () => { if ($('ghost-offer').open && session) loadGhostFriends(); });
@@ -6993,17 +6987,31 @@ function restartHint() {
   return document.body.dataset.view === 'results' && prefs.keybindings.restart === 'Tab' ? 'enter' : bindingLabel(prefs.keybindings.restart);
 }
 
-// How Train trains. A drill or retest under way keeps what it started with; Train and Progress show the new pick.
+// How Train trains. A drill or retest under way keeps what it started with; what Train would drill next follows at
+// once, and so does an adaptive passage nobody has started, as one drawn next would.
 function setTraining(key, value) {
   prefs[key] = value;
   applyPreferences();
   saveChoice(key);
+  showTraining();
 
-  if (document.body.dataset.view === 'train' && $('comparison-panel').hidden) renderTrain();
+  if (key === 'trainFocus' && prefs.adaptive && untouchedPractice() && document.body.dataset.view === 'practice') resetSession('practice');
+}
 
-  if (document.body.dataset.view === 'progress') renderHistory();
+// Every surface that shows what Train would drill asks the recommender again, after a training setting changes here
+// or arrives from another device: the results card's drill, Train or its comparison's Next, and Patterns across runs.
+// Each binds its button to what it shows. A drill or retest under way keeps what it started with.
+function showTraining() {
+  const view = document.body.dataset.view;
 
-  if (document.body.dataset.view === 'results' && shownResult) renderResultDrill(shownResult);
+  if (view === 'results' && shownResult) renderResultDrill(shownResult);
+
+  if (view === 'train') {
+    if ($('comparison-panel').hidden) renderTrain();
+    else renderComparisonNext();
+  }
+
+  renderTraining();
 }
 
 // Repeat quotes changes only open practice's next quote, so a custom passage (or any other session) is kept.
