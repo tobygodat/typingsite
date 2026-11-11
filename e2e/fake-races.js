@@ -2,6 +2,7 @@
 // exercised against the migration; this adapter drives the real UI without network calls.
 import { randomUUID } from 'node:crypto';
 import { scoreTrace, validTrace } from '../src/ghost-race.js';
+import { FakeQuickMatch } from './fake-quick-match.js';
 
 export class FakeRaces {
   constructor(auth) {
@@ -17,17 +18,21 @@ export class FakeRaces {
     this.dropTraces = false;
     // Each pair of accounts' wins, keyed by the two ids in order: [first's wins, second's wins].
     this.tallies = new Map();
+    this.quick = new FakeQuickMatch(this);
   }
 
-  // As race_private.settle: a finished race between two accounts adds the winner's win (a tie, nothing).
+  // As race_private.settle: a finished race between two accounts adds the winner's win (a tie, nothing). A quick
+  // match is rated first, and its winner is the seat whose rated result won: a run that couldn't be checked never
+  // wins, and a race with no checked run has none.
   settle(room) {
+    this.quick.rate(room);
     const [one, two] = [1, 2].map((slot) => room.players.find((p) => p.slot === slot));
 
     if (!one?.userId || !two?.userId) return;
     const key = [one.userId, two.userId].sort().join(':');
     const wins = this.tallies.get(key) || [0, 0];
     const ahead = one.wpm - two.wpm || one.accuracy - two.accuracy;
-    const winner = ahead > 0 ? one : ahead < 0 ? two : null;
+    const winner = room.quick ? [one, two].find((p) => this.quick.row(room, p.userId)?.outcome === 'won') : ahead > 0 ? one : ahead < 0 ? two : null;
 
     if (winner) wins[key.startsWith(winner.userId) ? 0 : 1] += 1;
     this.tallies.set(key, wins);
@@ -48,6 +53,8 @@ export class FakeRaces {
 
   // As race_private.keep_trace: once, from a finished racer, and only a trace that replays to the result.
   keepTrace(room, player, trace) {
+    this.quick.check(room, player, trace);
+
     if (this.dropTraces || !player.finished || player.trace || !validTrace(trace)) return;
 
     if (scoreTrace(trace, room.passage, { relaxed: true }).correct !== player.correct) return;
@@ -77,12 +84,19 @@ export class FakeRaces {
   snapshot(room, slot) {
     const now = Date.now();
 
-    if (now >= Date.parse(room.expiresAt) && !['finished', 'cancelled'].includes(room.status)) room.status = 'expired';
+    // Only the clock ends a quick match.
+    if (!room.quick && now >= Date.parse(room.expiresAt) && !['finished', 'cancelled'].includes(room.status)) room.status = 'expired';
 
-    if (room.status === 'countdown' && now >= Date.parse(room.startAt)) room.status = 'racing';
+    // A quick match whose other seat never came is called off at the start.
+    if (room.status === 'countdown' && now >= Date.parse(room.startAt)) room.status = room.quick && room.players.some((p) => !p.ready) ? 'cancelled' : 'racing';
 
     // As race_action: ten seconds' grace after the clock for the last progress.
     if (room.status === 'racing' && (room.players.every((p) => p.finished) || now >= Date.parse(room.startAt) + (room.duration + 10) * 1000)) {
+      // A quick match seat still racing is finished on its last progress over the whole clock, as the service does.
+      if (room.quick) {
+        for (const p of room.players.filter((seat) => !seat.finished)) Object.assign(p, { finished: true, elapsed: room.duration, wpm: Math.round(p.correct / 5 / (room.duration / 60)) });
+      }
+
       room.status = 'finished';
       this.settle(room);
     }
@@ -92,17 +106,40 @@ export class FakeRaces {
       duration: room.duration, startAt: room.startAt, expiresAt: room.expiresAt,
       serverNow: new Date(now).toISOString(), selfSlot: slot, inviteKind: room.inviteKind,
       rematchOf: room.rematchOf || null, rematchId: room.rematchId || null, tally: this.tally(room, slot),
-      players: room.players.map(({ userId, guestToken, typed, sequence, keystrokes, errors, lastSeen, correct, trace, ...player }) => {
+      quick: Boolean(room.quick), rating: room.quick ? this.quick.resultFor(room, slot) : null,
+      players: room.players.map(({ userId, guestToken, typed, sequence, keystrokes, errors, lastSeen, correct, trace, verdict, ...player }) => {
         const seen = {
           ...player, connected: now - lastSeen < 10000, account: Boolean(userId),
           friend: Boolean(userId) && (this.friends.get(room.players.find((p) => p.slot === slot)?.userId) || []).some((f) => f.friendId === userId),
         };
 
+        const row = room.quick ? this.quick.row(room, userId) : null;
+
         if (player.slot === slot) Object.assign(seen, { typed, sequence, keystrokes, errors });
+
+        // A settled quick match seat's result and whether its run was checked: the one record of who won.
+        if (row) Object.assign(seen, { outcome: row.outcome, checked: verdict === 'ok' });
 
         return seen;
       }),
     };
+  }
+
+  // A quick match whose every seat has finished or left settles at once; a seat that left is finished on its last
+  // progress over the whole clock.
+  closeQuick(room) {
+    if (!room.players.every((p) => p.finished || p.left)) return;
+
+    for (const p of room.players.filter((seat) => !seat.finished)) Object.assign(p, { finished: true, elapsed: room.duration, wpm: Math.round(p.correct / 5 / (room.duration / 60)) });
+    room.status = 'finished';
+    this.settle(room);
+  }
+
+  // As race_private.settle_due: every quick match past its clock and grace, moved on as its next request would.
+  settleDue() {
+    for (const room of this.rooms.values()) {
+      if (room.quick && ['countdown', 'racing'].includes(room.status) && Date.now() >= Date.parse(room.startAt) + (room.duration + 10) * 1000) this.snapshot(room, null);
+    }
   }
 
   player(slot, name, userId, guestToken) {
@@ -183,8 +220,11 @@ export class FakeRaces {
     const room = this.rooms.get(id);
 
     if (!room) return failure('This race is unavailable or has expired.');
-    this.snapshot(room, null);
     let player = room.players.find((p) => (caller && p.userId === caller) || (guestToken && p.guestToken === guestToken));
+
+    // A quick match seat is there once its browser asks about the room.
+    if (room.quick && player) player.ready = true;
+    this.snapshot(room, null);
 
     if (action === 'join') {
       if (player) {
@@ -274,7 +314,14 @@ export class FakeRaces {
     if (action === 'leave') {
       // A closed race marks the seat as left, which ends the other's rematch choice.
       if (['finished', 'cancelled', 'expired'].includes(room.status)) Object.assign(player, { left: true, rematch: false });
-      else room.status = 'cancelled';
+      else if (room.quick && room.status === 'racing') {
+        // Leaving a quick match after its start, before finishing, while the other racer is still in it, forfeits:
+        // a rated loss now, and the race goes on for the other. A seat that has finished, or whose rival has left,
+        // just goes. Once every seat has finished or left, it settles.
+        if (!player.finished && !room.players.some((p) => p.slot !== player.slot && p.left)) this.quick.rate(room, player.slot);
+        player.left = true;
+        this.closeQuick(room);
+      } else room.status = 'cancelled';
 
       return reply(200, this.snapshot(room, player.slot));
     }
@@ -307,11 +354,14 @@ export class FakeRaces {
       player.wpm = Math.round(correct / 5 / (player.elapsed / 60));
       player.accuracy = data.keystrokes ? Math.round((data.keystrokes - data.errors) / data.keystrokes * 100) : 100;
       player.correct = correct;
-      player.finished = Boolean(data.finished && data.typed === room.passage) || player.elapsed >= room.duration;
+      // A quick seat finishes only with its own finishing packet, the one that carries its keystroke trace.
+      player.finished = room.quick ? Boolean(data.finished) && (data.typed === room.passage || player.elapsed >= room.duration)
+        : Boolean(data.finished && data.typed === room.passage) || player.elapsed >= room.duration;
 
       if (player.finished) this.keepTrace(room, player, data.trace);
 
-      if (room.players.every((p) => p.finished)) {
+      if (room.quick) this.closeQuick(room);
+      else if (room.players.every((p) => p.finished)) {
         room.status = 'finished';
         this.settle(room);
       }
