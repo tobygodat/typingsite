@@ -1,6 +1,7 @@
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { DEFAULT_POLICY, englishFrequency } from '../src/learner.js';
-import { test, expect, openApp, passageText, chooseWords, completePassage, openView, openSettings, closeSettings, chooseSetting, signInWithEmail, typeInto } from './fixtures.js';
+import { LESSONS } from '../src/lessons.js';
+import { test, expect, openApp, passageText, chooseWords, chooseMore, completePassage, openView, openSettings, closeSettings, chooseSetting, signInWithEmail, typeInto } from './fixtures.js';
 
 const checked = (page, id) => page.locator(`#${id} input:checked`);
 
@@ -293,6 +294,104 @@ for (const focus of ['balanced', 'accuracy', 'speed']) {
     await expect(checked(page, 'train-focus')).toHaveValue(focus);
   });
 }
+
+test('an adaptive passage nobody has started is drawn again for a focus chosen on another screen or another device', async ({ page, browser, supabase }) => {
+  const user = await signInWithHistory(page, supabase, 'adaptive-waiting@stilltype.test');
+  await chooseSetting(page, 'train-focus', 'speed');
+  await closeSettings(page);
+  // A normal run at these settings is the baseline an adaptive run's retest is compared with.
+  await completePassage(page);
+  await page.locator('#adaptive-switch').click();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  const forSpeed = await passageText(page);
+
+  await openView(page, 'Train');
+  await runPalette(page, 'train focus · accuracy');
+  await openView(page, 'Practice');
+  await expect.poll(() => passageText(page)).not.toBe(forSpeed);
+  const forAccuracy = await passageText(page);
+
+  const context = await browser.newContext();
+  const phone = await context.newPage();
+  await supabase.attach(phone);
+
+  try {
+    await openApp(phone);
+    await signInWithEmail(phone, user.email);
+    await chooseSetting(phone, 'train-focus', 'speed');
+    await closeSettings(phone);
+    await expect.poll(() => supabase.profileFor(user.email)?.preferences?.trainFocus).toBe('speed');
+    await page.evaluate(() => dispatchEvent(new Event('online')));
+    await expect.poll(() => passageText(page)).not.toBe(forAccuracy);
+  } finally {
+    await context.close();
+  }
+
+  // The passage typed is the one drawn for the focus in force, and its loop says so.
+  await completePassage(page);
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await completePassage(page);
+  await expect.poll(() => supabase.profileFor(user.email)?.loops?.at(-1)).toMatchObject({ recommendationKind: 'adaptive', focus: 'speed' });
+});
+
+test('a failed drill whose history another device cleared while it waited shows its card and can be tried again', async ({ page, browser, supabase }) => {
+  const user = supabase.addUser('cleared-drill@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await chooseSetting(page, 'correction-select', 'fail-word');
+  await closeSettings(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1);
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+
+  const context = await browser.newContext();
+  const phone = await context.newPage();
+  await supabase.attach(phone);
+
+  try {
+    await openApp(phone);
+    await signInWithEmail(phone, user.email);
+    await expect(phone.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    await openView(phone, 'Progress');
+    await expect(phone.locator('#clear-history')).toBeEnabled();
+    await phone.locator('#clear-history').click();
+    await phone.locator('#confirm-clear-input').fill('clear');
+    await phone.locator('#confirm-clear').click();
+    await expect.poll(() => supabase.profileFor(user.email)?.historyClearedAt, { intervals: [100] }).toBeTruthy();
+  } finally {
+    await context.close();
+  }
+
+  await page.evaluate(() => dispatchEvent(new Event('online')));
+  await expect(page.locator('#best')).toHaveText('No best yet');
+
+  const text = await passageText(page);
+  await typeInto(page, `${text[0] === 'x' ? 'z' : 'x'} `);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-drill')).toHaveText('Try drill again');
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+});
+
+test('the lessons’ hand-off states the drill length chosen in the settings dialog while it shows', async ({ page, supabase }) => {
+  const user = supabase.addUser('handoff-length@stilltype.test');
+  const record = { wpm: 20, accuracy: 97, at: '2026-10-01T18:10:00Z' };
+  const lessons = Object.fromEntries(LESSONS.map((lesson) => [lesson.id, { tries: 1, last: record, passed: record }]));
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { mode: 'words', count: 10 }, attempts: [], runs: [], loops: [], seenTextIds: [], bests: {}, lessons,
+    updatedAt: '2026-10-08T12:00:00Z' } });
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await chooseMore(page, 'open-lessons');
+  await expect(page.locator('[data-screen="learn"]')).toContainText('a 30-second drill');
+
+  // Read once, at once: the change itself redraws the screen. A later save or sync would too, so a retried read proves nothing.
+  await chooseSetting(page, 'drill-length', '120');
+  expect(await page.locator('[data-screen="learn"]').textContent()).toContain('a 120-second drill');
+});
 
 test('a focus chosen on another device updates the results card, Train and the comparison open here', async ({ page, browser, supabase }) => {
   const user = await signInWithHistory(page, supabase, 'focus-sync@stilltype.test');

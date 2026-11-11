@@ -3028,7 +3028,10 @@ function renderResultDrill(completed) {
   }
 
   if (button.hidden) return;
-  const recommendation = failedDrill(completed) ? trainingContext.recommendation : trainingRecommendation(completed.conditions, completed);
+  // A failed drill is tried again as it was. One whose history another device cleared while it waited stands
+  // alone, with no context left, so it is recommended afresh.
+  const again = failedDrill(completed) ? trainingContext?.recommendation : null;
+  const recommendation = again || trainingRecommendation(completed.conditions, failedDrill(completed) ? null : completed);
   const { target } = recommendation;
   button.textContent = failedDrill(completed) ? 'Try drill again' : target ? `Drill “${target}”` : prefs.retest ? 'Drill and retest' : 'Drill';
   button.onclick = () => startDrill(recommendation);
@@ -3425,7 +3428,7 @@ function navigate(view) {
     // A waiting passage is rebuilt, as the same kind, if strict space or quick end changed while another screen showed.
     const staleRules = current && inputRules(attempt.conditions).join() !== inputRules(sessionConditions(sessionKind)).join();
 
-    if (!current || staleRepeat() || (preferencesWaiting && untouchedPractice())) resetSession('practice');
+    if (!current || staleRepeat() || staleAdaptive() || (preferencesWaiting && untouchedPractice())) resetSession('practice');
     else if (staleRules) resetSession(sessionKind);
     switchView('practice');
 
@@ -7004,16 +7007,19 @@ function setTraining(key, value) {
   prefs[key] = value;
   applyPreferences();
   saveChoice(key);
-  showTraining();
 
-  if (key === 'trainFocus' && prefs.adaptive && untouchedPractice() && document.body.dataset.view === 'practice') resetSession('practice');
+  // A new focus can lean a waiting passage that the old one left plain.
+  if (!showTraining() && key === 'trainFocus' && prefs.adaptive && untouchedPractice() && document.body.dataset.view === 'practice') resetSession('practice');
 }
 
 // Every surface that shows what Train would drill asks the recommender again, after a training setting changes here
 // or arrives from another device: the results card's drill, Train or its comparison's Next, and Patterns across runs.
-// Each binds its button to what it shows. A drill or retest under way keeps what it started with.
+// Each binds its button to what it shows. A drill or retest under way keeps what it started with. The lessons'
+// hand-off states the drill's length, and a waiting adaptive passage is drawn again for a new focus: true when it was.
 function showTraining() {
   const view = document.body.dataset.view;
+
+  if (view === 'learn') renderLessons();
 
   if (view === 'results' && shownResult) renderResultDrill(shownResult);
 
@@ -7023,6 +7029,11 @@ function showTraining() {
   }
 
   renderTraining();
+
+  if (view !== 'practice' || !staleAdaptive()) return false;
+  resetSession('practice');
+
+  return true;
 }
 
 // Repeat quotes changes only open practice's next quote, so a custom passage (or any other session) is kept.
@@ -7052,6 +7063,12 @@ function labelPassage(fresh, exhausted) {
 }
 
 // An unstarted repeated passage that repeats-off would have replaced with unseen text.
+// An adaptive passage nobody has started, whose words another focus chose. It is drawn again on the practice
+// screen, or on the way back to it, like a waiting repeat that repeats-off would replace.
+function staleAdaptive() {
+  return untouchedPractice() && Boolean(passage?.adaptive) && passage.trainFocus !== prefs.trainFocus;
+}
+
 function staleRepeat() {
   return !prefs.repeatQuotes && sessionKind === 'practice' && attempt?.status === 'ready' && passage?.fresh === false && !passage.exhausted;
 }
