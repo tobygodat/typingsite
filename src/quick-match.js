@@ -31,13 +31,50 @@ export function ratingChanges(a, b, outcome) {
 
 export const provisional = (races) => races < RATING.provisional;
 
-// The count and "provisional" stay on one line (no-break spaces), so a narrow screen never starts a line with
-// "· provisional".
-export function ratingLine(rating) {
-  if (!rating || !Number.isSafeInteger(rating.rating) || !Number.isSafeInteger(rating.races)) return '';
-  const count = `${rating.races} rated ${rating.races === 1 ? 'race' : 'races'}${provisional(rating.races) ? ' · provisional' : ''}`;
+// The race rank, read from a settled rating and never stored (docs/adr/0016-race-rank.md). Whisper is under the
+// floor and Hurricane from the top; each rank between spans perRank points in three perStep steps, III lowest.
+export const RANKS = Object.freeze({
+  names: Object.freeze(['Whisper', 'Breeze', 'Gust', 'Gale', 'Tempest', 'Hurricane']),
+  steps: Object.freeze(['III', 'II', 'I']),
+  floor: 1200,
+  perRank: 300,
+  perStep: 100,
+});
 
-  return `Race rating ${rating.rating} · ${count.replaceAll(' ', '\u00a0')}`;
+const validRating = (rating) => Boolean(rating) && Number.isSafeInteger(rating.rating) && Number.isSafeInteger(rating.races);
+
+// { index, name, step } for a rating with at least ten rated races, or null while it is provisional.
+export function rankOf(rating) {
+  if (!validRating(rating) || provisional(rating.races)) return null;
+  const above = rating.rating - RANKS.floor;
+  const index = Math.min(RANKS.names.length - 1, Math.max(0, Math.floor(above / RANKS.perRank) + 1));
+  const stepped = index > 0 && index < RANKS.names.length - 1;
+
+  return { index, name: RANKS.names[index], step: stepped ? RANKS.steps[Math.floor((above % RANKS.perRank) / RANKS.perStep)] : null };
+}
+
+export const rankLabel = (rank) => (rank ? [rank.name, rank.step].filter(Boolean).join(' ') : '');
+
+// No-break spaces keep "Gale II" and the count whole, so a narrow screen never starts a line with "II" or
+// "· provisional".
+const unbroken = (text) => text.replaceAll(' ', '\u00a0');
+
+export function ratingLine(rating) {
+  if (!validRating(rating)) return '';
+  const rank = rankOf(rating);
+  const count = `${rating.races} rated ${rating.races === 1 ? 'race' : 'races'}${rank ? '' : ' · provisional'}`;
+
+  return rank ? `${unbroken(rankLabel(rank))} · ${rating.rating} · ${unbroken(count)}` : `Race rating ${rating.rating} · ${unbroken(count)}`;
+}
+
+// ", up from Gust I." when a rated race moved a ranked rating to another rank or step. The race that ends the
+// provisional period has no rank before it, so it says nothing.
+function rankMove(before, after) {
+  const [was, now] = [rankOf(before), rankOf(after)];
+
+  if (!was || !now || rankLabel(was) === rankLabel(now)) return '';
+
+  return `, ${after.rating > before.rating ? 'up' : 'down'} from ${unbroken(rankLabel(was))}.`;
 }
 
 // What was wrong with a run that couldn’t be checked, as the results say it after "It" or "Yours".
@@ -79,7 +116,11 @@ export function ratingChangeLine(result, opponent = 'the other racer') {
     left: 'Rated loss: you left the race.',
   }[reason] || (RUN_FAULTS[reason] ? `Rated loss: your run couldn’t be checked. It ${RUN_FAULTS[reason]}.` : `Rated ${OUTCOME_WORDS[outcome] || 'race'}.`);
 
-  return `${lead} ${ratingLine({ rating: result.after, races: result.races })} (${signed(result.delta)})`;
+  // `races` is the account's count after this race: a racer can't start another quick match until one settles.
+  const after = { rating: result.after, races: result.races };
+  const before = { rating: result.after - result.delta, races: result.races - 1 };
+
+  return `${lead} ${ratingLine(after)} (${signed(result.delta)})${rankMove(before, after)}`;
 }
 
 // Pairing. Two players pair when their ratings are within the gap for the longer of their two waits: 100 at
