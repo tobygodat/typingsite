@@ -1,6 +1,6 @@
 // The TOB-419 check's reproduction, as a guest at words 100: three passages typed missing the second letter of
 // every "th", then Train, its drill, the fresh retest and the comparison. Every miss on "h" is inside "th", so
-// nothing may offer "h". Run at 1440×900.
+// nothing may offer "h". Progress reads back its misses. Run at 1440×900.
 export default async ({ page, h, shot, note, check }) => {
   // About 120 wpm, so the run card reads like a person's.
   const delay = 100;
@@ -62,4 +62,13 @@ export default async ({ page, h, shot, note, check }) => {
   check(await page.locator('#comparison-next').isHidden(), 'no Next: the queue holds only "th", just drilled');
   check(!comparison.includes('“h”'), 'nothing offers "h"');
   await shot('comparison');
+
+  // Named for its misses, so Progress reads back its misses, as the comparison did.
+  await h.openView('Progress');
+  await h.settle();
+  await page.locator('.history-conditions').first().scrollIntoViewIfNeeded();
+  const row = await page.locator('.history-conditions').first().innerText();
+  note('progress row', row);
+  check(row.includes('th missed') && !row.includes('before'), 'Progress reads back the misses of "th"');
+  await shot('progress-misses');
 };
