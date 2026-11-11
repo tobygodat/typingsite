@@ -62,6 +62,10 @@ export default async ({ page, h, shot, note, check, fake }) => {
   check(await page.getByRole('button', { name: 'Race Sam Achebe' }).count() === 1, 'Race names the person');
   check((await page.locator('.people-row', { hasText: 'Maya' }).locator('.sr-only').textContent()) === '3 wins, 4 losses', 'the tally reads as wins and losses');
   await shot('list');
+  await page.emulateMedia({ forcedColors: 'active' });
+  await h.settle();
+  await shot('forced-colors');
+  await page.emulateMedia({ forcedColors: 'none' });
 
   // An invitation arrives while the page is open.
   fake.races.invite(people.ola.id, toby.id, { name: 'Ola' });

@@ -4921,9 +4921,11 @@ function renderGhostResult() {
   const mine = ghost.result || (ghost.trace ? scoreTrace(ghost.trace, ghost.passage, { relaxed: ghost.run.conditions.correctionPolicy === 'relaxed' }) : null);
   const match = { duration: ghost.duration, sender: ghost.sender, result: mine };
   const leader = mine ? challengeOutcome(match) : null;
+  // Your own recording goes nowhere, so a run that can't be scored against it is not compared, never "not sent".
+  const kept = ghost.own ? 'compared' : 'sent';
   $('ghost-result-heading').textContent = ghost.state === 'interrupted' ? (ghost.own ? 'Interrupted.' : 'Interrupted, so not sent.')
-    : ghost.state === 'other-input' ? 'A different kind of input, so not sent.'
-      : ghost.state === 'unreplayable' ? 'A character a ghost race can’t replay, so not sent.' : !mine ? 'Too long to send.'
+    : ghost.state === 'other-input' ? `A different kind of input, so not ${kept}.`
+      : ghost.state === 'unreplayable' ? `A character a ghost race can’t replay, so not ${kept}.` : !mine ? (ghost.own ? 'Too long to replay.' : 'Too long to send.')
         : leader === 'tie' ? 'A tie.' : `${leader === 'recipient' ? 'You' : ghost.name} ${leadVerb(match, leader)}.`;
   const rows = [...(mine ? [{ name: 'You', score: mine }] : []), { name: ghost.name, score: ghost.sender }];
 
@@ -4945,7 +4947,7 @@ function renderGhostResult() {
     failed: `Not sent. ${ghost.error?.message || ''}`,
     unsendable: 'Race again with fewer corrections.',
     unreplayable: 'Race again without emoji.',
-    'other-input': `Race again on ${ghostInputLabel(ghost.conditions)} to send a run.`,
+    'other-input': `Race again on ${ghostInputLabel(ghost.conditions)} to ${ghost.own ? 'compare' : 'send a run'}.`,
     own: 'The ghost was your own recording.',
   }[ghost.state] || '';
   const again = RACE_AGAIN.includes(ghost.state);
