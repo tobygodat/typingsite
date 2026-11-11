@@ -3497,7 +3497,8 @@ function switchView(view) {
   updateGlides();
 
   if (view === 'progress') renderHistory();
-  onlineRace?.onViewChange(view, previous);
+  // Challenge opens on its people list, unless a one-keyboard race is being typed there.
+  onlineRace?.onViewChange(view, { keep: previous === 'compete' && raceUnderWay() });
 
   // Opened from anywhere, Train draws the path afresh; a retest's comparison draws it once more as it opens.
   if (view === 'train') {

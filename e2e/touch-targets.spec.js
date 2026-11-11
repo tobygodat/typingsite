@@ -280,6 +280,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       small.push(...await sweep(page, 'challenge, online'));
       await page.locator('#open-daily').click();
       small.push(...await sweep(page, 'challenge, daily'));
+      await page.locator('#challenge-daily-view [data-challenge-back]').click();
       await page.locator('#open-local').click();
       small.push(...await sweep(page, 'challenge, one keyboard'));
       await page.locator('#player-one-name').fill('Ada');
@@ -347,7 +348,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       small.push(...await sweep(page, 'progress, comparison open'));
 
       await openView(page, 'Challenge');
-      await expect(page.locator('#online-friend-list')).toContainText('lin@stilltype.test');
+      await expect(page.locator('#people-list')).toContainText('lin@stilltype.test');
       small.push(...await sweep(page, 'challenge, signed in'));
       await setRaceName(page, 'Ada');
       await openRaceLink(page);

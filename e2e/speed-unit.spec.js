@@ -338,6 +338,7 @@ test('the daily challenge and a one-keyboard race read in cpm', async ({ page })
   await page.locator('#daily-history-panel summary').click();
   await expect(page.locator('.daily-result strong')).toHaveText(/^\d+ cpm · \d+%$/);
 
+  await page.locator('#challenge-daily-view [data-challenge-back]').click();
   await page.locator('#open-local').click();
   await page.locator('#player-one-name').fill('Ada');
   await page.locator('#player-two-name').fill('Lin');

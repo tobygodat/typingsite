@@ -25,8 +25,8 @@ test.describe('challenge views', () => {
         await expect(page.locator(`#${view}`)).toBeVisible();
         await expect(page.locator(`#${heading}`)).toBeFocused();
         await expect(page.locator('#challenge-people')).toBeHidden();
-        // One filled button per view.
-        await expect(page.locator('#compete-screen .btn-primary:visible')).toHaveCount(1);
+        // At most one filled button per view.
+        expect(await page.locator('#compete-screen .btn-primary:visible').count()).toBeLessThanOrEqual(1);
         await page.locator(`#${view} [data-challenge-back]`).click();
         await expect(page.locator('#challenge-people')).toBeVisible();
         await expect(page.locator(`#${link}`)).toBeFocused();

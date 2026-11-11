@@ -977,6 +977,7 @@ test('a Race reply that lands after Lin opened the custom editor, or while Lin w
   await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
   await expectOffer(page, 'Ada');
   // A Race from the inbox, then a local race set up while it loads.
+  await page.locator('#people-setup-view [data-challenge-back]').click();
   await page.locator('#open-local').click();
   reply = await holdInboxRace(page, supabase);
   await page.locator('#start-local-race').click();

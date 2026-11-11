@@ -94,7 +94,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   let linksBusy = false;
   let linksAgain = false;
   let dismissed = new Set();
-  let peopleFailure = null;
+  // Why the list can't be complete: the friend list's last read, and the invitations' last poll.
+  let friendsFailure = null;
+  let invitesFailure = null;
   const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(PEOPLE_CHANNEL) : null;
   // The rematch room this tab is moving to, and the room whose traces it has read.
   let following = null;
@@ -102,7 +104,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   const review = createRaceReview({ renderText });
 
   // Every friend-list request goes through this queue, one at a time, and each reply is the list.
-  const friendRequests = multiplayer.queueFriendRequests((list) => { friends = list; friendsLoaded = true; peopleFailure = null; renderFriends(); renderPeople(); },
+  const friendRequests = multiplayer.queueFriendRequests((list) => { friends = list; friendsLoaded = true; friendsFailure = null; renderFriends(); renderPeople(); },
     { load: (signal) => multiplayer.listFriends(getSession(), signal) });
 
   let befriended = false;
@@ -209,8 +211,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('people-list').hidden = !rows.length;
     drawPeople($('people-list'), rows, { fallback: $('quick-match').querySelector('[data-quick="toggle"]'),
       decorate: (button) => { if (button.matches(RACE_CONTROLS)) markBusy(button); } });
-    const failure = signedIn ? peopleFailure : null;
-    const message = failure?.message || '';
+    const message = signedIn ? (friendsFailure || invitesFailure)?.message || '' : '';
 
     if ($('people-status').textContent !== message) $('people-status').textContent = message;
   }
@@ -219,7 +220,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   function onInbox(invitations, failure, listed) {
     invites = invitations;
     challenges = Array.isArray(listed) ? listed : challenges;
-    peopleFailure = failure || (friendsLoaded ? null : peopleFailure);
+    invitesFailure = failure;
     pruneDismissed();
     renderPeople();
     const ids = [...invites.map((invite) => invite.id), ...challenges.map((challenge) => challenge.id)].sort().join();
@@ -391,7 +392,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     }), $('online-invite-email'));
   }
 
-  // One press on a friend's Race invites them with the race setup: their inbox and their row here say so.
+  // One press on a friend's Race invites them to a race on the race setup.
   function raceFriend(friendId) {
     const friend = friends.find((value) => value.id === friendId);
 
@@ -431,7 +432,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
     try { await friendRequests.reload(); }
     catch (failure) {
-      if (!friendsLoaded) { peopleFailure = failure; renderPeople(); }
+      if (!friendsLoaded) { friendsFailure = failure; renderPeople(); }
     }
   }
 
@@ -1169,10 +1170,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
       if (!live()) show('daily');
     },
-    // Challenge opens from another screen on the people list; a race in it shows where the list would.
-    onViewChange(screen, from) {
+    // Challenge opens on the people list, unless `keep` holds the view it shows; a race shows where the list would.
+    onViewChange(screen, { keep = false } = {}) {
       if (screen === 'compete') {
-        if (from !== 'compete' && view !== 'people') { view = 'people'; onModeChange?.(); board?.hide(); }
+        if (!keep && view !== 'people') { view = 'people'; onModeChange?.(); board?.hide(); }
 
         renderHome();
 

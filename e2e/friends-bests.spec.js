@@ -284,7 +284,6 @@ test('only completed practice tests and retests are shared, never drills, dailie
   await expect.poll(() => rowTexts(page)).toEqual([`You 64 wpm 95% accuracy · ${at.slice(0, 10)}`]);
 
   // A daily run finished here changes the daily row and the week, but not the bests.
-  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   await typePaced(page, 120);
