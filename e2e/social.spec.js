@@ -447,6 +447,7 @@ test('a pressed race control keeps keyboard focus while its request is out, and 
   await setRaceName(page, 'Ada');
   await expect(page.locator('[data-accept-invite]')).toBeVisible();
   await expect(page.locator('[data-race-friend]')).toHaveCount(2);
+  // Kim's invitation is a row of its own (Kim is saved by email), so the friend "kim" shows the email typed for them.
   // Coming back to Challenge reads the friend list again, and its answer is slow and brings someone new.
   await saveFriend(supabase, host, 'mo@stilltype.test');
   const releaseRead = supabase.races.hold('friends');
@@ -482,7 +483,7 @@ test('a pressed race control keeps keyboard focus while its request is out, and 
     await settleTransitions(page);
     // The others are dimmed as disabled. The pressed one dims its colours instead of the whole box,
     // so its focus ring stays at full strength in the text colour.
-    expect(await page.getByRole('button', { name: 'Race kim', exact: true }).evaluate((node) => getComputedStyle(node).opacity)).toBe('0.38');
+    expect(await page.getByRole('button', { name: 'Race kim (kim@stilltype.test)', exact: true }).evaluate((node) => getComputedStyle(node).opacity)).toBe('0.38');
 
     // The theme follows the emulated scheme through the app's change listener, so wait for it to land.
     const look = () => challenge.evaluate((node) => ({ opacity: getComputedStyle(node).opacity, ring: getComputedStyle(node).outlineColor,
@@ -504,7 +505,7 @@ test('a pressed race control keeps keyboard focus while its request is out, and 
   // Under the pointer a waiting control stays as it is: no hover fill, and no press.
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const background = (button) => button.evaluate((node) => getComputedStyle(node).backgroundColor);
-  const kimRace = page.getByRole('button', { name: 'Race kim', exact: true });
+  const kimRace = page.getByRole('button', { name: 'Race kim (kim@stilltype.test)', exact: true });
 
   for (const button of [kimRace, page.locator('[data-accept-invite]')]) {
     const atRest = await background(button);
@@ -541,7 +542,8 @@ test('an invitation’s Join keeps keyboard focus while its join is out, and a p
   await join.focus();
   await page.keyboard.press('Enter');
   await expect(join).toHaveAttribute('aria-disabled', 'true');
-  await arrived(supabase, 'invites');
+  // The join's own refresh is skipped when a poll is already out; then the next poll, within ten seconds, brings it.
+  await expect.poll(() => supabase.races.holds.has('invites'), { timeout: 15000 }).toBe(false);
   const redraws = await countRedraws(page, '#people-list');
   releaseInvites();
   await expect.poll(redraws).toBeGreaterThan(0);
