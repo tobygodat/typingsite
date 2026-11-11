@@ -1,4 +1,4 @@
-# 0016. The design document keeps floors only
+# 0017. The design document keeps floors only
 
 Status: Accepted, 2026-11-11 (TOB-431). Supersedes [0002](0002-afterimage-design-system.md).
 

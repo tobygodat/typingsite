@@ -1,6 +1,6 @@
 # Design
 
-Stilltype has no fixed visual system ([ADR 0016](docs/adr/0016-design-note-keeps-floors-only.md)). This note says where the look lives and which floors every change holds. Everything else is open.
+Stilltype has no fixed visual system ([ADR 0017](docs/adr/0017-design-note-keeps-floors-only.md)). This note says where the look lives and which floors every change holds. Everything else is open.
 
 ## Where the look lives
 

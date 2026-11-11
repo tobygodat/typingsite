@@ -29,7 +29,7 @@ A typing-practice web app built around one loop: type a test, see which letter p
 
 ## Rules
 
-- **Design.** `DESIGN.md` prescribes no visual system ([ADR 0016](docs/adr/0016-design-note-keeps-floors-only.md)). Hold its floors: contrast, reduced motion, 44px touch targets, the letter being typed kept in view, and no sideways scroll at 320px. New colours, type, layouts, motion and effects are welcome. Show Toby a mockup or a screenshot of any change a user sees before it ships.
+- **Design.** `DESIGN.md` prescribes no visual system ([ADR 0017](docs/adr/0017-design-note-keeps-floors-only.md)). Hold its floors: contrast, reduced motion, 44px touch targets, the letter being typed kept in view, and no sideways scroll at 320px. New colours, type, layouts, motion and effects are welcome. Show Toby a mockup or a screenshot of any change a user sees before it ships.
 - **Tokens.** The tokens at the top of `src/styles.css` are the source of truth. A value used in more than one place becomes a token, and a colour token is set in every theme block.
 - **Scoring.** Scoring never reads `src/motion.js` or `src/graph.js`.
 - **Historical references.** `design/ash/` and `design/canvas/` are not served, not tested and not binding.
