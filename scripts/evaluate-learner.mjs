@@ -19,16 +19,16 @@ import { pathToFileURL } from 'node:url';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, makePassage } from '../src/typing.js';
 import { MIN_PATTERN_SAMPLES, evidenceRun, runRecord } from '../src/insights.js';
 import { DECAY_POLICY, DECAY_TIMING_POLICY, DEFAULT_POLICY, LEAN_UNITS, LEARNER_POLICY, LEARNER_VARIANTS, OWN_COST_POLICY, SLOW_FLOOR_MS, TIMING_POLICY, countingRecommendation,
-  englishFrequency, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation } from '../src/learner.js';
+  drilledTargets, englishFrequency, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation } from '../src/learner.js';
 import { normalizeProfile } from '../src/profile.js';
 import { keyboardRows } from '../src/layouts.js';
 
-const CONDITIONS = { mode: 'words', count: 25, punctuation: false, numbers: false, wordList: '200', inputClass: 'physical-keyboard',
+export const CONDITIONS = { mode: 'words', count: 25, punctuation: false, numbers: false, wordList: '200', inputClass: 'physical-keyboard',
   correctionPolicy: 'mandatory', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
 
-const KEYBOARD = keyboardOf(CONDITIONS);
-const START = Date.parse('2026-09-01T09:00:00Z');
-const RUN_MS = 6 * 3600_000;
+export const KEYBOARD = keyboardOf(CONDITIONS);
+export const START = Date.parse('2026-09-01T09:00:00Z');
+export const RUN_MS = 6 * 3600_000;
 
 // The app keeps this many full traces, which the counting rule's fallback reads.
 const TRACES = 24;
@@ -60,9 +60,9 @@ export function seeded(seed) {
   };
 }
 
-const gaussian = (random) => Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(2 * Math.PI * random());
-const sigmoid = (v) => 1 / (1 + Math.exp(-v));
-const logit = (p) => Math.log(p / (1 - p));
+export const gaussian = (random) => Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(2 * Math.PI * random());
+export const sigmoid = (v) => 1 / (1 + Math.exp(-v));
+export const logit = (p) => Math.log(p / (1 - p));
 
 // Mechanics the simulator computes on its own: finger, hand and row from the qwerty map, and a travel
 // distance. A "mechanics" typist's errors and timing follow them with weights of its own; an "unrelated"
@@ -209,15 +209,18 @@ export function makeTypist(random, group, rawSkill, index = 0, world = {}) {
 
 // One run: the app's own passage generator, typed under stop on error (a wrong key is refused, then the
 // right one follows), scored and summarized by the app's own code. Returns the summary and the full trace.
-export function typeRun(typist, random, index, id) {
-  const text = makePassage('words', CONDITIONS.count, false, random, CONDITIONS.wordList);
+// ADR 0017's season sets the words a run, the date, and `shift`, the log odds a bad day adds to every letter's miss.
+export function typeRun(typist, random, index, id, { count = CONDITIONS.count, at: date = START + index * RUN_MS, shift = 0 } = {}) {
+  const conditions = count === CONDITIONS.count ? CONDITIONS : { ...CONDITIONS, count };
+  const text = makePassage('words', count, false, random, CONDITIONS.wordList);
   const events = [];
   let t = 0;
 
   for (let i = 0; i < text.length; i += 1) {
     const char = text[i];
     const pair = i > 0 && /^[a-z]{2}$/.test(text.slice(i - 1, i + 1)) ? text.slice(i - 1, i + 1) : null;
-    const p = pair ? typist.pairError(pair, index) : /[a-z]/.test(char) ? typist.keyError(char) : typist.skill.errorRate / 2;
+    const letter = pair ? typist.pairError(pair, index) : /[a-z]/.test(char) ? typist.keyError(char) : null;
+    const p = letter === null ? typist.skill.errorRate / 2 : shift ? sigmoid(logit(letter) + shift) : letter;
     const step = typist.skill.medianMs * Math.exp((pair ? typist.slowness(pair, index) : 0) + 0.3 * gaussian(random));
     t += Math.max(30, step);
 
@@ -229,9 +232,9 @@ export function typeRun(typist, random, index, id) {
     events.push({ type: 'insert', text: char, position: i, offsetMs: Math.round(t) });
   }
 
-  const at = new Date(START + index * RUN_MS).toISOString();
+  const at = new Date(date).toISOString();
 
-  const attempt = completeAttempt({ id, kind: 'test', status: 'complete', conditions: CONDITIONS, textId: id, fresh: true, text, events, startedAt: events[0].offsetMs },
+  const attempt = completeAttempt({ id, kind: 'test', status: 'complete', conditions, textId: id, fresh: true, text, events, startedAt: events[0].offsetMs },
     { endedAt: Math.round(t) });
 
   return { run: runRecord(attempt, at), trace: attempt };
@@ -255,12 +258,12 @@ function timingRows(run) {
 }
 
 // A policy fitted on a typist's first runs: what it predicts for each pair's first try and timing, and the
-// units it acts on.
-function learnerPolicy(policy, constants, focus) {
+// units it acts on. `loops` are the drills saved by then, which only the let-go variants read (ADR 0017).
+export function learnerPolicy(policy, constants, focus) {
   const variant = { ...LEARNER_VARIANTS[policy], ...constants };
 
-  return (runs, traces, now) => {
-    const model = fitLearner(learnerEvidence(runs, KEYBOARD), now, variant, focus);
+  return (runs, traces, now, loops = []) => {
+    const model = fitLearner(learnerEvidence(runs, KEYBOARD), now, variant, focus, [...drilledTargets(loops, KEYBOARD).values()]);
     const byUnit = new Map(model.units.map((e) => [e.unit, e]));
 
     return { predict: (pair) => byUnit.get(pair)?.error.mean ?? model.errorRate, slowdown: (pair) => byUnit.get(pair)?.slowdown ?? 0,
@@ -271,8 +274,9 @@ function learnerPolicy(policy, constants, focus) {
 // The counting rule as the app runs it, fallback to the newest traces included. It predicts nothing.
 const countingPolicy = (runs, traces) => ({ predict: null, slowdown: null, lean: countingRecommendation(runs, [], traces, CONDITIONS).lean.map((item) => item.unit) });
 
-// One typist's history, replayed for one policy: fit on the first t runs, predict run t, read the ranking.
-function replay(history, policy) {
+// One typist's history, replayed for one policy: fit on the first t runs, predict run t, read the ranking. A loop
+// counts from the fit after its retest (`run`, the retest's index).
+function replay(history, policy, loops = []) {
   const losses = [];
   const predictions = [];
   const lean = [];
@@ -282,7 +286,7 @@ function replay(history, policy) {
 
   for (let t = 0; t <= history.length; t += 1) {
     const prefix = history.slice(0, t);
-    const model = policy(prefix.map((h) => h.run), prefix.slice(-TRACES).map((h) => h.trace), START + t * RUN_MS);
+    const model = policy(prefix.map((h) => h.run), prefix.slice(-TRACES).map((h) => h.trace), START + t * RUN_MS, loops.filter((loop) => loop.run < t));
     lean.push(model.lean.slice(0, LEAN_UNITS));
     costs.push(model.missCost ?? null);
 
@@ -332,9 +336,9 @@ function calibration(predictions) {
   return error;
 }
 
-const mean = (values) => (values.length ? values.reduce((s, v) => s + v, 0) / values.length : null);
+export const mean = (values) => (values.length ? values.reduce((s, v) => s + v, 0) / values.length : null);
 
-function median(values) {
+export function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = sorted.length >> 1;
 
@@ -399,7 +403,7 @@ export function simulate(seed, { typists = 8, runs = 40, world = {} } = {}) {
 
 // One policy's measures over one seed's typists.
 export function score(population, policy) {
-  const replays = population.map(({ typist, history, truth }) => ({ typist, truth, ...replay(history, policy) }));
+  const replays = population.map(({ typist, history, truth, loops }) => ({ typist, truth, ...replay(history, policy, loops) }));
   const stationary = replays.filter((r) => r.typist.group !== 'drifting');
   const drifting = replays.filter((r) => r.typist.group === 'drifting');
   const predicts = replays[0].losses.length > 0;
@@ -562,7 +566,7 @@ export function decide0015(byVariant, a, b, gains) {
   return { wins: helps.length > 0 && harm.length === 0, helps, harm };
 }
 
-const SHIPPED = { pooledTries: LEARNER_VARIANTS[DECAY_TIMING_POLICY].pooledTries, halfLifeRuns: LEARNER_VARIANTS[DECAY_TIMING_POLICY].halfLifeRuns,
+export const SHIPPED = { pooledTries: LEARNER_VARIANTS[DECAY_TIMING_POLICY].pooledTries, halfLifeRuns: LEARNER_VARIANTS[DECAY_TIMING_POLICY].halfLifeRuns,
   timingTries: LEARNER_VARIANTS[DECAY_TIMING_POLICY].timingTries };
 
 const FOCUS_MEASURES = ['captured10', 'captured40', 'planted10', 'planted40'];
@@ -760,18 +764,18 @@ export function naming({ constants, seeds = TEST_SEEDS, ...options }) {
     { fits: c.fits, named: c.named / c.fits, topFour: c.named ? c.topFour / c.named : null, slow: c.named ? c.slow / c.named : null }]))]));
 }
 
-const fixed = (digits) => (v) => v.toFixed(digits);
-const percent = (v) => `${(v * 100).toFixed(1)}%`;
+export const fixed = (digits) => (v) => v.toFixed(digits);
+export const percent = (v) => `${(v * 100).toFixed(1)}%`;
 const points = (v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}`;
-const signed = (digits) => (v) => `${v >= 0 ? '+' : ''}${v.toFixed(digits)}`;
+export const signed = (digits) => (v) => `${v >= 0 ? '+' : ''}${v.toFixed(digits)}`;
 
-function table(header, rows) {
+export function table(header, rows) {
   const widths = header.map((_, i) => Math.max(...[header, ...rows].map((row) => row[i].length)));
 
   return [header, ...rows].map((row) => row.map((c, i) => c.padEnd(widths[i])).join('  ').trimEnd()).join('\n');
 }
 
-const FORMATS = { logLoss: signed(4), calibration: signed(4), captured10: points, captured40: points, planted10: points, pickUp: signed(1), letGo: signed(1),
+export const FORMATS = { logLoss: signed(4), calibration: signed(4), captured10: points, captured40: points, planted10: points, pickUp: signed(1), letGo: signed(1),
   slowPickUp: signed(1), slowLetGo: signed(1) };
 
 export function report(validation, result) {
@@ -843,6 +847,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (process.argv.includes('--errors-at-pace')) world.errorPairsAtPace = true;
 
   if (option('miss-cost', null)) world.missCost = Number(option('miss-cost', null));
+
+  if (option('rule', null) === '0017') {
+    const { main } = await import('./evaluate-let-go.mjs');
+    await main(option);
+    process.exit(0);
+  }
 
   if (option('rule', null) === '0015') {
     const record = rule0015({ typists: Number(option('typists', 8)), runs: Number(option('runs', 40)) });
