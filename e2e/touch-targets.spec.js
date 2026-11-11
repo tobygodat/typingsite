@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, openProgressView, openSettings, chooseWords, passageText, typeInto, completePassage, freshTextCheck, signInWithEmail, chooseMore, chooseSetting, closeSettings, phone } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, openView, openProgressView, openSettings, chooseWords, passageText, typeInto, completePassage, freshTextCheck, signInWithEmail, chooseMore, chooseSetting, closeSettings, phone } from './fixtures.js';
 
 const MIN = 44;
 
@@ -170,6 +170,7 @@ for (const theme of ['dark', 'light']) {
 
       // Progress: the run's "View passage" disclosure and the footer link, both grown for touch.
       await openView(page, 'Progress');
+      await openProgressDetail(page, 'runs');
       await page.locator('#run-history .run-summary').first().click();
       await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
       await settle(page);
@@ -324,6 +325,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       small.push(...await sweep(page, 'train'));
       // The patterns across runs moved to Progress, with their "Practice … again" buttons.
       await openView(page, 'Progress');
+      await openProgressDetail(page, 'keys');
       await expect(page.locator('#training-targets')).toContainText(/missed in 2 runs|than your pace/);
       await expect(page.locator('#training-targets button').first()).toBeVisible();
       small.push(...await sweep(page, 'progress, patterns across runs'));
@@ -331,6 +333,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await openView(page, 'Practice');
       await freshTextCheck(page);
       await openView(page, 'Progress');
+      await openProgressView(page, 'Speed');
       await expect(page.locator('#progress-trend .trend-dot').first()).toBeVisible();
       small.push(...await sweep(page, 'progress'));
 
@@ -340,6 +343,11 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
         small.push(...await sweep(page, `progress, ${view.toLowerCase()} view`));
       }
 
+      // The overview, its conditions control open, then the runs.
+      await page.locator('#progress-back').click();
+      await page.locator('.conditions-disclosure > summary').click();
+      small.push(...await sweep(page, 'progress overview, conditions open'));
+      await openProgressDetail(page, 'runs');
       await page.locator('#run-history .run-summary').first().click();
       small.push(...await sweep(page, 'progress, run open'));
       await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '10 words' }).click();

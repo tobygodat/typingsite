@@ -1,6 +1,6 @@
 // Accounts against the fake Supabase in e2e/fake-supabase.js: guest mode, sign-up, sign-in, Google (PKCE),
 // sync, sign-out and the one-off import of the pre-accounts profile.
-import { test, expect, openApp, freshTextCheck, openView, openSettings, signInWithEmail, storageKeys, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, freshTextCheck, openView, openSettings, signInWithEmail, storageKeys, chooseSetting, closeSettings } from './fixtures.js';
 
 const account = (page) => page.locator('#account');
 
@@ -128,6 +128,7 @@ test('a member’s progress and settings survive reload and follow the account',
   await signInWithEmail(page, 'ada@stilltype.test');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('.history-row')).toHaveCount(1);
 });
 
@@ -201,6 +202,7 @@ test('the pre-accounts profile moves into the first empty account', async ({ pag
 
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '22');
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('.history-row')).toHaveCount(1);
   await expect(page.locator('.history-timing')).toHaveText('+4 wpm');
   expect(await storageKeys(page)).not.toContain('stilltype-profile-v2');

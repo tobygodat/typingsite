@@ -96,7 +96,7 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   // The pairs sit under the keyboard, and the two are centred in the column as one group.
   const keyboardBox = await heatmap.boundingBox();
   const tableBox = await page.locator('#pairs-table').boundingBox();
-  const panelBox = await page.locator('#view-keys').boundingBox();
+  const panelBox = await page.locator('#detail-keys').boundingBox();
   expect(tableBox.y).toBeGreaterThan(keyboardBox.y + keyboardBox.height);
   const centre = (box) => box.x + box.width / 2;
   expect(Math.abs(centre(keyboardBox) - centre(panelBox))).toBeLessThan(2);
@@ -106,7 +106,7 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   const detail = page.locator('#key-detail');
   await expect(detail).toHaveText('');
   await expect(heatmap.locator('[tabindex="0"]')).toHaveCount(1);
-  await page.locator('#keys-heading').evaluate((heading) => { heading.tabIndex = -1; heading.focus(); });
+  await page.locator('#key-note').evaluate((note) => { note.tabIndex = -1; note.focus(); });
   await page.keyboard.press('Tab');
   await expect(key('q')).toBeFocused();
   await expect(detail).toHaveText('“q”: 0.0% first-try misses (0 of 12 samples).');
@@ -130,7 +130,7 @@ test('Progress shows a per-key miss heatmap and ranked pairs with sample counts'
   await expect(detail).toContainText('“u”: ');
   await expect(detail).toContainText('first-try misses');
 
-  const section = page.locator('section[aria-labelledby="keys-heading"]');
+  const section = page.locator('#keys-layout');
   await section.scrollIntoViewIfNeeded();
   await page.emulateMedia({ colorScheme: 'dark' });
   await section.screenshot({ path: shot(testInfo, 'keys-dark.png'), animations: 'disabled' });
@@ -160,6 +160,7 @@ test('a custom text run never reaches the key heatmap or pairs', async ({ page, 
   await expect(page.locator('#result-delta')).toContainText('not counted toward your best');
 
   await openView(page, 'Progress');
+  await openProgressView(page, 'Keys');
   await expect(page.locator('#key-note')).toContainText('2 runs');
   await expect(key('o')).toHaveAttribute('title', 'o: 42.9% miss · 84 samples');
   expect(await page.locator('#pairs-table tbody').innerText()).toBe(pairsBefore);
@@ -173,7 +174,7 @@ test.describe('coarse pointer at 320px', () => {
 
   test('keeps every Keys target at 44px with no sideways scroll', async ({ page, supabase }, testInfo) => {
     await openKeys(page, supabase);
-    const section = page.locator('section[aria-labelledby="keys-heading"]');
+    const section = page.locator('#keys-layout');
     const heatmap = page.locator('#key-heatmap');
     await expect(heatmap.locator('.key')).toHaveCount(26);
     await expect(heatmap).toHaveAttribute('aria-hidden', 'true');

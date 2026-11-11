@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, conditionKey, quoteCorpus } from '../src/typing.js';
 import { dailyPassage } from '../src/insights.js';
 import { BOARD_V, dailyVersion } from '../src/friends-board.js';
-import { test, expect, openApp, openView, openSettings, signInWithEmail, chooseWords, completePassage, passageText, chooseSetting } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, openView, openSettings, signInWithEmail, chooseWords, completePassage, passageText, chooseSetting } from './fixtures.js';
 import { mondayOf, utcDay } from './fake-board.js';
 
 test.setTimeout(120000);
@@ -596,6 +596,7 @@ test('F1: a stale device saving after a clear brings no cleared run back, a cloc
     await page.reload();
     await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
     await openView(page, 'Progress');
+    await openProgressDetail(page, 'runs');
     await expect(page.locator('#run-history .run-row')).toHaveCount(0);
     await openBoard(page);
     await expect(page.locator('#board-week')).toContainText('You — nothing yet this week');

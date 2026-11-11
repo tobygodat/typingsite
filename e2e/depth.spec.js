@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { dailyPassage, runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, chooseWords, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, openProgressDetail, openProgressView, chooseWords, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail } from './fixtures.js';
 
 const conditions = { mode: 'words', count: 25, duration: null, punctuation: false, quoteLength: null,
   difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
@@ -20,11 +20,15 @@ test('Progress filters comparable runs, opens chart points, and explains a saved
   await openApp(page);
   await freshTextCheck(page);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(2);
+  // A point on the full speed chart opens its run among the runs.
+  await openProgressView(page, 'Speed');
   await expect(page.locator('#progress-trend svg')).toHaveCount(1);
   const point = page.locator('#progress-trend .trend-dot').first();
   await point.focus();
   await page.keyboard.press('Enter');
+  await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', 'runs');
   await expect(page.locator('#run-history details[open]')).toHaveCount(1);
   await page.locator('.history-summary').click();
   await expect(page.locator('.history-detail')).toContainText('before');
@@ -36,13 +40,15 @@ test('Progress filters comparable runs, opens chart points, and explains a saved
   await chooseWords(page, 25);
   await completePassage(page);
   await openView(page, 'Progress');
+  await page.locator('.conditions-disclosure > summary').click();
   await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '25 words' }).click();
   await expect(page.locator('#progress-conditions')).toContainText('25 words');
+  // One run this week at 25 words and none the week before: the lead shows the run and says what a median needs.
+  await expect(page.locator('#week-lead')).toHaveAttribute('data-state', 'thin');
+  await expect(page.locator('#lead-note')).toHaveText('2 more this week give it a median.');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(1);
   await expect(page.locator('#history-list')).toBeHidden();
-  const lastWeek = page.locator('#progress-stats .progress-figure').nth(1);
-  await expect(lastWeek).toContainText('Last week');
-  await expect(lastWeek).toContainText('no runs');
 });
 
 test('daily passage ignores practice settings, labels repeats, and saves scores separately across reload', async ({ page, supabase }) => {
@@ -121,6 +127,7 @@ test('older compact history survives without full traces and offers an honest st
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(10);
   await page.getByRole('button', { name: 'Show all 30 runs' }).click();
   await expect(page.locator('#run-history .run-row')).toHaveCount(30);

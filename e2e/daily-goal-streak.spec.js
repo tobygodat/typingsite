@@ -216,12 +216,14 @@ test('drills and a custom text run count toward daily practice but not the trend
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
+  // No test to compare, so the lead says so; the practice row and the calendar still count the drills.
+  await expect(page.locator('#progress-empty')).toBeVisible();
+  await expect(page.locator('#progress-empty-title')).toHaveText('Nothing to compare yet');
+  await expect(page.locator('#week-movers .is-practice')).toContainText('day in a row');
+  await openProgressView(page, 'Practice');
   await expectStreak(page, 1);
   await expect(page.locator(`#goal-calendar .goal-day[data-day="${dayKey(runs.at(-1).at)}"]`)).not.toHaveAttribute('data-level', '0');
   await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '0');
-  await expect(page.locator('#progress-empty')).toBeVisible();
-  await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');
-  await expect(page.locator('#progress-empty-copy')).toHaveText('Finish a practice run to chart speed and accuracy.');
   await openView(page, 'Practice');
   await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
@@ -229,11 +231,12 @@ test('drills and a custom text run count toward daily practice but not the trend
   await typeInto(page, text);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await openView(page, 'Progress');
+  await expect(page.locator('#week-lead')).toBeHidden();
+  await expect(page.locator('#progress-empty-title')).toHaveText('Nothing to compare yet');
+  await openProgressView(page, 'Practice');
   await expect(page.locator('#practice-goal')).toBeVisible();
   await expectStreak(page, 2, /^today (<1|\d+) min$/);
   await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '1');
-  await expect(page.locator('#progress-content')).toBeHidden();
-  await expect(page.locator('#progress-empty-title')).toHaveText('No speed trend yet.');
 });
 
 // A client from before the calendar keeps practiceDays as an unknown field when it clears history, so a synced
@@ -250,8 +253,10 @@ test('archived practice days alone can be cleared from Progress or the palette, 
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
   const practised = page.locator('#goal-calendar .goal-day:not([data-level="0"])');
+  await openProgressView(page, 'Practice');
   await expect(page.locator('#practice-goal')).toBeVisible();
   await expect(practised).toHaveCount(3);
+  await page.locator('#progress-back').click();
   await expect(page.locator('#clear-history')).toBeVisible();
   await expect(page.locator('#clear-history')).toBeEnabled();
   // The palette lists only enabled commands, so finding this one means it is offered.
@@ -265,9 +270,10 @@ test('archived practice days alone can be cleared from Progress or the palette, 
   await expect(page.locator('#practice-goal')).toBeHidden();
   await expect(page.locator('#clear-history')).toBeHidden();
   await page.locator('#undo-clear').click();
+  await expect(page.locator('#clear-history')).toBeEnabled();
+  await openProgressView(page, 'Practice');
   await expect(page.locator('#practice-goal')).toBeVisible();
   await expect(practised).toHaveCount(3);
-  await expect(page.locator('#clear-history')).toBeEnabled();
 });
 
 // A pre-accounts profile can hold more runs than the summary window. Normalizing it archives the oldest runs'
@@ -302,6 +308,7 @@ test('a pre-accounts profile past the summary limit brings its archived practice
   await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1000);
   expect(supabase.profileFor(user.email).practiceDays).toEqual({ [dayKey(back(20))]: 12 * 60000 });
   await openView(page, 'Progress');
+  await openProgressView(page, 'Practice');
   const days = page.locator('#goal-calendar .goal-day');
   const archived = days.nth((await days.count()) - 1 - 20);
   await expect(archived).toHaveAttribute('aria-label', /: 12 min$/);
@@ -340,6 +347,7 @@ test('recorded lessons and composing active time increase the daily practice goa
   await expect.poll(totals).toBeGreaterThan(0);
   const lessonMs = totals();
   await openView(page, 'Progress');
+  await openProgressView(page, 'Practice');
   await expectStreak(page, 0, `today ${goalMinutes(lessonMs / 60000)} of 5 min`);
   await openView(page, 'Practice');
   await chooseMore(page, 'mode-compose');
@@ -355,6 +363,7 @@ test('recorded lessons and composing active time increase the daily practice goa
   expect((await page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find((key) => key.startsWith('stilltype-profile-v2:')))).attempts))).toEqual([]);
   expect(saved.bests).toEqual({});
   await openView(page, 'Progress');
+  await openProgressView(page, 'Practice');
   await expectStreak(page, 0, `today ${goalMinutes(totals() / 60000)} of 5 min`);
 });
 

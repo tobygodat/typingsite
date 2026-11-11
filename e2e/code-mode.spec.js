@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage, signInWithEmail, chooseMore, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, openView, openProgressDetail, passageText, typeInto, chooseWords, completePassage, signInWithEmail, chooseMore, chooseSetting } from './fixtures.js';
 
 const codeConditions = { mode: 'code', codeLanguage: 'js', duration: null, count: null, punctuation: true, numbers: false,
   quoteLength: null, difficulty: null, wordList: null, inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
@@ -97,6 +97,7 @@ test('practising a code target keeps the prose punctuation, numbers and word lis
   await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
 
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'keys');
   await expect(page.locator('#training-conditions')).toContainText('code · js');
   await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
   await expect(page.locator('#session-title')).toHaveText('Practice “th”');
