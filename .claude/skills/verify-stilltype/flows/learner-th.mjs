@@ -2,6 +2,9 @@
 // every "th", then Train, its drill, the fresh retest and the comparison. Every miss on "h" is inside "th", so
 // nothing may offer "h". Run at 1440×900.
 export default async ({ page, h, shot, note, check }) => {
+  // About 120 wpm, so the run card reads like a person's.
+  const delay = 100;
+
   // Types the passage with a wrong first try, then the right letter, on the second letter of every "th".
   const typeMissingTh = async () => {
     const text = await h.passage();
@@ -9,13 +12,13 @@ export default async ({ page, h, shot, note, check }) => {
     let from = 0;
 
     for (let at = text.indexOf('th') + 1; at > 0; at = text.indexOf('th', at) + 1) {
-      await page.keyboard.type(text.slice(from, at));
-      await page.keyboard.type('x');
+      await page.keyboard.type(text.slice(from, at), { delay });
+      await page.keyboard.type('x', { delay });
       await page.keyboard.press('Backspace');
       from = at;
     }
 
-    await page.keyboard.type(text.slice(from));
+    await page.keyboard.type(text.slice(from), { delay });
     await h.attr('body', 'data-view', 'results');
   };
 
@@ -50,8 +53,7 @@ export default async ({ page, h, shot, note, check }) => {
   await page.keyboard.type((await h.passage()).slice(0, 12));
   await page.clock.fastForward(31_000);
   await h.attr('#typing-screen', 'data-session', 'retest');
-  await page.locator('#typing-input').focus();
-  await page.keyboard.type(await h.passage());
+  await h.type(await h.passage());
   await h.attr('body', 'data-view', 'train');
   await h.settle();
   const comparison = await page.locator('#comparison-panel').innerText();
