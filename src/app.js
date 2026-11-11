@@ -69,6 +69,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
+import { DEFAULT_POLICY, LEARNER_POLICY, countingEvidence, recommendFor } from './learner.js';
 import { CORRECTION_LABELS, MAX_PATTERN_RUNS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, wpmFromSpeed } from './units.js';
@@ -1502,9 +1503,9 @@ function updateCharacterStates(characters, typed, target, start = 0) {
 
 // Repeats are for open practice only: a retest always needs text the profile hasn't seen. Code snippets
 // come round again once each has been shown, marked not fresh, whatever the repeat setting.
-// Adaptive practice weights a word or timed passage toward the pairs this person keeps missing at these
-// conditions: the recurring ones, else the newest traces' target. With none, or once after an adaptive
-// run's plain retest was asked for, the passage is the usual one and the run a normal test.
+// Adaptive practice weights a word or timed passage toward the units the recommender ranks highest for these
+// conditions (the learner's top few by expected gain). With no measured run on this keyboard yet, or once
+// after an adaptive run's plain retest was asked for, the passage is the usual one and the run a normal test.
 let plainNext = false;
 
 function adaptivePassage() {
@@ -1515,12 +1516,9 @@ function adaptivePassage() {
   }
 
   if (!prefs.adaptive || !['time', 'words'].includes(prefs.mode)) return null;
-  const source = conditions();
-  const recurring = recurringTargets(profile.runs, profile.loops, source).slice(0, 4).map((target) => target.pair);
-  const fallback = recommendTarget(profile.attempts, source).target;
-  const pairs = recurring.length ? recurring : fallback ? [fallback] : [];
+  const { lean, runs } = trainingRecommendation(conditions());
 
-  return pairs.length ? makeAdaptive(pairs, { mode: prefs.mode, count: prefs.count, duration: prefs.duration, punctuation: prefs.punctuation,
+  return runs && lean.length ? makeAdaptive(lean, { mode: prefs.mode, count: prefs.count, duration: prefs.duration, punctuation: prefs.punctuation,
     numbers: Boolean(prefs.numbers), wordList: prefs.wordList }) : null;
 }
 
@@ -1725,7 +1723,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   // Every lesson restart (Esc, the palette, a settings change) lands here: a lesson that is locked again,
   // after history was cleared, gives way to the next open lesson.
   if (kind === 'lesson' && !lessonUnlocked(profile.lessons, lessonIndex)) lessonIndex = nextLessonIndex(profile.lessons);
-  passage = selectedPassage || (kind === 'missed' ? wordsPassage : kind === 'daily' ? todayPassage() : kind === 'drill' ? makeDrill(selectedTarget, prefs.wordList)
+  passage = selectedPassage || (kind === 'missed' ? wordsPassage : kind === 'daily' ? todayPassage() : kind === 'drill' ? drillPassage()
     : kind === 'lesson' ? lessonPassage(lessonIndex) : kind === 'challenge' ? ghostPassage() : kind === 'custom' ? customPassage()
       : (kind === 'practice' && adaptivePassage()) || choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : [], { allowRepeats: kind === 'practice' && prefs.repeatQuotes }));
 
@@ -3088,6 +3086,8 @@ function renderComparison(before, after, saved) {
       afterAttemptId: after.id,
       target: selectedTarget,
       recommendationKind: trainingContext?.recommendationKind || activeRecommendation?.kind || 'manual',
+      // Which policy and version picked the target (learner@1, counting@1), or null when picked by hand.
+      policy: trainingContext ? trainingContext.policy ?? null : activeRecommendation?.policy ?? null,
       drillCompleted: Boolean(trainingContext?.drillCompleted),
       conditions: after.conditions,
       comparison,
@@ -3101,19 +3101,20 @@ function renderComparison(before, after, saved) {
   renderHistory();
 }
 
-// The next recurring pair at the retest's conditions, other than the one just trained.
+// The next unit in the recommender's queue at the retest's conditions, other than the one just trained.
 function renderComparisonNext(trained, source) {
-  const next = source && recurringTargets(profile.runs, profile.loops, source).find((target) => target.pair !== trained);
+  const next = source && trainingRecommendation(source).queue.find((item) => item.unit !== trained);
   const button = $('comparison-next');
   button.hidden = !next;
 
   if (!next) return;
-  button.textContent = `Next: “${next.pair}”`;
-  button.onclick = () => practiceTarget(next.pair, source);
+  button.textContent = `Next: “${next.unit}”`;
+  button.onclick = () => practiceTarget(next.unit, source, next.was);
 }
 
-// Train from the dock: the next drill for the current conditions, worked out from saved history. A
-// recurring pair comes first, then the newest traces' evidence, then the general drill.
+// Train from the dock: the next drill for the current conditions, worked out from saved history by the
+// recommender (the learner, by default: ADR 0013). A unit it can name from observed counts, else a general
+// drill leaning toward the units it ranks highest.
 function trainPlan(source = conditions()) {
   return { recommendation: trainingRecommendation(source), baseline: baselineFor(source), source };
 }
@@ -3141,7 +3142,7 @@ function startAdaptiveRetest() {
 
   baselineAttempt = baseline;
   selectedTarget = null;
-  trainingContext = { target: null, recommendationKind: 'adaptive', baselineAttemptId: baseline.id, drillCompleted: false };
+  trainingContext = { target: null, recommendationKind: 'adaptive', policy: DEFAULT_POLICY, baselineAttemptId: baseline.id, drillCompleted: false };
   startRetest();
 }
 
@@ -3240,9 +3241,12 @@ function startDrill() {
   const source = baselineAttempt?.conditions;
 
   if (source) restoreConditions(source);
-  trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', baselineAttemptId: baselineAttempt?.id || null,
-    drillCompleted: false, was: activeRecommendation?.was || null };
-  trainingContext.drill = { target: selectedTarget, duration: DRILL_SECONDS, wordList: prefs.wordList, textVersion: makeDrill(selectedTarget, prefs.wordList).textVersion };
+  trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', policy: activeRecommendation?.policy || null,
+    baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false, was: activeRecommendation?.was || null };
+  const drill = drillPassage();
+  trainingContext.drill = { target: selectedTarget, duration: DRILL_SECONDS, wordList: prefs.wordList, textVersion: drill.textVersion };
+
+  if (drill.lean) trainingContext.drill.lean = drill.lean;
   showManualTarget(false);
   resetSession('drill', { focus: true });
 
@@ -3563,34 +3567,34 @@ function retainedBaseline(source = null) {
 
 // A recurring pair's counts, as Train shows them and the comparison reads them back.
 function recurringEvidence(pair, source) {
-  const recurring = recurringTargets(profile.runs, profile.loops, source).find((item) => item.pair === pair);
-
-  return recurring ? { errors: recurring.errors, observations: recurring.observations, runs: recurring.runs, slowRuns: recurring.slowRuns } : null;
+  return countingEvidence(profile.runs, profile.loops, pair, source);
 }
 
-function practiceTarget(target, source) {
+// A drill on a target picked from a list: Progress's recurring patterns, or the comparison's next unit, which
+// brings the counts it was queued on.
+function practiceTarget(target, source, was = recurringEvidence(target, source)) {
   baselineAttempt = retainedBaseline({ ...source, layout: inputLayout(source.inputClass) });
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
   selectedTarget = target;
   activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
-    evidence: summarizePatterns(profile.attempts, 20, source), was: recurringEvidence(target, source) };
+    evidence: summarizePatterns(profile.attempts, 20, source), was, policy: null };
   startDrill();
 }
 
-// The run just finished always counts toward its own recommendation, even when its trace was too large to keep.
+// The recommender's pick for `source` conditions. The run just finished always counts toward its own
+// recommendation: its summary is saved even when its trace was too large to keep (the counting rule reads traces).
 function trainingRecommendation(source, current = null) {
   const traces = current && !profile.attempts.includes(current) ? [...profile.attempts, current] : profile.attempts;
-  const recommendation = recommendTarget(traces, source);
-  const recurring = recurringTargets(profile.runs, profile.loops, source)[0];
 
-  if (!recurring) {
-    const pattern = recommendation.target && recommendation.evidence.pairs.find((item) => item.pair === recommendation.target);
+  return recommendFor(DEFAULT_POLICY, { runs: profile.runs, loops: profile.loops, traces, source, now: Date.now() });
+}
 
-    return pattern ? { ...recommendation, was: { errors: pattern.errors, observations: pattern.observations, runs: recommendation.evidence.attemptCount } } : recommendation;
-  }
+// A drill's text: the target's words, or, for a general drill the learner ranked units for, words leaning
+// toward them.
+function drillPassage() {
+  const lean = !selectedTarget && activeRecommendation?.policy === LEARNER_POLICY ? activeRecommendation.lean : [];
 
-  return { ...recommendation, kind: 'targeted', target: recurring.pair, was: recurringEvidence(recurring.pair, source),
-    title: `${recurring.review ? 'Revisit' : 'Practice'} “${recurring.pair}”` };
+  return makeDrill(selectedTarget, prefs.wordList, lean);
 }
 
 function renderTraining() {

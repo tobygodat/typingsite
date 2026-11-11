@@ -1,6 +1,6 @@
 # ML data and evaluation plan
 
-Status: proposed, 21 September 2026. The ML task is to predict where a typist will struggle and select useful practice. Prediction quality and actual learning benefit are separate outcomes; both must be evaluated.
+Status: proposed, 21 September 2026. The first model shipped on 10 November 2026 (Model progression). The ML task is to predict where a typist will struggle and select useful practice. Prediction quality and actual learning benefit are separate outcomes; both must be evaluated.
 
 ## Data contract
 
@@ -36,6 +36,12 @@ First train simple supervised models: a regularized classifier for first-attempt
 
 Compare these against population-only estimates, recent-user estimates, and the weak-pair baseline. Consider richer models only if the simpler models leave a measured gap. For recommendations, prefer text with useful target coverage and moderate predicted difficulty, while controlling practice duration and repetition. Predicting the hardest text does not mean finding the most useful exercise.
 
+### Shipped: learner@1 (November 2026)
+
+The first model is `src/learner.js` ([ADR 0013](adr/0013-learning-core.md)), the default policy since v0.3.0, with the weak-pair baseline above kept as `counting@1`. It is a per-person fold over the compact run summaries, run on the device. Each pair and key gets a decayed Beta posterior for first-try errors and a normal posterior for hesitation (log interval ratio to the person's median). Their priors come from a regularized logistic classifier and a ridge timing regressor over finger-map and frequency features, fitted on the person's own evidence from hand-set starting weights. Targets are ranked by expected time lost per occurrence times English frequency, discounted by uncertainty, and named only from observed counts. Run summaries now also keep the median time of each run's corrections (`corrections`). No population data, cloud training or shared dataset is involved.
+
+`npm run evaluate:learner` is its offline prediction evaluation, on simulated typists from the app's own text generator. Splits are chronological by whole run. It reports next-run log loss by history length, calibration error, and how soon each policy's ranking holds the true top pairs and the planted weak pairs. Typists whose weak pairs ignore finger mechanics are reported apart. `--profile` replays a stored profile. On simulated typists the learner beats the baseline on every one of these (ADR 0013 has the table). That is a prediction result on simulations, not a learning result: the learning and retention evaluation below has not run.
+
 Do not use a personalized prediction to silently change ranked quote difficulty. Freeze and version public difficulty/performance scoring separately; multiplayer rating measures competitive results, not the recommender's confidence.
 
 ## Prediction evaluation
@@ -61,4 +67,4 @@ Promote the model only if it improves learning relative to the baseline without 
 
 Track the complete funnel: completed run → recommendation viewed → drill started/completed → fresh retest → later return. Pair it with an authorized usability study asking whether people understand the recommendation and comparison. This tests the integration hypothesis independently of ML. Failure to start a drill is a workflow signal; failure to outperform equal-time practice is a learning signal.
 
-The first portfolio report should publish methods and aggregate results, including null findings and limitations, without exposing raw participant typing traces. No model or learning result exists yet.
+The first portfolio report should publish methods and aggregate results, including null findings and limitations, without exposing raw participant typing traces. No learning result exists yet; the only model result is the simulated prediction evaluation above.

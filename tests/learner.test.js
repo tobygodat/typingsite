@@ -147,7 +147,8 @@ test('a target is named only on observed evidence, and its counts are the real o
   assert.equal(targeted.title, 'Practice “wh”');
   assert.equal(targeted.reason, '“wh”: 4 first-try errors in 16 tries over 4 runs.');
   assert.deepEqual(targeted.was, { errors: 4, observations: 16, runs: 4, slowRuns: 0 });
-  assert.deepEqual(targeted.queue.slice(0, 1), ['wh']);
+  assert.deepEqual(targeted.queue[0], { unit: 'wh', was: targeted.was });
+  assert.equal(targeted.runs, 4);
 });
 
 test('slowness is stated from pooled clean intervals, slower in most of the runs that timed them', () => {

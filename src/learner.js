@@ -413,7 +413,8 @@ export function fitLearner(evidence, now, layout) {
   const medianMs = paceWeight ? Math.exp(paceLog / paceWeight) : null;
   const intervalMs = medianMs ?? DEFAULT_INTERVAL_MS;
   const correctionMs = correctionWeight ? Math.exp(correctionLog / correctionWeight) : null;
-  const costMs = correctionMs === null ? DEFAULT_EXTRA_KEYS * intervalMs : Math.max(0, correctionMs - intervalMs);
+  // A wrong first try costs at least the wrong keystroke, so a correction never prices below one clean interval.
+  const costMs = correctionMs === null ? DEFAULT_EXTRA_KEYS * intervalMs : Math.max(intervalMs, correctionMs - intervalMs);
 
   const estimates = units.map(({ unit, x, t }) => {
     const prior = sigmoid(dot(x, errorWeights));
@@ -485,26 +486,31 @@ const errorCount = ({ errors, seen }) => `${errors} first-try ${errors === 1 ? '
 
 // What Train, the results card and adaptive text act on. The top unit is named only when its observations
 // can be stated; otherwise it is a general drill that says so, whose text still leans toward the units the
-// model ranks highest (`lean`). `was` carries the observed counts the comparison later reads back.
-//   { kind: 'targeted' | 'general', target, title, reason, was, lean: [{ unit, weight }], queue, policy }
+// model ranks highest (`lean`). `was` carries the observed counts the comparison later reads back. `queue`
+// is every unit that can be named, best first, each with its counts; `runs` is the evidence runs behind it.
+//   { kind: 'targeted' | 'general', target, title, reason, was, lean: [{ unit, weight }],
+//     queue: [{ unit, was }], runs, policy }
+const wasOf = ({ observed }) => ({ errors: observed.errors, observations: observed.seen, runs: observed.runs, slowRuns: observed.slowRuns });
+
 export function learnerRecommendation(model) {
   const ranked = model.units.filter((e) => e.gain > 0);
   const lean = ranked.slice(0, LEAN_UNITS).map((e) => ({ unit: e.unit, weight: e.gain }));
-  const queue = ranked.filter(stated).map((e) => e.unit);
+  const queue = ranked.filter(stated).map((e) => ({ unit: e.unit, was: wasOf(e) }));
   const top = ranked[0];
+  const common = { lean, queue, runs: model.runs, policy: model.policy };
 
   if (top && stated(top)) {
     const { observed } = top;
 
     return { kind: 'targeted', target: top.unit, title: `Practice “${top.unit}”`, reason: `“${top.unit}”: ${errorCount(observed)} over ${observed.runs} ${observed.runs === 1 ? 'run' : 'runs'}.`,
-      was: { errors: observed.errors, observations: observed.seen, runs: observed.runs, slowRuns: observed.slowRuns }, lean, queue, policy: model.policy };
+      was: wasOf(top), ...common };
   }
 
   const missed = ranked.find((e) => e.observed.errors > 0);
 
   return { kind: 'general', target: null, title: 'General drill',
     reason: missed ? `Too little data to target a pattern yet (“${missed.unit}”: ${errorCount(missed.observed)}).` : 'Not enough clean data to name a weakness yet.',
-    was: null, lean, queue, policy: model.policy };
+    was: null, ...common };
 }
 
 // The baseline policy, the counting rule this replaced: the recurring pair with the highest first-try error
@@ -518,14 +524,16 @@ export function countingRecommendation(runs, loops, traces, source) {
     const pattern = recommendation.target && recommendation.evidence.pairs.find((item) => item.pair === recommendation.target);
     const was = pattern ? { errors: pattern.errors, observations: pattern.observations, runs: recommendation.evidence.attemptCount } : null;
 
-    return { ...recommendation, was, lean: recommendation.target ? [{ unit: recommendation.target, weight: 1 }] : [], queue: [], policy: BASELINE_POLICY };
+    return { ...recommendation, was, lean: recommendation.target ? [{ unit: recommendation.target, weight: 1 }] : [], queue: [],
+      runs: recommendation.evidence.attemptCount, policy: BASELINE_POLICY };
   }
 
   const targets = recurringTargets(runs, loops, source);
 
   return { ...recommendation, kind: 'targeted', target: recurring.pair, was: countingEvidence(runs, loops, recurring.pair, source),
     title: `${recurring.review ? 'Revisit' : 'Practice'} “${recurring.pair}”`,
-    lean: targets.slice(0, LEAN_UNITS).map((target) => ({ unit: target.pair, weight: 1 })), queue: targets.map((target) => target.pair), policy: BASELINE_POLICY };
+    lean: targets.slice(0, LEAN_UNITS).map((target) => ({ unit: target.pair, weight: 1 })),
+    queue: targets.map((target) => ({ unit: target.pair, was: countingEvidence(runs, loops, target.pair, source) })), runs: recurring.runs, policy: BASELINE_POLICY };
 }
 
 // A recurring pair's counts, as the counting rule shows them and the comparison reads them back.

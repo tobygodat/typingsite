@@ -327,7 +327,7 @@ const num = (v) => (v === null ? '–' : v.toFixed(4));
 
 function table(result) {
   const lines = [`seed ${result.seed}, ${result.runs} runs of 25 words per typist. Log loss: next whole run's first tries, mean per typist.`,
-    'ECE: calibration error over ten bins. Runs to find (median): runs until 2 of the true top 3 pairs by gain are in the top 5.',
+    `ECE: calibration error over ten bins. Runs to find (median): runs until 2 of the true top 3 pairs by gain are in the top 5 (${result.runs}: not within ${result.runs}).`,
     'Found / named by 10: share of typists whose top 5 holds 2 of the true top 3, or whose recommended target is one of them, by run 10.',
     'Planted by 10: share whose top 5 holds 2 of the 3 planted weak pairs by run 10.', ''];
 

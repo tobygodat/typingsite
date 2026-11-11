@@ -1,12 +1,13 @@
 {
   "name": "stilltype",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",
     "start": "node server.mjs",
     "build": "node scripts/build-static.mjs",
+    "evaluate:learner": "node scripts/evaluate-learner.mjs",
     "lint": "oxlint --deny-warnings",
     "test": "node --test",
     "test:e2e": "playwright test",
