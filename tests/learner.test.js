@@ -10,7 +10,7 @@ import { CORPUS_VERSION, METRIC_VERSION, makeAdaptive, makeDrill } from '../src/
 import { mergeSynced } from '../src/account.js';
 import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 import { readFileSync } from 'node:fs';
-import { MEASURES, TEST_SEEDS, decide, makeTypist, paired, seeded, SKILLS, typeRun } from '../scripts/evaluate-learner.mjs';
+import { MEASURES, RULE_0015, TEST_SEEDS, decide, decide0015, makeTypist, paired, seeded, simulate, SKILLS, typeRun } from '../scripts/evaluate-learner.mjs';
 
 const conditions = { mode: 'words', count: 25, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'mandatory',
   corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
@@ -533,4 +533,28 @@ test('the recorded v2 evaluation (docs/adr/0013-evaluation-v2.json) picks decay 
 
   // The default captures more of the time lost than counting@1, at 10 and at 40 runs.
   for (const m of ['captured10', 'captured40']) assert.ok(better('+decay +timing', 'counting@1', m), m);
+});
+
+test('ADR 0015’s simulator draws each typist’s own miss cost, 1 to 8 intervals, and leaves every other draw as shipped', () => {
+  const shipped = simulate(9001, { typists: 1, runs: 2 });
+  const costed = simulate(9001, { typists: 1, runs: 2, world: { ownCost: true } });
+  assert.ok(costed.every(({ typist }) => typist.missCost >= 1 && typist.missCost < 8 && typist.skill.correctionKeys === 1 + typist.missCost));
+  assert.deepEqual(costed.map(({ typist }) => typist.planted), shipped.map(({ typist }) => typist.planted));
+  assert.deepEqual(costed.map(({ history }) => history[0].run.patterns.map((row) => row.slice(0, 3))), shipped.map(({ history }) => history[0].run.patterns.map((row) => row.slice(0, 3))));
+});
+
+test('the recorded ADR 0015 run (docs/adr/0015-evaluation.json) keeps the default, and says only this', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0015-evaluation.json', import.meta.url), 'utf8'));
+  assert.deepEqual(RULE_0015.testSeeds, Array.from({ length: 30 }, (_, i) => 201 + i));
+  assert.equal(recorded.validation.costCorrections, COST_CORRECTIONS);
+  assert.equal(recorded.validation.halfLifeRuns, 20);
+
+  // Re-applied to the stored per-seed scores, the rule decides as recorded.
+  assert.deepEqual(decide0015(recorded.a.result, 'candidate', 'shipped', ['captured10', 'captured40']), recorded.a.decision);
+  assert.deepEqual(recorded.a.decision.harm, ['slow captured10', 'at pace letGo']);
+  assert.deepEqual(decide0015(recorded.b.result, 'forgetting', 'chosen', ['letGo', 'pickUp']), recorded.b.decision);
+  assert.deepEqual(recorded.b.decision.harm, ['slow logLoss', 'at pace logLoss']);
+  assert.equal(recorded.default.name, DEFAULT_POLICY);
+  assert.equal(DEFAULT_POLICY, DECAY_TIMING_POLICY);
+  assert.deepEqual(recorded.a.candidate, { ...recorded.default.constants, costCorrections: COST_CORRECTIONS });
 });
