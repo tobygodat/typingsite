@@ -37,7 +37,7 @@ This shows only that, on simulated typists, the learner predicts first-try error
 
 ## Consequences
 
-- The fit takes about 2 to 3 ms on a 120-run history on tobygdesktop, so it runs whenever Train, a result or an adaptive passage needs it, with no cache.
+- A fit on a 120-run history takes a median of 3 to 4 ms in Node on tobygdesktop (slowest of 30 about 14 ms, measured with another e2e run on the machine), and the first call, which builds the frequency table, 8 ms. So it runs whenever Train, a result or an adaptive passage needs it, with no cache.
 - Changing a feature, prior, half-life or the gain is a new policy version, `learner@2`.
 - Adaptive text needs at least one measured run on the keyboard; before that, adaptive mode gives the usual passage.
 - Limits: the simulator is not people, the frequency table is English only, keys have no timing of their own, and Progress's "patterns across runs" still lists the counting rule's recurring pairs.
