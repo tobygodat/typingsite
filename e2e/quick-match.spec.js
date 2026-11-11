@@ -37,6 +37,7 @@ test('two strangers press quick match, race the standard setup, see the rating m
 
   try {
     await quick(lin).click();
+
     for (const racer of [page, lin]) await expect(racer.locator('#online-room-status')).toHaveText(/^Matched with (Ada|Lin)\.$/, { timeout: 5000 });
     await expect(page.locator('#online-room-status')).toHaveText('Matched with Lin.');
     // No email reaches the other racer's page.
