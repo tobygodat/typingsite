@@ -67,16 +67,6 @@ export function ratingLine(rating) {
   return rank ? `${unbroken(rankLabel(rank))} · ${rating.rating} · ${unbroken(count)}` : `Race rating ${rating.rating} · ${unbroken(count)}`;
 }
 
-// ", up from Gust I." when a rated race moved a ranked rating to another rank or step. The race that ends the
-// provisional period has no rank before it, so it says nothing.
-function rankMove(before, after) {
-  const [was, now] = [rankOf(before), rankOf(after)];
-
-  if (!was || !now || rankLabel(was) === rankLabel(now)) return '';
-
-  return `, ${after.rating > before.rating ? 'up' : 'down'} from ${unbroken(rankLabel(was))}.`;
-}
-
 // What was wrong with a run that couldn’t be checked, as the results say it after "It" or "Yours".
 const RUN_FAULTS = Object.freeze({
   'no-trace': 'arrived without its keystroke record',
@@ -90,38 +80,107 @@ const RUN_FAULTS = Object.freeze({
 const LATE = 'your finish didn’t arrive before the race closed';
 const OUTCOME_WORDS = Object.freeze({ won: 'win', lost: 'loss', tied: 'tie' });
 
-const signed = (delta) => (delta < 0 ? `−${-delta}` : `+${delta}`);
+export const signed = (delta) => (delta < 0 ? `−${-delta}` : `+${delta}`);
+
+// The 100-point step a ranked rating sits in, as the result card's bar draws it: its label, its span and the
+// line above it. Whisper has no steps, so its bar runs from WHISPER_BAR up to the floor; Hurricane has no line
+// above it, so its bar is always full.
+export const WHISPER_BAR = 900;
+const TOP = RANKS.floor + (RANKS.names.length - 2) * RANKS.perRank;
+
+function stepOf(rating) {
+  const rank = rankOf(rating);
+  const label = rankLabel(rank);
+
+  if (rank.index === RANKS.names.length - 1) return { label, lo: TOP, hi: TOP, next: null };
+  const lo = rank.index === 0 ? WHISPER_BAR : RANKS.floor + (rank.index - 1) * RANKS.perRank + RANKS.steps.indexOf(rank.step) * RANKS.perStep;
+  const hi = rank.index === 0 ? RANKS.floor : lo + RANKS.perStep;
+
+  return { label, lo, hi, next: rankLabel(rankOf({ rating: hi, races: rating.races })) };
+}
+
+const along = (rating, step) => (step.hi === step.lo ? 1 : Math.min(1, Math.max(0, (rating - step.lo) / (step.hi - step.lo))));
+
+// One stage of the bar: the step it draws, where the fill starts and ends as fractions of it, and how far the
+// rating it settles on is from the next line.
+const barOf = (step, from, to, rating) => ({ rankLabel: step.label, from, to, next: step.next, toNext: step.next ? step.hi - rating : null });
+
+// One bar within a step. A move to another step plays in two: the old step fills to its end (or empties to its
+// start), then the new step opens from empty (or from full).
+function barsOf(before, after, moved) {
+  const step = stepOf(after);
+
+  if (!moved) return [barOf(step, along(before.rating, step), along(after.rating, step), after.rating)];
+  const old = stepOf(before);
+  const up = moved === 'promoted';
+  const opens = step.hi === step.lo || !up ? 1 : 0;
+
+  return [barOf(old, along(before.rating, old), up ? 1 : 0, before.rating), barOf(step, opens, along(after.rating, step), after.rating)];
+}
+
+const capitalised = (text) => `${text[0].toUpperCase()}${text.slice(1)}`;
+
+// Why a rated race ended as it did, when the traces didn't simply decide it, and the outcome word that goes with it.
+function ratedLead({ reason, outcome }, opponent) {
+  const lead = {
+    forfeit: outcome === 'won' ? ['win', `${opponent} left the race.`] : ['loss', 'you left the race.'],
+    'opponent-absent': ['win', `${opponent} didn’t finish.`],
+    'opponent-unchecked': ['win', `${opponent}’s run couldn’t be checked.`],
+    unfinished: ['loss', `${LATE}.`],
+    left: ['loss', 'you left the race.'],
+  }[reason] || (RUN_FAULTS[reason] ? ['loss', `your run couldn’t be checked. It ${RUN_FAULTS[reason]}.`] : [OUTCOME_WORDS[outcome] || 'race', null]);
+
+  return { outcome: `Rated ${lead[0]}`, why: lead[1] };
+}
 
 // This seat's settled quick match, as the service keeps it: { rated, reason, outcome, after, delta, races }.
 // The reason says why it ended the way it did: null when both runs were checked and the traces decided. The
 // outcome is null when neither run was checked; a decided result that isn't rated is a repeat pairing.
-export function ratingChangeLine(result, opponent = 'the other racer') {
-  if (!result || typeof result !== 'object') return '';
+//
+// What the result shows, as one model for the card, its motion and the sentence a screen reader hears:
+// { kind: 'unrated', sentence } or { kind: 'provisional' | 'ranked', sentence, label, why, rating: { from, to },
+// races, delta, tone, rank, was, moved, bars }. `rank` and `was` are the rank after and before (null while
+// provisional), `moved` is 'promoted' or 'demoted' when the rank or step changed, and `bars` is the bar's stages.
+export function ratingResult(result, opponent = 'the other racer') {
+  if (!result || typeof result !== 'object') return null;
   const { rated, reason, outcome } = result;
 
-  if (!rated && outcome) return `Not rated: you and ${opponent} have raced each other too often today.`;
+  if (!rated && outcome) return { kind: 'unrated', sentence: `Not rated: you and ${opponent} have raced each other too often today.` };
 
   if (!rated) {
-    const yours = { unfinished: `${LATE[0].toUpperCase()}${LATE.slice(1)}.`, left: 'You left the race.' }[reason]
+    const yours = { unfinished: `${capitalised(LATE)}.`, left: 'You left the race.' }[reason]
       || `Yours ${RUN_FAULTS[reason] || 'couldn’t be checked'}.`;
 
-    return `Not rated: neither racer finished with a run that could be checked. ${yours}`;
+    return { kind: 'unrated', sentence: `Not rated: neither racer finished with a run that could be checked. ${yours}` };
   }
 
-  const lead = {
-    forfeit: outcome === 'won' ? `Rated win: ${opponent} left the race.` : 'Rated loss: you left the race.',
-    'opponent-absent': `Rated win: ${opponent} didn’t finish.`,
-    'opponent-unchecked': `Rated win: ${opponent}’s run couldn’t be checked.`,
-    unfinished: `Rated loss: ${LATE}.`,
-    left: 'Rated loss: you left the race.',
-  }[reason] || (RUN_FAULTS[reason] ? `Rated loss: your run couldn’t be checked. It ${RUN_FAULTS[reason]}.` : `Rated ${OUTCOME_WORDS[outcome] || 'race'}.`);
-
+  const lead = ratedLead(result, opponent);
   // `races` is the account's count after this race: a racer can't start another quick match until one settles.
   const after = { rating: result.after, races: result.races };
   const before = { rating: result.after - result.delta, races: result.races - 1 };
+  const [was, rank] = [rankOf(before), rankOf(after)];
+  // The race that ends the provisional period has no rank before it, so it moves nothing.
+  const moved = was && rank && rankLabel(was) !== rankLabel(rank) ? (result.delta > 0 ? 'promoted' : 'demoted') : null;
+  const move = moved ? `, ${moved === 'promoted' ? 'up' : 'down'} from ${unbroken(rankLabel(was))}.` : '';
+  const named = (value) => value && { ...value, label: rankLabel(value) };
 
-  return `${lead} ${ratingLine(after)} (${signed(result.delta)})${rankMove(before, after)}`;
+  return {
+    kind: rank ? 'ranked' : 'provisional',
+    sentence: `${lead.why ? `${lead.outcome}: ${lead.why}` : `${lead.outcome}.`} ${ratingLine(after)} (${signed(result.delta)})${move}`,
+    label: moved === 'promoted' ? 'Rank up' : lead.outcome,
+    why: lead.why && capitalised(lead.why),
+    rating: { from: before.rating, to: after.rating },
+    races: after.races,
+    delta: result.delta,
+    tone: result.delta > 0 ? 'up' : result.delta < 0 ? 'down' : 'even',
+    rank: named(rank),
+    was: named(was),
+    moved,
+    bars: rank ? barsOf(before, after, moved) : [],
+  };
 }
+
+export const ratingChangeLine = (result, opponent) => ratingResult(result, opponent)?.sentence || '';
 
 // Pairing. Two players pair when their ratings are within the gap for the longer of their two waits: 100 at
 // once, widening by 10 for every second waited. A player not heard from for 10 seconds leaves the queue.
