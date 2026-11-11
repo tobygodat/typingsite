@@ -45,7 +45,7 @@ test('Progress filters comparable runs, opens chart points, and explains a saved
   await expect(page.locator('#progress-conditions')).toContainText('25 words');
   // One run this week at 25 words and none the week before: the lead shows the run and says what a median needs.
   await expect(page.locator('#week-lead')).toHaveAttribute('data-state', 'thin');
-  await expect(page.locator('#lead-note')).toHaveText('2 more this week give it a median.');
+  await expect(page.locator('#lead-note')).toHaveText('A week has a median from 3 runs.');
   await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(1);
   await expect(page.locator('#history-list')).toBeHidden();

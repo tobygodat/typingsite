@@ -70,7 +70,7 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, keyboardOf, paceShift, recommendFor } from './learner.js';
 import { aheadCopy, behindCopy, evidenceCopy, missedCopy, sinceCopy, trainPath } from './train-path.js';
-import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
+import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange } from './week-change.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
@@ -4233,7 +4233,8 @@ function renderOverview(date) {
   const shapes = testShapes([...listed, ...profile.loops]);
   const variants = shapes.flatMap((shape) => shape.variants);
 
-  if (!variants.some((variant) => variant.key === progressState.key)) {
+  // An emptied history keeps the choice, so undoing a clear comes back to the conditions that were showing.
+  if (variants.length && !variants.some((variant) => variant.key === progressState.key)) {
     const newest = listed.at(-1) || profile.loops.at(-1);
     progressState.key = (newest && shapes.find((shape) => shape.id === shapeOf(newest.conditions))?.variants[0].key) || variants[0]?.key || '';
     progressState.allRuns = false;
@@ -4254,12 +4255,12 @@ function renderOverview(date) {
 
   progressWeek = week;
   $('progress-empty').hidden = hasProgress;
-  $('progress-empty-copy').textContent = 'a week of tests shows what moved';
   $('week-lead').hidden = !hasProgress;
   renderLead(week.lead);
   renderMovers(week, source);
   progressRuns = week.charts.runs;
   progressWindow = week.charts.window;
+  renderTrendFigures(progressRuns);
   $('week-charts').hidden = !progressRuns.length;
 
   // What the charts can't show: an empty period, or runs listed that aren't drawn.
@@ -4284,6 +4285,24 @@ function renderOverview(date) {
   if (progressState.detail && !links[progressState.detail]) progressState.detail = '';
 
   return { source, key, span, runRows, loops };
+}
+
+// Under the fuller charts, the period in figures: the median speed and accuracy of the runs charted, the fastest of
+// them with its day, and how many runs that is. Speeds are speed figures, so a unit change rewords them.
+function renderTrendFigures(runs) {
+  const stats = periodStats(runs);
+  const speed = (wpm) => [speedFigure(wpm, { bare: true, whole: true }), ' ', unitLabel()];
+  const day = stats.best?.at ? new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+
+  const parts = stats.count ? [
+    ['median ', ...speed(stats.wpm)],
+    [`${Number(stats.accuracy.toFixed(1))}% accuracy`],
+    ['best ', ...speed(stats.best.score.wpm), day ? ` on ${day}` : ''],
+    [plural(stats.count, 'run')],
+  ] : [];
+
+  $('trend-figures').replaceChildren(...parts.flatMap((part, i) => [i ? ' · ' : '', element('span', part)]));
+  $('trend-figures').hidden = !stats.count;
 }
 
 // A change to the history (followHistory) or the train focus, on Progress: the overview follows at once, with focus
@@ -4322,17 +4341,17 @@ function renderLead(lead) {
     figure = String(whole(current.median));
     sentence = ['this week so far'];
     sample = `median of ${runs(current.count)}`;
-    note = `${previous.count ? `The week before has ${runs(previous.count)}, too few for a median. ` : ''}From ${day(lead.from)}, ${WEEK_MIN_RUNS} runs a week show the change.`;
+    note = previous.count ? `The week before has ${runs(previous.count)}, too few for a median.` : '';
   } else if (lead.state === 'last-week') {
     figure = String(whole(previous.median));
     sentence = ['the week before'];
     sample = `median of ${runs(previous.count)}`;
-    note = current.count ? `${runs(current.count)} this week. ${WEEK_MIN_RUNS - current.count} more show the change.` : `No runs this week yet. ${WEEK_MIN_RUNS} show the change.`;
+    note = current.count ? `${runs(current.count)} this week, too few for a median.` : 'No runs this week yet.';
   } else if (lead.state === 'thin') {
     figure = String(whole(lead.latest.score.wpm));
     sentence = [current.count ? 'your latest run' : `your latest run, ${day(runDay(lead.latest))}`];
     sample = current.count ? `${runs(current.count)} this week` : `${runs(previous.count)} the week before`;
-    note = current.count ? `${WEEK_MIN_RUNS - current.count} more this week give it a median.` : `${WEEK_MIN_RUNS} runs this week give it a median.`;
+    note = `A week has a median from ${WEEK_MIN_RUNS} runs.`;
   } else {
     sentence = ['No runs at these conditions in the last two weeks'];
   }

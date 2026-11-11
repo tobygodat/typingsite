@@ -109,27 +109,27 @@ test('a drop reads as a drop in coral, and a week without change as none', async
   await expect(lead(page).number).toHaveCSS('color', await resolved(page, '--text'));
 });
 
-test('one week of history: the lead is this week so far, and says when a change can show', async ({ page, supabase }) => {
-  // Five runs from Tuesday on. The third (Thursday) is the week before's from the next Thursday.
+test('one week of history: the lead is this week so far, and predicts nothing', async ({ page, supabase }) => {
+  // Five runs from Tuesday on, none the week before: there is nothing to say about a week with no runs.
   await openProgress(page, supabase, [72, 75, 74, 77, 76].map((wpm, i) => run(4 - i, wpm, 95)));
   const { number, sentence, sample, note } = lead(page);
   await expect(page.locator('#week-lead')).toHaveAttribute('data-state', 'this-week');
   await expect(number).toHaveText('75');
   await expect(sentence).toHaveText('this week so far');
   await expect(sample).toHaveText('median of 5 runs');
-  await expect(note).toHaveText('From Thu, Oct 22, 3 runs a week show the change.');
+  await expect(note).toBeHidden();
   const practice = page.locator('#week-movers .is-practice');
   await expect(practice.locator('.mover-change')).toHaveText('0 → to 1 min · 5 days in a row');
   await expect(practice.locator('.status')).toHaveText('more');
 });
 
-test('one run so far: the lead shows that run and how many a median needs', async ({ page, supabase }) => {
+test('one run so far: the lead shows that run and what a week’s median takes', async ({ page, supabase }) => {
   await openProgress(page, supabase, [run(0, 64, 95)]);
   await expect(page.locator('#week-lead')).toHaveAttribute('data-state', 'thin');
   await expect(lead(page).number).toHaveText('64');
   await expect(lead(page).sentence).toHaveText('your latest run');
   await expect(lead(page).sample).toHaveText('1 run this week');
-  await expect(lead(page).note).toHaveText('2 more this week give it a median.');
+  await expect(lead(page).note).toHaveText('A week has a median from 3 runs.');
 });
 
 test('the conditions line is the control: lengths and condition sets change the lead and the lists, and sets never mix', async ({ page, supabase }) => {
@@ -266,6 +266,51 @@ test('two small charts, each with its value at the line’s end, open their full
   await expect(tab('Accuracy')).toHaveAttribute('aria-selected', 'true');
   await page.locator('#progress-back').click();
   await expect(page.locator('#week-accuracy button')).toBeFocused();
+});
+
+// The figures the old page stood in a row, where the charts they summarise are: the period's median speed and
+// accuracy, its fastest run with the day, and the runs counted.
+test('under the full charts, the period in figures: median speed and accuracy, the best run and its day, and the runs counted', async ({ page, supabase }) => {
+  await openProgress(page, supabase);
+  const figures = page.locator('#trend-figures');
+  await page.locator('#week-speed button').click();
+  await expect(figures).toHaveText('median 65 wpm · 93% accuracy · best 80 wpm on Oct 17 · 4 runs');
+  await expect(figures.locator('data')).toHaveCount(2);
+  await expect(figures.locator('data').first()).toHaveAttribute('value', '65');
+  await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }).click();
+  await expect(figures).toHaveText('median 70 wpm · 94% accuracy · best 80 wpm on Oct 17 · 3 runs');
+  expect(await overflow(page)).toBe(0);
+
+  // Another set, another sample: the figures never mix conditions.
+  await page.locator('.conditions-disclosure > summary').click();
+  await page.getByRole('combobox', { name: 'Conditions', exact: true }).selectOption({ label: 'punctuation' });
+  await expect(figures).toHaveText('median 32 wpm · 99% accuracy · best 32 wpm on Oct 16 · 2 runs');
+});
+
+test('a guest with no runs sees no tagline, and a thin week states its counts and predicts nothing', async ({ page, supabase }) => {
+  await openApp(page);
+  await openView(page, 'Progress');
+  await expect(page.locator('#progress-empty-title')).toHaveText('Nothing to compare yet');
+  await expect(page.locator('#progress-empty .lead-context > *')).toHaveCount(1);
+
+  // Two runs the week before and four this week: the count is the evidence, and no date is promised.
+  await openProgress(page, supabase, [run(9, 70, 95), run(8, 71, 95), run(3, 72, 95), run(2, 75, 95), run(1, 74, 95), run(0, 77, 95)]);
+  await expect(page.locator('#week-lead')).toHaveAttribute('data-state', 'this-week');
+  await expect(lead(page).note).toHaveText('The week before has 2 runs, too few for a median.');
+});
+
+test('undoing a clear comes back to the conditions that were showing', async ({ page, supabase }) => {
+  await openProgress(page, supabase);
+  await page.locator('.conditions-disclosure > summary').click();
+  await page.getByRole('combobox', { name: 'Conditions', exact: true }).selectOption({ label: 'punctuation' });
+  await expect(page.locator('#progress-conditions')).toContainText('25 words · punctuation');
+  await page.locator('#clear-history').click();
+  await page.locator('#confirm-clear-input').fill('clear');
+  await page.locator('#confirm-clear').click();
+  await expect(page.locator('#progress-empty')).toBeVisible();
+  await page.locator('#undo-clear').click();
+  await expect(page.locator('#progress-conditions')).toContainText('25 words · punctuation');
+  await expect(lead(page).sample).toHaveText('2 runs this week');
 });
 
 test('every quiet link opens its view, named and focused, and Progress goes back; the palette opens them too', async ({ page, supabase }) => {

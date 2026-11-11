@@ -49,15 +49,12 @@ test('the lead is this week’s median against the week before’s, each from at
   const lead = weekLead(runs, KEY, NOW_DATE);
   assert.equal(lead.state, 'change');
   assert.deepEqual([lead.current.median, lead.current.count, lead.previous.median, lead.previous.count], [77, 4, 72, 3]);
-  assert.equal(lead.from, null);
 
   // Two runs the week before: no median, so no change, and none is ever stated from it.
   const thin = weekLead(runs.filter((r) => r.id !== 'p0'), KEY, NOW_DATE);
   assert.equal(thin.state, 'this-week');
   assert.equal(thin.previous.median, null);
   assert.equal(thin.previous.count, 2);
-  // This week's third-oldest run is on Nov 10, so it is last week's from Nov 17.
-  assert.equal(thin.from, '2026-11-17');
 
   assert.equal(weekLead(runs.filter((r) => r.id.startsWith('p') || r.id === 'c0'), KEY, NOW_DATE).state, 'last-week');
   assert.equal(weekLead(runs.filter((r) => ['p0', 'c0'].includes(r.id)), KEY, NOW_DATE).state, 'thin');
@@ -124,6 +121,25 @@ test('a pair the learner named a week ago and no longer can is fixed; one it cou
   assert.equal(moverSample(byUnit.qu), '40 tries in 5 runs before this week, 90 tries in 6 runs this week');
   assert.equal(byUnit.ex.status, 'slipping');
   assert.deepEqual(moverCopy(byUnit.ex), { before: '0 of 40', after: '12 of 48', tail: 'missed' });
+});
+
+// Slipping is held to the bar fixed is. One miss on one try this week names the pair for the learner, whose pooled
+// rate is low for a careful typist, but it is no slip: the list waits for 20 tries over two runs or more.
+test('one typo this week is not slipping, nor are misses in a single run, however many', () => {
+  const careful = (rows) => [...BACKGROUND.filter((pair) => !rows.some((row) => row[0] === pair)).map((pair, i) => [pair, 10, i === 7 ? 1 : 0, 10, 200, 0]), ...rows];
+  const before = Array.from({ length: 6 }, (_, i) => run(`b${i}`, daysAgo(13 - i), { patterns: careful([['re', 6, 0, 6, 200, 0]]) }));
+  const typo = run('a0', daysAgo(1), { patterns: careful([['re', 1, 1, 0, 0, 0]]) });
+  const named = recommend([...before, typo], [], 'balanced');
+  assert.ok([named.target, ...named.queue.map((item) => item.unit)].includes('re'), `the learner names it, which is what made it a mover: ${JSON.stringify([named.target, named.queue.map((item) => item.unit)])}`);
+  assert.deepEqual(overview([...before, typo]).movers.filter((mover) => mover.unit === 're'), []);
+
+  const oneRun = run('a1', daysAgo(1), { patterns: careful([['re', 24, 9, 24, 200, 0]]) });
+  assert.deepEqual(overview([...before, oneRun]).movers.filter((mover) => mover.unit === 're'), []);
+
+  const twoRuns = [run('a2', daysAgo(2), { patterns: careful([['re', 12, 4, 12, 200, 0]]) }), run('a3', daysAgo(1), { patterns: careful([['re', 12, 5, 12, 200, 0]]) })];
+  const [mover] = overview([...before, ...twoRuns]).movers.filter((item) => item.unit === 're');
+  assert.equal(mover?.status, 'slipping');
+  assert.deepEqual(moverCopy(mover), { before: '0 of 36', after: '9 of 24', tail: 'missed' });
 });
 
 test('a pair drilled for its pace and now at it is fixed by pace, read since its drill, as Train reads it', () => {
@@ -284,7 +300,10 @@ test('across random histories in every focus, every mover follows the stated rul
         } else {
           assert.ok(queuedNow.has(mover.unit), `${at}: not named now`);
           assert.notEqual(trainStep?.state, 'fixed', `${at}: Train calls it fixed`);
-          assert.ok(mover.after, `${at}: nothing observed this week`);
+          assert.ok(mover.after.runs >= FIXED_RUNS, `${at}: slipping on one run`);
+          assert.ok((mover.basis === 'slow' ? mover.after.intervals : mover.after.tries) >= FIXED_OBSERVATIONS, `${at}: slipping on too few observations`);
+          assert.ok(mover.basis === 'slow' ? mover.after.ms > mover.before.ms : mover.after.errors / mover.after.tries > mover.before.errors / mover.before.tries,
+            `${at}: slipping, yet no worse than before`);
           const wasFixed = newestLoop(loops, mover.unit, THEN);
 
           const reason = (!queuedThen.has(mover.unit) && (mover.basis === 'slow' ? mover.before?.intervals : mover.before?.tries) >= FIXED_OBSERVATIONS)

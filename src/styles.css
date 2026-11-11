@@ -3086,6 +3086,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .conditions-disclosure > summary::after { display: inline-block; margin-left: var(--space-2); }
 .detail-filters .lead-sample { display: none; }
 .lead-note { margin: 0; max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
+.trend-figures { margin: var(--space-4) 0 0; color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
+.trend-figures > span { white-space: nowrap; }
 .progress-filters { min-width: 0; max-width: 100%; display: flex; align-items: center; }
 .progress-filters[hidden] { display: none; }
 .conditions-disclosure { min-width: 0; max-width: 100%; }
