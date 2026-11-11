@@ -44,7 +44,10 @@ Preconditions:
   an adaptive run and its result.
 - **Learner.** `flows/learner-guest.mjs` is a new guest's plain general drill, a 10-word run and Train after it.
   `flows/learner-th.mjs` types three 100-word passages missing every "th", then Train, drill, retest and the
-  comparison, and checks that nothing offers "h" (ADR 0013's naming rule).
+  comparison, and checks that nothing offers "h" (ADR 0013's naming rule). `flows/learner-forget.mjs`
+  (`--signed-in --delay 0`) types twenty runs missing "th" and sixty more, the last fifteen missing "he", and
+  checks Train lets go of "th". `flows/learner-slow.mjs` (`--signed-in --delay 40`) types "th" slowly but
+  cleanly, then checks Train names it on its timing and the comparison and Progress read its pace back.
 - **Restart.** Drive it: in a flow file, type a few letters with `h.type('ab')`, press
   `page.keyboard.press('Escape')`, then `check` that `#accessible-passage` text changed and
   `body[data-running]` is gone.

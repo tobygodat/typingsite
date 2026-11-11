@@ -1504,7 +1504,7 @@ function updateCharacterStates(characters, typed, target, start = 0) {
 // Repeats are for open practice only: a retest always needs text the profile hasn't seen. Code snippets
 // come round again once each has been shown, marked not fresh, whatever the repeat setting.
 // Adaptive practice weights a word or timed passage toward the units the recommender ranks highest for these
-// conditions (the learner's top few by expected gain). With no measured run on this keyboard yet, or once
+// conditions (the learner's top few by the time each loses). With no measured run on this keyboard yet, or once
 // after an adaptive run's plain retest was asked for, the passage is the usual one and the run a normal test.
 let plainNext = false;
 
@@ -3101,7 +3101,7 @@ function renderComparison(before, after, saved) {
       afterAttemptId: after.id,
       target: selectedTarget,
       recommendationKind: trainingContext?.recommendationKind || activeRecommendation?.kind || 'manual',
-      // Which policy and version picked the target (learner@1, counting@1), or null when picked by hand.
+      // Which policy and version picked the target (learner-decay-timing@1, counting@1), or null when picked by hand.
       policy: trainingContext ? trainingContext.policy ?? null : activeRecommendation?.policy ?? null,
       drillCompleted: Boolean(trainingContext?.drillCompleted),
       conditions: after.conditions,
