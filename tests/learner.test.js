@@ -8,7 +8,8 @@ import { KEY_COUNTS_VERSION, correctionTimes, runRecord } from '../src/insights.
 import { CORPUS_VERSION, METRIC_VERSION, makeAdaptive, makeDrill } from '../src/typing.js';
 import { mergeSynced } from '../src/account.js';
 import { normalizeProfile } from '../src/profile.js';
-import { evaluate, makeTypist, seeded, SKILLS, typeRun } from '../scripts/evaluate-learner.mjs';
+import { readFileSync } from 'node:fs';
+import { decide, makeTypist, seeded, SKILLS, spread, typeRun } from '../scripts/evaluate-learner.mjs';
 
 const conditions = { mode: 'words', count: 25, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'mandatory',
   corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
@@ -32,7 +33,7 @@ function simulatedRuns(seed, count) {
   const random = seeded(seed);
   const typist = makeTypist(random, seed % 2 ? 'mechanics' : 'unrelated', SKILLS[seed % 3]);
 
-  return Array.from({ length: count }, (_, r) => typeRun(typist, random, r, `s${seed}-${r}`));
+  return Array.from({ length: count }, (_, r) => typeRun(typist, random, r, `s${seed}-${r}`).run);
 }
 
 function shuffled(items, random) {
@@ -294,13 +295,54 @@ test('adaptive text and a leaning drill draw real words across several units by 
   assert.equal(makeDrill(null).textVersion, 'drill-general@2', 'a drill with nothing to lean on is the general drill as before');
 });
 
-test('on simulated typists the learner beats the counting rule (pinned at seed 419)', () => {
-  const { groups } = evaluate({ seed: 419, typists: 2, runs: 20 });
+test('without features or decay, the estimate is the counts-only rate: (errors + K × pooled) / (tries + K)', () => {
+  const runs = Array.from({ length: 4 }, (_, i) => summary(`r${i}`, day(i), [['th', 5, 1, 0, null, null], ['he', 10, 0, 0, null, null], ['an', 5, 1, 0, null, null]]));
+  const model = fitLearner(learnerEvidence(runs, KEYBOARD), NOW, 'qwerty', { features: false, decay: false, hesitation: false, pooledTries: 40 });
+  const pooled = 8 / 80;
+  assert.ok(Math.abs(estimate(model, 'th').error.mean - (4 + 40 * pooled) / (20 + 40)) < 1e-12);
+  assert.ok(Math.abs(estimate(model, 'ju').error.mean - pooled) < 1e-12, 'a pair never typed is predicted at the pooled rate');
+});
 
-  for (const [group, { counting, learner }] of Object.entries(groups)) {
-    assert.ok(learner.logLoss < counting.logLoss, `${group}: next-run log loss ${learner.logLoss} vs ${counting.logLoss}`);
-    assert.ok(learner.calibration < counting.calibration, `${group}: calibration ${learner.calibration} vs ${counting.calibration}`);
-    assert.ok(learner.runsToFind < counting.runsToFind, `${group}: runs to find ${learner.runsToFind} vs ${counting.runsToFind}`);
-    assert.ok(learner.foundBy10 > counting.foundBy10, `${group}: found by run 10`);
-  }
+// Per-seed results for three policies, from [planted@10, pick-up, log loss] on each of two seeds.
+const synthetic = (rows) => ({
+  policies: [{ name: 'counting@1', components: null }, { name: 'counts-gain', components: [] }, { name: 'full', components: ['features', 'decay', 'hesitation'] }],
+  perSeed: [0, 1].map((seed) => Object.fromEntries(Object.entries(rows).map(([name, values]) => [name,
+    { planted10: values[seed][0], pickUp: values[seed][1], logLoss: values[seed][2] }]))),
+});
+
+test('ADR 0013’s rule: the simplest eligible policy that nothing eligible beats on ranking', () => {
+  // Overlapping ranges are matches, so the simplest policy stays.
+  const tie = synthetic({ 'counting@1': [[0.2, 15, null], [0.3, 12, null]], 'counts-gain': [[0.25, 14, 0.2], [0.35, 11, 0.21]], full: [[0.28, 13, 0.2], [0.33, 10, 0.21]] });
+  assert.equal(decide(tie).default, 'counting@1');
+
+  // A variant whose whole range is better wins, unless a simpler one matches it.
+  const better = synthetic({ 'counting@1': [[0.1, 21, null], [0.15, 21, null]], 'counts-gain': [[0.12, 20, 0.2], [0.16, 21, 0.21]], full: [[0.3, 21, 0.2], [0.35, 21, 0.21]] });
+  assert.equal(decide(better).default, 'full');
+  assert.equal(decide(better).beats('full', 'counts-gain'), true);
+
+  // A variant that predicts worse than the counts-only rate beyond the spread is not eligible.
+  const worse = synthetic({ 'counting@1': [[0.1, 21, null], [0.15, 21, null]], 'counts-gain': [[0.12, 20, 0.2], [0.16, 21, 0.21]], full: [[0.3, 21, 0.25], [0.35, 21, 0.26]] });
+  assert.deepEqual(decide(worse).eligible, ['counting@1', 'counts-gain']);
+  assert.equal(decide(worse).default, 'counting@1');
+});
+
+test('the recorded evaluation (docs/adr/0013-evaluation.json) picks counts-gain, and says only this', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0013-evaluation.json', import.meta.url), 'utf8'));
+  const verdict = decide(recorded);
+  assert.deepEqual(recorded.seeds, [1, 2, 3, 4, 5]);
+  assert.deepEqual([recorded.validation.pooledTries, recorded.validation.halfLifeRuns], [40, 10]);
+  assert.equal(verdict.default, 'counts-gain');
+  assert.equal(recorded.default, 'counts-gain');
+
+  const range = (name, read) => spread(recorded, name, read);
+  const overlap = (a, b) => a.low <= b.high && b.low <= a.high;
+  // Prediction: the full model and the counts-only rate tie on log loss, and the full model is worse calibrated.
+  assert.ok(overlap(range('full', (s) => s.logLoss), range('counts-gain', (s) => s.logLoss)));
+  assert.ok(range('full', (s) => s.calibration).low > range('counts-gain', (s) => s.calibration).high);
+
+  // Ranking: six variants beat counting@1, nothing beats counts-gain, and counts-gain doesn't beat counting@1 either.
+  assert.deepEqual(recorded.policies.map((p) => p.name).filter((name) => verdict.beats(name, 'counting@1')).sort(),
+    ['+decay', '+decay +hesitation', '+features +decay', '+features +hesitation', '+hesitation', 'full'].sort());
+  assert.equal(recorded.policies.some(({ name }) => verdict.beats(name, 'counts-gain')), false);
+  assert.equal(verdict.beats('counts-gain', 'counting@1'), false);
 });

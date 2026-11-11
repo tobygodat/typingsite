@@ -42,7 +42,37 @@ Written on 11 November 2026, before the evaluation below was rerun, and not chan
 
 ### Results
 
-Filled in from the rerun.
+The run that decided is recorded in [`0013-evaluation.json`](0013-evaluation.json), with every variant still in the code. Validation chose K = 40 for the counts-only rate (log loss 0.2079; K = 10 gave 0.2113) and a half-life of 10 runs for the full model (0.2093; 30 runs gave 0.2103). The tables are test seeds 1 to 5: the mean, then the lowest and highest seed. The hesitation term changes no prediction, so the rows that differ only by it predict the same.
+
+| policy | log loss | mechanics | unrelated | drifting | calibration error |
+| --- | --- | --- | --- | --- | --- |
+| counting@1 | – | – | – | – | – |
+| counts-gain | 0.2060 (0.2038–0.2080) | 0.2335 (0.2281–0.2384) | 0.1792 (0.1767–0.1806) | 0.2052 (0.2029–0.2086) | 0.0035 (0.0030–0.0038) |
+| +hesitation | 0.2060 (0.2038–0.2080) | 0.2335 (0.2281–0.2384) | 0.1792 (0.1767–0.1806) | 0.2052 (0.2029–0.2086) | 0.0035 (0.0030–0.0038) |
+| +decay | 0.2063 (0.2041–0.2084) | 0.2344 (0.2291–0.2394) | 0.1795 (0.1766–0.1812) | 0.2050 (0.2026–0.2084) | 0.0032 (0.0028–0.0035) |
+| +features | 0.2096 (0.2076–0.2114) | 0.2358 (0.2306–0.2402) | 0.1832 (0.1810–0.1848) | 0.2100 (0.2075–0.2139) | 0.0137 (0.0134–0.0141) |
+| +decay +hesitation | 0.2063 (0.2041–0.2084) | 0.2344 (0.2291–0.2394) | 0.1795 (0.1766–0.1812) | 0.2050 (0.2026–0.2084) | 0.0032 (0.0028–0.0035) |
+| +features +hesitation | 0.2096 (0.2076–0.2114) | 0.2358 (0.2306–0.2402) | 0.1832 (0.1810–0.1848) | 0.2100 (0.2075–0.2139) | 0.0137 (0.0134–0.0141) |
+| +features +decay | 0.2074 (0.2054–0.2091) | 0.2338 (0.2286–0.2383) | 0.1812 (0.1785–0.1829) | 0.2071 (0.2043–0.2110) | 0.0096 (0.0092–0.0099) |
+| full | 0.2074 (0.2054–0.2091) | 0.2338 (0.2286–0.2383) | 0.1812 (0.1785–0.1829) | 0.2071 (0.2043–0.2110) | 0.0096 (0.0092–0.0099) |
+
+| policy | planted@10 | common | middle | rare | planted@40 | common | middle | rare | pick-up | let-go |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| counting@1 | 16% (10%–22%) | 48% (29%–65%) | 1% (0%–4%) | 0% (0%–0%) | 50% (47%–54%) | 70% (63%–73%) | 68% (60%–75%) | 13% (8%–15%) | 21.0 (21.0–21.0) | 13.1 (4.5–21.0) |
+| counts-gain | 22% (12%–28%) | 51% (27%–63%) | 14% (6%–25%) | 1% (0%–2%) | 43% (40%–48%) | 80% (73%–88%) | 45% (38%–54%) | 4% (2%–6%) | 16.7 (10.0–21.0) | 18.7 (11.0–21.0) |
+| +hesitation | 27% (24%–31%) | 62% (60%–67%) | 19% (10%–27%) | 0% (0%–2%) | 43% (40%–49%) | 84% (79%–90%) | 42% (35%–52%) | 3% (0%–6%) | 17.1 (10.0–21.0) | 17.0 (14.5–21.0) |
+| +decay | 24% (15%–28%) | 54% (31%–65%) | 17% (10%–25%) | 2% (0%–4%) | 40% (37%–45%) | 73% (63%–81%) | 45% (35%–50%) | 4% (0%–8%) | 12.9 (6.5–15.5) | 10.8 (3.5–14.5) |
+| +features | 20% (12%–27%) | 46% (27%–54%) | 13% (6%–25%) | 1% (0%–2%) | 42% (36%–47%) | 76% (69%–81%) | 44% (35%–60%) | 7% (4%–13%) | 18.6 (12.0–21.0) | 17.3 (4.0–21.0) |
+| +decay +hesitation | 26% (23%–28%) | 58% (54%–65%) | 19% (10%–25%) | 1% (0%–4%) | 36% (33%–42%) | 76% (73%–83%) | 29% (23%–40%) | 2% (0%–4%) | 12.4 (6.5–18.5) | 7.0 (5.0–10.0) |
+| +features +hesitation | 28% (24%–31%) | 64% (54%–69%) | 18% (10%–25%) | 1% (0%–2%) | 45% (41%–52%) | 84% (79%–92%) | 47% (38%–56%) | 4% (2%–8%) | 16.0 (10.5–21.0) | 19.9 (18.0–21.0) |
+| +features +decay | 21% (12%–26%) | 50% (27%–58%) | 11% (6%–21%) | 2% (0%–2%) | 36% (33%–38%) | 69% (63%–73%) | 35% (25%–44%) | 3% (0%–6%) | 15.1 (7.0–18.5) | 9.7 (3.5–15.0) |
+| full | 27% (24%–31%) | 62% (54%–71%) | 19% (13%–23%) | 0% (0%–2%) | 38% (35%–43%) | 79% (75%–83%) | 33% (27%–44%) | 2% (0%–6%) | 10.3 (6.0–14.5) | 8.2 (6.0–11.0) |
+
+- **Prediction.** It's a tie. Every variant's log loss range overlaps the counts-only rate's. The feature regression makes calibration worse beyond the spread: 0.0137 alone and 0.0096 in the full model, against 0.0035.
+- **Ranking.** Six variants beat `counting@1`. `+hesitation`, `+decay +hesitation`, `+features +hesitation` and the full model do it on planted@10, and `+decay`, `+decay +hesitation`, `+features +decay` and the full model on pick-up. Nothing beats counts-gain on either measure. Counts-gain doesn't beat `counting@1` beyond the spread either: its planted@10 (12–28%) overlaps the counting rule's (10–22%), and so does its pick-up (10–21 runs against 21).
+- **Verdict.** Every policy is eligible. `counting@1` is beaten, and counts-gain is the simplest policy nothing beats, so counts-gain is the default. None of the three components earned its place.
+- **Strata, outside the rule.** By run 10 no policy finds rare planted pairs (0–2%). By run 40 `counting@1`, which ranks by rate alone, finds more middle pairs than counts-gain beyond the spread (68% against 45%), and counts-gain, which weighs pairs by frequency, finds more common ones (80% against 70%, within the spread).
+- **Drift, outside the rule.** Without decay, counts-gain lets go of a fixed pair after a median of 18.7 runs. With the 10-run half-life, `+decay` needs 10.8 and the full model 8.2, within counts-gain's spread (11–21).
 
 ## Consequences
 

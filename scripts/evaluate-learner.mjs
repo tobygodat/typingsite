@@ -1,25 +1,40 @@
-// Evaluates the learner (src/learner.js) against the counting rule it replaces, on simulated typists and,
-// optionally, on a stored profile. Deterministic from --seed. See docs/adr/0013-learning-core.md.
+// Evaluates the recommendation policies on simulated typists, and applies ADR 0013's decision rule to pick
+// the default. Deterministic from its seeds. See docs/adr/0013-learning-core.md.
 //
-//   npm run evaluate:learner -- [--seed 419] [--typists 8] [--runs 40] [--profile path/to/profile.json]
+//   npm run evaluate:learner -- [--typists 8] [--runs 40] [--json out.json] [--profile path/to/profile.json]
 //
-// What it shows, and what it does not: whether a policy predicts the next run's first-try errors and finds
-// hidden weak pairs on simulated typists. It says nothing about whether anyone learns faster.
+// What it shows, and what it does not: how well each policy predicts the next run's first-try errors and how
+// soon it finds planted and slipping weak pairs, on simulated typists. It says nothing about whether anyone
+// learns faster: a simulated typist improves after a drill only as the simulator says it does.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, makePassage } from '../src/typing.js';
-import { evidenceRun, recurringTargets, runRecord } from '../src/insights.js';
-import { englishFrequency, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation } from '../src/learner.js';
+import { evidenceRun, runRecord } from '../src/insights.js';
+import { DEFAULT_POLICY, FULL_MODEL, LEAN_UNITS, countingRecommendation, englishFrequency, fitLearner, keyboardOf, learnerEvidence,
+  learnerRecommendation } from '../src/learner.js';
 import { normalizeProfile } from '../src/profile.js';
 import { keyboardRows } from '../src/layouts.js';
 
 const CONDITIONS = { mode: 'words', count: 25, punctuation: false, numbers: false, wordList: '200', inputClass: 'physical-keyboard',
   correctionPolicy: 'mandatory', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
 
+const KEYBOARD = keyboardOf(CONDITIONS);
 const START = Date.parse('2026-09-01T09:00:00Z');
-const PLANTED = 3;
-const TOP = 5;
+const RUN_MS = 6 * 3600_000;
+
+// The app keeps this many full traces, which the counting rule's fallback reads.
+const TRACES = 24;
+
+// Drifting typists change after this many runs.
+const CHANGE = 20;
+
+export const VALIDATION_SEEDS = [9001, 9002];
+export const TEST_SEEDS = [1, 2, 3, 4, 5];
+export const POOLED_TRIES_GRID = [2, 5, 10, 20, 40, 80];
+export const HALF_LIFE_GRID = [10, 15, 20, 30, 60];
+export const GROUPS = ['mechanics', 'unrelated', 'drifting'];
+export const STRATA = [['common', 1, 30], ['middle', 31, 90], ['rare', 91, Infinity]];
 
 export function seeded(seed) {
   let state = seed >>> 0;
@@ -56,20 +71,59 @@ function mechanics() {
   };
 }
 
+// The pairs the app's 25-word passages hold, most frequent first, from a fixed sample of its own generator.
+let passagePairs = null;
+
+export function pairsByFrequency() {
+  if (passagePairs) return passagePairs;
+  const random = seeded(1);
+  const counts = new Map();
+
+  for (let i = 0; i < 2000; i += 1) {
+    const text = makePassage('words', CONDITIONS.count, false, random, CONDITIONS.wordList);
+
+    for (let j = 1; j < text.length; j += 1) {
+      const pair = text.slice(j - 1, j + 1);
+
+      if (/^[a-z]{2}$/.test(pair)) counts.set(pair, (counts.get(pair) || 0) + 1);
+    }
+  }
+
+  passagePairs = [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([pair]) => pair);
+
+  return passagePairs;
+}
+
+const stratum = (name) => {
+  const [, from, to] = STRATA.find(([n]) => n === name);
+
+  return pairsByFrequency().slice(from - 1, Number.isFinite(to) ? to : undefined);
+};
+
 export const SKILLS = [
   { name: 'careful', errorRate: 0.015, medianMs: 150, correctionKeys: 2.5 },
   { name: 'average', errorRate: 0.035, medianMs: 210, correctionKeys: 3 },
   { name: 'learning', errorRate: 0.07, medianMs: 300, correctionKeys: 3.5 },
 ];
 
-// A typist: hidden first-try error probabilities and timings for every pair and letter.
-export function makeTypist(random, group, skill) {
-  const table = englishFrequency();
-  const pairs = [...table.pairs.keys()].sort();
+const pick = (random, list, taken) => {
+  for (;;) {
+    const item = list[Math.floor(random() * list.length)];
+
+    if (!taken.includes(item)) return item;
+  }
+};
+
+// A typist: hidden first-try error probabilities and timings for every pair and letter, by run. Mechanics and
+// unrelated typists have one planted weak pair per stratum; a drifting typist has a common weak pair that is
+// fixed at run CHANGE and another that starts slipping then.
+export function makeTypist(random, group, skill, index = 0) {
+  const pairs = [...englishFrequency().pairs.keys()].sort();
   const mech = mechanics();
   const base = logit(skill.errorRate);
+  const followsMechanics = group === 'mechanics' || (group === 'drifting' && index % 2 === 0);
 
-  const weights = group === 'mechanics'
+  const weights = followsMechanics
     ? { sameFinger: 0.4 + random() * 0.8, sameHand: random() * 0.3, travel: 0.05 + random() * 0.2, pinky: random() * 0.5, offHome: random() * 0.3 }
     : null;
 
@@ -83,40 +137,32 @@ export function makeTypist(random, group, skill) {
     slowness.set(pair, (weights ? 0.6 * pull : 0) + 0.1 * gaussian(random));
   }
 
-  // Weak pairs unrelated to mechanics, drawn from the 150 most frequent so they turn up in passages.
-  const common = [...table.pairs].sort((a, b) => b[1] - a[1]).slice(0, 150).map(([pair]) => pair).sort();
-  const weak = [];
+  const weakness = () => ({ error: 1.6 + random() * 0.8, slow: 0.3 + random() * 0.3 });
+  const planted = [];
 
-  while (weak.length < PLANTED) {
-    const pair = common[Math.floor(random() * common.length)];
-
-    if (!weak.includes(pair)) weak.push(pair);
+  if (group === 'drifting') {
+    const fixed = pick(random, stratum('common'), []);
+    planted.push({ pair: fixed, stratum: 'common', until: CHANGE, ...weakness() });
+    planted.push({ pair: pick(random, stratum('common'), [fixed]), stratum: 'common', from: CHANGE, ...weakness() });
+  } else {
+    for (const [name] of STRATA) planted.push({ pair: pick(random, stratum(name), planted.map((p) => p.pair)), stratum: name, ...weakness() });
   }
 
-  for (const pair of weak) {
-    errorLogit.set(pair, errorLogit.get(pair) + 1.6 + random() * 0.8);
-    slowness.set(pair, slowness.get(pair) + 0.3 + random() * 0.3);
-  }
+  const active = (pair, run) => planted.find((p) => p.pair === pair && run >= (p.from ?? 0) && run < (p.until ?? Infinity));
+  const keyLogit = new Map([...englishFrequency().keys.keys()].map((key) => [key, base + 0.3 * gaussian(random)]));
 
-  const keyLogit = new Map([...table.keys.keys()].map((key) => [key, base + 0.3 * gaussian(random)]));
-
-  // The true top pairs: the highest true expected gain, as the learner defines it (errors above the typist's
-  // typical pair times the true cost of a correction, plus hesitation above its typical pace, times how often
-  // the pair turns up). This is the objective the product states, so it is reported beside the planted pairs.
-  const share = (pair) => table.pairs.get(pair);
-  const total = pairs.reduce((sum, pair) => sum + share(pair), 0);
-  const typical = pairs.reduce((sum, pair) => sum + share(pair) * sigmoid(errorLogit.get(pair)), 0) / total;
-  const pace = pairs.reduce((sum, pair) => sum + share(pair) * slowness.get(pair), 0) / total;
-  const cost = skill.medianMs * (skill.correctionKeys - 1);
-  const gain = (pair) => share(pair) * (Math.max(0, sigmoid(errorLogit.get(pair)) - typical) * cost + skill.medianMs * Math.max(0, Math.exp(slowness.get(pair) - pace) - 1));
-  const top = [...pairs].sort((a, b) => gain(b) - gain(a) || (a < b ? -1 : 1)).slice(0, PLANTED);
-
-  return { group, skill, weak, top, pairError: (pair) => sigmoid(errorLogit.get(pair) ?? base), slowness: (pair) => slowness.get(pair) ?? 0,
-    keyError: (key) => sigmoid(keyLogit.get(key) ?? base) };
+  return {
+    group, skill, planted,
+    fixed: group === 'drifting' ? planted[0].pair : null,
+    slipping: group === 'drifting' ? planted[1].pair : null,
+    pairError: (pair, run) => sigmoid((errorLogit.get(pair) ?? base) + (active(pair, run)?.error || 0)),
+    slowness: (pair, run) => (slowness.get(pair) ?? 0) + (active(pair, run)?.slow || 0),
+    keyError: (key) => sigmoid(keyLogit.get(key) ?? base),
+  };
 }
 
 // One run: the app's own passage generator, typed under stop on error (a wrong key is refused, then the
-// right one follows), scored and summarized by the app's own code.
+// right one follows), scored and summarized by the app's own code. Returns the summary and the full trace.
 export function typeRun(typist, random, index, id) {
   const text = makePassage('words', CONDITIONS.count, false, random, CONDITIONS.wordList);
   const events = [];
@@ -125,8 +171,8 @@ export function typeRun(typist, random, index, id) {
   for (let i = 0; i < text.length; i += 1) {
     const char = text[i];
     const pair = i > 0 && /^[a-z]{2}$/.test(text.slice(i - 1, i + 1)) ? text.slice(i - 1, i + 1) : null;
-    const p = pair ? typist.pairError(pair) : /[a-z]/.test(char) ? typist.keyError(char) : typist.skill.errorRate / 2;
-    const step = typist.skill.medianMs * Math.exp((pair ? typist.slowness(pair) : 0) + 0.3 * gaussian(random));
+    const p = pair ? typist.pairError(pair, index) : /[a-z]/.test(char) ? typist.keyError(char) : typist.skill.errorRate / 2;
+    const step = typist.skill.medianMs * Math.exp((pair ? typist.slowness(pair, index) : 0) + 0.3 * gaussian(random));
     t += Math.max(30, step);
 
     if (random() < p) {
@@ -137,78 +183,61 @@ export function typeRun(typist, random, index, id) {
     events.push({ type: 'insert', text: char, position: i, offsetMs: Math.round(t) });
   }
 
+  const at = new Date(START + index * RUN_MS).toISOString();
+
   const attempt = completeAttempt({ id, kind: 'test', status: 'complete', conditions: CONDITIONS, textId: id, fresh: true, text, events, startedAt: events[0].offsetMs },
     { endedAt: Math.round(t) });
 
-  return runRecord(attempt, new Date(START + index * 6 * 3600_000).toISOString());
+  return { run: runRecord(attempt, at), trace: attempt };
 }
 
-// The counting rule's own statistic: a pair's pooled first-try miss rate at these conditions, with half a try
-// of smoothing either way so a pair never seen to miss isn't predicted never to miss.
-function countingModel(runs) {
-  const totals = new Map();
-  let seen = 0;
-  let errors = 0;
+// Every learner variant: each subset of the three components, simplest first.
+const COMPONENTS = ['features', 'decay', 'hesitation'];
 
-  for (const run of runs.filter(evidenceRun)) {
-    for (const [pair, n, e] of run.patterns || []) {
-      const t = totals.get(pair) || [0, 0];
-      totals.set(pair, [t[0] + n, t[1] + e]);
-      seen += n;
-      errors += e;
-    }
-  }
+export const VARIANTS = [[], ['hesitation'], ['decay'], ['features'], ['decay', 'hesitation'], ['features', 'hesitation'], ['features', 'decay'], COMPONENTS]
+  .map((on) => ({ name: on.length === 3 ? 'full' : on.length ? on.map((c) => `+${c}`).join(' ') : 'counts-gain', components: on }));
 
-  const pooled = (errors + 0.5) / (seen + 1);
+// A policy fitted on a typist's first runs: what it predicts for each pair, and the units it acts on.
+function learnerPolicy(components, constants) {
+  const variant = { ...Object.fromEntries(COMPONENTS.map((c) => [c, components.includes(c)])), ...constants };
 
-  return {
-    predict: (pair) => (totals.has(pair) ? (totals.get(pair)[1] + 0.5) / (totals.get(pair)[0] + 1) : pooled),
-    ranking: recurringTargets(runs, [], CONDITIONS).map((target) => target.pair),
-    target: recurringTargets(runs, [], CONDITIONS)[0]?.pair ?? null,
+  return (runs, traces, now) => {
+    const model = fitLearner(learnerEvidence(runs, KEYBOARD), now, 'qwerty', variant);
+    const byUnit = new Map(model.units.map((e) => [e.unit, e.error.mean]));
+
+    return { predict: (pair) => byUnit.get(pair) ?? model.errorRate, lean: learnerRecommendation(model).lean.map((item) => item.unit) };
   };
 }
 
-function learnerModel(runs, now, layout) {
-  const model = fitLearner(learnerEvidence(runs, keyboardOf(CONDITIONS)), now, layout);
-  const byUnit = new Map(model.units.map((e) => [e.unit, e]));
+// The counting rule as the app runs it, fallback to the newest traces included. It predicts nothing.
+const countingPolicy = (runs, traces) => ({ predict: null, lean: countingRecommendation(runs, [], traces, CONDITIONS).lean.map((item) => item.unit) });
 
-  return {
-    predict: (pair) => byUnit.get(pair)?.error.mean ?? model.errorRate,
-    ranking: model.units.filter((e) => e.kind === 'pair' && e.gain > 0).map((e) => e.unit),
-    target: learnerRecommendation(model).target,
-  };
-}
-
-// Scores one policy over one typist's history, run by run: fit on every earlier run, predict the next whole
-// run. Never split inside a run.
-function replay(runs, fit, truth) {
-  const predictions = [];
+// One typist's history, replayed for one policy: fit on the first t runs, predict run t, read the ranking.
+function replay(history, policy) {
   const losses = [];
-  const found = { top: null, planted: null };
-  let namedAt = null;
+  const predictions = [];
+  const lean = [];
 
-  for (let t = 1; t < runs.length; t += 1) {
-    const model = fit(runs.slice(0, t), Date.parse(runs[t].at));
+  for (let t = 0; t <= history.length; t += 1) {
+    const prefix = history.slice(0, t);
+    const model = policy(prefix.map((h) => h.run), prefix.slice(-TRACES).map((h) => h.trace), START + t * RUN_MS);
+    lean.push(model.lean.slice(0, LEAN_UNITS));
+
+    if (t === history.length || !model.predict) continue;
     let loss = 0;
     let tries = 0;
 
-    for (const [pair, n, e] of runs[t].patterns || []) {
+    for (const [pair, n, e] of history[t].run.patterns || []) {
       const p = Math.min(1 - 1e-6, Math.max(1e-6, model.predict(pair)));
       loss -= e * Math.log(p) + (n - e) * Math.log(1 - p);
       tries += n;
       predictions.push({ p, n, e });
     }
 
-    if (tries) losses.push({ t, loss: loss / tries });
-
-    for (const [name, pairs] of Object.entries(truth || {})) {
-      if (found[name] === null && model.ranking.slice(0, TOP).filter((pair) => pairs.includes(pair)).length >= 2) found[name] = t;
-    }
-
-    if (truth && namedAt === null && truth.top.includes(model.target)) namedAt = t;
+    if (tries) losses.push(loss / tries);
   }
 
-  return { predictions, losses, found, namedAt };
+  return { losses, predictions, lean };
 }
 
 // Expected calibration error over ten equal-count bins of predicted probability, weighted by tries.
@@ -237,57 +266,115 @@ function calibration(predictions) {
 
 const mean = (values) => (values.length ? values.reduce((s, v) => s + v, 0) / values.length : null);
 
-function medianOf(values) {
+function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
 
-  return sorted.length ? sorted[sorted.length >> 1] : null;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-const BUCKETS = [['runs 1–3', 1, 3], ['runs 4–10', 4, 10], ['runs 11+', 11, Infinity]];
+// Runs after the change until `held(t)` is true at every later point, CHANGE + k through the last run.
+function runsUntilSteady(lean, held) {
+  const last = lean.length - 1;
 
-function summarize(results, runs) {
-  const perTypist = (from, to) => mean(results.map((r) => mean(r.losses.filter((l) => l.t >= from && l.t <= to).map((l) => l.loss))).filter((v) => v !== null));
-  const by10 = (name) => results.filter((r) => r.found[name] !== null && r.found[name] <= 10).length / results.length;
+  for (let k = 0; CHANGE + k <= last; k += 1) {
+    if (lean.slice(CHANGE + k).every(held)) return k;
+  }
+
+  return last - CHANGE + 1;
+}
+
+// The typists of one seed: 8 per skill level per group, 40 runs each, typed once and scored by every policy.
+export function simulate(seed, { typists = 8, runs = 40 } = {}) {
+  const random = seeded(seed);
+
+  return GROUPS.flatMap((group) => SKILLS.flatMap((skill) => Array.from({ length: typists }, (_, i) => {
+    const typist = makeTypist(random, group, skill, i);
+    const history = Array.from({ length: runs }, (_, r) => typeRun(typist, random, r, `${seed}-${group}-${skill.name}-${i}-${r}`));
+
+    return { typist, history };
+  })));
+}
+
+// One policy's measures over one seed's typists.
+export function score(population, policy) {
+  const replays = population.map(({ typist, history }) => ({ typist, ...replay(history, policy) }));
+  const stationary = replays.filter((r) => r.typist.group !== 'drifting');
+  const drifting = replays.filter((r) => r.typist.group === 'drifting');
+  const predicts = replays[0].losses.length > 0;
+
+  const planted = (at, name = null) => mean(stationary.flatMap((r) => r.typist.planted.filter((p) => !name || p.stratum === name)
+    .map((p) => (r.lean[at].includes(p.pair) ? 1 : 0))));
 
   return {
-    logLoss: perTypist(1, Infinity),
-    buckets: BUCKETS.map(([, from, to]) => perTypist(from, to)),
-    runsToFind: medianOf(results.map((r) => r.found.top ?? runs)),
-    foundBy10: by10('top'),
-    plantedBy10: by10('planted'),
-    namedBy10: results.filter((r) => r.namedAt !== null && r.namedAt <= 10).length / results.length,
-    calibration: calibration(results.flatMap((r) => r.predictions)),
+    logLoss: predicts ? mean(replays.map((r) => mean(r.losses))) : null,
+    byGroup: Object.fromEntries(GROUPS.map((g) => [g, predicts ? mean(replays.filter((r) => r.typist.group === g).map((r) => mean(r.losses))) : null])),
+    calibration: predicts ? calibration(replays.flatMap((r) => r.predictions)) : null,
+    planted10: planted(10),
+    planted40: planted(population[0].history.length),
+    strata: Object.fromEntries(STRATA.map(([name]) => [name, { at10: planted(10, name), at40: planted(population[0].history.length, name) }])),
+    pickUp: median(drifting.map((r) => runsUntilSteady(r.lean, (top) => top.includes(r.typist.slipping)))),
+    letGo: median(drifting.map((r) => runsUntilSteady(r.lean, (top) => !top.includes(r.typist.fixed)))),
   };
 }
 
-// Simulates `typists` typists per skill level and group, each with `runs` runs, and scores both policies.
-export function evaluate({ seed = 419, typists = 8, runs = 40 } = {}) {
-  const random = seeded(seed);
-  const groups = {};
-  const fitTimes = [];
+// The constants ADR 0013 chooses on validation typists: K for the counts-only rate, then the half-life for
+// the full model, each by mean next-run log loss.
+export function validate(options = {}) {
+  const populations = VALIDATION_SEEDS.map((seed) => simulate(seed, options));
+  const loss = (components, constants) => mean(populations.map((population) => score(population, learnerPolicy(components, constants)).logLoss));
+  const pooled = POOLED_TRIES_GRID.map((pooledTries) => ({ pooledTries, logLoss: loss([], { pooledTries }) }));
+  const pooledTries = pooled.reduce((best, row) => (row.logLoss < best.logLoss ? row : best)).pooledTries;
+  const halfLives = HALF_LIFE_GRID.map((halfLifeRuns) => ({ halfLifeRuns, logLoss: loss(COMPONENTS, { pooledTries, halfLifeRuns }) }));
+  const halfLifeRuns = halfLives.reduce((best, row) => (row.logLoss < best.logLoss ? row : best)).halfLifeRuns;
 
-  for (const group of ['mechanics', 'unrelated']) {
-    const results = { counting: [], learner: [] };
+  return { pooledTries, halfLifeRuns, pooled, halfLives };
+}
 
-    for (const skill of SKILLS) {
-      for (let i = 0; i < typists; i += 1) {
-        const typist = makeTypist(random, group, skill);
-        const history = Array.from({ length: runs }, (_, r) => typeRun(typist, random, r, `${group}-${skill.name}-${i}-${r}`));
-        results.counting.push(replay(history, countingModel, { top: typist.top, planted: typist.weak }));
-        const started = performance.now();
-        results.learner.push(replay(history, (prefix, now) => learnerModel(prefix, now, 'qwerty'), { top: typist.top, planted: typist.weak }));
-        fitTimes.push((performance.now() - started) / (runs - 1));
-      }
-    }
+// Every policy on every test seed, at the validated constants.
+export function evaluate({ constants, seeds = TEST_SEEDS, ...options }) {
+  const policies = [{ name: 'counting@1', components: null, policy: countingPolicy },
+    ...VARIANTS.map((v) => ({ ...v, policy: learnerPolicy(v.components, constants) }))];
 
-    groups[group] = { counting: summarize(results.counting, runs), learner: summarize(results.learner, runs), typists: results.counting.length };
-  }
+  const perSeed = seeds.map((seed) => {
+    const population = simulate(seed, options);
 
-  return { seed, runs, groups, fitMs: medianOf(fitTimes) };
+    return Object.fromEntries(policies.map(({ name, policy }) => [name, score(population, policy)]));
+  });
+
+  return { seeds, constants, policies: policies.map(({ name, components }) => ({ name, components })), perSeed };
+}
+
+// A measure's mean and range over the seeds.
+export function spread(result, name, read) {
+  const values = result.perSeed.map((seed) => read(seed[name]));
+
+  return values.includes(null) ? null : { mean: mean(values), low: Math.min(...values), high: Math.max(...values) };
+}
+
+// ADR 0013: A beats B on a measure when their ranges over the seeds don't overlap and A's is the better.
+const better = (a, b, lowerIsBetter) => Boolean(a && b) && (lowerIsBetter ? a.high < b.low : a.low > b.high);
+
+export function decide(result) {
+  const planted = (name) => spread(result, name, (s) => s.planted10);
+  const pickUp = (name) => spread(result, name, (s) => s.pickUp);
+  const loss = (name) => spread(result, name, (s) => s.logLoss);
+
+  const beats = (a, b) => (better(planted(a), planted(b), false) || better(pickUp(a), pickUp(b), true))
+    && !better(planted(b), planted(a), false) && !better(pickUp(b), pickUp(a), true);
+
+  const eligible = result.policies.filter(({ name }) => name === 'counting@1' || !better(loss('counts-gain'), loss(name), true));
+
+  const simplicity = (policy) => (policy.components === null ? -1 : policy.components.length);
+  const unbeaten = eligible.filter((a) => !eligible.some((b) => b.name !== a.name && beats(b.name, a.name)));
+
+  const ordered = [...unbeaten].sort((a, b) => simplicity(a) - simplicity(b) || planted(b.name).mean - planted(a.name).mean);
+
+  return { default: ordered[0]?.name ?? null, eligible: eligible.map((p) => p.name), unbeaten: unbeaten.map((p) => p.name), beats };
 }
 
 // A stored profile, replayed the same way on its own measured runs (the keyboard with the most of them).
-export function evaluateProfile(stored) {
+export function evaluateProfile(stored, constants) {
   const profile = normalizeProfile(stored);
   const counts = new Map();
 
@@ -296,54 +383,90 @@ export function evaluateProfile(stored) {
   const runs = profile.runs.filter((run) => evidenceRun(run) && keyboardOf(run.conditions) === keyboard && run.patterns?.length && run.at);
   const layout = runs[0]?.conditions?.layout;
 
-  const scored = { counting: replay(runs, countingModel, null), learner: replay(runs, (prefix, now) => learnerModel(prefix, now, layout), null) };
+  const fitWith = (components) => (prefix, now) => {
+    const model = fitLearner(learnerEvidence(prefix, keyboard), now, layout, { ...Object.fromEntries(COMPONENTS.map((c) => [c, components.includes(c)])), ...constants });
+    const byUnit = new Map(model.units.map((e) => [e.unit, e.error.mean]));
 
-  return { keyboard, runs: runs.length,
-    counting: { logLoss: mean(scored.counting.losses.map((l) => l.loss)), calibration: calibration(scored.counting.predictions) },
-    learner: { logLoss: mean(scored.learner.losses.map((l) => l.loss)), calibration: calibration(scored.learner.predictions) } };
+    return (pair) => byUnit.get(pair) ?? model.errorRate;
+  };
+
+  const scored = (fit) => {
+    const losses = [];
+    const predictions = [];
+
+    for (let t = 1; t < runs.length; t += 1) {
+      const predict = fit(runs.slice(0, t), Date.parse(runs[t].at));
+      let loss = 0;
+      let tries = 0;
+
+      for (const [pair, n, e] of runs[t].patterns) {
+        const p = Math.min(1 - 1e-6, Math.max(1e-6, predict(pair)));
+        loss -= e * Math.log(p) + (n - e) * Math.log(1 - p);
+        tries += n;
+        predictions.push({ p, n, e });
+      }
+
+      if (tries) losses.push(loss / tries);
+    }
+
+    return { logLoss: mean(losses), calibration: calibration(predictions) };
+  };
+
+  return { keyboard, runs: runs.length, countsOnly: scored(fitWith([])), full: scored(fitWith(COMPONENTS)) };
 }
 
-// A 120-run history (the most pattern evidence a profile keeps), fitted repeatedly.
+// A 120-run history (the most pattern evidence a profile keeps), fitted repeatedly with the full model.
 export function fitTime(seed = 419) {
   const random = seeded(seed);
   const typist = makeTypist(random, 'mechanics', SKILLS[1]);
-  const history = Array.from({ length: 120 }, (_, r) => typeRun(typist, random, r, `timing-${r}`));
+  const history = Array.from({ length: 120 }, (_, r) => typeRun(typist, random, r, `timing-${r}`).run);
   const now = Date.parse(history.at(-1).at);
-  const evidence = learnerEvidence(history, keyboardOf(CONDITIONS));
-  fitLearner(evidence, now, 'qwerty');
+  fitLearner(learnerEvidence(history, KEYBOARD), now, 'qwerty');
 
   const times = Array.from({ length: 30 }, () => {
     const started = performance.now();
-    fitLearner(learnerEvidence(history, keyboardOf(CONDITIONS)), now, 'qwerty');
+    fitLearner(learnerEvidence(history, KEYBOARD), now, 'qwerty');
 
     return performance.now() - started;
   });
 
-  return { median: medianOf(times), max: Math.max(...times) };
+  return { median: median(times), max: Math.max(...times) };
 }
 
-const pct = (v) => `${Math.round(v * 100)}%`;
-const num = (v) => (v === null ? '–' : v.toFixed(4));
+const fixed = (digits) => (v) => v.toFixed(digits);
+const percent = (v) => `${Math.round(v * 100)}%`;
+const cell = (s, format) => (s === null ? '–' : `${format(s.mean)} [${format(s.low)}–${format(s.high)}]`);
 
-function table(result) {
-  const lines = [`seed ${result.seed}, ${result.runs} runs of 25 words per typist. Log loss: next whole run's first tries, mean per typist.`,
-    `ECE: calibration error over ten bins. Runs to find (median): runs until 2 of the true top 3 pairs by gain are in the top 5 (${result.runs}: not within ${result.runs}).`,
-    'Found / named by 10: share of typists whose top 5 holds 2 of the true top 3, or whose recommended target is one of them, by run 10.',
-    'Planted by 10: share whose top 5 holds 2 of the 3 planted weak pairs by run 10.', ''];
+function table(header, rows) {
+  const widths = header.map((_, i) => Math.max(...[header, ...rows].map((row) => row[i].length)));
 
-  const header = ['group', 'policy', 'log loss', ...BUCKETS.map(([name]) => name), 'ECE', 'runs to find', 'found by 10', 'named by 10', 'planted by 10'];
-  const rows = [header];
+  return [header, ...rows].map((row) => row.map((c, i) => c.padEnd(widths[i])).join('  ').trimEnd()).join('\n');
+}
 
-  for (const [group, { typists, ...policies }] of Object.entries(result.groups)) {
-    for (const [policy, s] of Object.entries(policies)) {
-      rows.push([`${group} (${typists})`, policy, num(s.logLoss), ...s.buckets.map(num), num(s.calibration), String(s.runsToFind), pct(s.foundBy10), pct(s.namedBy10), pct(s.plantedBy10)]);
-    }
-  }
+export function report(validation, result) {
+  const names = result.policies.map((p) => p.name);
+  const at = (name, read, format) => cell(spread(result, name, read), format);
+  const verdict = decide(result);
+  const loss = fixed(4);
 
-  const widths = header.map((_, i) => Math.max(...rows.map((row) => row[i].length)));
-  lines.push(...rows.map((row) => row.map((cell, i) => cell.padEnd(widths[i])).join('  ')));
-
-  return lines.join('\n');
+  return [
+    `Validation (seeds ${VALIDATION_SEEDS.join(', ')}): log loss by K for the counts-only rate, ${validation.pooled.map((r) => `${r.pooledTries} ${loss(r.logLoss)}`).join(', ')}: K = ${validation.pooledTries}.`,
+    `By half-life for the full model, ${validation.halfLives.map((r) => `${r.halfLifeRuns} ${loss(r.logLoss)}`).join(', ')}: ${validation.halfLifeRuns} runs.`,
+    '',
+    `Test seeds ${result.seeds.join(', ')}: mean [lowest–highest seed]. Log loss: next run's first tries, mean per typist. ECE: calibration over ten bins.`,
+    table(['policy', 'log loss', ...GROUPS, 'ECE'], names.map((name) => [name, at(name, (s) => s.logLoss, loss),
+      ...GROUPS.map((g) => at(name, (s) => s.byGroup[g], loss)), at(name, (s) => s.calibration, fixed(4))])),
+    '',
+    `Ranking: the top ${LEAN_UNITS}. Planted: share of planted pairs in it after 10 and 40 runs. Pick-up, let-go: runs after the change, median.`,
+    table(['policy', 'planted@10', ...STRATA.map(([n]) => `${n}@10`), 'planted@40', ...STRATA.map(([n]) => `${n}@40`), 'pick-up', 'let-go'],
+      names.map((name) => [name, at(name, (s) => s.planted10, percent), ...STRATA.map(([n]) => at(name, (s) => s.strata[n].at10, percent)),
+        at(name, (s) => s.planted40, percent), ...STRATA.map(([n]) => at(name, (s) => s.strata[n].at40, percent)),
+        at(name, (s) => s.pickUp, fixed(1)), at(name, (s) => s.letGo, fixed(1))])),
+    '',
+    `Eligible (log loss not worse than the counts-only rate's beyond the spread): ${verdict.eligible.join(', ')}.`,
+    `Not beaten on ranking by an eligible policy: ${verdict.unbeaten.join(', ')}.`,
+    `Default by the rule: ${verdict.default}. The app's DEFAULT_POLICY: ${DEFAULT_POLICY}.`,
+  ].join('\n');
 }
 
 function option(name, fallback) {
@@ -353,16 +476,23 @@ function option(name, fallback) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const result = evaluate({ seed: Number(option('seed', 419)), typists: Number(option('typists', 8)), runs: Number(option('runs', 40)) });
-  console.log(table(result));
+  const options = { typists: Number(option('typists', 8)), runs: Number(option('runs', 40)) };
+  const validation = validate(options);
+  const constants = { pooledTries: validation.pooledTries, halfLifeRuns: validation.halfLifeRuns };
+  const result = evaluate({ constants, ...options });
+  console.log(report(validation, result));
+  const json = option('json', null);
+
+  if (json) writeFileSync(json, `${JSON.stringify({ validation, ...result, default: decide(result).default }, null, 1)}\n`);
   const timing = fitTime();
-  console.log(`\nfit on a 120-run history: median ${timing.median.toFixed(1)} ms, slowest ${timing.max.toFixed(1)} ms (of 30)`);
+  console.log(`\nfull model, fit on a 120-run history: median ${timing.median.toFixed(1)} ms, slowest ${timing.max.toFixed(1)} ms (of 30)`);
+  console.log(`constants as shipped: pooledTries ${FULL_MODEL.pooledTries}, halfLifeRuns ${FULL_MODEL.halfLifeRuns}`);
   const path = option('profile', null);
 
   if (path) {
-    const profile = evaluateProfile(JSON.parse(readFileSync(path, 'utf8')));
+    const profile = evaluateProfile(JSON.parse(readFileSync(path, 'utf8')), constants);
     console.log(`\nprofile ${path}: ${profile.runs} runs on ${profile.keyboard}`);
-    console.log(`  counting  log loss ${num(profile.counting.logLoss)}  calibration ${num(profile.counting.calibration)}`);
-    console.log(`  learner   log loss ${num(profile.learner.logLoss)}  calibration ${num(profile.learner.calibration)}`);
+    console.log(`  counts-only  log loss ${fixed(4)(profile.countsOnly.logLoss)}  calibration ${fixed(4)(profile.countsOnly.calibration)}`);
+    console.log(`  full model   log loss ${fixed(4)(profile.full.logLoss)}  calibration ${fixed(4)(profile.full.calibration)}`);
   }
 }

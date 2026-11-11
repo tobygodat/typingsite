@@ -28,6 +28,11 @@ export const HALF_LIFE_DAYS = 60;
 // The feature prior counts as this many first tries: the floor below which the counting rule says nothing.
 const PRIOR_TRIES = MIN_PATTERN_SAMPLES;
 
+// The components the evaluation turns off one by one (ADR 0013), and the constants it chooses on validation
+// typists: the feature regression (off: the prior is the person's pooled rate, worth `pooledTries`), decay
+// (off: every run weighs 1) and the hesitation term (off: the gain counts errors only).
+export const FULL_MODEL = { features: true, decay: true, hesitation: true, halfLifeRuns: HALF_LIFE_RUNS, pooledTries: PRIOR_TRIES };
+
 // How far a unit's own hesitation sits from what its mechanics predict, and the spread of one clean interval,
 // both as log ratios to the person's median. A run keeps one median per pair, whose variance is about π/2
 // times a single interval's divided by the intervals behind it.
@@ -354,7 +359,8 @@ function fitHesitationWeights(rows) {
 //     own?: { seen, errors } (keys: the observations naming reads, see stated) }
 // units is ranked by gain, highest first: the queue. `observed` holds raw, undecayed counts, the only
 // numbers a person is shown.
-export function fitLearner(evidence, now, layout) {
+export function fitLearner(evidence, now, layout, variant = FULL_MODEL) {
+  const { features, decay, hesitation: hesitates, halfLifeRuns, pooledTries } = { ...FULL_MODEL, ...variant };
   const records = orderedEvidence(evidence);
   const positions = keyPositions(normalizeLayout(layout));
   const frequency = frequencyScale();
@@ -367,7 +373,7 @@ export function fitLearner(evidence, now, layout) {
 
   records.forEach((record, index) => {
     const age = record.at === null ? 0 : Math.max(0, now - record.at) / DAY_MS;
-    const w = 0.5 ** ((records.length - 1 - index) / HALF_LIFE_RUNS) * 0.5 ** (age / HALF_LIFE_DAYS);
+    const w = decay ? 0.5 ** ((records.length - 1 - index) / halfLifeRuns) * 0.5 ** (age / HALF_LIFE_DAYS) : 1;
 
     if (record.medianMs > 0) {
       paceWeight += w;
@@ -422,14 +428,25 @@ export function fitLearner(evidence, now, layout) {
   const names = [...new Set([...table.pairs.keys(), ...table.keys.keys(), ...tally.keys()])].sort(compare);
   const units = centered(names.map((unit) => ({ unit, x: unitFeatures(unit, positions, frequency), t: tally.get(unit) || null })), frequency);
 
-  const errorWeights = fitErrorWeights(units.flatMap(({ x, t }) => {
-    const { n, e } = t?.own || t || {};
+  const own = (t) => t?.own || t || { n: 0, e: 0 };
+
+  const errorWeights = features ? fitErrorWeights(units.flatMap(({ x, t }) => {
+    const { n, e } = own(t);
 
     return n > 0 ? [{ x, rate: e / n, weight: (n * PRIOR_TRIES) / (n + PRIOR_TRIES) }] : [];
+  })) : null;
+
+  // Without the regression, each kind's prior is the person's pooled rate over that kind (the hand-set
+  // intercept before any evidence).
+  const pooled = new Map([1, 2].map((kind) => {
+    const counted = units.filter(({ unit }) => unit.length === kind).map(({ t }) => own(t));
+    const n = counted.reduce((sum, c) => sum + c.n, 0);
+
+    return [kind, n > 0 ? counted.reduce((sum, c) => sum + c.e, 0) / n : sigmoid(START_WEIGHTS.error[0])];
   }));
 
-  const hesitationWeights = fitHesitationWeights(units.flatMap(({ unit, x, t }) => (unit.length === 2 && t?.precision > 0
-    ? [{ x, mean: t.timing / t.precision, precision: t.precision }] : [])));
+  const hesitationWeights = hesitates ? fitHesitationWeights(units.flatMap(({ unit, x, t }) => (unit.length === 2 && t?.precision > 0
+    ? [{ x, mean: t.timing / t.precision, precision: t.precision }] : []))) : null;
 
   const medianMs = paceWeight ? Math.exp(paceLog / paceWeight) : null;
   const intervalMs = medianMs ?? DEFAULT_INTERVAL_MS;
@@ -438,15 +455,16 @@ export function fitLearner(evidence, now, layout) {
   const costMs = correctionMs === null ? DEFAULT_EXTRA_KEYS * intervalMs : Math.max(intervalMs, correctionMs - intervalMs);
 
   const estimates = units.map(({ unit, x, t }) => {
-    const prior = sigmoid(dot(x, errorWeights));
-    const { n = 0, e = 0 } = t?.own || t || {};
-    const a = PRIOR_TRIES * prior + e;
-    const b = PRIOR_TRIES * (1 - prior) + n - e;
+    const prior = features ? sigmoid(dot(x, errorWeights)) : pooled.get(unit.length);
+    const tries = features ? PRIOR_TRIES : pooledTries;
+    const { n, e } = own(t);
+    const a = tries * prior + e;
+    const b = tries * (1 - prior) + n - e;
     const mean = a / (a + b);
     const error = { mean, sd: Math.sqrt((mean * (1 - mean)) / (a + b + 1)) };
     let hesitation = null;
 
-    if (unit.length === 2) {
+    if (hesitates && unit.length === 2) {
       const priorPrecision = 1 / UNIT_SPREAD ** 2;
       const precision = priorPrecision + (t?.precision || 0);
       hesitation = { mean: (priorPrecision * dot(x, hesitationWeights) + (t?.timing || 0)) / precision, sd: Math.sqrt(1 / precision) };
