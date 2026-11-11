@@ -137,6 +137,9 @@ export function runRecord(attempt, at = attempt.at || null) {
   // Adaptive practice is drill-kind: kept apart from bests, trends, baselines and pattern evidence.
   if (attempt.adaptive) record.adaptive = true;
 
+  // A drill's length, from the drill length setting. Drills saved without it ran 30 seconds.
+  if (attempt.drillSeconds) record.drillSeconds = attempt.drillSeconds;
+
   // Pattern counts only feed recurring targets, which never read custom text or missed-word practice.
   if (!comparableKind(attempt.kind)) return record;
   const evidence = summarizePatterns([attempt]);

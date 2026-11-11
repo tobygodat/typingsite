@@ -1,0 +1,178 @@
+import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
+import { DEFAULT_POLICY, englishFrequency } from '../src/learner.js';
+import { test, expect, openApp, passageText, chooseWords, completePassage, openView, openSettings, closeSettings, chooseSetting, signInWithEmail, typeInto } from './fixtures.js';
+
+const checked = (page, id) => page.locator(`#${id} input:checked`);
+
+async function runPalette(page, label) {
+  await page.keyboard.press('Control+k');
+  await page.locator('#palette-input').fill(label);
+  await page.locator('#palette-list [role="option"]', { hasText: label }).first().click();
+}
+
+// Starts the drill's clock with a few keys, then runs it on by `seconds`.
+async function runDrillFor(page, seconds) {
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await typeInto(page, (await passageText(page)).slice(0, 4));
+  await page.clock.fastForward(seconds * 1000);
+}
+
+// Six measured runs in which "th" is never missed but typed 90 ms slower than the run's pace, and "an" is
+// missed on 3 of its 8 first tries a run at pace: the learner ranks "th" on slowness and "an" on misses.
+const conditions = { mode: 'words', count: 25, punctuation: false, numbers: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
+  corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
+
+const BACKGROUND = [...englishFrequency().pairs].sort((a, b) => b[1] - a[1]).slice(0, 60).map(([pair]) => pair);
+const ROWS = [['th', 8, 0, 8, 290, 90], ['an', 8, 3, 8, 200, 0]];
+
+const focusRuns = () => Array.from({ length: 6 }, (_, i) => ({ id: `focus-${i}`, at: `2026-11-0${i + 1}T12:00:00.000Z`, day: `2026-11-0${i + 1}`, kind: 'test', status: 'complete',
+  interrupted: false, fresh: true, conditions, textId: `focus-${i}`, score: { wpm: 60, accuracy: 96 }, elapsedMs: 25_000, errors: 3, target: null, patterns: [...BACKGROUND.filter((pair) => !ROWS.some((row) => row[0] === pair)).map((pair) => [pair, 3, 0, 3, 200, 0]), ...ROWS],
+  keys: [], keysVersion: 0 }));
+
+const SLOW_TH = '90 ms slower than your pace, in 6 of 6 runs that timed it (48 clean intervals)';
+const MISSED_AN = '18 of 48 missed in 6 runs';
+
+test('the three training settings are chosen in the settings dialog, saved and synced with the other preferences', async ({ page, supabase }) => {
+  const user = supabase.addUser('train-settings@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await openSettings(page, 'practice');
+  await expect(page.locator('#train-focus-label')).toHaveText('train focus');
+  await expect(checked(page, 'train-focus')).toHaveValue('balanced');
+  await expect(checked(page, 'drill-length')).toHaveValue('30');
+  await expect(checked(page, 'retest-toggle')).toHaveValue('true');
+
+  await chooseSetting(page, 'train-focus', 'speed');
+  await chooseSetting(page, 'drill-length', '60');
+  await chooseSetting(page, 'retest-toggle', 'false');
+  await closeSettings(page);
+  await expect.poll(() => supabase.profileFor(user.email)?.preferences).toMatchObject({ trainFocus: 'speed', drillSeconds: 60, retest: false });
+
+  await openView(page, 'Train');
+  await expect(page.locator('#start-drill')).toHaveText('Drill');
+
+  await page.reload();
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openSettings(page, 'practice');
+  await expect(checked(page, 'train-focus')).toHaveValue('speed');
+  await expect(checked(page, 'drill-length')).toHaveValue('60');
+  await expect(checked(page, 'retest-toggle')).toHaveValue('false');
+});
+
+test('the palette sets the focus, the drill length and the retest, and the settings dialog shows them', async ({ page }) => {
+  await openApp(page);
+  await runPalette(page, 'train focus · accuracy');
+  await runPalette(page, 'drill length · 120 seconds');
+  await runPalette(page, 'retest after drill');
+  await openSettings(page, 'practice');
+  await expect(checked(page, 'train-focus')).toHaveValue('accuracy');
+  await expect(checked(page, 'drill-length')).toHaveValue('120');
+  await expect(checked(page, 'retest-toggle')).toHaveValue('false');
+  await closeSettings(page);
+
+  await page.keyboard.press('Control+k');
+  await page.locator('#palette-input').fill('retest after drill');
+  await expect(page.locator('#palette-list [role="option"]', { hasText: 'retest after drill' })).toContainText('off');
+  await page.keyboard.press('Escape');
+  await openView(page, 'Train');
+  await expect(page.locator('#start-drill')).toHaveText('Drill');
+});
+
+test('a 15-second drill is retested after 15 seconds, and a 120-second drill runs past 60', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await chooseSetting(page, 'drill-length', '15');
+  await closeSettings(page);
+  await openView(page, 'Train');
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#session-kicker')).toHaveText('drill · 15 s');
+  await runDrillFor(page, 15);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await completePassage(page);
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+
+  await chooseSetting(page, 'drill-length', '120');
+  await closeSettings(page);
+  await openView(page, 'Train');
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#session-kicker')).toHaveText('drill · 120 s');
+  await runDrillFor(page, 60);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await page.clock.fastForward(60_000);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+});
+
+test('with the retest off, Train runs the drill and stops: nothing is compared and no loop is saved', async ({ page, supabase }) => {
+  const user = supabase.addUser('no-retest@stilltype.test');
+  await page.clock.install();
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await chooseSetting(page, 'retest-toggle', 'false');
+  await closeSettings(page);
+  await expect(page.locator('#result-drill')).toHaveText('Drill');
+  await openView(page, 'Train');
+  await expect(page.locator('#start-drill')).toHaveText('Drill');
+  await page.locator('#start-drill').click();
+  await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
+  await runDrillFor(page, 30);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#comparison-panel')).toBeHidden();
+  await expect.poll(() => supabase.profileFor(user.email)?.runs?.map((run) => run.kind)).toEqual(['test', 'drill']);
+  expect(supabase.profileFor(user.email).loops).toEqual([]);
+  await openView(page, 'Progress');
+  await expect(page.locator('#history-list')).toBeHidden();
+});
+
+test('each focus names its own target on the same history, and Patterns across runs agrees with Train', async ({ page, supabase }) => {
+  const user = supabase.addUser('focus@stilltype.test');
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { mode: 'words', count: 25 }, attempts: [], runs: focusRuns(), loops: [], seenTextIds: [], bests: {},
+    updatedAt: '2026-11-06T12:00:00Z' } });
+
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+
+  for (const [focus, target, evidence] of [['balanced', 'th', SLOW_TH], ['accuracy', 'an', MISSED_AN], ['speed', 'th', SLOW_TH]]) {
+    await chooseSetting(page, 'train-focus', focus);
+    await closeSettings(page);
+    await openView(page, 'Train');
+    await expect(page.locator('#train-heading')).toHaveText(`Practice “${target}”`);
+    await expect(page.locator('#train-evidence')).toHaveText(evidence);
+
+    // Progress lists the same queue, its first row the target Train names, with the same evidence line.
+    await openView(page, 'Progress');
+    const first = page.locator('#training-targets .training-target').first();
+    await expect(first.locator('h3')).toHaveText(`Practice “${target}”`);
+    await expect(first.locator('p').first()).toHaveText(evidence);
+    await expect(page.locator('#training-targets')).not.toContainText('slower than your median');
+  }
+
+  // Accuracy queues only units named on their misses; speed only pairs named on their pace.
+  await chooseSetting(page, 'train-focus', 'accuracy');
+  await closeSettings(page);
+  await openView(page, 'Progress');
+  await expect(page.locator('#training-targets h3')).toHaveText(['Practice “an”']);
+  await page.locator('#training-targets').getByRole('button', { name: 'Practice “an” again' }).click();
+  await expect(page.locator('#session-title')).toHaveText('Practice “an”');
+});
+
+test('a loop records the focus its target was ranked for, beside the policy', async ({ page, supabase }) => {
+  const user = supabase.addUser('focus-loop@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await chooseSetting(page, 'train-focus', 'accuracy');
+  await closeSettings(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.clock.install();
+  await openView(page, 'Train');
+  await page.locator('#start-drill').click();
+  await runDrillFor(page, 30);
+  await completePassage(page);
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect.poll(() => supabase.profileFor(user.email)?.loops?.at(-1)).toMatchObject({ policy: DEFAULT_POLICY, focus: 'accuracy', drill: { duration: 30 } });
+});
