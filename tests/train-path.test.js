@@ -111,7 +111,7 @@ test('one retest makes a target drilled; it is fixed only once later runs hold 2
   const clean = summary('c', day(3), noisy([['qu', 10, 0, 10, 200, 0]]));
   const fixed = stepFor([before, retest, clean]);
   assert.equal(fixed.state, 'fixed');
-  assert.deepEqual(behindCopy(fixed), ['2 of 12 → 0 of 25 missed', '0 of 35 missed since']);
+  assert.deepEqual(behindCopy(fixed), ['2 of 12 → 0 of 25 missed', '0 of 35 missed since the drill']);
 
   // The same evidence, while the learner still queues it, or with one miss since, or under 20 tries: drilled.
   const since = sinceDrilled(drilled[0], [before, retest, clean]);
@@ -150,15 +150,50 @@ test('a pair drilled for its pace is fixed only on clean intervals at or under t
   const fixed = path([at('b', 0, 90), retest, at('c', 2, -40), at('d', 3, -40)]).behind[0];
   assert.equal(fixed.state, 'fixed');
   assert.equal(fixed.basis, 'slow');
-  assert.deepEqual(behindCopy(fixed), ['90 ms slower → 30 ms slower', '17 ms faster since, over 36 intervals']);
+  assert.deepEqual(behindCopy(fixed), ['90 ms slower → 30 ms slower', '17 ms faster since the drill, over 36 intervals']);
   // Fast before, slow since: the learner never names it, yet the runs since are 30 ms slow: drilled.
   const fast = [at('b0', -3, -60), at('b1', -2, -60), at('b2', -1, -60)];
   const drilled = path([...fast, retest, at('c', 2, 30)]).behind[0];
   assert.equal(drilled.state, 'drilled');
-  assert.deepEqual(behindCopy(drilled), ['90 ms slower → 30 ms slower', '30 ms slower since, over 24 intervals']);
+  assert.deepEqual(behindCopy(drilled), ['90 ms slower → 30 ms slower', '30 ms slower since the drill, over 24 intervals']);
   assert.equal(SLOW_FLOOR_MS, 20);
   assert.equal(FIXED_RUNS, 2);
   assert.equal(FIXED_OBSERVATIONS, 20);
+});
+
+test('a run counts toward fixed only when it holds observations of the kind the target was drilled for', () => {
+  // "wh" named at 100 ms slow, a retest with 24 clean intervals at pace, then a run that typed "wh" three times but timed
+  // none of it (a typo beside the pair each time): one run of pace evidence since the drill, so drilled, not fixed.
+  const named = summary('b', day(0), withBackground([['wh', 20, 0, 20, 300, 100]]));
+  const retest = summary('t', day(1), withBackground([['wh', 24, 0, 24, 200, 0]]));
+  const untimed = summary('u', day(2), withBackground([['wh', 3, 0, 0, null, null]]));
+  const loops = [loop('l', 'wh', retest, { basis: 'slow', pace: { was: { slowMs: 100, timed: 20, timedRuns: 1, slowRuns: 1 }, now: { slowMs: 0, timed: 24 } } })];
+  const runs = [named, retest, untimed];
+  const step = pathFor(runs, loops, 'speed').behind.find((item) => item.unit === 'wh');
+  assert.equal(step.state, 'drilled');
+  assert.deepEqual(step.since.after, { runs: 1, intervals: 24, ms: 0 });
+  assert.deepEqual(behindCopy(step), ['100 ms slower → at your pace']);
+  // A second timed run makes it two runs of pace evidence: fixed.
+  const timed = summary('v', day(3), withBackground([['wh', 4, 0, 4, 200, 0]]));
+  assert.equal(pathFor([...runs, timed], loops, 'speed').behind.find((item) => item.unit === 'wh').state, 'fixed');
+
+  // The same for misses: a run that holds the pair with no first try is no run of miss evidence.
+  const missRetest = summary('mt', day(1), noisy([['qu', 25, 0, 25, 200, 0]]));
+  const missLoops = [loop('ml', 'qu', missRetest, { was: { errors: 2, observations: 12 }, now: { errors: 0, observations: 25 } })];
+  const missRuns = [summary('mb', day(0), noisy([['qu', 12, 2, 12, 200, 0]])), missRetest, summary('mu', day(2), noisy([['qu', 0, 0, 0, null, null]]))];
+  assert.equal(sinceDrilled(missLoops[0], missRuns).after.runs, 1);
+  assert.equal(pathFor(missRuns, missLoops, 'accuracy').behind.find((item) => item.unit === 'qu').state, 'drilled');
+});
+
+test('the open step’s since-line reads the kind of evidence the step is drawn for, not the kind its drill was for', () => {
+  // "th" drilled for its misses, now named for its pace: the since-line reports pace, as the evidence beside it does.
+  const retest = summary('t', day(3), withBackground([['th', 12, 0, 12, 290, 90]]));
+  const runs = [...[0, 1, 2].map((n) => summary(`b${n}`, day(n), withBackground([['th', 12, 0, 12, 290, 90]]))), retest];
+  const path = pathFor(runs, [loop('l', 'th', retest)], 'speed');
+  assert.equal(path.current.unit, 'th');
+  assert.equal(path.current.was.basis, 'slow');
+  assert.equal(path.current.since.basis, 'slow');
+  assert.equal(sinceCopy(path.current.since), '90 ms slower → 90 ms slower than your pace since you drilled it');
 });
 
 test('a loop saved before the read-back existed shows its before and since figures instead', () => {
@@ -166,8 +201,12 @@ test('a loop saved before the read-back existed shows its before and since figur
   const runs = [summary('b0', day(0), noisy([['qu', 10, 4, 10, 200, 0]])), retest];
   const old = { ...loop('l', 'qu', retest), targetBasis: undefined, targetMisses: null };
   const step = trainPath({ recommendation: { queue: [], target: null }, loops: [old], runs, keyboard: KEYBOARD }).behind[0];
-  assert.deepEqual(behindCopy(step), ['40% → 10% missed since']);
+  assert.deepEqual(behindCopy(step), ['40% → 10% missed since the drill']);
 });
+
+// Whether a stored pattern row holds an observation of a kind: a clean interval measured against a pace of at least
+// 30 ms (learnerEvidence's floor), or a first try.
+const observes = (basis) => (row) => (basis === 'slow' ? row[3] > 0 && row[4] > 0 && row[4] - row[5] >= 30 : row[1] > 0);
 
 // Random histories: runs at random paces with six pairs missed and slowed at random, and loops on those pairs and
 // two others, retested by random runs, read back with random figures, faster ones included.
@@ -191,6 +230,12 @@ function randomHistory(random, round) {
     const basis = random() < 0.5 ? 'slow' : 'errors';
     const figure = () => Math.round(random() * 200 - 100);
 
+    // A third of retests are long and clean: 24 first tries and clean intervals at the run's pace, enough on their own.
+    if (random() < 1 / 3) {
+      const pace = after.patterns.find((row) => row[1] === 3 && row[5] === 0)[4];
+      after.patterns = after.patterns.map((row) => (row[0] === target ? [target, 24, 0, 24, pace, 0] : row));
+    }
+
     return loop(`l${round}-${i}`, target, after, { basis, was: { errors: 3, observations: 12 }, now: { errors: Math.floor(random() * 3), observations: 8 },
       pace: { was: { slowMs: 25 + Math.abs(figure()), timed: 12, timedRuns: 2, slowRuns: 2 }, now: { slowMs: figure(), timed: 8 } } });
   });
@@ -202,6 +247,9 @@ test('across random histories in every focus, the path shows only what the perso
   const random = seeded(4200);
   let fixedSeen = 0;
   let behindSeen = 0;
+  let withoutEvidence = 0;
+  let shortOfEvidence = 0;
+  let fixedOnOneRun = 0;
 
   for (let round = 0; round < 200; round += 1) {
     const { runs, loops } = randomHistory(random, round);
@@ -248,23 +296,37 @@ test('across random histories in every focus, the path shows only what the perso
           if (step.basis === 'slow') assert.ok(lines.every((line) => !line.includes('missed')), `${where}: “${step.unit}” drilled for pace reads misses`);
           else assert.ok(lines.every((line) => !/\bms\b/.test(line)), `${where}: “${step.unit}” drilled for misses reads pace`);
 
-          if (step.state !== 'fixed') continue;
-          fixedSeen += 1;
-          // Fixed only under the rule, counted here straight from the runs since its retest.
+          // The runs since its retest, counted here straight from the pattern rows.
           const drilled = loops.filter((item) => item.target === step.unit).sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || (a.id < b.id ? -1 : 1)).at(-1);
           const split = Date.parse(runs.find((run) => run.id === drilled.afterAttemptId).at);
           const rows = runs.filter((run) => Date.parse(run.at) >= split).map((run) => run.patterns.find((row) => row[0] === step.unit)).filter(Boolean);
+          const unobserved = rows.filter((row) => !observes(step.basis)(row)).length;
+
+          if (unobserved) withoutEvidence += 1;
+
+          // Enough runs hold the pair, too few hold its evidence: the case a count of every run would have let through.
+          if (rows.length >= FIXED_RUNS && rows.length - unobserved < FIXED_RUNS) shortOfEvidence += 1;
+
+          // ...and of those, one whose one run of evidence alone holds 20 clean observations and that the learner lets go.
+          const enough = step.since.after && (step.basis === 'slow' ? step.since.after.intervals >= FIXED_OBSERVATIONS && Math.round(step.since.after.ms) <= SLOW_FLOOR_MS
+            : step.since.after.tries >= FIXED_OBSERVATIONS && step.since.after.errors === 0);
+
+          if (rows.length >= FIXED_RUNS && rows.length - unobserved < FIXED_RUNS && enough && !queued.has(step.unit)) fixedOnOneRun += 1;
+
+          if (step.state !== 'fixed') continue;
+          fixedSeen += 1;
+          // Fixed only under the rule.
+          const observed = rows.filter(observes(step.basis));
           assert.ok(!queued.has(step.unit), `${where}: “${step.unit}” fixed while queued`);
-          assert.ok(rows.length >= FIXED_RUNS, `${where}: “${step.unit}” fixed on one run`);
+          assert.ok(observed.length >= FIXED_RUNS, `${where}: “${step.unit}” fixed on ${observed.length} run of its evidence`);
 
           if (step.basis === 'slow') {
-            const timed = rows.filter((row) => row[3] > 0 && row[4] - row[5] >= 30);
-            const intervals = timed.reduce((sum, row) => sum + row[3], 0);
+            const intervals = observed.reduce((sum, row) => sum + row[3], 0);
             assert.ok(intervals >= FIXED_OBSERVATIONS, `${where}: “${step.unit}” fixed on ${intervals} intervals`);
-            assert.ok(Math.round(timed.reduce((sum, row) => sum + row[3] * row[5], 0) / intervals) <= SLOW_FLOOR_MS);
+            assert.ok(Math.round(observed.reduce((sum, row) => sum + row[3] * row[5], 0) / intervals) <= SLOW_FLOOR_MS);
           } else {
-            assert.ok(rows.reduce((sum, row) => sum + row[1], 0) >= FIXED_OBSERVATIONS, `${where}: “${step.unit}” fixed on few tries`);
-            assert.equal(rows.reduce((sum, row) => sum + Math.min(row[1], row[2]), 0), 0, `${where}: “${step.unit}” fixed with a miss`);
+            assert.ok(observed.reduce((sum, row) => sum + row[1], 0) >= FIXED_OBSERVATIONS, `${where}: “${step.unit}” fixed on few tries`);
+            assert.equal(observed.reduce((sum, row) => sum + Math.min(row[1], row[2]), 0), 0, `${where}: “${step.unit}” fixed with a miss`);
           }
         }
       }
@@ -273,6 +335,10 @@ test('across random histories in every focus, the path shows only what the perso
 
   assert.ok(behindSeen > 200, `the generator puts steps behind (${behindSeen})`);
   assert.ok(fixedSeen > 5, `the generator fixes some (${fixedSeen})`);
+  // The generator types a drilled pair, after its retest, in runs that hold none of the evidence it was drilled for.
+  assert.ok(withoutEvidence > 20, `the generator types drilled pairs without their evidence (${withoutEvidence})`);
+  assert.ok(shortOfEvidence > 5, `the generator holds a pair in two runs since but its evidence in one (${shortOfEvidence})`);
+  assert.ok(fixedOnOneRun > 5, `the generator lets one run of evidence hold enough to fix it (${fixedOnOneRun})`);
 });
 
 test('the path is the same whatever order the history arrives in, and after either merge of two devices’ copies', () => {
