@@ -159,8 +159,8 @@ export function runRecord(attempt, at = attempt.at || null) {
   return record;
 }
 
-// Comparable runs keep the newest 1,000 summaries, the newest 120 with pattern evidence; other kinds keep their
-// newest 50. Order stays chronological, and a profile with only comparable runs is retained exactly as before.
+// Comparable runs keep the newest 1,000 summaries, the newest 120 with pattern evidence (their pair and key counts
+// and correction times, which the learner reads only beside the counts); other kinds keep their newest 50. Order stays chronological, and a profile with only comparable runs is retained exactly as before.
 // Missed words stay only on the newest 120 runs the list counts, so the profile stays small. Counting those
 // from the end means drills between them never push counted runs out of the list's window (word practice and
 // custom text are on their own budget anyway).
@@ -181,7 +181,10 @@ export function retainRuns(runs) {
 
     const kept = { ...(trimWords ? rest : run) };
 
-    if (trimPatterns) Object.assign(kept, { patterns: [], keys: [] });
+    if (trimPatterns) {
+      Object.assign(kept, { patterns: [], keys: [] });
+      delete kept.corrections;
+    }
 
     return kept;
   });

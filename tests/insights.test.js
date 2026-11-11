@@ -5,6 +5,7 @@ import { CORPUS_VERSION, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOT
 import { CODE_LANGUAGES } from '../src/code-snippets.js';
 import { layoutIds, layoutLabel } from '../src/layouts.js';
 import { wordListIds } from '../src/words.js';
+import { keyboardOf, learnerEvidence } from '../src/learner.js';
 
 
 test('missed and slowest words come from first tries and per-word speed', () => {
@@ -258,6 +259,14 @@ test('run summaries outlive trace retention, while pattern memory stays bounded'
   const withKeys = retainRuns(Array.from({ length: 200 }, (_, i) => run(String(i), { keys: [['t', 3, 0]], keysVersion: KEY_COUNTS_VERSION })));
   assert.equal(withKeys.filter((r) => r.keys.length).length, 120);
   assert.equal(kept[0].score.wpm, 60);
+});
+
+test('correction times stay only on the runs that keep their pattern counts, the only runs the learner reads them on', () => {
+  const kept = retainRuns(Array.from({ length: 200 }, (_, i) => run(String(i), { corrections: [3, 410] })));
+  assert.equal(kept.filter((r) => 'corrections' in r).length, 120);
+  assert.deepEqual(kept.filter((r) => 'corrections' in r).map((r) => r.id), kept.filter((r) => r.patterns.length).map((r) => r.id));
+  assert.deepEqual(kept.at(-1).corrections, [3, 410]);
+  assert.deepEqual(learnerEvidence(kept, keyboardOf(conditions)).map((r) => r.id), kept.slice(-120).map((r) => r.id));
 });
 
 test('daily passage is stable within a UTC day, changes at midnight, and states its reset', () => {
