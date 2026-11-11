@@ -2,6 +2,7 @@
 // exercised against the migration; this adapter drives the real UI without network calls.
 import { randomUUID } from 'node:crypto';
 import { scoreTrace, validTrace } from '../src/ghost-race.js';
+import { FakeQuickMatch } from './fake-quick-match.js';
 
 export class FakeRaces {
   constructor(auth) {
@@ -17,6 +18,7 @@ export class FakeRaces {
     this.dropTraces = false;
     // Each pair of accounts' wins, keyed by the two ids in order: [first's wins, second's wins].
     this.tallies = new Map();
+    this.quick = new FakeQuickMatch(this);
   }
 
   // As race_private.settle: a finished race between two accounts adds the winner's win (a tie, nothing).
@@ -31,6 +33,7 @@ export class FakeRaces {
 
     if (winner) wins[key.startsWith(winner.userId) ? 0 : 1] += 1;
     this.tallies.set(key, wins);
+    this.quick.rate(room);
   }
 
   tally(room, slot) {
@@ -48,6 +51,8 @@ export class FakeRaces {
 
   // As race_private.keep_trace: once, from a finished racer, and only a trace that replays to the result.
   keepTrace(room, player, trace) {
+    this.quick.check(room, player, trace);
+
     if (this.dropTraces || !player.finished || player.trace || !validTrace(trace)) return;
 
     if (scoreTrace(trace, room.passage, { relaxed: true }).correct !== player.correct) return;
@@ -79,7 +84,8 @@ export class FakeRaces {
 
     if (now >= Date.parse(room.expiresAt) && !['finished', 'cancelled'].includes(room.status)) room.status = 'expired';
 
-    if (room.status === 'countdown' && now >= Date.parse(room.startAt)) room.status = 'racing';
+    // A quick match whose other seat never came is called off at the start.
+    if (room.status === 'countdown' && now >= Date.parse(room.startAt)) room.status = room.quick && room.players.some((p) => !p.ready) ? 'cancelled' : 'racing';
 
     // As race_action: ten seconds' grace after the clock for the last progress.
     if (room.status === 'racing' && (room.players.every((p) => p.finished) || now >= Date.parse(room.startAt) + (room.duration + 10) * 1000)) {
@@ -92,7 +98,8 @@ export class FakeRaces {
       duration: room.duration, startAt: room.startAt, expiresAt: room.expiresAt,
       serverNow: new Date(now).toISOString(), selfSlot: slot, inviteKind: room.inviteKind,
       rematchOf: room.rematchOf || null, rematchId: room.rematchId || null, tally: this.tally(room, slot),
-      players: room.players.map(({ userId, guestToken, typed, sequence, keystrokes, errors, lastSeen, correct, trace, ...player }) => {
+      quick: Boolean(room.quick), rating: room.quick ? this.quick.resultFor(room, slot) : null,
+      players: room.players.map(({ userId, guestToken, typed, sequence, keystrokes, errors, lastSeen, correct, trace, verdict, ...player }) => {
         const seen = {
           ...player, connected: now - lastSeen < 10000, account: Boolean(userId),
           friend: Boolean(userId) && (this.friends.get(room.players.find((p) => p.slot === slot)?.userId) || []).some((f) => f.friendId === userId),
@@ -183,8 +190,11 @@ export class FakeRaces {
     const room = this.rooms.get(id);
 
     if (!room) return failure('This race is unavailable or has expired.');
-    this.snapshot(room, null);
     let player = room.players.find((p) => (caller && p.userId === caller) || (guestToken && p.guestToken === guestToken));
+
+    // A quick match seat is there once its browser asks about the room.
+    if (room.quick && player) player.ready = true;
+    this.snapshot(room, null);
 
     if (action === 'join') {
       if (player) {
@@ -274,7 +284,11 @@ export class FakeRaces {
     if (action === 'leave') {
       // A closed race marks the seat as left, which ends the other's rematch choice.
       if (['finished', 'cancelled', 'expired'].includes(room.status)) Object.assign(player, { left: true, rematch: false });
-      else room.status = 'cancelled';
+      else {
+        // Leaving a quick match after its start forfeits it.
+        if (room.quick && room.status === 'racing') this.quick.rate(room, player.slot);
+        room.status = 'cancelled';
+      }
 
       return reply(200, this.snapshot(room, player.slot));
     }

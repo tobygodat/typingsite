@@ -102,6 +102,7 @@ export class FakeSupabase {
     }
 
     this.races.friends.delete(id);
+    this.races.quick.forget(id);
 
     for (const [owner, list] of this.races.friends) this.races.friends.set(owner, list.filter((friend) => friend.friendId !== id));
     this.deletedUsers.push(user.email);
@@ -173,6 +174,8 @@ export class FakeSupabase {
     switch (`${method} ${url.pathname}`) {
       case 'POST /rest/v1/rpc/race_action':
         return this.races.handle(caller, body, reply);
+      case 'POST /rest/v1/rpc/quick_match':
+        return this.races.quick.handle(caller, body, reply);
       case 'POST /rest/v1/rpc/challenge_action':
         return this.challenges.handle(caller, body, reply, () => route.abort('connectionreset'));
       case 'POST /rest/v1/rpc/friends_board':
