@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Train · The reach</title>
+  <script src="proto.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/src/styles.css">
+  <link rel="stylesheet" href="directions.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="dock-zone">
+      <nav class="dock" aria-label="Main navigation">
+        <a class="brand" href="#practice" aria-label="Stilltype practice"><span class="brand-word">stilltype</span><span class="brand-dot" aria-hidden="true">.</span></a>
+        <div class="dock-nav glide" data-glide="current">
+          <span class="glide-pill" aria-hidden="true"></span>
+          <button class="nav-item" type="button" data-nav="practice"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
+          <button class="nav-item is-active" aria-current="page" type="button" data-nav="train">train</button>
+          <button class="nav-item" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
+          <button class="nav-item" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
+        </div>
+        <span class="dock-sep" aria-hidden="true"></span>
+        <button class="dock-command dock-settings" type="button" aria-label="Settings">
+          <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+          <span class="dock-label" aria-hidden="true">settings</span>
+        </button>
+        <button class="dock-command" type="button" aria-label="Commands">
+          <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        </button>
+      </nav>
+    </header>
+    <div class="corner">
+      <details class="inbox proto-member-only">
+        <summary class="corner-trigger" aria-label="Inbox, 2 new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          <span class="inbox-count num">2</span>
+        </summary>
+      </details>
+      <details class="account" data-state="member">
+        <summary class="corner-trigger account-trigger" aria-label="Account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+        </summary>
+      </details>
+    </div>
+    <main id="main-content">
+      <h1 class="sr-only">Train</h1>
+      <section class="screen d-screen" data-state="full">
+<div class="t6">
+  <div class="keyboard t6-board" data-fingers="true" data-reach="br" role="img" aria-label="b and r, both left index">
+    <div class="key-row"><span class="key" data-key="q" data-hand="left" data-finger="pinky" data-column="0">q</span><span class="key" data-key="w" data-hand="left" data-finger="ring" data-column="1">w</span><span class="key" data-key="e" data-hand="left" data-finger="middle" data-column="2">e</span><span class="key is-reach" data-key="r" data-hand="left" data-finger="index" data-column="3">r</span><span class="key" data-key="t" data-hand="left" data-finger="index" data-column="4">t</span><span class="key" data-key="y" data-hand="right" data-finger="index" data-column="5">y</span><span class="key" data-key="u" data-hand="right" data-finger="index" data-column="6">u</span><span class="key" data-key="i" data-hand="right" data-finger="middle" data-column="7">i</span><span class="key" data-key="o" data-hand="right" data-finger="ring" data-column="8">o</span><span class="key" data-key="p" data-hand="right" data-finger="pinky" data-column="9">p</span></div>
+    <div class="key-row"><span class="key" data-key="a" data-hand="left" data-finger="pinky" data-column="0">a</span><span class="key" data-key="s" data-hand="left" data-finger="ring" data-column="1">s</span><span class="key" data-key="d" data-hand="left" data-finger="middle" data-column="2">d</span><span class="key" data-key="f" data-hand="left" data-finger="index" data-column="3">f</span><span class="key" data-key="g" data-hand="left" data-finger="index" data-column="4">g</span><span class="key" data-key="h" data-hand="right" data-finger="index" data-column="5">h</span><span class="key" data-key="j" data-hand="right" data-finger="index" data-column="6">j</span><span class="key" data-key="k" data-hand="right" data-finger="middle" data-column="7">k</span><span class="key" data-key="l" data-hand="right" data-finger="ring" data-column="8">l</span></div>
+    <div class="key-row"><span class="key" data-key="z" data-hand="left" data-finger="pinky" data-column="0">z</span><span class="key" data-key="x" data-hand="left" data-finger="ring" data-column="1">x</span><span class="key" data-key="c" data-hand="left" data-finger="middle" data-column="2">c</span><span class="key" data-key="v" data-hand="left" data-finger="index" data-column="3">v</span><span class="key is-reach" data-key="b" data-hand="left" data-finger="index" data-column="4">b</span><span class="key" data-key="n" data-hand="right" data-finger="index" data-column="5">n</span><span class="key" data-key="m" data-hand="right" data-finger="index" data-column="6">m</span></div>
+    <svg class="reach-line" aria-hidden="true"></svg>
+  </div>
+  <div class="t6-text">
+    <p class="t6-pair">br</p>
+    <p class="t6-why">Both on your left index finger</p>
+    <p class="t6-ev"><span class="num">7 of 31</span> first tries missed · <span class="num">4</span> runs</p>
+    <div class="actions"><button class="btn btn-primary" type="button">Drill br</button><button class="btn btn-ghost" type="button">Another pair</button></div>
+  </div>
+</div>
+      </section>
+      <section class="screen d-screen" data-state="empty" hidden>
+<div class="t6">
+  <div class="keyboard t6-board" data-fingers="true"  role="img" aria-label="Keyboard with a finger for each key">
+    <div class="key-row"><span class="key" data-key="q" data-hand="left" data-finger="pinky" data-column="0">q</span><span class="key" data-key="w" data-hand="left" data-finger="ring" data-column="1">w</span><span class="key" data-key="e" data-hand="left" data-finger="middle" data-column="2">e</span><span class="key" data-key="r" data-hand="left" data-finger="index" data-column="3">r</span><span class="key" data-key="t" data-hand="left" data-finger="index" data-column="4">t</span><span class="key" data-key="y" data-hand="right" data-finger="index" data-column="5">y</span><span class="key" data-key="u" data-hand="right" data-finger="index" data-column="6">u</span><span class="key" data-key="i" data-hand="right" data-finger="middle" data-column="7">i</span><span class="key" data-key="o" data-hand="right" data-finger="ring" data-column="8">o</span><span class="key" data-key="p" data-hand="right" data-finger="pinky" data-column="9">p</span></div>
+    <div class="key-row"><span class="key" data-key="a" data-hand="left" data-finger="pinky" data-column="0">a</span><span class="key" data-key="s" data-hand="left" data-finger="ring" data-column="1">s</span><span class="key" data-key="d" data-hand="left" data-finger="middle" data-column="2">d</span><span class="key is-reach" data-key="f" data-hand="left" data-finger="index" data-column="3">f</span><span class="key" data-key="g" data-hand="left" data-finger="index" data-column="4">g</span><span class="key" data-key="h" data-hand="right" data-finger="index" data-column="5">h</span><span class="key is-reach" data-key="j" data-hand="right" data-finger="index" data-column="6">j</span><span class="key" data-key="k" data-hand="right" data-finger="middle" data-column="7">k</span><span class="key" data-key="l" data-hand="right" data-finger="ring" data-column="8">l</span></div>
+    <div class="key-row"><span class="key" data-key="z" data-hand="left" data-finger="pinky" data-column="0">z</span><span class="key" data-key="x" data-hand="left" data-finger="ring" data-column="1">x</span><span class="key" data-key="c" data-hand="left" data-finger="middle" data-column="2">c</span><span class="key" data-key="v" data-hand="left" data-finger="index" data-column="3">v</span><span class="key" data-key="b" data-hand="left" data-finger="index" data-column="4">b</span><span class="key" data-key="n" data-hand="right" data-finger="index" data-column="5">n</span><span class="key" data-key="m" data-hand="right" data-finger="index" data-column="6">m</span></div>
+    <svg class="reach-line" aria-hidden="true"></svg>
+  </div>
+  <div class="t6-text">
+    <p class="t6-pair is-general">General drill</p>
+    <p class="t6-ev"><p class="lbl ">30 s · common words</p></p>
+    <div class="actions"><button class="btn btn-primary" type="button">Start general drill</button></div>
+  </div>
+</div>
+      </section>
+      <section class="screen d-screen" data-state="after" hidden>
+<div class="t6">
+  <div class="keyboard t6-board" data-fingers="true" data-reach="ce" role="img" aria-label="c and e, both left middle">
+    <div class="key-row"><span class="key" data-key="q" data-hand="left" data-finger="pinky" data-column="0">q</span><span class="key" data-key="w" data-hand="left" data-finger="ring" data-column="1">w</span><span class="key is-reach" data-key="e" data-hand="left" data-finger="middle" data-column="2">e</span><span class="key" data-key="r" data-hand="left" data-finger="index" data-column="3">r</span><span class="key" data-key="t" data-hand="left" data-finger="index" data-column="4">t</span><span class="key" data-key="y" data-hand="right" data-finger="index" data-column="5">y</span><span class="key" data-key="u" data-hand="right" data-finger="index" data-column="6">u</span><span class="key" data-key="i" data-hand="right" data-finger="middle" data-column="7">i</span><span class="key" data-key="o" data-hand="right" data-finger="ring" data-column="8">o</span><span class="key" data-key="p" data-hand="right" data-finger="pinky" data-column="9">p</span></div>
+    <div class="key-row"><span class="key" data-key="a" data-hand="left" data-finger="pinky" data-column="0">a</span><span class="key" data-key="s" data-hand="left" data-finger="ring" data-column="1">s</span><span class="key" data-key="d" data-hand="left" data-finger="middle" data-column="2">d</span><span class="key" data-key="f" data-hand="left" data-finger="index" data-column="3">f</span><span class="key" data-key="g" data-hand="left" data-finger="index" data-column="4">g</span><span class="key" data-key="h" data-hand="right" data-finger="index" data-column="5">h</span><span class="key" data-key="j" data-hand="right" data-finger="index" data-column="6">j</span><span class="key" data-key="k" data-hand="right" data-finger="middle" data-column="7">k</span><span class="key" data-key="l" data-hand="right" data-finger="ring" data-column="8">l</span></div>
+    <div class="key-row"><span class="key" data-key="z" data-hand="left" data-finger="pinky" data-column="0">z</span><span class="key" data-key="x" data-hand="left" data-finger="ring" data-column="1">x</span><span class="key is-reach" data-key="c" data-hand="left" data-finger="middle" data-column="2">c</span><span class="key" data-key="v" data-hand="left" data-finger="index" data-column="3">v</span><span class="key" data-key="b" data-hand="left" data-finger="index" data-column="4">b</span><span class="key" data-key="n" data-hand="right" data-finger="index" data-column="5">n</span><span class="key" data-key="m" data-hand="right" data-finger="index" data-column="6">m</span></div>
+    <svg class="reach-line" aria-hidden="true"></svg>
+  </div>
+  <div class="t6-text">
+    <div class="t-receipt">
+      <span class="t-receipt-pair">br</span>
+      <span class="t-receipt-fig"><s class="num">7 of 31</s> → <span class="up num">1 of 4</span> missed</span>
+      <span class="t-receipt-fig"><span class="num">77</span> → <span class="up num">80</span><span class="unit">wpm</span> <span class="t-dot">·</span> <span class="num">95.2</span> → <span class="up num">97.0</span><span class="unit pct">%</span></span>
+      
+    </div>
+    <p class="t6-pair">ce</p>
+    <p class="t6-why">Both on your left middle finger</p>
+    <p class="t6-ev"><span class="num">5 of 40</span> first tries missed · <span class="num">3</span> runs</p>
+    <div class="actions"><button class="btn btn-primary" type="button">Drill ce</button><button class="btn btn-ghost" type="button">Another pair</button></div>
+  </div>
+</div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span class="personal-best num proto-member-only">Best · 91 wpm</span>
+      <span class="personal-best proto-guest-only">guest · runs aren’t saved</span>
+      <span class="footer-links"><button class="footer-link" type="button">suggest a feature</button><button class="footer-link" type="button">v0.2.0</button></span>
+    </footer>
+  </div>
+</body>
+</html>

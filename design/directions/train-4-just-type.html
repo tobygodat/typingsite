@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Train · Just type</title>
+  <script src="proto.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/src/styles.css">
+  <link rel="stylesheet" href="directions.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="dock-zone">
+      <nav class="dock" aria-label="Main navigation">
+        <a class="brand" href="#practice" aria-label="Stilltype practice"><span class="brand-word">stilltype</span><span class="brand-dot" aria-hidden="true">.</span></a>
+        <div class="dock-nav glide" data-glide="current">
+          <span class="glide-pill" aria-hidden="true"></span>
+          <button class="nav-item" type="button" data-nav="practice"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
+          <button class="nav-item is-active" aria-current="page" type="button" data-nav="train">train</button>
+          <button class="nav-item" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
+          <button class="nav-item" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
+        </div>
+        <span class="dock-sep" aria-hidden="true"></span>
+        <button class="dock-command dock-settings" type="button" aria-label="Settings">
+          <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+          <span class="dock-label" aria-hidden="true">settings</span>
+        </button>
+        <button class="dock-command" type="button" aria-label="Commands">
+          <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        </button>
+      </nav>
+    </header>
+    <div class="corner">
+      <details class="inbox proto-member-only">
+        <summary class="corner-trigger" aria-label="Inbox, 2 new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          <span class="inbox-count num">2</span>
+        </summary>
+      </details>
+      <details class="account" data-state="member">
+        <summary class="corner-trigger account-trigger" aria-label="Account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+        </summary>
+      </details>
+    </div>
+    <main id="main-content">
+      <h1 class="sr-only">Train</h1>
+      <section class="screen d-screen" data-state="full">
+<div class="t-surface">
+    <div class="measure-row t4-measure">
+      <div class="t4-target">
+        <p class="t4-line"><span class="t4-pair">br</span><span class="t4-ev"><span class="num">7 of 31</span> first tries missed · <span class="num">4</span> runs</span></p>
+        <p class="lbl ">30 s · then 25 words on fresh text · english 1k</p>
+      </div>
+      <div class="live-stats" aria-label="Ready, 30 seconds">
+      <div class="live-stat timer-stat"><strong class="num">30</strong><span>s</span></div>
+      <div class="live-stat"><strong class="num">—</strong><span>wpm</span></div>
+      <div class="live-stat"><strong class="num">—</strong><span>%</span></div>
+    </div>
+    </div>
+    <div class="typing-wrap t-wrap" data-caret="idle" role="img" aria-label="Drill passage for br">
+      <div class="t-text"><span class="caret" aria-hidden="true"><span class="caret-bar"></span></span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">i</span><span class="char">n</span><span class="char">g</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">o</span><span class="char">w</span><span class="char">n</span></span><span class="char"> </span><span class="word"><span class="char">n</span><span class="char">u</span><span class="char">m</span><span class="char">b</span><span class="char">e</span><span class="char">r</span></span><span class="char"> </span><span class="word"><span class="char">t</span><span class="char">h</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">l</span><span class="char">i</span><span class="char">b</span><span class="char">r</span><span class="char">a</span><span class="char">r</span><span class="char">y</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">i</span><span class="char">g</span><span class="char">h</span><span class="char">t</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">i</span><span class="char">e</span><span class="char">f</span></span><span class="char"> </span><span class="word"><span class="char">r</span><span class="char">e</span><span class="char">m</span><span class="char">e</span><span class="char">m</span><span class="char">b</span><span class="char">e</span><span class="char">r</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">o</span><span class="char">t</span><span class="char">h</span><span class="char">e</span><span class="char">r</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">e</span><span class="char">a</span><span class="char">k</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">i</span><span class="char">d</span><span class="char">g</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">a</span><span class="char">i</span><span class="char">n</span></span><span class="char"> </span><span class="word"><span class="char">m</span><span class="char">e</span><span class="char">m</span><span class="char">b</span><span class="char">e</span><span class="char">r</span></span><span class="char"> </span><span class="word"><span class="char">o</span><span class="char">c</span><span class="char">t</span><span class="char">o</span><span class="char">b</span><span class="char">e</span><span class="char">r</span></span><span class="char"> </span><span class="word"><span class="char">z</span><span class="char">e</span><span class="char">b</span><span class="char">r</span><span class="char">a</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">o</span><span class="char">k</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">a</span><span class="char">b</span><span class="char">r</span><span class="char">o</span><span class="char">a</span><span class="char">d</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">e</span><span class="char">a</span><span class="char">d</span></span><span class="char"> </span><span class="word"><span class="char">f</span><span class="char">a</span><span class="char">b</span><span class="char">r</span><span class="char">i</span><span class="char">c</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">u</span><span class="char">s</span><span class="char">h</span></span><span class="char"> </span><span class="word"><span class="char">u</span><span class="char">m</span><span class="char">b</span><span class="char">r</span><span class="char">e</span><span class="char">l</span><span class="char">l</span><span class="char">a</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">r</span><span class="char">a</span><span class="char">n</span><span class="char">c</span><span class="char">h</span></span></div>
+    </div>
+    <div class="t-steps" role="progressbar" aria-label="Drill, then retest" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <span class="progress-line t-step-drill"><span class="t-fill"></span></span><span class="progress-line t-step-retest"></span>
+    </div>
+    <div class="typing-footer t-keys">
+      <p class="lbl"><kbd>tab</kbd> another target <span class="t-gap"></span><kbd>esc</kbd> restart</p>
+      <button class="icon-control" type="button" aria-label="Restart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg></button>
+    </div>
+  </div>
+      </section>
+      <section class="screen d-screen" data-state="empty" hidden>
+<div class="t-surface">
+    <div class="measure-row t4-measure">
+      <div class="t4-target">
+        <p class="t4-line"><span class="t4-pair">common words</span><span class="t4-ev"></span></p>
+        <p class="lbl ">30 s · then 25 words on fresh text</p>
+      </div>
+      <div class="live-stats" aria-label="Ready, 30 seconds">
+      <div class="live-stat timer-stat"><strong class="num">30</strong><span>s</span></div>
+      <div class="live-stat"><strong class="num">—</strong><span>wpm</span></div>
+      <div class="live-stat"><strong class="num">—</strong><span>%</span></div>
+    </div>
+    </div>
+    <div class="typing-wrap t-wrap" data-caret="idle" role="img" aria-label="General drill passage">
+      <div class="t-text"><span class="caret" aria-hidden="true"><span class="caret-bar"></span></span><span class="word"><span class="char">t</span><span class="char">h</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">t</span><span class="char">h</span><span class="char">e</span><span class="char">r</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">o</span><span class="char">t</span><span class="char">h</span><span class="char">e</span><span class="char">r</span></span><span class="char"> </span><span class="word"><span class="char">a</span><span class="char">b</span><span class="char">o</span><span class="char">u</span><span class="char">t</span></span><span class="char"> </span><span class="word"><span class="char">w</span><span class="char">o</span><span class="char">u</span><span class="char">l</span><span class="char">d</span></span><span class="char"> </span><span class="word"><span class="char">w</span><span class="char">h</span><span class="char">i</span><span class="char">c</span><span class="char">h</span></span><span class="char"> </span><span class="word"><span class="char">t</span><span class="char">h</span><span class="char">e</span><span class="char">i</span><span class="char">r</span></span><span class="char"> </span><span class="word"><span class="char">w</span><span class="char">h</span><span class="char">e</span><span class="char">n</span></span><span class="char"> </span><span class="word"><span class="char">t</span><span class="char">h</span><span class="char">i</span><span class="char">n</span><span class="char">k</span></span><span class="char"> </span><span class="word"><span class="char">a</span><span class="char">f</span><span class="char">t</span><span class="char">e</span><span class="char">r</span></span><span class="char"> </span><span class="word"><span class="char">t</span><span class="char">h</span><span class="char">e</span><span class="char">s</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">c</span><span class="char">o</span><span class="char">u</span><span class="char">l</span><span class="char">d</span></span><span class="char"> </span><span class="word"><span class="char">w</span><span class="char">h</span><span class="char">e</span><span class="char">r</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">e</span><span class="char">v</span><span class="char">e</span><span class="char">r</span><span class="char">y</span></span><span class="char"> </span><span class="word"><span class="char">r</span><span class="char">i</span><span class="char">g</span><span class="char">h</span><span class="char">t</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">e</span><span class="char">c</span><span class="char">a</span><span class="char">u</span><span class="char">s</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">t</span><span class="char">h</span><span class="char">r</span><span class="char">o</span><span class="char">u</span><span class="char">g</span><span class="char">h</span></span><span class="char"> </span><span class="word"><span class="char">a</span><span class="char">r</span><span class="char">o</span><span class="char">u</span><span class="char">n</span><span class="char">d</span></span><span class="char"> </span><span class="word"><span class="char">b</span><span class="char">e</span><span class="char">f</span><span class="char">o</span><span class="char">r</span><span class="char">e</span></span></div>
+    </div>
+    <div class="t-steps" role="progressbar" aria-label="Drill, then retest" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <span class="progress-line t-step-drill"><span class="t-fill"></span></span><span class="progress-line t-step-retest"></span>
+    </div>
+    <div class="typing-footer t-keys">
+      <p class="lbl"><kbd>tab</kbd> another target <span class="t-gap"></span><kbd>esc</kbd> restart</p>
+      <button class="icon-control" type="button" aria-label="Restart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg></button>
+    </div>
+  </div>
+      </section>
+      <section class="screen d-screen" data-state="after" hidden>
+<div class="t-surface">
+    <div class="t-receipt">
+      <span class="t-receipt-pair">br</span>
+      <span class="t-receipt-fig"><s class="num">7 of 31</s> → <span class="up num">1 of 4</span> missed</span>
+      <span class="t-receipt-fig"><span class="num">77</span> → <span class="up num">80</span><span class="unit">wpm</span> <span class="t-dot">·</span> <span class="num">95.2</span> → <span class="up num">97.0</span><span class="unit pct">%</span></span>
+      <p class="lbl t-receipt-cond">retest · 25 words · against your last 10</p>
+    </div>
+    <div class="measure-row t4-measure">
+      <div class="t4-target">
+        <p class="t4-line"><span class="t4-pair">ce</span><span class="t4-ev"><span class="num">5 of 40</span> first tries missed · <span class="num">3</span> runs</span></p>
+        <p class="lbl ">30 s · then 25 words on fresh text · english 1k</p>
+      </div>
+      <div class="live-stats" aria-label="Ready, 30 seconds">
+      <div class="live-stat timer-stat"><strong class="num">30</strong><span>s</span></div>
+      <div class="live-stat"><strong class="num">—</strong><span>wpm</span></div>
+      <div class="live-stat"><strong class="num">—</strong><span>%</span></div>
+    </div>
+    </div>
+    <div class="typing-wrap t-wrap" data-caret="idle" role="img" aria-label="Drill passage for ce">
+      <div class="t-text"><span class="caret" aria-hidden="true"><span class="caret-bar"></span></span><span class="word"><span class="char">o</span><span class="char">n</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">s</span><span class="char">i</span><span class="char">n</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">p</span><span class="char">l</span><span class="char">a</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">p</span><span class="char">i</span><span class="char">e</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">c</span><span class="char">e</span><span class="char">n</span><span class="char">t</span><span class="char">e</span><span class="char">r</span></span><span class="char"> </span><span class="word"><span class="char">o</span><span class="char">f</span><span class="char">f</span><span class="char">i</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">v</span><span class="char">o</span><span class="char">i</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">n</span><span class="char">i</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">p</span><span class="char">r</span><span class="char">i</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">f</span><span class="char">a</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">f</span><span class="char">o</span><span class="char">r</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">r</span><span class="char">e</span><span class="char">c</span><span class="char">e</span><span class="char">n</span><span class="char">t</span></span><span class="char"> </span><span class="word"><span class="char">c</span><span class="char">e</span><span class="char">r</span><span class="char">t</span><span class="char">a</span><span class="char">i</span><span class="char">n</span></span><span class="char"> </span><span class="word"><span class="char">d</span><span class="char">e</span><span class="char">c</span><span class="char">i</span><span class="char">d</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">n</span><span class="char">o</span><span class="char">t</span><span class="char">i</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">p</span><span class="char">e</span><span class="char">r</span><span class="char">c</span><span class="char">e</span><span class="char">n</span><span class="char">t</span></span><span class="char"> </span><span class="word"><span class="char">s</span><span class="char">c</span><span class="char">i</span><span class="char">e</span><span class="char">n</span><span class="char">c</span><span class="char">e</span></span><span class="char"> </span><span class="word"><span class="char">p</span><span class="char">e</span><span class="char">a</span><span class="char">c</span><span class="char">e</span></span></div>
+    </div>
+    <div class="t-steps" role="progressbar" aria-label="Drill, then retest" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <span class="progress-line t-step-drill"><span class="t-fill"></span></span><span class="progress-line t-step-retest"></span>
+    </div>
+    <div class="typing-footer t-keys">
+      <p class="lbl"><kbd>tab</kbd> another target <span class="t-gap"></span><kbd>esc</kbd> restart</p>
+      <button class="icon-control" type="button" aria-label="Restart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg></button>
+    </div>
+  </div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span class="personal-best num proto-member-only">Best · 91 wpm</span>
+      <span class="personal-best proto-guest-only">guest · runs aren’t saved</span>
+      <span class="footer-links"><button class="footer-link" type="button">suggest a feature</button><button class="footer-link" type="button">v0.2.0</button></span>
+    </footer>
+  </div>
+</body>
+</html>

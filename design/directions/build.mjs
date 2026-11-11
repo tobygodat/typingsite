@@ -55,7 +55,7 @@ const footer = `<footer class="site-footer">
       <span class="footer-links"><button class="footer-link" type="button">suggest a feature</button><button class="footer-link" type="button">v0.2.0</button></span>
     </footer>`;
 
-const page = ({ file, title, nav, heading, full, empty }) => {
+const page = ({ file, title, nav, heading, full, empty, after }) => {
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -77,7 +77,10 @@ ${full}
       </section>
       <section class="screen d-screen" data-state="empty" hidden>
 ${empty}
-      </section>
+      </section>${after ? `
+      <section class="screen d-screen" data-state="after" hidden>
+${after}
+      </section>` : ''}
     </main>
     ${footer}
   </div>
@@ -657,4 +660,5 @@ ${h2h}
 </div>`,
 });
 
-console.log('wrote 9 directions');
+await import('./train-round-2.mjs').then((m) => m.build({ page, btn, lbl, d }));
+console.log('wrote 14 directions');

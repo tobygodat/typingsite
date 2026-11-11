@@ -20,12 +20,21 @@
       <div class="seg" role="group" aria-label="Profile">
         <button type="button" class="seg-option" data-state-pick="full">a month in</button>
         <button type="button" class="seg-option" data-state-pick="empty">new guest</button>
+        <button type="button" class="seg-option" data-state-pick="after">after a drill</button>
       </div>
       <div class="ix-group">
         <p class="lbl">train</p>
         <a class="ix-link" href="train-1-next-up.html">1 · Next up</a>
         <a class="ix-link" href="train-2-skill-map.html">2 · Skill map</a>
         <a class="ix-link" href="train-3-session.html">3 · Session</a>
+      </div>
+      <div class="ix-group">
+        <p class="lbl">train, round two</p>
+        <a class="ix-link" href="train-4-just-type.html">4 · Just type</a>
+        <a class="ix-link" href="train-5-path.html">5 · Path</a>
+        <a class="ix-link" href="train-6-the-reach.html">6 · The reach</a>
+        <a class="ix-link" href="train-7-today.html">7 · Today</a>
+        <a class="ix-link" href="train-8-warm-up.html">8 · Warm-up (hybrid)</a>
       </div>
       <div class="ix-group">
         <p class="lbl">progress</p>
@@ -49,7 +58,7 @@
     const render = () => {
       document.documentElement.dataset.theme = state.theme;
       const query = new URLSearchParams({ theme: state.theme });
-      if (state.profile === 'empty') query.set('state', 'empty');
+      if (state.profile !== 'full') query.set('state', state.profile);
       frame.src = `${state.page}?${query}`;
       for (const link of links) link.toggleAttribute('aria-current', link.getAttribute('href') === state.page);
       for (const b of document.querySelectorAll('[data-theme-pick]')) { const on = b.dataset.themePick === state.theme; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); }

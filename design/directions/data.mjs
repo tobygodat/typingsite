@@ -144,3 +144,33 @@ export const daily = {
     ['wren', 72, 98.2], ['Sam Achebe', 71, 96.4], ['pell', 69, 93.8], ['kaito', 68, 97.1], ['dunmore', 66, 95.5],
   ],
 };
+
+// Round two (Train T4–T8): the drill passages, a finished drill and retest, and today.
+export const drillPassage = {
+  br: 'bring brown number the library bright brief remember brother break bridge brain member october zebra broke abroad bread fabric brush umbrella branch',
+  ce: 'once since place piece center office voice nice price face force recent certain decide notice percent science peace',
+  general: 'the there other about would which their when think after these could where every right because through around before',
+};
+// The retest after drilling br: 25 words on fresh text, against the median of the last ten runs at the same conditions.
+export const retest = {
+  pair: 'br',
+  wpm: [77, 80],
+  acc: [95.2, 97.0],
+  missed: { before: [7, 31], after: [1, 4] },
+  pace: { before: 140, after: 50, tries: 3 },
+  baselineRuns: 10,
+};
+export const today = { minutes: 9, afterDrill: 10, runs: 4 };
+// QWERTY finger for each letter, with its column (0–9) so the hands can sit apart.
+export const fingers = {
+  q: ['left', 'pinky', 0], a: ['left', 'pinky', 0], z: ['left', 'pinky', 0],
+  w: ['left', 'ring', 1], s: ['left', 'ring', 1], x: ['left', 'ring', 1],
+  e: ['left', 'middle', 2], d: ['left', 'middle', 2], c: ['left', 'middle', 2],
+  r: ['left', 'index', 3], f: ['left', 'index', 3], v: ['left', 'index', 3],
+  t: ['left', 'index', 4], g: ['left', 'index', 4], b: ['left', 'index', 4],
+  y: ['right', 'index', 5], h: ['right', 'index', 5], n: ['right', 'index', 5],
+  u: ['right', 'index', 6], j: ['right', 'index', 6], m: ['right', 'index', 6],
+  i: ['right', 'middle', 7], k: ['right', 'middle', 7],
+  o: ['right', 'ring', 8], l: ['right', 'ring', 8],
+  p: ['right', 'pinky', 9],
+};

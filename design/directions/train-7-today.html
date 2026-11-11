@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Train · Today</title>
+  <script src="proto.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/src/styles.css">
+  <link rel="stylesheet" href="directions.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="dock-zone">
+      <nav class="dock" aria-label="Main navigation">
+        <a class="brand" href="#practice" aria-label="Stilltype practice"><span class="brand-word">stilltype</span><span class="brand-dot" aria-hidden="true">.</span></a>
+        <div class="dock-nav glide" data-glide="current">
+          <span class="glide-pill" aria-hidden="true"></span>
+          <button class="nav-item" type="button" data-nav="practice"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
+          <button class="nav-item is-active" aria-current="page" type="button" data-nav="train">train</button>
+          <button class="nav-item" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
+          <button class="nav-item" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
+        </div>
+        <span class="dock-sep" aria-hidden="true"></span>
+        <button class="dock-command dock-settings" type="button" aria-label="Settings">
+          <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+          <span class="dock-label" aria-hidden="true">settings</span>
+        </button>
+        <button class="dock-command" type="button" aria-label="Commands">
+          <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        </button>
+      </nav>
+    </header>
+    <div class="corner">
+      <details class="inbox proto-member-only">
+        <summary class="corner-trigger" aria-label="Inbox, 2 new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          <span class="inbox-count num">2</span>
+        </summary>
+      </details>
+      <details class="account" data-state="member">
+        <summary class="corner-trigger account-trigger" aria-label="Account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+        </summary>
+      </details>
+    </div>
+    <main id="main-content">
+      <h1 class="sr-only">Train</h1>
+      <section class="screen d-screen" data-state="full">
+<div class="t7">
+  <div class="t7-lead">
+    <p class="t7-fig num">9<span class="unit">of 15 min</span></p>
+    <div class="t7-streak"><ol class="t7-week" aria-hidden="true"><li class=""></li><li class="is-some"></li><li class="is-met"></li><li class="is-some"></li><li class="is-some"></li><li class="is-met"></li><li class="is-some is-today"></li></ol><p class="sub"><span class="num">6</span> days in a row</p></div>
+  </div>
+  <ol class="t7-minutes" role="img" aria-label="9 of 15 minutes today"><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-next"></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li></ol>
+  <ol class="t7-rows">
+    <li class="t7-row is-next">
+      <span class="t7-name">br</span>
+      <span class="t7-ev"><span class="num">7 of 31</span> first tries missed · <span class="num">4</span> runs</span>
+      <span class="t7-len lbl">1 min</span>
+      <span class="t7-act"><button class="btn btn-primary" type="button">Drill br</button></span>
+    </li>
+    <li class="t7-row ">
+      <span class="t7-name">ce</span>
+      <span class="t7-ev"><span class="num">5 of 40</span> first tries missed</span>
+      <span class="t7-len lbl">1 min</span>
+      <span class="t7-act"><button class="btn btn-secondary" type="button">Drill ce</button></span>
+    </li>
+    <li class="t7-row ">
+      <span class="t7-name">ex</span>
+      <span class="t7-ev"><span class="num">120 ms</span> slower than your pace</span>
+      <span class="t7-len lbl">1 min</span>
+      <span class="t7-act"><button class="btn btn-secondary" type="button">Drill ex</button></span>
+    </li>
+  </ol>
+</div>
+      </section>
+      <section class="screen d-screen" data-state="empty" hidden>
+<div class="t7">
+  <div class="t7-lead">
+    <p class="t7-fig num">0<span class="unit">of 15 min</span></p>
+    <div class="t7-streak"><ol class="t7-week" aria-hidden="true"><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=" is-today"></li></ol></div>
+  </div>
+  <ol class="t7-minutes" role="img" aria-label="0 of 15 minutes today"><li class="is-next"></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li></ol>
+  <ol class="t7-rows">
+    <li class="t7-row is-next is-general">
+      <span class="t7-name">General drill</span>
+      <span class="t7-ev">common words</span>
+      <span class="t7-len lbl">1 min</span>
+      <span class="t7-act"><button class="btn btn-primary" type="button">Start general drill</button></span>
+    </li>
+    <li class="t7-row ">
+      <span class="t7-name">Test</span>
+      <span class="t7-ev"></span>
+      <span class="t7-len lbl">25 words</span>
+      <span class="t7-act"><button class="btn btn-ghost" type="button">Take a test</button></span>
+    </li>
+  </ol>
+</div>
+      </section>
+      <section class="screen d-screen" data-state="after" hidden>
+<div class="t7">
+  <div class="t7-lead">
+    <p class="t7-fig num">10<span class="unit">of 15 min</span></p>
+    <div class="t7-streak"><ol class="t7-week" aria-hidden="true"><li class=""></li><li class="is-some"></li><li class="is-met"></li><li class="is-some"></li><li class="is-some"></li><li class="is-met"></li><li class="is-some is-today"></li></ol><p class="sub"><span class="num">6</span> days in a row</p></div>
+  </div>
+  <ol class="t7-minutes" role="img" aria-label="10 of 15 minutes today"><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-done"></li><li class="is-next"></li><li class=""></li><li class=""></li><li class=""></li><li class=""></li></ol>
+  <ol class="t7-rows">
+    <li class="t7-row is-done">
+      <span class="t7-name">br</span>
+      <span class="t7-ev"><s class="num">7 of 31</s> → <span class="up num">1 of 4</span> missed <span class="t-dot">·</span> <span class="num">77</span> → <span class="up num">80</span><span class="unit">wpm</span> <span class="t-dot">·</span> <span class="num">95.2</span> → <span class="up num">97.0</span><span class="unit pct">%</span></span>
+      <span class="t7-len lbl">just now</span>
+      <span class="t7-act"></span>
+    </li>
+    <li class="t7-row is-next">
+      <span class="t7-name">ce</span>
+      <span class="t7-ev"><span class="num">5 of 40</span> first tries missed · <span class="num">3</span> runs</span>
+      <span class="t7-len lbl">1 min</span>
+      <span class="t7-act"><button class="btn btn-primary" type="button">Drill ce</button></span>
+    </li>
+    <li class="t7-row ">
+      <span class="t7-name">ex</span>
+      <span class="t7-ev"><span class="num">120 ms</span> slower than your pace</span>
+      <span class="t7-len lbl">1 min</span>
+      <span class="t7-act"><button class="btn btn-secondary" type="button">Drill ex</button></span>
+    </li>
+  </ol>
+</div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span class="personal-best num proto-member-only">Best · 91 wpm</span>
+      <span class="personal-best proto-guest-only">guest · runs aren’t saved</span>
+      <span class="footer-links"><button class="footer-link" type="button">suggest a feature</button><button class="footer-link" type="button">v0.2.0</button></span>
+    </footer>
+  </div>
+</body>
+</html>
