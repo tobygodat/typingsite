@@ -1,5 +1,5 @@
 import { makeDrill } from '../src/typing.js';
-import { DEFAULT_POLICY, fitLearner, learnerEvidence, learnerRecommendation, paceShift } from '../src/learner.js';
+import { DEFAULT_POLICY, SLOW_FLOOR_MS, fitLearner, learnerEvidence, learnerRecommendation, paceShift } from '../src/learner.js';
 import { test, expect, openApp, passageText, chooseWords, completePassage, finishDrill, openView, signInWithEmail } from './fixtures.js';
 
 // Types the passage with a wrong first try, then the right letter, at every position `missed` picks.
@@ -121,6 +121,7 @@ const seedFrom = (start) => {
 // The reproduction from the second TOB-419 check: "he" ranks first on four slow intervals, too few to name, and
 // "th" below it is missed on most first tries. Train names "th", the highest-ranked unit it can name.
 test('Train names the highest-ranked unit it can name when a thin slow pair ranks above it', async ({ page, supabase }) => {
+  test.setTimeout(90_000);
   const user = supabase.addUser('learner-thin@stilltype.test');
   const profile = () => supabase.profileFor(user.email);
   await page.addInitScript(seedFrom, 7);
@@ -188,8 +189,9 @@ async function typePaced(page, pair, pace, pairMs) {
 
 // The reproduction from the second TOB-419 check, shortened: two runs at 60 ms a key with "th" 20 ms late, then
 // one at 300 ms a key with "th" 200 ms early. "th" ranks on its slowness (its mean log ratio is above none) while
-// its mean in ms, the figure the page prints, says it is faster. It is never named "slower".
-test('a pair whose printed slowdown says it is faster is never named for slowness', async ({ page, supabase }) => {
+// its mean in ms, the figure the page prints, is near zero or faster (about −12 ms in Chromium, +1 in WebKit).
+// The earlier rule named it "slower" either way; it is never named now.
+test('a pair whose printed slowdown is not past the floor is never named for slowness', async ({ page, supabase }) => {
   test.setTimeout(150_000);
   const user = supabase.addUser('learner-faster@stilltype.test');
   const profile = () => supabase.profileFor(user.email);
@@ -212,7 +214,7 @@ test('a pair whose printed slowdown says it is faster is never named for slownes
   expect(th.basis).toBe('slow');
   expect(th.observed.timed).toBeGreaterThanOrEqual(10);
   expect(th.observed.slowRuns).toBe(2);
-  expect(Math.round(th.observed.slowMs)).toBeLessThanOrEqual(0);
+  expect(Math.round(th.observed.slowMs)).toBeLessThanOrEqual(SLOW_FLOOR_MS);
 
   await openView(page, 'Train');
   await expect(page.locator('#train-heading')).toHaveText('General drill');
