@@ -59,7 +59,7 @@ export const CARD = Object.freeze({
   },
   light: {
     base: '#fbf9f5', mid: '#f6f3ed', edge: '#f1ede5', tint: 0.22, ink: '#1b1a19', soft: 'rgba(27, 26, 25, 0.7)',
-    hull: 'rgba(255, 255, 255, 0.6)', track: 'rgba(27, 26, 25, 0.1)', gain: '#1b1a19', up: '#1c623b', down: '#9a3420', trail: 0.3,
+    hull: 'rgba(255, 255, 255, 0.6)', track: 'rgba(27, 26, 25, 0.1)', gain: '#1b1a19', up: '#1c623b', down: '#9a3420', trail: 0.2,
   },
 });
 
