@@ -34,7 +34,7 @@ export function redrawList(list, rows, fallback = null) {
   (same || fallback)?.focus({ preventScroll: true, focusVisible });
 }
 
-function ago(at, now = Date.now()) {
+export function ago(at, now = Date.now()) {
   const minutes = Math.round((now - Date.parse(at)) / 60000);
 
   if (!(minutes >= 1)) return 'just now';
