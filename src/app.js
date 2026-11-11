@@ -3054,7 +3054,7 @@ function showComparison(heading, outcome, trained = null, source = null) {
   const panel = $('comparison-panel');
   panel.dataset.outcome = outcome;
   $('comparison-status').textContent = heading;
-  $('comparison-unit').textContent = trained || (trainingContext?.recommendationKind === 'adaptive' ? 'Adaptive' : 'General drill');
+  $('comparison-unit').textContent = trained || { adaptive: 'Adaptive', general: 'General drill' }[trainingContext?.recommendationKind] || 'Retest';
   trainAfter = { trained, source };
   renderTrain({ advance: true });
 }
@@ -3284,7 +3284,7 @@ function drawPath(path, { advance, source, recommendation }) {
   });
 
   // A general drill names nothing ahead of it, so the line runs on past it to empty places, as the path to come.
-  const open = path.current.kind === 'general' ? Array.from({ length: 3 }, () => {
+  const places = path.current.kind === 'general' ? Array.from({ length: 3 }, () => {
     const item = element('li', '', 'path-step is-ahead is-place');
     item.setAttribute('aria-hidden', 'true');
     item.append(element('div', '', 'path-head'));
@@ -3293,12 +3293,13 @@ function drawPath(path, { advance, source, recommendation }) {
     return item;
   }) : [];
 
-  list.replaceChildren(...behind, $('comparison-panel'), $('train-current'), ...ahead, ...open);
+  list.replaceChildren(...behind, $('comparison-panel'), $('train-current'), ...ahead, ...places);
+
   // From 901px the steps sit in columns, six to a screen; the comparison takes two. The open step's details run from
   // its column to the end, and the line opens scrolled to its end, so the open step and those ahead are in view.
   const before = behind.length + (path.just ? 2 : 0);
   list.style.setProperty('--open', String(before + 1));
-  list.style.setProperty('--columns', String(Math.max(6, before + 1 + ahead.length + open.length)));
+  list.style.setProperty('--columns', String(Math.max(6, before + 1 + ahead.length + places.length)));
   list.scrollLeft = list.scrollWidth;
   scrollablePath();
 

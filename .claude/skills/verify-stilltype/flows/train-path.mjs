@@ -22,7 +22,7 @@ const loop = (id, target, after, extra) => ({ id, at: after.at, beforeAttemptId:
   policy: 'learner-decay-timing@1', focus: 'balanced', drillCompleted: true, conditions, comparison: { comparable: true, state: 'improved', wpmDelta: 3, accuracyDelta: 1.5 },
   targetTiming: null, targetMisses: null, targetPace: null, drill: { target, duration: 30, wordList: '200' }, ...extra });
 
-function history() {
+export function history() {
   const drilled = { qu: [['qu', 12, 0, 12, 200, 0]], ck: [['ck', 12, 0, 12, 180, -20]], ol: [['ol', 10, 1, 10, 200, 0]], wh: [['wh', 10, 0, 10, 260, 60]] };
   const retests = Object.entries(drilled).map(([unit, rows], i) => run(`retest-${unit}`, 1 + i, rows));
   const after = [5, 6].map((day) => run(`after-${day}`, day, [['qu', 12, 0, 12, 200, 0], ['ck', 12, 0, 12, 190, -10]]));

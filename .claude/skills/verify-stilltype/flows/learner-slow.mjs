@@ -72,6 +72,6 @@ export default async ({ page, h, shot, note, check, fake }) => {
   await h.openView('Train');
   await h.settle();
   note('since you drilled it', await h.text('#train-last'));
-  check(/^th · \d+ ms slower → (at your pace|\d+ ms (slower|faster) than your pace) since you drilled it$/.test(await h.text('#train-last')), 'the line says faster or at your pace in words');
+  check(/^\d+ ms slower → (at your pace|\d+ ms (slower|faster) than your pace) since you drilled it$/.test(await h.text('#train-last')), 'the line says faster or at your pace in words');
   await shot('train-since-drilled');
 };
