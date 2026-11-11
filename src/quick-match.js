@@ -57,7 +57,7 @@ export const rankLabel = (rank) => (rank ? [rank.name, rank.step].filter(Boolean
 
 // No-break spaces keep "Gale II" and the count whole, so a narrow screen never starts a line with "II" or
 // "· provisional".
-const unbroken = (text) => text.replaceAll(' ', ' ');
+const unbroken = (text) => text.replaceAll(' ', '\u00a0');
 
 export function ratingLine(rating) {
   if (!validRating(rating)) return '';
