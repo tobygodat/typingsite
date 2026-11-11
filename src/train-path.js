@@ -10,30 +10,24 @@
 // `just` is the step whose retest the comparison shows, the newest step behind you, drawn from the comparison
 // itself rather than a loop (a retest that wasn't compared saves none).
 
-import { MIN_PATTERN_SAMPLES } from './insights.js';
-import { SLOW_FLOOR_MS, keyboardOf, learnerEvidence, paceAgainst, paceCopy, paceShift } from './learner.js';
+import { FIXED_OBSERVATIONS, FIXED_RUNS, basisOf, drillSplit, drilledTargets, keyboardOf, learnerEvidence, letGo, letGoIndex, paceAgainst, paceCopy, paceShift } from './learner.js';
+
+// The rule for "fixed" lives with the learner, which lets go by it (ADR 0017); these are its floors and its reading of
+// what a loop was drilled for, as Train has always exported them.
+export { FIXED_OBSERVATIONS, FIXED_RUNS, basisOf };
 
 export const AHEAD_STEPS = 3;
-
-// The rule for "fixed", as the UI contract and DESIGN.md state it. A target behind you is fixed when the learner no
-// longer queues it and at least two runs since its drill hold observations of the kind it was drilled for (first
-// tries for a target drilled for its misses, clean intervals for a pair drilled for its pace), at least 20 of them
-// between those runs, with no first-try miss among them, or a mean slowdown of 20 ms or less. Otherwise it is drilled.
-export const FIXED_RUNS = 2;
-export const FIXED_OBSERVATIONS = 2 * MIN_PATTERN_SAMPLES;
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const byDate = (a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-// What a loop's target was drilled for. Loops saved before `targetBasis` read a saved pace as slowness.
-export const basisOf = (loop) => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
-
 // The target's observed evidence on measured runs on the keyboard, before its drill and from its retest on, of one
 // kind (by default the kind it was drilled for): tries and misses, or clean intervals and their mean slowdown over the
 // person's pace. `runs` counts only the runs that hold an observation of that kind, so a run that typed the pair but
-// timed none of it is no run of pace evidence. A side with no observations is null.
-export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboardOf(loop.conditions)), basis = basisOf(loop)) {
-  const split = Date.parse(runs.find((run) => run.id === loop.afterAttemptId)?.at || loop.at);
+// timed none of it is no run of pace evidence. A side with no observations is null. `letGo` is the learner's rule
+// (ADR 0017) for this target, kind and split.
+export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboardOf(loop.conditions)), basis = basisOf(loop), index = letGoIndex(records)) {
+  const split = drillSplit(loop, index);
 
   const tally = (side) => {
     const held = side.map((record) => record.units.find((item) => item.unit === loop.target))
@@ -53,18 +47,14 @@ export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboar
 
   const dated = records.filter((record) => record.at !== null);
 
-  return { basis, before: tally(dated.filter((record) => record.at < split)), after: tally(dated.filter((record) => record.at >= split)) };
+  return { basis, before: tally(dated.filter((record) => record.at < split)), after: tally(dated.filter((record) => record.at >= split)),
+    letGo: letGo(index, loop.target, basis, split) };
 }
 
-// The one rule for "fixed" (see FIXED_RUNS). `since` is sinceDrilled's, of the kind the target was drilled for.
-export function isFixed(since, queued) {
-  const after = since?.after;
-
-  if (queued || !after || after.runs < FIXED_RUNS) return false;
-
-  return since.basis === 'slow' ? after.intervals >= FIXED_OBSERVATIONS && Math.round(after.ms) <= SLOW_FLOOR_MS
-    : after.tries >= FIXED_OBSERVATIONS && after.errors === 0;
-}
+// "Fixed", as the UI contract and DESIGN.md state it: the learner's let-go rule (ADR 0017) lets the target go on the
+// evidence since its drill, of the kind it was drilled for, and the learner no longer queues it. Otherwise it is
+// drilled. `since` is sinceDrilled's, of the kind the target was drilled for.
+export const isFixed = (since, queued) => !queued && Boolean(since?.letGo);
 
 // The loop's own read-back: the retest's misses or pace beside the evidence the drill was chosen on.
 function retestOf(loop, basis) {
@@ -90,18 +80,18 @@ export function trainPath({ recommendation, loops = [], runs = [], keyboard, aft
   const shown = new Set([current.unit, ...ahead.map((item) => item.unit), trained].filter(Boolean));
   const queued = new Set(queue.map((item) => item.unit));
   const records = learnerEvidence(runs, keyboard);
+  const index = letGoIndex(records);
 
-  // Each drilled target once, by its newest loop on this keyboard, newest nearest the open step.
-  const newest = new Map();
-
-  for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(byDate)) newest.set(loop.target, loop);
+  // Each drilled target once, by its newest loop on this keyboard (the loops the learner lets go by), newest nearest the
+  // open step.
+  const newest = drilledTargets(loops, keyboard);
 
   // The open step's "since you drilled it" line reads the kind of evidence the step is drawn for, whatever its drill was for.
-  if (current.unit && newest.has(current.unit)) current.since = sinceDrilled(newest.get(current.unit), runs, records, current.was.basis === 'slow' ? 'slow' : 'errors');
+  if (current.unit && newest.has(current.unit)) current.since = sinceDrilled(newest.get(current.unit), runs, records, current.was.basis === 'slow' ? 'slow' : 'errors', index);
 
   const behind = [...newest.values()].sort(byDate).filter((loop) => !shown.has(loop.target)).map((loop) => {
     const basis = basisOf(loop);
-    const since = sinceDrilled(loop, runs, records);
+    const since = sinceDrilled(loop, runs, records, basis, index);
 
     return { unit: loop.target, state: isFixed(since, queued.has(loop.target)) ? 'fixed' : 'drilled', basis, retest: retestOf(loop, basis), since, loopId: loop.id };
   });

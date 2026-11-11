@@ -17,6 +17,8 @@ export const DECAY_POLICY = 'learner-decay@1';
 export const TIMING_POLICY = 'learner-timing@1';
 export const DECAY_TIMING_POLICY = 'learner-decay-timing@1';
 export const OWN_COST_POLICY = 'learner-own-cost@2';
+export const LET_GO_POLICY = 'learner-let-go@2';
+export const LET_GO_MISSES_POLICY = 'learner-let-go-misses@2';
 export const BASELINE_POLICY = 'counting@1';
 
 // The policy that picks targets (ADR 0013): counts-gain with decay and the timing term, a miss priced at two
@@ -54,10 +56,33 @@ export const MISS_INTERVALS = 2;
 // from {1, 5, 10, 20, 40, 80} by cost error on validation typists, where 1, 5 and 10 tied (ADR 0015).
 export const COST_CORRECTIONS = 1;
 
+// Letting go of a drilled target (ADR 0017). Since its drill, a walk adds each run's log likelihood ratio between
+// "fixed" and "still weak" and lets go once it reaches ln LET_GO_ODDS, so a target still weak is let go by luck
+// about once in LET_GO_ODDS over its whole future, however many runs are read. Fixed by that ceiling, not tuned.
+// For misses, "fixed" is the person's typical miss rate and "still weak" WEAK_RATIO times it. For pace, whose
+// spread is not recorded, the walk reads only whether each run had the pair slower than the person's pace:
+// "fixed" is slower in half the runs, "still slow" in SLOW_SHARE of them. Once let go, a target comes back when a
+// second walk, of the opposite ratio and never below zero, reaches ln RETURN_ODDS. The three were chosen on
+// validation typists (ADR 0017).
+export const LET_GO_ODDS = 100;
+export const WEAK_RATIO = 4;
+export const SLOW_SHARE = 0.85;
+export const RETURN_ODDS = 10_000;
+
+// A let-go claim needs at least this much evidence since the drill, of the kind drilled: Train's floors for "fixed".
+export const FIXED_RUNS = 2;
+export const FIXED_OBSERVATIONS = 2 * MIN_PATTERN_SAMPLES;
+
+// Below one miss in a hundred, the walk takes the typical rate to be this, so a very careful typist's "still weak"
+// stays a rate a few runs can tell apart.
+const TYPICAL_FLOOR = 0.01;
+
 // The learner's policies, one line each: with or without decay (old runs fade), the timing term (slow pairs
-// rank on the time they lose) and the person's own cost of a miss. ADRs 0013 and 0015 keep the variants the default
-// does not use as named variants.
+// rank on the time they lose), the person's own cost of a miss, and letting go of drilled targets on the evidence
+// since their drill (both kinds, or misses only). ADRs 0013, 0015 and 0017 keep the variants the default does not use
+// as named variants.
 const constants = { halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES, timingTries: TIMING_TRIES, costCorrections: COST_CORRECTIONS };
+export const LET_GO = { letGoOdds: LET_GO_ODDS, weakRatio: WEAK_RATIO, slowShare: SLOW_SHARE, returnOdds: RETURN_ODDS };
 
 export const LEARNER_VARIANTS = {
   [LEARNER_POLICY]: { policy: LEARNER_POLICY, decay: false, timing: false, ownCost: false, ...constants },
@@ -65,6 +90,8 @@ export const LEARNER_VARIANTS = {
   [TIMING_POLICY]: { policy: TIMING_POLICY, decay: false, timing: true, ownCost: false, ...constants },
   [DECAY_TIMING_POLICY]: { policy: DECAY_TIMING_POLICY, decay: true, timing: true, ownCost: false, ...constants },
   [OWN_COST_POLICY]: { policy: OWN_COST_POLICY, decay: true, timing: true, ownCost: true, ...constants },
+  [LET_GO_POLICY]: { policy: LET_GO_POLICY, decay: true, timing: true, ownCost: false, letGo: ['errors', 'slow'], ...constants, ...LET_GO },
+  [LET_GO_MISSES_POLICY]: { policy: LET_GO_MISSES_POLICY, decay: true, timing: true, ownCost: false, letGo: ['errors'], ...constants, ...LET_GO },
 };
 
 // How a person trains (a preference, never a test condition): balanced ranks by all the time a unit loses,
@@ -185,7 +212,7 @@ const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 // Oldest first, by date then id, with undated records first. A record seen twice keeps its fuller copy, and
 // between equally full copies the one whose JSON sorts first, so the choice never depends on arrival order.
-function orderedEvidence(evidence) {
+export function orderedEvidence(evidence) {
   const byId = new Map();
 
   for (const record of evidence) {
@@ -198,19 +225,98 @@ function orderedEvidence(evidence) {
   return [...byId.values()].sort((a, b) => compare(a.at ?? -Infinity, b.at ?? -Infinity) || compare(a.id, b.id));
 }
 
+// What a loop's target was drilled for. Loops saved before `targetBasis` read a saved pace as slowness.
+export const basisOf = (loop) => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
+
+const loopOrder = (a, b) => compare(Date.parse(a.at) || 0, Date.parse(b.at) || 0) || compare(a.id, b.id) || compare(JSON.stringify(a), JSON.stringify(b));
+
+// Each drilled target on a keyboard and its newest loop, by date, then id: so duplicated loops and the order loops
+// arrive in change nothing.
+export function drilledTargets(loops, keyboard) {
+  const newest = new Map();
+
+  for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(loopOrder)) newest.set(loop.target, loop);
+
+  return newest;
+}
+
+// What the let-go test reads from the evidence: the person's typical first-try miss rate over every pair (raw), each
+// record's date by id, and each unit's dated rows, oldest first.
+export function letGoIndex(evidence) {
+  const records = orderedEvidence(evidence);
+  const rows = new Map();
+  const dates = new Map(records.map((record) => [record.id, record.at]));
+  let seen = 0;
+  let errors = 0;
+
+  for (const record of records) {
+    for (const unit of record.units) {
+      if (unit.unit.length === 2) {
+        seen += unit.seen;
+        errors += unit.errors;
+      }
+
+      if (record.at === null) continue;
+
+      if (!rows.has(unit.unit)) rows.set(unit.unit, []);
+      rows.get(unit.unit).push({ at: record.at, seen: unit.seen, errors: unit.errors, timed: unit.timed, slow: unit.slow });
+    }
+  }
+
+  return { typical: Math.max(TYPICAL_FLOOR, seen ? errors / seen : 0), dates, rows };
+}
+
+// Where a drill splits the evidence: its retest's date, else the loop's own. NaN splits nothing.
+export const drillSplit = (loop, index) => index.dates.get(String(loop.afterAttemptId)) ?? Date.parse(loop.at);
+
+// The one rule for letting go of a drilled target (ADR 0017), of one kind, at one split: the learner drops that part of
+// the target's gain, and Train reads the target fixed when it is let go and not queued. Every run since the split that
+// holds an observation of the kind steps the walk; see LET_GO_ODDS. True when it is let go after the newest run.
+export function letGo(index, unit, basis, split, k = LET_GO) {
+  if (!Number.isFinite(split)) return false;
+  const [p, ceiling, back] = [index.typical, Math.log(k.letGoOdds), Math.log(k.returnOdds)];
+  const weak = Math.min(0.5, k.weakRatio * p);
+  const [miss, clean, slower, faster] = [Math.log(p / weak), Math.log((1 - p) / (1 - weak)), Math.log(0.5 / k.slowShare), Math.log(0.5 / (1 - k.slowShare))];
+  let [walk, against, runs, observed, released] = [0, 0, 0, 0, false];
+
+  for (const row of index.rows.get(unit) || []) {
+    const held = basis === 'slow' ? row.slow !== null : row.seen > 0;
+
+    if (row.at < split || !held) continue;
+    const step = basis === 'slow' ? (row.slow ? slower : faster) : row.errors * miss + (row.seen - row.errors) * clean;
+    runs += 1;
+    observed += basis === 'slow' ? row.timed : row.seen;
+
+    if (released) {
+      against = Math.max(0, against - step);
+
+      if (against >= back) [released, walk] = [false, 0];
+    } else {
+      walk = Math.min(ceiling, Math.max(-ceiling, walk + step));
+
+      if (walk >= ceiling && runs >= FIXED_RUNS && observed >= FIXED_OBSERVATIONS) [released, against] = [true, 0];
+    }
+  }
+
+  return released;
+}
+
 // The model: a fold over evidence records at time `now` (ms), under one of LEARNER_VARIANTS (the evaluation
 // also passes its own constants), ranked for one of FOCUSES.
+// `drills` is drilledTargets' loops for the keyboard; only the let-go variants read them.
 //   { policy, focus, runs, errorRate, missCost, units: Estimate[] }
 //   Estimate = { unit, kind: 'pair' | 'key', frequency, gain, basis: 'errors' | 'slow', error: { mean, sd },
 //     slowdown: number | null (timing variants, pairs: the pooled log ratio to the person's pace),
 //     observed: { seen, errors, runs, errorRuns, timed, timedRuns, slowRuns, slowMs },
-//     own?: { seen, errors } (keys: the observations naming reads, see stated) }
+//     own?: { seen, errors } (keys: the observations naming reads, see stated),
+//     letGo?: ['errors' | 'slow'] (let-go variants: the kinds let go since the unit's drill, whose gain is dropped) }
 // units is ranked by gain for the focus, highest first, and `basis` says what it is ranked on: the larger part
 // of its gain when balanced, its misses for accuracy, its slowness for speed. `missCost` is what a miss costs in
 // clean intervals. `observed` holds raw, undecayed counts, the only numbers a person is shown; `slowMs` is the
 // mean of the runs' slowdowns over the person's pace, weighted by clean intervals.
-export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POLICY], focus = DEFAULT_FOCUS) {
-  const { policy, decay, timing, ownCost, halfLifeRuns, pooledTries, timingTries, costCorrections } = { ...LEARNER_VARIANTS[DEFAULT_POLICY], ...variant };
+export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POLICY], focus = DEFAULT_FOCUS, drills = []) {
+  const settings = { ...LEARNER_VARIANTS[DEFAULT_POLICY], ...variant };
+  const { policy, decay, timing, ownCost, halfLifeRuns, pooledTries, timingTries, costCorrections } = settings;
   const records = orderedEvidence(evidence);
   const table = englishFrequency();
   const tally = new Map();
@@ -315,9 +421,25 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
   const errorRate = pairs.reduce((s, e) => s + e.frequency * e.error.mean, 0) / pairs.reduce((s, e) => s + e.frequency, 0);
   const missCost = ownCost && corrections.count >= costCorrections ? Math.max(1, Math.exp(corrections.ratio / corrections.weight) - 1) : MISS_INTERVALS;
 
+  // A drilled target let go on the evidence since its drill loses that part of its gain (ADR 0017).
+  const released = new Map();
+
+  if (settings.letGo && drills.length) {
+    const index = letGoIndex(records);
+
+    for (const loop of drills) {
+      const basis = basisOf(loop);
+
+      if (settings.letGo.includes(basis) && letGo(index, loop.target, basis, drillSplit(loop, index), settings)) released.set(loop.target, [basis]);
+    }
+  }
+
   for (const e of estimates) {
-    const missed = Math.max(0, e.error.mean - UNCERTAINTY_Z * e.error.sd - errorRate);
-    const slow = e.slowdown === null ? 0 : Math.max(0, Math.exp(e.slowdown) - 1) / missCost;
+    const gone = released.get(e.unit) || [];
+    const missed = gone.includes('errors') ? 0 : Math.max(0, e.error.mean - UNCERTAINTY_Z * e.error.sd - errorRate);
+    const slow = e.slowdown === null || gone.includes('slow') ? 0 : Math.max(0, Math.exp(e.slowdown) - 1) / missCost;
+
+    if (gone.length) e.letGo = gone;
     e.gain = e.frequency * (focus === 'speed' ? slow : focus === 'accuracy' ? missed : missed + slow);
     e.basis = focus === 'speed' || (focus !== 'accuracy' && slow > missed) ? 'slow' : 'errors';
   }
@@ -437,10 +559,13 @@ export function countingEvidence(runs, loops, pair, source) {
 }
 
 // The recommendation for `source` conditions under a policy. The learner reads every measured run on the
-// keyboard `source` is typed on; the counting rule reads only runs at its exact conditions.
-export function recommendFor(policy, { runs, loops, traces, source, now, focus = DEFAULT_FOCUS }) {
+// keyboard `source` is typed on, and the let-go variants its drilled targets there; the counting rule reads only runs
+// at its exact conditions.
+export function recommendFor(policy, { runs, loops = [], traces, source, now, focus = DEFAULT_FOCUS }) {
   if (policy === BASELINE_POLICY) return countingRecommendation(runs, loops, traces, source);
 
-  return learnerRecommendation(fitLearner(learnerEvidence(runs, keyboardOf(source)), now, LEARNER_VARIANTS[policy], focus));
+  const keyboard = keyboardOf(source);
+
+  return learnerRecommendation(fitLearner(learnerEvidence(runs, keyboard), now, LEARNER_VARIANTS[policy], focus, [...drilledTargets(loops, keyboard).values()]));
 }
 
