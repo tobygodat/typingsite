@@ -97,7 +97,9 @@ test('the list follows an invitation arriving, being dismissed, accepted elsewhe
   // A second invitation lapses: its row goes on the next poll.
   const lapsing = supabase.races.invite(ada.id, toby.id, { name: 'Ada' });
   await page.evaluate(() => dispatchEvent(new Event('online')));
-  await expect(rows(page).filter({ hasText: 'Ada' })).toHaveAttribute('data-state', 'invited', { timeout: 15000 });
+  // Until the service's links come back the invitation is a row of its own; then it is Ada's row.
+  await expect(page.locator('#people-list .people-row[data-state="invited"][data-key^="friend:"]', { hasText: 'Ada' })).toHaveCount(1, { timeout: 15000 });
+  await expect(rows(page).filter({ hasText: 'Ada' })).toHaveCount(1);
   lapsing.expiresAt = new Date(Date.now() - 1000).toISOString();
   room.expiresAt = new Date(Date.now() - 1000).toISOString();
   await page.evaluate(() => dispatchEvent(new Event('online')));
