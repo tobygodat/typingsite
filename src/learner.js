@@ -19,13 +19,16 @@ export const DECAY_TIMING_POLICY = 'learner-decay-timing@1';
 export const OWN_COST_POLICY = 'learner-own-cost@2';
 export const BASELINE_POLICY = 'counting@1';
 
-// The policy that picks targets (ADR 0013): counts-gain with decay and the timing term. Timing is in by product
-// call, not by evidence: it passed rule v2's guards only because the simulator types its missed pairs slowly too,
-// and with them at the typist's pace it pushes missed pairs out of the top four and fails them. Decay is in by
-// rule v2 on thirty test seeds of simulated typists (`npm run evaluate:learner`): it let go of fixed pairs and
-// picked up slipping ones sooner, and was really worse on nothing it must not lose. It replaced counting@1
-// because it was not really worse on captured time lost. It is provisional until a learning study can run, and
-// says nothing about learning.
+// The policy that picks targets (ADR 0013): counts-gain with decay and the timing term, a miss priced at two
+// intervals. Timing is in by product call, not by evidence: it passed rule v2's guards only because the simulator
+// types its missed pairs slowly too, and with them at the typist's pace it pushes missed pairs out of the top
+// four and fails them. Decay is in by rule v2 on thirty test seeds of simulated typists (`npm run
+// evaluate:learner`) whose miss costs 2 intervals on average: it let go of fixed pairs and picked up slipping
+// ones sooner, and was really worse on nothing it must not lose. At a miss cost of 8 intervals it was really
+// worse on captured gain at 10 runs, by 0.3 points, and rule v2 would leave it out. It replaced counting@1
+// because it was not really worse on captured time lost. ADR 0015 kept it on typists whose miss costs 1 to 8
+// intervals: the person's own measured miss cost (OWN_COST_POLICY) and a 20-run half-life were each really
+// worse on a guard. It is provisional until a learning study can run, and says nothing about learning.
 export const DEFAULT_POLICY = DECAY_TIMING_POLICY;
 
 // A unit's prior is the person's pooled rate over its kind, worth this many first tries. Chosen from
@@ -47,11 +50,12 @@ export const TIMING_TRIES = 5;
 // person's own corrections.
 export const MISS_INTERVALS = 2;
 
-// The own-cost variant only: the person's corrections are their cost of a miss once this many are timed (ADR 0015).
-export const COST_CORRECTIONS = 20;
+// The own-cost variant only: the person's corrections are their cost of a miss once this many are timed. Chosen
+// from {1, 5, 10, 20, 40, 80} by cost error on validation typists, where 1, 5 and 10 tied (ADR 0015).
+export const COST_CORRECTIONS = 1;
 
 // The learner's policies, one line each: with or without decay (old runs fade), the timing term (slow pairs
-// rank on the time they lose) and the person's own cost of a miss. ADR 0013 keeps the variants the default
+// rank on the time they lose) and the person's own cost of a miss. ADRs 0013 and 0015 keep the variants the default
 // does not use as named variants.
 const constants = { halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES, timingTries: TIMING_TRIES, costCorrections: COST_CORRECTIONS };
 
