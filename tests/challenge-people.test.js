@@ -11,6 +11,7 @@ const iso = (ms) => new Date(ms).toISOString();
 const score = (wpm, elapsedMs = 30000) => ({ wpm, accuracy: 97, elapsedMs, correct: Math.round(wpm * 5 * elapsedMs / 60000) });
 
 const invite = (id, hostName, { age = 2 * MIN, left = 13 * MIN, rematch = false } = {}) => ({ id, hostName, createdAt: iso(NOW - age), expiresAt: iso(NOW + left), rematch });
+
 const ghost = (id, name, { role = 'received', status = 'open', age = DAY, left = 6 * DAY, mine = 70, theirs = 80, doneAgo = HOUR } = {}) => ({
   id, name, role, status, duration: null, conditions: {},
   sender: score(role === 'received' ? theirs : mine), result: status === 'done' ? score(role === 'received' ? mine : theirs) : null,
@@ -105,21 +106,37 @@ function world(seed) {
   const pick = (list) => list[Math.floor(rnd() * list.length)];
   const int = (max) => Math.floor(rnd() * max);
   const names = ['Sam', 'Lena', 'Theo', 'Maya', 'Priya', 'Jonas', 'sam', 'Ana'];
-  const friends = Array.from({ length: int(6) }, (_, index) => ({ id: `f${index}`, name: pick(names), account: rnd() < 0.6, ...(rnd() < 0.3 ? { email: `p${index}@example.com` } : {}) }));
+
+  const friends = Array.from({ length: int(6) }, (_, index) => {
+    const friend = { id: `f${index}`, name: pick(names), account: rnd() < 0.6 };
+
+    if (rnd() < 0.3) friend.email = `p${index}@example.com`;
+
+    return friend;
+  });
+
   const invites = Array.from({ length: int(5) }, (_, index) => invite(`r${index}`, pick(names), { age: int(14) * MIN, left: (int(30) - 4) * MIN, rematch: rnd() < 0.3 }));
+
   const challenges = Array.from({ length: int(7) }, (_, index) => {
     const status = pick(['open', 'done', 'expired']);
 
-    return { ...ghost(`c${index}`, pick(names), { role: pick(['sent', 'received']), status: status === 'expired' ? 'open' : status,
-      age: int(6) * DAY + int(20) * HOUR, left: (int(8) - 1) * DAY + int(20) * HOUR, mine: 40 + int(60), theirs: 40 + int(60), doneAgo: int(9) * DAY + int(20) * HOUR }),
-    ...(status === 'expired' ? { status: 'expired' } : {}) };
+    const challenge = ghost(`c${index}`, pick(names), { role: pick(['sent', 'received']), status: status === 'expired' ? 'open' : status,
+      age: int(6) * DAY + int(20) * HOUR, left: (int(8) - 1) * DAY + int(20) * HOUR, mine: 40 + int(60), theirs: 40 + int(60), doneAgo: int(9) * DAY + int(20) * HOUR });
+
+    // The service says expired for an open ghost past its time; the list must leave it out either way.
+    if (status === 'expired') challenge.status = 'expired';
+
+    return challenge;
   });
+
   const ids = friends.map((friend) => friend.id).concat(['gone']);
+
   const links = rnd() < 0.2 ? null : {
     friends: friends.filter(() => rnd() < 0.6).map((friend) => ({ id: friend.id, tally: [int(6), int(6)] })),
     invites: invites.filter(() => rnd() < 0.5).map((entry) => ({ id: entry.id, friendId: pick(ids) })),
     challenges: challenges.filter(() => rnd() < 0.6).map((entry) => ({ id: entry.id, friendId: pick(ids) })),
   };
+
   const dismissed = new Set(invites.filter(() => rnd() < 0.2).map((entry) => entry.id));
 
   return { friends, invites, challenges, links, dismissed, now: NOW };
@@ -145,6 +162,7 @@ test('property: every row follows the rules recomputed from the raw records', ()
     const owner = (list, id) => (friendIds.has(linkOf(list, id)) ? `friend:${linkOf(list, id)}` : null);
     const liveInvites = input.invites.filter((entry) => Date.parse(entry.expiresAt) > NOW && !input.dismissed.has(entry.id));
     const openGhosts = input.challenges.filter((entry) => entry.role === 'received' && entry.status === 'open' && Date.parse(entry.expiresAt) > NOW);
+
     const facts = (key) => [
       ...liveInvites.filter((entry) => (owner('invites', entry.id) || `invite:${entry.id}`) === key).map((entry) => Date.parse(entry.createdAt)),
       ...input.challenges.filter((entry) => (owner('challenges', entry.id) || `ghost:${entry.id}`) === key)
@@ -213,8 +231,10 @@ test('property: every row follows the rules recomputed from the raw records', ()
 
     // The same records in any order (another device, or a sync merge either way round) draw the same list.
     const rnd = random(seed * 7919);
+
     const again = peopleRows({ ...input, friends: shuffled(input.friends, rnd), invites: shuffled(input.invites, rnd), challenges: shuffled(input.challenges, rnd),
       links: input.links && { friends: shuffled(input.links.friends, rnd), invites: shuffled(input.links.invites, rnd), challenges: shuffled(input.links.challenges, rnd) } });
+
     assert.deepEqual(again, rows, `seed ${seed}: order of records changed the list`);
   }
 });

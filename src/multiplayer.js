@@ -188,6 +188,22 @@ export async function quickMatch(session, type, data = {}) {
   }
 }
 
+// Challenge's people links (public.race_people): each friend row's tally, and the friend row each open invitation
+// and ghost challenge belongs to. Null before its migration is applied: rows then show no tally and the records
+// stay apart, as they did before it.
+export async function listPeopleLinks(session) {
+  if (!session?.user?.id) return null;
+  const stored = loadSession();
+  const active = await freshSession(stored?.user?.id === session.user.id ? stored : session);
+
+  try {
+    return await request('/rest/v1/rpc/race_people', { method: 'POST', token: active?.access_token, body: {} });
+  } catch (error) {
+    if (error.status === 404 || /schema cache|could not find.*function/i.test(error.message)) return null;
+    throw error;
+  }
+}
+
 export const listRaceInvites = (session) => session ? action(session, 'invites') : Promise.resolve([]);
 
 export function joinRace(session, { roomId, inviteToken, displayName, guestToken }) {

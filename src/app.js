@@ -7339,7 +7339,7 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['train', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => jumpTo(view),
     })),
-    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); $('compete-heading').focus(); } },
+    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); $(onlineRace.mode === 'daily' ? 'friends-board-heading' : 'compete-heading').focus(); } },
     { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartHint(), run: restartTest },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
@@ -7595,7 +7595,7 @@ friendsBoard = createFriendsBoard({
   runs: () => profile.runs,
   signIn: () => openAccountDialog('signin'),
   // The button that asks for this disappears with the board, so focus lands on the Online selector.
-  openOnline: () => { onlineRace.open(); $('challenge-online').focus(); },
+  openOnline: () => onlineRace.openAdd(),
   onShared: repairBoardNow,
 });
 
@@ -7609,6 +7609,7 @@ onlineRace = createOnlineRace({
   updateGlide,
   ownBest: ownBestRun,
   raceOwnBest: startOwnGhost,
+  raceGhost: startGhostRace,
   // What plain Challenge races: the practice setup, and the session it is in (custom text, compose or a drill
   // are practice's own, so a race falls back to its default).
   practice: () => ({ mode: prefs.mode, duration: prefs.duration, count: prefs.count, punctuation: prefs.punctuation,
@@ -7652,7 +7653,7 @@ const refreshGoalDay = () => {
 };
 
 setInterval(() => {
-  if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); }
+  if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); onlineRace.tick(); }
 
   if (document.body.dataset.view === 'progress') refreshGoalDay();
 }, 30000);

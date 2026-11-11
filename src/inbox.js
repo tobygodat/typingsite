@@ -60,6 +60,8 @@ function copyOf(entry) {
 export function createInbox({ getSession, listInvites, listChallenges = null, actions, announce, isRunning }) {
   let entries = [];
   let invites = [];
+  // The ghost challenges the service last listed, as it listed them (Challenge's people list reads them).
+  let challengesListed = [];
   let delivered = new Set();
   let polling = false;
   // Set on sign-out: nothing in flight may write this account's entries back.
@@ -366,7 +368,10 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
 
       if (forgotten) return invites;
 
-      if (Array.isArray(challenges.value)) applyChallenges(challenges.value);
+      if (Array.isArray(challenges.value)) {
+        challengesListed = challenges.value;
+        applyChallenges(challenges.value);
+      }
 
       if (listed.status === 'rejected') throw listed.reason;
       invites = listed.value;
@@ -390,12 +395,12 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
       // An entry's action can also lapse with time, so a toast is checked on every poll.
       retire();
 
-      for (const listener of listeners) listener(invites, null);
+      for (const listener of listeners) listener(invites, null, challengesListed);
     } catch (failure) {
       // Entries still lapse while invitations can't be read.
       retire();
 
-      for (const listener of listeners) listener(invites, failure);
+      for (const listener of listeners) listener(invites, failure, challengesListed);
     } finally { polling = false; }
 
     return invites;
@@ -465,6 +470,7 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
     notify,
     runChanged,
     get invites() { return invites; },
+    get challenges() { return challengesListed; },
     subscribe(listener) { listeners.add(listener); },
     // Marks these kinds' actions as waiting (none, once the request has landed).
     wait(kinds) {
@@ -517,6 +523,7 @@ export function createInbox({ getSession, listInvites, listChallenges = null, ac
 
       entries = [];
       invites = [];
+      challengesListed = [];
       delivered = new Set();
     },
   };

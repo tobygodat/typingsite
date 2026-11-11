@@ -87,7 +87,7 @@ export function createQuickMatch({ root, getSession, signIn, racerName, enterRoo
   function render() {
     const searching = queued(state);
     const toggle = part('toggle');
-    const label = searching ? 'Stop looking' : 'Quick match';
+    const label = searching ? 'Stop looking' : 'Find a race';
 
     if (toggle.textContent !== label) toggle.textContent = label;
     const best = state.phase === 'lonely' ? ownBest() : null;
