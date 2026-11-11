@@ -56,4 +56,5 @@ proof.
 - [Accounts](./accounts.md): guest mode, signing in with email against the fake Supabase, and the account menu.
 - [Challenge tabs, dock labels and key hints](./challenge-and-chrome-labels.md): one selected challenge tab, label-in-name for the dock's short verbs at 320px, and key hints hidden on touch-only devices.
 - [Train's path](./train-path.md): the steps behind you, the open step and those ahead, choosing a step ahead, and the comparison as the newest step behind you.
-- [Progress practice figures](./progress-practice.md): the Practice tab's figures, runs started included.
+- [Progress: what changed](./progress-week.md): the lead figure, what moved it, the small charts, the conditions control, each view one step away, and Clear history and Undo.
+- [Progress practice figures](./progress-practice.md): the practice calendar's figures, runs started included.
