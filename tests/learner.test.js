@@ -230,6 +230,10 @@ test('a pair ranked on its slowness is named only on its observed timing, and re
   assert.deepEqual(thin.queue, []);
   assert.equal(thin.lean[0].unit, 'ou');
 
+  // A run typed at machine speed (2 ms a key) is not timed: a millisecond step would double a pair's interval.
+  const machine = Array.from({ length: 4 }, (_, i) => summary(`m${i}`, day(i), [['ou', 3, 0, 3, 4, 2], ['th', 30, 0, 20, 2, 0]]));
+  assert.deepEqual([estimate(fit(machine), 'ou').observed.timed, estimate(fit(machine), 'ou').gain], [0, 0]);
+
   // Slower in only half the runs that timed it: not named, however slow on average.
   const mixed = learnerRecommendation(fit([slowRun('a', 0, 500), slowRun('b', 1, 500), slowRun('c', 2, 190), slowRun('d', 3, 190)]));
   assert.equal(mixed.kind, 'general');

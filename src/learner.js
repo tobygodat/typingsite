@@ -66,6 +66,10 @@ const UNCERTAINTY_Z = 0.5;
 export const LEAN_UNITS = 4;
 
 const DAY_MS = 86_400_000;
+
+// A run typed faster than this per key (400 wpm) is not timed: no person keeps that pace, and the clock's
+// millisecond steps would swamp a pair's slowdown.
+const MIN_PACE_MS = 30;
 const LETTER = /^[a-z]$/;
 const PAIR = /^[a-z]{2}$/;
 
@@ -128,7 +132,7 @@ function evidenceRecord(run) {
   for (const [pair, seen, errors, timed, pairMs, slowdownMs] of run.patterns || []) {
     if (!PAIR.test(pair) || !(seen >= 0)) continue;
     const runMs = pairMs !== null && slowdownMs !== null ? pairMs - slowdownMs : null;
-    const measured = timed > 0 && runMs > 0 && pairMs > 0;
+    const measured = timed > 0 && runMs >= MIN_PACE_MS && pairMs > 0;
     units.push({ unit: pair, seen, errors: Math.min(errors, seen), timed: measured ? timed : 0, slow: measured ? pairMs > runMs : null,
       ratio: measured ? Math.log(pairMs / runMs) : null, slowMs: measured ? pairMs - runMs : null });
   }

@@ -1,5 +1,5 @@
 import { makeDrill } from '../src/typing.js';
-import { LEARNER_POLICY, fitLearner, learnerEvidence, learnerRecommendation } from '../src/learner.js';
+import { DEFAULT_POLICY, fitLearner, learnerEvidence, learnerRecommendation } from '../src/learner.js';
 import { test, expect, openApp, passageText, chooseWords, completePassage, finishDrill, openView, signInWithEmail } from './fixtures.js';
 
 // Types the passage with a wrong first try, then the right letter, at every position `missed` picks.
@@ -97,7 +97,7 @@ test('a pair missed in every run is named with its observed counts, drilled, ret
   await expect(page.locator('#comparison-panel')).toBeVisible();
   await expect(page.locator('#comparison-target-label')).toHaveText('th missed');
   await expect(page.locator('#comparison-target-was')).toHaveText(`was ${expected.was.errors} of ${expected.was.observations}`);
-  await expect.poll(() => profile()?.loops?.at(-1)?.policy).toBe(LEARNER_POLICY);
+  await expect.poll(() => profile()?.loops?.at(-1)?.policy).toBe(DEFAULT_POLICY);
   expect(profile().loops.at(-1).target).toBe('th');
   expect(profile().loops.at(-1).recommendationKind).toBe('targeted');
 });
@@ -171,4 +171,67 @@ test('a key missed beyond its pairs is named, drilled and read back with its own
   await expect(page.locator('.history-target').first()).toHaveText('“w” drill and retest');
   await expect(page.locator('.history-conditions').first()).toContainText(`w missed ${now}, was ${expected.was.errors} of ${expected.was.observations}`);
   await expect(page.locator('.history-conditions').first()).not.toContainText('before');
+});
+
+// Types the passage at a human pace, never missing, with a pause before the second letter of every `pair`.
+async function typeSlowAt(page, pair, pauseMs) {
+  const text = await passageText(page);
+  await page.locator('#typing-input').focus();
+  let from = 0;
+
+  for (let at = text.indexOf(pair) + 1; at > 0; at = text.indexOf(pair, at) + 1) {
+    await page.keyboard.type(text.slice(from, at), { delay: 40 });
+    await page.waitForTimeout(pauseMs);
+    from = at;
+  }
+
+  await page.keyboard.type(text.slice(from), { delay: 40 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+}
+
+test('a pair typed slowly but never missed is named on its observed timing, drilled and read back', async ({ page, supabase }) => {
+  test.setTimeout(120_000);
+  const user = supabase.addUser('learner-slow@stilltype.test');
+  const profile = () => supabase.profileFor(user.email);
+  await page.addInitScript(seedRandom);
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await chooseWords(page, 100);
+
+  for (let run = 0; run < 2; run += 1) {
+    await typeSlowAt(page, 'th', 150);
+    await page.locator('#run-again').click();
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  }
+
+  await expect.poll(() => profile()?.runs?.length).toBe(2);
+  const expected = learnerRecommendation(fitLearner(learnerEvidence(profile().runs, 'physical-keyboard:qwerty'), Date.now()));
+  expect(expected.target).toBe('th');
+  expect(expected.was).toMatchObject({ basis: 'slow', errors: 0, slowRuns: 2, timedRuns: 2 });
+  expect(expected.was.timed).toBeGreaterThanOrEqual(10);
+  expect(expected.was.slowMs).toBeGreaterThan(100);
+
+  await openView(page, 'Train');
+  await expect(page.locator('#train-heading')).toHaveText('Practice “th”');
+  const pace = `${Math.round(expected.was.slowMs)} ms slower than your pace, in 2 of 2 runs that timed it (${expected.was.timed} clean intervals)`;
+  await expect(page.locator('#train-evidence')).toHaveText(pace);
+  await page.locator('#start-drill').click();
+  expect((await passageText(page)).split(' ').every((word) => word.includes('th'))).toBe(true);
+  await finishDrill(page);
+  await completePassage(page);
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect(page.locator('#comparison-target-label')).toHaveText('th pace');
+
+  await expect.poll(() => profile()?.loops?.at(-1)?.targetPace?.target).toBe('th');
+  const loop = profile().loops.at(-1);
+  expect(loop.targetPace.was).toEqual({ slowMs: expected.was.slowMs, timed: expected.was.timed, timedRuns: 2, slowRuns: 2 });
+  const now = `${Math.abs(loop.targetPace.now.slowMs)} ms ${loop.targetPace.now.slowMs < 0 ? 'faster' : 'slower'}`;
+  const was = `${Math.round(expected.was.slowMs)} ms slower`;
+  await expect(page.locator('#comparison-target')).toHaveText(now);
+  await expect(page.locator('#comparison-target-was')).toHaveText(new RegExp(`^over \\d+ intervals?, was ${was} over ${expected.was.timed}$`));
+
+  await openView(page, 'Progress');
+  await expect(page.locator('.history-target').first()).toHaveText('“th” drill and retest');
+  await expect(page.locator('.history-conditions').first()).toContainText(`th ${now} over`);
+  await expect(page.locator('.history-conditions').first()).toContainText(`was ${was} over ${expected.was.timed}`);
 });
