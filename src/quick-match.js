@@ -1,6 +1,6 @@
 // Quick match: a signed-in player waits for another at a close race rating, and the service turns the
 // pair into an ordinary two-player race room on the standard setup. The service pairs, checks the traces
-// and rates (supabase/migrations/20261110120000_quick_match.sql, docs/adr/0013-quick-match-and-race-rating.md).
+// and rates (supabase/migrations/20261110120000_quick_match.sql, docs/adr/0014-quick-match-and-race-rating.md).
 // This module holds what the browser and the e2e fake share with it: the standard setup, the rating maths,
 // the pairing gap, the trace check and the browser's queue states. Every number here has a twin in the
 // migration, and tests/quick-match.test.js reads the migration to keep them equal.
@@ -38,28 +38,41 @@ export function ratingLine(rating) {
   return `Race rating ${rating.rating} · ${count}${provisional(rating.races) ? ' · provisional' : ''}`;
 }
 
-// Why a quick match didn't move the rating, as the results say it.
-export const UNRATED_REASONS = Object.freeze({
-  'no-trace': 'your run arrived without its keystroke record',
-  unreadable: 'your keystroke record could not be read',
-  times: 'your keystroke times don’t fit the race clock',
-  intervals: 'your keys came faster than a person types',
-  'wrong-text': 'your keystroke record doesn’t match the passage',
-  speed: 'your speed is over the cap for rated races',
-  unfinished: 'your connection dropped before the end',
-  opponent: 'the other racer’s run didn’t pass the check',
+// What was wrong with a run that couldn’t be checked, as the results say it after "It" or "Yours".
+const RUN_FAULTS = Object.freeze({
+  'no-trace': 'arrived without its keystroke record',
+  unreadable: 'had a keystroke record that couldn’t be read',
+  times: 'had key times that don’t fit the race clock',
+  intervals: 'had keys closer together than the check allows',
+  'wrong-text': 'had a keystroke record that doesn’t match the passage',
+  speed: 'was over the speed cap for rated races',
 });
+
+const LATE = 'your finish didn’t arrive before the race closed';
+const OUTCOME_WORDS = Object.freeze({ won: 'win', lost: 'loss', tied: 'tie' });
 
 const signed = (delta) => (delta < 0 ? `−${-delta}` : `+${delta}`);
 
-// This seat's rated result, as the service keeps it: { rated, reason, outcome, after, delta, races }.
-export function ratingChangeLine(result, opponent = 'The other racer') {
+// This seat's settled quick match, as the service keeps it: { rated, reason, outcome, after, delta, races }.
+// The reason says why it ended the way it did: null when both runs were checked and the traces decided.
+export function ratingChangeLine(result, opponent = 'the other racer') {
   if (!result || typeof result !== 'object') return '';
+  const { rated, reason, outcome } = result;
 
-  if (!result.rated) return `Not rated: ${UNRATED_REASONS[result.reason] || 'this race didn’t pass the check'}.`;
-  const lead = result.reason === 'forfeit' ? (result.outcome === 'won' ? `${opponent} left, so the win is yours. ` : 'You left, so it counts as a loss. ') : '';
+  if (!rated) {
+    const yours = reason === 'unfinished' ? `${LATE[0].toUpperCase()}${LATE.slice(1)}.` : `Yours ${RUN_FAULTS[reason] || 'couldn’t be checked'}.`;
 
-  return `${lead}${ratingLine({ rating: result.after, races: result.races })} (${signed(result.delta)})`;
+    return `Not rated: neither racer finished with a run that could be checked. ${yours}`;
+  }
+
+  const lead = {
+    forfeit: outcome === 'won' ? `Rated win: ${opponent} left the race.` : 'Rated loss: you left the race.',
+    'opponent-absent': `Rated win: ${opponent} didn’t finish.`,
+    'opponent-unchecked': `Rated win: ${opponent}’s run couldn’t be checked.`,
+    unfinished: `Rated loss: ${LATE}.`,
+  }[reason] || (RUN_FAULTS[reason] ? `Rated loss: your run couldn’t be checked. It ${RUN_FAULTS[reason]}.` : `Rated ${OUTCOME_WORDS[outcome] || 'race'}.`);
+
+  return `${lead} ${ratingLine({ rating: result.after, races: result.races })} (${signed(result.delta)})`;
 }
 
 // Pairing. Two players pair when their ratings are within the gap for the longer of their two waits: 100 at

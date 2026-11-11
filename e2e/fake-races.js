@@ -82,13 +82,19 @@ export class FakeRaces {
   snapshot(room, slot) {
     const now = Date.now();
 
-    if (now >= Date.parse(room.expiresAt) && !['finished', 'cancelled'].includes(room.status)) room.status = 'expired';
+    // Only the clock ends a quick match.
+    if (!room.quick && now >= Date.parse(room.expiresAt) && !['finished', 'cancelled'].includes(room.status)) room.status = 'expired';
 
     // A quick match whose other seat never came is called off at the start.
     if (room.status === 'countdown' && now >= Date.parse(room.startAt)) room.status = room.quick && room.players.some((p) => !p.ready) ? 'cancelled' : 'racing';
 
     // As race_action: ten seconds' grace after the clock for the last progress.
     if (room.status === 'racing' && (room.players.every((p) => p.finished) || now >= Date.parse(room.startAt) + (room.duration + 10) * 1000)) {
+      // A quick match seat still racing is finished on its last progress over the whole clock, as the service does.
+      if (room.quick) {
+        for (const p of room.players.filter((seat) => !seat.finished)) Object.assign(p, { finished: true, elapsed: room.duration, wpm: Math.round(p.correct / 5 / (room.duration / 60)) });
+      }
+
       room.status = 'finished';
       this.settle(room);
     }
@@ -110,6 +116,13 @@ export class FakeRaces {
         return seen;
       }),
     };
+  }
+
+  // As race_private.settle_due: every quick match past its clock and grace, moved on as its next request would.
+  settleDue() {
+    for (const room of this.rooms.values()) {
+      if (room.quick && ['countdown', 'racing'].includes(room.status) && Date.now() >= Date.parse(room.startAt) + (room.duration + 10) * 1000) this.snapshot(room, null);
+    }
   }
 
   player(slot, name, userId, guestToken) {
@@ -284,8 +297,10 @@ export class FakeRaces {
     if (action === 'leave') {
       // A closed race marks the seat as left, which ends the other's rematch choice.
       if (['finished', 'cancelled', 'expired'].includes(room.status)) Object.assign(player, { left: true, rematch: false });
+      // A seat that has finished a quick match just goes; the clock settles the race.
+      else if (room.quick && room.status === 'racing' && player.finished) player.left = true;
       else {
-        // Leaving a quick match after its start forfeits it.
+        // Leaving a quick match after its start, before finishing, forfeits it.
         if (room.quick && room.status === 'racing') this.quick.rate(room, player.slot);
         room.status = 'cancelled';
       }

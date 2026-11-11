@@ -50,35 +50,45 @@ export class FakeQuickMatch {
     return { rated, reason, outcome, before, after, delta, races: this.rating(user).races };
   }
 
-  // As race_private.keep_trace for a quick room: the first finished trace's verdict stands.
+  // As race_private.keep_trace for a quick room: the first finished trace's verdict stands, and none is taken
+  // once the room is settled.
   check(room, player, trace) {
-    if (room.quick && player.finished && player.verdict === undefined) {
+    if (room.quick && player.finished && player.verdict === undefined && !this.results.has(room.id)) {
       player.verdict = traceCheck(trace, room.passage, { duration: room.duration, correct: player.correct });
     }
   }
 
-  // As race_private.rate: once per room; a forfeit is a rated loss for the seat that left.
+  // As race_private.rate: once per room. A forfeit is a rated loss for the seat that left; otherwise a seat
+  // counts only with a finished run whose trace passed. Both: the traces decide. One: it wins. Neither: unrated.
   rate(room, forfeit = null) {
     if (!room.quick || this.results.has(room.id)) return;
     const [one, two] = [1, 2].map((slot) => room.players.find((p) => p.slot === slot));
 
     if (!one?.userId || !two?.userId) return;
-    let rated;
-    let why = [];
+    let rated = true;
+    let why;
     let outcome;
 
     if (forfeit) {
-      rated = true;
       why = ['forfeit', 'forfeit'];
       outcome = forfeit === 1 ? 'lost' : 'won';
     } else {
       why = [one.verdict ?? 'unfinished', two.verdict ?? 'unfinished'];
-      rated = why.every((reason) => reason === 'ok');
-      const [a, b] = rated ? [one, two].map((p) => scoreTrace(p.trace, room.passage)) : [one, two];
-      const ahead = a.wpm - b.wpm || a.accuracy - b.accuracy;
-      outcome = ahead > 0 ? 'won' : ahead < 0 ? 'lost' : 'tied';
+      const passed = why.map((reason) => reason === 'ok');
+      const ahead = (a, b) => a.wpm - b.wpm || a.accuracy - b.accuracy;
+      const by = (diff) => (diff > 0 ? 'won' : diff < 0 ? 'lost' : 'tied');
 
-      if (!rated) why = why.map((reason) => (reason === 'ok' ? 'opponent' : reason));
+      if (passed[0] && passed[1]) {
+        outcome = by(ahead(...[one, two].map((p) => scoreTrace(p.trace, room.passage))));
+        why = [null, null];
+      } else if (passed[0] || passed[1]) {
+        outcome = passed[0] ? 'won' : 'lost';
+        const winner = passed[0] ? 0 : 1;
+        why[winner] = why[1 - winner] === 'unfinished' ? 'opponent-absent' : 'opponent-unchecked';
+      } else {
+        rated = false;
+        outcome = by(ahead(one, two));
+      }
     }
 
     const [r1, r2] = [one, two].map((p) => this.rating(p.userId));
@@ -88,11 +98,21 @@ export class FakeQuickMatch {
     const rows = [[one, r1, d1, outcome, why[0]], [two, r2, d2, flip[outcome], why[1]]].map(([player, before, delta, result, reason]) => {
       if (rated) this.ratings.set(player.userId, { rating: before.rating + delta, races: before.races + 1 });
 
-      return { user: player.userId, outcome: result, rated, reason: rated && !forfeit ? null : reason,
-        before: before.rating, after: before.rating + delta, delta };
+      return { user: player.userId, outcome: result, rated, reason, before: before.rating, after: before.rating + delta, delta };
     });
 
     this.results.set(room.id, rows);
+  }
+
+  // The last settled quick match of an account, as 'rating' returns it.
+  last(user) {
+    const settled = [...this.results].filter(([, rows]) => rows.some((row) => row.user === user));
+
+    if (!settled.length) return null;
+    const [roomId, rows] = settled.at(-1);
+    const { outcome, rated, reason, before, after, delta } = rows.find((row) => row.user === user);
+
+    return { roomId, rated, reason, outcome, before, after, delta, races: this.rating(user).races };
   }
 
   forget(user) {
@@ -111,10 +131,15 @@ export class FakeQuickMatch {
     if (this.missing) return send(404, { code: 'PGRST202', message: 'Could not find the function public.quick_match(p_action, p_data) in the schema cache' });
 
     if (!caller) return send(400, { message: 'Sign in to race someone new.' });
-    const now = Date.now();
-    const mine = this.rating(caller);
 
-    if (action === 'rating') return send(200, mine);
+    if (!['rating', 'queue', 'unqueue'].includes(action)) return send(400, { message: 'Unknown quick match action.' });
+    const now = Date.now();
+    // As race_private.settle_due: every quick match whose clock and grace have run out, before anything is read.
+    this.races.settleDue();
+    const mine = this.rating(caller);
+    const last = this.last(caller);
+
+    if (action === 'rating') return send(200, last ? { ...mine, last } : mine);
 
     for (const [user, row] of this.queue) if (now - row.seenAt > PAIRING.staleMs) this.queue.delete(user);
     const live = this.liveRoom(caller);
@@ -127,8 +152,6 @@ export class FakeQuickMatch {
 
       return send(200, { state: 'idle' });
     }
-
-    if (action !== 'queue') return send(400, { message: 'Unknown quick match action.' });
 
     if (live) {
       this.queue.delete(caller);

@@ -1,4 +1,4 @@
--- Quick match and a race rating (TOB-421, docs/adr/0013-quick-match-and-race-rating.md).
+-- Quick match and a race rating (TOB-421, docs/adr/0014-quick-match-and-race-rating.md).
 -- Queue: a signed-in player asks to race, and keeps asking about once a second while waiting
 -- (public.quick_match 'queue'). A request pairs the asker with the waiting player whose race rating is
 -- closest, within a gap that widens the longer either has waited. Every queue request takes one
@@ -8,10 +8,14 @@
 -- setup, with a passage the service draws itself so neither racer picks the text. A seat counts as there
 -- once its browser asks the race about the room; a room whose other seat never came is called off at the
 -- start, so nobody races a racer who isn't there. Leaving the queue calls off a room the seat never came to.
--- Rating: Elo, one number per account, moved only by a finished quick match whose two keystroke traces pass
--- race_private.trace_check, or by a forfeit (leaving after the start). The service decides the result from
--- the traces and writes it once per room (race_private.rated_results), so a replay changes nothing.
--- A result that is not rated still shows as a race result, with its reason.
+-- Rating: Elo, one number per account, moved only by quick matches. Once a race has started it is settled by
+-- the clock: when both seats have finished, or ten seconds after the race clock ends. A seat counts only with a
+-- finished run whose keystroke trace passes race_private.trace_check. Both pass: the traces decide. One passes:
+-- a rated win for it and a rated loss for the other, whatever the other did or didn't send. Neither: unrated.
+-- Leaving before finishing, after the start, is a rated loss (a forfeit). A request about a room settles it once
+-- due, and every quick match request and every room opened settles every due race first (settle_due), so nobody
+-- waits on a racer who has gone and no rating is read unsettled. The result is written once per room
+-- (race_private.rated_results): a replay or a late finish changes nothing.
 -- Every new table cascades from auth.users and is reached only through these functions.
 
 alter table race_private.rooms add column quick boolean not null default false;
@@ -38,14 +42,18 @@ create table race_private.rated_results (
   user_id uuid not null references auth.users(id) on delete cascade,
   outcome text not null check (outcome in ('won', 'lost', 'tied')),
   rated boolean not null,
-  reason text check (reason in ('forfeit', 'no-trace', 'unreadable', 'times', 'intervals', 'wrong-text', 'speed', 'unfinished', 'opponent')),
+  -- Why the result is what it is, for this seat: null when both runs passed and the traces decided.
+  reason text check (reason in ('forfeit', 'opponent-absent', 'opponent-unchecked', 'no-trace', 'unreadable', 'times',
+    'intervals', 'wrong-text', 'speed', 'unfinished')),
   rating_before integer not null,
   rating_after integer not null,
   delta integer not null default 0,
-  settled_at timestamptz not null default now(),
+  settled_at timestamptz not null default clock_timestamp(),
   primary key (room_id, user_id)
 );
 create index rated_results_user on race_private.rated_results (user_id, settled_at desc);
+-- The quick matches a request may have to settle: live, oldest start first.
+create index rooms_quick_live on race_private.rooms (start_at) where quick and status in ('countdown', 'racing');
 alter table race_private.match_queue enable row level security;
 alter table race_private.ratings enable row level security;
 alter table race_private.rated_results enable row level security;
@@ -151,10 +159,11 @@ returns integer language sql immutable set search_path = '' as $$
 $$;
 revoke all on function race_private.rating_k(integer) from public, anon, authenticated;
 
--- Settles a quick match once: a forfeit (p_forfeit, the seat that left after the start) is rated as a loss
--- for that seat; otherwise the match is rated only when both seats finished with traces that pass the check,
--- and the traces decide it (more wpm, then more accuracy). Called with the room row locked; the rows it
--- writes make every later call for the room change nothing.
+-- Settles a quick match once. A forfeit (p_forfeit, the seat that left after the start before finishing) is a
+-- rated loss for that seat. Otherwise each seat counts only with a finished run whose trace passed the check:
+-- both, and the traces decide (more wpm, then more accuracy); one, and it wins, rated; neither, and the match is
+-- unrated, the race result still shown. Called with the room row locked; the rows it writes make every later
+-- call for the room change nothing.
 create function race_private.rate(p_room_id uuid, p_forfeit integer)
 returns void language plpgsql set search_path = '' as $$
 declare
@@ -190,24 +199,27 @@ begin
   else
     v_why1 := coalesce(v_one.trace_verdict, 'unfinished');
     v_why2 := coalesce(v_two.trace_verdict, 'unfinished');
-    v_rated := v_why1 = 'ok' and v_why2 = 'ok';
-    if v_rated then
-      begin
-        v_s1 := race_private.trace_score(v_room.passage, v_one.trace, null, false);
-        v_s2 := race_private.trace_score(v_room.passage, v_two.trace, null, false);
-      exception when others then
-        v_rated := false;
-        v_why1 := 'unreadable';
-        v_why2 := 'unreadable';
-      end;
+    -- A seat whose kept trace can't be scored counts as unreadable: it fails alone, never both seats.
+    if v_why1 = 'ok' then
+      begin v_s1 := race_private.trace_score(v_room.passage, v_one.trace, null, false);
+      exception when others then v_why1 := 'unreadable'; end;
     end if;
-    if v_rated then
+    if v_why2 = 'ok' then
+      begin v_s2 := race_private.trace_score(v_room.passage, v_two.trace, null, false);
+      exception when others then v_why2 := 'unreadable'; end;
+    end if;
+    v_rated := v_why1 = 'ok' or v_why2 = 'ok';
+    if v_why1 = 'ok' and v_why2 = 'ok' then
       v_score := case when ((v_s1->>'wpm')::integer, (v_s1->>'accuracy')::integer) > ((v_s2->>'wpm')::integer, (v_s2->>'accuracy')::integer) then 1
         when ((v_s1->>'wpm')::integer, (v_s1->>'accuracy')::integer) < ((v_s2->>'wpm')::integer, (v_s2->>'accuracy')::integer) then 0 else 0.5 end;
+      v_why1 := null;
+      v_why2 := null;
+    elsif v_rated then
+      v_score := case when v_why1 = 'ok' then 1 else 0 end;
+      if v_why1 = 'ok' then v_why1 := case when v_why2 = 'unfinished' then 'opponent-absent' else 'opponent-unchecked' end;
+      else v_why2 := case when v_why1 = 'unfinished' then 'opponent-absent' else 'opponent-unchecked' end; end if;
     else
       v_score := case race_private.winner(p_room_id) when 1 then 1 when 2 then 0 else 0.5 end;
-      v_why1 := case when v_why1 <> 'ok' then v_why1 else 'opponent' end;
-      v_why2 := case when v_why2 <> 'ok' then v_why2 else 'opponent' end;
     end if;
   end if;
   if v_rated then
@@ -218,16 +230,15 @@ begin
     update race_private.ratings set rating = rating + v_d2, rated = rated + 1, updated_at = clock_timestamp() where user_id = v_two.user_id;
   end if;
   insert into race_private.rated_results (room_id, user_id, outcome, rated, reason, rating_before, rating_after, delta) values
-    (p_room_id, v_one.user_id, case v_score when 1 then 'won' when 0 then 'lost' else 'tied' end, v_rated,
-      case when v_rated and p_forfeit is null then null else v_why1 end, v_r1.rating, v_r1.rating + v_d1, v_d1),
-    (p_room_id, v_two.user_id, case v_score when 1 then 'lost' when 0 then 'won' else 'tied' end, v_rated,
-      case when v_rated and p_forfeit is null then null else v_why2 end, v_r2.rating, v_r2.rating + v_d2, v_d2);
+    (p_room_id, v_one.user_id, case v_score when 1 then 'won' when 0 then 'lost' else 'tied' end, v_rated, v_why1, v_r1.rating, v_r1.rating + v_d1, v_d1),
+    (p_room_id, v_two.user_id, case v_score when 1 then 'lost' when 0 then 'won' else 'tied' end, v_rated, v_why2, v_r2.rating, v_r2.rating + v_d2, v_d2);
 end $$;
 revoke all on function race_private.rate(uuid, integer) from public, anon, authenticated;
 
--- The queue. 'rating' reads the asker's rating; 'queue' joins or keeps a place and pairs when it can;
--- 'unqueue' leaves, calling off a paired room this seat never came to. Each request holds the one
--- quick-match lock for its transaction.
+-- The queue. Every request first settles every quick match whose clock has run out, so the ratings it reads
+-- and pairs on are settled. 'rating' reads the asker's rating and their last quick match result; 'queue' joins
+-- or keeps a place and pairs when it can; 'unqueue' leaves, calling off a paired room this seat never came to.
+-- 'queue' and 'unqueue' hold the one quick-match lock for their transaction.
 create function race_private.quick_action(p_action text, p_data jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
@@ -244,12 +255,19 @@ declare
 begin
   if v_uid is null or not exists(select 1 from auth.users where id = v_uid) then raise exception 'Sign in to race someone new.'; end if;
   if p_data is null or jsonb_typeof(p_data) <> 'object' then raise exception 'Invalid quick match request.'; end if;
+  if p_action not in ('rating', 'queue', 'unqueue') then raise exception 'Unknown quick match action.'; end if;
+  if p_action <> 'rating' then perform pg_advisory_xact_lock(hashtextextended('quick-match', 0)); end if;
+  perform race_private.settle_due(v_now);
   select coalesce((select rating from race_private.ratings where user_id = v_uid), 1500),
     coalesce((select rated from race_private.ratings where user_id = v_uid), 0) into v_rating, v_rated;
-  if p_action = 'rating' then return jsonb_build_object('rating', v_rating, 'races', v_rated); end if;
-  if p_action not in ('queue', 'unqueue') then raise exception 'Unknown quick match action.'; end if;
+  if p_action = 'rating' then
+    -- The last settled quick match, so a racer who closed the page mid-race learns how it ended.
+    return jsonb_build_object('rating', v_rating, 'races', v_rated) || coalesce((select jsonb_build_object('last',
+        jsonb_build_object('roomId', rr.room_id, 'rated', rr.rated, 'reason', rr.reason, 'outcome', rr.outcome,
+          'before', rr.rating_before, 'after', rr.rating_after, 'delta', rr.delta, 'races', v_rated))
+      from race_private.rated_results rr where rr.user_id = v_uid order by rr.settled_at desc limit 1), '{}'::jsonb);
+  end if;
 
-  perform pg_advisory_xact_lock(hashtextextended('quick-match', 0));
   delete from race_private.match_queue where seen_at < v_now - interval '10 seconds';
   -- This account's live quick match, if it has one.
   select r.* into v_room from race_private.rooms r join race_private.players p on p.room_id = r.id
@@ -348,6 +366,7 @@ $$;
 revoke all on function race_private.snapshot(uuid, integer) from public, anon, authenticated;
 
 -- A quick room's first trace from a finished racer is checked, and the verdict kept, whether or not it replays.
+-- Once the room is settled no verdict changes: a finish that arrives after it moves nothing.
 create or replace function race_private.keep_trace(p_room_id uuid, p_slot integer, p_trace jsonb)
 returns void language plpgsql set search_path = '' as $$
 declare
@@ -357,7 +376,8 @@ declare
 begin
   select * into v_room from race_private.rooms where id = p_room_id;
   select * into v_player from race_private.players where room_id = p_room_id and slot = p_slot;
-  if v_room.quick and v_player.finished and v_player.trace_verdict is null then
+  if v_room.quick and v_player.finished and v_player.trace_verdict is null
+    and not exists(select 1 from race_private.rated_results where room_id = p_room_id) then
     update race_private.players set trace_verdict = race_private.trace_check(v_room.passage, p_trace, v_room.duration, v_player.correct)
       where room_id = p_room_id and slot = p_slot;
   end if;
@@ -372,6 +392,86 @@ begin
   update race_private.players set trace = p_trace where room_id = p_room_id and slot = p_slot;
 end $$;
 revoke all on function race_private.keep_trace(uuid, integer, jsonb) from public, anon, authenticated;
+
+-- The clock's own moves for one room, locked by the caller, applied before any request reads it: an invitation
+-- past its time expires (never a quick match, which only the clock ends); the countdown's end starts the race,
+-- or calls off a quick match with a seat that never came; and ten seconds after the race clock, a grace period
+-- for the last progress, every seat still racing is finished on its last progress and the race is settled.
+create function race_private.advance(p_room_id uuid, p_now timestamptz)
+returns text language plpgsql set search_path = '' as $$
+declare
+  v_room race_private.rooms%rowtype;
+begin
+  select * into v_room from race_private.rooms where id = p_room_id;
+  if v_room.status in ('waiting','countdown','racing') and v_room.expires_at <= p_now and not v_room.quick then
+    update race_private.rooms set status='expired' where id=p_room_id; v_room.status := 'expired';
+  end if;
+  if v_room.status='countdown' and v_room.start_at <= p_now then
+    if v_room.quick and exists(select 1 from race_private.players where room_id=p_room_id and not ready) then
+      update race_private.rooms set status='cancelled' where id=p_room_id; v_room.status := 'cancelled';
+    else
+      update race_private.rooms set status='racing' where id=p_room_id; v_room.status := 'racing';
+    end if;
+  end if;
+  -- A small grace period accepts the final network packet; server elapsed stays capped at the race clock.
+  if v_room.status='racing' and p_now >= v_room.start_at + make_interval(secs => v_room.duration + 10) then
+    update race_private.players set finished=true,elapsed=v_room.duration where room_id=p_room_id and not finished;
+    update race_private.rooms set status='finished' where id=p_room_id; v_room.status := 'finished';
+    perform race_private.settle(p_room_id);
+  end if;
+  return v_room.status;
+end $$;
+revoke all on function race_private.advance(uuid, timestamptz) from public, anon, authenticated;
+
+-- Every quick match whose clock and grace have run out, settled now. Every quick match request calls it first,
+-- and open_room before it deletes old rooms, so a race whose racers have both gone is settled by the next
+-- request anyone makes, and before any rating is read again. A room another request holds is skipped: that
+-- request is settling it, or rolls back and leaves it for the next one.
+create function race_private.settle_due(p_now timestamptz)
+returns void language plpgsql set search_path = '' as $$
+declare
+  v_id uuid;
+begin
+  for v_id in select id from race_private.rooms where quick and status in ('countdown','racing')
+      and start_at + make_interval(secs => duration + 10) <= p_now order by start_at for update skip locked loop
+    perform race_private.advance(v_id, p_now);
+  end loop;
+end $$;
+revoke all on function race_private.settle_due(timestamptz) from public, anon, authenticated;
+
+-- open_room as in 20261027130000_race_options.sql, settling due quick matches before it deletes old rooms.
+create or replace function race_private.open_room(p_host uuid, p_invited uuid, p_kind text, p_hash text,
+  p_passage text, p_conditions jsonb, p_rematch_of uuid, p_opener text)
+returns race_private.rooms language plpgsql set search_path = '' as $$
+declare
+  v_now timestamptz := clock_timestamp();
+  v_room race_private.rooms%rowtype;
+begin
+  -- Serialize per requester to make quotas reliable under concurrent requests.
+  perform pg_advisory_xact_lock(hashtextextended(p_opener, 0));
+  -- Terminal room data is transient; opportunistic cleanup needs no scheduler.
+  -- A rematch's source room stays: the new room points back at it.
+  perform race_private.settle_due(v_now);
+  delete from race_private.rooms where expires_at < v_now - interval '1 day' and id is distinct from p_rematch_of;
+  if (select count(*) from race_private.rooms where opened_by = p_opener and created_at > v_now - interval '1 hour') >= 10 then
+    raise exception 'You have created several races. Please wait before hosting another.';
+  end if;
+  if (select count(*) from race_private.rooms where opened_by = p_opener and status in ('waiting','countdown','racing') and expires_at > v_now) >= 3 then
+    raise exception 'Close an existing race before creating another.';
+  end if;
+  if p_passage is null or length(p_passage) not between 40 and 8000 or p_passage ~ '[^ -~]' then raise exception 'Use a passage of 40 to 8000 ordinary English characters.'; end if;
+  if jsonb_typeof(coalesce(p_conditions,'{}')) <> 'object' or octet_length(coalesce(p_conditions,'{}')::text) > 2000
+    or coalesce(p_conditions->>'duration', '60') !~ '^[0-9]{1,3}$' or coalesce(p_conditions->>'duration', '60')::integer not between 5 and 600 then
+    raise exception 'Invalid race conditions.';
+  end if;
+  -- The race clock: a timed race's own length, or the limit on a race to the end of its passage.
+  insert into race_private.rooms(host_id, invited_id, invite_kind, invite_hash, passage, conditions, rematch_of, opened_by, duration)
+    values (p_host, p_invited, p_kind, p_hash, p_passage, coalesce(p_conditions, '{}'), p_rematch_of, p_opener,
+      coalesce(p_conditions->>'duration', '60')::integer)
+    returning * into v_room;
+  return v_room;
+end $$;
+revoke all on function race_private.open_room(uuid,uuid,text,text,text,jsonb,uuid,text) from public, anon, authenticated;
 
 -- Settling a quick match also rates it.
 create or replace function race_private.settle(p_room_id uuid)
@@ -396,8 +496,9 @@ begin
 end $$;
 revoke all on function race_private.settle(uuid) from public, anon, authenticated;
 
--- race_action as in 20261027130000_race_options.sql, with three changes for quick rooms: a seat arrives with its
--- first request, the start calls off a room with a seat that never arrived, and leaving after the start forfeits.
+-- race_action as in 20261027130000_race_options.sql, with the clock's moves in race_private.advance and three
+-- changes for quick rooms: a seat arrives with its first request, the start calls off a room with a seat that
+-- never arrived (and only the clock ends one), and leaving after the start, before finishing, forfeits.
 create or replace function race_private.action(p_action text, p_room_id uuid, p_data jsonb, p_guest_token text)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
@@ -524,33 +625,20 @@ begin
   if v_room.quick and not v_player.ready then
     update race_private.players set ready=true where room_id=p_room_id and slot=v_slot;
   end if;
-  if v_room.status in ('waiting','countdown','racing') and v_room.expires_at <= v_now then
-    update race_private.rooms set status='expired' where id=p_room_id; v_room.status := 'expired';
-  end if;
-  if v_room.status='countdown' and v_room.start_at <= v_now then
-    -- A quick match whose other seat never came is called off rather than raced alone.
-    if v_room.quick and exists(select 1 from race_private.players where room_id=p_room_id and slot<>v_slot and not ready) then
-      update race_private.rooms set status='cancelled' where id=p_room_id; v_room.status := 'cancelled';
-    else
-      update race_private.rooms set status='racing' where id=p_room_id; v_room.status := 'racing';
-    end if;
-  end if;
-  -- A small grace period accepts the final network packet; server elapsed stays capped at the race clock.
-  if v_room.status='racing' and v_now >= v_room.start_at + make_interval(secs => v_room.duration + 10) then
-    update race_private.players set finished=true,elapsed=v_room.duration where room_id=p_room_id and not finished;
-    update race_private.rooms set status='finished' where id=p_room_id; v_room.status := 'finished';
-    perform race_private.settle(p_room_id);
-  end if;
+  v_room.status := race_private.advance(p_room_id, v_now);
 
   if p_action='join' then
     return jsonb_build_object('roomId',p_room_id,'room',race_private.snapshot(p_room_id,v_slot))
       || case when v_player.guest_hash is not null then jsonb_build_object('guestToken',p_guest_token) else '{}'::jsonb end;
   elsif p_action='get' then null;
   elsif p_action='leave' then
-    -- Leaving a quick match after its start is a forfeit, rated as a loss. Before it, the race is just off.
-    if v_room.quick and v_room.status='racing' then
+    -- Leaving a quick match after its start, before finishing, is a forfeit, rated as a loss. A seat that has
+    -- finished has its run in and just goes; the clock settles the race. Before the start, the race is off.
+    if v_room.quick and v_room.status='racing' and not v_player.finished then
       update race_private.rooms set status='cancelled' where id=p_room_id;
       perform race_private.rate(p_room_id, v_slot);
+    elsif v_room.quick and v_room.status='racing' then
+      update race_private.players set left_race=true where room_id=p_room_id and slot=v_slot;
     elsif v_room.status in ('waiting','countdown','racing') then
       update race_private.rooms set status='cancelled' where id=p_room_id;
     else

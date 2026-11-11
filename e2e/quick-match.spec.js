@@ -50,8 +50,8 @@ test('two strangers press quick match, race the standard setup, see the rating m
     await Promise.all([typeInto(page, passage.slice(0, 60), '#online-input', { delay: 35 }), typeInto(lin, passage.slice(0, 30), '#online-input', { delay: 70 })]);
     await expect(page.locator('#online-results')).toBeVisible({ timeout: 15000 });
     await expect(lin.locator('#online-results')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('#online-rating-change')).toHaveText('Race rating 1520 · 1 rated race · provisional (+20)');
-    await expect(lin.locator('#online-rating-change')).toHaveText('Race rating 1480 · 1 rated race · provisional (−20)');
+    await expect(page.locator('#online-rating-change')).toHaveText('Rated win. Race rating 1520 · 1 rated race · provisional (+20)');
+    await expect(lin.locator('#online-rating-change')).toHaveText('Rated loss. Race rating 1480 · 1 rated race · provisional (−20)');
     // The head-to-head tally counts it, and both may add the other, the waiting player (seat 1) included.
     await expect(page.locator('#online-tally')).toHaveAttribute('aria-label', 'You 1, Lin 0');
     await expect(page.locator('#online-befriend')).toHaveText('Add Lin to friends');
@@ -62,6 +62,46 @@ test('two strangers press quick match, race the standard setup, see the rating m
     await expect(page.locator('#online-friend-list')).toContainText('Lin');
     await expect(page.locator('#online-friend-list')).toContainText('raced before');
     await expect(page.locator('#quick-match [data-quick-part="rating"]')).toHaveText('Race rating 1520 · 1 rated race · provisional');
+    expect(supabase.errors).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
+test('a racer who closes the page mid-race loses, rated; the other racer wins once the clock and its grace run out', async ({ page, browser, supabase }) => {
+  supabase.addUser('ada@stilltype.test');
+  supabase.addUser('lin@stilltype.test');
+  supabase.races.quick.duration = 5;
+  supabase.races.quick.countdownMs = 2000;
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#online-name').fill('Ada');
+  await quick(page).click();
+  const { context, page: lin } = await signedIn(browser, supabase, 'lin@stilltype.test', 'Lin');
+
+  try {
+    await quick(lin).click();
+    await expect(lin.locator('#online-input')).toBeEnabled({ timeout: 8000 });
+    await expect(page.locator('#online-input')).toBeEnabled();
+    const passage = await page.locator('#online-accessible-passage').textContent();
+    await typeInto(lin, passage.slice(0, 10), '#online-input', { delay: 70 });
+    // Lin closes the page mid-race, so no finish and no trace ever comes from that seat.
+    await lin.close();
+    await typeInto(page, passage.slice(0, 60), '#online-input', { delay: 35 });
+    await expect(page.locator('#online-room-status')).toHaveText('Waiting for the other player.', { timeout: 8000 });
+    // Ten seconds after the race clock, Ada's own poll settles it: a rated win.
+    await expect(page.locator('#online-rating-change')).toHaveText('Rated win: Lin didn’t finish. Race rating 1520 · 1 rated race · provisional (+20)', { timeout: 20000 });
+    await expect(page.locator('#online-results')).toBeVisible();
+
+    // Lin comes back on a new page: the Online tab says the race was a rated loss, and why.
+    const back = await context.newPage();
+    await supabase.attach(back);
+    await openApp(back);
+    await openView(back, 'Challenge');
+    await expect(status(back)).toHaveText('Rated loss: your finish didn’t arrive before the race closed. Race rating 1480 · 1 rated race · provisional (−20)');
+    await expect(back.locator('#quick-match [data-quick-part="rating"]')).toHaveText('Race rating 1480 · 1 rated race · provisional');
+    expect(supabase.races.quick.results.size).toBe(1);
     expect(supabase.errors).toEqual([]);
   } finally {
     await context.close();

@@ -29,6 +29,35 @@ begin
     'keystrokes', char_length(p_trace_two->>'k'), 'errors', 0, 'finished', true, 'sequence', 1, 'trace', p_trace_two), null);
   return v_snap;
 end $$;
+-- One seat's part in a started race, by kind: fast and slow finish with passing runs (98 and 80 wpm), pasted
+-- finishes with a run whose keys all came at once, bare finishes with no trace (as after a reload), absent never
+-- finishes (the page closed), leaves presses Leave race before finishing, and done-leaves finishes fast, then
+-- leaves. A request a closed race refuses is the race refusing it, so it is let go.
+create function pg_temp.seat(p_room uuid, p_user uuid, p_kind text) returns void language plpgsql as $$
+declare
+  v_passage text := (select passage from race_private.rooms where id = p_room);
+  v_count integer := case p_kind when 'slow' then 200 when 'bare' then 200 when 'pasted' then 300 else 245 end;
+  v_trace jsonb := case p_kind when 'bare' then null when 'pasted' then pg_temp.trace_of(v_passage, 300, 0)
+    when 'slow' then pg_temp.trace_of(v_passage, 200, 148) else pg_temp.trace_of(v_passage, 245, 120) end;
+begin
+  perform pg_temp.as_user(p_user);
+  if p_kind = 'absent' then return; end if;
+  if p_kind <> 'leaves' then
+    begin
+      perform public.race_action('progress', p_room, jsonb_build_object('typed', left(v_passage, v_count), 'keystrokes', v_count,
+        'errors', 0, 'finished', true, 'sequence', 1, 'trace', v_trace), null);
+    exception when others then null;
+    end;
+  end if;
+  if p_kind in ('leaves', 'done-leaves') then perform public.race_action('leave', p_room, '{}', null); end if;
+end $$;
+-- A settled room as the settlement table writes it: rated or not, then each seat's outcome, reason and change.
+create function pg_temp.settled(p_room uuid) returns text language sql as $$
+  select case when bool_and(rated) then 'rated' when not bool_or(rated) then 'unrated' else 'mixed' end || ': '
+    || string_agg(format('%s %s %s', rr.outcome, coalesce(rr.reason, '-'), case when rr.delta > 0 then '+' else '' end || rr.delta), ', ' order by p.slot)
+  from race_private.rated_results rr join race_private.players p on p.room_id = rr.room_id and p.user_id = rr.user_id
+  where rr.room_id = p_room
+$$;
 -- Two players who pair, the first waiting and the second asking: the room's id.
 create function pg_temp.pair(p_one uuid, p_two uuid) returns uuid language plpgsql as $$
 declare v_reply jsonb;
@@ -51,6 +80,13 @@ declare
   tom uuid := gen_random_uuid();
   uma uuid := gen_random_uuid();
   vic uuid := gen_random_uuid();
+  bystander uuid := gen_random_uuid();
+  one uuid;
+  two uuid;
+  row record;
+  got text;
+  ratings_before text;
+  table_rooms uuid[] := '{}';
   reply jsonb;
   snap jsonb;
   room uuid;
@@ -59,7 +95,7 @@ declare
   verdicts text;
 begin
   insert into auth.users (id, email, email_confirmed_at)
-    select id, 'quick-test-' || id || '@example.invalid', now() from unnest(array[ada, lin, kai, ola, sam, tom, uma, vic]) id;
+    select id, 'quick-test-' || id || '@example.invalid', now() from unnest(array[ada, lin, kai, ola, sam, tom, uma, vic, bystander]) id;
 
   -- Browsers reach the queue only through the RPC, signed in; the tables and helpers are private.
   if has_table_privilege('authenticated', 'race_private.match_queue', 'SELECT')
@@ -181,7 +217,7 @@ begin
   end if;
   perform pg_temp.as_user(ada);
   snap := public.race_action('get', room, '{}', null);
-  if snap->'rating'->>'delta' <> '20' or public.quick_match('rating', '{}') <> '{"rating":1520,"races":1}'::jsonb then
+  if snap->'rating'->>'delta' <> '20' or public.quick_match('rating', '{}') - 'last' <> '{"rating":1520,"races":1}'::jsonb then
     raise exception 'The winner''s rating did not rise by 20.';
   end if;
   if public.race_action('get', room, '{}', null)->'tally' <> '[1, 0]'::jsonb then raise exception 'A quick match did not count in the head-to-head tally.'; end if;
@@ -203,27 +239,32 @@ begin
   end if;
   update race_private.rooms set status = 'finished' where rematch_of = room;
 
-  -- A run whose keys came all at once is not rated, for either seat; the race result still stands.
+  -- A run whose keys came all at once can't be checked, so it loses to a run that can, rated, though it typed
+  -- further: Lin (1480) loses to Ada (1520), each at K 40, 18 each way (40 × (1 − 0.557)).
   room := pg_temp.pair(ada, lin);
   passage := (select r.passage from race_private.rooms r where r.id = room);
   snap := pg_temp.race(room, ada, lin, pg_temp.trace_of(passage, 245, 120), pg_temp.trace_of(passage, 300, 0));
-  if snap->'rating'->>'rated' <> 'false' or snap->'rating'->>'reason' <> 'intervals' or snap->'rating'->>'outcome' <> 'won' then
-    raise exception 'A pasted run was rated or lost its result: %', snap->'rating';
+  if (snap->'rating') - 'races' <> jsonb_build_object('rated', true, 'reason', 'intervals', 'outcome', 'lost', 'before', 1480, 'after', 1462, 'delta', -18) then
+    raise exception 'A pasted run was not a rated loss: %', snap->'rating';
   end if;
   perform pg_temp.as_user(ada);
   snap := public.race_action('get', room, '{}', null);
-  if snap->'rating'->>'reason' <> 'opponent' or public.quick_match('rating', '{}') <> '{"rating":1520,"races":1}'::jsonb then
-    raise exception 'An unrated match moved the clean racer''s rating.';
+  if snap->'rating'->>'reason' <> 'opponent-unchecked' or snap->'rating'->>'outcome' <> 'won'
+    or public.quick_match('rating', '{}') - 'last' <> '{"rating":1538,"races":2}'::jsonb then
+    raise exception 'The racer whose run passed did not win against a pasted run: %', snap->'rating';
   end if;
 
-  -- A racer whose connection drops is finalized after the grace period, unrated.
+  -- Both connections drop: both seats are finished after the grace period, and with no run from either, unrated.
   room := pg_temp.pair(ada, lin);
   perform pg_temp.as_user(ada);
   perform public.race_action('get', room, '{}', null);
   perform pg_temp.as_user(lin);
   perform public.race_action('get', room, '{}', null);
   update race_private.rooms set start_at = clock_timestamp() - interval '41 seconds' where id = room;
-  if public.race_action('get', room, '{}', null)->'rating'->>'reason' <> 'unfinished' then raise exception 'A dropped connection was rated.'; end if;
+  if (public.race_action('get', room, '{}', null)->'rating') - 'races' <> jsonb_build_object('rated', false, 'reason', 'unfinished',
+      'outcome', 'tied', 'before', 1462, 'after', 1462, 'delta', 0) then
+    raise exception 'A race with no run from either seat was rated: %', public.race_action('get', room, '{}', null)->'rating';
+  end if;
 
   -- Leaving during the countdown calls the race off, unrated; leaving after the start forfeits.
   room := pg_temp.pair(ada, lin);
@@ -252,6 +293,131 @@ begin
   -- Ola expected 1 / (1 + 10^(-400/400)) = 0.909: +2 at K 20 (20 × 0.091 = 1.8); Kai −4 at K 40 (40 × 0.091 = 3.6).
   if (select rating from race_private.ratings where user_id = ola) <> 1902 or (select rating from race_private.ratings where user_id = kai) <> 1496 then
     raise exception 'K did not follow the rated race count: %', (select array_agg(rating) from race_private.ratings where user_id in (ola, kai));
+  end if;
+
+  -- The settlement table, shared with tests/quick-match.test.js, which plays every row through the e2e fake.
+  -- Fresh accounts race each row: both seats arrive, the start passes, each seat plays its kind (pg_temp.seat),
+  -- and then only someone else's request, after the clock and its grace, settles what is left.
+  for row in select * from (values
+    -- settlement table begins
+    ('fast', 'slow', 'rated: won - +20, lost - -20'),
+    ('slow', 'fast', 'rated: lost - -20, won - +20'),
+    ('fast', 'absent', 'rated: won opponent-absent +20, lost unfinished -20'),
+    ('absent', 'slow', 'rated: lost unfinished -20, won opponent-absent +20'),
+    ('slow', 'pasted', 'rated: won opponent-unchecked +20, lost intervals -20'),
+    ('bare', 'fast', 'rated: lost no-trace -20, won opponent-unchecked +20'),
+    ('pasted', 'absent', 'unrated: won intervals 0, lost unfinished 0'),
+    ('pasted', 'bare', 'unrated: won intervals 0, lost no-trace 0'),
+    ('absent', 'absent', 'unrated: tied unfinished 0, tied unfinished 0'),
+    ('leaves', 'fast', 'rated: lost forfeit -20, won forfeit +20'),
+    ('pasted', 'leaves', 'rated: won forfeit +20, lost forfeit -20'),
+    ('done-leaves', 'absent', 'rated: won opponent-absent +20, lost unfinished -20'),
+    ('slow', 'done-leaves', 'rated: lost - -20, won - +20')
+    -- settlement table ends
+  ) as t(one_kind, two_kind, expected) loop
+    one := gen_random_uuid();
+    two := gen_random_uuid();
+    insert into auth.users (id, email, email_confirmed_at) values (one, 'quick-row-' || one || '@example.invalid', now()),
+      (two, 'quick-row-' || two || '@example.invalid', now());
+    room := pg_temp.pair(one, two);
+    table_rooms := table_rooms || room;
+    perform pg_temp.as_user(one);
+    perform public.race_action('get', room, '{}', null);
+    perform pg_temp.as_user(two);
+    perform public.race_action('get', room, '{}', null);
+    update race_private.rooms set start_at = clock_timestamp() - interval '31 seconds' where id = room;
+    perform pg_temp.seat(room, one, row.one_kind);
+    perform pg_temp.seat(room, two, row.two_kind);
+    -- Inside the grace period nothing waiting on an absent seat is settled, even by a stranger's request.
+    perform pg_temp.as_user(bystander);
+    perform public.quick_match('rating', '{}');
+    if row.one_kind = 'absent' or row.two_kind = 'absent' then
+      if exists(select 1 from race_private.rated_results where room_id = room) then raise exception 'A race was settled before its grace period ended (% %).', row.one_kind, row.two_kind; end if;
+    end if;
+    update race_private.rooms set start_at = clock_timestamp() - interval '41 seconds' where id = room and status in ('countdown', 'racing');
+    perform public.quick_match('rating', '{}');
+    got := pg_temp.settled(room);
+    if got is distinct from row.expected then raise exception 'Settling % against % gave "%", not "%".', row.one_kind, row.two_kind, got, row.expected; end if;
+  end loop;
+  -- Every rated race moved the pair by Elo: fresh accounts at K 40 and a sure result move 20 each way, a sum of zero.
+  if exists(select 1 from race_private.rated_results where room_id = any(table_rooms) group by room_id having bool_and(rated) and sum(delta) <> 0) then
+    raise exception 'A rated race between two accounts at the same K did not sum to zero.';
+  end if;
+  -- And no started race ended without a rated result unless neither seat had a run that passed.
+  if exists(select 1 from race_private.rated_results rr join race_private.players p on p.room_id = rr.room_id and p.user_id = rr.user_id
+      where not rr.rated and p.trace_verdict = 'ok') then
+    raise exception 'A race with a passing run was left unrated.';
+  end if;
+
+  -- Abandoning: Kai closes the page mid-race and never asks again; Sam finishes with a passing run and closes his
+  -- too. Nobody else asks about the room. Kai's next request, from a new page, settles it first: his rating
+  -- read shows the rated loss and why, and the queue pairs on the lowered rating.
+  insert into race_private.ratings (user_id) values (sam) on conflict do nothing;
+  room := pg_temp.pair(sam, kai);
+  passage := (select r.passage from race_private.rooms r where r.id = room);
+  perform pg_temp.as_user(sam);
+  perform public.race_action('get', room, '{}', null);
+  perform pg_temp.as_user(kai);
+  perform public.race_action('get', room, '{}', null);
+  update race_private.rooms set start_at = clock_timestamp() - interval '31 seconds' where id = room;
+  perform pg_temp.seat(room, sam, 'fast');
+  update race_private.rooms set start_at = clock_timestamp() - interval '41 seconds' where id = room;
+  ratings_before := (select string_agg(rating || '/' || rated, ' ' order by user_id) from race_private.ratings where user_id in (sam, kai));
+  perform pg_temp.as_user(kai);
+  reply := public.quick_match('rating', '{}');
+  if (reply->'last') - 'races' <> jsonb_build_object('roomId', room, 'rated', true, 'reason', 'unfinished', 'outcome', 'lost',
+      'before', 1496, 'after', 1476, 'delta', -20) or (reply->>'rating')::integer <> 1476 then
+    raise exception 'The racer who left did not see a rated loss on return: %', reply;
+  end if;
+  if public.quick_match('queue', '{"displayName":"Kai"}')->>'rating' <> '1476' then raise exception 'The queue did not pair on the settled rating.'; end if;
+  perform public.quick_match('unqueue', '{}');
+  perform pg_temp.as_user(sam);
+  snap := public.race_action('get', room, '{}', null);
+  if snap->>'status' <> 'finished' or snap->'rating'->>'reason' <> 'opponent-absent' or snap->'rating'->>'outcome' <> 'won' or (snap->'rating'->>'delta')::integer <= 0 then
+    raise exception 'The racer who stayed did not get a rated win: %', snap->'rating';
+  end if;
+  -- A finish from Kai's old page, arriving now with a passing run, changes no verdict, rating or result, and
+  -- the reply says how the race ended.
+  ratings_before := (select string_agg(rating || '/' || rated, ' ' order by user_id) from race_private.ratings where user_id in (sam, kai));
+  got := pg_temp.settled(room);
+  perform pg_temp.as_user(kai);
+  snap := public.race_action('progress', room, jsonb_build_object('typed', left(passage, 245), 'keystrokes', 245, 'errors', 0,
+    'finished', true, 'sequence', 9, 'trace', pg_temp.trace_of(passage, 245, 120)), null);
+  if snap->'rating'->>'reason' <> 'unfinished' or snap->'rating'->>'outcome' <> 'lost' or pg_temp.settled(room) <> got
+    or (select string_agg(rating || '/' || rated, ' ' order by user_id) from race_private.ratings where user_id in (sam, kai)) <> ratings_before
+    or (select trace_verdict from race_private.players where room_id = room and user_id = kai) is not null then
+    raise exception 'A finish after the race was settled changed it: % %', snap->'rating', pg_temp.settled(room);
+  end if;
+  -- Replaying every request and every settling step changes nothing.
+  perform race_private.settle_due(clock_timestamp());
+  perform race_private.rate(room, null);
+  perform race_private.rate(room, 2);
+  perform race_private.settle(room);
+  perform public.race_action('leave', room, '{}', null);
+  perform pg_temp.as_user(sam);
+  perform public.race_action('get', room, '{}', null);
+  perform public.race_action('leave', room, '{}', null);
+  if pg_temp.settled(room) <> got or (select string_agg(rating || '/' || rated, ' ' order by user_id) from race_private.ratings where user_id in (sam, kai)) <> ratings_before then
+    raise exception 'Replaying requests moved a settled race.';
+  end if;
+
+  -- A race both racers left long ago, which no quick match request has touched since, is settled by the next
+  -- room anyone opens, before old rooms are deleted: its result outlives the room.
+  room := pg_temp.pair(uma, vic);
+  passage := (select r.passage from race_private.rooms r where r.id = room);
+  perform pg_temp.as_user(uma);
+  perform public.race_action('get', room, '{}', null);
+  perform pg_temp.as_user(vic);
+  perform public.race_action('get', room, '{}', null);
+  update race_private.rooms set start_at = clock_timestamp() - interval '31 seconds' where id = room;
+  perform pg_temp.seat(room, vic, 'slow');
+  update race_private.rooms set start_at = clock_timestamp() - interval '2 days', created_at = clock_timestamp() - interval '2 days',
+    expires_at = clock_timestamp() - interval '2 days' where id = room;
+  perform pg_temp.as_user(tom);
+  perform public.race_action('create', null, jsonb_build_object('displayName', 'Tom', 'passage', repeat('the race goes on ', 4),
+    'conditions', '{"mode":"time","duration":30}'::jsonb), null);
+  if exists(select 1 from race_private.rooms where id = room) or pg_temp.settled(room) <> 'rated: lost unfinished -20, won opponent-absent +20' then
+    raise exception 'An old abandoned race was deleted unsettled: %', pg_temp.settled(room);
   end if;
 
   -- The trace check's table, the same one tests/quick-match.test.js pins for traceCheck.

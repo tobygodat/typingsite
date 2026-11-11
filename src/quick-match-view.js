@@ -1,9 +1,12 @@
 // The quick match control: one element (#quick-match) with one click handler, so it can move to another
 // screen as it is. The queue's states live in src/quick-match.js; this runs their effects and draws them.
-import { QUEUE_IDLE, queueStep, queued, ratingLine } from './quick-match.js';
+import { QUEUE_IDLE, queueStep, queued, ratingChangeLine, ratingLine } from './quick-match.js';
 import { quickMatch } from './multiplayer.js';
 
 const TOLD = 'stilltype-quick-match-told:';
+
+// The last quick match result this device has shown each account, by room id.
+const SEEN = 'stilltype-quick-match-seen:';
 
 export function createQuickMatch({ root, getSession, signIn, racerName, enterRoom, busyElsewhere, ownBest, raceOwnBest }) {
   let state = QUEUE_IDLE;
@@ -52,6 +55,23 @@ export function createQuickMatch({ root, getSession, signIn, racerName, enterRoo
     render();
   }
 
+  const seenKey = () => `${SEEN}${getSession()?.user.id}`;
+
+  function markSeen(roomId) {
+    try { localStorage.setItem(seenKey(), roomId); } catch {}
+  }
+
+  // A settled quick match this device hasn't shown, such as one the page was closed in: how it ended.
+  function lastResult() {
+    const last = rating?.last;
+
+    if (!last?.roomId || !getSession()) return '';
+
+    try { if (localStorage.getItem(seenKey()) === last.roomId) return ''; } catch {}
+
+    return ratingChangeLine(last);
+  }
+
   // Said once on this device for each account: what a stranger sees.
   function tellOnce() {
     const key = `${TOLD}${getSession()?.user.id}`;
@@ -78,6 +98,7 @@ export function createQuickMatch({ root, getSession, signIn, racerName, enterRoo
       lonely: best ? 'Nobody else is looking right now.' : 'Nobody else is looking right now, and this device has no 30-second run of yours to race.',
       unavailable: state.message,
       failed: state.message,
+      idle: lastResult(),
     }[state.phase] || '';
 
     if (part('status').textContent !== status) part('status').textContent = status;
@@ -105,7 +126,12 @@ export function createQuickMatch({ root, getSession, signIn, racerName, enterRoo
         return;
       }
 
-      if (!queued(state)) tellOnce();
+      if (!queued(state)) {
+        tellOnce();
+
+        if (rating?.last?.roomId) markSeen(rating.last.roomId);
+      }
+
       dispatch({ type: 'press' });
     } else if (action === 'keep') dispatch({ type: 'keep-waiting' });
     else if (action === 'best') dispatch({ type: 'race-best' });
@@ -117,6 +143,8 @@ export function createQuickMatch({ root, getSession, signIn, racerName, enterRoo
     // Leaves the queue (another room opened, or the person signed out). Changes nothing when not queued.
     leave() { dispatch({ type: 'leave' }); },
     get searching() { return queued(state); },
+    // The room view showed this quick match's result, so the control needn't say it again.
+    seen(roomId) { markSeen(roomId); },
     async refresh() {
       const session = getSession();
 

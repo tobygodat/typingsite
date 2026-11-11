@@ -652,6 +652,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('online-room-status').textContent = copy[room.status] ?? 'Connecting to the race…';
     // A settled quick match says how the rating moved, or why it didn't.
     const change = room.quick ? ratingChangeLine(room.rating, opponent?.name) : '';
+
+    if (change) quick.seen(room.id);
     $('online-rating-change').hidden = !change;
     $('online-rating-change').textContent = change;
     $('online-ready').hidden = room.status !== 'waiting';
