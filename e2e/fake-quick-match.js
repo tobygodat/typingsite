@@ -127,7 +127,7 @@ export class FakeQuickMatch {
         const diff = ahead(...[seat, seats[them]].map((p) => scoreTrace(p.trace, room.passage)));
         [outcome, reason] = [diff > 0 ? 'won' : diff < 0 ? 'lost' : 'tied', null];
       } else if (pass[i]) [outcome, reason] = ['won', left[them] ? 'forfeit' : seats[them].verdict === undefined ? 'opponent-absent' : 'opponent-unchecked'];
-      else [outcome, reason] = [pass[them] ? 'lost' : null, seat.verdict ?? 'unfinished'];
+      else [outcome, reason] = [pass[them] ? 'lost' : null, seat.verdict ?? (seat.left ? 'left' : 'unfinished')];
 
       const rated = Boolean(outcome) && !room.repeat;
       // ratingChanges takes seat 1's outcome, as the migration takes seat 1's expectation.

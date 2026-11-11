@@ -81,7 +81,7 @@ export function createQuickMatch({ root, getSession, signIn, racerName, enterRoo
       localStorage.setItem(key, '1');
     } catch {}
 
-    notice = `The other racer sees only your race name, ${racerName()}, and the race itself.`;
+    notice = `The other racer sees your race name, ${racerName()}, and your keystroke timing in this race.`;
   }
 
   function render() {

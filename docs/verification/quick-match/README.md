@@ -11,6 +11,15 @@ Invariants, checked in every reachable state:
 
 `Liveness.cfg` also checks `EveryStartedRaceSettles`. Every race that starts is settled, given that the clock runs out and someone eventually makes a request (weak fairness on the clock, its grace and a stranger's request). Without that second assumption the property fails, as it should, since a race nobody ever asks about stays unsettled in storage while nobody reads a rating either.
 
+## What it leaves out
+
+The model checks who is paired, who wins and which rows are written. It leaves these out, and each is proven elsewhere:
+
+- The 24 hours of the pair cap. `Cap` counts a pair's rated rooms with no clock, so the window never rolls. `supabase/tests/quick-match.sql` plays a fourth race in a day, unrated for both, then rolls the 24 hours on and rates the next one. `tests/quick-match.test.js` plays the same through the fake.
+- The Elo numbers. The model records whether a row is rated and who won, not by how much. `tests/quick-match.test.js` pins the arithmetic (20 each way at K 40, a tie moving nothing, K 20 after ten rated races) and its generated-interleavings test replays every rated row against Elo in the order written. `supabase/tests/quick-match.sql` checks the same numbers against the real SQL, both seats summing to zero over the settlement table, and the one-sided case (−13, then −12 and +25).
+- The trace rules. A finish in the model passes or fails the check, nothing more. The trace check table (honest, pasted, superhuman, wrong text, empty, missing times, off the clock, unreadable) runs against `race_private.trace_check` in `supabase/tests/quick-match.sql` and against `traceCheck` in `tests/quick-match.test.js`, and a unit test keeps the two sets of limits equal.
+- The refusal of a finish before the clock. The model lets a seat finish at any point in the race. The service refuses an unfinished passage that claims to finish before the clock (`supabase/tests/online-races.sql`, `supabase/tests/race-options.sql`), and a passage typed to its end before the clock fails the trace check as `times` (the off-the-clock row of the table above).
+
 ## Run it
 
 TLC 2.19 (`tla2tools.jar` 1.7.4) and Java 17 or newer, from this folder:

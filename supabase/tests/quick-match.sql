@@ -358,10 +358,11 @@ begin
     ('pasted', 'leaves', 'mixed: none intervals 0, lost forfeit -20'),
     ('leaves', 'absent', 'mixed: lost forfeit -20, none unfinished 0'),
     ('absent', 'leaves', 'mixed: none unfinished 0, lost forfeit -20'),
-    ('leaves', 'leaves', 'mixed: lost forfeit -20, none unfinished 0'),
+    ('leaves', 'leaves', 'mixed: lost forfeit -20, none left 0'),
     ('leaves', 'bare', 'mixed: lost forfeit -20, none no-trace 0'),
     ('done-leaves', 'absent', 'rated: won opponent-absent +20, lost unfinished -20'),
-    ('slow', 'done-leaves', 'rated: lost - -20, won - +20')
+    ('slow', 'done-leaves', 'rated: lost - -20, won - +20'),
+    ('done-leaves', 'leaves', 'rated: won opponent-absent +20, lost left -20')
     -- settlement table ends
   ) as t(one_kind, two_kind, expected) loop
     one := gen_random_uuid();

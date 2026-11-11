@@ -102,6 +102,10 @@ test('the rating line says the count and whether the rating is provisional', () 
     'Not rated: neither racer finished with a run that could be checked. Yours arrived without its keystroke record.');
   assert.equal(ratingChangeLine({ rated: false, reason: 'unfinished', outcome: null }),
     'Not rated: neither racer finished with a run that could be checked. Your finish didn’t arrive before the race closed.');
+  // A racer who stays after the other leaves and then leaves too pressed Leave: the line says so.
+  assert.equal(ratingChangeLine({ rated: false, reason: 'left', outcome: null }),
+    'Not rated: neither racer finished with a run that could be checked. You left the race.');
+  assert.equal(ratingChangeLine(rated('left', 'lost', -20)), 'Rated loss: you left the race. Race rating 1480 · 1 rated race · provisional (−20)');
   // A decided result that isn't rated is a repeat pairing, said to both racers.
   assert.equal(ratingChangeLine({ rated: false, reason: null, outcome: 'won', after: 1520, delta: 0, races: 3 }, 'Lin'),
     'Not rated: you and Lin have raced each other too often today.');
@@ -252,7 +256,7 @@ const settledLine = (races, room) => {
 };
 
 test('the fake settles every row of the SQL settlement table the same way as the migration', () => {
-  assert.equal(SETTLEMENT.length, 21);
+  assert.equal(SETTLEMENT.length, 22);
 
   for (const { one, two, expected } of SETTLEMENT) {
     withClock((clock) => {

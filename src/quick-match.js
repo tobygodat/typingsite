@@ -65,7 +65,8 @@ export function ratingChangeLine(result, opponent = 'the other racer') {
   if (!rated && outcome) return `Not rated: you and ${opponent} have raced each other too often today.`;
 
   if (!rated) {
-    const yours = reason === 'unfinished' ? `${LATE[0].toUpperCase()}${LATE.slice(1)}.` : `Yours ${RUN_FAULTS[reason] || 'couldn’t be checked'}.`;
+    const yours = { unfinished: `${LATE[0].toUpperCase()}${LATE.slice(1)}.`, left: 'You left the race.' }[reason]
+      || `Yours ${RUN_FAULTS[reason] || 'couldn’t be checked'}.`;
 
     return `Not rated: neither racer finished with a run that could be checked. ${yours}`;
   }
@@ -75,6 +76,7 @@ export function ratingChangeLine(result, opponent = 'the other racer') {
     'opponent-absent': `Rated win: ${opponent} didn’t finish.`,
     'opponent-unchecked': `Rated win: ${opponent}’s run couldn’t be checked.`,
     unfinished: `Rated loss: ${LATE}.`,
+    left: 'Rated loss: you left the race.',
   }[reason] || (RUN_FAULTS[reason] ? `Rated loss: your run couldn’t be checked. It ${RUN_FAULTS[reason]}.` : `Rated ${OUTCOME_WORDS[outcome] || 'race'}.`);
 
   return `${lead} ${ratingLine({ rating: result.after, races: result.races })} (${signed(result.delta)})`;

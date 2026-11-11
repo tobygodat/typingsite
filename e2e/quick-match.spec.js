@@ -31,7 +31,7 @@ test('two strangers press quick match, race the standard setup, see the rating m
   await expect(page.locator('#quick-match [data-quick-part="rating"]')).toHaveText('Race rating 1500 · 0 rated races · provisional');
   await quick(page).click();
   // The first press says, once, what the other racer sees.
-  await expect(status(page)).toHaveText('The other racer sees only your race name, Ada, and the race itself.');
+  await expect(status(page)).toHaveText('The other racer sees your race name, Ada, and your keystroke timing in this race.');
   await expect(quick(page)).toHaveText('Stop looking');
   const { context, page: lin } = await signedIn(browser, supabase, 'lin@stilltype.test', 'Lin');
 

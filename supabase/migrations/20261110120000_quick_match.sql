@@ -51,9 +51,10 @@ create table race_private.rated_results (
   -- pairing, past the pair's three rated results in 24 hours.
   outcome text check (outcome in ('won', 'lost', 'tied')),
   rated boolean not null,
-  -- Why the result is what it is, for this seat: null when both runs passed and the traces decided.
+  -- Why the result is what it is, for this seat: null when both runs passed and the traces decided. 'left' is a
+  -- seat that pressed Leave race without a finish after its rival had already left, so it never forfeited.
   reason text check (reason in ('forfeit', 'opponent-absent', 'opponent-unchecked', 'no-trace', 'unreadable', 'times',
-    'intervals', 'wrong-text', 'speed', 'unfinished')),
+    'intervals', 'wrong-text', 'speed', 'unfinished', 'left')),
   rating_before integer not null,
   rating_after integer not null,
   delta integer not null default 0,
@@ -186,6 +187,7 @@ declare
   v_races integer[] := array[0, 0];
   v_written boolean[] := array[false, false];
   v_left boolean[] := array[false, false];
+  v_gone boolean[];
   v_pass boolean[] := array[false, false];
   v_wpm integer[] := array[0, 0];
   v_accuracy integer[] := array[0, 0];
@@ -201,8 +203,8 @@ declare
 begin
   select * into v_room from race_private.rooms where id = p_room_id;
   if not found or not v_room.quick then return; end if;
-  select array_agg(user_id order by slot), array_agg(trace_verdict order by slot) into v_user, v_verdict
-    from race_private.players where room_id = p_room_id;
+  select array_agg(user_id order by slot), array_agg(trace_verdict order by slot), array_agg(left_race order by slot)
+    into v_user, v_verdict, v_gone from race_private.players where room_id = p_room_id;
   if cardinality(v_user) is distinct from 2 or v_user[1] is null or v_user[2] is null or v_user[1] = v_user[2] then return; end if;
   insert into race_private.ratings (user_id) values (v_user[1]), (v_user[2]) on conflict (user_id) do nothing;
   perform 1 from race_private.ratings where user_id = any(v_user) order by user_id for update;
@@ -256,7 +258,7 @@ begin
       v_reason := case when v_left[v_them] then 'forfeit' when v_verdict[v_them] is null then 'opponent-absent' else 'opponent-unchecked' end;
     else
       v_points := case when v_pass[v_them] then 0 end;
-      v_reason := coalesce(v_verdict[i], 'unfinished');
+      v_reason := coalesce(v_verdict[i], case when v_gone[i] then 'left' else 'unfinished' end);
     end if;
     v_rated := v_points is not null and not v_room.repeat;
     v_delta := case when v_rated then round((race_private.rating_k(v_races[i])

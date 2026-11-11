@@ -139,7 +139,7 @@ test('a forfeit right after the start: the racer who stays finishes alone and wi
     await expect(status(lin.page)).toHaveText('Rated loss: you left the race. Race rating 1462 · 2 rated races · provisional (−18)');
     await expect(ada.page.locator('#online-room-status')).toHaveText('Lin left the race. Finish your run to win.');
     await ada.page.locator('#online-leave').click();
-    await expect(status(ada.page)).toHaveText('Not rated: neither racer finished with a run that could be checked. Your finish didn’t arrive before the race closed.');
+    await expect(status(ada.page)).toHaveText('Not rated: neither racer finished with a run that could be checked. You left the race.');
     await expect(ada.page.locator('#quick-match [data-quick-part="rating"]')).toHaveText('Race rating 1520 · 1 rated race · provisional');
   } finally {
     await ada.context.close();
