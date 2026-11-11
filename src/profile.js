@@ -3,7 +3,7 @@
 import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { DEFAULT_SPEED_UNIT, normalizeSpeedUnit } from './units.js';
 import { normalizeLengthPreferences } from './lengths.js';
-import { correctionPreference, customTextProblem, normalizeCustomText, replayAttempt } from './typing.js';
+import { DRILL_SECONDS, correctionPreference, customTextProblem, normalizeCustomText, replayAttempt } from './typing.js';
 import { normalizeKeybindings } from './keybindings.js';
 import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
@@ -17,6 +17,7 @@ import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
 import { withoutConditionSets } from './account.js';
 import { isCustomId, normalizeCustomThemes } from './custom-themes.js';
+import { DEFAULT_FOCUS, FOCUSES } from './learner.js';
 
 export const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -72,6 +73,11 @@ export const defaultPreferences = {
   customOrder: 'as-written',
   paceCaret: 'off',
   paceWpm: 80,
+  // How Train trains: preferences, never test conditions. The focus picks what the learner ranks on, the drill
+  // runs this many seconds, and the retest after it can be left out.
+  trainFocus: DEFAULT_FOCUS,
+  drillSeconds: DRILL_SECONDS,
+  retest: true,
 };
 
 // Each theme by its ground's luminance (src/styles.css): dark grounds sit below 0.05, light above 0.85.
@@ -82,6 +88,7 @@ export const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
 export const MIN_ACCURACY_OPTIONS = [0, 80, 90, 95, 98];
 export const MIN_WPM_OPTIONS = [0, 20, 30, 40, 60, 80, 100];
 const PACE_MODES = ['off', 'best', 'average', 'last', 'custom'];
+export const DRILL_LENGTHS = [15, 30, 60, 120];
 export const PACE_MIN_WPM = 10;
 export const PACE_MAX_WPM = 300;
 export const clampPace = (value) => Math.min(PACE_MAX_WPM, Math.max(PACE_MIN_WPM, Math.round(Number(value) || 80)));
@@ -141,6 +148,11 @@ export function validPreferences(value) {
   value.customText = customTextProblem(customText) ? '' : customText;
 
   if (!CUSTOM_ORDERS.includes(value.customOrder)) value.customOrder = 'as-written';
+
+  if (!FOCUSES.includes(value.trainFocus)) value.trainFocus = DEFAULT_FOCUS;
+
+  if (!DRILL_LENGTHS.includes(value.drillSeconds)) value.drillSeconds = defaultPreferences.drillSeconds;
+  value.retest = value.retest !== false;
 
   if (!PACE_MODES.includes(value.paceCaret)) value.paceCaret = 'off';
   value.paceWpm = clampPace(value.paceWpm);

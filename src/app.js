@@ -34,7 +34,6 @@ import {
   allowsBackspace,
   failureFor,
   failureAtEnd,
-  recommendTarget,
   refusesSpace,
   replayAttempt,
   selectPassage,
@@ -69,8 +68,8 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { DEFAULT_POLICY, countingEvidence, keyboardOf, learnerEvidence, paceAgainst, paceCopy, paceShift, recommendFor } from './learner.js';
-import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { DEFAULT_POLICY, FOCUSES, keyboardOf, learnerEvidence, paceAgainst, paceCopy, paceShift, recommendFor } from './learner.js';
+import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
@@ -82,7 +81,7 @@ import {
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, recordLessonRun,
 } from './lessons.js';
 import { createRunCounter, runCountTotals } from './run-counts.js';
-import { CUSTOM_ORDERS, DARK_THEMES, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
+import { CUSTOM_ORDERS, DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
@@ -238,7 +237,6 @@ let onlineRace = null;
 let inbox = null;
 let friendsBoard = null;
 let baselineAttempt = null;
-let activeRecommendation = null;
 let selectedTarget = null;
 let trainingContext = null;
 let resultBestBefore = null;
@@ -393,8 +391,16 @@ function saveChoice(...keys) {
   return saveProfile();
 }
 
-// Settings that only change how things look. Everything else is a test condition.
-const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal'];
+// How Train trains: what it ranks on, the drill's length and whether a retest follows.
+const TRAINING_PREFERENCES = ['trainFocus', 'drillSeconds', 'retest'];
+
+// Palette words for each focus command. A command never carries another focus's name, so a typed label matches only its own.
+const FOCUS_KEYWORDS = { balanced: 'both mix', accuracy: 'mistakes errors misses', speed: 'slow pace timing' };
+
+// Settings that never enter a run's conditions: how things look, and how Train trains. Everything else is a test
+// condition.
+const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal',
+  ...TRAINING_PREFERENCES];
 
 const runInProgress = () => runActive || localRaceRunning();
 const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
@@ -436,11 +442,14 @@ function followStoredPreferences({ conditions = !attemptPrepared() } = {}) {
   const json = JSON.stringify(next);
 
   if (json === livePreferences) return;
+  const before = prefs;
   prefs = validPreferences(next);
   livePreferences = JSON.stringify(prefs);
   applyPreferences();
 
   if (changedConditions) setModeControls();
+
+  if (TRAINING_PREFERENCES.some((key) => prefs[key] !== before[key])) showTraining();
 }
 
 // Caps Lock warning: read from the modifier state on each key event in the typing field.
@@ -612,7 +621,7 @@ function describeRun(run) {
     return [`${run.fresh === false ? 'repeated text · ' : ''}${page ? `page ${page} · ` : ''}${describeConditions(run.conditions)}`, ...(minimums.length ? [' · ', ...minimums] : [])];
   }
 
-  return `drill · ${DRILL_SECONDS} s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}${describeRules(run.conditions)}`;
+  return `drill · ${run.drillSeconds || DRILL_SECONDS} s · english · ${inputLabel(run.conditions)} · ${correctionLabel(run.conditions.correctionPolicy)}${describeRules(run.conditions)}`;
 }
 
 function describeLesson(run) {
@@ -968,6 +977,10 @@ function applyPreferences() {
   document.querySelectorAll('.command-key').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.commands); });
   selectSetting('layout-select', prefs.layout);
   selectSetting('daily-goal', String(prefs.dailyGoal));
+  selectSetting('train-focus', prefs.trainFocus);
+  selectSetting('drill-length', String(prefs.drillSeconds));
+  selectSetting('retest-toggle', String(prefs.retest));
+  $('start-drill').textContent = prefs.retest ? 'Drill and retest' : 'Drill';
   syncLockedSettings();
   selectSetting('min-accuracy', String(prefs.minAccuracy));
   selectSetting('min-wpm', String(prefs.minWpm));
@@ -1518,8 +1531,8 @@ function adaptivePassage() {
   if (!prefs.adaptive || !['time', 'words'].includes(prefs.mode)) return null;
   const { lean, runs } = trainingRecommendation(conditions());
 
-  return runs && lean.length ? makeAdaptive(lean, { mode: prefs.mode, count: prefs.count, duration: prefs.duration, punctuation: prefs.punctuation,
-    numbers: Boolean(prefs.numbers), wordList: prefs.wordList }) : null;
+  return runs && lean.length ? { ...makeAdaptive(lean, { mode: prefs.mode, count: prefs.count, duration: prefs.duration, punctuation: prefs.punctuation,
+    numbers: Boolean(prefs.numbers), wordList: prefs.wordList }), trainFocus: prefs.trainFocus } : null;
 }
 
 function choosePassage(extraSeen = [], { allowRepeats = false } = {}) {
@@ -1571,13 +1584,19 @@ function setPassageNotice(text) {
 // Restarting or changing a setting keeps a custom passage; every other session restarts as practice.
 const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custom' : 'practice');
 
+// A drill runs the length it started with. That is its context's, or its own once another device's clear
+// has taken the context from under a drill that is waiting or under way. A drill not yet drawn takes the setting.
+const drillLength = () => trainingContext?.drill?.duration
+  || (['ready', 'running'].includes(attempt?.status) && attempt.drillSeconds)
+  || prefs.drillSeconds;
+
 // Daily and missed-word passages run to the end of their text, whatever the practice shape is.
 function sessionDurationMs(kind = sessionKind) {
   if (kind === 'challenge') return ghostRace?.duration ? ghostRace.duration * 1000 : null;
 
   if (['daily', 'lesson', 'missed', 'race'].includes(kind)) return null;
 
-  if (kind === 'drill') return DRILL_SECONDS * 1000;
+  if (kind === 'drill') return drillLength() * 1000;
 
   if (kind === 'custom') return null;
 
@@ -1646,7 +1665,7 @@ function sessionConditions(kind, run = conditions()) {
 function configureSessionCopy() {
   const copy = {
     practice: ['practice', 'Practice', ''],
-    drill: [`drill · ${DRILL_SECONDS} s`, selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
+    drill: [`drill · ${drillLength()} s`, selectedTarget ? `Practice “${selectedTarget}”` : 'General drill', 'Doesn’t count toward your best.'],
     custom: ['custom text', 'Your text', 'Doesn’t count toward your best.'],
     retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
     missed: ['missed words', wordsPassage?.recurring ? 'Practice words you keep missing' : 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
@@ -1782,9 +1801,15 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     attempt.firstDailyAttempt = passage.firstDailyAttempt;
   }
 
-  if (kind === 'drill') attempt.target = selectedTarget;
+  if (kind === 'drill') {
+    attempt.target = selectedTarget;
+    attempt.drillSeconds = drillLength();
+  }
 
-  if (passage.adaptive) attempt.adaptive = true;
+  if (passage.adaptive) {
+    attempt.adaptive = true;
+    attempt.trainFocus = passage.trainFocus;
+  }
 
   if (kind === 'lesson') attempt.lesson = { id: passage.lessonId, index: lessonIndex, pairs: passage.pairs, words: passage.words };
 
@@ -2773,7 +2798,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
 
   // A drill the correction setting failed shows its result like any failed run, so it can be tried
   // again; a finished or interrupted drill goes straight on to the retest.
-  if (sessionKind === 'drill' && baselineAttempt && !completed.failed) {
+  if (sessionKind === 'drill' && baselineAttempt && trainingContext?.retest !== false && !completed.failed) {
     if (trainingContext) trainingContext.drillCompleted = valid;
 
     // Train already offers this retest: startDrill() rendered its actions.
@@ -2951,7 +2976,6 @@ function showResult(completed) {
 }
 
 function renderResults(completed, saved) {
-  activeRecommendation ||= recommendTarget([], completed.conditions);
   const replay = completed.summary;
   const counted = completed.status === 'complete';
   showResult(completed);
@@ -2972,11 +2996,6 @@ function renderResults(completed, saved) {
   const unsaved = saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.';
   setParts($('result-comparison-note'), [uncounted, uncounted && unsaved ? ' ' : '', unsaved]);
 
-  if (sessionKind === 'practice' || sessionKind === 'daily') {
-    activeRecommendation = trainingRecommendation(completed.conditions, completed);
-    selectedTarget = activeRecommendation.target;
-  }
-
   renderResultDrill(completed);
   // A counted book page moves the place on, so running again types the next page.
   $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again'
@@ -2994,8 +3013,9 @@ function renderResults(completed, saved) {
 // A counted practice run on repeated text: saved and listed, never a best, trend or retest baseline.
 const repeatedResult = (completed) => completed?.status === 'complete' && completed.kind === 'test' && completed.fresh === false;
 
-// The result's second action. After a counted run it starts the drill and retest loop for the run's
-// recommendation; after an adaptive run, a fresh-text retest against the newest normal run at these
+// The result's second action. After a counted run it starts the drill and retest loop for what the recommender
+// names now at the run's conditions, under the training settings in use, and drills what it names; after a
+// failed drill, that drill again; after an adaptive run, a fresh-text retest against the newest normal run at these
 // conditions, or a plain test when there is none. Custom text and ghost races are never mined for targets
 // or kept as a baseline, so they offer neither. Word practice isn't compared either, but like a drill it
 // leads on to a retest of the run its words came from.
@@ -3007,13 +3027,19 @@ function renderResultDrill(completed) {
 
   if (completed.adaptive) {
     button.textContent = baselineFor(completed.conditions) ? 'Retest on fresh text' : 'Retest';
+    button.onclick = startAdaptiveRetest;
 
     return;
   }
 
-  activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
-  const target = activeRecommendation.target;
-  button.textContent = failedDrill(completed) ? 'Try drill again' : target ? `Drill “${target}”` : 'Drill and retest';
+  if (button.hidden) return;
+  // A failed drill is tried again as it was. One whose history another device cleared while it waited stands
+  // alone, with no context left, so it is recommended afresh.
+  const again = failedDrill(completed) ? trainingContext?.recommendation : null;
+  const recommendation = again || trainingRecommendation(completed.conditions, failedDrill(completed) ? null : completed);
+  const { target } = recommendation;
+  button.textContent = failedDrill(completed) ? 'Try drill again' : target ? `Drill “${target}”` : prefs.retest ? 'Drill and retest' : 'Drill';
+  button.onclick = () => startDrill(recommendation);
 }
 
 const COMPARISON_HEADINGS = {
@@ -3099,9 +3125,14 @@ function renderComparison(before, after, saved) {
       beforeAttemptId: before.id,
       afterAttemptId: after.id,
       target: selectedTarget,
-      recommendationKind: trainingContext?.recommendationKind || activeRecommendation?.kind || 'manual',
-      // Which policy and version picked the target (learner-decay-timing@1, counting@1), or null when picked by hand.
-      policy: trainingContext ? trainingContext.policy ?? null : activeRecommendation?.policy ?? null,
+      recommendationKind: trainingContext?.recommendationKind || 'manual',
+      // Which policy and version ranked the target (learner-decay-timing@1, counting@1), or null when it was typed
+      // by hand or drilled again from a past loop.
+      policy: trainingContext?.policy ?? null,
+      // The training focus it was ranked for (balanced, accuracy, speed), beside the policy.
+      focus: trainingContext?.focus ?? null,
+      // What the target was named for, so a slow pair reads back pace even when the retest timed none of it.
+      targetBasis: trainedTarget ? (was?.basis === 'slow' ? 'slow' : 'errors') : null,
       drillCompleted: Boolean(trainingContext?.drillCompleted),
       conditions: after.conditions,
       comparison,
@@ -3117,15 +3148,21 @@ function renderComparison(before, after, saved) {
   renderHistory();
 }
 
+// What the comparison's Next was last drawn for: the unit just trained and the retest's conditions, or none when
+// no fair retest could run. A training setting changed while the comparison shows draws it again for the same.
+let comparisonNext = { trained: null, source: null };
+
 // The next unit in the recommender's queue at the retest's conditions, other than the one just trained.
-function renderComparisonNext(trained, source) {
-  const next = source && trainingRecommendation(source).queue.find((item) => item.unit !== trained);
+function renderComparisonNext(trained = comparisonNext.trained, source = comparisonNext.source) {
+  comparisonNext = { trained, source };
+  const recommendation = source ? trainingRecommendation(source) : null;
+  const next = recommendation?.queue.find((item) => item.unit !== trained);
   const button = $('comparison-next');
   button.hidden = !next;
 
   if (!next) return;
   button.textContent = `Next: “${next.unit}”`;
-  button.onclick = () => practiceTarget(next.unit, source, next.was);
+  button.onclick = () => practiceTarget(next.unit, source, recommendation);
 }
 
 // Train from the dock: the next drill for the current conditions, worked out from saved history by the
@@ -3158,17 +3195,26 @@ function startAdaptiveRetest() {
 
   baselineAttempt = baseline;
   selectedTarget = null;
-  trainingContext = { target: null, recommendationKind: 'adaptive', policy: DEFAULT_POLICY, baselineAttemptId: baseline.id, drillCompleted: false };
+  trainingContext = { target: null, recommendationKind: 'adaptive', policy: DEFAULT_POLICY, focus: shownResult.trainFocus || prefs.trainFocus, baselineAttemptId: baseline.id, drillCompleted: false };
   startRetest();
 }
 
 function renderTrain() {
   $('comparison-panel').hidden = true;
   $('train-next').hidden = false;
-  const { recommendation, source } = trainPlan();
+  const { recommendation, baseline, source } = trainPlan();
   const target = recommendation.target;
   $('train-heading').textContent = recommendation.title;
-  const words = target ? evidenceWords(target, source) : [];
+  // Train's one button: the drill it names, then the retest, then the comparison.
+  $('start-drill').onclick = () => {
+    baselineAttempt = baseline;
+    startDrill(recommendation);
+  };
+
+  // Words with the target that were missed, for a target named for its misses. Where in a word the miss fell isn't
+  // kept, so the target is marked in the text colour, never coral. A pair named for its pace lists none: the words
+  // it turns up in were missed elsewhere, if at all.
+  const words = target && recommendation.was?.basis !== 'slow' ? evidenceWords(target, source) : [];
   $('train-words').hidden = !words.length;
   $('train-words').replaceChildren(...words.map((word) => {
     const span = document.createElement('span');
@@ -3177,17 +3223,27 @@ function renderTrain() {
 
     return span;
   }));
-  const was = recommendation.was;
-
-  const evidence = !target ? '' : was?.basis === 'slow' ? paceCopy(was)
-    : was?.errors ? `${missedCopy(was)} missed${was.runs ? ` in ${plural(was.runs, 'run')}` : ''}`
-      : was?.slowRuns ? `slower than your median in ${plural(was.slowRuns, 'run')}` : '';
-
+  const last = lastLoop(source);
+  const lastCopy = last ? lastLoopCopy(last, source) : '';
+  // A target drilled before reads its figure over every run, so it and the before → since line tell one story.
+  const evidence = target ? evidenceCopy(recommendation.was, { all: Boolean(lastCopy) && last.target === target }) : '';
   setText($('train-evidence'), evidence);
   $('train-evidence').hidden = !evidence;
-  const last = lastLoopCopy(source);
-  setText($('train-last'), last);
-  $('train-last').hidden = !last;
+  setText($('train-last'), lastCopy);
+  $('train-last').hidden = !lastCopy;
+}
+
+// A named unit's observed evidence, as Train and Patterns across runs print it: its pace for a pair named for
+// slowness, else its misses. `all` says the figure reads every run, before a drill and since.
+function evidenceCopy(was, { all = false } = {}) {
+  if (was?.basis === 'slow') {
+    return all && was.timedRuns > 1
+      ? `${paceAgainst(was.slowMs)} across all ${was.timedRuns} runs that timed it, slower in ${was.slowRuns} (${plural(was.timed, 'clean interval')})` : paceCopy(was);
+  }
+
+  if (!was?.errors) return '';
+
+  return `${missedCopy(was)} missed${was.runs ? ` ${all && was.runs > 1 ? 'across all' : 'in'} ${plural(was.runs, 'run')}` : ''}`;
 }
 
 // Words this person missed on the first try that hold the target, newest first, from the runs the
@@ -3211,13 +3267,12 @@ function evidenceWords(target, source) {
   return words;
 }
 
-// The newest finished loop with a target on this keyboard: how often its pair or key was missed on measured
-// runs on the keyboard before the retest and from the retest on, as the recommendation counts them.
-function lastLoopCopy(source) {
-  const keyboard = keyboardOf(source);
-  const loop = [...profile.loops].reverse().find((item) => item.target && keyboardOf(item.conditions) === keyboard);
+// The newest finished loop with a target on this keyboard.
+const lastLoop = (source) => [...profile.loops].reverse().find((item) => item.target && keyboardOf(item.conditions) === keyboardOf(source));
 
-  if (!loop) return '';
+// How often its pair or key was missed on measured runs on the keyboard before the retest and from the retest on,
+// as the recommendation counts them, or for a pair named for its slowness, its pace.
+function lastLoopCopy(loop, source) {
   const split = Date.parse(profile.runs.find((run) => run.id === loop.afterAttemptId)?.at || loop.at);
 
   const rate = (records) => {
@@ -3248,46 +3303,40 @@ function lastLoopCopy(source) {
     return timed ? ms / timed : null;
   };
 
-  const records = learnerEvidence(profile.runs, keyboard).filter((record) => record.at !== null);
-  const measure = loop.targetPace ? slowdown : rate;
+  const records = learnerEvidence(profile.runs, keyboardOf(source)).filter((record) => record.at !== null);
+  const paced = loop.targetBasis ? loop.targetBasis === 'slow' : Boolean(loop.targetPace);
+  const measure = paced ? slowdown : rate;
   const before = measure(records.filter((record) => record.at < split));
   const after = measure(records.filter((record) => record.at >= split));
 
   if (before === null || after === null) return '';
 
-  return loop.targetPace ? `${loop.target} · ${paceShift(before)} → ${paceAgainst(after)} since you drilled it`
+  return paced ? `${loop.target} · ${paceShift(before)} → ${paceAgainst(after)} since you drilled it`
     : `${loop.target} · ${before}% → ${after}% missed since you drilled it`;
 }
 
-// Train's one button: the drill, then the retest, then the comparison.
-function startTrainDrill() {
-  const { recommendation, baseline } = trainPlan();
-  activeRecommendation = recommendation;
-  baselineAttempt = baseline;
-  startDrill();
-}
-
-function startDrill() {
-  // startDaily() drops the recommendation, so a stale Start drill falls back to a general drill.
-  activeRecommendation ||= recommendTarget([], baselineAttempt?.conditions);
-  selectedTarget = activeRecommendation.target || null;
+// A drill of what `recommendation` names, then the retest unless the retest setting is off. The drill keeps the
+// recommendation, its length and the retest setting it started with.
+function startDrill(recommendation) {
+  selectedTarget = recommendation.target || null;
   const mismatch = baselineAttempt ? layoutMismatch(baselineAttempt.conditions) : "";
 
   if (mismatch) baselineAttempt = null;
   const source = baselineAttempt?.conditions;
 
   if (source) restoreConditions(source);
-  trainingContext = { target: selectedTarget, recommendationKind: activeRecommendation?.kind || 'general', policy: activeRecommendation?.policy || null,
-    baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false, was: activeRecommendation?.was || null };
+  trainingContext = { recommendation, target: selectedTarget, recommendationKind: recommendation.kind, policy: recommendation.policy || null,
+    focus: recommendation.focus || null, baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false, was: recommendation.was || null,
+    retest: prefs.retest };
   const drill = drillPassage();
-  trainingContext.drill = { target: selectedTarget, duration: DRILL_SECONDS, wordList: prefs.wordList, textVersion: drill.textVersion };
+  trainingContext.drill = { target: selectedTarget, duration: prefs.drillSeconds, wordList: prefs.wordList, textVersion: drill.textVersion };
 
   if (drill.lean) trainingContext.drill.lean = drill.lean;
   showManualTarget(false);
   resetSession('drill', { focus: true });
 
-  // With no baseline nothing follows the drill, so it says so where the drill describes itself.
-  if (!baselineAttempt) $('session-description').textContent = prefs.mode === 'code' ? CODE_DRILL_NOTE : `Standalone drill.${mismatch ? ` ${mismatch}` : ''}`;
+  // With no baseline, or the retest off, nothing follows the drill, so it says so where the drill describes itself.
+  if (!baselineAttempt || !prefs.retest) $('session-description').textContent = prefs.mode === 'code' ? CODE_DRILL_NOTE : `Standalone drill.${mismatch ? ` ${mismatch}` : ''}`;
 }
 
 function startRetest() {
@@ -3384,7 +3433,7 @@ function navigate(view) {
     // A waiting passage is rebuilt, as the same kind, if strict space or quick end changed while another screen showed.
     const staleRules = current && inputRules(attempt.conditions).join() !== inputRules(sessionConditions(sessionKind)).join();
 
-    if (!current || staleRepeat() || (preferencesWaiting && untouchedPractice())) resetSession('practice');
+    if (!current || staleRepeat() || staleAdaptive() || (preferencesWaiting && untouchedPractice())) resetSession('practice');
     else if (staleRules) resetSession(sessionKind);
     switchView('practice');
 
@@ -3580,10 +3629,10 @@ function openHistoryRun(id) {
   if (row) { row.open = true; row.scrollIntoView({ block: 'center', behavior: 'instant' }); row.querySelector('summary').focus(); }
 }
 
-function targetButton(target, source) {
+function targetButton(target, source, ranked) {
   const button = element('button', `Practice “${target}” again`, 'btn btn-secondary');
   button.type = 'button';
-  button.addEventListener('click', () => practiceTarget(target, source));
+  button.addEventListener('click', () => practiceTarget(target, source, ranked));
 
   return button;
 }
@@ -3601,20 +3650,14 @@ function retainedBaseline(source = null) {
   }) || null;
 }
 
-// A recurring pair's counts, as Train shows them and the comparison reads them back.
-function recurringEvidence(pair, source) {
-  return countingEvidence(profile.runs, profile.loops, pair, source);
-}
-
-// A drill on a target picked from a list: Progress's recurring patterns, or the comparison's next unit, which
-// brings the counts it was queued on.
-function practiceTarget(target, source, was = recurringEvidence(target, source)) {
+// A drill on a target picked from a list. Patterns across runs and the comparison's Next pass the recommendation
+// whose queue they show, so the loop records the policy and focus that queued it; a past loop's target was picked
+// by hand. Either way the drill brings the counts the learner queues it on, which the comparison reads back.
+function practiceTarget(target, source, ranked = null) {
   baselineAttempt = retainedBaseline({ ...source, layout: inputLayout(source.inputClass) });
   restoreConditions({ ...source, corpus: CORPUS_VERSION });
-  selectedTarget = target;
-  activeRecommendation = { kind: 'manual', target, title: `Practice “${target}”`,
-    evidence: summarizePatterns(profile.attempts, 20, source), was, policy: null };
-  startDrill();
+  const was = (ranked || trainingRecommendation(source)).queue.find((item) => item.unit === target)?.was ?? null;
+  startDrill({ kind: 'manual', target, title: `Practice “${target}”`, was, policy: ranked?.policy ?? null, focus: ranked?.focus ?? null });
 }
 
 // The recommender's pick for `source` conditions. The run just finished always counts toward its own
@@ -3622,29 +3665,32 @@ function practiceTarget(target, source, was = recurringEvidence(target, source))
 function trainingRecommendation(source, current = null) {
   const traces = current && !profile.attempts.includes(current) ? [...profile.attempts, current] : profile.attempts;
 
-  return recommendFor(DEFAULT_POLICY, { runs: profile.runs, loops: profile.loops, traces, source, now: Date.now() });
+  return recommendFor(DEFAULT_POLICY, { runs: profile.runs, loops: profile.loops, traces, source, now: Date.now(), focus: prefs.trainFocus });
 }
 
 // A drill's text: the target's words, or, for a general drill with units ranked for it, words leaning
 // toward them.
 function drillPassage() {
-  return makeDrill(selectedTarget, prefs.wordList, activeRecommendation?.lean || []);
+  return makeDrill(selectedTarget, prefs.wordList, trainingContext?.recommendation?.lean || []);
 }
 
+// Patterns across runs: the learner's queue at the chosen conditions' keyboard, as Train reads it, each unit with
+// its observed evidence and its last drill.
 function renderTraining() {
   const source = conditionOptions($('training-conditions'), profile.runs.filter((r) => validRun(r)
     && ['test', 'retest', 'daily'].includes(r.kind)), conditions());
 
-  const targets = recurringTargets(profile.runs, profile.loops, source);
-  $('training-memory-note').textContent = targets.length ? '' : 'Not enough evidence yet.';
-  $('training-targets').replaceChildren(...targets.slice(0, 8).map((target) => {
+  const recommendation = trainingRecommendation(source);
+  const { queue } = recommendation;
+  $('training-memory-note').textContent = queue.length ? '' : 'Not enough evidence yet.';
+  $('training-targets').replaceChildren(...queue.slice(0, 8).map(({ unit, was }) => {
     const row = element('article', '', 'training-target');
     const copy = document.createElement('div');
-    copy.append(element('h3', `${target.review ? 'Revisit' : 'Practice'} “${target.pair}”`));
-    copy.append(element('p', `${target.errors} first-try errors / ${target.observations} tries · observed in ${target.runs} runs · errors in ${target.errorRuns} · slower than your median in ${target.slowRuns}`));
+    copy.append(element('h3', `Practice “${unit}”`), element('p', evidenceCopy(was)));
+    const loop = [...profile.loops].reverse().find((item) => item.target === unit && keyboardOf(item.conditions) === keyboardOf(source));
 
-    if (target.lastPracticed) copy.append(element('p', `Last practiced ${dateCopy(target.lastPracticed)}. ${target.laterObservations} observations on fresh runs since then.${target.lastCheck ? ` Last retest: ${target.lastCheck.comparison.state}.` : ''}`));
-    row.append(copy, targetButton(target.pair, source));
+    if (loop) copy.append(element('p', `Last practiced ${dateCopy(loop.at)}. Last retest: ${loop.comparison.state}.`));
+    row.append(copy, targetButton(unit, source, recommendation));
 
     return row;
   }));
@@ -4327,7 +4373,6 @@ function startDaily() {
   if (race.attempt?.status === 'running') markRaceInterrupted();
   baselineAttempt = null;
   trainingContext = null;
-  activeRecommendation = null;
   resetSession('daily', { focus: true });
 }
 
@@ -4353,7 +4398,7 @@ function renderDaily() {
 
 // ── Lessons ───────────────────────────────────────────────────────────────
 
-const HANDOFF_COPY = `That’s the whole keyboard. From here the training loop takes over: take a practice run, and Train suggests a ${DRILL_SECONDS}-second drill from your own mistakes once there’s enough evidence, then retests you on fresh text.`;
+const handoffCopy = () => `That’s the whole keyboard. From here the training loop takes over: take a practice run, and Train suggests a ${prefs.drillSeconds}-second drill from your own mistakes once there’s enough evidence${prefs.retest ? ', then retests you on fresh text' : ''}.`;
 let lessonActions = { primary: null, secondary: null };
 
 function lessonCopy(index, current = null) {
@@ -4535,7 +4580,7 @@ function renderLessons() {
       else if (next !== result.index) secondary = [`Start lesson ${next + 1}`, start(next)];
     } else if (result.outcome?.passed) {
       status = ['passed', 'badge-success'];
-      copy = complete ? HANDOFF_COPY : lessonCopy(next);
+      copy = complete ? handoffCopy() : lessonCopy(next);
 
       if (!complete) meta = lessonMeta(next);
       primary = complete ? ['Take a practice run', startTrainingLoop] : [`Start lesson ${next + 1}`, start(next)];
@@ -4558,7 +4603,7 @@ function renderLessons() {
   } else if (complete) {
     status = ['all letters in', 'badge-success'];
     heading = 'Every letter is in.';
-    copy = HANDOFF_COPY;
+    copy = handoffCopy();
     primary = ['Take a practice run', startTrainingLoop];
   } else {
     heading = `Lesson ${next + 1} · ${keysLabel(LESSONS[next].keys)}`;
@@ -4734,7 +4779,6 @@ async function startGhostRace(id) {
   // As with the daily: someone else's text ends any drill-and-retest cycle in progress.
   baselineAttempt = null;
   trainingContext = null;
-  activeRecommendation = null;
   inbox?.settle(`challenge:${id}`);
   resetSession('challenge', { focus: true });
 }
@@ -4771,7 +4815,6 @@ function startOwnGhost() {
     points: ghostPoints(best.trace, best.passage.length), sender: best.score, result: null, run: null, state: 'ready' };
   baselineAttempt = null;
   trainingContext = null;
-  activeRecommendation = null;
   navigate('practice');
   resetSession('challenge', { focus: true });
 }
@@ -5222,7 +5265,6 @@ function forgetTraining() {
   baselineAttempt = null;
   trainingContext = null;
   selectedTarget = null;
-  activeRecommendation = null;
   // The practised words came from the cleared runs, so Run again starts a normal test.
   wordsPassage = null;
   showSpeed($('result-wpm'), null);
@@ -6380,6 +6422,9 @@ function bindEvents() {
   onSetting('word-list', (value) => setWordList(value));
   onSetting('repeat-quotes-toggle', (value) => setRepeatQuotes(value === 'true'));
   onSetting('daily-goal', (value) => { prefs.dailyGoal = Number(value); saveChoice('dailyGoal'); renderGoal(); });
+  onSetting('train-focus', (value) => setTraining('trainFocus', value));
+  onSetting('drill-length', (value) => setTraining('drillSeconds', Number(value)));
+  onSetting('retest-toggle', (value) => setTraining('retest', value === 'true'));
   $('show-all-runs').addEventListener('click', () => {
     showAllRuns();
     $('run-history').children[RECENT_RUNS]?.querySelector('summary').focus();
@@ -6574,8 +6619,6 @@ function bindEvents() {
   coarsePointer.addEventListener('change', () => renderKeys(heatRuns));
   $('training-conditions').addEventListener('change', renderTraining);
   $('start-daily').addEventListener('click', startDaily);
-  $('start-drill').addEventListener('click', startTrainDrill);
-  $('result-drill').addEventListener('click', () => (shownResult?.adaptive ? startAdaptiveRetest() : startDrill()));
   // A finished retest is a run like any other, so its card waits on Practice with everything a result offers.
   $('comparison-back').addEventListener('click', () => {
     if (shownResult?.kind !== 'retest' || shownResult !== attempt) {
@@ -6586,6 +6629,8 @@ function bindEvents() {
 
     switchView('results');
     renderCard(shownResult);
+    // Its Drill action is drawn again too: a training setting may have changed while the comparison showed.
+    renderResultDrill(shownResult);
     focusResult($('run-again'));
   });
   $('mode-drill').addEventListener('click', toggleManualTarget);
@@ -6597,13 +6642,8 @@ function bindEvents() {
     $('manual-target-error').textContent = valid ? '' : 'Use 1–8 letters, no spaces or punctuation.';
 
     if (!valid) return;
-    selectedTarget = normalizeManualTarget(raw);
-    activeRecommendation = {
-      kind: 'manual',
-      target: selectedTarget,
-      title: `Practice “${selectedTarget}”`,
-    };
-    startDrill();
+    const target = normalizeManualTarget(raw);
+    startDrill({ kind: 'manual', target, title: `Practice “${target}”` });
   });
 
   $('ghost-offer').addEventListener('toggle', () => { if ($('ghost-offer').open && session) loadGhostFriends(); });
@@ -6659,9 +6699,17 @@ function bindEvents() {
     markRaceInterrupted();
     $('release-dialog').showModal();
   });
-  $('release-close').addEventListener('click', () => $('release-dialog').close());
-  $('release-dialog').addEventListener('click', (event) => { if (event.target === $('release-dialog')) $('release-dialog').close(); });
-  $('release-dialog').addEventListener('close', () => $('release-trigger').focus({ preventScroll: true }));
+
+  // Focus goes back to the version in the same task that closes the panel. The close event comes a task
+  // later, when focus may already be back in the passage, and would take it from the keys being typed.
+  const closeRelease = () => {
+    $('release-dialog').close();
+    $('release-trigger').focus({ preventScroll: true });
+  };
+
+  $('release-close').addEventListener('click', closeRelease);
+  $('release-dialog').addEventListener('click', (event) => { if (event.target === $('release-dialog')) closeRelease(); });
+  $('release-dialog').addEventListener('cancel', (event) => { event.preventDefault(); closeRelease(); });
 
   $('import-trigger').addEventListener('click', openImport);
   $('import-text').addEventListener('input', () => { $('import-error').textContent = ''; updateImportButton(); });
@@ -6995,6 +7043,37 @@ function restartHint() {
   return document.body.dataset.view === 'results' && prefs.keybindings.restart === 'Tab' ? 'enter' : bindingLabel(prefs.keybindings.restart);
 }
 
+// How Train trains. A drill or retest under way keeps what it started with; what Train would drill next follows at
+// once, and so does an adaptive passage nobody has started, as one drawn next would.
+function setTraining(key, value) {
+  prefs[key] = value;
+  applyPreferences();
+  saveChoice(key);
+  showTraining();
+}
+
+// Every surface that shows what Train would drill asks the recommender again, after a training setting changes here
+// or arrives from another device: the results card's drill, Train or its comparison's Next, and Patterns across runs.
+// Each binds its button to what it shows. A drill or retest under way keeps what it started with. The lessons'
+// hand-off states the drill's length. A waiting adaptive passage is drawn again for a new focus; a plain one is
+// kept, so the plain passage that follows an adaptive run stays the baseline it was drawn to be.
+function showTraining() {
+  const view = document.body.dataset.view;
+
+  if (view === 'learn') renderLessons();
+
+  if (view === 'results' && shownResult) renderResultDrill(shownResult);
+
+  if (view === 'train') {
+    if ($('comparison-panel').hidden) renderTrain();
+    else renderComparisonNext();
+  }
+
+  renderTraining();
+
+  if (view === 'practice' && staleAdaptive()) resetSession('practice');
+}
+
 // Repeat quotes changes only open practice's next quote, so a custom passage (or any other session) is kept.
 function setRepeatQuotes(enabled) {
   const changed = prefs.repeatQuotes !== enabled;
@@ -7022,6 +7101,12 @@ function labelPassage(fresh, exhausted) {
 }
 
 // An unstarted repeated passage that repeats-off would have replaced with unseen text.
+// An adaptive passage nobody has started, whose words another focus chose. It is drawn again on the practice
+// screen, or on the way back to it, like a waiting repeat that repeats-off would replace.
+function staleAdaptive() {
+  return untouchedPractice() && Boolean(passage?.adaptive) && passage.trainFocus !== prefs.trainFocus;
+}
+
 function staleRepeat() {
   return !prefs.repeatQuotes && sessionKind === 'practice' && attempt?.status === 'ready' && passage?.fresh === false && !passage.exhausted;
 }
@@ -7169,6 +7254,9 @@ function paletteCommands(query) {
     { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: prefs.minAccuracy === value ? 'current' : '', on: prefs.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
     ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? formatSpeed(value) : 'off'}`, keywords: 'min wpm cpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
+    ...FOCUSES.map((focus) => ({ group: 'train', label: `train focus · ${focus}`, keywords: `training drill target weak pairs ${FOCUS_KEYWORDS[focus]}`, hint: prefs.trainFocus === focus ? 'current' : '', on: prefs.trainFocus === focus, run: () => setTraining('trainFocus', focus) })),
+    ...DRILL_LENGTHS.map((seconds) => ({ group: 'train', label: `drill length · ${seconds} seconds`, keywords: 'training drill time duration session long short', hint: prefs.drillSeconds === seconds ? 'current' : '', on: prefs.drillSeconds === seconds, run: () => setTraining('drillSeconds', seconds) })),
+    { group: 'train', label: 'retest after drill', keywords: 'training drill retest fresh text compare comparison', hint: onOff(prefs.retest), on: prefs.retest, run: () => setTraining('retest', !prefs.retest) },
     ...['system', 'dark', 'light'].map((mode) => ({ group: 'display', label: `theme · ${mode}`, keywords: 'colour color mode appearance', hint: themeMode() === mode ? 'current' : '', on: themeMode() === mode, run: () => setThemeMode(mode) })),
     ...[['dark', DARK_THEMES], ['light', LIGHT_THEMES]].flatMap(([mode, themes]) => [
       ...themes.map((theme) => [theme, theme]),

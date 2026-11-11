@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BASELINE_POLICY, DECAY_POLICY, DECAY_TIMING_POLICY, DEFAULT_POLICY, HALF_LIFE_DAYS, HALF_LIFE_RUNS, LEARNER_POLICY, LEARNER_VARIANTS, POOLED_TRIES,
-  SLOW_FLOOR_MS, TIMING_POLICY, countingRecommendation, englishFrequency, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, paceAgainst,
+  BASELINE_POLICY, COST_CORRECTIONS, DECAY_POLICY, DECAY_TIMING_POLICY, DEFAULT_FOCUS, DEFAULT_POLICY, FOCUSES, HALF_LIFE_DAYS, HALF_LIFE_RUNS, LEARNER_POLICY,
+  LEARNER_VARIANTS, MISS_INTERVALS, OWN_COST_POLICY, POOLED_TRIES, SLOW_FLOOR_MS, TIMING_POLICY, countingRecommendation, englishFrequency, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, paceAgainst,
   paceShift, recommendFor, stated,
 } from '../src/learner.js';
 import { KEY_COUNTS_VERSION } from '../src/insights.js';
 import { CORPUS_VERSION, METRIC_VERSION, makeAdaptive, makeDrill } from '../src/typing.js';
 import { mergeSynced } from '../src/account.js';
-import { normalizeProfile } from '../src/profile.js';
+import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 import { readFileSync } from 'node:fs';
-import { MEASURES, TEST_SEEDS, decide, makeTypist, paired, seeded, SKILLS, typeRun } from '../scripts/evaluate-learner.mjs';
+import { MEASURES, RULE_0015, TEST_SEEDS, decide, decide0015, makeTypist, paired, seeded, simulate, SKILLS, typeRun } from '../scripts/evaluate-learner.mjs';
 
 const conditions = { mode: 'words', count: 25, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'mandatory',
   corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
@@ -27,7 +27,7 @@ const summary = (id, at, patterns, extra = {}) => ({ id, at, kind: 'test', statu
 const BACKGROUND = [...englishFrequency().pairs].sort((a, b) => b[1] - a[1]).slice(0, 60).map(([pair]) => pair);
 const withBackground = (rows) => [...BACKGROUND.filter((pair) => !rows.some((row) => row[0] === pair)).map((pair) => [pair, 3, 0, 3, 200, 0]), ...rows];
 
-const fit = (runs, now = NOW, policy = DEFAULT_POLICY) => fitLearner(learnerEvidence(runs, KEYBOARD), now, LEARNER_VARIANTS[policy]);
+const fit = (runs, now = NOW, policy = DEFAULT_POLICY, focus = DEFAULT_FOCUS) => fitLearner(learnerEvidence(runs, KEYBOARD), now, LEARNER_VARIANTS[policy], focus);
 const estimate = (model, unit) => model.units.find((e) => e.unit === unit);
 
 function simulatedRuns(seed, count) {
@@ -48,34 +48,73 @@ function shuffled(items, random) {
   return copy;
 }
 
-test('the model is the same whatever order the evidence arrives in, and however two halves merge', () => {
+test('the model is the same whatever order the evidence arrives in, and however two halves merge, in every focus', () => {
+  let measuredCost = 0;
+
   for (let seed = 1; seed <= 6; seed += 1) {
     const runs = simulatedRuns(seed, 18);
     const evidence = learnerEvidence(runs, KEYBOARD);
     const random = seeded(seed * 97);
+    // The simulated runs carry their timed corrections, so the own-cost variant folds them too.
+    assert.ok(evidence.every((record) => record.correction === null || record.correction.count > 0));
 
-    // Both variants: the decay variant weighs runs by their order, so it is the one order could upset.
+    // Every variant: the decay variants weigh runs by their order, so they are the ones order could upset.
     for (const variant of Object.values(LEARNER_VARIANTS)) {
-      const expected = fitLearner(evidence, NOW, variant);
+      for (const focus of FOCUSES) {
+        const expected = fitLearner(evidence, NOW, variant, focus);
 
-      for (let round = 0; round < 4; round += 1) {
-        const order = shuffled(evidence, random);
-        const cut = Math.floor(random() * order.length);
-        const [a, b] = [order.slice(0, cut), order.slice(cut)];
-        assert.deepEqual(fitLearner(order, NOW, variant), expected, `seed ${seed}: shuffled`);
-        assert.deepEqual(fitLearner([...a, ...b], NOW, variant), fitLearner([...b, ...a], NOW, variant), `seed ${seed}: halves either way`);
-        // Two devices that each hold some of the same runs: overlap counts once.
-        assert.deepEqual(fitLearner([...a, ...order, ...b], NOW, variant), expected, `seed ${seed}: overlapping copies`);
+        if (variant.ownCost && expected.missCost !== MISS_INTERVALS) measuredCost += 1;
+
+        for (let round = 0; round < 2; round += 1) {
+          const order = shuffled(evidence, random);
+          const cut = Math.floor(random() * order.length);
+          const [a, b] = [order.slice(0, cut), order.slice(cut)];
+          assert.deepEqual(fitLearner(order, NOW, variant, focus), expected, `seed ${seed}: shuffled`);
+          assert.deepEqual(fitLearner([...a, ...b], NOW, variant, focus), fitLearner([...b, ...a], NOW, variant, focus), `seed ${seed}: halves either way`);
+          // Two devices that each hold some of the same runs: overlap counts once.
+          assert.deepEqual(fitLearner([...a, ...order, ...b], NOW, variant, focus), expected, `seed ${seed}: overlapping copies`);
+        }
+
+        // Through the real sync merge: each device's copy holds a shuffled share of the runs.
+        const order = shuffled(runs, random);
+        const local = { version: 2, profileId: 'p', preferences: {}, attempts: [], loops: [], seenTextIds: [], bests: {}, runs: order.slice(0, 11) };
+        const cloud = { ...local, runs: order.slice(7) };
+        assert.deepEqual(fit(mergeSynced(local, cloud).runs, NOW, variant.policy, focus), fit(runs, NOW, variant.policy, focus));
+        assert.deepEqual(fit(mergeSynced(cloud, local).runs, NOW, variant.policy, focus), fit(runs, NOW, variant.policy, focus));
       }
-
-      // Through the real sync merge: each device's copy holds a shuffled share of the runs.
-      const order = shuffled(runs, random);
-      const local = { version: 2, profileId: 'p', preferences: {}, attempts: [], loops: [], seenTextIds: [], bests: {}, runs: order.slice(0, 11) };
-      const cloud = { ...local, runs: order.slice(7) };
-      assert.deepEqual(fit(mergeSynced(local, cloud).runs, NOW, variant.policy), fit(runs, NOW, variant.policy));
-      assert.deepEqual(fit(mergeSynced(cloud, local).runs, NOW, variant.policy), fit(runs, NOW, variant.policy));
     }
   }
+
+  assert.ok(measuredCost > 0, 'the own-cost variant used a measured cost');
+});
+
+test('a miss costs the person’s own measured corrections once enough are timed, floored at one interval', () => {
+  // Runs at a 200 ms pace whose corrections take 1000 ms: the right letter's own interval, then four lost.
+  const run = (id, count, ms, pace = 200) => summary(id, day(0), withBackground([['th', 12, 2, 6, pace, 0]]).map((row) => [...row.slice(0, 4), pace, 0]), { corrections: [count, ms] });
+  const own = (history) => fit(history, NOW, OWN_COST_POLICY).missCost;
+  assert.equal(own([run('a', COST_CORRECTIONS - 1, 1000)]), MISS_INTERVALS, 'too few timed: two intervals');
+  assert.ok(Math.abs(own([run('a', COST_CORRECTIONS - 1, 1000), run('b', 1, 1000)]) - 4) < 1e-9, 'enough timed: the measured four');
+  assert.equal(own([run('a', COST_CORRECTIONS, 250)]), 1, 'a correction faster than two intervals still costs one');
+  // Old summaries without the field, and runs too fast to time, add no corrections.
+  assert.equal(own([(({ corrections, ...rest }) => rest)(run('a', COST_CORRECTIONS, 1000))]), MISS_INTERVALS);
+  assert.equal(own([run('a', COST_CORRECTIONS, 100, 20)]), MISS_INTERVALS);
+  // The shipped @1 policy keeps its two intervals whatever the corrections say.
+  assert.equal(fit([run('a', COST_CORRECTIONS, 1000)], NOW, DECAY_TIMING_POLICY).missCost, MISS_INTERVALS);
+});
+
+test('accuracy ranks on misses only and speed on slowness only, and each names a unit only on that evidence', () => {
+  // "th" never missed and 90 ms slow; "an" missed on 3 of 8 first tries at pace.
+  const runs = Array.from({ length: 6 }, (_, i) => summary(`f${i}`, day(i), withBackground([['th', 8, 0, 8, 290, 90], ['an', 8, 3, 8, 200, 0]])));
+  const pick = (focus) => learnerRecommendation(fit(runs, NOW, DEFAULT_POLICY, focus));
+  assert.equal(pick('balanced').target, 'th');
+  assert.equal(pick('accuracy').target, 'an');
+  assert.equal(pick('accuracy').reason, '“an”: 18 first-try errors in 48 tries over 6 runs.');
+  assert.deepEqual(pick('accuracy').queue.map(({ unit }) => unit), ['an']);
+  assert.equal(pick('speed').target, 'th');
+  assert.ok(pick('speed').queue.every(({ was }) => was.basis === 'slow'));
+  assert.ok(fit(runs, NOW, DEFAULT_POLICY, 'speed').units.filter((e) => e.kind === 'key').every((e) => e.gain === 0), 'keys have no timing, so speed never ranks one');
+
+  for (const focus of FOCUSES) assert.equal(pick(focus).focus, focus);
 });
 
 test('with no history nothing ranks, and Train offers a plain general drill', () => {
@@ -298,16 +337,23 @@ test('across mixed fast and slow runs, no named or queued slow unit prints a fig
       })).map((row) => (pairs.includes(row[0]) ? row : [row[0], 3, 0, 3, pace, 0])));
     });
 
-    const recommendation = learnerRecommendation(fit(runs));
+    for (const focus of FOCUSES) {
+      const recommendation = learnerRecommendation(fit(runs, NOW, DEFAULT_POLICY, focus));
 
-    for (const { unit, was } of recommendation.queue) {
-      if (was.basis !== 'slow') continue;
-      slowNamed += 1;
-      assert.ok(Math.round(was.slowMs) > SLOW_FLOOR_MS, `round ${round}: “${unit}” queued at ${was.slowMs} ms`);
+      for (const { unit, was } of recommendation.queue) {
+        // A unit is named only on its own evidence of the kind the focus ranks on.
+        if (focus === 'speed') assert.equal(was.basis, 'slow', `round ${round}: speed queued “${unit}” on misses`);
+
+        if (focus === 'accuracy') assert.ok(was.basis !== 'slow' && was.errors > 0, `round ${round}: accuracy queued “${unit}” without a miss`);
+
+        if (was.basis !== 'slow') continue;
+        slowNamed += 1;
+        assert.ok(Math.round(was.slowMs) > SLOW_FLOOR_MS, `round ${round}: “${unit}” queued at ${was.slowMs} ms`);
+      }
+
+      if (recommendation.was?.basis === 'slow') assert.match(recommendation.reason, new RegExp(`: \\d+ ms slower than your pace, in`));
+      assert.doesNotMatch(recommendation.reason, /-\d|\b0 ms slower/);
     }
-
-    if (recommendation.was?.basis === 'slow') assert.match(recommendation.reason, new RegExp(`: \\d+ ms slower than your pace, in`));
-    assert.doesNotMatch(recommendation.reason, /-\d|\b0 ms slower/);
   }
 
   assert.ok(slowNamed > 20, `the generator names slow pairs (${slowNamed})`);
@@ -362,6 +408,27 @@ test('old stored profiles load and feed the learner; a profile from this build m
     assert.deepEqual(merged.runs.map((run) => run.id), ['old', 'new']);
     assert.deepEqual(fit(merged.runs), fit([old, current]));
   }
+
+  // This build's runs carry timed corrections and its preferences the training settings. A previous build's
+  // copy has neither: it loads with the defaults, and the two merge both ways to the same runs and model.
+  const corrected = { ...current, id: 'corrected', at: day(2), corrections: [3, 640] };
+
+  const withSettings = { ...thisBuild, runs: [old, current, corrected], preferences: { trainFocus: 'speed', drillSeconds: 120, retest: false },
+    preferencesAt: { trainFocus: '2026-11-11T00:00:00.000Z', drillSeconds: '2026-11-11T00:00:00.000Z', retest: '2026-11-11T00:00:00.000Z' } };
+
+  assert.deepEqual(['trainFocus', 'drillSeconds', 'retest'].map((key) => preferencesInUse(normalizeProfile(previousBuild).preferences)[key]), ['balanced', 30, true]);
+
+  for (const merged of [mergeSynced(normalizeProfile(previousBuild), normalizeProfile(withSettings)), mergeSynced(normalizeProfile(withSettings), normalizeProfile(previousBuild))]) {
+    assert.deepEqual(merged.runs.map((run) => run.id), ['old', 'new', 'corrected']);
+    assert.deepEqual(merged.runs[2].corrections, [3, 640]);
+    assert.deepEqual(merged.preferences, { trainFocus: 'speed', drillSeconds: 120, retest: false });
+
+    for (const policy of [DEFAULT_POLICY, OWN_COST_POLICY]) assert.deepEqual(fit(merged.runs, NOW, policy), fit([old, current, corrected], NOW, policy));
+  }
+
+  // A stored setting this build doesn't offer loads as the default.
+  assert.deepEqual(preferencesInUse(normalizeProfile({ ...previousBuild, preferences: { trainFocus: 'fast', drillSeconds: 45, retest: 'no' } }).preferences)
+    .trainFocus, 'balanced');
 });
 
 test('each policy records itself; the counting rule stays as the labelled baseline', () => {
@@ -466,4 +533,28 @@ test('the recorded v2 evaluation (docs/adr/0013-evaluation-v2.json) picks decay 
 
   // The default captures more of the time lost than counting@1, at 10 and at 40 runs.
   for (const m of ['captured10', 'captured40']) assert.ok(better('+decay +timing', 'counting@1', m), m);
+});
+
+test('ADR 0015’s simulator draws each typist’s own miss cost, 1 to 8 intervals, and leaves every other draw as shipped', () => {
+  const shipped = simulate(9001, { typists: 1, runs: 2 });
+  const costed = simulate(9001, { typists: 1, runs: 2, world: { ownCost: true } });
+  assert.ok(costed.every(({ typist }) => typist.missCost >= 1 && typist.missCost < 8 && typist.skill.correctionKeys === 1 + typist.missCost));
+  assert.deepEqual(costed.map(({ typist }) => typist.planted), shipped.map(({ typist }) => typist.planted));
+  assert.deepEqual(costed.map(({ history }) => history[0].run.patterns.map((row) => row.slice(0, 3))), shipped.map(({ history }) => history[0].run.patterns.map((row) => row.slice(0, 3))));
+});
+
+test('the recorded ADR 0015 run (docs/adr/0015-evaluation.json) keeps the default, and says only this', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0015-evaluation.json', import.meta.url), 'utf8'));
+  assert.deepEqual(RULE_0015.testSeeds, Array.from({ length: 30 }, (_, i) => 201 + i));
+  assert.equal(recorded.validation.costCorrections, COST_CORRECTIONS);
+  assert.equal(recorded.validation.halfLifeRuns, 20);
+
+  // Re-applied to the stored per-seed scores, the rule decides as recorded.
+  assert.deepEqual(decide0015(recorded.a.result, 'candidate', 'shipped', ['captured10', 'captured40']), recorded.a.decision);
+  assert.deepEqual(recorded.a.decision.harm, ['slow captured10', 'at pace letGo']);
+  assert.deepEqual(decide0015(recorded.b.result, 'forgetting', 'chosen', ['letGo', 'pickUp']), recorded.b.decision);
+  assert.deepEqual(recorded.b.decision.harm, ['slow logLoss', 'at pace logLoss']);
+  assert.equal(recorded.default.name, DEFAULT_POLICY);
+  assert.equal(DEFAULT_POLICY, DECAY_TIMING_POLICY);
+  assert.deepEqual(recorded.a.candidate, { ...recorded.default.constants, costCorrections: COST_CORRECTIONS });
 });

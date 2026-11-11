@@ -986,10 +986,10 @@
     <ul class="release-notes">
       <li>Quick match races someone near your rating, or your own best run when nobody is waiting.</li>
       <li>Your race rating moves only on quick matches, never your practice.</li>
-      <li>Train learns from your tests on fresh text which letters and pairs cost most.</li>
+      <li>In settings, choose Train’s focus, a drill of 15 to 120 seconds, and whether a retest follows.</li>
+      <li>Train estimates from your tests on fresh text which letters and pairs cost most.</li>
       <li>Race a friend live with an invite or a link.</li>
       <li>Sign in to sync your runs and settings across devices.</li>
-      <li>Practice code, your own text or the daily challenge.</li>
     </ul>
   </dialog>
 
@@ -1240,6 +1240,30 @@
               <label class="setting-option"><input type="radio" name="daily-goal" value="10"><span>10 min</span></label>
               <label class="setting-option"><input type="radio" name="daily-goal" value="15"><span>15 min</span></label>
               <label class="setting-option"><input type="radio" name="daily-goal" value="30"><span>30 min</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="train-focus-label">train focus</strong></div>
+            <fieldset class="setting-options" id="train-focus" aria-labelledby="train-focus-label">
+              <label class="setting-option"><input type="radio" name="train-focus" value="balanced" checked><span>balanced</span></label>
+              <label class="setting-option"><input type="radio" name="train-focus" value="accuracy"><span>accuracy</span></label>
+              <label class="setting-option"><input type="radio" name="train-focus" value="speed"><span>speed</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="drill-length-label">drill length</strong></div>
+            <fieldset class="setting-options" id="drill-length" aria-labelledby="drill-length-label">
+              <label class="setting-option"><input type="radio" name="drill-length" value="15"><span>15 s</span></label>
+              <label class="setting-option"><input type="radio" name="drill-length" value="30" checked><span>30 s</span></label>
+              <label class="setting-option"><input type="radio" name="drill-length" value="60"><span>60 s</span></label>
+              <label class="setting-option"><input type="radio" name="drill-length" value="120"><span>120 s</span></label>
+            </fieldset>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy"><strong id="retest-toggle-label">retest after drill</strong></div>
+            <fieldset class="setting-options" id="retest-toggle" aria-labelledby="retest-toggle-label">
+              <label class="setting-option"><input type="radio" name="retest-toggle" value="false"><span>off</span></label>
+              <label class="setting-option"><input type="radio" name="retest-toggle" value="true" checked><span>on</span></label>
             </fieldset>
           </div>
           <div class="preference-row">

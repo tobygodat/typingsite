@@ -69,7 +69,8 @@ test('every selected row is centred in its highlight, and the palette keeps one 
   for (let index = 0; index < count; index += 1) {
     if (index) await page.keyboard.press('ArrowDown');
     await expect(page.locator(`#palette-option-${index}`)).toHaveAttribute('aria-selected', 'true');
-    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    // Reduced motion still runs the highlight's move as a 1ms transition, which can outlast two frames.
+    await page.locator('.palette-highlight').evaluate((node) => Promise.all(node.getAnimations().map((animation) => animation.finished.catch(() => {}))));
     const row = await page.evaluate(measure);
 
     for (const part of ['top', 'label', 'mark', 'hint']) {
