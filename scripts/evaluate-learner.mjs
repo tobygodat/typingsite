@@ -5,7 +5,7 @@
 //   npm run evaluate:learner -- --errors-at-pace --json out.json      (sensitivity: planted error pairs at the typist's pace)
 //   npm run evaluate:learner -- --miss-cost 4 --json out.json         (sensitivity: a miss costs 4 intervals, not 2)
 //   npm run evaluate:learner -- --rule 0015 --json out.json           (ADR 0015's rule: learner@2)
-//   npm run evaluate:learner -- --rule 0017 --json out.json           (ADR 0017's rule: learner-let-go@2, scripts/evaluate-let-go.mjs)
+//   npm run evaluate:learner -- --rule 0018 --json out.json           (ADR 0018's rule: learner-let-go@2, scripts/evaluate-let-go.mjs)
 //
 // The two sensitivity runs repeat rule v2's protocol on the same seeds in a changed simulator. They decide
 // nothing: rule v2's run on the shipped simulator is the record.
@@ -211,7 +211,7 @@ export function makeTypist(random, group, rawSkill, index = 0, world = {}) {
 
 // One run: the app's own passage generator, typed under stop on error (a wrong key is refused, then the
 // right one follows), scored and summarized by the app's own code. Returns the summary and the full trace.
-// ADR 0017's season sets the words a run, the date, and `shift`, the log odds a bad day adds to every letter's miss.
+// ADR 0018's season sets the words a run, the date, and `shift`, the log odds a bad day adds to every letter's miss.
 export function typeRun(typist, random, index, id, { count = CONDITIONS.count, at: date = START + index * RUN_MS, shift = 0 } = {}) {
   const conditions = count === CONDITIONS.count ? CONDITIONS : { ...CONDITIONS, count };
   const text = makePassage('words', count, false, random, CONDITIONS.wordList);
@@ -260,7 +260,7 @@ function timingRows(run) {
 }
 
 // A policy fitted on a typist's first runs: what it predicts for each pair's first try and timing, and the
-// units it acts on. `loops` are the drills saved by then, which only the let-go variants read (ADR 0017).
+// units it acts on. `loops` are the drills saved by then, which only the let-go variants read (ADR 0018).
 export function learnerPolicy(policy, constants, focus) {
   const variant = { ...LEARNER_VARIANTS[policy], ...constants };
 
@@ -850,8 +850,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
   if (option('miss-cost', null)) world.missCost = Number(option('miss-cost', null));
 
-  // ADR 0017's rule runs in its own process, on worker threads, because it imports this module.
-  if (option('rule', null) === '0017') {
+  // ADR 0018's rule runs in its own process, on worker threads, because it imports this module.
+  if (option('rule', null) === '0018') {
     const child = spawnSync(process.execPath, [fileURLToPath(new URL('./evaluate-let-go.mjs', import.meta.url)), ...process.argv.slice(2)], { stdio: 'inherit' });
     process.exit(child.status ?? 1);
   }
