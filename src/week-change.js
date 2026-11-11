@@ -3,11 +3,11 @@
 // clock but `now`, so the same history and settings give the same overview on any device and after any merge.
 //
 //   WeekChange = { lead: Lead, movers: Mover[], practice: Practice | null, charts: { runs, window }, recommendation }
-//   Lead     = { state, current: Week, previous: Week, from: day | null }
+//   Lead     = { state, current: Week, previous: Week, from: day | null, latest: run | null }
 //     state  = 'change'    both weeks hold a median: the change is current.median - previous.median
 //            | 'this-week' only this week does; `from` is the first day its runs can be compared, as last week's
 //            | 'last-week' only the week before does
-//            | 'thin'      runs in the fortnight, but neither week holds a median
+//            | 'thin'      runs in the fortnight, but neither week holds a median: `latest` is the newest of them
 //            | 'none'      no runs at these conditions in the fortnight
 //     Week   = { median: wpm | null, count, accuracy: % | null }
 //   Mover    = { unit, status: 'fixed' | 'slipping', basis: 'errors' | 'slow', before: Tally, after: Tally, split, weight }
@@ -63,7 +63,9 @@ export function weekLead(runs, key, date) {
 
   const days = current.map(runDay).filter(Boolean).sort();
 
-  return { state, current: now, previous: before, from: state === 'this-week' ? addDays(days[WEEK_MIN_RUNS - 1], 7) : null };
+  const latest = [...current, ...previous].reduce((last, run) => (!last || (run.at || '') > (last.at || '') ? run : last), null);
+
+  return { state, current: now, previous: before, from: state === 'this-week' ? addDays(days[WEEK_MIN_RUNS - 1], 7) : null, latest };
 }
 
 // When this week began: midnight at the start of the lead's week, the moment "a week ago" is read at.

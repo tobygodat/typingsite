@@ -347,6 +347,72 @@ export function renderTrend(container, runs, onSelect, metric = 'wpm', { period 
   for (const [offset, x, textAnchor] of ticks) chart.append(svgText(dateAt(offset), { x, y: height - 6, 'text-anchor': textAnchor, class: 'trend-label' }));
 }
 
+// The overview's small chart (TOB-420): one metric's daily medians over the period as one line, its gridlines'
+// values on the right, the dates at either end, and the last day's value at the line's end with the runs it is the
+// median of. No legend: one series, named by its value's unit. The whole chart is one button that opens the fuller
+// chart, and its name carries what the chart shows.
+const WEEK_AXIS = 24;
+const WEEK_LABELS = 40;
+const WEEK_END = 104;
+
+export function renderWeekChart(container, runs, metric, { period = null, onOpen }) {
+  container.replaceChildren();
+  const days = runsByDay(runs);
+
+  if (!days.length) return;
+  const spec = METRICS[metric];
+  const width = Math.max(240, container.clientWidth || 480);
+  const style = getComputedStyle(container);
+  const height = parseFloat(style.getPropertyValue('--chart-height-min')) || 240;
+  const bottom = height - WEEK_AXIS;
+  const values = days.map((day) => spec.value(day[metric]));
+  const lines = gridlines(values, spec.minStep(), spec.ceiling);
+  const [low, high] = [lines[0], lines[2]];
+  const plot = width - WEEK_LABELS - WEEK_END;
+  const range = [period?.from ?? days[0].day, period?.to ?? days.at(-1).day];
+  const { xs } = dayPositions(days.map((day) => day.day), range, 0, plot);
+  const yOf = (v) => (high === low ? bottom / 2 : bottom - 8 - ((v - low) / (high - low)) * (bottom - 16));
+  const unit = metric === 'wpm' ? unitName() : '%';
+  const last = days.at(-1);
+  const lastValue = spec.shown(values.at(-1));
+  const isToday = last.day === (period?.to ?? dayKey(new Date()));
+  const when = isToday ? 'today' : `on ${shortDate(last.day)}`;
+  const count = `${last.runs.length} ${last.runs.length === 1 ? 'run' : 'runs'}`;
+  const total = days.reduce((sum, day) => sum + day.runs.length, 0);
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `week-chart week-chart-${metric}`;
+  button.setAttribute('aria-label', `${spec.title}, ${shortDate(range[0])} to ${isToday ? 'today' : shortDate(range[1])}: ${days.length} ${days.length === 1 ? 'day' : 'days'}, ${total} ${total === 1 ? 'run' : 'runs'}, from ${spec.shown(Math.min(...values))}${spec.suffix} to ${spec.shown(Math.max(...values))}${spec.suffix}. ${lastValue}${metric === 'wpm' ? ` ${unit}` : '%'} ${when}, ${last.runs.length === 1 ? 'one run' : `the median of ${count}`}. Open the ${metric === 'wpm' ? 'speed' : 'accuracy'} chart.`);
+  button.addEventListener('click', onOpen);
+
+  const chart = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, 'aria-hidden': 'true', focusable: 'false' });
+
+  for (const v of lines) {
+    const y = yOf(v);
+    chart.append(svgNode('line', { x1: 0, x2: plot, y1: y, y2: y, class: 'trend-rule' }), svgText(`${v}`, { x: plot + 12, y: y + 4, class: 'trend-label' }));
+  }
+
+  const points = values.map((v, i) => [xs[i], yOf(v)]);
+
+  if (points.length > 1) chart.append(svgNode('polyline', { points: points.map((p) => p.join(',')).join(' '), class: `trend-line trend-${metric}` }));
+  const [x, y] = points.at(-1);
+  chart.append(svgNode('circle', { cx: x, cy: y, r: 4, class: `week-chart-end trend-${metric}` }));
+  // The value at the line's end, outside the gridline labels, with the runs its day holds.
+  const labelX = plot + WEEK_LABELS + 8;
+  const labelY = Math.min(Math.max(y, 16), bottom - 24);
+  const span = (text, className) => Object.assign(svgNode('tspan', { class: className }), { textContent: text });
+  const valueText = svgNode('text', { x: labelX, y: labelY + 6, class: 'week-chart-value' });
+  valueText.append(span(String(lastValue), 'week-chart-number'), span(metric === 'wpm' ? ` ${unit}` : '%', 'week-chart-unit'));
+  chart.append(valueText, svgText(count, { x: labelX, y: labelY + 26, class: 'week-chart-runs' }));
+  const spanDays = dayOffset(...range);
+  const ticks = spanDays ? [[shortDate(range[0]), 0, 'start'], [isToday ? 'today' : shortDate(range[1]), plot, 'end']] : [[isToday ? 'today' : shortDate(range[0]), plot / 2, 'middle']];
+
+  for (const [text, tx, anchor] of ticks) chart.append(svgText(text, { x: tx, y: height - 4, 'text-anchor': anchor, class: 'trend-label' }));
+  button.append(chart);
+  container.append(button);
+}
+
 const SPREAD_HEIGHT = 200;
 const SPREAD_TOP = 24;
 const SPREAD_BOTTOM = 170;
