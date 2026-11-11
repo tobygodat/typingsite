@@ -4116,6 +4116,7 @@ function showAllRuns() {
 // What the width-dependent charts last drew from, so a resize, a unit change or a new view redraws them:
 // the runs and the period window they were selected from, taken on the same day.
 let progressRuns = [];
+let progressTrendNote = '';
 let progressWindow = null;
 
 // The overview's week (weekChange), kept so a unit change can redraw the lead without closing anything.
@@ -4267,7 +4268,7 @@ function renderOverview(date) {
   const runRows = source ? filterRuns(listed, key, span) : [];
   const repeats = runRows.length - progressRuns.length;
   const repeatCopy = repeats ? `${repeats} repeated-text ${repeats === 1 ? 'run' : 'runs'} not charted.` : '';
-  $('progress-trend-note').textContent = progressRuns.length
+  progressTrendNote = progressRuns.length
     ? [progressRuns.some((r) => !r.at) ? 'Undated runs not charted.' : '', repeatCopy].filter(Boolean).join(' ')
     : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
 
@@ -4307,11 +4308,14 @@ function renderTrendFigures(runs) {
 }
 
 // A change to the history (followHistory) or the train focus, on Progress: the overview follows at once, with focus
-// kept where it was. The detail view on show keeps its rows until it is left.
+// kept where it was. A detail view of rows keeps them until it is left, so a row someone has open stays open.
 function renderWeek() {
   renderOverview(new Date());
+  // The full charts follow at once too, unless focus is on one of their points, which a redraw would drop: then
+  // they wait, whole, for the view's next drawing.
+  const held = ['progress-trend', 'accuracy-trend', 'progress-spread'].some((id) => $(id).contains(document.activeElement));
 
-  if (!progressState.detail) drawProgressView();
+  if (!progressState.detail || (progressState.detail === 'trends' && !held)) drawProgressView();
 }
 
 // The lead: the change in speed, this week against the week before, with the two medians beside it and one line of
@@ -4602,8 +4606,11 @@ function drawProgressView() {
     else $(id).replaceChildren();
   }
 
-  // The figures under the full charts are drawn with them, so the two never tell of different runs.
-  if (detail === 'trends') renderTrendFigures(progressRuns);
+  // The figures and the note under the full charts are drawn with them, so the three never tell of different runs.
+  if (detail === 'trends') {
+    renderTrendFigures(progressRuns);
+    $('progress-trend-note').textContent = progressTrendNote;
+  }
 }
 
 // A small chart opens its fuller chart, on its own tab, with the chart's own button to return to.

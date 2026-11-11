@@ -19,7 +19,7 @@
 // read every measured run on that key's keyboard, as Train does, in the train focus.
 
 import { filterRuns, minutesByDay, periodDays, periodWindow, practiceStreak, runDay, trendRun, weeklyChange } from './insights.js';
-import { DEFAULT_POLICY, LEARNER_VARIANTS, SLOW_FLOOR_MS, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, paceShift } from './learner.js';
+import { DEFAULT_POLICY, LEARNER_VARIANTS, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, paceShift } from './learner.js';
 import { FIXED_OBSERVATIONS, FIXED_RUNS, evidenceSince, isFixed, sinceDrilled } from './train-path.js';
 
 // A week holds a median from this many runs, the floor the standard score's median uses: below it one or two runs
@@ -64,19 +64,21 @@ export const weekStart = (date) => new Date(date.getFullYear(), date.getMonth(),
 
 const enough = (side, basis) => Boolean(side) && (basis === 'slow' ? side.intervals : side.tries) >= FIXED_OBSERVATIONS;
 
-// A slip is more than noise. For misses: so many of the misses fall after `began` that, were the miss rate the same
-// on both sides, a split this lopsided or more would come up less than SLIP_CHANCE of the time (Fisher's exact
-// test, one side). The bar is that strict because some sixty pairs are read each week and only the ones that look
-// worse are candidates. At 1 in 200, simulated typists who had not changed saw a slip in 6 of 1,200 weeks, and a
-// pair that really went from 2% missed to 40% was listed in 317 weeks of 400 (tests/week-change.test.js holds
-// both). For pace, which has no spread recorded: a printed slowdown past
-// SLOW_FLOOR_MS, the floor fixed reads, and SLOW_FLOOR_MS or more slower than before.
-export const SLIP_CHANCE = 0.005;
+// A slip is a claim, so it has to be more than noise, however much someone types. It is made of misses only: pace
+// has no spread recorded to test against, so the list says nothing of a pair that only got slower.
+//
+// The test: were the miss rate the same before `began` and since, how often would this many of the misses fall
+// since? (Fisher's exact test, one side.) Every unit read on both sides is such a question, and the more someone
+// types the more of them there are, so each is held to SLIP_CHANCE divided by how many there are (Bonferroni).
+// However many pairs are read, a typist whose miss rates have not changed then sees a slip in fewer than
+// SLIP_CHANCE of their weeks; simulated, in 1 week in 100 or fewer, for light and heavy practice alike
+// (tests/week-change.test.js). Being named by the learner only narrows the list further; it never makes a slip.
+export const SLIP_CHANCE = 0.02;
+
+const logChoose = (n, k) => Array.from({ length: k }, (_, i) => Math.log((n - k + i + 1) / (i + 1))).reduce((sum, term) => sum + term, 0);
 
 // The chance that `after.errors` or more of the misses land in the after sample by luck alone: the upper tail of
 // the hypergeometric distribution, summed in logs so long histories don't overflow.
-const logChoose = (n, k) => Array.from({ length: k }, (_, i) => Math.log((n - k + i + 1) / (i + 1))).reduce((sum, term) => sum + term, 0);
-
 export function chanceOfRise(before, after) {
   const [misses, total] = [before.errors + after.errors, before.tries + after.tries];
   const all = logChoose(total, after.tries);
@@ -89,14 +91,30 @@ export function chanceOfRise(before, after) {
   return Math.min(1, chance);
 }
 
-const worse = ({ basis, before, after }) => (basis === 'slow'
-  ? Math.round(after.ms) > SLOW_FLOOR_MS && after.ms - before.ms >= SLOW_FLOOR_MS
-  : after.errors / after.tries > before.errors / before.tries && chanceOfRise(before, after) < SLIP_CHANCE);
+// The evidence a slip is read on, the bar fixed is held to: FIXED_OBSERVATIONS tries on each side of `began`, the
+// ones since over FIXED_RUNS runs or more.
+const readable = (before, after) => enough(before, 'errors') && enough(after, 'errors') && after.runs >= FIXED_RUNS;
 
-// Slipping is held to the bar fixed is: FIXED_OBSERVATIONS of its kind since, over FIXED_RUNS runs or more, and
-// worse than before by more than noise. One typo this week, a 2 ms change, or a unit that only moved up the
-// queue, is not a slip.
-const slipped = (since) => enough(since.after, since.basis) && since.after.runs >= FIXED_RUNS && Boolean(since.before) && worse(since);
+// How many units can be asked whether they slipped: the ones with that evidence, whatever their misses. Counted
+// from tries alone, so the count never depends on how the week went.
+export function slipFamily(records, began) {
+  const tallies = new Map();
+
+  for (const record of records.filter((item) => item.at !== null)) {
+    for (const { unit, seen } of record.units.filter((item) => item.seen > 0)) {
+      const tally = tallies.get(unit) || { before: { tries: 0, runs: 0 }, after: { tries: 0, runs: 0 } };
+      const side = record.at < began ? tally.before : tally.after;
+      side.tries += seen;
+      side.runs += 1;
+      tallies.set(unit, tally);
+    }
+  }
+
+  return [...tallies.values()].filter(({ before, after }) => readable(before, after)).length;
+}
+
+const slipped = ({ basis, before, after }, family) => basis === 'errors' && readable(before, after)
+  && after.errors / after.tries > before.errors / before.tries && chanceOfRise(before, after) < SLIP_CHANCE / family;
 
 const byDate = (a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 const basisNamed = (item) => (item?.was?.basis === 'slow' ? 'slow' : 'errors');
@@ -106,9 +124,7 @@ const basisNamed = (item) => (item?.was?.basis === 'slow' ? 'slow' : 'errors');
 // set of rules.
 //  - fixed: Train's isFixed now and not then. A drilled unit is judged as Train judges it, since its drill; a unit
 //    never drilled, named then and not now, is judged since `began`.
-//  - slipping: named now, after it could not be named then on FIXED_OBSERVATIONS of its kind; or Train called it
-//    fixed then and it is named again. Either way only on FIXED_OBSERVATIONS of its kind since `began`, over
-//    FIXED_RUNS runs or more, that are worse than the evidence before by more than noise (see `worse`).
+//  - slipping: named now for its misses, and missed more since `began` than before by more than noise (`slipped`).
 // Ranked by what each cost or saved in the learner's terms: the change in its gain, the time it loses per letter
 // typed, between the two fits. Largest first, then by unit.
 export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {
@@ -123,6 +139,7 @@ export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {
   const [gainNow, gainThen] = [gains(modelNow), gains(modelThen)];
   const drilledNow = new Map();
   const drilledThen = new Map();
+  const family = slipFamily(records, began);
 
   for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(byDate)) {
     drilledNow.set(loop.target, loop);
@@ -157,7 +174,7 @@ export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {
     if (!queuedNow.has(unit)) continue;
     const since = evidenceSince(unit, basisNamed(queuedNow.get(unit)), began, records);
 
-    if (slipped(since) && (fixedThen || (!queuedThen.has(unit) && enough(since.before, since.basis)))) add(unit, 'slipping', since, 'week');
+    if (slipped(since, family)) add(unit, 'slipping', since, 'week');
   }
 
   movers.sort((a, b) => b.weight - a.weight || (a.unit < b.unit ? -1 : 1));
